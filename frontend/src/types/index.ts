@@ -15,6 +15,7 @@ export interface Message {
   sender: string
   content: string | null
   sent_at: string | null
+  media_url: string | null
 }
 
 export interface Sugerencia {

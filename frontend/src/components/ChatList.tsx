@@ -1,24 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { RefreshCw, Search } from 'lucide-react'
 import type { Chat } from '../types'
 import { ChatItem } from './ChatItem'
-import { useChats } from '../hooks/useChats'
 
 interface Props {
+  chats: Chat[]
+  isLoading: boolean
+  error: boolean
+  search: string
+  onSearchChange: (value: string) => void
+  onRefresh: () => Promise<unknown>
   selectedId: string | null
   onSelect: (chat: Chat) => void
 }
 
-export function ChatList({ selectedId, onSelect }: Props) {
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+export function ChatList({
+  chats,
+  isLoading,
+  error,
+  search,
+  onSearchChange,
+  onRefresh,
+  selectedId,
+  onSelect,
+}: Props) {
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false)
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
-    return () => clearTimeout(timeout)
-  }, [search])
-
-  const { data: chats, isLoading, isFetching, error, refetch } = useChats(debouncedSearch)
+  async function handleRefresh() {
+    setIsManualRefreshing(true)
+    try {
+      await onRefresh()
+    } finally {
+      setIsManualRefreshing(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-200">
@@ -27,11 +42,11 @@ export function ChatList({ selectedId, onSelect }: Props) {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-sm font-semibold text-gray-900">Leads</h1>
           <button
-            onClick={() => refetch()}
-            disabled={isFetching}
+            onClick={handleRefresh}
+            disabled={isManualRefreshing}
             className="flex items-center gap-1 text-xs text-gray-500 hover:text-green-600 font-medium transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
             Actualizar
           </button>
         </div>
@@ -41,7 +56,7 @@ export function ChatList({ selectedId, onSelect }: Props) {
             type="text"
             placeholder="Buscar lead..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
             className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
           />
         </div>
@@ -57,7 +72,7 @@ export function ChatList({ selectedId, onSelect }: Props) {
             Error al cargar leads.
           </p>
         )}
-        {(chats ?? []).map((chat) => (
+        {chats.map((chat) => (
           <ChatItem
             key={chat.chat_id}
             chat={chat}
@@ -65,7 +80,7 @@ export function ChatList({ selectedId, onSelect }: Props) {
             onClick={() => onSelect(chat)}
           />
         ))}
-        {!isLoading && chats?.length === 0 && !error && (
+        {!isLoading && chats.length === 0 && !error && (
           <p className="text-sm text-gray-400 text-center py-8">Sin resultados.</p>
         )}
       </div>

@@ -33,3 +33,51 @@ export function formatMessageTime(sentAt: string | null): string {
   const d = new Date(sentAt)
   return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 }
+
+export function resolveMediaUrl(mediaUrl: string | null): string | null {
+  if (!mediaUrl) return null
+  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+  return `${base}${mediaUrl}`
+}
+
+export interface TextSegment {
+  text: string
+  isLink: boolean
+}
+
+const URL_REGEX = /https?:\/\/[^\s]+/g
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
+
+/** Separa un texto en segmentos planos y de link, para poder renderizar los links como <a> cliqueables. */
+export function splitLinks(text: string): TextSegment[] {
+  const segments: TextSegment[] = []
+  let lastIndex = 0
+
+  for (const match of text.matchAll(URL_REGEX)) {
+    const start = match.index ?? 0
+    let url = match[0]
+    let trailing = ''
+
+    const punctuation = url.match(TRAILING_PUNCTUATION)
+    if (punctuation) {
+      trailing = punctuation[0]
+      url = url.slice(0, -trailing.length)
+    }
+    if (!url) continue
+
+    if (start > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, start), isLink: false })
+    }
+    segments.push({ text: url, isLink: true })
+    if (trailing) {
+      segments.push({ text: trailing, isLink: false })
+    }
+    lastIndex = start + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex), isLink: false })
+  }
+
+  return segments.length ? segments : [{ text, isLink: false }]
+}

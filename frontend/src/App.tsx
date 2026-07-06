@@ -1,19 +1,40 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MessagesSquare, Sparkles } from 'lucide-react'
 import type { Chat, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { SuggestionPanel } from './components/SuggestionPanel'
+import { useChats, useChatUpdates } from './hooks/useChats'
 import { useSuggestions } from './hooks/useSuggestions'
 
 const queryClient = new QueryClient()
 
 function MainLayout() {
-  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
+  const { chatId } = useParams<{ chatId: string }>()
+  const navigate = useNavigate()
+
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(timeout)
+  }, [search])
+
+  useChatUpdates()
+
+  const { data: chats, isLoading, error, refetch } = useChats(debouncedSearch)
+
+  // Consulta aparte para resolver el chat seleccionado por su chat_id,
+  // independiente del texto de búsqueda de la lista (si no, buscar algo
+  // que no matchee el chat abierto lo "cerraría" solo).
+  const { data: selectedChatResult } = useChats(chatId ?? '', { enabled: !!chatId })
+  const selectedChat = chatId ? (selectedChatResult?.find((c) => c.chat_id === chatId) ?? null) : null
+
   const [suggestionData, setSuggestionData] = useState<SuggestionResponse | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
-
   const { mutate, isPending } = useSuggestions()
 
   function requestSuggestions(chat: Chat) {
@@ -32,10 +53,37 @@ function MainLayout() {
     )
   }
 
+  // Dispara la consulta de sugerencias cuando cambia el chat seleccionado
+  // (por click en la lista o por cargar la URL directamente).
+  useEffect(() => {
+    if (selectedChat) {
+      requestSuggestions(selectedChat)
+    } else {
+      setSuggestionData(null)
+      setApiError(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.chat_id])
+
   function handleSelectChat(chat: Chat) {
-    setSelectedChat(chat)
-    requestSuggestions(chat)
+    navigate(`/chat/${chat.chat_id}`)
   }
+
+  function handleCloseChat() {
+    navigate('/')
+  }
+
+  // Escape cierra el lead abierto, igual que WhatsApp
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && selectedChat) {
+        handleCloseChat()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.chat_id])
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
@@ -52,6 +100,12 @@ function MainLayout() {
         {/* Panel izquierdo — Lista de chats */}
         <div className="w-80 shrink-0 h-full overflow-hidden">
           <ChatList
+            chats={chats ?? []}
+            isLoading={isLoading}
+            error={!!error}
+            search={search}
+            onSearchChange={setSearch}
+            onRefresh={refetch}
             selectedId={selectedChat?.chat_id ?? null}
             onSelect={handleSelectChat}
           />
@@ -60,7 +114,10 @@ function MainLayout() {
         {/* Panel central — Conversación */}
         <div className="flex-1 h-full overflow-hidden">
           {selectedChat ? (
-            <ChatThread chat={selectedChat} onRefreshSuggestions={() => requestSuggestions(selectedChat)} />
+            <ChatThread
+              chat={selectedChat}
+              onRefreshSuggestions={() => requestSuggestions(selectedChat)}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-3 bg-slate-50">
               <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
@@ -93,7 +150,12 @@ function MainLayout() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <MainLayout />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<MainLayout />} />
+          <Route path="/chat/:chatId" element={<MainLayout />} />
+        </Routes>
+      </BrowserRouter>
     </QueryClientProvider>
   )
 }

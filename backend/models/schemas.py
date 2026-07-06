@@ -18,6 +18,7 @@ class Message(BaseModel):
     sender: str
     content: str | None = None
     sent_at: str | None = None
+    media_url: str | None = None
 
 
 class SuggestionRequest(BaseModel):

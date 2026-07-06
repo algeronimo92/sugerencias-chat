@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import type { Chat } from '../types'
 import { useMessages } from '../hooks/useMessages'
 import { avatarInitial, displayName } from '../utils/chat'
-import { formatMessageTime, parseContent } from '../utils/message'
+import { formatMessageTime, parseContent, resolveMediaUrl, splitLinks } from '../utils/message'
 
 interface Props {
   chat: Chat
@@ -57,6 +57,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         {messages?.map((m) => {
           const isVendedor = m.sender === 'vendedor'
           const { kind, icon: Icon, label, text } = parseContent(m.content)
+          const mediaSrc = resolveMediaUrl(m.media_url)
           return (
             <div key={m.id} className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -66,14 +67,45 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     : 'bg-white border-gray-200 text-gray-800 rounded-tl-sm'
                 }`}
               >
-                {kind !== 'text' && Icon && (
+                {!mediaSrc && kind !== 'text' && Icon && (
                   <div className="inline-flex items-center gap-1 bg-black/5 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                     <Icon className="w-3 h-3" />
                     <span>{label}</span>
                   </div>
                 )}
+                {mediaSrc && kind === 'image' && (
+                  <img
+                    src={mediaSrc}
+                    alt={text || 'Imagen'}
+                    className="rounded-lg max-w-full max-h-80 object-contain mb-1.5"
+                  />
+                )}
+                {mediaSrc && kind === 'video' && (
+                  <video controls src={mediaSrc} className="rounded-lg max-w-full max-h-80 mb-1.5" />
+                )}
+                {mediaSrc && kind === 'audio' && (
+                  <audio controls src={mediaSrc} className="max-w-full mb-1.5" />
+                )}
                 <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-gray-600' : ''}`}>
-                  {text || <span className="italic text-gray-400">Sin contenido</span>}
+                  {text ? (
+                    splitLinks(text).map((segment, i) =>
+                      segment.isLink ? (
+                        <a
+                          key={i}
+                          href={segment.text}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline text-blue-600 hover:text-blue-800 break-all not-italic"
+                        >
+                          {segment.text}
+                        </a>
+                      ) : (
+                        <span key={i}>{segment.text}</span>
+                      )
+                    )
+                  ) : (
+                    <span className="italic text-gray-400">Sin contenido</span>
+                  )}
                 </p>
                 <div className="text-[10px] text-gray-400 text-right mt-1">
                   {formatMessageTime(m.sent_at)}
