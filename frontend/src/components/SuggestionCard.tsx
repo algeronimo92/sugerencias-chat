@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { MessageSquare, Mic, Video, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Sugerencia } from '../types'
 
-const CANAL_ICON: Record<string, string> = {
-  texto: '💬',
-  audio: '🎵',
-  video: '🎬',
-}
+const CANAL_ICON = {
+  texto: MessageSquare,
+  audio: Mic,
+  video: Video,
+} as const
 
 interface Props {
   sugerencia: Sugerencia
@@ -17,6 +18,7 @@ export function SuggestionCard({ sugerencia, index }: Props) {
   const [showMotivo, setShowMotivo] = useState(false)
 
   const valueToCopy = sugerencia.texto ?? ''
+  const CanalIcon = CANAL_ICON[sugerencia.canal as keyof typeof CANAL_ICON] ?? MessageSquare
 
   async function handleCopy() {
     if (!valueToCopy) return
@@ -26,11 +28,11 @@ export function SuggestionCard({ sugerencia, index }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header */}
       <div className="flex items-start justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base">{CANAL_ICON[sugerencia.canal] ?? '💬'}</span>
+          <CanalIcon className="w-4 h-4 text-green-600" />
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Opción {index + 1}
           </span>
@@ -38,20 +40,21 @@ export function SuggestionCard({ sugerencia, index }: Props) {
         {sugerencia.texto && (
           <button
             onClick={handleCopy}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ml-2 ${
+            className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ml-2 ${
               copied
                 ? 'bg-green-100 text-green-700'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                : 'bg-green-600 text-white hover:bg-green-700'
             }`}
           >
-            {copied ? '✓ Copiado' : 'Copiar'}
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copiado' : 'Copiar'}
           </button>
         )}
       </div>
 
       <div className="p-4 space-y-3">
         {/* Táctica */}
-        <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">
+        <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">
           {sugerencia.tactica}
         </p>
 
@@ -72,7 +75,7 @@ export function SuggestionCard({ sugerencia, index }: Props) {
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="block text-xs text-blue-600 hover:underline truncate"
+                className="block text-xs text-green-600 hover:underline truncate"
               >
                 {url}
               </a>
@@ -85,7 +88,7 @@ export function SuggestionCard({ sugerencia, index }: Props) {
           onClick={() => setShowMotivo(!showMotivo)}
           className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
         >
-          <span>{showMotivo ? '▲' : '▼'}</span>
+          {showMotivo ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           <span>¿Por qué esta táctica?</span>
         </button>
         {showMotivo && (

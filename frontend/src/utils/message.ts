@@ -1,16 +1,18 @@
+import { Mic, Image, Video, Paperclip, type LucideIcon } from 'lucide-react'
+
 export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'other'
 
-const KIND_META: Record<MessageKind, { icon: string; label: string }> = {
-  text: { icon: '', label: '' },
-  audio: { icon: '🎤', label: 'Audio' },
-  image: { icon: '🖼️', label: 'Imagen' },
-  video: { icon: '🎥', label: 'Video' },
-  other: { icon: '📎', label: 'Adjunto' },
+const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }> = {
+  text: { icon: null, label: '' },
+  audio: { icon: Mic, label: 'Audio' },
+  image: { icon: Image, label: 'Imagen' },
+  video: { icon: Video, label: 'Video' },
+  other: { icon: Paperclip, label: 'Adjunto' },
 }
 
 export interface ParsedContent {
   kind: MessageKind
-  icon: string
+  icon: LucideIcon | null
   label: string
   text: string
 }

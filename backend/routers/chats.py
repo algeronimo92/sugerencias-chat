@@ -6,9 +6,9 @@ router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 
 @router.get("", response_model=list[Chat])
-async def get_chats():
+async def get_chats(search: str | None = None):
     try:
-        rows = await fetch_chats()
+        rows = await fetch_chats(search)
         return rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -20,7 +20,7 @@ async def close_pool():
         _pool = None
 
 
-async def fetch_chats() -> list[dict]:
+async def fetch_chats(search: str | None = None) -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -43,9 +43,16 @@ async def fetch_chats() -> list[dict]:
                 ORDER BY sent_at DESC
                 LIMIT 1
             ) m ON true
+            WHERE
+                $1::text IS NULL
+                OR l.remote_jid ILIKE '%' || $1 || '%'
+                OR l.telefono ILIKE '%' || $1 || '%'
+                OR l.nombre ILIKE '%' || $1 || '%'
+                OR m.content ILIKE '%' || $1 || '%'
             ORDER BY l.ultimo_mensaje_at DESC NULLS LAST
             LIMIT 100
-            """
+            """,
+            search,
         )
     return [dict(r) for r in rows]
 

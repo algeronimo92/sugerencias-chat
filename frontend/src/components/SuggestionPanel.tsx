@@ -1,3 +1,4 @@
+import { Sparkles, AlertTriangle } from 'lucide-react'
 import type { Chat, SuggestionResponse } from '../types'
 import { LeadInfo } from './LeadInfo'
 import { LeadStatus } from './LeadStatus'
@@ -14,7 +15,8 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white">
+      <div className="px-4 py-3.5 border-b border-gray-200 bg-white flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-green-600" />
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
           Sugerencias IA
         </p>
@@ -45,13 +47,14 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
 
             {/* Objeción detectada */}
             {data.tipo_objecion && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2 text-sm text-yellow-800">
-                <span className="font-semibold">Objeción detectada:</span> {data.tipo_objecion}
+              <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2.5 text-sm text-yellow-800">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <p><span className="font-semibold">Objeción detectada:</span> {data.tipo_objecion}</p>
               </div>
             )}
 
             {/* Análisis */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Análisis de la conversación
               </h3>

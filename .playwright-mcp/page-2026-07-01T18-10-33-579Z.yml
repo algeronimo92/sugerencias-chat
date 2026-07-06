@@ -1,0 +1,23 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - img [ref=e6]
+    - generic [ref=e9]: WSP Suggestions
+    - generic [ref=e10]: · DermicaPro · Panel de leads
+  - generic [ref=e11]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - heading "Leads" [level=1] [ref=e16]
+          - button "Actualizar" [disabled] [ref=e17]:
+            - img [ref=e18]
+            - text: Actualizar
+        - generic [ref=e23]:
+          - img [ref=e24]
+          - textbox "Buscar lead..." [ref=e27]
+      - paragraph [ref=e29]: Cargando leads...
+    - generic [ref=e31]:
+      - img [ref=e32]
+      - paragraph [ref=e35]: Selecciona un lead para ver la conversación
+    - generic [ref=e37]:
+      - img [ref=e38]
+      - paragraph [ref=e41]: Selecciona un lead para ver las sugerencias

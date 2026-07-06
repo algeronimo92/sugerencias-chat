@@ -2,15 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Chat } from '../types'
 
-async function fetchChats(): Promise<Chat[]> {
-  const { data } = await client.get<Chat[]>('/api/chats')
+async function fetchChats(search: string): Promise<Chat[]> {
+  const { data } = await client.get<Chat[]>('/api/chats', {
+    params: search ? { search } : undefined,
+  })
   return data
 }
 
-export function useChats() {
+export function useChats(search: string = '') {
   return useQuery({
-    queryKey: ['chats'],
-    queryFn: fetchChats,
+    queryKey: ['chats', search],
+    queryFn: () => fetchChats(search),
     staleTime: 30_000,
   })
 }
