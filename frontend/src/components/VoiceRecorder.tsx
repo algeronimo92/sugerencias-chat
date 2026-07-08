@@ -14,6 +14,31 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}:${s}`
 }
 
+/** getUserMedia falla con nombres de error específicos (DOMException.name);
+ * cada uno tiene una causa y solución distinta, así que conviene explicarlas
+ * por separado en vez de un "no se pudo acceder" genérico. */
+function describeMicError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : ''
+
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return (
+      'El navegador tiene bloqueado el acceso al micrófono para este sitio. ' +
+      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Micrófono → Permitir, y volvé a cargar la página.'
+    )
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'No se encontró ningún micrófono conectado a esta computadora.'
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'El micrófono está siendo usado por otra aplicación. Cerrala e intentá de nuevo.'
+  }
+  if (name === 'SecurityError') {
+    return 'Grabar audio requiere una conexión segura (HTTPS) para este sitio.'
+  }
+  return 'No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio y volvé a cargar la página.'
+}
+
 export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange }: Props) {
   const [isRecording, setIsRecording] = useState(false)
   const [seconds, setSeconds] = useState(0)
@@ -58,8 +83,8 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
       setIsRecording(true)
       onRecordingChange?.(true)
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
-    } catch {
-      onError('No se pudo acceder al micrófono')
+    } catch (err) {
+      onError(describeMicError(err))
     }
   }
 
