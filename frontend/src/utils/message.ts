@@ -40,44 +40,85 @@ export function resolveMediaUrl(mediaUrl: string | null): string | null {
   return `${base}${mediaUrl}`
 }
 
-export interface TextSegment {
+export type RichSegmentType = 'text' | 'link' | 'bold' | 'italic' | 'strike' | 'code'
+
+export interface RichSegment {
+  type: RichSegmentType
   text: string
-  isLink: boolean
 }
 
-const URL_REGEX = /https?:\/\/[^\s]+/g
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
 
-/** Separa un texto en segmentos planos y de link, para poder renderizar los links como <a> cliqueables. */
-export function splitLinks(text: string): TextSegment[] {
-  const segments: TextSegment[] = []
+// Orden de prioridad: URL, bloque de código, código inline, negrita markdown
+// (**x**, común en texto generado por IA), negrita/cursiva/tachado estilo
+// WhatsApp (*x*, _x_, ~x~).
+const RICH_TEXT_REGEX =
+  /(https?:\/\/[^\s]+)|```([^`]+?)```|`([^`\n]+?)`|\*\*([^\n*]+?)\*\*|\*([^\n*]+?)\*|_([^\n_]+?)_|~([^\n~]+?)~/g
+
+/**
+ * Interpreta el mismo formato que usa WhatsApp (*negrita*, _cursiva_,
+ * ~tachado~, `código`), más **negrita** estilo markdown, y los links, para
+ * renderizarlos como texto con estilo en vez de mostrar los símbolos
+ * literales. No soporta formato anidado (ej. un link dentro de una negrita),
+ * igual que WhatsApp.
+ */
+export function parseRichText(text: string): RichSegment[] {
+  const segments: RichSegment[] = []
   let lastIndex = 0
 
-  for (const match of text.matchAll(URL_REGEX)) {
+  for (const match of text.matchAll(RICH_TEXT_REGEX)) {
     const start = match.index ?? 0
-    let url = match[0]
-    let trailing = ''
+    const [full, url, codeBlock, code, boldDouble, boldSingle, italic, strike] = match
 
-    const punctuation = url.match(TRAILING_PUNCTUATION)
-    if (punctuation) {
-      trailing = punctuation[0]
-      url = url.slice(0, -trailing.length)
-    }
-    if (!url) continue
+    if (url !== undefined) {
+      let trimmedUrl = url
+      let trailing = ''
+      const punctuation = trimmedUrl.match(TRAILING_PUNCTUATION)
+      if (punctuation) {
+        trailing = punctuation[0]
+        trimmedUrl = trimmedUrl.slice(0, -trailing.length)
+      }
+      if (!trimmedUrl) continue
 
-    if (start > lastIndex) {
-      segments.push({ text: text.slice(lastIndex, start), isLink: false })
+      if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
+      segments.push({ type: 'link', text: trimmedUrl })
+      if (trailing) segments.push({ type: 'text', text: trailing })
+      lastIndex = start + full.length
+      continue
     }
-    segments.push({ text: url, isLink: true })
-    if (trailing) {
-      segments.push({ text: trailing, isLink: false })
+
+    let type: RichSegmentType
+    let content: string
+    if (codeBlock !== undefined) {
+      type = 'code'
+      content = codeBlock
+    } else if (code !== undefined) {
+      type = 'code'
+      content = code
+    } else if (boldDouble !== undefined) {
+      type = 'bold'
+      content = boldDouble
+    } else if (boldSingle !== undefined) {
+      type = 'bold'
+      content = boldSingle
+    } else if (italic !== undefined) {
+      type = 'italic'
+      content = italic
+    } else if (strike !== undefined) {
+      type = 'strike'
+      content = strike
+    } else {
+      continue
     }
-    lastIndex = start + match[0].length
+
+    if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
+    segments.push({ type, text: content })
+    lastIndex = start + full.length
   }
 
   if (lastIndex < text.length) {
-    segments.push({ text: text.slice(lastIndex), isLink: false })
+    segments.push({ type: 'text', text: text.slice(lastIndex) })
   }
 
-  return segments.length ? segments : [{ text, isLink: false }]
+  return segments.length ? segments : [{ type: 'text', text }]
 }
