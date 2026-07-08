@@ -26,6 +26,10 @@ class Message(BaseModel):
     media_url: str | None = None
 
 
+class SendMessageRequest(BaseModel):
+    text: str
+
+
 class SuggestionRequest(BaseModel):
     chat_id: str
     phone: str | None = None

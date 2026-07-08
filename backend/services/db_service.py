@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, or_, select, true
+from sqlalchemy import and_, func, insert, or_, select, true
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
@@ -114,6 +114,27 @@ async def fetch_chats(
         for r in rows
     ]
     return {"items": items, "has_more": has_more}
+
+
+async def insert_message(chat_id: str, sender: str, content: str) -> dict:
+    stmt = (
+        insert(WspMessage)
+        .values(chat_id=chat_id, sender=sender, content=content, sent_at=datetime.now(timezone.utc))
+        .returning(
+            WspMessage.id, WspMessage.sender, WspMessage.content, WspMessage.sent_at, WspMessage.media_url
+        )
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().one()
+        await session.commit()
+
+    return {
+        "id": row["id"],
+        "sender": row["sender"],
+        "content": row["content"],
+        "sent_at": _fmt_ts(row["sent_at"]),
+        "media_url": row["media_url"],
+    }
 
 
 async def fetch_chat_signature() -> str:
