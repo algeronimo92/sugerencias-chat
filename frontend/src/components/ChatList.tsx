@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { AlertCircle, Loader2, RefreshCw, Search } from 'lucide-react'
-import type { Chat } from '../types'
+import { AlertCircle, Loader2, RefreshCw, Search, UserPlus } from 'lucide-react'
+import type { Chat, LeadUpdateInput } from '../types'
+import { useCreateLead } from '../hooks/useChats'
+import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
+import { LeadFormDialog } from './LeadFormDialog'
 
 interface Props {
   chats: Chat[]
@@ -70,7 +73,31 @@ export function ChatList({
   onLoadMore,
 }: Props) {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead()
+
+  function handleCreateLead(values: LeadUpdateInput) {
+    setCreateError(null)
+    createLead(
+      {
+        phone: values.phone ?? '',
+        name: values.name ?? '',
+        servicio_interes: values.servicio_interes,
+        vendedor: values.vendedor,
+        origen: values.origen,
+        notas: values.notas,
+      },
+      {
+        onSuccess: (chat) => {
+          setIsCreating(false)
+          onSelect(chat)
+        },
+        onError: (err) => setCreateError(extractErrorMessage(err)),
+      }
+    )
+  }
 
   // Resalta el lead que salta al tope de la lista por un mensaje nuevo en
   // tiempo real, para que no pase desapercibido si el usuario está
@@ -155,14 +182,27 @@ export function ChatList({
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Leads</h1>
-          <button
-            onClick={handleRefresh}
-            disabled={isManualRefreshing}
-            className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
-            Actualizar
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setCreateError(null)
+                setIsCreating(true)
+              }}
+              aria-label="Agregar lead"
+              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Agregar
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={isManualRefreshing}
+              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
+              Actualizar
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search className="w-4 h-4 text-gray-400 dark:text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -228,6 +268,18 @@ export function ChatList({
           </div>
         )}
       </div>
+
+      {isCreating && (
+        <LeadFormDialog
+          title="Agregar lead"
+          submitLabel="Agregar"
+          requirePhoneAndName
+          isSubmitting={isSavingNewLead}
+          error={createError}
+          onSubmit={handleCreateLead}
+          onCancel={() => setIsCreating(false)}
+        />
+      )}
     </div>
   )
 }

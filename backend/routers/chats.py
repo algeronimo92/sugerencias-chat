@@ -1,8 +1,16 @@
 import httpx
 from fastapi import APIRouter, HTTPException
-from models.schemas import ChatPage, Message, SendLocationRequest, SendMediaRequest, SendMessageRequest
+from models.schemas import Chat, ChatPage, LeadCreate, LeadUpdate, Message, SendLocationRequest, SendMediaRequest, SendMessageRequest
 from routers.media import save_media_file
-from services.db_service import CHATS_PAGE_SIZE, fetch_chats, fetch_messages, insert_message
+from services.db_service import (
+    CHATS_PAGE_SIZE,
+    LeadAlreadyExistsError,
+    create_lead,
+    fetch_chats,
+    fetch_messages,
+    insert_message,
+    update_lead,
+)
 from services.evolution_service import (
     EvolutionApiError,
     send_whatsapp_audio,
@@ -13,6 +21,17 @@ from services.evolution_service import (
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
+
+# Mapea los nombres de campo de la API (schemas.Chat) a las columnas reales de
+# la tabla leads (db.models.Lead) para armar el dict de `update_lead`.
+_LEAD_FIELD_TO_COLUMN = {
+    "phone": "telefono",
+    "name": "nombre",
+    "servicio_interes": "servicio_interes",
+    "vendedor": "vendedor",
+    "origen": "origen",
+    "notas": "notas",
+}
 
 
 def _mediatype_from_content_type(content_type: str) -> str:
@@ -36,6 +55,44 @@ async def get_chats(
         return await fetch_chats(search, cursor_ts, cursor_id, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("", response_model=Chat, status_code=201)
+async def create_chat(body: LeadCreate):
+    phone = body.phone.strip()
+    name = body.name.strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="El teléfono es obligatorio")
+    if not name:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+
+    try:
+        lead = await create_lead(
+            phone=phone,
+            name=name,
+            servicio_interes=body.servicio_interes,
+            vendedor=body.vendedor,
+            origen=body.origen,
+            notas=body.notas,
+        )
+    except LeadAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
+
+    await manager.broadcast({"type": "chats_updated"})
+    return lead
+
+
+@router.patch("/{chat_id}", response_model=Chat)
+async def update_chat(chat_id: str, body: LeadUpdate):
+    values = {
+        _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
+    }
+    lead = await update_lead(chat_id, values)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+
+    await manager.broadcast({"type": "chats_updated"})
+    return lead
 
 
 @router.get("/{chat_id}/messages", response_model=list[Message])

@@ -10,6 +10,24 @@ export interface Chat {
   timestamp: string | null
 }
 
+export interface LeadInput {
+  phone: string
+  name: string
+  servicio_interes?: string | null
+  vendedor?: string | null
+  origen?: string | null
+  notas?: string | null
+}
+
+export interface LeadUpdateInput {
+  phone?: string | null
+  name?: string | null
+  servicio_interes?: string | null
+  vendedor?: string | null
+  origen?: string | null
+  notas?: string | null
+}
+
 export interface Message {
   id: number
   sender: string
