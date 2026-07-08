@@ -55,7 +55,9 @@ async def send_whatsapp_location(
 ) -> dict:
     """name/address están documentados como opcionales en Evolution API,
     pero en la práctica el servidor los exige igual (400 "instance requires
-    property name/address" si se omiten) — siempre van con algún valor."""
+    property name/address" si se omiten) — siempre van con algún valor.
+    No mostramos lat/lon crudas ahí: el pin de ubicación de WhatsApp ya
+    funciona como link a Maps, así que la dirección solo sería ruido."""
     _require_config()
 
     url = f"{settings.evolution_api_url.rstrip('/')}/message/sendLocation/{settings.evolution_instance}"
@@ -63,8 +65,8 @@ async def send_whatsapp_location(
         "number": chat_id,
         "latitude": latitude,
         "longitude": longitude,
-        "name": name or "Ubicación compartida",
-        "address": address or f"{latitude}, {longitude}",
+        "name": name or "",
+        "address": address or "",
     }
     return await _post(url, payload, timeout=30.0)
 

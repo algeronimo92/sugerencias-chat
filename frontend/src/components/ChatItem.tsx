@@ -18,6 +18,7 @@ function formatTime(timestamp: string | null): string {
 export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
   const preview = parseContent(chat.last_message)
   const Icon = preview.icon
+  const previewText = preview.kind === 'location' ? preview.label : preview.text || '—'
 
   return (
     <button
@@ -44,7 +45,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
           {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
-          <span className="truncate">{preview.text || '—'}</span>
+          <span className="truncate">{previewText}</span>
         </p>
       </div>
     </button>

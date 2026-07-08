@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import axios from 'axios'
-import { FileText, Loader2, MapPin, Maximize2, RefreshCw, Send } from 'lucide-react'
+import { FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
 import type { Chat } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
 import { avatarInitial, displayName } from '../utils/chat'
+import { extractErrorMessage } from '../utils/errors'
 import { formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
 import { AttachMenu } from './AttachMenu'
+import { LocationConfirmDialog } from './LocationConfirmDialog'
+import { MapPreview } from './MapPreview'
 import { MediaLightbox } from './MediaLightbox'
 import { VoiceRecorder } from './VoiceRecorder'
 
@@ -53,13 +55,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-function extractErrorMessage(err: unknown): string {
-  if (axios.isAxiosError(err) && typeof err.response?.data?.detail === 'string') {
-    return err.response.data.detail
-  }
-  return err instanceof Error ? err.message : 'Error desconocido'
-}
-
 /** GeolocationPositionError trae códigos fijos (1/2/3); cada uno tiene una
  * causa y solución distinta, igual que hicimos con los errores de micrófono. */
 function describeGeolocationError(err: GeolocationPositionError): string {
@@ -101,6 +96,8 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(false)
+  const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: sendMessage, isPending: isSending, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
@@ -118,6 +115,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     setAudioError(null)
     setMediaError(null)
     setLocationError(null)
+    setPendingLocation(null)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -173,10 +171,9 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false)
-        sendLocation(
-          { latitude: position.coords.latitude, longitude: position.coords.longitude },
-          { onError: (err) => setLocationError(extractErrorMessage(err)) }
-        )
+        // Igual que WhatsApp: primero mostramos dónde nos ubicó el GPS y
+        // pedimos confirmación, en vez de mandarla directo.
+        setPendingLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
       },
       (err) => {
         setIsLocating(false)
@@ -184,6 +181,17 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
       },
       { enableHighAccuracy: true, timeout: 10_000 }
     )
+  }
+
+  function handleConfirmLocation() {
+    if (!pendingLocation) return
+    sendLocation(pendingLocation, {
+      onSuccess: () => setPendingLocation(null),
+      onError: (err) => {
+        setLocationError(extractErrorMessage(err))
+        setPendingLocation(null)
+      },
+    })
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -232,7 +240,12 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         {messages?.map((m) => {
           const isVendedor = m.sender === 'vendedor'
           const { kind, icon: Icon, label, text } = parseContent(m.content)
-          const mediaSrc = resolveMediaUrl(m.media_url)
+          // Si el archivo falló al cargar (ej. no existe en este entorno),
+          // lo tratamos como si no hubiera media: el navegador muestra su
+          // propio ícono roto + el alt completo pegado, duplicando el texto
+          // con nuestro caption de abajo.
+          const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
+          const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
           return (
             <div key={m.id} className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -253,12 +266,13 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     src={mediaSrc}
                     alt={text || 'Imagen'}
                     onClick={() => setOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
+                    onError={markMediaFailed}
                     className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
                   />
                 )}
                 {mediaSrc && kind === 'video' && (
                   <div className="relative mb-1.5 inline-block">
-                    <video controls src={mediaSrc} className="rounded-lg max-w-full max-h-80" />
+                    <video controls src={mediaSrc} onError={markMediaFailed} className="rounded-lg max-w-full max-h-80" />
                     <button
                       onClick={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
                       aria-label="Agrandar video"
@@ -269,7 +283,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                   </div>
                 )}
                 {mediaSrc && kind === 'audio' && (
-                  <audio controls src={mediaSrc} className="max-w-full mb-1.5" />
+                  <audio controls src={mediaSrc} onError={markMediaFailed} className="max-w-full mb-1.5" />
                 )}
                 {mediaSrc && kind === 'other' && (
                   <a
@@ -294,24 +308,21 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     </div>
                   </a>
                 )}
-                {kind === 'location' && (
-                  <a
-                    href={`https://www.google.com/maps?q=${text}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                  >
-                    <span className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 bg-red-500">
-                      <MapPin className="w-4 h-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-800 dark:text-gray-100 truncate not-italic font-medium">
-                        Ubicación compartida
-                      </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 not-italic">Ver en Google Maps</p>
-                    </div>
-                  </a>
-                )}
+                {kind === 'location' && (() => {
+                  const [lat, lon] = text.split(',').map(Number)
+                  const hasCoords = Number.isFinite(lat) && Number.isFinite(lon)
+                  if (!hasCoords) return null
+                  return (
+                    <a
+                      href={`https://www.google.com/maps?q=${lat},${lon}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
+                    >
+                      <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
+                    </a>
+                  )
+                })()}
                 {kind !== 'other' && kind !== 'location' && (
                   <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-gray-600 dark:text-gray-400' : ''}`}>
                     {text ? (
@@ -437,6 +448,16 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           kind={openMedia.kind}
           alt={openMedia.alt}
           onClose={() => setOpenMedia(null)}
+        />
+      )}
+
+      {pendingLocation && (
+        <LocationConfirmDialog
+          latitude={pendingLocation.latitude}
+          longitude={pendingLocation.longitude}
+          isSending={isSendingLocation}
+          onConfirm={handleConfirmLocation}
+          onCancel={() => setPendingLocation(null)}
         />
       )}
     </div>
