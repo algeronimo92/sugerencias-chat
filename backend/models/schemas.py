@@ -30,9 +30,15 @@ class SendMessageRequest(BaseModel):
     text: str
 
 
-class SendAudioRequest(BaseModel):
+class SendMediaRequest(BaseModel):
     content_type: str
     data_base64: str
+    filename: str | None = None
+
+
+class SendLocationRequest(BaseModel):
+    latitude: float
+    longitude: float
 
 
 class SuggestionRequest(BaseModel):

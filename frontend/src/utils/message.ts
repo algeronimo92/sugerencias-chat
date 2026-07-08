@@ -1,12 +1,13 @@
-import { Mic, Image, Video, Paperclip, type LucideIcon } from 'lucide-react'
+import { Mic, Image, Video, MapPin, Paperclip, type LucideIcon } from 'lucide-react'
 
-export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'other'
+export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'location' | 'other'
 
 const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }> = {
   text: { icon: null, label: '' },
   audio: { icon: Mic, label: 'Audio' },
   image: { icon: Image, label: 'Imagen' },
   video: { icon: Video, label: 'Video' },
+  location: { icon: MapPin, label: 'Ubicación' },
   other: { icon: Paperclip, label: 'Adjunto' },
 }
 

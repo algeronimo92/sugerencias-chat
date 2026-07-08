@@ -1,12 +1,48 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
+import { FileText, Loader2, MapPin, Maximize2, RefreshCw, Send } from 'lucide-react'
 import type { Chat } from '../types'
-import { useMessages, useSendAudio, useSendMessage } from '../hooks/useMessages'
+import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
 import { avatarInitial, displayName } from '../utils/chat'
 import { formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
+import { AttachMenu } from './AttachMenu'
 import { MediaLightbox } from './MediaLightbox'
 import { VoiceRecorder } from './VoiceRecorder'
+
+const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
+const MEDIA_ACCEPT = 'image/*,video/*'
+const AUDIO_ACCEPT = 'audio/*'
+
+const DOCUMENT_COLORS: Record<string, string> = {
+  pdf: 'bg-red-500',
+  doc: 'bg-blue-500',
+  docx: 'bg-blue-500',
+  xls: 'bg-green-600',
+  xlsx: 'bg-green-600',
+  ppt: 'bg-orange-500',
+  pptx: 'bg-orange-500',
+  txt: 'bg-gray-500',
+  zip: 'bg-yellow-600',
+}
+
+function documentExtension(filename: string): string {
+  const ext = filename.includes('.') ? filename.split('.').pop() : undefined
+  return ext ? ext.toUpperCase() : 'ARCHIVO'
+}
+
+function documentColor(filename: string): string {
+  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+  return (ext && DOCUMENT_COLORS[ext]) || 'bg-gray-500'
+}
+
+// Los navegadores solo saben previsualizar PDF de forma nativa; Word/Excel/etc.
+// no tienen visor propio y si se abren con target="_blank" el navegador no
+// sabe qué hacer con el archivo (peor, .docx/.xlsx son un ZIP por dentro, así
+// que a veces terminan "abriéndose" como zip). Para esos, forzar la descarga
+// directa es lo correcto.
+function isPdfFilename(filename: string): boolean {
+  return filename.toLowerCase().endsWith('.pdf')
+}
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -22,6 +58,25 @@ function extractErrorMessage(err: unknown): string {
     return err.response.data.detail
   }
   return err instanceof Error ? err.message : 'Error desconocido'
+}
+
+/** GeolocationPositionError trae códigos fijos (1/2/3); cada uno tiene una
+ * causa y solución distinta, igual que hicimos con los errores de micrófono. */
+function describeGeolocationError(err: GeolocationPositionError): string {
+  if (err.code === err.PERMISSION_DENIED) {
+    return (
+      'El navegador tiene bloqueado el acceso a la ubicación para este sitio. ' +
+      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y volvé a cargar la página.'
+    )
+  }
+  if (err.code === err.POSITION_UNAVAILABLE) {
+    return 'No se pudo determinar tu ubicación actual.'
+  }
+  if (err.code === err.TIMEOUT) {
+    return 'Se agotó el tiempo esperando la ubicación. Intentá de nuevo.'
+  }
+  return 'No se pudo obtener la ubicación.'
 }
 
 interface Props {
@@ -43,18 +98,26 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const [draft, setDraft] = useState('')
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [isLocating, setIsLocating] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: sendMessage, isPending: isSending, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
+  const { mutate: sendMedia, isPending: isSendingMedia } = useSendMedia(chat.chat_id)
+  const { mutate: sendLocation, isPending: isSendingLocation } = useSendLocation(chat.chat_id)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
 
-  // El draft y el error de envío son por chat: al cambiar de lead no debe
+  // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
   useEffect(() => {
     setDraft('')
     setAudioError(null)
+    setMediaError(null)
+    setLocationError(null)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -70,6 +133,56 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     sendAudio(
       { contentType: blob.type || 'audio/webm', dataBase64 },
       { onError: (err) => setAudioError(extractErrorMessage(err)) }
+    )
+  }
+
+  function openFilePicker(accept: string) {
+    const input = fileInputRef.current
+    if (!input) return
+    input.accept = accept
+    input.click()
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permite volver a elegir el mismo archivo después
+    if (!file) return
+
+    // El backend valida el tipo real permitido; acá solo evitamos un
+    // roundtrip para el caso obvio de un archivo sin tipo reconocible.
+    if (!file.type) {
+      setMediaError('No se pudo determinar el tipo de archivo')
+      return
+    }
+
+    setMediaError(null)
+    const dataBase64 = await blobToBase64(file)
+    sendMedia(
+      { contentType: file.type, dataBase64, filename: file.name },
+      { onError: (err) => setMediaError(extractErrorMessage(err)) }
+    )
+  }
+
+  function handleSendLocation() {
+    setLocationError(null)
+    if (!navigator.geolocation) {
+      setLocationError('Tu navegador no soporta geolocalización')
+      return
+    }
+    setIsLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false)
+        sendLocation(
+          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          { onError: (err) => setLocationError(extractErrorMessage(err)) }
+        )
+      },
+      (err) => {
+        setIsLocating(false)
+        setLocationError(describeGeolocationError(err))
+      },
+      { enableHighAccuracy: true, timeout: 10_000 }
     )
   }
 
@@ -129,7 +242,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-sm'
                 }`}
               >
-                {!mediaSrc && kind !== 'text' && Icon && (
+                {!mediaSrc && kind !== 'text' && kind !== 'location' && Icon && (
                   <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wide">
                     <Icon className="w-3 h-3" />
                     <span>{label}</span>
@@ -158,57 +271,100 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                 {mediaSrc && kind === 'audio' && (
                   <audio controls src={mediaSrc} className="max-w-full mb-1.5" />
                 )}
-                <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-gray-600 dark:text-gray-400' : ''}`}>
-                  {text ? (
-                    parseRichText(text).map((segment, i) => {
-                      switch (segment.type) {
-                        case 'link':
-                          return (
-                            <a
-                              key={i}
-                              href={segment.text}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 break-all not-italic"
-                            >
-                              {segment.text}
-                            </a>
-                          )
-                        case 'bold':
-                          return (
-                            <strong key={i} className="font-semibold">
-                              {segment.text}
-                            </strong>
-                          )
-                        case 'italic':
-                          return (
-                            <em key={i} className="italic">
-                              {segment.text}
-                            </em>
-                          )
-                        case 'strike':
-                          return (
-                            <span key={i} className="line-through">
-                              {segment.text}
-                            </span>
-                          )
-                        case 'code':
-                          return (
-                            <code
-                              key={i}
-                              className="font-mono text-[0.85em] bg-black/10 dark:bg-white/15 rounded px-1 py-0.5 not-italic"
-                            >
-                              {segment.text}
-                            </code>
-                          )
-                        default:
-                          return <span key={i}>{segment.text}</span>
-                      }
-                    })
-                  ) : (
-                    <span className="italic text-gray-400 dark:text-gray-500">Sin contenido</span>
-                  )}
-                </p>
+                {mediaSrc && kind === 'other' && (
+                  <a
+                    href={mediaSrc}
+                    {...(isPdfFilename(text || '')
+                      ? { target: '_blank', rel: 'noopener noreferrer' }
+                      : { download: text || true })}
+                    className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                  >
+                    <span
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(text || '')}`}
+                    >
+                      <FileText className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 dark:text-gray-100 truncate not-italic font-medium">
+                        {text || 'Documento'}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 not-italic">
+                        {documentExtension(text || '')}
+                      </p>
+                    </div>
+                  </a>
+                )}
+                {kind === 'location' && (
+                  <a
+                    href={`https://www.google.com/maps?q=${text}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                  >
+                    <span className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 bg-red-500">
+                      <MapPin className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 dark:text-gray-100 truncate not-italic font-medium">
+                        Ubicación compartida
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 not-italic">Ver en Google Maps</p>
+                    </div>
+                  </a>
+                )}
+                {kind !== 'other' && kind !== 'location' && (
+                  <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-gray-600 dark:text-gray-400' : ''}`}>
+                    {text ? (
+                      parseRichText(text).map((segment, i) => {
+                        switch (segment.type) {
+                          case 'link':
+                            return (
+                              <a
+                                key={i}
+                                href={segment.text}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 break-all not-italic"
+                              >
+                                {segment.text}
+                              </a>
+                            )
+                          case 'bold':
+                            return (
+                              <strong key={i} className="font-semibold">
+                                {segment.text}
+                              </strong>
+                            )
+                          case 'italic':
+                            return (
+                              <em key={i} className="italic">
+                                {segment.text}
+                              </em>
+                            )
+                          case 'strike':
+                            return (
+                              <span key={i} className="line-through">
+                                {segment.text}
+                              </span>
+                            )
+                          case 'code':
+                            return (
+                              <code
+                                key={i}
+                                className="font-mono text-[0.85em] bg-black/10 dark:bg-white/15 rounded px-1 py-0.5 not-italic"
+                              >
+                                {segment.text}
+                              </code>
+                            )
+                          default:
+                            return <span key={i}>{segment.text}</span>
+                        }
+                      })
+                    ) : (
+                      <span className="italic text-gray-400 dark:text-gray-500">Sin contenido</span>
+                    )}
+                  </p>
+                )}
                 <div className="text-[10px] text-gray-400 dark:text-gray-500 text-right mt-1">
                   {formatMessageTime(m.sent_at)}
                 </div>
@@ -228,7 +384,22 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
         )}
         {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
+        {mediaError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{mediaError}</p>}
+        {locationError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{locationError}</p>}
         <div className="flex items-end gap-2">
+          <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
+
+          {!isRecordingAudio && (
+            <AttachMenu
+              disabled={isSendingMedia || isLocating || isSendingLocation}
+              isSending={isSendingMedia || isLocating || isSendingLocation}
+              onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
+              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
+              onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
+              onSelectLocation={handleSendLocation}
+            />
+          )}
+
           {!isRecordingAudio && (
             <textarea
               value={draft}
@@ -251,7 +422,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
             </button>
           ) : (
             <VoiceRecorder
-              disabled={isSendingAudio}
+              disabled={isSendingAudio || isSendingMedia || isLocating || isSendingLocation}
               onRecorded={handleAudioRecorded}
               onError={setAudioError}
               onRecordingChange={setIsRecordingAudio}
