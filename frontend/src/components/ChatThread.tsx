@@ -2,10 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
 import type { Chat } from '../types'
-import { useMessages, useSendMessage } from '../hooks/useMessages'
+import { useMessages, useSendAudio, useSendMessage } from '../hooks/useMessages'
 import { avatarInitial, displayName } from '../utils/chat'
 import { formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
 import { MediaLightbox } from './MediaLightbox'
+import { VoiceRecorder } from './VoiceRecorder'
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1] ?? '')
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
 
 function extractErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err) && typeof err.response?.data?.detail === 'string') {
@@ -31,7 +41,10 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
 
   const [draft, setDraft] = useState('')
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
   const { mutate: sendMessage, isPending: isSending, error: sendError } = useSendMessage(chat.chat_id)
+  const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
@@ -41,6 +54,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   // quedar pegado el texto ni el error del chat anterior.
   useEffect(() => {
     setDraft('')
+    setAudioError(null)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -48,6 +62,15 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     const text = draft.trim()
     if (!text || isSending) return
     sendMessage(text, { onSuccess: () => setDraft('') })
+  }
+
+  async function handleAudioRecorded(blob: Blob) {
+    setAudioError(null)
+    const dataBase64 = await blobToBase64(blob)
+    sendAudio(
+      { contentType: blob.type || 'audio/webm', dataBase64 },
+      { onError: (err) => setAudioError(extractErrorMessage(err)) }
+    )
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -204,23 +227,36 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         {sendError && (
           <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
         )}
+        {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
         <div className="flex items-end gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Escribí un mensaje..."
-            rows={1}
-            className="flex-1 resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
-          />
-          <button
-            type="submit"
-            disabled={isSending || !draft.trim()}
-            aria-label="Enviar mensaje"
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
+          {!isRecordingAudio && (
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Escribí un mensaje..."
+              rows={1}
+              className="flex-1 resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
+            />
+          )}
+
+          {draft.trim() && !isRecordingAudio ? (
+            <button
+              type="submit"
+              disabled={isSending}
+              aria-label="Enviar mensaje"
+              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          ) : (
+            <VoiceRecorder
+              disabled={isSendingAudio}
+              onRecorded={handleAudioRecorded}
+              onError={setAudioError}
+              onRecordingChange={setIsRecordingAudio}
+            />
+          )}
         </div>
       </form>
 

@@ -1,8 +1,9 @@
 import httpx
 from fastapi import APIRouter, HTTPException
-from models.schemas import ChatPage, Message, SendMessageRequest
+from models.schemas import ChatPage, Message, SendAudioRequest, SendMessageRequest
+from routers.media import save_media_file
 from services.db_service import CHATS_PAGE_SIZE, fetch_chats, fetch_messages, insert_message
-from services.evolution_service import EvolutionApiError, send_whatsapp_text
+from services.evolution_service import EvolutionApiError, send_whatsapp_audio, send_whatsapp_text
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -44,5 +45,25 @@ async def send_message(chat_id: str, body: SendMessageRequest):
         raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
 
     message = await insert_message(chat_id, sender="vendedor", content=text)
+    await manager.broadcast({"type": "chats_updated"})
+    return message
+
+
+@router.post("/{chat_id}/audio", response_model=Message)
+async def send_audio(chat_id: str, body: SendAudioRequest):
+    try:
+        media_url = save_media_file(body.content_type, body.data_base64)
+    except ValueError as e:
+        status = 413 if "grande" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e))
+
+    try:
+        await send_whatsapp_audio(chat_id, body.data_base64)
+    except EvolutionApiError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
+
+    message = await insert_message(chat_id, sender="vendedor", content="<audio></audio>", media_url=media_url)
     await manager.broadcast({"type": "chats_updated"})
     return message

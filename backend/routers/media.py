@@ -22,6 +22,27 @@ class MediaUpload(BaseModel):
     data_base64: str
 
 
+def save_media_file(content_type: str, data_base64: str) -> str:
+    """Decodifica y guarda un archivo base64 en MEDIA_DIR, devuelve su media_url.
+    Lanza ValueError con el motivo si el archivo no es válido."""
+    if not content_type.startswith(ALLOWED_CONTENT_PREFIXES):
+        raise ValueError("Tipo de archivo no permitido")
+
+    try:
+        raw = base64.b64decode(data_base64, validate=True)
+    except Exception:
+        raise ValueError("base64 inválido")
+
+    if len(raw) > MAX_BYTES:
+        raise ValueError("Archivo demasiado grande")
+
+    ext = mimetypes.guess_extension(content_type) or ""
+    filename = f"{uuid.uuid4().hex}{ext}"
+    (MEDIA_DIR / filename).write_bytes(raw)
+
+    return f"/media/{filename}"
+
+
 @router.post("/upload")
 async def upload_media(
     body: MediaUpload, x_webhook_token: str | None = Header(default=None)
@@ -30,19 +51,10 @@ async def upload_media(
     if settings.inbound_webhook_token and x_webhook_token != settings.inbound_webhook_token:
         raise HTTPException(status_code=401, detail="Token inválido")
 
-    if not body.content_type.startswith(ALLOWED_CONTENT_PREFIXES):
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-
     try:
-        raw = base64.b64decode(body.data_base64, validate=True)
-    except Exception:
-        raise HTTPException(status_code=400, detail="base64 inválido")
+        media_url = save_media_file(body.content_type, body.data_base64)
+    except ValueError as e:
+        status = 413 if "grande" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e))
 
-    if len(raw) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Archivo demasiado grande")
-
-    ext = mimetypes.guess_extension(body.content_type) or ""
-    filename = f"{uuid.uuid4().hex}{ext}"
-    (MEDIA_DIR / filename).write_bytes(raw)
-
-    return {"media_url": f"/media/{filename}"}
+    return {"media_url": media_url}

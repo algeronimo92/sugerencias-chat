@@ -30,3 +30,26 @@ export function useSendMessage(chatId: string) {
     },
   })
 }
+
+interface AudioPayload {
+  contentType: string
+  dataBase64: string
+}
+
+async function sendAudio(chatId: string, { contentType, dataBase64 }: AudioPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/audio`, {
+    content_type: contentType,
+    data_base64: dataBase64,
+  })
+  return data
+}
+
+export function useSendAudio(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: AudioPayload) => sendAudio(chatId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    },
+  })
+}

@@ -30,6 +30,11 @@ class SendMessageRequest(BaseModel):
     text: str
 
 
+class SendAudioRequest(BaseModel):
+    content_type: str
+    data_base64: str
+
+
 class SuggestionRequest(BaseModel):
     chat_id: str
     phone: str | None = None

@@ -116,10 +116,16 @@ async def fetch_chats(
     return {"items": items, "has_more": has_more}
 
 
-async def insert_message(chat_id: str, sender: str, content: str) -> dict:
+async def insert_message(chat_id: str, sender: str, content: str, media_url: str | None = None) -> dict:
     stmt = (
         insert(WspMessage)
-        .values(chat_id=chat_id, sender=sender, content=content, sent_at=datetime.now(timezone.utc))
+        .values(
+            chat_id=chat_id,
+            sender=sender,
+            content=content,
+            media_url=media_url,
+            sent_at=datetime.now(timezone.utc),
+        )
         .returning(
             WspMessage.id, WspMessage.sender, WspMessage.content, WspMessage.sent_at, WspMessage.media_url
         )
