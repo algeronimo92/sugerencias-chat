@@ -1,0 +1,74 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  backend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q .
+      # Smoke test: la app tiene que poder importarse sin tocar una DB o n8n real.
+      - run: |
+          DATABASE_URL="postgresql+asyncpg://u:p@localhost/db" \
+          N8N_WEBHOOK_URL="https://example.com/webhook/x" \
+          python -c "import main"
+
+  docker-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t backend-check ./backend
+      - name: Build frontend image (prod target)
+        run: docker build -t frontend-check --target prod --build-arg VITE_API_BASE_URL="" ./frontend
+      - name: Validate nginx.conf syntax
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:alpine nginx -t
+
+  deploy:
+    needs: [frontend-checks, backend-checks, docker-build-check]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ${{ secrets.VPS_PROJECT_PATH }}
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml up -d --build
+            docker image prune -f
