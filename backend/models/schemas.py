@@ -13,6 +13,11 @@ class Chat(BaseModel):
     timestamp: str | None = None
 
 
+class ChatPage(BaseModel):
+    items: list[Chat]
+    has_more: bool
+
+
 class Message(BaseModel):
     id: int
     sender: str

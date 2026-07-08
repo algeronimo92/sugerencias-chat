@@ -1,12 +1,24 @@
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Chat } from '../types'
 
-async function fetchChats(search: string): Promise<Chat[]> {
-  const { data } = await client.get<Chat[]>('/api/chats', {
-    params: search ? { search } : undefined,
-  })
+interface ChatsPage {
+  items: Chat[]
+  has_more: boolean
+}
+
+/** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend). */
+type PageParam = { cursorTs: string | null; cursorId: string } | null
+
+async function fetchChatsPage(search: string, pageParam: PageParam): Promise<ChatsPage> {
+  const params: Record<string, string> = {}
+  if (search) params.search = search
+  if (pageParam) {
+    params.cursor_id = pageParam.cursorId
+    if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
+  }
+  const { data } = await client.get<ChatsPage>('/api/chats', { params })
   return data
 }
 
@@ -59,13 +71,35 @@ export function useChatUpdates() {
   }, [queryClient])
 }
 
+/** Resuelve un único chat (por id vía el parámetro search) fuera de la lista paginada. */
 export function useChats(search: string = '', options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['chats', search],
-    queryFn: () => fetchChats(search),
+    queryKey: ['chats', 'lookup', search],
+    queryFn: async () => (await fetchChatsPage(search, null)).items,
     enabled: options?.enabled ?? true,
     staleTime: 30_000,
     // Respaldo por si el websocket se desconecta
     refetchInterval: 20_000,
+  })
+}
+
+/** Lista de leads con scroll infinito, paginada por cursor. */
+export function useInfiniteChats(search: string = '') {
+  return useInfiniteQuery({
+    queryKey: ['chats', 'list', search],
+    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam),
+    initialPageParam: null as PageParam,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.has_more || lastPage.items.length === 0) return undefined
+      const last = lastPage.items[lastPage.items.length - 1]
+      return { cursorTs: last.timestamp, cursorId: last.chat_id }
+    },
+    staleTime: 30_000,
+    // Respaldo por si el websocket se desconecta
+    refetchInterval: 20_000,
+    // Sin esto, los 3 reintentos automáticos de React Query absorben el
+    // error antes de que isFetchNextPageError llegue a ser true, y el botón
+    // "Reintentar" de la UI nunca se muestra.
+    retry: false,
   })
 }

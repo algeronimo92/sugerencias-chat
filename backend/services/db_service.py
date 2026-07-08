@@ -1,13 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import func, or_, select, true
+from sqlalchemy import and_, func, or_, select, true
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
 
+CHATS_PAGE_SIZE = 30
+
 
 def _fmt_ts(value: datetime | None) -> str | None:
-    return value.strftime('%Y-%m-%dT%H:%M:%SZ') if value else None
+    # Microsegundos incluidos: la paginación por cursor usa este mismo valor
+    # de ida y vuelta, y truncarlo a segundos podía generar colisiones falsas.
+    return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') if value else None
+
+
+def _parse_ts(value: str) -> datetime:
+    return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
 
 
 def _last_message_subquery():
@@ -21,7 +29,33 @@ def _last_message_subquery():
     )
 
 
-async def fetch_chats(search: str | None = None) -> list[dict]:
+def _cursor_condition(last_message, cursor_ts: str | None, cursor_id: str):
+    """Condición de paginación por keyset sobre el mismo orden de la consulta
+    (last_message.sent_at DESC NULLS LAST, remote_jid DESC).
+
+    cursor_ts/cursor_id identifican la última fila de la página anterior;
+    se piden las filas que la siguen en ese orden. A diferencia de OFFSET,
+    esto no se desalinea si un chat sube al tope por un mensaje nuevo entre
+    una página y la siguiente.
+    """
+    if cursor_ts is not None:
+        parsed_ts = _parse_ts(cursor_ts)
+        return or_(
+            last_message.c.sent_at < parsed_ts,
+            and_(last_message.c.sent_at == parsed_ts, Lead.remote_jid < cursor_id),
+            last_message.c.sent_at.is_(None),
+        )
+    # La fila cursor ya estaba en la cola de timestamp nulo: solo quedan
+    # otras filas sin mensajes, desempatadas por remote_jid.
+    return and_(last_message.c.sent_at.is_(None), Lead.remote_jid < cursor_id)
+
+
+async def fetch_chats(
+    search: str | None = None,
+    cursor_ts: str | None = None,
+    cursor_id: str | None = None,
+    limit: int = CHATS_PAGE_SIZE,
+) -> dict:
     last_message = _last_message_subquery()
 
     stmt = (
@@ -37,8 +71,6 @@ async def fetch_chats(search: str | None = None) -> list[dict]:
             last_message.c.sent_at.label("timestamp"),
         )
         .join(last_message, true(), isouter=True)
-        .order_by(last_message.c.sent_at.desc().nulls_last())
-        .limit(100)
     )
 
     if search:
@@ -52,10 +84,22 @@ async def fetch_chats(search: str | None = None) -> list[dict]:
             )
         )
 
+    if cursor_id is not None:
+        stmt = stmt.where(_cursor_condition(last_message, cursor_ts, cursor_id))
+
+    # Se pide una fila de más para saber si hay página siguiente sin un
+    # COUNT(*) aparte; se descarta antes de devolver los resultados.
+    stmt = stmt.order_by(
+        last_message.c.sent_at.desc().nulls_last(), Lead.remote_jid.desc()
+    ).limit(limit + 1)
+
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
 
-    return [
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    items = [
         {
             "chat_id": r["chat_id"],
             "phone": r["phone"],
@@ -69,6 +113,7 @@ async def fetch_chats(search: str | None = None) -> list[dict]:
         }
         for r in rows
     ]
+    return {"items": items, "has_more": has_more}
 
 
 async def fetch_chat_signature() -> str:
