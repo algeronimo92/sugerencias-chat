@@ -4,6 +4,8 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env
+    volumes:
+      - backend_media:/app/media
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -19,3 +21,6 @@ services:
       - "80:80"
     depends_on:
       - backend
+
+volumes:
+  backend_media:
