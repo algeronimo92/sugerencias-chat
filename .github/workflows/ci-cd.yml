@@ -49,11 +49,25 @@ jobs:
         run: docker build -t backend-check ./backend
       - name: Build frontend image (prod target)
         run: docker build -t frontend-check --target prod --build-arg VITE_API_BASE_URL="" ./frontend
-      - name: Validate nginx.conf syntax
+      # nginx.conf tiene "proxy_pass http://backend:8000;" — nginx resuelve ese
+      # hostname ya al cargar la config, así que validarlo aislado (sin un
+      # contenedor "backend" real en la misma red) siempre falla con "host
+      # not found in upstream", sin que eso diga nada sobre si el config
+      # está bien. Se arma la misma topología que docker-compose en prod:
+      # una red con un "backend" de mentira, y ahí sí se valida.
+      - name: Verify nginx.conf against a real "backend" hostname
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
-            nginx:alpine nginx -t
+          docker network create ci-net
+          docker run -d --name backend --network ci-net python:3.12-slim python -m http.server 8000
+          docker run -d --name frontend --network ci-net frontend-check
+          sleep 2
+          docker exec frontend nginx -t
+          docker ps --filter name=frontend --filter status=running --format '{{.Names}}' | grep -qx frontend
+      - name: Cleanup check containers
+        if: always()
+        run: |
+          docker rm -f backend frontend 2>/dev/null || true
+          docker network rm ci-net 2>/dev/null || true
 
   deploy:
     needs: [frontend-checks, backend-checks, docker-build-check]
