@@ -28,12 +28,12 @@ export function SuggestionCard({ sugerencia, index }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+      <div className="flex items-start justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-700">
         <div className="flex items-center gap-2 min-w-0">
-          <CanalIcon className="w-4 h-4 text-green-600" />
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <CanalIcon className="w-4 h-4 text-green-600 dark:text-green-500" />
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
             Opción {index + 1}
           </span>
         </div>
@@ -42,7 +42,7 @@ export function SuggestionCard({ sugerencia, index }: Props) {
             onClick={handleCopy}
             className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ml-2 ${
               copied
-                ? 'bg-green-100 text-green-700'
+                ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400'
                 : 'bg-green-600 text-white hover:bg-green-700'
             }`}
           >
@@ -54,13 +54,13 @@ export function SuggestionCard({ sugerencia, index }: Props) {
 
       <div className="p-4 space-y-3">
         {/* Táctica */}
-        <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">
+        <p className="text-xs font-semibold text-green-600 dark:text-green-500 uppercase tracking-wide">
           {sugerencia.tactica}
         </p>
 
         {/* Texto sugerido */}
         {sugerencia.texto && (
-          <p className="text-sm text-gray-800 leading-relaxed bg-green-50 border border-green-100 rounded-lg p-3 whitespace-pre-wrap">
+          <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed bg-green-50 dark:bg-green-950/30 border border-green-100 dark:border-green-900 rounded-lg p-3 whitespace-pre-wrap">
             {sugerencia.texto}
           </p>
         )}
@@ -68,14 +68,14 @@ export function SuggestionCard({ sugerencia, index }: Props) {
         {/* Adjuntos */}
         {sugerencia.adjuntos.length > 0 && (
           <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500">Adjuntos:</p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Adjuntos:</p>
             {sugerencia.adjuntos.map((url, i) => (
               <a
                 key={i}
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="block text-xs text-green-600 hover:underline truncate"
+                className="block text-xs text-green-600 dark:text-green-500 hover:underline truncate"
               >
                 {url}
               </a>
@@ -86,13 +86,13 @@ export function SuggestionCard({ sugerencia, index }: Props) {
         {/* Por qué — expandible */}
         <button
           onClick={() => setShowMotivo(!showMotivo)}
-          className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+          className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center gap-1 transition-colors"
         >
           {showMotivo ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           <span>¿Por qué esta táctica?</span>
         </button>
         {showMotivo && (
-          <p className="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 italic border-l-2 border-gray-200 dark:border-gray-700 pl-3">
             {sugerencia.porque}
           </p>
         )}

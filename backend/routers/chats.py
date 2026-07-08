@@ -1,15 +1,19 @@
 from fastapi import APIRouter, HTTPException
-from models.schemas import Chat, Message
-from services.db_service import fetch_chats, fetch_messages
+from models.schemas import ChatPage, Message
+from services.db_service import CHATS_PAGE_SIZE, fetch_chats, fetch_messages
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 
-@router.get("", response_model=list[Chat])
-async def get_chats(search: str | None = None):
+@router.get("", response_model=ChatPage)
+async def get_chats(
+    search: str | None = None,
+    cursor_ts: str | None = None,
+    cursor_id: str | None = None,
+    limit: int = CHATS_PAGE_SIZE,
+):
     try:
-        rows = await fetch_chats(search)
-        return rows
+        return await fetch_chats(search, cursor_ts, cursor_id, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

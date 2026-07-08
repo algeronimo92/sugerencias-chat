@@ -33,3 +33,92 @@ export function formatMessageTime(sentAt: string | null): string {
   const d = new Date(sentAt)
   return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 }
+
+export function resolveMediaUrl(mediaUrl: string | null): string | null {
+  if (!mediaUrl) return null
+  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+  return `${base}${mediaUrl}`
+}
+
+export type RichSegmentType = 'text' | 'link' | 'bold' | 'italic' | 'strike' | 'code'
+
+export interface RichSegment {
+  type: RichSegmentType
+  text: string
+}
+
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
+
+// Orden de prioridad: URL, bloque de código, código inline, negrita markdown
+// (**x**, común en texto generado por IA), negrita/cursiva/tachado estilo
+// WhatsApp (*x*, _x_, ~x~).
+const RICH_TEXT_REGEX =
+  /(https?:\/\/[^\s]+)|```([^`]+?)```|`([^`\n]+?)`|\*\*([^\n*]+?)\*\*|\*([^\n*]+?)\*|_([^\n_]+?)_|~([^\n~]+?)~/g
+
+/**
+ * Interpreta el mismo formato que usa WhatsApp (*negrita*, _cursiva_,
+ * ~tachado~, `código`), más **negrita** estilo markdown, y los links, para
+ * renderizarlos como texto con estilo en vez de mostrar los símbolos
+ * literales. No soporta formato anidado (ej. un link dentro de una negrita),
+ * igual que WhatsApp.
+ */
+export function parseRichText(text: string): RichSegment[] {
+  const segments: RichSegment[] = []
+  let lastIndex = 0
+
+  for (const match of text.matchAll(RICH_TEXT_REGEX)) {
+    const start = match.index ?? 0
+    const [full, url, codeBlock, code, boldDouble, boldSingle, italic, strike] = match
+
+    if (url !== undefined) {
+      let trimmedUrl = url
+      let trailing = ''
+      const punctuation = trimmedUrl.match(TRAILING_PUNCTUATION)
+      if (punctuation) {
+        trailing = punctuation[0]
+        trimmedUrl = trimmedUrl.slice(0, -trailing.length)
+      }
+      if (!trimmedUrl) continue
+
+      if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
+      segments.push({ type: 'link', text: trimmedUrl })
+      if (trailing) segments.push({ type: 'text', text: trailing })
+      lastIndex = start + full.length
+      continue
+    }
+
+    let type: RichSegmentType
+    let content: string
+    if (codeBlock !== undefined) {
+      type = 'code'
+      content = codeBlock
+    } else if (code !== undefined) {
+      type = 'code'
+      content = code
+    } else if (boldDouble !== undefined) {
+      type = 'bold'
+      content = boldDouble
+    } else if (boldSingle !== undefined) {
+      type = 'bold'
+      content = boldSingle
+    } else if (italic !== undefined) {
+      type = 'italic'
+      content = italic
+    } else if (strike !== undefined) {
+      type = 'strike'
+      content = strike
+    } else {
+      continue
+    }
+
+    if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
+    segments.push({ type, text: content })
+    lastIndex = start + full.length
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', text: text.slice(lastIndex) })
+  }
+
+  return segments.length ? segments : [{ type: 'text', text }]
+}
