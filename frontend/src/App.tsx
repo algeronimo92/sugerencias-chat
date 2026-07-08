@@ -110,7 +110,7 @@ function MainLayout() {
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">DermicaPro</span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">· Panel de leads</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">- Panel de leads</span>
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
