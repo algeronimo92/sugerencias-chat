@@ -1,0 +1,9 @@
+services:
+  frontend:
+    ports: !override []
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sugerencias-chat.rule=Host(`chat.dermicapro.app`)
+      - traefik.http.routers.sugerencias-chat.entrypoints=websecure
+      - traefik.http.routers.sugerencias-chat.tls.certresolver=letsencrypt
+      - traefik.http.services.sugerencias-chat.loadbalancer.server.port=80
