@@ -7,3 +7,6 @@ services:
       - traefik.http.routers.sugerencias-chat.entrypoints=websecure
       - traefik.http.routers.sugerencias-chat.tls.certresolver=letsencrypt
       - traefik.http.services.sugerencias-chat.loadbalancer.server.port=80
+
+  backend:
+    ports: !override []
