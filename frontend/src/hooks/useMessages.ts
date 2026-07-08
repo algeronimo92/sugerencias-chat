@@ -53,3 +53,48 @@ export function useSendAudio(chatId: string) {
     },
   })
 }
+
+interface MediaPayload {
+  contentType: string
+  dataBase64: string
+  filename?: string
+}
+
+async function sendMedia(chatId: string, { contentType, dataBase64, filename }: MediaPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
+    content_type: contentType,
+    data_base64: dataBase64,
+    filename,
+  })
+  return data
+}
+
+export function useSendMedia(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: MediaPayload) => sendMedia(chatId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    },
+  })
+}
+
+interface LocationPayload {
+  latitude: number
+  longitude: number
+}
+
+async function sendLocation(chatId: string, payload: LocationPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/location`, payload)
+  return data
+}
+
+export function useSendLocation(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: LocationPayload) => sendLocation(chatId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    },
+  })
+}

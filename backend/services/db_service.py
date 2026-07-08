@@ -1,6 +1,8 @@
+import re
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, insert, or_, select, true
+from sqlalchemy import and_, func, insert, or_, select, true, update
+from sqlalchemy.exc import IntegrityError
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
@@ -8,10 +10,33 @@ from db.session import get_sessionmaker
 CHATS_PAGE_SIZE = 30
 
 
+class LeadAlreadyExistsError(Exception):
+    pass
+
+
 def _fmt_ts(value: datetime | None) -> str | None:
     # Microsegundos incluidos: la paginación por cursor usa este mismo valor
     # de ida y vuelta, y truncarlo a segundos podía generar colisiones falsas.
     return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') if value else None
+
+
+def _phone_to_jid(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone)
+    return f"{digits}@s.whatsapp.net"
+
+
+def _row_to_chat(row) -> dict:
+    return {
+        "chat_id": row["chat_id"],
+        "phone": row["phone"],
+        "name": row["name"],
+        "servicio_interes": row["servicio_interes"],
+        "vendedor": row["vendedor"],
+        "origen": row["origen"],
+        "notas": row["notas"],
+        "last_message": row["last_message"],
+        "timestamp": _fmt_ts(row["timestamp"]),
+    }
 
 
 def _parse_ts(value: str) -> datetime:
@@ -99,21 +124,73 @@ async def fetch_chats(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    items = [
-        {
-            "chat_id": r["chat_id"],
-            "phone": r["phone"],
-            "name": r["name"],
-            "servicio_interes": r["servicio_interes"],
-            "vendedor": r["vendedor"],
-            "origen": r["origen"],
-            "notas": r["notas"],
-            "last_message": r["last_message"],
-            "timestamp": _fmt_ts(r["timestamp"]),
-        }
-        for r in rows
-    ]
-    return {"items": items, "has_more": has_more}
+    return {"items": [_row_to_chat(r) for r in rows], "has_more": has_more}
+
+
+async def fetch_chat(chat_id: str) -> dict | None:
+    last_message = _last_message_subquery()
+    stmt = (
+        select(
+            Lead.remote_jid.label("chat_id"),
+            Lead.telefono.label("phone"),
+            Lead.nombre.label("name"),
+            Lead.servicio_interes,
+            Lead.vendedor,
+            Lead.origen,
+            Lead.notas,
+            last_message.c.content.label("last_message"),
+            last_message.c.sent_at.label("timestamp"),
+        )
+        .join(last_message, true(), isouter=True)
+        .where(Lead.remote_jid == chat_id)
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+
+    return _row_to_chat(row) if row is not None else None
+
+
+async def create_lead(
+    phone: str,
+    name: str,
+    servicio_interes: str | None = None,
+    vendedor: str | None = None,
+    origen: str | None = None,
+    notas: str | None = None,
+) -> dict:
+    chat_id = _phone_to_jid(phone)
+    stmt = insert(Lead).values(
+        remote_jid=chat_id,
+        telefono=phone,
+        nombre=name,
+        servicio_interes=servicio_interes,
+        vendedor=vendedor,
+        origen=origen,
+        notas=notas,
+    )
+    async with get_sessionmaker()() as session:
+        try:
+            await session.execute(stmt)
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise LeadAlreadyExistsError(chat_id)
+
+    return await fetch_chat(chat_id)
+
+
+async def update_lead(chat_id: str, values: dict) -> dict | None:
+    if not values:
+        return await fetch_chat(chat_id)
+
+    stmt = update(Lead).where(Lead.remote_jid == chat_id).values(**values)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(stmt)
+        if result.rowcount == 0:
+            return None
+        await session.commit()
+
+    return await fetch_chat(chat_id)
 
 
 async def insert_message(chat_id: str, sender: str, content: str, media_url: str | None = None) -> dict:

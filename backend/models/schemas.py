@@ -30,9 +30,33 @@ class SendMessageRequest(BaseModel):
     text: str
 
 
-class SendAudioRequest(BaseModel):
+class SendMediaRequest(BaseModel):
     content_type: str
     data_base64: str
+    filename: str | None = None
+
+
+class SendLocationRequest(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class LeadCreate(BaseModel):
+    phone: str
+    name: str
+    servicio_interes: str | None = None
+    vendedor: str | None = None
+    origen: str | None = None
+    notas: str | None = None
+
+
+class LeadUpdate(BaseModel):
+    phone: str | None = None
+    name: str | None = None
+    servicio_interes: str | None = None
+    vendedor: str | None = None
+    origen: str | None = None
+    notas: str | None = None
 
 
 class SuggestionRequest(BaseModel):

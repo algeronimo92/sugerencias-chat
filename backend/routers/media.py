@@ -14,6 +14,20 @@ MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 MEDIA_DIR.mkdir(exist_ok=True)
 
 ALLOWED_CONTENT_PREFIXES = ("image/", "video/", "audio/")
+# Documentos: se enumeran explícito en vez de aceptar cualquier content_type,
+# para no convertir esto en un upload de archivos arbitrario (ej. .html/.svg
+# servidos luego desde /media/ podrían ser un vector de XSS).
+ALLOWED_DOCUMENT_TYPES = (
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+    "application/zip",
+)
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
 
 
@@ -22,10 +36,17 @@ class MediaUpload(BaseModel):
     data_base64: str
 
 
-def save_media_file(content_type: str, data_base64: str) -> str:
+def save_media_file(content_type: str, data_base64: str, filename: str | None = None) -> str:
     """Decodifica y guarda un archivo base64 en MEDIA_DIR, devuelve su media_url.
-    Lanza ValueError con el motivo si el archivo no es válido."""
-    if not content_type.startswith(ALLOWED_CONTENT_PREFIXES):
+    Lanza ValueError con el motivo si el archivo no es válido.
+
+    La extensión se toma del filename original cuando está disponible, en vez
+    de adivinarla con mimetypes.guess_extension(content_type): en la imagen
+    Linux del backend, ese mapeo no conoce los tipos Office Open XML (.docx,
+    .xlsx, .pptx) y devuelve None — el archivo terminaba guardado sin
+    extensión, y como esos formatos son en el fondo un ZIP, el navegador lo
+    servía/interpretaba como tal en vez de como el documento real."""
+    if not (content_type.startswith(ALLOWED_CONTENT_PREFIXES) or content_type in ALLOWED_DOCUMENT_TYPES):
         raise ValueError("Tipo de archivo no permitido")
 
     try:
@@ -36,11 +57,16 @@ def save_media_file(content_type: str, data_base64: str) -> str:
     if len(raw) > MAX_BYTES:
         raise ValueError("Archivo demasiado grande")
 
-    ext = mimetypes.guess_extension(content_type) or ""
-    filename = f"{uuid.uuid4().hex}{ext}"
-    (MEDIA_DIR / filename).write_bytes(raw)
+    ext = ""
+    if filename and "." in filename:
+        ext = "." + filename.rsplit(".", 1)[-1].lower()
+    if not ext:
+        ext = mimetypes.guess_extension(content_type) or ""
 
-    return f"/media/{filename}"
+    stored_filename = f"{uuid.uuid4().hex}{ext}"
+    (MEDIA_DIR / stored_filename).write_bytes(raw)
+
+    return f"/media/{stored_filename}"
 
 
 @router.post("/upload")

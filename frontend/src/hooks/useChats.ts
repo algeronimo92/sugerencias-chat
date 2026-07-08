@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
-import type { Chat } from '../types'
+import type { Chat, LeadInput, LeadUpdateInput } from '../types'
 
 interface ChatsPage {
   items: Chat[]
@@ -101,5 +101,35 @@ export function useInfiniteChats(search: string = '') {
     // error antes de que isFetchNextPageError llegue a ser true, y el botón
     // "Reintentar" de la UI nunca se muestra.
     retry: false,
+  })
+}
+
+async function createLead(payload: LeadInput): Promise<Chat> {
+  const { data } = await client.post<Chat>('/api/chats', payload)
+  return data
+}
+
+export function useCreateLead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createLead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+}
+
+async function updateLead(chatId: string, payload: LeadUpdateInput): Promise<Chat> {
+  const { data } = await client.patch<Chat>(`/api/chats/${encodeURIComponent(chatId)}`, payload)
+  return data
+}
+
+export function useUpdateLead(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
   })
 }
