@@ -39,6 +39,7 @@ jobs:
       - run: |
           DATABASE_URL="postgresql+asyncpg://u:p@localhost/db" \
           N8N_WEBHOOK_URL="https://example.com/webhook/x" \
+          SECRET_KEY="ci-smoke-test-key" \
           python -c "import main"
 
   docker-build-check:
