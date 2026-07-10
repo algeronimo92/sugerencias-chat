@@ -68,7 +68,7 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
               </h3>
               <div className="space-y-3">
                 {data.sugerencias.map((s, i) => (
-                  <SuggestionCard key={i} sugerencia={s} index={i} />
+                  <SuggestionCard key={i} sugerencia={s} index={i} chatId={chat.chat_id} />
                 ))}
                 {data.sugerencias.length === 0 && (
                   <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">

@@ -41,6 +41,15 @@ class SendLocationRequest(BaseModel):
     longitude: float
 
 
+class TtsRequest(BaseModel):
+    text: str
+
+
+class TtsResponse(BaseModel):
+    content_type: str
+    data_base64: str
+
+
 class LeadCreate(BaseModel):
     phone: str
     name: str
