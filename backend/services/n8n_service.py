@@ -3,8 +3,8 @@ import json
 import logging
 
 import httpx
-from config import settings
 from models.schemas import SuggestionResponse
+from services.settings_service import get_effective
 
 logger = logging.getLogger(__name__)
 
@@ -13,15 +13,20 @@ RETRY_DELAY_SECONDS = 1.5
 
 
 async def call_n8n(chat_id: str, phone: str | None) -> SuggestionResponse:
+    webhook_url = await get_effective("n8n_webhook_url")
+    webhook_token = await get_effective("n8n_webhook_token")
+    if not webhook_url:
+        raise RuntimeError("n8n no está configurado (falta la URL del webhook)")
+
     headers = {}
-    if settings.n8n_webhook_token:
-        headers["Authorization"] = f"Bearer {settings.n8n_webhook_token}"
+    if webhook_token:
+        headers["Authorization"] = f"Bearer {webhook_token}"
 
     last_error: Exception = RuntimeError("call_n8n: sin intentos")
     async with httpx.AsyncClient(timeout=30.0) as client:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             response = await client.get(
-                settings.n8n_webhook_url,
+                webhook_url,
                 params={"chat_id": chat_id},
                 headers=headers,
             )

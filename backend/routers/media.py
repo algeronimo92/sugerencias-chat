@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from config import settings
+from services.settings_service import get_effective
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 
@@ -74,7 +74,8 @@ async def upload_media(
     body: MediaUpload, x_webhook_token: str | None = Header(default=None)
 ):
     """Llamado por n8n con el base64 del archivo (imagen/video/audio) justo después de descargarlo de Evolution API."""
-    if settings.inbound_webhook_token and x_webhook_token != settings.inbound_webhook_token:
+    expected_token = await get_effective("inbound_webhook_token")
+    if expected_token and x_webhook_token != expected_token:
         raise HTTPException(status_code=401, detail="Token inválido")
 
     try:

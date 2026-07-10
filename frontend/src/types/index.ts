@@ -52,3 +52,30 @@ export interface SuggestionResponse {
   analisis: string
   sugerencias: Sugerencia[]
 }
+
+export interface SettingItem {
+  key: string
+  label: string
+  group: string
+  group_label: string
+  secret: boolean
+  configured: boolean
+  value: string | null
+}
+
+export type UserRole = 'admin' | 'vendedor'
+
+export interface AuthUser {
+  id: number
+  email: string
+  name: string
+  role: UserRole
+}
+
+export interface AppUser {
+  id: number
+  email: string
+  name: string
+  role: UserRole
+  is_active: boolean
+}

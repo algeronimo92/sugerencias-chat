@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MessagesSquare, Sparkles, Moon, Sun } from 'lucide-react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
 import type { Chat, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
+import { LoginPage } from './components/LoginPage'
+import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
+import { useLogout, useMe } from './hooks/useAuth'
 import { useChats, useChatUpdates, useInfiniteChats } from './hooks/useChats'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
-
-const queryClient = new QueryClient()
+import { queryClient } from './queryClient'
 
 function MainLayout() {
+  const { data: me } = useMe()
+  const { mutate: logout } = useLogout()
   const { chatId } = useParams<{ chatId: string }>()
   const navigate = useNavigate()
 
   const { theme, toggleTheme } = useTheme()
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -111,14 +116,40 @@ function MainLayout() {
         </div>
         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">DermicaPro</span>
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">- Panel de leads</span>
+        <span className="flex-1" />
+        {me && (
+          <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+            {me.name} <span className="opacity-60">({me.role === 'admin' ? 'admin' : 'vendedor'})</span>
+          </span>
+        )}
+        {me?.role === 'admin' && (
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            aria-label="Configuración"
+            title="Configuración"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            <SettingsIcon className="w-4 h-4" />
+          </button>
+        )}
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
-          className="ml-auto flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
         >
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
+        <button
+          onClick={() => logout()}
+          aria-label="Cerrar sesión"
+          title="Cerrar sesión"
+          className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
+
+      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Panel izquierdo — Lista de chats */}
@@ -175,15 +206,35 @@ function MainLayout() {
   )
 }
 
+function AuthGate() {
+  const { data: me, isLoading } = useMe()
+
+  if (isLoading || me === undefined) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-950">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (!me) {
+    return <LoginPage />
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainLayout />} />
+        <Route path="/chat/:chatId" element={<MainLayout />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<MainLayout />} />
-          <Route path="/chat/:chatId" element={<MainLayout />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthGate />
     </QueryClientProvider>
   )
 }
