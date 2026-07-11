@@ -1,8 +1,8 @@
 import httpx
 from services.settings_service import get_effective
 
-OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
-MAX_TEXT_LENGTH = 4096  # límite de OpenAI para /audio/speech
+ELEVENLABS_BASE_URL = "https://api.elevenlabs.io"
+MAX_TEXT_LENGTH = 5000  # ElevenLabs no documenta un límite fijo; este es un tope defensivo razonable para una nota de voz.
 
 
 class TtsError(Exception):
@@ -10,24 +10,27 @@ class TtsError(Exception):
 
 
 async def synthesize_speech(text: str) -> bytes:
-    """Genera un audio MP3 a partir de texto usando la API de OpenAI TTS."""
-    api_key = await get_effective("openai_api_key")
-    if not api_key:
-        raise TtsError("OpenAI no está configurado (falta la API key)")
+    """Genera un audio MP3 a partir de texto usando la API de ElevenLabs."""
+    api_key = await get_effective("elevenlabs_api_key")
+    voice_id = await get_effective("elevenlabs_voice_id")
+    if not api_key or not voice_id:
+        raise TtsError("ElevenLabs no está configurado (falta la API key o el ID de voz)")
 
     if len(text) > MAX_TEXT_LENGTH:
         raise TtsError(f"El texto supera el máximo de {MAX_TEXT_LENGTH} caracteres")
 
+    url = f"{ELEVENLABS_BASE_URL}/v1/text-to-speech/{voice_id}"
     payload = {
-        "model": await get_effective("openai_tts_model"),
-        "voice": await get_effective("openai_tts_voice"),
-        "input": text,
-        "response_format": "mp3",
+        "text": text,
+        "model_id": await get_effective("elevenlabs_model_id"),
     }
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {"xi-api-key": api_key}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(OPENAI_TTS_URL, json=payload, headers=headers)
+        # output_format por default (mp3_44100_128) — mismo formato que ya
+        # maneja el resto del flujo de envío de audio (Evolution API, preview
+        # en el frontend).
+        response = await client.post(url, json=payload, headers=headers)
         if response.is_error:
-            raise TtsError(f"OpenAI TTS respondió {response.status_code}: {response.text}")
+            raise TtsError(f"ElevenLabs respondió {response.status_code}: {response.text}")
         return response.content

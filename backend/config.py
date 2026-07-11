@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     evolution_api_url: str = ""
     evolution_api_key: str = ""
     evolution_instance: str = ""
-    openai_api_key: str = ""
-    openai_tts_model: str = "gpt-4o-mini-tts"
-    openai_tts_voice: str = "alloy"
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Firma de los JWT de sesión — cambiarla invalida todas las sesiones activas.
