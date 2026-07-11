@@ -33,7 +33,7 @@ class WspMessage(Base):
 
 class AppSetting(Base):
     """Configuración editable desde la app (API keys de servicios externos:
-    n8n, Evolution API, OpenAI, y los que se vayan sumando). Los valores acá
+    n8n, Evolution API, ElevenLabs, y los que se vayan sumando). Los valores acá
     tienen prioridad sobre las variables de entorno homónimas — ver
     services/settings_service.py."""
 
