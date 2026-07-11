@@ -7,6 +7,7 @@ export interface Chat {
   origen: string | null
   notas: string | null
   last_message: string | null
+  last_message_sender: string | null
   timestamp: string | null
 }
 

@@ -45,6 +45,7 @@ def _row_to_chat(row) -> dict:
         "origen": row["origen"],
         "notas": row["notas"],
         "last_message": row["last_message"],
+        "last_message_sender": row["last_message_sender"],
         "timestamp": _fmt_ts(row["timestamp"]),
     }
 
@@ -54,9 +55,11 @@ def _parse_ts(value: str) -> datetime:
 
 
 def _last_message_subquery():
-    """Último mensaje por chat vía LATERAL JOIN, evita un N+1 por lead."""
+    """Último mensaje por chat vía LATERAL JOIN, evita un N+1 por lead.
+    Incluye sender: el frontend lo usa para saber si el chat quedó
+    "esperando respuesta" (último mensaje del cliente) o no (vendedor)."""
     return (
-        select(WspMessage.content, WspMessage.sent_at)
+        select(WspMessage.content, WspMessage.sent_at, WspMessage.sender)
         .where(WspMessage.chat_id == Lead.remote_jid)
         .order_by(WspMessage.sent_at.desc())
         .limit(1)
@@ -103,6 +106,7 @@ async def fetch_chats(
             Lead.origen,
             Lead.notas,
             last_message.c.content.label("last_message"),
+            last_message.c.sender.label("last_message_sender"),
             last_message.c.sent_at.label("timestamp"),
         )
         .join(last_message, true(), isouter=True)
@@ -149,6 +153,7 @@ async def fetch_chat(chat_id: str) -> dict | None:
             Lead.origen,
             Lead.notas,
             last_message.c.content.label("last_message"),
+            last_message.c.sender.label("last_message_sender"),
             last_message.c.sent_at.label("timestamp"),
         )
         .join(last_message, true(), isouter=True)

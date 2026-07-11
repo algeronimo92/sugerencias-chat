@@ -10,6 +10,7 @@ class Chat(BaseModel):
     origen: str | None = None
     notas: str | None = None
     last_message: str | None = None
+    last_message_sender: str | None = None
     timestamp: str | None = None
 
 
