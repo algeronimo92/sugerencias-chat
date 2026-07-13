@@ -61,7 +61,13 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-baseline">
-          <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+          <span
+            className={`text-sm truncate ${
+              chat.unread_count > 0
+                ? 'font-semibold text-gray-900 dark:text-gray-100'
+                : 'font-medium text-gray-900 dark:text-gray-100'
+            }`}
+          >
             {displayName(chat)}
           </span>
           {awaitingReply ? (
@@ -78,10 +84,17 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
-          {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
-          <span className="truncate">{previewText}</span>
-        </p>
+        <div className="flex items-baseline justify-between gap-2 mt-0.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1 min-w-0">
+            {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
+            <span className="truncate">{previewText}</span>
+          </p>
+          {chat.unread_count > 0 && (
+            <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-green-600 text-white text-[11px] font-semibold flex items-center justify-center">
+              {chat.unread_count > 99 ? '99+' : chat.unread_count}
+            </span>
+          )}
+        </div>
       </div>
     </button>
   )

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from services.db_service import fetch_chat_signature
+from services.db_service import fetch_chat_signature, fetch_latest_message
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,11 @@ async def watch_chats() -> None:
         try:
             signature = await fetch_chat_signature()
             if last_signature is not None and signature != last_signature:
-                await manager.broadcast({"type": "chats_updated"})
+                payload = {"type": "chats_updated"}
+                latest = await fetch_latest_message()
+                if latest is not None:
+                    payload["latest_message"] = latest
+                await manager.broadcast(payload)
             last_signature = signature
         except Exception:
             logger.exception("Error watching chats for changes")

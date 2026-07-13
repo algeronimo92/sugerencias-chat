@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
-import type { Chat } from '../types'
+import { Check, CheckCheck, FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
+import type { Chat, MessageStatus } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -85,9 +85,42 @@ interface OpenMedia {
   alt: string
 }
 
+/** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
+ * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
+function MessageStatusTicks({ status }: { status: MessageStatus }) {
+  if (status === 'READ' || status === 'PLAYED') {
+    return <CheckCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+  }
+  if (status === 'DELIVERY_ACK') {
+    return <CheckCheck className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+  }
+  return <Check className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+}
+
 export function ChatThread({ chat, onRefreshSuggestions }: Props) {
-  const { data: messages, isLoading, error, refetch, isFetching } = useMessages(chat.chat_id)
+  const {
+    data: messagePages,
+    isLoading,
+    error,
+    refetch,
+    isRefetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useMessages(chat.chat_id)
+  // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
+  // orden de páginas, pero se conserva el orden ascendente dentro de cada
+  // página, para renderizar el historial de viejo a nuevo.
+  const messages = [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items)
+  const pageCount = messagePages?.pages.length ?? 0
+  const lastMessageId = messages.at(-1)?.id ?? null
+  const threadRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const initialScrollDoneRef = useRef(false)
+  const isNearBottomRef = useRef(true)
+  const loadingOlderRef = useRef(false)
+  const latestMessageIdRef = useRef<number | null>(null)
+  const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
 
   const [draft, setDraft] = useState('')
@@ -104,9 +137,47 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const { mutate: sendMedia, isPending: isSendingMedia } = useSendMedia(chat.chat_id)
   const { mutate: sendLocation, isPending: isSendingLocation } = useSendLocation(chat.chat_id)
 
+  // Cada chat empieza mostrando sus mensajes más recientes.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
+    initialScrollDoneRef.current = false
+    isNearBottomRef.current = true
+    loadingOlderRef.current = false
+    latestMessageIdRef.current = null
+    prependSnapshotRef.current = null
+  }, [chat.chat_id])
+
+  useEffect(() => {
+    const container = threadRef.current
+    if (!container || isLoading) return
+
+    if (!initialScrollDoneRef.current) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight
+        initialScrollDoneRef.current = true
+        isNearBottomRef.current = true
+        latestMessageIdRef.current = lastMessageId
+      })
+      return
+    }
+
+    const snapshot = prependSnapshotRef.current
+    if (snapshot) {
+      prependSnapshotRef.current = null
+      requestAnimationFrame(() => {
+        // Compensa exactamente la altura agregada arriba; el mensaje que el
+        // usuario estaba leyendo queda en el mismo lugar de la pantalla.
+        container.scrollTop = snapshot.scrollTop + (container.scrollHeight - snapshot.scrollHeight)
+      })
+      return
+    }
+
+    if (lastMessageId !== latestMessageIdRef.current) {
+      latestMessageIdRef.current = lastMessageId
+      if (isNearBottomRef.current) {
+        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }))
+      }
+    }
+  }, [chat.chat_id, isLoading, lastMessageId, messages.length, pageCount])
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
@@ -206,6 +277,36 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     onRefreshSuggestions()
   }
 
+  function handleThreadScroll() {
+    const container = threadRef.current
+    if (!container) return
+
+    isNearBottomRef.current =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 120
+
+    if (
+      container.scrollTop > 80 ||
+      !hasNextPage ||
+      isFetchingNextPage ||
+      loadingOlderRef.current
+    ) {
+      return
+    }
+
+    loadingOlderRef.current = true
+    prependSnapshotRef.current = {
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+    }
+    void fetchNextPage()
+      .then((result) => {
+        if (result.isError) prependSnapshotRef.current = null
+      })
+      .finally(() => {
+        loadingOlderRef.current = false
+      })
+  }
+
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-gray-950">
       {/* Header */}
@@ -218,26 +319,55 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         </div>
         <button
           onClick={handleRefresh}
-          disabled={isFetching}
+          disabled={isRefetching}
           className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          {isFetching ? 'Actualizando...' : 'Actualizar'}
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
+          {isRefetching ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>
 
       {/* Thread */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+      <div
+        ref={threadRef}
+        onScroll={handleThreadScroll}
+        className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
+      >
         {isLoading && (
           <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Cargando mensajes...</p>
         )}
         {error && (
           <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">Error al cargar mensajes.</p>
         )}
-        {!isLoading && !error && messages?.length === 0 && (
+        {!isLoading && !error && messages.length === 0 && (
           <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin mensajes en este chat.</p>
         )}
-        {messages?.map((m) => {
+        {!isLoading && !error && hasNextPage && (
+          <button
+            onClick={() => {
+              const container = threadRef.current
+              if (!container || isFetchingNextPage || loadingOlderRef.current) return
+              loadingOlderRef.current = true
+              prependSnapshotRef.current = {
+                scrollHeight: container.scrollHeight,
+                scrollTop: container.scrollTop,
+              }
+              void fetchNextPage()
+                .then((result) => {
+                  if (result.isError) prependSnapshotRef.current = null
+                })
+                .finally(() => {
+                  loadingOlderRef.current = false
+                })
+            }}
+            disabled={isFetchingNextPage}
+            className="mx-auto flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 shadow-sm hover:bg-gray-50 disabled:cursor-wait dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+          >
+            {isFetchingNextPage && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isFetchingNextPage ? 'Cargando anteriores...' : 'Cargar mensajes anteriores'}
+          </button>
+        )}
+        {messages.map((m) => {
           const isVendedor = m.sender === 'vendedor'
           const { kind, icon: Icon, label, text } = parseContent(m.content)
           // Si el archivo falló al cargar (ej. no existe en este entorno),
@@ -376,8 +506,9 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     )}
                   </p>
                 )}
-                <div className="text-[10px] text-gray-400 dark:text-gray-500 text-right mt-1">
-                  {formatMessageTime(m.sent_at)}
+                <div className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                  <span>{formatMessageTime(m.sent_at)}</span>
+                  {isVendedor && <MessageStatusTicks status={m.status} />}
                 </div>
               </div>
             </div>

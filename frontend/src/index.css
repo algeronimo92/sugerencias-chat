@@ -13,6 +13,15 @@
 body {
   font-family: system-ui, -apple-system, sans-serif;
   background: #f0f2f5;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .dark body {
@@ -21,7 +30,10 @@ body {
 
 #root {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100vh;
+  overflow: hidden;
 }
 
 * {

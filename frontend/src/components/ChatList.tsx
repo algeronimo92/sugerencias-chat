@@ -13,6 +13,9 @@ interface Props {
   error: boolean
   search: string
   onSearchChange: (value: string) => void
+  filter: 'all' | 'unread'
+  onFilterChange: (value: 'all' | 'unread') => void
+  unreadCount: number
   onRefresh: () => Promise<unknown>
   selectedId: string | null
   onSelect: (chat: Chat) => void
@@ -64,6 +67,9 @@ export function ChatList({
   error,
   search,
   onSearchChange,
+  filter,
+  onFilterChange,
+  unreadCount,
   onRefresh,
   selectedId,
   onSelect,
@@ -111,7 +117,8 @@ export function ChatList({
   useEffect(() => {
     prevTopIdRef.current = null
     setHighlightedId(null)
-  }, [search])
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [search, filter])
 
   useEffect(() => {
     if (prevTopIdRef.current !== null && topId !== null && topId !== prevTopIdRef.current) {
@@ -214,6 +221,37 @@ export function ChatList({
             className="w-full text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
         </div>
+        <div className="mt-2 flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800" role="group" aria-label="Filtrar leads">
+          <button
+            type="button"
+            onClick={() => onFilterChange('all')}
+            aria-pressed={filter === 'all'}
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === 'all'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            onClick={() => onFilterChange('unread')}
+            aria-pressed={filter === 'unread'}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === 'unread'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            No leídos
+            {unreadCount > 0 && (
+              <span className="min-w-4 rounded-full bg-green-600 px-1 text-[10px] leading-4 text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* List */}
@@ -227,7 +265,9 @@ export function ChatList({
           </p>
         )}
         {!isLoading && chats.length === 0 && !error && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin resultados.</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+            {filter === 'unread' && !search ? 'No hay chats sin leer.' : 'Sin resultados.'}
+          </p>
         )}
         {!isLoading && chats.length > 0 && (
           <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>

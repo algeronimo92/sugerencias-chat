@@ -90,3 +90,20 @@ async def send_whatsapp_media(
     if filename:
         payload["fileName"] = filename
     return await _post(url, api_key, payload, timeout=60.0)
+
+
+async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict:
+    """Le avisa a WhatsApp que ya se vieron estos mensajes del cliente —
+    hace que le aparezcan los tiques azules de "leído" de su lado.
+    fromMe=False siempre acá: son mensajes que el cliente mandó, no el
+    vendedor (esos ya quedan "leídos" para nosotros solos, no hace falta
+    avisarle a WhatsApp)."""
+    api_url, api_key, instance = await _config()
+
+    url = f"{api_url.rstrip('/')}/chat/markMessageAsRead/{instance}"
+    payload = {
+        "readMessages": [
+            {"remoteJid": chat_id, "fromMe": False, "id": wa_message_id} for wa_message_id in wa_message_ids
+        ]
+    }
+    return await _post(url, api_key, payload, timeout=30.0)
