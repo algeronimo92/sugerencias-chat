@@ -23,6 +23,12 @@ async def synthesize_speech(text: str) -> bytes:
     payload = {
         "text": text,
         "model_id": await get_effective("elevenlabs_model_id"),
+        "voice_settings": {
+            "stability": float(await get_effective("elevenlabs_stability")),
+            "style": float(await get_effective("elevenlabs_style")),
+            "speed": float(await get_effective("elevenlabs_speed")),
+            "use_speaker_boost": (await get_effective("elevenlabs_use_speaker_boost")).lower() == "true",
+        },
     }
     headers = {"xi-api-key": api_key}
 

@@ -36,6 +36,16 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("elevenlabs_api_key", "API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
     SettingDef("elevenlabs_voice_id", "ID de voz", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_model_id", "Modelo", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
+    SettingDef("elevenlabs_stability", "Estabilidad (0-1)", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
+    SettingDef("elevenlabs_style", "Estilo (0-1)", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
+    SettingDef("elevenlabs_speed", "Velocidad (0.7-1.2)", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
+    SettingDef(
+        "elevenlabs_use_speaker_boost",
+        "Speaker boost (true/false)",
+        "elevenlabs",
+        "ElevenLabs (texto a voz)",
+        secret=False,
+    ),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 
