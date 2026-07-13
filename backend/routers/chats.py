@@ -2,7 +2,8 @@ import logging
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from db.models import LeadStage as DbLeadStage, User
 from models.schemas import (
     Chat,
     ChatPage,
@@ -13,6 +14,7 @@ from models.schemas import (
     LeadUpdate,
     Message,
     MessagePage,
+    LeadActivityItem,
     SendLocationRequest,
     SendMediaRequest,
     SendMessageRequest,
@@ -24,18 +26,22 @@ from services.db_service import (
     MESSAGES_PAGE_SIZE,
     LeadAlreadyExistsError,
     create_lead,
+    assign_tag,
+    fetch_chat,
     fetch_chats,
     fetch_kanban_counts,
     fetch_kanban_stage,
     fetch_messages,
+    list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
     insert_message,
     mark_chat_read,
+    remove_tag,
     update_lead,
     update_lead_stage,
 )
-from db.models import LeadStage as DbLeadStage
+from services.auth_service import get_current_user
 from services.evolution_service import (
     EvolutionApiError,
     mark_messages_as_read,
@@ -87,9 +93,35 @@ async def get_chats(
     cursor_id: str | None = None,
     limit: int = CHATS_PAGE_SIZE,
     unread_only: bool = False,
+    stages: str | None = None,
+    tag_ids: str | None = None,
+    tag_mode: str = Query(default="any", pattern="^(any|all)$"),
+    service: str | None = None,
+    seller: str | None = None,
+    origin: str | None = None,
+    last_sender: str | None = Query(default=None, pattern="^(cliente|vendedor)$"),
+    inactive_days: int | None = Query(default=None, ge=1, le=3650),
 ):
     try:
-        return await fetch_chats(search, cursor_ts, cursor_id, limit, unread_only)
+        parsed_stages = [DbLeadStage(value) for value in stages.split(",") if value] if stages else None
+        parsed_tag_ids = [int(value) for value in tag_ids.split(",") if value] if tag_ids else None
+        return await fetch_chats(
+            search,
+            cursor_ts,
+            cursor_id,
+            limit,
+            unread_only,
+            parsed_stages,
+            parsed_tag_ids,
+            tag_mode,
+            service,
+            seller,
+            origin,
+            last_sender,
+            inactive_days,
+        )
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Filtros inválidos")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -121,8 +153,8 @@ async def get_kanban_stage(
 
 
 @router.patch("/{chat_id}/stage", response_model=Chat)
-async def move_chat_stage(chat_id: str, body: LeadStageUpdate):
-    lead = await update_lead_stage(chat_id, DbLeadStage(body.stage))
+async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
+    lead = await update_lead_stage(chat_id, DbLeadStage(body.stage), "user", user.id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
@@ -131,7 +163,7 @@ async def move_chat_stage(chat_id: str, body: LeadStageUpdate):
 
 
 @router.post("", response_model=Chat, status_code=201)
-async def create_chat(body: LeadCreate):
+async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     phone = body.phone.strip()
     name = body.name.strip()
     if not phone:
@@ -147,6 +179,7 @@ async def create_chat(body: LeadCreate):
             vendedor=body.vendedor,
             origen=body.origen,
             notas=body.notas,
+            actor_user_id=user.id,
         )
     except LeadAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
@@ -156,16 +189,37 @@ async def create_chat(body: LeadCreate):
 
 
 @router.patch("/{chat_id}", response_model=Chat)
-async def update_chat(chat_id: str, body: LeadUpdate):
+async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_current_user)):
     values = {
         _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
     }
-    lead = await update_lead(chat_id, values)
+    lead = await update_lead(chat_id, values, "user", user.id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
     await manager.broadcast({"type": "chats_updated"})
     return lead
+
+
+@router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)
+async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
+    if not await assign_tag(chat_id, tag_id, user.id):
+        raise HTTPException(status_code=404, detail="Lead o etiqueta no encontrados")
+    await manager.broadcast({"type": "chats_updated"})
+    return await fetch_chat(chat_id)
+
+
+@router.delete("/{chat_id}/tags/{tag_id}", response_model=Chat)
+async def delete_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
+    if not await remove_tag(chat_id, tag_id, user.id):
+        raise HTTPException(status_code=404, detail="La etiqueta no está asignada")
+    await manager.broadcast({"type": "chats_updated"})
+    return await fetch_chat(chat_id)
+
+
+@router.get("/{chat_id}/activity", response_model=list[LeadActivityItem])
+async def get_chat_activity(chat_id: str, limit: int = Query(default=50, ge=1, le=200)):
+    return await list_lead_activity(chat_id, limit)
 
 
 @router.get("/{chat_id}/messages", response_model=MessagePage)

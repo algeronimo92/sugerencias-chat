@@ -95,6 +95,22 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
             </span>
           )}
         </div>
+        {chat.tags.length > 0 && (
+          <div className="mt-1 flex gap-1 overflow-hidden">
+            {chat.tags.slice(0, 2).map((tag) => (
+              <span
+                key={tag.id}
+                className="max-w-24 truncate rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white"
+                style={{ backgroundColor: tag.color }}
+              >
+                {tag.name}
+              </span>
+            ))}
+            {chat.tags.length > 2 && (
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">+{chat.tags.length - 2}</span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   )

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { AlertCircle, Loader2, RefreshCw, Search, UserPlus } from 'lucide-react'
-import type { Chat, LeadUpdateInput } from '../types'
+import { AlertCircle, Loader2, RefreshCw, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
+import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
 import { useCreateLead } from '../hooks/useChats'
+import { useTags } from '../hooks/useLeadMeta'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
@@ -16,6 +17,8 @@ interface Props {
   filter: 'all' | 'unread'
   onFilterChange: (value: 'all' | 'unread') => void
   unreadCount: number
+  advancedFilters: ChatFilters
+  onAdvancedFiltersChange: (value: ChatFilters) => void
   onRefresh: () => Promise<unknown>
   selectedId: string | null
   onSelect: (chat: Chat) => void
@@ -70,6 +73,8 @@ export function ChatList({
   filter,
   onFilterChange,
   unreadCount,
+  advancedFilters,
+  onAdvancedFiltersChange,
   onRefresh,
   selectedId,
   onSelect,
@@ -81,8 +86,47 @@ export function ChatList({
   const [isManualRefreshing, setIsManualRefreshing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead()
+  const { data: tags = [] } = useTags()
+
+  const activeAdvancedFilterCount =
+    advancedFilters.stages.length +
+    advancedFilters.tagIds.length +
+    Number(!!advancedFilters.service) +
+    Number(!!advancedFilters.seller) +
+    Number(!!advancedFilters.origin) +
+    Number(!!advancedFilters.lastSender) +
+    Number(!!advancedFilters.inactiveDays)
+
+  function toggleStage(stage: LeadStage) {
+    const stages = advancedFilters.stages.includes(stage)
+      ? advancedFilters.stages.filter((item) => item !== stage)
+      : [...advancedFilters.stages, stage]
+    onAdvancedFiltersChange({ ...advancedFilters, stages })
+  }
+
+  function toggleTag(tagId: number) {
+    const tagIds = advancedFilters.tagIds.includes(tagId)
+      ? advancedFilters.tagIds.filter((item) => item !== tagId)
+      : [...advancedFilters.tagIds, tagId]
+    onAdvancedFiltersChange({ ...advancedFilters, tagIds })
+  }
+
+  function clearAdvancedFilters() {
+    onAdvancedFiltersChange({
+      unreadOnly: false,
+      stages: [],
+      tagIds: [],
+      tagMode: 'any',
+      service: '',
+      seller: '',
+      origin: '',
+      lastSender: '',
+      inactiveDays: null,
+    })
+  }
 
   function handleCreateLead(values: LeadUpdateInput) {
     setCreateError(null)
@@ -118,7 +162,7 @@ export function ChatList({
     prevTopIdRef.current = null
     setHighlightedId(null)
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [search, filter])
+  }, [search, filter, advancedFilters])
 
   useEffect(() => {
     if (prevTopIdRef.current !== null && topId !== null && topId !== prevTopIdRef.current) {
@@ -252,6 +296,118 @@ export function ChatList({
             )}
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters((value) => !value)}
+          className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            showFilters || activeAdvancedFilterCount > 0
+              ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
+          }`}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filtros avanzados
+          {activeAdvancedFilterCount > 0 && (
+            <span className="min-w-4 rounded-full bg-green-600 px-1 text-[10px] leading-4 text-white">
+              {activeAdvancedFilterCount}
+            </span>
+          )}
+        </button>
+
+        {showFilters && (
+          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Etapas</span>
+              {activeAdvancedFilterCount > 0 && (
+                <button type="button" onClick={clearAdvancedFilters} className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-600">
+                  <X className="h-3 w-3" /> Limpiar
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STAGES.map((stage) => (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => toggleStage(stage)}
+                  className={`rounded-full border px-2 py-1 text-[11px] capitalize ${
+                    advancedFilters.stages.includes(stage)
+                      ? 'border-green-500 bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
+                      : 'border-gray-200 bg-white text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                  }`}
+                >
+                  {stage.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+
+            {tags.length > 0 && (
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Etiquetas</span>
+                  <select
+                    value={advancedFilters.tagMode}
+                    onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, tagMode: event.target.value as 'any' | 'all' })}
+                    className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                  >
+                    <option value="any">Cualquiera</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTag(tag.id)}
+                      className={`rounded-full border px-2 py-1 text-[11px] ${
+                        advancedFilters.tagIds.includes(tag.id)
+                          ? 'text-white'
+                          : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                      }`}
+                      style={advancedFilters.tagIds.includes(tag.id) ? { backgroundColor: tag.color, borderColor: tag.color } : undefined}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ['service', 'Servicio'],
+                ['seller', 'Vendedor'],
+                ['origin', 'Origen'],
+              ] as const).map(([key, label]) => (
+                <input
+                  key={key}
+                  value={advancedFilters[key]}
+                  onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, [key]: event.target.value })}
+                  placeholder={label}
+                  className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                />
+              ))}
+              <select
+                value={advancedFilters.lastSender}
+                onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, lastSender: event.target.value as ChatFilters['lastSender'] })}
+                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <option value="">Último emisor</option>
+                <option value="cliente">Cliente</option>
+                <option value="vendedor">Vendedor</option>
+              </select>
+              <input
+                type="number"
+                min={1}
+                value={advancedFilters.inactiveDays ?? ''}
+                onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, inactiveDays: event.target.value ? Number(event.target.value) : null })}
+                placeholder="Inactivo (días)"
+                className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* List */}

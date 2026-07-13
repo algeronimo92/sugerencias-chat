@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import type { Chat, LeadInput, LeadUpdateInput } from '../types'
+import type { Chat, ChatFilters, LeadInput, LeadUpdateInput } from '../types'
 import { parseContent } from '../utils/message'
 
 interface ChatsPage {
@@ -13,10 +13,18 @@ interface ChatsPage {
 /** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend). */
 type PageParam = { cursorTs: string | null; cursorId: string } | null
 
-async function fetchChatsPage(search: string, pageParam: PageParam, unreadOnly = false): Promise<ChatsPage> {
+async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
   const params: Record<string, string> = {}
   if (search) params.search = search
-  if (unreadOnly) params.unread_only = 'true'
+  if (filters?.unreadOnly) params.unread_only = 'true'
+  if (filters?.stages.length) params.stages = filters.stages.join(',')
+  if (filters?.tagIds.length) params.tag_ids = filters.tagIds.join(',')
+  if (filters?.tagIds.length) params.tag_mode = filters.tagMode
+  if (filters?.service.trim()) params.service = filters.service.trim()
+  if (filters?.seller.trim()) params.seller = filters.seller.trim()
+  if (filters?.origin.trim()) params.origin = filters.origin.trim()
+  if (filters?.lastSender) params.last_sender = filters.lastSender
+  if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
   if (pageParam) {
     params.cursor_id = pageParam.cursorId
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
@@ -76,6 +84,7 @@ export function useChatUpdates(activeChatId: string | null = null, notify: Notif
             queryClient.invalidateQueries({ queryKey: ['chats'] })
             queryClient.invalidateQueries({ queryKey: ['kanban'] })
             queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+            queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
             // También refresca el hilo de mensajes abierto, si lo hay
             queryClient.invalidateQueries({ queryKey: ['messages'] })
 
@@ -138,10 +147,10 @@ export function useUnreadCount() {
 }
 
 /** Lista de leads con scroll infinito, paginada por cursor. */
-export function useInfiniteChats(search: string = '', unreadOnly = false) {
+export function useInfiniteChats(search: string = '', filters: ChatFilters) {
   return useInfiniteQuery({
-    queryKey: ['chats', 'list', search, unreadOnly],
-    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, unreadOnly),
+    queryKey: ['chats', 'list', search, filters],
+    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters),
     initialPageParam: null as PageParam,
     getNextPageParam: (lastPage) => {
       if (!lastPage.has_more || lastPage.items.length === 0) return undefined
@@ -185,6 +194,7 @@ export function useUpdateLead(chatId: string) {
     mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
     },
   })
 }

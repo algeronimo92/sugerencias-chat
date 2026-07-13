@@ -13,6 +13,35 @@ export const LEAD_STAGES = [
 
 export type LeadStage = (typeof LEAD_STAGES)[number]
 
+export interface Tag {
+  id: number
+  name: string
+  color: string
+}
+
+export interface ChatFilters {
+  unreadOnly: boolean
+  stages: LeadStage[]
+  tagIds: number[]
+  tagMode: 'any' | 'all'
+  service: string
+  seller: string
+  origin: string
+  lastSender: '' | 'cliente' | 'vendedor'
+  inactiveDays: number | null
+}
+
+export interface LeadActivity {
+  id: number
+  event_type: string
+  actor_type: string
+  actor_name: string | null
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
 export interface Chat {
   chat_id: string
   phone: string | null
@@ -26,6 +55,7 @@ export interface Chat {
   last_message_sender: string | null
   timestamp: string | null
   unread_count: number
+  tags: Tag[]
 }
 
 export interface LeadInput {

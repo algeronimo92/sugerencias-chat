@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -103,3 +103,60 @@ class User(Base):
     role: Mapped[str] = mapped_column(Text)  # "admin" | "vendedor"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LeadTag(Base):
+    """Catálogo administrable de etiquetas comerciales."""
+
+    __tablename__ = "lead_tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    color: Mapped[str] = mapped_column(Text, default="#16a34a")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_lead_tags_name_lower", func.lower(name), unique=True),
+        Index("idx_lead_tags_created_by", created_by),
+    )
+
+
+class LeadTagAssignment(Base):
+    __tablename__ = "lead_tag_assignments"
+
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.remote_jid", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("lead_tags.id", ondelete="CASCADE"), primary_key=True
+    )
+    assigned_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_lead_tag_assignments_tag_lead", tag_id, lead_id),
+        Index("idx_lead_tag_assignments_assigned_by", assigned_by),
+    )
+
+
+class LeadActivity(Base):
+    """Auditoría append-only de cambios comerciales del lead."""
+
+    __tablename__ = "lead_activity"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(Text)
+    actor_type: Mapped[str] = mapped_column(Text)  # user | agent | n8n | system
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    old_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_lead_activity_lead_created", lead_id, created_at.desc()),
+        Index("idx_lead_activity_actor_user", actor_user_id),
+    )

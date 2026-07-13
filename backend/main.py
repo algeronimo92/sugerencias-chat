@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from config import settings
 from db.models import Base
 from db.session import close_engine, get_engine
-from routers import auth, chats, media, settings as settings_router, suggestions, tts, users, webhooks
+from routers import auth, chats, media, settings as settings_router, suggestions, tags, tts, users, webhooks
 from routers.media import MEDIA_DIR
 from services.auth_service import COOKIE_NAME, decode_access_token, get_current_user, hash_password, require_admin
 from services.chat_watcher import watch_chats
@@ -49,6 +49,7 @@ app.include_router(chats.router, dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
 app.include_router(tts.router, dependencies=[Depends(get_current_user)])
 app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
+app.include_router(tags.router)
 # webhooks y media.upload los llama n8n directamente (autenticados con su
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)

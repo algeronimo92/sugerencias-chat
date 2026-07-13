@@ -22,7 +22,12 @@ async def get_suggestions(body: SuggestionRequest):
     # El Structured Output Parser del workflow obliga al agente a devolver
     # `output.estado`. Esa decisión es la única fuente de verdad: se persiste
     # al terminar la ejecución y luego se avisa a todos los paneles abiertos.
-    lead = await update_lead_stage(body.chat_id, DbLeadStage(result.estado))
+    lead = await update_lead_stage(
+        body.chat_id,
+        DbLeadStage(result.estado),
+        actor_type="agent",
+        metadata={"confidence": result.confianza, "reason": result.analisis},
+    )
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 

@@ -60,6 +60,7 @@ export function useMoveLeadStage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban'] })
       queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
     },
   })
 }

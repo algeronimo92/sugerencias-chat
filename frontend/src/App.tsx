@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Bell, BellOff, Columns3, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
-import type { Chat, SuggestionResponse } from './types'
+import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -15,6 +15,18 @@ import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
 import { queryClient } from './queryClient'
+
+const EMPTY_CHAT_FILTERS: ChatFilters = {
+  unreadOnly: false,
+  stages: [],
+  tagIds: [],
+  tagMode: 'any',
+  service: '',
+  seller: '',
+  origin: '',
+  lastSender: '',
+  inactiveDays: null,
+}
 
 function MainLayout() {
   const { data: me } = useMe()
@@ -33,6 +45,11 @@ function MainLayout() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [chatFilter, setChatFilter] = useState<'all' | 'unread'>('all')
+  const [advancedFilters, setAdvancedFilters] = useState<ChatFilters>(EMPTY_CHAT_FILTERS)
+  const effectiveFilters: ChatFilters = {
+    ...advancedFilters,
+    unreadOnly: chatFilter === 'unread',
+  }
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -50,7 +67,7 @@ function MainLayout() {
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
-  } = useInfiniteChats(debouncedSearch, chatFilter === 'unread')
+  } = useInfiniteChats(debouncedSearch, effectiveFilters)
   const chats = data?.pages.flatMap((page) => page.items) ?? []
 
   function handleLoadMore() {
@@ -253,6 +270,8 @@ function MainLayout() {
             filter={chatFilter}
             onFilterChange={setChatFilter}
             unreadCount={unreadCount}
+            advancedFilters={advancedFilters}
+            onAdvancedFiltersChange={setAdvancedFilters}
             onRefresh={refetch}
             selectedId={selectedChat?.chat_id ?? null}
             onSelect={handleSelectChat}

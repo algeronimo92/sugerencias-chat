@@ -65,3 +65,24 @@ POST {EVOLUTION_API_URL}/chat/markMessageAsRead/{EVOLUTION_INSTANCE}
 Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
 como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
 después de agregar el mapeo al nodo de inserción de n8n.
+
+### Etiquetas, filtros e historial de cambios
+
+La lista de leads permite combinar búsqueda, no leídos, etapas, etiquetas
+(`cualquiera` o `todas`), servicio, vendedor, origen, último emisor e inactividad.
+Las consultas mantienen la paginación por cursor y aplican los filtros en PostgreSQL.
+
+Los administradores pueden crear etiquetas desde el panel derecho de un lead;
+todos los usuarios autenticados pueden asignarlas o quitarlas. Los cambios de
+estado, datos y etiquetas se guardan en `lead_activity` con actor, valores anterior
+y nuevo, fecha y, para el agente IA, confianza y motivo.
+
+El backend crea las tablas nuevas mediante `Base.metadata.create_all()` al arrancar.
+Para aplicarlas explícitamente en otro entorno también está disponible:
+
+```text
+backend/migrations/001_lead_tags_activity.sql
+```
+
+Las tablas `lead_tags`, `lead_tag_assignments` y `lead_activity` tienen RLS
+habilitado y se consumen exclusivamente a través del backend autenticado.

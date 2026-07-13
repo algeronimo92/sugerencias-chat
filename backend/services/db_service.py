@@ -1,10 +1,10 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, exists, func, insert, or_, select, true, update
+from sqlalchemy import and_, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
-from db.models import Lead, LeadStage, User, WspMessage
+from db.models import Lead, LeadActivity, LeadStage, LeadTag, LeadTagAssignment, User, WspMessage
 from db.session import get_sessionmaker
 
 CHATS_PAGE_SIZE = 30
@@ -17,6 +17,10 @@ class LeadAlreadyExistsError(Exception):
 
 
 class EmailAlreadyExistsError(Exception):
+    pass
+
+
+class TagAlreadyExistsError(Exception):
     pass
 
 
@@ -37,7 +41,7 @@ def _phone_to_jid(phone: str) -> str:
     return f"{digits}@s.whatsapp.net"
 
 
-def _row_to_chat(row) -> dict:
+def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
     stage = row["stage"]
     return {
         "chat_id": row["chat_id"],
@@ -52,7 +56,33 @@ def _row_to_chat(row) -> dict:
         "last_message_sender": row["last_message_sender"],
         "timestamp": _fmt_ts(row["timestamp"]),
         "unread_count": row["unread_count"],
+        "tags": tags or [],
     }
+
+
+def _tag_dict(row) -> dict:
+    return {"id": row["id"], "name": row["name"], "color": row["color"]}
+
+
+async def _tags_by_lead(session, chat_ids: list[str]) -> dict[str, list[dict]]:
+    if not chat_ids:
+        return {}
+    stmt = (
+        select(
+            LeadTagAssignment.lead_id,
+            LeadTag.id,
+            LeadTag.name,
+            LeadTag.color,
+        )
+        .join(LeadTag, LeadTag.id == LeadTagAssignment.tag_id)
+        .where(LeadTagAssignment.lead_id.in_(chat_ids), LeadTag.is_active == true())
+        .order_by(LeadTag.name.asc())
+    )
+    rows = (await session.execute(stmt)).mappings().all()
+    result: dict[str, list[dict]] = {chat_id: [] for chat_id in chat_ids}
+    for row in rows:
+        result[row["lead_id"]].append(_tag_dict(row))
+    return result
 
 
 def _parse_ts(value: str) -> datetime:
@@ -95,6 +125,19 @@ def _has_unread_messages_condition():
             WspMessage.chat_id == Lead.remote_jid,
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
+        )
+        .correlate(Lead)
+    )
+
+
+def _has_tag_condition(tag_id: int):
+    return exists(
+        select(LeadTagAssignment.tag_id)
+        .join(LeadTag, LeadTag.id == LeadTagAssignment.tag_id)
+        .where(
+            LeadTagAssignment.lead_id == Lead.remote_jid,
+            LeadTagAssignment.tag_id == tag_id,
+            LeadTag.is_active == true(),
         )
         .correlate(Lead)
     )
@@ -157,6 +200,14 @@ async def fetch_chats(
     cursor_id: str | None = None,
     limit: int = CHATS_PAGE_SIZE,
     unread_only: bool = False,
+    stages: list[LeadStage] | None = None,
+    tag_ids: list[int] | None = None,
+    tag_mode: str = "any",
+    service: str | None = None,
+    seller: str | None = None,
+    origin: str | None = None,
+    last_sender: str | None = None,
+    inactive_days: int | None = None,
 ) -> dict:
     last_message = _last_message_subquery()
 
@@ -171,6 +222,23 @@ async def fetch_chats(
     if unread_only:
         stmt = stmt.where(_has_unread_messages_condition())
 
+    if stages:
+        stmt = stmt.where(Lead.estado.in_(stages))
+    if tag_ids:
+        tag_conditions = [_has_tag_condition(tag_id) for tag_id in tag_ids]
+        stmt = stmt.where(and_(*tag_conditions) if tag_mode == "all" else or_(*tag_conditions))
+    if service:
+        stmt = stmt.where(Lead.servicio_interes.ilike(f"%{service}%"))
+    if seller:
+        stmt = stmt.where(Lead.vendedor.ilike(f"%{seller}%"))
+    if origin:
+        stmt = stmt.where(Lead.origen.ilike(f"%{origin}%"))
+    if last_sender in ("cliente", "vendedor"):
+        stmt = stmt.where(last_message.c.sender == last_sender)
+    if inactive_days is not None and inactive_days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=inactive_days)
+        stmt = stmt.where(or_(last_message.c.sent_at < cutoff, last_message.c.sent_at.is_(None)))
+
     if cursor_id is not None:
         stmt = stmt.where(_cursor_condition(last_message, cursor_ts, cursor_id))
 
@@ -182,11 +250,14 @@ async def fetch_chats(
 
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
+        page_rows = rows[:limit]
+        tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in page_rows])
 
     has_more = len(rows) > limit
-    rows = rows[:limit]
-
-    return {"items": [_row_to_chat(r) for r in rows], "has_more": has_more}
+    return {
+        "items": [_row_to_chat(row, tags_by_lead.get(row["chat_id"])) for row in page_rows],
+        "has_more": has_more,
+    }
 
 
 async def fetch_chat(chat_id: str) -> dict | None:
@@ -198,8 +269,9 @@ async def fetch_chat(chat_id: str) -> dict | None:
     )
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().first()
+        tags_by_lead = await _tags_by_lead(session, [chat_id]) if row is not None else {}
 
-    return _row_to_chat(row) if row is not None else None
+    return _row_to_chat(row, tags_by_lead.get(chat_id)) if row is not None else None
 
 
 async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
@@ -248,21 +320,69 @@ async def fetch_kanban_stage(
 
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
+        page_rows = rows[:limit]
+        tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in page_rows])
 
     has_more = len(rows) > limit
-    return {"items": [_row_to_chat(row) for row in rows[:limit]], "has_more": has_more}
+    return {
+        "items": [_row_to_chat(row, tags_by_lead.get(row["chat_id"])) for row in page_rows],
+        "has_more": has_more,
+    }
 
 
-async def update_lead_stage(chat_id: str, stage: LeadStage) -> dict | None:
-    stmt = (
-        update(Lead)
-        .where(Lead.remote_jid == chat_id)
-        .values(estado=stage, updated_at=datetime.now(timezone.utc))
+async def _record_activity(
+    session,
+    lead_id: str,
+    event_type: str,
+    actor_type: str,
+    actor_user_id: int | None = None,
+    old_value: dict | None = None,
+    new_value: dict | None = None,
+    metadata: dict | None = None,
+) -> None:
+    await session.execute(
+        insert(LeadActivity).values(
+            lead_id=lead_id,
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_user_id=actor_user_id,
+            old_value=old_value,
+            new_value=new_value,
+            metadata_=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
     )
+
+
+async def update_lead_stage(
+    chat_id: str,
+    stage: LeadStage,
+    actor_type: str = "system",
+    actor_user_id: int | None = None,
+    metadata: dict | None = None,
+) -> dict | None:
     async with get_sessionmaker()() as session:
-        result = await session.execute(stmt)
-        if result.rowcount == 0:
+        old_stage = (
+            await session.execute(select(Lead.estado).where(Lead.remote_jid == chat_id).with_for_update())
+        ).scalar_one_or_none()
+        if old_stage is None:
             return None
+        if old_stage != stage:
+            await session.execute(
+                update(Lead)
+                .where(Lead.remote_jid == chat_id)
+                .values(estado=stage, updated_at=datetime.now(timezone.utc))
+            )
+            await _record_activity(
+                session,
+                chat_id,
+                "stage_changed",
+                actor_type,
+                actor_user_id,
+                {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage},
+                {"stage": stage.value},
+                metadata,
+            )
         await session.commit()
 
     return await fetch_chat(chat_id)
@@ -313,6 +433,7 @@ async def create_lead(
     vendedor: str | None = None,
     origen: str | None = None,
     notas: str | None = None,
+    actor_user_id: int | None = None,
 ) -> dict:
     chat_id = _phone_to_jid(phone)
     stmt = insert(Lead).values(
@@ -327,6 +448,14 @@ async def create_lead(
     async with get_sessionmaker()() as session:
         try:
             await session.execute(stmt)
+            await _record_activity(
+                session,
+                chat_id,
+                "lead_created",
+                "user" if actor_user_id is not None else "system",
+                actor_user_id,
+                new_value={"name": name, "phone": phone},
+            )
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -335,15 +464,38 @@ async def create_lead(
     return await fetch_chat(chat_id)
 
 
-async def update_lead(chat_id: str, values: dict) -> dict | None:
+async def update_lead(
+    chat_id: str,
+    values: dict,
+    actor_type: str = "system",
+    actor_user_id: int | None = None,
+) -> dict | None:
     if not values:
         return await fetch_chat(chat_id)
 
-    stmt = update(Lead).where(Lead.remote_jid == chat_id).values(**values)
     async with get_sessionmaker()() as session:
-        result = await session.execute(stmt)
-        if result.rowcount == 0:
+        columns = [getattr(Lead, key) for key in values]
+        old_row = (
+            await session.execute(select(*columns).where(Lead.remote_jid == chat_id).with_for_update())
+        ).mappings().first()
+        if old_row is None:
             return None
+        changed = {key: value for key, value in values.items() if old_row[key] != value}
+        if changed:
+            await session.execute(
+                update(Lead)
+                .where(Lead.remote_jid == chat_id)
+                .values(**changed, updated_at=datetime.now(timezone.utc))
+            )
+            await _record_activity(
+                session,
+                chat_id,
+                "lead_updated",
+                actor_type,
+                actor_user_id,
+                {key: old_row[key] for key in changed},
+                changed,
+            )
         await session.commit()
 
     return await fetch_chat(chat_id)
@@ -549,6 +701,163 @@ async def fetch_messages(
         for r in rows
     ]
     return {"items": items, "has_more": has_more}
+
+
+async def list_tags(include_inactive: bool = False) -> list[dict]:
+    stmt = select(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active).order_by(LeadTag.name.asc())
+    if not include_inactive:
+        stmt = stmt.where(LeadTag.is_active == true())
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+async def create_tag(name: str, color: str, user_id: int) -> dict:
+    stmt = (
+        insert(LeadTag)
+        .values(
+            name=name,
+            color=color,
+            is_active=True,
+            created_by=user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        .returning(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active)
+    )
+    async with get_sessionmaker()() as session:
+        try:
+            row = (await session.execute(stmt)).mappings().one()
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise TagAlreadyExistsError(name)
+    return dict(row)
+
+
+async def update_tag(tag_id: int, values: dict) -> dict | None:
+    if not values:
+        stmt = select(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active).where(LeadTag.id == tag_id)
+        async with get_sessionmaker()() as session:
+            row = (await session.execute(stmt)).mappings().first()
+        return dict(row) if row else None
+    stmt = (
+        update(LeadTag)
+        .where(LeadTag.id == tag_id)
+        .values(**values)
+        .returning(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active)
+    )
+    async with get_sessionmaker()() as session:
+        try:
+            row = (await session.execute(stmt)).mappings().first()
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise TagAlreadyExistsError(values.get("name", ""))
+    return dict(row) if row else None
+
+
+async def assign_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
+    async with get_sessionmaker()() as session:
+        lead_exists = (await session.execute(select(Lead.remote_jid).where(Lead.remote_jid == chat_id))).first()
+        tag = (
+            await session.execute(
+                select(LeadTag.id, LeadTag.name, LeadTag.color).where(
+                    LeadTag.id == tag_id, LeadTag.is_active == true()
+                )
+            )
+        ).mappings().first()
+        if lead_exists is None or tag is None:
+            return False
+        existing = (
+            await session.execute(
+                select(LeadTagAssignment.tag_id).where(
+                    LeadTagAssignment.lead_id == chat_id,
+                    LeadTagAssignment.tag_id == tag_id,
+                )
+            )
+        ).first()
+        if existing is None:
+            await session.execute(
+                insert(LeadTagAssignment).values(
+                    lead_id=chat_id,
+                    tag_id=tag_id,
+                    assigned_by=user_id,
+                    assigned_at=datetime.now(timezone.utc),
+                )
+            )
+            await _record_activity(
+                session,
+                chat_id,
+                "tag_added",
+                "user",
+                user_id,
+                new_value={"tag": _tag_dict(tag)},
+            )
+            await session.commit()
+        return True
+
+
+async def remove_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
+    async with get_sessionmaker()() as session:
+        tag = (
+            await session.execute(
+                select(LeadTag.id, LeadTag.name, LeadTag.color)
+                .join(LeadTagAssignment, LeadTagAssignment.tag_id == LeadTag.id)
+                .where(LeadTagAssignment.lead_id == chat_id, LeadTag.id == tag_id)
+            )
+        ).mappings().first()
+        if tag is None:
+            return False
+        await session.execute(
+            delete(LeadTagAssignment).where(
+                LeadTagAssignment.lead_id == chat_id,
+                LeadTagAssignment.tag_id == tag_id,
+            )
+        )
+        await _record_activity(
+            session,
+            chat_id,
+            "tag_removed",
+            "user",
+            user_id,
+            old_value={"tag": _tag_dict(tag)},
+        )
+        await session.commit()
+        return True
+
+
+async def list_lead_activity(chat_id: str, limit: int = 50) -> list[dict]:
+    stmt = (
+        select(
+            LeadActivity.id,
+            LeadActivity.event_type,
+            LeadActivity.actor_type,
+            User.name.label("actor_name"),
+            LeadActivity.old_value,
+            LeadActivity.new_value,
+            LeadActivity.metadata_,
+            LeadActivity.created_at,
+        )
+        .outerjoin(User, User.id == LeadActivity.actor_user_id)
+        .where(LeadActivity.lead_id == chat_id)
+        .order_by(LeadActivity.created_at.desc(), LeadActivity.id.desc())
+        .limit(limit)
+    )
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [
+        {
+            "id": row["id"],
+            "event_type": row["event_type"],
+            "actor_type": row["actor_type"],
+            "actor_name": row["actor_name"],
+            "old_value": row["old_value"],
+            "new_value": row["new_value"],
+            "metadata": row["metadata_"],
+            "created_at": _fmt_ts(row["created_at"]),
+        }
+        for row in rows
+    ]
 
 
 def _row_to_user(user: User) -> dict:

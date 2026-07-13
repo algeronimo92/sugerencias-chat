@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 LeadStage = Literal[
@@ -30,6 +30,35 @@ class Chat(BaseModel):
     last_message_sender: str | None = None
     timestamp: str | None = None
     unread_count: int = 0
+    tags: list["Tag"] = Field(default_factory=list)
+
+
+class Tag(BaseModel):
+    id: int
+    name: str
+    color: str
+
+
+class TagCreate(BaseModel):
+    name: str
+    color: str = "#16a34a"
+
+
+class TagUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    is_active: bool | None = None
+
+
+class LeadActivityItem(BaseModel):
+    id: int
+    event_type: str
+    actor_type: str
+    actor_name: str | None = None
+    old_value: dict | None = None
+    new_value: dict | None = None
+    metadata: dict | None = None
+    created_at: str
 
 
 class ChatPage(BaseModel):
