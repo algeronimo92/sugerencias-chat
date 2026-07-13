@@ -1,18 +1,38 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Message } from '../types'
 
-async function fetchMessages(chatId: string): Promise<Message[]> {
-  const { data } = await client.get<Message[]>(`/api/chats/${encodeURIComponent(chatId)}/messages`)
+interface MessagePage {
+  items: Message[]
+  has_more: boolean
+}
+
+type MessageCursor = { cursorTs: string; cursorId: number } | null
+
+async function fetchMessages(chatId: string, cursor: MessageCursor): Promise<MessagePage> {
+  const params: Record<string, string | number> = {}
+  if (cursor) {
+    params.cursor_ts = cursor.cursorTs
+    params.cursor_id = cursor.cursorId
+  }
+  const { data } = await client.get<MessagePage>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { params })
   return data
 }
 
 export function useMessages(chatId: string | null) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['messages', chatId],
-    queryFn: () => fetchMessages(chatId as string),
+    queryFn: ({ pageParam }) => fetchMessages(chatId as string, pageParam),
     enabled: !!chatId,
+    initialPageParam: null as MessageCursor,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.has_more || lastPage.items.length === 0) return undefined
+      const oldest = lastPage.items[0]
+      if (!oldest.sent_at) return undefined
+      return { cursorTs: oldest.sent_at, cursorId: oldest.id }
+    },
     staleTime: 15_000,
+    retry: false,
   })
 }
 

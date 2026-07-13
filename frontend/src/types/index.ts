@@ -1,3 +1,18 @@
+export const LEAD_STAGES = [
+  'nuevo',
+  'calificacion',
+  'cotizacion',
+  'objecion',
+  'cierre',
+  'agendado',
+  'postventa',
+  'sin_respuesta',
+  'reactivacion',
+  'perdido',
+] as const
+
+export type LeadStage = (typeof LEAD_STAGES)[number]
+
 export interface Chat {
   chat_id: string
   phone: string | null
@@ -6,9 +21,11 @@ export interface Chat {
   vendedor: string | null
   origen: string | null
   notas: string | null
+  stage: LeadStage
   last_message: string | null
   last_message_sender: string | null
   timestamp: string | null
+  unread_count: number
 }
 
 export interface LeadInput {
@@ -29,12 +46,16 @@ export interface LeadUpdateInput {
   notas?: string | null
 }
 
+export type MessageStatus = 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null
+
 export interface Message {
   id: number
   sender: string
   content: string | null
   sent_at: string | null
   media_url: string | null
+  wa_message_id: string | null
+  status: MessageStatus
 }
 
 export interface Sugerencia {
@@ -47,7 +68,7 @@ export interface Sugerencia {
 }
 
 export interface SuggestionResponse {
-  estado: string
+  estado: LeadStage
   tipo_objecion: string | null
   confianza: string
   analisis: string

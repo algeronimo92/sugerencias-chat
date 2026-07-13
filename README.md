@@ -40,3 +40,28 @@ docker compose up -d --build
 ```
 
 Usa `docker-compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`).
+
+### Mensajes leídos de WhatsApp (n8n + Evolution API)
+
+Cuando n8n inserta un mensaje entrante en `wsp_messages`, también debe guardar
+el ID de WhatsApp en `wa_message_id`. Para el payload actual de n8n, el mapeo es:
+
+```text
+wa_message_id = {{ $json.instance.message_id }}
+```
+
+Si el nodo todavía conserva el payload original de Evolution API, el mismo dato
+suele estar en `key.id`; se debe usar el campo que contenga ese ID en el punto
+exacto donde se ejecuta el `INSERT`. No se debe usar el ID interno/autonumérico
+de `wsp_messages`.
+
+Al abrir un chat, el frontend llama `POST /api/chats/{remoteJid}/read`. El backend
+busca los `wa_message_id` pendientes del cliente y envía a Evolution API:
+
+```text
+POST {EVOLUTION_API_URL}/chat/markMessageAsRead/{EVOLUTION_INSTANCE}
+```
+
+Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
+como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
+después de agregar el mapeo al nodo de inserción de n8n.

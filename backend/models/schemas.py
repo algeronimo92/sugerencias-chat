@@ -1,4 +1,20 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+LeadStage = Literal[
+    "nuevo",
+    "calificacion",
+    "cotizacion",
+    "objecion",
+    "cierre",
+    "agendado",
+    "postventa",
+    "sin_respuesta",
+    "reactivacion",
+    "perdido",
+]
 
 
 class Chat(BaseModel):
@@ -9,14 +25,25 @@ class Chat(BaseModel):
     vendedor: str | None = None
     origen: str | None = None
     notas: str | None = None
+    stage: LeadStage = "nuevo"
     last_message: str | None = None
     last_message_sender: str | None = None
     timestamp: str | None = None
+    unread_count: int = 0
 
 
 class ChatPage(BaseModel):
     items: list[Chat]
     has_more: bool
+
+
+class KanbanPage(BaseModel):
+    items: list[Chat]
+    has_more: bool
+
+
+class LeadStageUpdate(BaseModel):
+    stage: LeadStage
 
 
 class Message(BaseModel):
@@ -25,6 +52,18 @@ class Message(BaseModel):
     content: str | None = None
     sent_at: str | None = None
     media_url: str | None = None
+    wa_message_id: str | None = None
+    status: str | None = None
+
+
+class MessagePage(BaseModel):
+    items: list[Message]
+    has_more: bool
+
+
+class MessageStatusUpdate(BaseModel):
+    wa_message_id: str
+    status: str
 
 
 class SendMessageRequest(BaseModel):
@@ -84,7 +123,10 @@ class Sugerencia(BaseModel):
 
 
 class SuggestionResponse(BaseModel):
-    estado: str
+    # Debe coincidir con el enum `lead_estado` y con el Structured Output
+    # Parser del agente n8n. Pydantic rechaza cualquier etapa inventada antes
+    # de que llegue a PostgreSQL.
+    estado: LeadStage
     tipo_objecion: str | None = None
     confianza: str
     analisis: str

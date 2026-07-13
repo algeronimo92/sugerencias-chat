@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
+import { Bell, BellOff, Columns3, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
 import type { Chat, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
+import { KanbanBoard } from './components/KanbanBoard'
 import { LoginPage } from './components/LoginPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
 import { useLogout, useMe } from './hooks/useAuth'
-import { useChats, useChatUpdates, useInfiniteChats } from './hooks/useChats'
+import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
+import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
 import { queryClient } from './queryClient'
@@ -19,19 +21,25 @@ function MainLayout() {
   const { mutate: logout } = useLogout()
   const { chatId } = useParams<{ chatId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isKanban = location.pathname === '/kanban'
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const { data: unreadCount = 0 } = useUnreadCount()
+  const { permission: notificationPermission, requestPermission: requestNotificationPermission, notify } =
+    useNotifications(unreadCount)
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread'>('all')
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(timeout)
   }, [search])
 
-  useChatUpdates()
+  useChatUpdates(chatId ?? null, notify)
 
   const {
     data,
@@ -42,7 +50,7 @@ function MainLayout() {
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
-  } = useInfiniteChats(debouncedSearch)
+  } = useInfiniteChats(debouncedSearch, chatFilter === 'unread')
   const chats = data?.pages.flatMap((page) => page.items) ?? []
 
   function handleLoadMore() {
@@ -87,6 +95,27 @@ function MainLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chat_id])
 
+  const { mutate: markChatRead } = useMarkChatRead()
+
+  // Marca el chat como visto solo cuando realmente está visible. Si queda
+  // seleccionado mientras la ventana está en segundo plano, sus mensajes
+  // siguen pendientes hasta que el usuario regrese.
+  useEffect(() => {
+    function markVisibleChatRead() {
+      if (chatId && !document.hidden && document.hasFocus()) markChatRead(chatId)
+    }
+
+    markVisibleChatRead()
+    window.addEventListener('focus', markVisibleChatRead)
+    document.addEventListener('visibilitychange', markVisibleChatRead)
+    return () => {
+      window.removeEventListener('focus', markVisibleChatRead)
+      document.removeEventListener('visibilitychange', markVisibleChatRead)
+    }
+    // selectedChat.timestamp cambia si llega un mensaje al chat abierto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, selectedChat?.timestamp])
+
   function handleSelectChat(chat: Chat) {
     navigate(`/chat/${chat.chat_id}`)
   }
@@ -108,14 +137,43 @@ function MainLayout() {
   }, [selectedChat?.chat_id])
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-100 dark:bg-gray-950">
+    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-hidden bg-gray-100 dark:bg-gray-950">
       {/* Barra superior */}
-      <div className="h-12 shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-2">
+      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-900">
         <div className="w-6 h-6 rounded-md bg-green-600 flex items-center justify-center">
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">DermicaPro</span>
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">- Panel de leads</span>
+        <nav className="ml-3 flex items-center rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Vista principal">
+          <button
+            onClick={() => navigate('/')}
+            className={`relative flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              !isKanban
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            <MessagesSquare className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Chats</span>
+            {unreadCount > 0 && (
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-green-600 px-1 text-[10px] font-semibold leading-4 text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => navigate('/kanban')}
+            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              isKanban
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            <Columns3 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Kanban</span>
+          </button>
+        </nav>
         <span className="flex-1" />
         {me && (
           <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
@@ -130,6 +188,35 @@ function MainLayout() {
             className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
             <SettingsIcon className="w-4 h-4" />
+          </button>
+        )}
+        {notificationPermission !== 'unsupported' && (
+          <button
+            onClick={notificationPermission === 'default' ? requestNotificationPermission : undefined}
+            disabled={notificationPermission !== 'default'}
+            aria-label={
+              notificationPermission === 'granted'
+                ? 'Notificaciones activadas'
+                : notificationPermission === 'denied'
+                  ? 'Notificaciones bloqueadas por el navegador'
+                  : 'Activar notificaciones de mensajes nuevos'
+            }
+            title={
+              notificationPermission === 'granted'
+                ? 'Notificaciones activadas'
+                : notificationPermission === 'denied'
+                  ? 'Bloqueadas — habilitalas desde la configuración del navegador'
+                  : 'Activar notificaciones de mensajes nuevos'
+            }
+            className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+              notificationPermission === 'granted'
+                ? 'text-green-600 dark:text-green-500'
+                : notificationPermission === 'denied'
+                  ? 'text-gray-300 dark:text-gray-700 cursor-not-allowed'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            {notificationPermission === 'denied' ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
           </button>
         )}
         <button
@@ -151,6 +238,9 @@ function MainLayout() {
 
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
 
+      {isKanban ? (
+        <KanbanBoard onOpenChat={handleSelectChat} />
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Panel izquierdo — Lista de chats */}
         <div className="w-80 shrink-0 h-full overflow-hidden">
@@ -160,6 +250,9 @@ function MainLayout() {
             error={!!error}
             search={search}
             onSearchChange={setSearch}
+            filter={chatFilter}
+            onFilterChange={setChatFilter}
+            unreadCount={unreadCount}
             onRefresh={refetch}
             selectedId={selectedChat?.chat_id ?? null}
             onSelect={handleSelectChat}
@@ -202,6 +295,7 @@ function MainLayout() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -226,6 +320,7 @@ function AuthGate() {
       <Routes>
         <Route path="/" element={<MainLayout />} />
         <Route path="/chat/:chatId" element={<MainLayout />} />
+        <Route path="/kanban" element={<MainLayout />} />
       </Routes>
     </BrowserRouter>
   )

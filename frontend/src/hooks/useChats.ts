@@ -1,7 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import type { Chat, LeadInput, LeadUpdateInput } from '../types'
+import { parseContent } from '../utils/message'
 
 interface ChatsPage {
   items: Chat[]
@@ -11,9 +13,10 @@ interface ChatsPage {
 /** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend). */
 type PageParam = { cursorTs: string | null; cursorId: string } | null
 
-async function fetchChatsPage(search: string, pageParam: PageParam): Promise<ChatsPage> {
+async function fetchChatsPage(search: string, pageParam: PageParam, unreadOnly = false): Promise<ChatsPage> {
   const params: Record<string, string> = {}
   if (search) params.search = search
+  if (unreadOnly) params.unread_only = 'true'
   if (pageParam) {
     params.cursor_id = pageParam.cursorId
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
@@ -29,9 +32,34 @@ function chatsSocketUrl(): string {
 
 const RECONNECT_DELAY_MS = 3_000
 
-/** Escucha el websocket del backend y refresca chats/mensajes en cuanto hay novedades. Llamar una sola vez. */
-export function useChatUpdates() {
+interface LatestMessage {
+  message_id: string
+  chat_id: string
+  sender: string
+  content: string | null
+  name: string | null
+}
+
+type NotifyFn = (title: string, body: string, onClick: () => void) => void
+
+/** Escucha el websocket del backend y refresca chats/mensajes en cuanto hay
+ * novedades. También dispara una notificación cuando el mensaje nuevo es de
+ * un cliente y la aplicación está en segundo plano. Llamar una sola vez.
+ * `activeChatId` se mantiene como parámetro por compatibilidad con las vistas;
+ * useNotifications determina si la aplicación está realmente visible.
+ * `notify` se recibe por parámetro (en vez de llamar a useNotifications acá
+ * adentro) para que el estado de permiso de notificaciones quede en una
+ * única instancia, compartida con el botón del header que lo controla. */
+export function useChatUpdates(activeChatId: string | null = null, notify: NotifyFn = () => {}) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const lastNotifiedMessageIdRef = useRef<string | null>(null)
+
+  // El socket se conecta una sola vez (no queremos reconectar cada vez que
+  // cambia el chat abierto o el permiso de notificaciones).
+  void activeChatId
+  const notifyRef = useRef(notify)
+  notifyRef.current = notify
 
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -46,8 +74,25 @@ export function useChatUpdates() {
           const payload = JSON.parse(event.data)
           if (payload.type === 'chats_updated') {
             queryClient.invalidateQueries({ queryKey: ['chats'] })
+            queryClient.invalidateQueries({ queryKey: ['kanban'] })
+            queryClient.invalidateQueries({ queryKey: ['unread-count'] })
             // También refresca el hilo de mensajes abierto, si lo hay
             queryClient.invalidateQueries({ queryKey: ['messages'] })
+
+            const latest = payload.latest_message as LatestMessage | undefined
+            if (
+              latest &&
+              latest.sender === 'cliente' &&
+              latest.message_id !== lastNotifiedMessageIdRef.current
+            ) {
+              // El webhook de n8n y el watcher de respaldo pueden anunciar el
+              // mismo insert. Se deduplica para no incrementar dos veces el badge.
+              lastNotifiedMessageIdRef.current = latest.message_id
+              const preview = parseContent(latest.content)
+              notifyRef.current(latest.name || 'Nuevo mensaje', preview.text || preview.label || 'Mensaje nuevo', () => {
+                navigate(`/chat/${latest.chat_id}`)
+              })
+            }
           }
         } catch {
           // Ignora payloads que no sean JSON válido
@@ -68,7 +113,7 @@ export function useChatUpdates() {
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
       socket?.close()
     }
-  }, [queryClient])
+  }, [queryClient, navigate])
 }
 
 /** Resuelve un único chat (por id vía el parámetro search) fuera de la lista paginada. */
@@ -83,11 +128,20 @@ export function useChats(search: string = '', options?: { enabled?: boolean }) {
   })
 }
 
+export function useUnreadCount() {
+  return useQuery({
+    queryKey: ['unread-count'],
+    queryFn: async () => (await client.get<{ count: number }>('/api/chats/unread-count')).data.count,
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+  })
+}
+
 /** Lista de leads con scroll infinito, paginada por cursor. */
-export function useInfiniteChats(search: string = '') {
+export function useInfiniteChats(search: string = '', unreadOnly = false) {
   return useInfiniteQuery({
-    queryKey: ['chats', 'list', search],
-    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam),
+    queryKey: ['chats', 'list', search, unreadOnly],
+    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, unreadOnly),
     initialPageParam: null as PageParam,
     getNextPageParam: (lastPage) => {
       if (!lastPage.has_more || lastPage.items.length === 0) return undefined
@@ -115,6 +169,7 @@ export function useCreateLead() {
     mutationFn: createLead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
     },
   })
 }
@@ -130,6 +185,22 @@ export function useUpdateLead(chatId: string) {
     mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+}
+
+async function markChatRead(chatId: string): Promise<void> {
+  await client.post(`/api/chats/${encodeURIComponent(chatId)}/read`)
+}
+
+/** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo. */
+export function useMarkChatRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: markChatRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
     },
   })
 }
