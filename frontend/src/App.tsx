@@ -44,11 +44,15 @@ function MainLayout() {
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [chatFilter, setChatFilter] = useState<'all' | 'unread'>('all')
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'mine'>('all')
   const [advancedFilters, setAdvancedFilters] = useState<ChatFilters>(EMPTY_CHAT_FILTERS)
   const effectiveFilters: ChatFilters = {
     ...advancedFilters,
     unreadOnly: chatFilter === 'unread',
+    // "Mis leads" pisa el filtro de vendedor de los avanzados mientras está
+    // activo — no tiene sentido combinarlos, y así al desactivarlo se
+    // vuelve solo al filtro avanzado que el usuario haya dejado cargado.
+    seller: chatFilter === 'mine' ? (me?.name ?? '') : advancedFilters.seller,
   }
 
   useEffect(() => {

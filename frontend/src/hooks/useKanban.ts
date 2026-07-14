@@ -64,3 +64,57 @@ export function useMoveLeadStage() {
     },
   })
 }
+
+export interface BulkActionResult {
+  succeeded: string[]
+  failed: string[]
+}
+
+/** Dispara un request por lead en paralelo en vez de pedir un endpoint de
+ * bulk al backend — no hay volumen para justificarlo (selecciones de a
+ * decenas, no miles) y así se reusan los mismos endpoints de a uno que ya
+ * están probados. Promise.allSettled para que un 404 suelto (un lead
+ * borrado mientras tanto) no tire abajo el resto de la selección. */
+async function runBulk(chatIds: string[], run: (chatId: string) => Promise<unknown>): Promise<BulkActionResult> {
+  const results = await Promise.allSettled(chatIds.map(run))
+  const succeeded: string[] = []
+  const failed: string[] = []
+  results.forEach((result, i) => (result.status === 'fulfilled' ? succeeded : failed).push(chatIds[i]))
+  return { succeeded, failed }
+}
+
+interface BulkMoveStageInput {
+  chatIds: string[]
+  stage: LeadStage
+}
+
+export function useBulkMoveStage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ chatIds, stage }: BulkMoveStageInput) =>
+      runBulk(chatIds, (chatId) => client.patch(`/api/chats/${encodeURIComponent(chatId)}/stage`, { stage })),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kanban'] })
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+    },
+  })
+}
+
+interface BulkAssignTagInput {
+  chatIds: string[]
+  tagId: number
+}
+
+export function useBulkAssignTag() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ chatIds, tagId }: BulkAssignTagInput) =>
+      runBulk(chatIds, (chatId) => client.post(`/api/chats/${encodeURIComponent(chatId)}/tags/${tagId}`)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['kanban'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+    },
+  })
+}

@@ -85,7 +85,17 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
 
       {me?.role === 'admin' && (
         <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 dark:border-gray-700">
-          <input type="color" value={newColor} onChange={(event) => setNewColor(event.target.value)} className="h-7 w-8 cursor-pointer rounded border-0 bg-transparent" aria-label="Color" />
+          <input
+            type="color"
+            value={newColor}
+            onChange={(event) => setNewColor(event.target.value)}
+            // El border-radius del <input> no alcanza al swatch de color nativo
+            // (vive en un pseudo-elemento propio del navegador), así que hay
+            // que redondear ::-webkit-color-swatch (Chrome/Edge) y
+            // ::-moz-color-swatch (Firefox) por separado.
+            className="h-7 w-8 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0"
+            aria-label="Color"
+          />
           <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nueva etiqueta" className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200" />
           <button type="submit" disabled={!newName.trim() || isCreating} className="rounded-md border border-gray-200 px-2 py-1.5 text-xs text-gray-500 hover:text-green-600 disabled:opacity-40 dark:border-gray-700">
             {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Crear'}

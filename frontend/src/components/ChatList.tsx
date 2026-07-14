@@ -14,8 +14,8 @@ interface Props {
   error: boolean
   search: string
   onSearchChange: (value: string) => void
-  filter: 'all' | 'unread'
-  onFilterChange: (value: 'all' | 'unread') => void
+  filter: 'all' | 'unread' | 'mine'
+  onFilterChange: (value: 'all' | 'unread' | 'mine') => void
   unreadCount: number
   advancedFilters: ChatFilters
   onAdvancedFiltersChange: (value: ChatFilters) => void
@@ -295,6 +295,18 @@ export function ChatList({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => onFilterChange('mine')}
+            aria-pressed={filter === 'mine'}
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === 'mine'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Mis leads
+          </button>
         </div>
         <button
           type="button"
@@ -422,7 +434,11 @@ export function ChatList({
         )}
         {!isLoading && chats.length === 0 && !error && (
           <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-            {filter === 'unread' && !search ? 'No hay chats sin leer.' : 'Sin resultados.'}
+            {filter === 'unread' && !search
+              ? 'No hay chats sin leer.'
+              : filter === 'mine' && !search
+                ? 'No tenés leads asignados.'
+                : 'Sin resultados.'}
           </p>
         )}
         {!isLoading && chats.length > 0 && (
