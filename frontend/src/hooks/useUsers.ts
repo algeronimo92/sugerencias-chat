@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
-import type { AppUser, UserRole } from '../types'
+import type { AppUser, SellerOption, UserRole } from '../types'
+
+export function useSellers() {
+  return useQuery({
+    queryKey: ['sellers'],
+    queryFn: async () => (await client.get<SellerOption[]>('/api/chats/sellers')).data,
+    staleTime: 60_000,
+  })
+}
 
 async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<AppUser[]>('/api/users')

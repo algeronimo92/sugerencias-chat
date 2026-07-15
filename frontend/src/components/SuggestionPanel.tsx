@@ -5,6 +5,7 @@ import { LeadStatus } from './LeadStatus'
 import { SuggestionCard } from './SuggestionCard'
 import { LeadActivityPanel } from './LeadActivityPanel'
 import { LeadTagsPanel } from './LeadTagsPanel'
+import { LeadTaskCard } from './LeadTaskCard'
 
 interface Props {
   chat: Chat
@@ -28,6 +29,7 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Datos del lead (siempre visibles desde la DB) */}
         <LeadInfo chat={chat} />
+        <LeadTaskCard chat={chat} />
         <LeadTagsPanel chat={chat} />
         <LeadActivityPanel chatId={chat.chat_id} />
 

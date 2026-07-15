@@ -4,6 +4,7 @@ import { AlertCircle, Loader2, RefreshCw, Search, SlidersHorizontal, UserPlus, X
 import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
 import { useCreateLead } from '../hooks/useChats'
 import { useTags } from '../hooks/useLeadMeta'
+import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
@@ -90,12 +91,13 @@ export function ChatList({
   const scrollRef = useRef<HTMLDivElement>(null)
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead()
   const { data: tags = [] } = useTags()
+  const { data: sellers = [] } = useSellers()
 
   const activeAdvancedFilterCount =
     advancedFilters.stages.length +
     advancedFilters.tagIds.length +
     Number(!!advancedFilters.service) +
-    Number(!!advancedFilters.seller) +
+    Number(!!advancedFilters.sellerId) +
     Number(!!advancedFilters.origin) +
     Number(!!advancedFilters.lastSender) +
     Number(!!advancedFilters.inactiveDays)
@@ -121,7 +123,7 @@ export function ChatList({
       tagIds: [],
       tagMode: 'any',
       service: '',
-      seller: '',
+      sellerId: null,
       origin: '',
       lastSender: '',
       inactiveDays: null,
@@ -135,7 +137,7 @@ export function ChatList({
         phone: values.phone ?? '',
         name: values.name ?? '',
         servicio_interes: values.servicio_interes,
-        vendedor: values.vendedor,
+        vendedor_id: values.vendedor_id,
         origen: values.origen,
         notas: values.notas,
       },
@@ -389,7 +391,6 @@ export function ChatList({
             <div className="grid grid-cols-2 gap-2">
               {([
                 ['service', 'Servicio'],
-                ['seller', 'Vendedor'],
                 ['origin', 'Origen'],
               ] as const).map(([key, label]) => (
                 <input
@@ -400,6 +401,14 @@ export function ChatList({
                   className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                 />
               ))}
+              <select
+                value={advancedFilters.sellerId ?? ''}
+                onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, sellerId: event.target.value ? Number(event.target.value) : null })}
+                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <option value="">Cualquier vendedor</option>
+                {sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
+              </select>
               <select
                 value={advancedFilters.lastSender}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, lastSender: event.target.value as ChatFilters['lastSender'] })}

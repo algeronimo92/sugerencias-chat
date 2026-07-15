@@ -31,6 +31,9 @@ class Lead(Base):
     telefono: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str | None] = mapped_column(Text)
     servicio_interes: Mapped[str | None] = mapped_column(Text)
+    vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Columna histórica conservada temporalmente para integraciones antiguas.
+    # La fuente de verdad dentro del CRM es vendedor_id.
     vendedor: Mapped[str | None] = mapped_column(Text)
     origen: Mapped[str | None] = mapped_column(Text)
     notas: Mapped[str | None] = mapped_column(Text)
@@ -53,6 +56,8 @@ class Lead(Base):
     # services/db_service.py:get_cached_suggestion.
     cached_suggestion: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cached_suggestion_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_leads_vendedor_id", vendedor_id),)
 
 
 class WspMessage(Base):
@@ -160,3 +165,108 @@ class LeadActivity(Base):
         Index("idx_lead_activity_lead_created", lead_id, created_at.desc()),
         Index("idx_lead_activity_actor_user", actor_user_id),
     )
+
+
+class LeadTask(Base):
+    __tablename__ = "lead_tasks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    task_type: Mapped[str] = mapped_column(Text, default="seguimiento")
+    status: Mapped[str] = mapped_column(Text, default="pending")
+    priority: Mapped[str] = mapped_column(Text, default="normal")
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assigned_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_lead_tasks_assignee_status_due", assigned_user_id, status, due_at),
+        Index("idx_lead_tasks_lead_status_due", lead_id, status, due_at),
+    )
+
+
+class MessageTemplate(Base):
+    __tablename__ = "message_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    shortcut: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text, default="general")
+    stage: Mapped[str | None] = mapped_column(Text)
+    task_type: Mapped[str | None] = mapped_column(Text)
+    service: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    visibility: Mapped[str] = mapped_column(Text, default="global", server_default="global")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_message_templates_active_category", is_active, category),
+        Index(
+            "uq_templates_global_shortcut_lower",
+            func.lower(shortcut),
+            unique=True,
+            postgresql_where=(visibility == "global") & shortcut.is_not(None),
+        ),
+        Index(
+            "uq_templates_personal_shortcut_owner",
+            created_by_user_id,
+            func.lower(shortcut),
+            unique=True,
+            postgresql_where=(visibility == "personal") & shortcut.is_not(None),
+        ),
+    )
+
+
+class TemplateUserState(Base):
+    __tablename__ = "template_user_state"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("message_templates.id", ondelete="CASCADE"), primary_key=True)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (Index("idx_template_user_state_recent", user_id, last_used_at.desc()),)
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    media_url: Mapped[str] = mapped_column(Text, unique=True)
+    content_type: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_media_assets_created_at", created_at.desc()),
+        Index("idx_media_assets_content_type", content_type),
+    )
+
+
+class TemplateAttachment(Base):
+    __tablename__ = "template_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("message_templates.id", ondelete="CASCADE"))
+    media_url: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(Text)
+    library_asset_id: Mapped[int | None] = mapped_column(ForeignKey("media_assets.id", ondelete="RESTRICT"))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_template_attachments_template_position", template_id, position),)

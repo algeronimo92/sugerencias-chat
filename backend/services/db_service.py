@@ -48,6 +48,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "phone": row["phone"],
         "name": row["name"],
         "servicio_interes": row["servicio_interes"],
+        "vendedor_id": row["vendedor_id"],
         "vendedor": row["vendedor"],
         "origen": row["origen"],
         "notas": row["notas"],
@@ -150,19 +151,24 @@ def _chat_search_condition(last_message, search: str):
         Lead.telefono.ilike(pattern),
         Lead.nombre.ilike(pattern),
         Lead.servicio_interes.ilike(pattern),
-        Lead.vendedor.ilike(pattern),
+        func.coalesce(
+            select(User.name).where(User.id == Lead.vendedor_id).scalar_subquery(),
+            Lead.vendedor,
+        ).ilike(pattern),
         Lead.origen.ilike(pattern),
         last_message.c.content.ilike(pattern),
     )
 
 
 def _chat_columns(last_message):
+    seller_name = select(User.name).where(User.id == Lead.vendedor_id).scalar_subquery()
     return (
         Lead.remote_jid.label("chat_id"),
         Lead.telefono.label("phone"),
         Lead.nombre.label("name"),
         Lead.servicio_interes,
-        Lead.vendedor,
+        Lead.vendedor_id,
+        func.coalesce(seller_name, Lead.vendedor).label("vendedor"),
         Lead.origen,
         Lead.notas,
         Lead.estado.label("stage"),
@@ -204,7 +210,7 @@ async def fetch_chats(
     tag_ids: list[int] | None = None,
     tag_mode: str = "any",
     service: str | None = None,
-    seller: str | None = None,
+    seller_id: int | None = None,
     origin: str | None = None,
     last_sender: str | None = None,
     inactive_days: int | None = None,
@@ -229,8 +235,8 @@ async def fetch_chats(
         stmt = stmt.where(and_(*tag_conditions) if tag_mode == "all" else or_(*tag_conditions))
     if service:
         stmt = stmt.where(Lead.servicio_interes.ilike(f"%{service}%"))
-    if seller:
-        stmt = stmt.where(Lead.vendedor.ilike(f"%{seller}%"))
+    if seller_id is not None:
+        stmt = stmt.where(Lead.vendedor_id == seller_id)
     if origin:
         stmt = stmt.where(Lead.origen.ilike(f"%{origin}%"))
     if last_sender in ("cliente", "vendedor"):
@@ -430,18 +436,26 @@ async def create_lead(
     phone: str,
     name: str,
     servicio_interes: str | None = None,
-    vendedor: str | None = None,
+    vendedor_id: int | None = None,
     origen: str | None = None,
     notas: str | None = None,
     actor_user_id: int | None = None,
 ) -> dict:
     chat_id = _phone_to_jid(phone)
+    seller_name = None
+    if vendedor_id is not None:
+        async with get_sessionmaker()() as lookup_session:
+            seller = await lookup_session.get(User, vendedor_id)
+            if seller is None or not seller.is_active:
+                raise ValueError("Vendedor no encontrado o inactivo")
+            seller_name = seller.name
     stmt = insert(Lead).values(
         remote_jid=chat_id,
         telefono=phone,
         nombre=name,
         servicio_interes=servicio_interes,
-        vendedor=vendedor,
+        vendedor_id=vendedor_id,
+        vendedor=seller_name,
         origen=origen,
         notas=notas,
     )
@@ -474,6 +488,16 @@ async def update_lead(
         return await fetch_chat(chat_id)
 
     async with get_sessionmaker()() as session:
+        if "vendedor_id" in values:
+            seller_id = values["vendedor_id"]
+            if seller_id is None:
+                values["vendedor"] = None
+            else:
+                seller = await session.get(User, seller_id)
+                if seller is None or not seller.is_active:
+                    raise ValueError("Vendedor no encontrado o inactivo")
+                # Espejo de compatibilidad; vendedor_id sigue siendo la fuente real.
+                values["vendedor"] = seller.name
         columns = [getattr(Lead, key) for key in values]
         old_row = (
             await session.execute(select(*columns).where(Lead.remote_jid == chat_id).with_for_update())
@@ -886,6 +910,13 @@ async def list_users() -> list[dict]:
     async with get_sessionmaker()() as session:
         users = (await session.execute(stmt)).scalars().all()
     return [_row_to_user(u) for u in users]
+
+
+async def list_active_sellers() -> list[dict]:
+    stmt = select(User.id, User.name, User.role).where(User.is_active == true()).order_by(User.name.asc())
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
 
 
 async def create_user(email: str, name: str, password_hash: str, role: str) -> dict:

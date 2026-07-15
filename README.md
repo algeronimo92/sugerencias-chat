@@ -86,3 +86,55 @@ backend/migrations/001_lead_tags_activity.sql
 
 Las tablas `lead_tags`, `lead_tag_assignments` y `lead_activity` tienen RLS
 habilitado y se consumen exclusivamente a través del backend autenticado.
+
+### Seguimientos, tareas y plantillas
+
+Cada lead puede tener varias tareas pendientes; el panel derecho muestra como
+"Próxima acción" la que vence primero. La vista `Tareas` agrupa las acciones
+vencidas, de hoy y próximas. Los administradores gestionan plantillas y los
+vendedores las insertan, con variables resueltas, desde el compositor del chat.
+
+El backend crea las tablas al iniciar. Para una aplicación explícita está
+disponible `backend/migrations/002_tasks_templates.sql`.
+
+### Asignación estructurada de vendedores
+
+Los leads se asignan mediante `vendedor_id`, relacionado con `users.id`; los
+formularios y filtros utilizan usuarios activos en lugar de nombres libres.
+Al iniciar se vinculan automáticamente los valores históricos de `vendedor`
+que coincidan de forma única con el nombre de un usuario. La migración manual
+equivalente está en `backend/migrations/004_structured_seller.sql`.
+
+### Dashboard CRM
+
+Los administradores disponen de un dashboard para periodos de 7, 30 o 90
+días con leads nuevos, pendientes de respuesta, tareas vencidas/completadas,
+tiempo medio de respuesta y distribuciones por etapa, origen, servicio y
+vendedor. Los datos se actualizan por WebSocket y mediante refresco periódico.
+
+### Respuestas rápidas personales
+
+Además de los atajos `/`, cada usuario puede marcar plantillas favoritas,
+consultar las usadas recientemente, reutilizar sus últimos mensajes enviados y
+guardar un mensaje como plantilla personal. Los favoritos y el historial de
+uso son independientes por usuario; las plantillas personales no son visibles
+para el resto del equipo. La migración explícita está en
+`backend/migrations/005_quick_replies.sql`.
+
+Las plantillas globales también pueden incluir hasta diez imágenes, videos,
+audios o documentos de 25 MB cada uno. El chat presenta una vista previa y
+solicita confirmación antes de enviar el texto y los archivos en secuencia por
+Evolution API. La migración explícita está en
+`backend/migrations/006_template_attachments.sql`.
+
+### Biblioteca central de archivos
+
+La vista administrativa `Archivos` centraliza imágenes, videos, audios y
+documentos reutilizables. Admite búsqueda, filtros, vista previa y carga
+múltiple mediante selector o drag-and-drop. Al cargar un adjunto desde una
+plantilla también se incorpora automáticamente a la biblioteca. Desde el
+editor puede elegirse un archivo existente sin crear otra copia física.
+
+Los archivos vinculados a plantillas no pueden eliminarse hasta retirar esas
+referencias. Los adjuntos históricos se registran automáticamente al iniciar;
+la migración equivalente está en `backend/migrations/007_media_library.sql`.

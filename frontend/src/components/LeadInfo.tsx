@@ -72,7 +72,7 @@ export function LeadInfo({ chat }: Props) {
             phone: chat.phone,
             name: chat.name,
             servicio_interes: chat.servicio_interes,
-            vendedor: chat.vendedor,
+            vendedor_id: chat.vendedor_id,
             origen: chat.origen,
             notas: chat.notas,
           }}

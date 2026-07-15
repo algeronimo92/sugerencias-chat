@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 export type NotificationPermissionState = 'default' | 'granted' | 'denied' | 'unsupported'
+export interface NotificationOptions { force?: boolean; tag?: string }
 
 const BASE_TITLE = document.title
 
@@ -28,17 +29,17 @@ export function useNotifications(unreadCount: number) {
   }, [])
 
   const notify = useCallback(
-    (title: string, body: string, onClick: () => void) => {
+    (title: string, body: string, onClick: () => void, options?: NotificationOptions) => {
       // El aviso de escritorio solo hace falta fuera de foco. El contador del
       // título es independiente y permanece sincronizado con la DB.
       const isBackground = document.hidden || !document.hasFocus()
-      if (!isBackground) return
+      if (!isBackground && !options?.force) return
 
       if (permission !== 'granted') return
 
       // tag fijo: si llegan varias seguidas, la última reemplaza a la
       // anterior en vez de apilar notificaciones.
-      const n = new Notification(title, { body, icon: '/favicon.svg', tag: 'wsp-nuevo-mensaje' })
+      const n = new Notification(title, { body, icon: '/favicon.svg', tag: options?.tag ?? 'wsp-nuevo-mensaje' })
       n.onclick = () => {
         window.focus()
         onClick()

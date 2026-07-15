@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Bell, BellOff, Columns3, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
+import { BarChart3, Bell, BellOff, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
 import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
@@ -9,6 +9,10 @@ import { KanbanBoard } from './components/KanbanBoard'
 import { LoginPage } from './components/LoginPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
+import { TasksPage } from './components/TasksPage'
+import { TemplatesPage } from './components/TemplatesPage'
+import { DashboardPage } from './components/DashboardPage'
+import { MediaLibraryPage } from './components/MediaLibraryPage'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
@@ -22,7 +26,7 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
   tagIds: [],
   tagMode: 'any',
   service: '',
-  seller: '',
+  sellerId: null,
   origin: '',
   lastSender: '',
   inactiveDays: null,
@@ -35,6 +39,11 @@ function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const isKanban = location.pathname === '/kanban'
+  const isTasks = location.pathname === '/tasks'
+  const isTemplates = location.pathname === '/templates'
+  const isMediaLibrary = location.pathname === '/media-library'
+  const isDashboard = location.pathname === '/dashboard'
+  const isChats = location.pathname === '/' || location.pathname.startsWith('/chat/')
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -52,7 +61,7 @@ function MainLayout() {
     // "Mis leads" pisa el filtro de vendedor de los avanzados mientras está
     // activo — no tiene sentido combinarlos, y así al desactivarlo se
     // vuelve solo al filtro avanzado que el usuario haya dejado cargado.
-    seller: chatFilter === 'mine' ? (me?.name ?? '') : advancedFilters.seller,
+    sellerId: chatFilter === 'mine' ? (me?.id ?? null) : advancedFilters.sellerId,
   }
 
   useEffect(() => {
@@ -165,12 +174,12 @@ function MainLayout() {
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">DermicaPro</span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">- Panel de leads</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">CRM</span>
         <nav className="ml-3 flex items-center rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Vista principal">
           <button
             onClick={() => navigate('/')}
             className={`relative flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              !isKanban
+              isChats
                 ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
                 : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
             }`}
@@ -194,6 +203,56 @@ function MainLayout() {
             <Columns3 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Kanban</span>
           </button>
+          <button
+            onClick={() => navigate('/tasks')}
+            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              isTasks
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Tareas</span>
+          </button>
+          {me?.role === 'admin' && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                isDashboard
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Dashboard</span>
+            </button>
+          )}
+          {me?.role === 'admin' && (
+            <button
+              onClick={() => navigate('/templates')}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                isTemplates
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Plantillas</span>
+            </button>
+          )}
+          {me?.role === 'admin' && (
+            <button
+              onClick={() => navigate('/media-library')}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                isMediaLibrary
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">Archivos</span>
+            </button>
+          )}
         </nav>
         <span className="flex-1" />
         {me && (
@@ -259,7 +318,22 @@ function MainLayout() {
 
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
 
-      {isKanban ? (
+      {isTasks ? (
+        <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
+      ) : isDashboard && me?.role === 'admin' ? (
+        <DashboardPage
+          onOpenTasks={() => navigate('/tasks')}
+          onFilterChats={(filters) => {
+            setChatFilter('all')
+            setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
+            navigate('/')
+          }}
+        />
+      ) : isTemplates && me?.role === 'admin' ? (
+        <TemplatesPage />
+      ) : isMediaLibrary && me?.role === 'admin' ? (
+        <MediaLibraryPage />
+      ) : isKanban ? (
         <KanbanBoard onOpenChat={handleSelectChat} />
       ) : (
       <div className="flex flex-1 overflow-hidden">
@@ -344,6 +418,10 @@ function AuthGate() {
         <Route path="/" element={<MainLayout />} />
         <Route path="/chat/:chatId" element={<MainLayout />} />
         <Route path="/kanban" element={<MainLayout />} />
+        <Route path="/tasks" element={<MainLayout />} />
+        <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

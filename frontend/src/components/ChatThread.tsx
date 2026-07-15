@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, CheckCheck, FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { BookmarkPlus, Check, CheckCheck, FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
 import type { Chat, MessageStatus } from '../types'
+import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
+import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
+import { formatDayLabel, formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
+import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { MapPreview } from './MapPreview'
 import { MediaLightbox } from './MediaLightbox'
 import { VoiceRecorder } from './VoiceRecorder'
+import { TemplatePicker } from './TemplatePicker'
+import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
+import { TemplateSendDialog } from './TemplateSendDialog'
 
 const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
 const MEDIA_ACCEPT = 'image/*,video/*'
@@ -112,6 +118,23 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   // orden de páginas, pero se conserva el orden ascendente dentro de cada
   // página, para renderizar el historial de viejo a nuevo.
   const messages = [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items)
+  // Algunos mensajes (ej. audios recién enviados) todavía no tienen sent_at
+  // confirmado. Si se comparara solo contra el vecino inmediato, un mensaje
+  // sin fecha "cortaría" el grupo del día y el siguiente mensaje dispararía
+  // un separador de fecha espurio aunque siga siendo el mismo día; por eso
+  // se compara contra el último día CON fecha confirmada, no contra el
+  // mensaje anterior a secas.
+  const dateSeparators = useMemo(() => {
+    const separators = new Map<number, boolean>()
+    let lastDay: string | null = null
+    for (const m of messages) {
+      if (!m.sent_at) continue
+      const day = new Date(m.sent_at).toDateString()
+      separators.set(m.id, day !== lastDay)
+      lastDay = day
+    }
+    return separators
+  }, [messages])
   const pageCount = messagePages?.pages.length ?? 0
   const lastMessageId = messages.at(-1)?.id ?? null
   const threadRef = useRef<HTMLDivElement>(null)
@@ -122,8 +145,13 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const latestMessageIdRef = useRef<number | null>(null)
   const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
+  const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
+  const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
 
   const [draft, setDraft] = useState('')
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [slashDismissed, setSlashDismissed] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
@@ -136,6 +164,48 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
   const { mutate: sendMedia, isPending: isSendingMedia } = useSendMedia(chat.chat_id)
   const { mutate: sendLocation, isPending: isSendingLocation } = useSendLocation(chat.chat_id)
+  const { data: templates = [] } = useTemplates()
+  const recordTemplateUse = useRecordTemplateUse()
+  const sentMessageHistory = useMemo(() => {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const message of [...messages].reverse()) {
+      if (message.sender !== 'vendedor') continue
+      const parsed = parseContent(message.content)
+      if (parsed.kind !== 'text' || !parsed.text.trim() || seen.has(parsed.text.trim())) continue
+      seen.add(parsed.text.trim()); result.push(parsed.text.trim())
+      if (result.length === 10) break
+    }
+    return result
+  }, [messages])
+
+  // Mientras el draft es exactamente "/" + texto sin espacios, se interpreta
+  // como un atajo de plantilla en progreso (como en Slack/WhatsApp Business).
+  // Un espacio o texto adicional lo convierte en mensaje normal.
+  const slashQuery = useMemo(() => {
+    if (slashDismissed) return null
+    const match = /^\/(\S*)$/.exec(draft)
+    return match ? match[1] : null
+  }, [draft, slashDismissed])
+
+  const slashSuggestions = useMemo(() => {
+    if (slashQuery === null) return []
+    const query = slashQuery.toLowerCase()
+    return templates
+      .filter((t) => t.shortcut?.toLowerCase().startsWith(query))
+      .sort((a, b) => Number(b.stage === chat.stage) - Number(a.stage === chat.stage))
+      .slice(0, 6)
+  }, [templates, slashQuery, chat.stage])
+
+  const activeSlashIndex = Math.min(slashIndex, Math.max(slashSuggestions.length - 1, 0))
+
+  function selectSlashTemplate(template: (typeof slashSuggestions)[number]) {
+    if (template.attachments.length) setMultimediaTemplate(template)
+    else { setDraft(renderTemplate(template, chat)); recordTemplateUse.mutate(template.id) }
+    setSlashIndex(0)
+    setSlashDismissed(true)
+    textareaRef.current?.focus()
+  }
 
   // Cada chat empieza mostrando sus mensajes más recientes.
   useEffect(() => {
@@ -187,6 +257,8 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     setMediaError(null)
     setLocationError(null)
     setPendingLocation(null)
+    setSlashIndex(0)
+    setSlashDismissed(false)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -266,6 +338,28 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashIndex((i) => (i + 1) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashDismissed(true)
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault()
+        selectSlashTemplate(slashSuggestions[activeSlashIndex])
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend(e)
@@ -376,8 +470,17 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           // con nuestro caption de abajo.
           const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
           const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
+          const showDateSeparator = dateSeparators.get(m.id) ?? false
           return (
-            <div key={m.id} className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`}>
+            <Fragment key={m.id}>
+              {showDateSeparator && (
+                <div className="flex justify-center py-1">
+                  <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                    {formatDayLabel(m.sent_at as string)}
+                  </span>
+                </div>
+              )}
+              <div className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm border ${
                   isVendedor
@@ -507,11 +610,22 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                   </p>
                 )}
                 <div className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                  {isVendedor && kind === 'text' && text.trim() && (
+                    <button
+                      type="button"
+                      title="Guardar como plantilla personal"
+                      onClick={() => setTemplateContentToSave(text.trim())}
+                      className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-green-600 hover:opacity-100"
+                    >
+                      <BookmarkPlus className="h-3 w-3" />
+                    </button>
+                  )}
                   <span>{formatMessageTime(m.sent_at)}</span>
                   {isVendedor && <MessageStatusTicks status={m.status} />}
                 </div>
               </div>
             </div>
+            </Fragment>
           )
         })}
         <div ref={bottomRef} />
@@ -543,14 +657,53 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           )}
 
           {!isRecordingAudio && (
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Escribí un mensaje..."
-              rows={1}
-              className="flex-1 resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
+            <TemplatePicker
+              chat={chat}
+              sentMessages={sentMessageHistory}
+              onSaveHistory={setTemplateContentToSave}
+              onSendMultimedia={setMultimediaTemplate}
+              onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
             />
+          )}
+
+          {!isRecordingAudio && (
+            <div className="relative flex-1">
+              {slashSuggestions.length > 0 && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-gray-200 bg-white p-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                  {slashSuggestions.map((template, i) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => selectSlashTemplate(template)}
+                      onMouseEnter={() => setSlashIndex(i)}
+                      className={`block w-full rounded-lg px-3 py-2 text-left ${
+                        i === activeSlashIndex ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">/{template.shortcut}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{renderTemplate(template, chat)}</p>
+                    </button>
+                  ))}
+                  <p className="border-t border-gray-100 px-3 pt-1.5 text-[10px] text-gray-400 dark:border-gray-700">
+                    ↑↓ para navegar · Enter para insertar · Esc para cerrar
+                  </p>
+                </div>
+              )}
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  setSlashIndex(0)
+                  setSlashDismissed(false)
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Escribí un mensaje... (/ para usar una plantilla)"
+                rows={1}
+                className="w-full resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
+              />
+            </div>
           )}
 
           {draft.trim() && !isRecordingAudio ? (
@@ -590,6 +743,14 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           onConfirm={handleConfirmLocation}
           onCancel={() => setPendingLocation(null)}
         />
+      )}
+
+      {templateContentToSave && (
+        <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
+      )}
+
+      {multimediaTemplate && (
+        <TemplateSendDialog chat={chat} template={multimediaTemplate} onClose={() => setMultimediaTemplate(null)} />
       )}
     </div>
   )

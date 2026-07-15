@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import type { LeadUpdateInput } from '../types'
+import { useMe } from '../hooks/useAuth'
+import { useSellers } from '../hooks/useUsers'
 
 interface Props {
   title: string
@@ -36,9 +38,15 @@ export function LeadFormDialog({
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [name, setName] = useState(initial?.name ?? '')
   const [servicioInteres, setServicioInteres] = useState(initial?.servicio_interes ?? '')
-  const [vendedor, setVendedor] = useState(initial?.vendedor ?? '')
+  const [vendedorId, setVendedorId] = useState<number | null>(initial?.vendedor_id ?? null)
   const [origen, setOrigen] = useState(initial?.origen ?? '')
   const [notas, setNotas] = useState(initial?.notas ?? '')
+  const { data: me } = useMe()
+  const { data: sellers = [] } = useSellers()
+  const canEditSeller = me?.role === 'admin' || !!requirePhoneAndName || initial?.vendedor_id == null
+  const visibleSellers = me?.role === 'admin' || !canEditSeller
+    ? sellers
+    : sellers.filter((seller) => seller.id === me?.id)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -50,11 +58,12 @@ export function LeadFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const sellerChanged = vendedorId !== (initial?.vendedor_id ?? null)
     onSubmit({
       phone: requirePhoneAndName ? phone.trim() : emptyToNull(phone),
       name: requirePhoneAndName ? name.trim() : emptyToNull(name),
       servicio_interes: emptyToNull(servicioInteres),
-      vendedor: emptyToNull(vendedor),
+      ...(canEditSeller && (requirePhoneAndName || sellerChanged) ? { vendedor_id: vendedorId } : {}),
       origen: emptyToNull(origen),
       notas: emptyToNull(notas),
     })
@@ -122,7 +131,18 @@ export function LeadFormDialog({
 
           <div>
             <label className={LABEL_CLASS}>Vendedor</label>
-            <input type="text" value={vendedor} onChange={(e) => setVendedor(e.target.value)} className={FIELD_CLASS} />
+            <select
+              value={vendedorId ?? ''}
+              onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : null)}
+              disabled={!canEditSeller}
+              className={FIELD_CLASS}
+            >
+              <option value="">Sin asignar</option>
+              {visibleSellers.map((seller) => (
+                <option key={seller.id} value={seller.id}>{seller.name}</option>
+              ))}
+            </select>
+            {!canEditSeller && <p className="mt-1 text-[11px] text-gray-400">Solo un administrador puede reasignar este lead.</p>}
           </div>
 
           <div>

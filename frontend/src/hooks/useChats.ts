@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import type { Chat, ChatFilters, LeadInput, LeadUpdateInput } from '../types'
+import type { NotificationOptions } from './useNotifications'
 import { parseContent } from '../utils/message'
 
 interface ChatsPage {
@@ -21,7 +22,7 @@ async function fetchChatsPage(search: string, pageParam: PageParam, filters?: Ch
   if (filters?.tagIds.length) params.tag_ids = filters.tagIds.join(',')
   if (filters?.tagIds.length) params.tag_mode = filters.tagMode
   if (filters?.service.trim()) params.service = filters.service.trim()
-  if (filters?.seller.trim()) params.seller = filters.seller.trim()
+  if (filters?.sellerId) params.seller_id = String(filters.sellerId)
   if (filters?.origin.trim()) params.origin = filters.origin.trim()
   if (filters?.lastSender) params.last_sender = filters.lastSender
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
@@ -48,7 +49,7 @@ interface LatestMessage {
   name: string | null
 }
 
-type NotifyFn = (title: string, body: string, onClick: () => void) => void
+type NotifyFn = (title: string, body: string, onClick: () => void, options?: NotificationOptions) => void
 
 /** Escucha el websocket del backend y refresca chats/mensajes en cuanto hay
  * novedades. También dispara una notificación cuando el mensaje nuevo es de
@@ -80,7 +81,28 @@ export function useChatUpdates(activeChatId: string | null = null, notify: Notif
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data)
+          if (payload.type === 'tasks_updated') {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+          }
+          if (payload.type === 'templates_updated') {
+            queryClient.invalidateQueries({ queryKey: ['templates'] })
+          }
+          if (payload.type === 'media_library_updated') {
+            queryClient.invalidateQueries({ queryKey: ['media-library'] })
+          }
+          if (payload.type === 'task_reminder') {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            const task = payload.task as { task_id: number; lead_id: string; lead_name: string | null; title: string }
+            notifyRef.current(
+              `Recordatorio: ${task.lead_name || 'Lead'}`,
+              task.title,
+              () => navigate(`/chat/${task.lead_id}`),
+              { force: true, tag: `task-reminder-${task.task_id}` }
+            )
+          }
           if (payload.type === 'chats_updated') {
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
             queryClient.invalidateQueries({ queryKey: ['chats'] })
             queryClient.invalidateQueries({ queryKey: ['kanban'] })
             queryClient.invalidateQueries({ queryKey: ['unread-count'] })

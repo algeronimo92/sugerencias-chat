@@ -99,6 +99,18 @@ export function useSendMedia(chatId: string) {
   })
 }
 
+export function useSendTemplate(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ templateId, text }: { templateId: number; text: string }) =>
+      (await client.post<Message[]>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
+    },
+  })
+}
+
 interface LocationPayload {
   latitude: number
   longitude: number

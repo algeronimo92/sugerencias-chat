@@ -29,11 +29,40 @@ ALLOWED_DOCUMENT_TYPES = (
     "application/zip",
 )
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+SAFE_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".mov",
+    ".mp3", ".wav", ".ogg", ".m4a", ".pdf", ".doc", ".docx", ".xls",
+    ".xlsx", ".ppt", ".pptx", ".txt", ".zip",
+}
+EXTENSION_CONTENT_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4",
+    ".webm": "video/webm", ".mov": "video/quicktime", ".mp3": "audio/mpeg",
+    ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+    ".pdf": "application/pdf", ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".txt": "text/plain", ".zip": "application/zip",
+}
 
 
 class MediaUpload(BaseModel):
     content_type: str
     data_base64: str
+
+
+def normalize_media_content_type(content_type: str, filename: str | None = None) -> str:
+    normalized = content_type.split(";", 1)[0].strip().lower()
+    if normalized.startswith(ALLOWED_CONTENT_PREFIXES) or normalized in ALLOWED_DOCUMENT_TYPES:
+        return normalized
+    if filename:
+        suffix = Path(filename).suffix.lower()
+        if suffix in EXTENSION_CONTENT_TYPES:
+            return EXTENSION_CONTENT_TYPES[suffix]
+    return normalized
 
 
 def save_media_file(content_type: str, data_base64: str, filename: str | None = None) -> str:
@@ -46,6 +75,7 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
     .xlsx, .pptx) y devuelve None — el archivo terminaba guardado sin
     extensión, y como esos formatos son en el fondo un ZIP, el navegador lo
     servía/interpretaba como tal en vez de como el documento real."""
+    content_type = normalize_media_content_type(content_type, filename)
     if not (content_type.startswith(ALLOWED_CONTENT_PREFIXES) or content_type in ALLOWED_DOCUMENT_TYPES):
         raise ValueError("Tipo de archivo no permitido")
 
@@ -59,7 +89,9 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
 
     ext = ""
     if filename and "." in filename:
-        ext = "." + filename.rsplit(".", 1)[-1].lower()
+        candidate = "." + filename.rsplit(".", 1)[-1].lower()
+        if candidate in SAFE_EXTENSIONS:
+            ext = candidate
     if not ext:
         ext = mimetypes.guess_extension(content_type) or ""
 

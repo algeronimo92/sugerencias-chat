@@ -25,7 +25,7 @@ export interface ChatFilters {
   tagIds: number[]
   tagMode: 'any' | 'all'
   service: string
-  seller: string
+  sellerId: number | null
   origin: string
   lastSender: '' | 'cliente' | 'vendedor'
   inactiveDays: number | null
@@ -47,6 +47,7 @@ export interface Chat {
   phone: string | null
   name: string | null
   servicio_interes: string | null
+  vendedor_id: number | null
   vendedor: string | null
   origen: string | null
   notas: string | null
@@ -62,7 +63,7 @@ export interface LeadInput {
   phone: string
   name: string
   servicio_interes?: string | null
-  vendedor?: string | null
+  vendedor_id?: number | null
   origen?: string | null
   notas?: string | null
 }
@@ -71,7 +72,7 @@ export interface LeadUpdateInput {
   phone?: string | null
   name?: string | null
   servicio_interes?: string | null
-  vendedor?: string | null
+  vendedor_id?: number | null
   origen?: string | null
   notas?: string | null
 }
@@ -130,4 +131,99 @@ export interface AppUser {
   name: string
   role: UserRole
   is_active: boolean
+}
+
+export interface SellerOption {
+  id: number
+  name: string
+  role: UserRole
+}
+
+export type TaskType = 'whatsapp' | 'llamada' | 'cotizacion' | 'cita' | 'seguimiento' | 'otro'
+export type TaskStatus = 'pending' | 'completed' | 'canceled'
+export type TaskPriority = 'low' | 'normal' | 'high'
+
+export interface LeadTask {
+  id: number
+  lead_id: string
+  lead_name: string | null
+  title: string
+  description: string | null
+  task_type: TaskType
+  status: TaskStatus
+  priority: TaskPriority
+  due_at: string
+  remind_at: string | null
+  assigned_user_id: number
+  assigned_user_name: string
+  is_overdue: boolean
+  created_at: string
+}
+
+export interface MessageTemplate {
+  id: number
+  name: string
+  content: string
+  shortcut: string | null
+  category: string
+  stage: LeadStage | null
+  task_type: TaskType | null
+  service: string | null
+  is_active: boolean
+  visibility: 'global' | 'personal'
+  is_favorite: boolean
+  last_used_at: string | null
+  use_count: number
+  attachments: TemplateAttachment[]
+}
+
+export interface TemplateAttachment {
+  id: number
+  media_url: string
+  content_type: string
+  filename: string
+  position: number
+  library_asset_id: number | null
+}
+
+export type MediaAssetKind = 'image' | 'video' | 'audio' | 'document'
+
+export interface MediaAsset {
+  id: number
+  media_url: string
+  content_type: string
+  filename: string
+  size_bytes: number
+  uploaded_by_user_id: number | null
+  uploaded_by_name: string | null
+  created_at: string
+  use_count: number
+}
+
+export interface DashboardMetricItem {
+  name: string
+  value: number
+}
+
+export interface DashboardPoint {
+  date: string
+  value: number
+}
+
+export interface DashboardMetrics {
+  period_days: number
+  summary: {
+    total_leads: number
+    new_leads: number
+    awaiting_reply: number
+    overdue_tasks: number
+    completed_tasks: number
+    avg_response_minutes: number | null
+  }
+  stages: DashboardMetricItem[]
+  origins: DashboardMetricItem[]
+  services: DashboardMetricItem[]
+  sellers: DashboardMetricItem[]
+  new_leads_trend: DashboardPoint[]
+  generated_at: string
 }

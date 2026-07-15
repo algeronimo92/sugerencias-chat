@@ -1,3 +1,4 @@
+import base64
 import logging
 from datetime import datetime
 
@@ -18,8 +19,10 @@ from models.schemas import (
     SendLocationRequest,
     SendMediaRequest,
     SendMessageRequest,
+    SendTemplateRequest,
+    SellerItem,
 )
-from routers.media import save_media_file
+from routers.media import MEDIA_DIR, save_media_file
 from services.db_service import (
     CHATS_PAGE_SIZE,
     KANBAN_PAGE_SIZE,
@@ -37,6 +40,7 @@ from services.db_service import (
     fetch_unread_wa_message_ids,
     insert_message,
     mark_chat_read,
+    list_active_sellers,
     remove_tag,
     update_lead,
     update_lead_stage,
@@ -51,6 +55,7 @@ from services.evolution_service import (
     send_whatsapp_text,
 )
 from services.ws_manager import manager
+from services.productivity_service import list_templates, record_template_use
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
@@ -61,7 +66,7 @@ _LEAD_FIELD_TO_COLUMN = {
     "phone": "telefono",
     "name": "nombre",
     "servicio_interes": "servicio_interes",
-    "vendedor": "vendedor",
+    "vendedor_id": "vendedor_id",
     "origen": "origen",
     "notas": "notas",
 }
@@ -97,7 +102,7 @@ async def get_chats(
     tag_ids: str | None = None,
     tag_mode: str = Query(default="any", pattern="^(any|all)$"),
     service: str | None = None,
-    seller: str | None = None,
+    seller_id: int | None = Query(default=None, ge=1),
     origin: str | None = None,
     last_sender: str | None = Query(default=None, pattern="^(cliente|vendedor)$"),
     inactive_days: int | None = Query(default=None, ge=1, le=3650),
@@ -115,7 +120,7 @@ async def get_chats(
             parsed_tag_ids,
             tag_mode,
             service,
-            seller,
+            seller_id,
             origin,
             last_sender,
             inactive_days,
@@ -171,18 +176,22 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
 
+    if user.role != "admin" and body.vendedor_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
     try:
         lead = await create_lead(
             phone=phone,
             name=name,
             servicio_interes=body.servicio_interes,
-            vendedor=body.vendedor,
+            vendedor_id=body.vendedor_id,
             origen=body.origen,
             notas=body.notas,
             actor_user_id=user.id,
         )
     except LeadAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
     await manager.broadcast({"type": "chats_updated"})
     return lead
@@ -190,15 +199,25 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
 
 @router.patch("/{chat_id}", response_model=Chat)
 async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_current_user)):
+    if "vendedor_id" in body.model_fields_set and user.role != "admin" and body.vendedor_id != user.id:
+        raise HTTPException(status_code=403, detail="Solo un administrador puede reasignar o quitar el vendedor")
     values = {
         _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
     }
-    lead = await update_lead(chat_id, values, "user", user.id)
+    try:
+        lead = await update_lead(chat_id, values, "user", user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
     await manager.broadcast({"type": "chats_updated"})
     return lead
+
+
+@router.get("/sellers", response_model=list[SellerItem])
+async def get_sellers():
+    return await list_active_sellers()
 
 
 @router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)
@@ -251,7 +270,7 @@ async def send_message(chat_id: str, body: SendMessageRequest):
         raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
 
     message = await insert_message(
-        chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(evolution_response)
+        chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(evolution_response), status="SERVER_ACK"
     )
     await manager.broadcast({"type": "chats_updated"})
     return message
@@ -279,6 +298,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
         content="<audio></audio>",
         media_url=media_url,
         wa_message_id=_wa_message_id(evolution_response),
+        status="SERVER_ACK",
     )
     await manager.broadcast({"type": "chats_updated"})
     return message
@@ -318,9 +338,56 @@ async def send_media(chat_id: str, body: SendMediaRequest):
         content=content,
         media_url=media_url,
         wa_message_id=_wa_message_id(evolution_response),
+        status="SERVER_ACK",
     )
     await manager.broadcast({"type": "chats_updated"})
     return message
+
+
+@router.post("/{chat_id}/templates/{template_id}", response_model=list[Message])
+async def send_template(
+    chat_id: str,
+    template_id: int,
+    body: SendTemplateRequest,
+    user: User = Depends(get_current_user),
+):
+    template = next((item for item in await list_templates(user.id) if item["id"] == template_id), None)
+    if template is None:
+        raise HTTPException(404, "Plantilla no encontrada")
+    text = body.text.strip() if body.text else ""
+    if not text and not template["attachments"]:
+        raise HTTPException(400, "La plantilla no tiene contenido para enviar")
+
+    sent: list[dict] = []
+    try:
+        if text:
+            response = await send_whatsapp_text(chat_id, text)
+            sent.append(await insert_message(
+                chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(response), status="SERVER_ACK"
+            ))
+        for attachment in template["attachments"]:
+            path = (MEDIA_DIR / attachment["media_url"].rsplit("/", 1)[-1]).resolve()
+            if path.parent != MEDIA_DIR.resolve() or not path.is_file():
+                raise EvolutionApiError(f"No se encontró el adjunto {attachment['filename']}")
+            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+            mediatype = _mediatype_from_content_type(attachment["content_type"])
+            response = await send_whatsapp_media(
+                chat_id, encoded, mediatype, filename=attachment["filename"]
+            )
+            tag = mediatype if mediatype in ("image", "video", "audio") else "other"
+            content = f"<{tag}>{attachment['filename'] if tag == 'other' else ''}</{tag}>"
+            sent.append(await insert_message(
+                chat_id, sender="vendedor", content=content, media_url=attachment["media_url"],
+                wa_message_id=_wa_message_id(response), status="SERVER_ACK",
+            ))
+    except (EvolutionApiError, httpx.HTTPError) as exc:
+        if sent:
+            await manager.broadcast({"type": "chats_updated"})
+        raise HTTPException(502, detail=f"Envío parcial: se enviaron {len(sent)} elementos. {exc}")
+
+    await record_template_use(template_id, user.id)
+    await manager.broadcast({"type": "chats_updated"})
+    return sent
 
 
 @router.post("/{chat_id}/location", response_model=Message)
@@ -334,7 +401,7 @@ async def send_location(chat_id: str, body: SendLocationRequest):
 
     content = f"<location>{body.latitude},{body.longitude}</location>"
     message = await insert_message(
-        chat_id, sender="vendedor", content=content, wa_message_id=_wa_message_id(evolution_response)
+        chat_id, sender="vendedor", content=content, wa_message_id=_wa_message_id(evolution_response), status="SERVER_ACK"
     )
     await manager.broadcast({"type": "chats_updated"})
     return message
