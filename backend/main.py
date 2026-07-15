@@ -8,13 +8,14 @@ from sqlalchemy import text
 from config import settings
 from db.models import Base
 from db.session import close_engine, get_engine
-from routers import auth, chats, dashboard, media, media_library, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks
+from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks
 from routers.media import MEDIA_DIR
 from services.auth_service import COOKIE_NAME, decode_access_token, get_current_user, hash_password, require_admin
 from services.chat_watcher import watch_chats
 from services.db_service import get_user_by_id, seed_admin_if_needed
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
+from services.automation_service import watch_automations
 
 
 @asynccontextmanager
@@ -28,6 +29,28 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("ALTER TABLE lead_tasks ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ"))
         await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS vendedor_id INTEGER"))
         await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'global'"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS template_type TEXT NOT NULL DEFAULT 'internal'"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS official_name TEXT"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS official_language TEXT"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS official_category TEXT"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS official_status TEXT"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS official_parameter_values JSONB NOT NULL DEFAULT '[]'::jsonb"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS interactive_type TEXT NOT NULL DEFAULT 'none'"))
+        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS interactive_config JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS builder_mode TEXT NOT NULL DEFAULT 'simple'"))
+        await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS flow_definition JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS published_flow_definition JSONB"))
+        await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS flow_version INTEGER NOT NULL DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE automation_executions ADD COLUMN IF NOT EXISTS flow_state JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)"))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_message_templates_type_status "
+            "ON message_templates(template_type, official_status, is_active)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_message_templates_interactive_type "
+            "ON message_templates(interactive_type, is_active)"
+        ))
         await conn.execute(text("ALTER TABLE message_templates DROP CONSTRAINT IF EXISTS message_templates_shortcut_key"))
         await conn.execute(text("DROP INDEX IF EXISTS uq_message_templates_shortcut_lower"))
         await conn.execute(text(
@@ -90,19 +113,39 @@ async def lifespan(app: FastAPI):
             "FROM media_assets ma WHERE ta.library_asset_id IS NULL "
             "AND ma.media_url = ta.media_url"
         ))
+        await conn.execute(text(
+            "ALTER TABLE lead_note_mentions "
+            "ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "INSERT INTO user_notifications "
+            "(user_id, notification_type, title, body, lead_id, source_id, metadata, read_at, created_at) "
+            "SELECT m.user_id, 'internal_note_mention', u.name || ' te mencionó en una nota', "
+            "n.content, n.lead_id, n.id::text, "
+            "jsonb_build_object('note_id', n.id, 'author_user_id', u.id, 'author_name', u.name), "
+            "m.read_at, m.created_at FROM lead_note_mentions m "
+            "JOIN lead_notes n ON n.id = m.note_id JOIN users u ON u.id = n.author_user_id "
+            "WHERE m.user_id <> n.author_user_id AND NOT EXISTS ("
+            "SELECT 1 FROM user_notifications un WHERE un.user_id = m.user_id "
+            "AND un.notification_type = 'internal_note_mention' AND un.source_id = n.id::text)"
+        ))
 
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
 
     watcher_task = asyncio.create_task(watch_chats())
     reminder_task = asyncio.create_task(watch_task_reminders())
+    automation_task = asyncio.create_task(watch_automations())
     yield
     watcher_task.cancel()
     reminder_task.cancel()
+    automation_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await watcher_task
     with contextlib.suppress(asyncio.CancelledError):
         await reminder_task
+    with contextlib.suppress(asyncio.CancelledError):
+        await automation_task
     await close_engine()
 
 
@@ -126,7 +169,10 @@ app.include_router(tags.router)
 app.include_router(tasks.router)
 app.include_router(templates.router)
 app.include_router(media_library.router)
+app.include_router(internal_notes.router)
+app.include_router(notifications.router)
 app.include_router(dashboard.router)
+app.include_router(automations.router)
 # webhooks y media.upload los llama n8n directamente (autenticados con su
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)
@@ -145,6 +191,7 @@ async def chats_websocket(websocket: WebSocket):
         return
 
     await manager.connect(websocket, user.id)
+    await websocket.send_json({"type": "notifications_updated"})
     try:
         while True:
             await websocket.receive_text()

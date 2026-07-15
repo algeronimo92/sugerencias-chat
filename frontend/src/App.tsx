@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BarChart3, Bell, BellOff, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
+import { BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
@@ -13,8 +13,11 @@ import { TasksPage } from './components/TasksPage'
 import { TemplatesPage } from './components/TemplatesPage'
 import { DashboardPage } from './components/DashboardPage'
 import { MediaLibraryPage } from './components/MediaLibraryPage'
+import { NotificationCenter } from './components/NotificationCenter'
+import { AutomationsPage } from './components/AutomationsPage'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
+import type { InternalMentionAlert } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
@@ -30,6 +33,7 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
   origin: '',
   lastSender: '',
   inactiveDays: null,
+  waitingTime: '',
 }
 
 function MainLayout() {
@@ -43,6 +47,7 @@ function MainLayout() {
   const isTemplates = location.pathname === '/templates'
   const isMediaLibrary = location.pathname === '/media-library'
   const isDashboard = location.pathname === '/dashboard'
+  const isAutomations = location.pathname === '/automations'
   const isChats = location.pathname === '/' || location.pathname.startsWith('/chat/')
 
   const { theme, toggleTheme } = useTheme()
@@ -50,6 +55,14 @@ function MainLayout() {
   const { data: unreadCount = 0 } = useUnreadCount()
   const { permission: notificationPermission, requestPermission: requestNotificationPermission, notify } =
     useNotifications(unreadCount)
+  const [internalMention, setInternalMention] = useState<InternalMentionAlert | null>(null)
+  const surfacedNotificationIdsRef = useRef(new Set<number>())
+
+  function showInternalMention(alert: InternalMentionAlert) {
+    if (surfacedNotificationIdsRef.current.has(alert.notificationId)) return
+    surfacedNotificationIdsRef.current.add(alert.notificationId)
+    setInternalMention(alert)
+  }
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -69,7 +82,13 @@ function MainLayout() {
     return () => clearTimeout(timeout)
   }, [search])
 
-  useChatUpdates(chatId ?? null, notify)
+  useChatUpdates(chatId ?? null, notify, showInternalMention)
+
+  useEffect(() => {
+    if (!internalMention) return
+    const timeout = window.setTimeout(() => setInternalMention(null), 8000)
+    return () => window.clearTimeout(timeout)
+  }, [internalMention])
 
   const {
     data,
@@ -229,6 +248,19 @@ function MainLayout() {
           )}
           {me?.role === 'admin' && (
             <button
+              onClick={() => navigate('/automations')}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                isAutomations
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              <Workflow className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">Automatizaciones</span>
+            </button>
+          )}
+          {me?.role === 'admin' && (
+            <button
               onClick={() => navigate('/templates')}
               className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 isTemplates
@@ -270,35 +302,11 @@ function MainLayout() {
             <SettingsIcon className="w-4 h-4" />
           </button>
         )}
-        {notificationPermission !== 'unsupported' && (
-          <button
-            onClick={notificationPermission === 'default' ? requestNotificationPermission : undefined}
-            disabled={notificationPermission !== 'default'}
-            aria-label={
-              notificationPermission === 'granted'
-                ? 'Notificaciones activadas'
-                : notificationPermission === 'denied'
-                  ? 'Notificaciones bloqueadas por el navegador'
-                  : 'Activar notificaciones de mensajes nuevos'
-            }
-            title={
-              notificationPermission === 'granted'
-                ? 'Notificaciones activadas'
-                : notificationPermission === 'denied'
-                  ? 'Bloqueadas — habilitalas desde la configuración del navegador'
-                  : 'Activar notificaciones de mensajes nuevos'
-            }
-            className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
-              notificationPermission === 'granted'
-                ? 'text-green-600 dark:text-green-500'
-                : notificationPermission === 'denied'
-                  ? 'text-gray-300 dark:text-gray-700 cursor-not-allowed'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            {notificationPermission === 'denied' ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-          </button>
-        )}
+        <NotificationCenter
+          browserPermission={notificationPermission}
+          onRequestBrowserPermission={requestNotificationPermission}
+          onNewNotification={showInternalMention}
+        />
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
@@ -318,6 +326,19 @@ function MainLayout() {
 
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
 
+      {internalMention && (
+        <div className="fixed right-4 top-16 z-[70] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 shadow-2xl dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"><MessageSquareLock className="h-4 w-4" /></span>
+            <button type="button" onClick={() => { navigate(`/chat/${internalMention.leadId}`); setInternalMention(null) }} className="min-w-0 flex-1 text-left">
+              <span className="block text-xs font-semibold">{internalMention.authorName} te mencionó</span>
+              <span className="mt-0.5 block line-clamp-2 text-xs text-amber-800/80 dark:text-amber-200/80">{internalMention.content}</span>
+            </button>
+            <button type="button" onClick={() => setInternalMention(null)} className="rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900"><X className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
+
       {isTasks ? (
         <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
       ) : isDashboard && me?.role === 'admin' ? (
@@ -331,6 +352,8 @@ function MainLayout() {
         />
       ) : isTemplates && me?.role === 'admin' ? (
         <TemplatesPage />
+      ) : isAutomations && me?.role === 'admin' ? (
+        <AutomationsPage />
       ) : isMediaLibrary && me?.role === 'admin' ? (
         <MediaLibraryPage />
       ) : isKanban ? (
@@ -422,6 +445,7 @@ function AuthGate() {
         <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

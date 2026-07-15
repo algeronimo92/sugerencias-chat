@@ -167,6 +167,55 @@ class LeadActivity(Base):
     )
 
 
+class LeadNote(Base):
+    __tablename__ = "lead_notes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_lead_notes_lead_created", lead_id, created_at, id),)
+
+
+class LeadNoteMention(Base):
+    __tablename__ = "lead_note_mentions"
+
+    note_id: Mapped[int] = mapped_column(
+        ForeignKey("lead_notes.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_lead_note_mentions_user", user_id, created_at.desc()),)
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    notification_type: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    source_id: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_user_notifications_user_created", user_id, created_at.desc()),
+        Index("idx_user_notifications_user_read", user_id, read_at),
+        Index("idx_user_notifications_lead", lead_id),
+    )
+
+
 class LeadTask(Base):
     __tablename__ = "lead_tasks"
 
@@ -206,12 +255,22 @@ class MessageTemplate(Base):
     service: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     visibility: Mapped[str] = mapped_column(Text, default="global", server_default="global")
+    template_type: Mapped[str] = mapped_column(Text, default="internal", server_default="internal")
+    official_name: Mapped[str | None] = mapped_column(Text)
+    official_language: Mapped[str | None] = mapped_column(Text)
+    official_category: Mapped[str | None] = mapped_column(Text)
+    official_status: Mapped[str | None] = mapped_column(Text)
+    official_parameter_values: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    interactive_type: Mapped[str] = mapped_column(Text, default="none", server_default="none")
+    interactive_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("idx_message_templates_active_category", is_active, category),
+        Index("idx_message_templates_type_status", template_type, official_status, is_active),
+        Index("idx_message_templates_interactive_type", interactive_type, is_active),
         Index(
             "uq_templates_global_shortcut_lower",
             func.lower(shortcut),
@@ -270,3 +329,54 @@ class TemplateAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("idx_template_attachments_template_position", template_id, position),)
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text)
+    trigger_type: Mapped[str] = mapped_column(Text)
+    trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    conditions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    actions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    builder_mode: Mapped[str] = mapped_column(Text, default="simple", server_default="simple")
+    flow_definition: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
+    flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    delay_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_automation_rules_trigger_active", trigger_type, is_active),
+        Index("idx_automation_rules_builder_mode", builder_mode, is_active),
+    )
+
+
+class AutomationExecution(Base):
+    __tablename__ = "automation_executions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"))
+    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    trigger_type: Mapped[str] = mapped_column(Text)
+    event_key: Mapped[str] = mapped_column(Text)
+    event_payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(Text, default="scheduled", server_default="scheduled")
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action_results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    flow_state: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),
+        Index("idx_automation_executions_due", status, scheduled_for),
+        Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),
+        Index("idx_automation_executions_lead_created", lead_id, created_at.desc()),
+    )

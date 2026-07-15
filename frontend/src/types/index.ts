@@ -29,6 +29,7 @@ export interface ChatFilters {
   origin: string
   lastSender: '' | 'cliente' | 'vendedor'
   inactiveDays: number | null
+  waitingTime: '' | 'any' | 'fresh' | 'warning' | 'urgent'
 }
 
 export interface LeadActivity {
@@ -40,6 +41,41 @@ export interface LeadActivity {
   new_value: Record<string, unknown> | null
   metadata: Record<string, unknown> | null
   created_at: string
+}
+
+export interface InternalNoteMention {
+  user_id: number
+  user_name: string
+}
+
+export interface InternalNote {
+  id: number
+  lead_id: string
+  author_user_id: number
+  author_name: string
+  content: string
+  created_at: string
+  updated_at: string
+  is_edited: boolean
+  mentions: InternalNoteMention[]
+}
+
+export interface UserNotification {
+  id: number
+  notification_type: string
+  title: string
+  body: string
+  lead_id: string | null
+  source_id: string | null
+  metadata: Record<string, unknown> | null
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationPage {
+  items: UserNotification[]
+  unread_count: number
+  has_more: boolean
 }
 
 export interface Chat {
@@ -55,6 +91,7 @@ export interface Chat {
   last_message: string | null
   last_message_sender: string | null
   timestamp: string | null
+  last_customer_message_at: string | null
   unread_count: number
   tags: Tag[]
 }
@@ -87,6 +124,13 @@ export interface Message {
   media_url: string | null
   wa_message_id: string | null
   status: MessageStatus
+}
+
+export interface CustomerServiceWindow {
+  is_open: boolean
+  last_customer_message_at: string | null
+  expires_at: string | null
+  seconds_remaining: number
 }
 
 export interface Sugerencia {
@@ -171,10 +215,53 @@ export interface MessageTemplate {
   service: string | null
   is_active: boolean
   visibility: 'global' | 'personal'
+  template_type: 'internal' | 'official'
+  official_name: string | null
+  official_language: string | null
+  official_category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | null
+  official_status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED' | null
+  official_parameter_values: string[]
+  interactive_type: 'none' | 'buttons' | 'list'
+  interactive_config: TemplateInteractiveConfig
   is_favorite: boolean
   last_used_at: string | null
   use_count: number
   attachments: TemplateAttachment[]
+}
+
+export interface TemplateInteractiveButton {
+  type: 'reply' | 'url' | 'call' | 'copy'
+  displayText: string
+  id?: string
+  url?: string
+  phoneNumber?: string
+  copyCode?: string
+}
+
+export interface TemplateInteractiveRow {
+  title: string
+  description: string
+  rowId: string
+}
+
+export interface TemplateInteractiveSection {
+  title: string
+  rows: TemplateInteractiveRow[]
+}
+
+export interface TemplateInteractiveConfig {
+  title?: string
+  footer?: string
+  buttons?: TemplateInteractiveButton[]
+  footerText?: string
+  buttonText?: string
+  sections?: TemplateInteractiveSection[]
+}
+
+export interface TemplateCapabilities {
+  integration: string | null
+  official_sending_supported: boolean
+  reason: string | null
 }
 
 export interface TemplateAttachment {
@@ -184,6 +271,130 @@ export interface TemplateAttachment {
   filename: string
   position: number
   library_asset_id: number | null
+}
+
+export type AutomationTrigger =
+  | 'lead_created'
+  | 'stage_changed'
+  | 'message_received'
+  | 'seller_response_overdue'
+  | 'customer_response_overdue'
+  | 'task_due'
+
+export type AutomationActionType =
+  | 'create_task'
+  | 'assign_seller'
+  | 'add_tag'
+  | 'remove_tag'
+  | 'change_stage'
+  | 'notify'
+  | 'send_template'
+
+export interface AutomationConditions {
+  stage?: LeadStage | null
+  origin_contains?: string | null
+  service_contains?: string | null
+  seller_id?: number | null
+  tag_id?: number | null
+  require_open_window?: boolean
+  business_hours_only?: boolean
+}
+
+export interface AutomationAction {
+  type: AutomationActionType
+  title?: string
+  description?: string | null
+  task_type?: TaskType
+  priority?: TaskPriority
+  due_minutes?: number
+  remind_minutes_before?: number
+  assigned_user_id?: number | null
+  user_id?: number | null
+  tag_id?: number
+  stage?: LeadStage
+  recipient?: 'seller' | 'specific'
+  body?: string
+  template_id?: number
+}
+
+export type AutomationFlowNodeType = 'trigger' | 'condition' | 'action' | 'wait' | 'end'
+export type AutomationFlowConditionType =
+  | 'stage_equals'
+  | 'origin_contains'
+  | 'service_contains'
+  | 'seller_equals'
+  | 'tag_present'
+  | 'whatsapp_window_open'
+  | 'business_hours'
+
+export interface AutomationFlowNode {
+  id: string
+  type: AutomationFlowNodeType
+  position: { x: number; y: number }
+  data: {
+    trigger_type?: AutomationTrigger
+    minutes?: number
+    condition_type?: AutomationFlowConditionType
+    value?: string | number | boolean | null
+    action?: AutomationAction
+    label?: string
+  }
+}
+
+export interface AutomationFlowEdge {
+  id: string
+  source: string
+  target: string
+  source_handle: 'next' | 'yes' | 'no'
+}
+
+export interface AutomationFlowDefinition {
+  nodes: AutomationFlowNode[]
+  edges: AutomationFlowEdge[]
+}
+
+export interface AutomationRule {
+  id: number
+  name: string
+  trigger_type: AutomationTrigger
+  trigger_config: { minutes?: number }
+  conditions: AutomationConditions
+  actions: AutomationAction[]
+  builder_mode: 'simple' | 'visual'
+  flow_definition: AutomationFlowDefinition | Record<string, never>
+  published_flow_definition: AutomationFlowDefinition | null
+  flow_version: number
+  delay_minutes: number
+  is_active: boolean
+  created_by_user_id: number
+  created_by_name: string
+  execution_count: number
+  last_execution_at: string | null
+  last_execution_status: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AutomationExecution {
+  id: number
+  rule_id: number
+  rule_name: string
+  lead_id: string | null
+  lead_name: string | null
+  trigger_type: AutomationTrigger
+  status: 'scheduled' | 'running' | 'completed' | 'failed' | 'skipped'
+  scheduled_for: string
+  started_at: string | null
+  finished_at: string | null
+  action_results: Array<Record<string, unknown>>
+  flow_state: {
+    current_node_id?: string | null
+    path?: string[]
+    flow_version?: number
+    definition?: AutomationFlowDefinition
+  }
+  error: string | null
+  created_at: string
 }
 
 export type MediaAssetKind = 'image' | 'video' | 'audio' | 'document'

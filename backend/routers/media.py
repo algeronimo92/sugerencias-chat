@@ -84,6 +84,8 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
     except Exception:
         raise ValueError("base64 inválido")
 
+    if not raw:
+        raise ValueError("El archivo está vacío")
     if len(raw) > MAX_BYTES:
         raise ValueError("Archivo demasiado grande")
 

@@ -71,6 +71,9 @@ después de agregar el mapeo al nodo de inserción de n8n.
 La lista de leads permite combinar búsqueda, no leídos, etapas, etiquetas
 (`cualquiera` o `todas`), servicio, vendedor, origen, último emisor e inactividad.
 Las consultas mantienen la paginación por cursor y aplican los filtros en PostgreSQL.
+También puede filtrarse por leads que esperan respuesta: todos, menos de 10
+minutos, entre 10 minutos y 1 hora, o más de 1 hora. Estos rangos usan los
+mismos umbrales y el mismo último mensaje que el indicador visual de la lista.
 
 Los administradores pueden crear etiquetas desde el panel derecho de un lead;
 todos los usuarios autenticados pueden asignarlas o quitarlas. Los cambios de
@@ -127,6 +130,12 @@ solicita confirmación antes de enviar el texto y los archivos en secuencia por
 Evolution API. La migración explícita está en
 `backend/migrations/006_template_attachments.sql`.
 
+La confirmación utiliza una vista previa completa en dos paneles: permite
+editar el texto ya personalizado, detecta variables `{{...}}` sin resolver,
+enumera el orden real de envío y simula las burbujas que recibirá el contacto.
+Las imágenes pueden ampliarse, los videos y audios reproducirse y los
+documentos abrirse antes de confirmar.
+
 ### Biblioteca central de archivos
 
 La vista administrativa `Archivos` centraliza imágenes, videos, audios y
@@ -138,3 +147,71 @@ editor puede elegirse un archivo existente sin crear otra copia física.
 Los archivos vinculados a plantillas no pueden eliminarse hasta retirar esas
 referencias. Los adjuntos históricos se registran automáticamente al iniciar;
 la migración equivalente está en `backend/migrations/007_media_library.sql`.
+
+### Notas internas y menciones
+
+Desde el compositor de cada conversación se puede cambiar de "Mensaje de
+WhatsApp" a "Nota interna". Estas notas aparecen en la línea de tiempo con un
+estilo diferenciado y nunca se envían por Evolution API. Al escribir `@` se
+muestran los usuarios activos del CRM para mencionarlos.
+
+Las menciones generan un aviso dentro del CRM y, cuando está permitido, una
+notificación del navegador. Permanecen pendientes si el usuario está
+desconectado y se vuelven a entregar al conectarse hasta que abra el lead. Solo
+el autor o un administrador pueden editar o eliminar una nota. Los cambios
+también quedan registrados en la actividad del lead. La migración explícita
+está en `backend/migrations/008_internal_notes_mentions.sql`.
+
+La campana del encabezado abre un historial persistente de menciones con
+contador de pendientes, filtros para ver todas o solo las no leídas, paginación
+y acciones para marcar una o todas. Abrir una notificación navega al lead; el
+historial se conserva aunque la nota original se elimine. También desde esta
+bandeja se activan los avisos opcionales del navegador. La tabla y el backfill
+de menciones existentes están en `backend/migrations/009_notification_history.sql`.
+
+### Ventana de atención de WhatsApp
+
+El CRM calcula la ventana de 24 horas exclusivamente desde el último mensaje
+entrante del cliente; los mensajes del vendedor no reinician el plazo. El
+encabezado del chat muestra una cuenta regresiva, cambia de color al acercarse
+el vencimiento y la lista de conversaciones identifica con un candado las
+ventanas cerradas.
+
+Cuando la ventana está cerrada se deshabilitan texto, audio, archivos,
+ubicación y plantillas internas. El backend repite esa validación en cada ruta
+de envío, por lo que el bloqueo no depende de la interfaz. Las notas internas
+continúan disponibles. Para contactar nuevamente al cliente se utiliza una
+plantilla oficial aprobada.
+
+### Plantillas internas y oficiales
+
+El editor distingue entre plantillas internas del CRM y plantillas oficiales
+de Meta. Las oficiales guardan el nombre exacto registrado en Meta, idioma,
+categoría, estado de aprobación y el mapeo de cada variable numérica (`{{1}}`,
+`{{2}}`, ...) hacia variables del CRM como `{{nombre}}` o `{{servicio}}`.
+
+Con la ventana cerrada, el selector del chat oculta respuestas internas y
+muestra únicamente plantillas oficiales con estado `APPROVED`. El cuerpo
+aprobado no puede editarse durante el envío; solo pueden ajustarse sus valores.
+El backend las envía mediante `message/sendTemplate` y vuelve a comprobar tipo,
+estado y cantidad de parámetros.
+
+Evolution API solo implementa ese envío para instancias con integración
+`WHATSAPP-BUSINESS` (Meta Cloud API). Si la instancia usa
+`WHATSAPP-BAILEYS`, el CRM conserva y administra las plantillas, pero muestra
+el motivo y bloquea el envío oficial. La migración correspondiente está en
+`backend/migrations/010_official_templates.sql`.
+
+### Botones y listas interactivas
+
+Las plantillas internas pueden enviarse como texto normal, mensaje con botones
+o mensaje de lista. Los botones admiten respuesta, URL, llamada o copia de
+código; los de respuesta se limitan a tres y no se mezclan con otros tipos.
+Las listas permiten varias secciones y hasta diez opciones con IDs únicos.
+
+El editor configura la estructura, la vista previa simula la tarjeta y el
+desplegable de WhatsApp, y el backend vuelve a validar los límites antes de
+usar `message/sendButtons` o `message/sendList` en Evolution API. Las variables
+del CRM también se resuelven en títulos, pies, botones, secciones y opciones.
+Estos mensajes requieren que la ventana de atención esté abierta. La migración
+correspondiente está en `backend/migrations/011_interactive_templates.sql`.

@@ -10,6 +10,7 @@ from db.session import get_sessionmaker
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
 MESSAGES_PAGE_SIZE = 50
+CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
 
 
 class LeadAlreadyExistsError(Exception):
@@ -56,6 +57,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "last_message": row["last_message"],
         "last_message_sender": row["last_message_sender"],
         "timestamp": _fmt_ts(row["timestamp"]),
+        "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
         "tags": tags or [],
     }
@@ -131,6 +133,15 @@ def _has_unread_messages_condition():
     )
 
 
+def _last_customer_message_at_subquery():
+    return (
+        select(func.max(WspMessage.sent_at))
+        .where(WspMessage.chat_id == Lead.remote_jid, WspMessage.sender == "cliente")
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+
+
 def _has_tag_condition(tag_id: int):
     return exists(
         select(LeadTagAssignment.tag_id)
@@ -175,6 +186,7 @@ def _chat_columns(last_message):
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
         last_message.c.sent_at.label("timestamp"),
+        _last_customer_message_at_subquery().label("last_customer_message_at"),
         _unread_count_subquery().label("unread_count"),
     )
 
@@ -214,6 +226,7 @@ async def fetch_chats(
     origin: str | None = None,
     last_sender: str | None = None,
     inactive_days: int | None = None,
+    waiting_time: str | None = None,
 ) -> dict:
     last_message = _last_message_subquery()
 
@@ -244,6 +257,20 @@ async def fetch_chats(
     if inactive_days is not None and inactive_days > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=inactive_days)
         stmt = stmt.where(or_(last_message.c.sent_at < cutoff, last_message.c.sent_at.is_(None)))
+    if waiting_time in ("any", "fresh", "warning", "urgent"):
+        now = datetime.now(timezone.utc)
+        warning_cutoff = now - timedelta(minutes=10)
+        urgent_cutoff = now - timedelta(hours=1)
+        stmt = stmt.where(last_message.c.sender == "cliente")
+        if waiting_time == "fresh":
+            stmt = stmt.where(last_message.c.sent_at > warning_cutoff)
+        elif waiting_time == "warning":
+            stmt = stmt.where(
+                last_message.c.sent_at <= warning_cutoff,
+                last_message.c.sent_at > urgent_cutoff,
+            )
+        elif waiting_time == "urgent":
+            stmt = stmt.where(last_message.c.sent_at <= urgent_cutoff)
 
     if cursor_id is not None:
         stmt = stmt.where(_cursor_condition(last_message, cursor_ts, cursor_id))
@@ -278,6 +305,28 @@ async def fetch_chat(chat_id: str) -> dict | None:
         tags_by_lead = await _tags_by_lead(session, [chat_id]) if row is not None else {}
 
     return _row_to_chat(row, tags_by_lead.get(chat_id)) if row is not None else None
+
+
+async def get_customer_service_window(chat_id: str) -> dict | None:
+    async with get_sessionmaker()() as session:
+        if await session.get(Lead, chat_id) is None:
+            return None
+        last_customer_message_at = await session.scalar(
+            select(func.max(WspMessage.sent_at)).where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.sender == "cliente",
+            )
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
+    seconds_remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
+    return {
+        "is_open": seconds_remaining > 0,
+        "last_customer_message_at": _fmt_ts(last_customer_message_at),
+        "expires_at": _fmt_ts(expires_at),
+        "seconds_remaining": seconds_remaining,
+    }
 
 
 async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:

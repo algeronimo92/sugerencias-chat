@@ -100,7 +100,8 @@ export function ChatList({
     Number(!!advancedFilters.sellerId) +
     Number(!!advancedFilters.origin) +
     Number(!!advancedFilters.lastSender) +
-    Number(!!advancedFilters.inactiveDays)
+    Number(!!advancedFilters.inactiveDays) +
+    Number(!!advancedFilters.waitingTime)
 
   function toggleStage(stage: LeadStage) {
     const stages = advancedFilters.stages.includes(stage)
@@ -127,6 +128,7 @@ export function ChatList({
       origin: '',
       lastSender: '',
       inactiveDays: null,
+      waitingTime: '',
     })
   }
 
@@ -426,6 +428,18 @@ export function ChatList({
                 placeholder="Inactivo (días)"
                 className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               />
+              <select
+                value={advancedFilters.waitingTime}
+                onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, waitingTime: event.target.value as ChatFilters['waitingTime'] })}
+                title="Tiempo desde el último mensaje del cliente sin respuesta del vendedor"
+                className="col-span-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <option value="">Tiempo sin responder</option>
+                <option value="any">Todos esperando respuesta</option>
+                <option value="fresh">Menos de 10 minutos</option>
+                <option value="warning">Entre 10 minutos y 1 hora</option>
+                <option value="urgent">Más de 1 hora</option>
+              </select>
             </div>
           </div>
         )}

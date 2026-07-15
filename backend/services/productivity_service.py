@@ -145,6 +145,12 @@ def _template(row, attachments: list[dict] | None = None):
         "shortcut": row["shortcut"], "category": row["category"], "stage": row["stage"],
         "task_type": row["task_type"], "service": row["service"], "is_active": row["is_active"],
         "visibility": row["visibility"], "is_favorite": bool(row["is_favorite"]),
+        "template_type": row["template_type"], "official_name": row["official_name"],
+        "official_language": row["official_language"], "official_category": row["official_category"],
+        "official_status": row["official_status"],
+        "official_parameter_values": row["official_parameter_values"] or [],
+        "interactive_type": row["interactive_type"],
+        "interactive_config": row["interactive_config"] or {},
         "last_used_at": _ts(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
         "attachments": attachments or [],
     }
@@ -156,6 +162,10 @@ async def list_templates(user_id: int, include_inactive=False):
             MessageTemplate.id, MessageTemplate.name, MessageTemplate.content, MessageTemplate.shortcut,
             MessageTemplate.category, MessageTemplate.stage, MessageTemplate.task_type,
             MessageTemplate.service, MessageTemplate.is_active, MessageTemplate.visibility,
+            MessageTemplate.template_type, MessageTemplate.official_name,
+            MessageTemplate.official_language, MessageTemplate.official_category,
+            MessageTemplate.official_status, MessageTemplate.official_parameter_values,
+            MessageTemplate.interactive_type, MessageTemplate.interactive_config,
             TemplateUserState.is_favorite, TemplateUserState.last_used_at, TemplateUserState.use_count,
         )
         .outerjoin(
@@ -214,7 +224,9 @@ async def update_template(template_id: int, values: dict):
 async def create_personal_template(name: str, content: str, shortcut: str | None, user_id: int):
     return await create_template(
         {"name": name, "content": content, "shortcut": shortcut, "category": "personal", "stage": None,
-         "task_type": None, "service": None, "is_active": True, "visibility": "personal"},
+         "task_type": None, "service": None, "is_active": True, "visibility": "personal",
+         "template_type": "internal", "official_parameter_values": [],
+         "interactive_type": "none", "interactive_config": {}},
         user_id,
     )
 
@@ -270,6 +282,10 @@ async def add_template_attachment(
         exists = await session.get(MessageTemplate, template_id)
         if not exists:
             return None
+        if exists.template_type == "official" or exists.interactive_type != "none":
+            raise ValueError(
+                "Las plantillas oficiales o interactivas no usan adjuntos internos"
+            )
         total = await session.scalar(
             select(func.count(TemplateAttachment.id)).where(TemplateAttachment.template_id == template_id)
         )

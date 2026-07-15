@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
-import type { MessageTemplate, TemplateAttachment } from '../types'
+import type { MessageTemplate, TemplateAttachment, TemplateCapabilities } from '../types'
 
 export interface TemplateInput {
   name: string
@@ -11,12 +11,29 @@ export interface TemplateInput {
   stage: MessageTemplate['stage']
   task_type: MessageTemplate['task_type']
   service: string | null
+  template_type: MessageTemplate['template_type']
+  official_name: string | null
+  official_language: string | null
+  official_category: MessageTemplate['official_category']
+  official_status: MessageTemplate['official_status']
+  official_parameter_values: string[]
+  interactive_type: MessageTemplate['interactive_type']
+  interactive_config: MessageTemplate['interactive_config']
 }
 
 export function useTemplates(includeInactive = false) {
   return useQuery({
     queryKey: ['templates', includeInactive],
     queryFn: async () => (await client.get<MessageTemplate[]>('/api/templates', { params: { include_inactive: includeInactive } })).data,
+  })
+}
+
+export function useTemplateCapabilities() {
+  return useQuery({
+    queryKey: ['template-capabilities'],
+    queryFn: async () => (await client.get<TemplateCapabilities>('/api/templates/capabilities')).data,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   })
 }
 

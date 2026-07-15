@@ -31,6 +31,7 @@ class Chat(BaseModel):
     last_message: str | None = None
     last_message_sender: str | None = None
     timestamp: str | None = None
+    last_customer_message_at: str | None = None
     unread_count: int = 0
     tags: list["Tag"] = Field(default_factory=list)
 
@@ -63,6 +64,51 @@ class LeadActivityItem(BaseModel):
     created_at: str
 
 
+class InternalNoteMentionItem(BaseModel):
+    user_id: int
+    user_name: str
+
+
+class InternalNoteItem(BaseModel):
+    id: int
+    lead_id: str
+    author_user_id: int
+    author_name: str
+    content: str
+    created_at: str
+    updated_at: str
+    is_edited: bool = False
+    mentions: list[InternalNoteMentionItem] = Field(default_factory=list)
+
+
+class InternalNoteCreate(BaseModel):
+    content: str
+    mentioned_user_ids: list[int] = Field(default_factory=list)
+
+
+class InternalNoteUpdate(BaseModel):
+    content: str
+    mentioned_user_ids: list[int] = Field(default_factory=list)
+
+
+class NotificationItem(BaseModel):
+    id: int
+    notification_type: str
+    title: str
+    body: str
+    lead_id: str | None = None
+    source_id: str | None = None
+    metadata: dict | None = None
+    read_at: str | None = None
+    created_at: str
+
+
+class NotificationPage(BaseModel):
+    items: list[NotificationItem]
+    unread_count: int
+    has_more: bool = False
+
+
 class ChatPage(BaseModel):
     items: list[Chat]
     has_more: bool
@@ -90,6 +136,13 @@ class Message(BaseModel):
 class MessagePage(BaseModel):
     items: list[Message]
     has_more: bool
+
+
+class CustomerServiceWindow(BaseModel):
+    is_open: bool
+    last_customer_message_at: str | None = None
+    expires_at: str | None = None
+    seconds_remaining: int = 0
 
 
 class MessageStatusUpdate(BaseModel):
@@ -222,6 +275,14 @@ class TemplateCreate(BaseModel):
     stage: LeadStage | None = None
     task_type: TaskType | None = None
     service: str | None = None
+    template_type: Literal["internal", "official"] = "internal"
+    official_name: str | None = None
+    official_language: str | None = None
+    official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
+    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_parameter_values: list[str] = Field(default_factory=list)
+    interactive_type: Literal["none", "buttons", "list"] = "none"
+    interactive_config: dict = Field(default_factory=dict)
 
 
 class PersonalTemplateCreate(BaseModel):
@@ -239,6 +300,13 @@ class TemplateUpdate(BaseModel):
     task_type: TaskType | None = None
     service: str | None = None
     is_active: bool | None = None
+    official_name: str | None = None
+    official_language: str | None = None
+    official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
+    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_parameter_values: list[str] | None = None
+    interactive_type: Literal["none", "buttons", "list"] | None = None
+    interactive_config: dict | None = None
 
 
 class TemplateItem(BaseModel):
@@ -252,6 +320,14 @@ class TemplateItem(BaseModel):
     service: str | None = None
     is_active: bool
     visibility: Literal["global", "personal"] = "global"
+    template_type: Literal["internal", "official"] = "internal"
+    official_name: str | None = None
+    official_language: str | None = None
+    official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
+    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_parameter_values: list[str] = Field(default_factory=list)
+    interactive_type: Literal["none", "buttons", "list"] = "none"
+    interactive_config: dict = Field(default_factory=dict)
     is_favorite: bool = False
     last_used_at: str | None = None
     use_count: int = 0
@@ -297,7 +373,97 @@ class MediaAssetItem(BaseModel):
 
 class SendTemplateRequest(BaseModel):
     text: str | None = None
+    parameters: list[str] = Field(default_factory=list)
+
+
+class TemplateCapabilities(BaseModel):
+    integration: str | None = None
+    official_sending_supported: bool = False
+    reason: str | None = None
 
 
 class TemplateFavoriteUpdate(BaseModel):
     is_favorite: bool
+
+
+AutomationTrigger = Literal[
+    "lead_created",
+    "stage_changed",
+    "message_received",
+    "seller_response_overdue",
+    "customer_response_overdue",
+    "task_due",
+]
+
+
+class AutomationRuleCreate(BaseModel):
+    name: str
+    trigger_type: AutomationTrigger
+    trigger_config: dict = Field(default_factory=dict)
+    conditions: dict = Field(default_factory=dict)
+    actions: list[dict] = Field(default_factory=list)
+    delay_minutes: int = Field(default=0, ge=0, le=10080)
+    is_active: bool = True
+
+
+class AutomationRuleUpdate(BaseModel):
+    name: str | None = None
+    trigger_type: AutomationTrigger | None = None
+    trigger_config: dict | None = None
+    conditions: dict | None = None
+    actions: list[dict] | None = None
+    delay_minutes: int | None = Field(default=None, ge=0, le=10080)
+    is_active: bool | None = None
+
+
+class AutomationRuleItem(BaseModel):
+    id: int
+    name: str
+    trigger_type: AutomationTrigger
+    trigger_config: dict
+    conditions: dict
+    actions: list[dict]
+    builder_mode: Literal["simple", "visual"] = "simple"
+    flow_definition: dict = Field(default_factory=dict)
+    published_flow_definition: dict | None = None
+    flow_version: int = 0
+    delay_minutes: int
+    is_active: bool
+    created_by_user_id: int
+    created_by_name: str
+    execution_count: int
+    last_execution_at: str | None = None
+    last_execution_status: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class AutomationExecutionItem(BaseModel):
+    id: int
+    rule_id: int
+    rule_name: str
+    lead_id: str | None = None
+    lead_name: str | None = None
+    trigger_type: AutomationTrigger
+    status: Literal["scheduled", "running", "completed", "failed", "skipped"]
+    scheduled_for: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    action_results: list[dict]
+    flow_state: dict = Field(default_factory=dict)
+    error: str | None = None
+    created_at: str
+
+
+class AutomationFlowCreate(BaseModel):
+    name: str
+    flow_definition: dict
+
+
+class AutomationFlowUpdate(BaseModel):
+    name: str | None = None
+    flow_definition: dict
+
+
+class AutomationFlowSimulationRequest(BaseModel):
+    lead_id: str

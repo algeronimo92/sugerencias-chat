@@ -3,6 +3,11 @@ from models.schemas import MessageStatusUpdate
 from services.db_service import fetch_latest_message, update_message_status
 from services.settings_service import get_effective
 from services.ws_manager import manager
+from services.automation_service import trigger_inbound_message
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -22,6 +27,10 @@ async def new_message_webhook(x_webhook_token: str | None = Header(default=None)
     latest = await fetch_latest_message()
     if latest is not None:
         payload["latest_message"] = latest
+        try:
+            await trigger_inbound_message(latest)
+        except Exception:
+            logger.exception("No se pudo programar la automatización del mensaje entrante")
 
     await manager.broadcast(payload)
     return {"status": "ok"}

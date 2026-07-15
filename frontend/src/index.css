@@ -75,3 +75,45 @@ html {
   background-color: #64748b;
   background-clip: content-box;
 }
+
+/* Los controles nativos no heredan siempre el color correcto al cambiar de
+   tema. Se limita al editor de automatizaciones para no alterar otros
+   formularios del CRM. */
+.automation-form input:not([type="checkbox"]),
+.automation-form select,
+.automation-form textarea {
+  color: #111827;
+  caret-color: #111827;
+}
+
+.automation-form input::placeholder,
+.automation-form textarea::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+.automation-form input[type="checkbox"] {
+  accent-color: #16a34a;
+}
+
+.dark .automation-form input:not([type="checkbox"]),
+.dark .automation-form select,
+.dark .automation-form textarea {
+  color: #f3f4f6;
+  caret-color: #f3f4f6;
+  color-scheme: dark;
+}
+
+.dark .automation-form label {
+  color: #cbd5e1;
+}
+
+.dark .automation-form input::placeholder,
+.dark .automation-form textarea::placeholder {
+  color: #94a3b8;
+}
+
+.dark .automation-form option {
+  background-color: #1f2937;
+  color: #f3f4f6;
+}
