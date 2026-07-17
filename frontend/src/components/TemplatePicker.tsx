@@ -4,20 +4,20 @@ import type { Chat, MessageTemplate } from '../types'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
 import { renderTemplate } from '../utils/templates'
 
-interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) => void; onSaveHistory: (text: string) => void; onSendMultimedia: (template: MessageTemplate) => void; customerWindowOpen: boolean }
+interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) => void; onSaveHistory: (text: string) => void; onSendMultimedia: (template: MessageTemplate) => void }
 
-export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, onSendMultimedia, customerWindowOpen }: Props) {
+export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, onSendMultimedia }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const { data = [] } = useTemplates()
   const favorite = useToggleTemplateFavorite()
   const recordUse = useRecordTemplateUse()
   const relevant = useMemo(() => data.filter(t =>
-    (customerWindowOpen ? (t.template_type === 'internal' || t.official_status === 'APPROVED') : (t.template_type === 'official' && t.official_status === 'APPROVED')) &&
+    (t.template_type === 'internal' || t.official_status === 'APPROVED') &&
     (!t.stage || t.stage === chat.stage) &&
     (!t.service || t.service.toLowerCase() === chat.servicio_interes?.toLowerCase()) &&
     `${t.name} ${t.shortcut} ${t.content}`.toLowerCase().includes(search.toLowerCase())
-  ), [data, chat.stage, chat.servicio_interes, customerWindowOpen, search])
+  ), [data, chat.stage, chat.servicio_interes, search])
   const favorites = relevant.filter(t => t.is_favorite)
   const recent = relevant.filter(t => t.last_used_at && !t.is_favorite).sort((a,b) => Date.parse(b.last_used_at!) - Date.parse(a.last_used_at!)).slice(0, 5)
   const priorityIds = new Set([...favorites, ...recent].map(t => t.id))
@@ -38,10 +38,10 @@ export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, on
     if (!items.length) return null; const Icon=icon
     return <section><div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><Icon className="h-3 w-3"/>{title}</div>{items.map(row)}</section>
   }
-  return <div className="relative"><button type="button" title={customerWindowOpen?'Respuestas rápidas y plantillas oficiales':'Plantillas oficiales para reabrir la conversación'} onClick={()=>setOpen(!open)} className={`flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${customerWindowOpen?'text-gray-500 dark:text-gray-400':'text-blue-600 dark:text-blue-400'}`}><FileText className="h-4 w-4"/></button>
+  return <div className="relative"><button type="button" title="Respuestas rápidas y plantillas oficiales" onClick={()=>setOpen(!open)} className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"><FileText className="h-4 w-4"/></button>
     {open&&<div className="absolute bottom-11 left-0 z-30 w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-800"><div className="flex items-center gap-2 rounded-lg bg-gray-100 px-2 dark:bg-gray-900"><Search className="h-4 w-4 text-gray-400"/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar respuesta o /atajo" className="w-full bg-transparent py-2 text-sm text-gray-800 outline-none dark:text-gray-200"/></div>
       <div className="mt-1 max-h-80 overflow-auto">{section('Favoritas',Star,favorites)}{!search&&section('Usadas recientemente',Clock3,recent)}{section(search?'Resultados':'Todas las plantillas',FileText,remaining)}
-        {customerWindowOpen&&!search&&sentMessages.length>0&&<section><div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><History className="h-3 w-3"/>Mensajes enviados recientemente</div>{sentMessages.map((message,index)=><div key={`${message}-${index}`} className="group flex items-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"><button type="button" onClick={()=>{onSelect(message);setOpen(false)}} className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300"><p className="line-clamp-2">{message}</p></button><button type="button" title="Guardar como plantilla" onClick={()=>{onSaveHistory(message);setOpen(false)}} className="mr-2 rounded p-1.5 text-gray-400 hover:text-green-600"><FileText className="h-4 w-4"/></button></div>)}</section>}
-        {relevant.length===0&&(!customerWindowOpen||sentMessages.length===0)&&<p className="p-4 text-center text-sm text-gray-400">{customerWindowOpen?'Sin respuestas rápidas':'No hay plantillas oficiales aprobadas'}</p>}</div></div>}
+        {!search&&sentMessages.length>0&&<section><div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><History className="h-3 w-3"/>Mensajes enviados recientemente</div>{sentMessages.map((message,index)=><div key={`${message}-${index}`} className="group flex items-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"><button type="button" onClick={()=>{onSelect(message);setOpen(false)}} className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300"><p className="line-clamp-2">{message}</p></button><button type="button" title="Guardar como plantilla" onClick={()=>{onSaveHistory(message);setOpen(false)}} className="mr-2 rounded p-1.5 text-gray-400 hover:text-green-600"><FileText className="h-4 w-4"/></button></div>)}</section>}
+        {relevant.length===0&&sentMessages.length===0&&<p className="p-4 text-center text-sm text-gray-400">Sin respuestas rápidas</p>}</div></div>}
   </div>
 }

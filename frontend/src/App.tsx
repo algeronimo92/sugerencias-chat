@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
+import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
@@ -447,7 +447,39 @@ function MainLayout() {
 }
 
 function AuthGate() {
-  const { data: me, isLoading } = useMe()
+  const { data: me, error, isError, isLoading, isFetching, refetch } = useMe()
+
+  if (isError) {
+    const detail = error instanceof Error && error.message !== 'Network Error'
+      ? error.message
+      : 'No se pudo establecer conexión con el servidor.'
+
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100 p-4 dark:bg-gray-950">
+        <div role="alert" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-gray-900">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
+            <AlertTriangle className="h-6 w-6" />
+          </span>
+          <h1 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Backend no disponible</h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            El frontend está funcionando, pero no pudo consultar tu sesión en el servidor.
+          </p>
+          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            {detail}
+          </p>
+          <button
+            type="button"
+            disabled={isFetching}
+            onClick={() => { void refetch() }}
+            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            {isFetching ? 'Reconectando…' : 'Reintentar conexión'}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading || me === undefined) {
     return (

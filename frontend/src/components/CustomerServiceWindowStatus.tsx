@@ -29,7 +29,7 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const isOpen = !!data?.is_open && remaining > 0
   if (!isOpen) {
     return (
-      <span title="Solo se puede reabrir con una plantilla oficial aprobada" className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400">
+      <span title="WhatsApp puede limitar mensajes enviados fuera de esta ventana" className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400">
         <LockKeyhole className="h-3 w-3" /> Ventana cerrada
       </span>
     )
@@ -52,7 +52,7 @@ export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWi
     return (
       <div className="flex gap-2 border-t border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
         <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
-        <div><p className="font-semibold">La ventana de 24 horas está cerrada</p><p className="mt-0.5 text-[11px] opacity-80">No puedes enviar mensajes libres ni plantillas internas. Para reabrir la conversación necesitarás una plantilla oficial aprobada por WhatsApp.</p></div>
+        <div><p className="font-semibold">La ventana de 24 horas está cerrada</p><p className="mt-0.5 text-[11px] opacity-80">Puedes intentar enviar el mensaje, pero WhatsApp podría limitarlo o rechazarlo. Para una entrega compatible fuera de la ventana, utiliza una plantilla oficial aprobada.</p></div>
       </div>
     )
   }

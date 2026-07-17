@@ -267,6 +267,22 @@ async def list_automation_executions(
     return [_execution_dict(row) for row in rows]
 
 
+def _normalize_automation_conditions(raw_conditions: object) -> dict:
+    conditions = raw_conditions if isinstance(raw_conditions, dict) else {}
+    normalized = {
+        "stage": str(conditions.get("stage") or "").strip() or None,
+        "origin_contains": str(conditions.get("origin_contains") or "").strip()[:120] or None,
+        "service_contains": str(conditions.get("service_contains") or "").strip()[:120] or None,
+        "seller_id": int(conditions["seller_id"]) if conditions.get("seller_id") else None,
+        "tag_id": int(conditions["tag_id"]) if conditions.get("tag_id") else None,
+        "require_open_window": bool(conditions.get("require_open_window", False)),
+        "business_hours_only": bool(conditions.get("business_hours_only", False)),
+    }
+    if normalized["stage"] and normalized["stage"] not in {stage.value for stage in LeadStage}:
+        raise ValueError("Etapa de condición inválida")
+    return normalized
+
+
 async def validate_automation_rule(values: dict) -> dict:
     name = str(values.get("name") or "").strip()
     if not name or len(name) > 120:
@@ -286,18 +302,7 @@ async def validate_automation_rule(values: dict) -> dict:
     else:
         trigger_config = {}
 
-    conditions = values.get("conditions") if isinstance(values.get("conditions"), dict) else {}
-    normalized_conditions = {
-        "stage": str(conditions.get("stage") or "").strip() or None,
-        "origin_contains": str(conditions.get("origin_contains") or "").strip()[:120] or None,
-        "service_contains": str(conditions.get("service_contains") or "").strip()[:120] or None,
-        "seller_id": int(conditions["seller_id"]) if conditions.get("seller_id") else None,
-        "tag_id": int(conditions["tag_id"]) if conditions.get("tag_id") else None,
-        "require_open_window": bool(conditions.get("require_open_window", False)),
-        "business_hours_only": bool(conditions.get("business_hours_only", False)),
-    }
-    if normalized_conditions["stage"] and normalized_conditions["stage"] not in {stage.value for stage in LeadStage}:
-        raise ValueError("Etapa de condición inválida")
+    normalized_conditions = _normalize_automation_conditions(values.get("conditions"))
 
     actions = values.get("actions") if isinstance(values.get("actions"), list) else []
     if not 1 <= len(actions) <= MAX_ACTIONS:
@@ -482,6 +487,7 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
         raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
     if not isinstance(definition, dict):
         raise ValueError("La definición del flujo no es válida")
+    conditions = _normalize_automation_conditions(definition.get("conditions"))
     raw_nodes = definition.get("nodes")
     raw_edges = definition.get("edges")
     if not isinstance(raw_nodes, list) or not 1 <= len(raw_nodes) <= MAX_FLOW_NODES:
@@ -536,7 +542,8 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
         trigger_config = {"minutes": max(1, min(43200, minutes))}
     return {
         "name": name, "trigger_type": trigger_type, "trigger_config": trigger_config,
-        "flow_definition": {"nodes": nodes, "edges": edges},
+        "conditions": conditions,
+        "flow_definition": {"conditions": conditions, "nodes": nodes, "edges": edges},
     }
 
 
@@ -546,6 +553,7 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
         raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
     if not isinstance(definition, dict):
         raise ValueError("La definición del flujo no es válida")
+    raw_conditions = definition.get("conditions")
     raw_nodes = definition.get("nodes")
     raw_edges = definition.get("edges")
     if not isinstance(raw_nodes, list) or not 2 <= len(raw_nodes) <= MAX_FLOW_NODES:
@@ -629,7 +637,7 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
         "name": name,
         "trigger_type": trigger_nodes[0]["data"]["trigger_type"],
         "trigger_config": {"minutes": trigger_nodes[0]["data"].get("minutes")},
-        "conditions": {},
+        "conditions": raw_conditions,
         "actions": [action for _, action in action_nodes],
         "delay_minutes": 0,
         "is_active": False,
@@ -711,7 +719,12 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
         "name": name,
         "trigger_type": trigger_nodes[0]["data"]["trigger_type"],
         "trigger_config": normalized_action_values["trigger_config"],
-        "flow_definition": {"nodes": normalized_nodes, "edges": normalized_edges},
+        "conditions": normalized_action_values["conditions"],
+        "flow_definition": {
+            "conditions": normalized_action_values["conditions"],
+            "nodes": normalized_nodes,
+            "edges": normalized_edges,
+        },
     }
 
 
@@ -756,6 +769,7 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
             name=validated["name"],
             trigger_type=validated["trigger_type"],
             trigger_config=validated["trigger_config"],
+            conditions=validated["conditions"],
             flow_definition=validated["flow_definition"],
             published_flow_definition=validated["flow_definition"],
             flow_version=new_version,
@@ -897,8 +911,10 @@ async def trigger_inbound_message(message: dict) -> None:
     _wake.set()
 
 
-async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, str | None]:
-    conditions = rule.conditions or {}
+async def _matches_condition_values(
+    conditions: dict,
+    chat: dict,
+) -> tuple[bool, str | None]:
     if conditions.get("stage") and chat.get("stage") != conditions["stage"]:
         return False, "La etapa no coincide"
     if conditions.get("origin_contains") and conditions["origin_contains"].lower() not in (chat.get("origen") or "").lower():
@@ -918,6 +934,10 @@ async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, s
         if local_now.weekday() >= 5 or not 8 <= local_now.hour < 18:
             return False, "Fuera del horario laboral (lunes a viernes, 08:00–18:00)"
     return True, None
+
+
+async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, str | None]:
+    return await _matches_condition_values(rule.conditions or {}, chat)
 
 
 async def _matches_flow_condition(data: dict, chat: dict) -> tuple[bool, str]:
@@ -964,6 +984,18 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
     chat = await fetch_chat(lead_id)
     if not chat:
         raise ValueError("Lead no encontrado")
+    matches, reason = await _matches_condition_values(validated["conditions"], chat)
+    if not matches:
+        return {
+            "lead_id": chat["chat_id"],
+            "lead_name": chat.get("name"),
+            "flow_version": current["flow_version"],
+            "path": [{
+                "type": "entry_conditions",
+                "status": AutomationExecutionStatus.SKIPPED,
+                "detail": reason,
+            }],
+        }
     nodes, edges = _flow_indexes(validated["flow_definition"])
     trigger = next(
         node for node in nodes.values() if node["type"] == FlowNodeType.TRIGGER
@@ -1238,6 +1270,27 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
     results = list(execution.action_results or [])
     current_id = state.get("current_node_id")
     if not current_id:
+        matches, reason = await _matches_condition_values(
+            definition.get("conditions") if isinstance(definition.get("conditions"), dict) else {},
+            chat,
+        )
+        if not matches:
+            results.append({
+                "position": len(results) + 1,
+                "type": "entry_conditions",
+                "status": AutomationExecutionStatus.SKIPPED,
+                "detail": reason,
+            })
+            await _persist_visual_execution(
+                execution.id,
+                AutomationExecutionStatus.SKIPPED,
+                results,
+                None,
+                path,
+                flow_version,
+                reason,
+            )
+            return
         trigger = next(
             (
                 node

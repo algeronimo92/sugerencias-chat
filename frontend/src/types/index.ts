@@ -370,6 +370,7 @@ export interface AutomationFlowEdge {
 }
 
 export interface AutomationFlowDefinition {
+  conditions: AutomationConditions
   nodes: AutomationFlowNode[]
   edges: AutomationFlowEdge[]
 }

@@ -20,7 +20,7 @@ import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useInternalNotes } from '../hooks/useInternalNotes'
 import { useMe } from '../hooks/useAuth'
-import { useCustomerServiceWindow, useIsCustomerServiceWindowOpen } from '../hooks/useCustomerServiceWindow'
+import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 
 const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
@@ -131,7 +131,6 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const { data: notes = [] } = useInternalNotes(chat.chat_id)
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
-  const isCustomerWindowOpen = useIsCustomerServiceWindowOpen(customerWindow)
   const timeline = useMemo<TimelineItem[]>(() => [
     ...messages.map(message => ({
       kind: 'message' as const,
@@ -298,15 +297,11 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || isSending || !isCustomerWindowOpen) return
+    if (!text || isSending) return
     sendMessage(text, { onSuccess: () => setDraft('') })
   }
 
   async function handleAudioRecorded(blob: Blob) {
-    if (!isCustomerWindowOpen) {
-      setAudioError('La ventana de 24 horas está cerrada')
-      return
-    }
     setAudioError(null)
     const dataBase64 = await blobToBase64(blob)
     sendAudio(
@@ -316,7 +311,6 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   }
 
   function openFilePicker(accept: string) {
-    if (!isCustomerWindowOpen) return
     const input = fileInputRef.current
     if (!input) return
     input.accept = accept
@@ -345,10 +339,6 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
 
   function handleSendLocation() {
     setLocationError(null)
-    if (!isCustomerWindowOpen) {
-      setLocationError('La ventana de 24 horas está cerrada')
-      return
-    }
     if (!navigator.geolocation) {
       setLocationError('Tu navegador no soporta geolocalización')
       return
@@ -730,7 +720,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
 
           {!isRecordingAudio && (
             <AttachMenu
-              disabled={!isCustomerWindowOpen || isSendingMedia || isLocating || isSendingLocation}
+              disabled={isSendingMedia || isLocating || isSendingLocation}
               isSending={isSendingMedia || isLocating || isSendingLocation}
               onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
               onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
@@ -745,7 +735,6 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
               sentMessages={sentMessageHistory}
               onSaveHistory={setTemplateContentToSave}
               onSendMultimedia={setMultimediaTemplate}
-              customerWindowOpen={isCustomerWindowOpen}
               onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
             />
           )}
@@ -776,7 +765,6 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
               )}
               <textarea
                 ref={textareaRef}
-                disabled={!isCustomerWindowOpen}
                 value={draft}
                 onChange={(e) => {
                   setDraft(e.target.value)
@@ -784,7 +772,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                   setSlashDismissed(false)
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder={isCustomerWindowOpen ? 'Escribí un mensaje... (/ para usar una plantilla)' : 'Ventana de 24 horas cerrada'}
+                placeholder="Escribí un mensaje... (/ para usar una plantilla)"
                 rows={1}
                 className="w-full resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
               />
@@ -794,7 +782,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           {draft.trim() && !isRecordingAudio ? (
             <button
               type="submit"
-              disabled={isSending || !isCustomerWindowOpen}
+              disabled={isSending}
               aria-label="Enviar mensaje"
               className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -802,7 +790,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
             </button>
           ) : (
             <VoiceRecorder
-              disabled={!isCustomerWindowOpen || isSendingAudio || isSendingMedia || isLocating || isSendingLocation}
+              disabled={isSendingAudio || isSendingMedia || isLocating || isSendingLocation}
               onRecorded={handleAudioRecorded}
               onError={setAudioError}
               onRecordingChange={setIsRecordingAudio}

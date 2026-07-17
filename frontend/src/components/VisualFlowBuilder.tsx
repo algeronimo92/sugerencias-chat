@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
   Activity, ArrowRight, Beaker, CheckCircle2, Clock3, GripVertical, LayoutGrid,
-  Loader2, MessageSquareText, Play, Save, Split, Trash2, UserRound, X, Zap,
+  ListFilter, Loader2, MessageSquareText, Play, Save, Split, Trash2, UserRound, X, Zap,
 } from 'lucide-react'
 import client from '../api/client'
 import type {
-  AutomationAction, AutomationActionType,
+  AppUser, AutomationAction, AutomationActionType, AutomationConditions,
   AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, AutomationRule, Chat,
+  AutomationFlowNodeType, AutomationRule, Chat, Tag,
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import {
@@ -71,6 +71,7 @@ function defaultAction(type: AutomationActionType): AutomationAction {
 
 function initialFlow(): AutomationFlowDefinition {
   return {
+    conditions: {},
     nodes: [
       { id: 'trigger-1', type: NodeType.Trigger, position: { x: 70, y: 220 }, data: { trigger_type: TriggerType.LeadCreated } },
       { id: 'action-1', type: NodeType.Action, position: { x: 390, y: 220 }, data: { action: defaultAction(ActionType.CreateTask) } },
@@ -86,6 +87,10 @@ function initialFlow(): AutomationFlowDefinition {
 function isFlowDefinition(value: unknown): value is AutomationFlowDefinition {
   if (!value || typeof value !== 'object') return false
   return 'nodes' in value && 'edges' in value && Array.isArray(value.nodes) && Array.isArray(value.edges)
+}
+
+function withDefaultConditions(definition: AutomationFlowDefinition): AutomationFlowDefinition {
+  return { ...definition, conditions: definition.conditions ?? {} }
 }
 
 function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: number): AutomationFlowNode {
@@ -147,8 +152,11 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const [name, setName] = useState(rule?.name ?? 'Nuevo flujo visual')
   const [flow, setFlow] = useState<AutomationFlowDefinition>(() => {
     const definition = rule?.flow_definition
-    return isFlowDefinition(definition) && definition.nodes.length ? definition : initialFlow()
+    return isFlowDefinition(definition) && definition.nodes.length
+      ? withDefaultConditions(definition)
+      : initialFlow()
   })
+  const [showEntryConditions, setShowEntryConditions] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(flow.nodes[0]?.id ?? null)
   const [connecting, setConnecting] = useState<{ source: string; handle: AutomationFlowEdge['source_handle'] } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -163,6 +171,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const activeUsers = users.filter(user => user.is_active)
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none' && template.attachments.length === 0), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
+  const entryConditionCount = Object.values(flow.conditions).filter(value => (
+    typeof value === 'boolean' ? value : value !== null && value !== undefined && value !== ''
+  )).length
 
   function replaceNode(nextNode: AutomationFlowNode) {
     setFlow(current => ({
@@ -174,6 +185,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   function replaceSelectedAction(nextAction: AutomationAction) {
     if (!selected || selected.type !== NodeType.Action) return
     replaceNode({ ...selected, data: { action: nextAction } })
+  }
+
+  function updateEntryConditions(conditions: AutomationConditions) {
+    setFlow(current => ({ ...current, conditions }))
   }
 
   function addNode(type: AutomationFlowNodeType, x: number, y: number) {
@@ -197,6 +212,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     const node = flow.nodes.find(item => item.id === nodeId)
     if (node?.type === NodeType.Trigger) { setError('El disparador no se puede eliminar; puedes cambiar su tipo.'); return }
     setFlow(current => ({
+      ...current,
       nodes: current.nodes.filter(item => item.id !== nodeId),
       edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
     }))
@@ -277,7 +293,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         ? await createFlow.mutateAsync({ name, flow_definition: flow })
         : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flow })
       setRuleId(saved.id)
-      if (isFlowDefinition(saved.flow_definition)) setFlow(saved.flow_definition)
+      if (isFlowDefinition(saved.flow_definition)) setFlow(withDefaultConditions(saved.flow_definition))
       setNotice('Borrador guardado.')
       return saved
     } catch (reason) {
@@ -318,6 +334,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     <header className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
       <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><X className="h-5 w-5" /></button>
       <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => setName(event.target.value)} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-gray-900 outline-none dark:text-white" /><p className="text-[11px] text-gray-500">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
+      <button type="button" onClick={() => setShowEntryConditions(current => !current)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-green-600 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300' : 'border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones{entryConditionCount > 0 && <span className="rounded-full bg-green-600 px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
       <button type="button" onClick={autoLayout} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" onClick={() => { setSimulationOpen(true); setSimulation(null) }} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-green-600 px-3 py-2 text-xs font-semibold text-green-700 disabled:opacity-40 dark:text-green-400"><Save className="h-4 w-4" />Guardar borrador</button>
@@ -352,7 +369,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
               return <g key={edge.id}><path d={`M${sx},${sy} C${sx + bend},${sy} ${tx - bend},${ty} ${tx},${ty}`} fill="none" stroke={edge.source_handle === FlowHandle.Yes ? '#22c55e' : edge.source_handle === FlowHandle.No ? '#ef4444' : '#94a3b8'} strokeWidth="2" markerEnd="url(#flow-arrow)" /><text x={(sx + tx) / 2} y={(sy + ty) / 2 - 7} textAnchor="middle" className="fill-gray-500 text-[10px]">{edge.source_handle === FlowHandle.Yes ? 'Sí' : edge.source_handle === FlowHandle.No ? 'No' : ''}</text></g>
             })}
           </svg>
-          {flow.nodes.map(node => <div key={node.id} onClick={() => { setSelectedId(node.id); if (connecting) connectTo(node.id) }} className={`absolute rounded-xl border-2 p-3 shadow-md transition ${nodeTone(node.type)} ${selectedId === node.id ? 'ring-2 ring-green-500 ring-offset-2 dark:ring-offset-gray-950' : ''}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT, left: node.position.x, top: node.position.y }}>
+          {flow.nodes.map(node => <div key={node.id} onClick={() => { setSelectedId(node.id); setShowEntryConditions(false); if (connecting) connectTo(node.id) }} className={`absolute rounded-xl border-2 p-3 shadow-md transition ${nodeTone(node.type)} ${selectedId === node.id ? 'ring-2 ring-green-500 ring-offset-2 dark:ring-offset-gray-950' : ''}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT, left: node.position.x, top: node.position.y }}>
             {connecting && node.type !== NodeType.Trigger && connecting.source !== node.id && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-green-600 px-2 py-0.5 text-[9px] font-bold text-white shadow">Conectar aquí</span>}
             <div className="flex items-start gap-2"><button type="button" draggable onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData('application/x-flow-node', node.id) }} className="cursor-grab rounded p-0.5 text-gray-400 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>{nodeIcon(node.type)}<div className="min-w-0 flex-1"><p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{FLOW_NODE_LABELS[node.type]}</p><p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{nodeTitle(node)}</p></div>{node.type !== NodeType.Trigger && <button type="button" onClick={event => { event.stopPropagation(); removeNode(node.id) }} className="text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
             {node.type !== NodeType.End && <div className="mt-3 flex justify-end gap-1">{node.type === NodeType.Condition ? <><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.Yes }) }} className="rounded-full bg-green-600 px-2 py-1 text-[9px] font-bold text-white">Sí →</button><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.No }) }} className="rounded-full bg-red-500 px-2 py-1 text-[9px] font-bold text-white">No →</button></> : <button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.Next }) }} className="rounded-full bg-gray-700 px-2 py-1 text-[9px] font-bold text-white dark:bg-gray-600">Siguiente →</button>}</div>}
@@ -361,7 +378,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </main>
 
       <aside className="w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-        {!selected ? <p className="py-16 text-center text-xs text-gray-500">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-gray-900 dark:text-white">{nodeTitle(selected)}</p><p className="text-[10px] text-gray-500">Propiedades del bloque</p></div></div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : !selected ? <p className="py-16 text-center text-xs text-gray-500">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-gray-900 dark:text-white">{nodeTitle(selected)}</p><p className="text-[10px] text-gray-500">Propiedades del bloque</p></div></div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Evento<select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-gray-500">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Comprobar<select value={selected.data.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) replaceNode({ ...selected, data: { condition_type: value, value: value === ConditionType.StageEquals ? 'nuevo' : null } }) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{selected.data.condition_type === ConditionType.StageEquals && <select value={String(selected.data.value ?? 'nuevo')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</select>}{selected.data.condition_type === ConditionType.OriginContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Facebook" className={fieldClass} />}{selected.data.condition_type === ConditionType.ServiceContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Limpieza" className={fieldClass} />}{selected.data.condition_type === ConditionType.SellerEquals && <select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona vendedor</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}{selected.data.condition_type === ConditionType.TagPresent && <select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>}<p className="rounded-lg bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Conecta las dos salidas: Sí cuando se cumple y No cuando no se cumple.</p></div>}
           {selected.type === NodeType.Wait && <label className="grid gap-1 text-[10px] text-gray-500">Esperar minutos<input type="number" min={1} max={10080} value={selected.data.minutes} onChange={event => replaceNode({ ...selected, data: { minutes: Number(event.target.value) } })} className={fieldClass} /></label>}
@@ -373,6 +390,51 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     </div>
 
     {simulationOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"><div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-900"><div className="flex items-start justify-between"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white"><Beaker className="h-4 w-4 text-green-600" />Simular sin ejecutar acciones</h2><p className="mt-1 text-[11px] text-gray-500">Guarda el borrador y recorre el flujo con los datos actuales de un lead.</p></div><button type="button" onClick={() => setSimulationOpen(false)} className="text-gray-400"><X className="h-5 w-5" /></button></div><div className="mt-4 flex gap-2"><input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void searchLeads() }} placeholder="Buscar por nombre o teléfono" className={fieldClass} /><button type="button" disabled={searching} onClick={() => void searchLeads()} className="rounded-lg bg-gray-800 px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-gray-700">Buscar</button></div>{leadResults.length > 0 && <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">{leadResults.map(lead => <button key={lead.chat_id} type="button" onClick={() => setSelectedLead(lead)} className={`flex w-full items-center gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-0 dark:border-gray-800 ${selectedLead?.chat_id === lead.chat_id ? 'bg-green-50 dark:bg-green-950/30' : ''}`}><UserRound className="h-4 w-4 text-gray-400" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{lead.name || 'Sin nombre'}</span><span className="block text-[10px] text-gray-500">{lead.phone || lead.chat_id} · {lead.stage}</span></span></button>)}</div>}<button type="button" disabled={!selectedLead || simulateFlow.isPending} onClick={() => void simulate()} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{simulateFlow.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Recorrer flujo</button>{simulation && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-gray-800 dark:text-gray-100">Ruta para {simulation.lead_name || simulation.lead_id}</p><div className="space-y-1.5">{simulation.path.map((step, index) => <div key={`${String(step.node_id)}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] ${step.status === 'would_fail' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-200 font-bold dark:bg-gray-700">{index + 1}</span><span><strong>{String(step.type)}</strong>{step.branch ? ` · rama ${step.branch === 'yes' ? 'Sí' : 'No'}` : ''}{step.minutes ? ` · ${String(step.minutes)} min` : ''}{step.detail ? <span className="block opacity-80">{String(step.detail)}</span> : null}</span></div>)}</div></div>}</div></div>}
+  </div>
+}
+
+interface EntryConditionsEditorProps {
+  conditions: AutomationConditions
+  updateConditions: (conditions: AutomationConditions) => void
+  users: AppUser[]
+  tags: Tag[]
+}
+
+function EntryConditionsEditor({ conditions, updateConditions, users, tags }: EntryConditionsEditorProps) {
+  return <div className="space-y-4">
+    <div className="flex items-start gap-2">
+      <ListFilter className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+      <div><p className="text-xs font-semibold text-gray-900 dark:text-white">Condiciones de entrada</p><p className="mt-1 text-[10px] leading-relaxed text-gray-500">Todas las condiciones configuradas deben cumplirse antes de iniciar el flujo. Para crear rutas Sí/No, utiliza un bloque Condición.</p></div>
+    </div>
+    <label className="grid gap-1 text-[10px] text-gray-500">Etapa
+      <select value={conditions.stage ?? ''} onChange={event => { const value = event.target.value; updateConditions({ ...conditions, stage: isLeadStage(value) ? value : null }) }} className={fieldClass}>
+        <option value="">Cualquiera</option>
+        {LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+      </select>
+    </label>
+    <label className="grid gap-1 text-[10px] text-gray-500">Origen contiene
+      <input maxLength={120} value={conditions.origin_contains ?? ''} onChange={event => updateConditions({ ...conditions, origin_contains: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} />
+    </label>
+    <label className="grid gap-1 text-[10px] text-gray-500">Servicio contiene
+      <input maxLength={120} value={conditions.service_contains ?? ''} onChange={event => updateConditions({ ...conditions, service_contains: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} />
+    </label>
+    <label className="grid gap-1 text-[10px] text-gray-500">Vendedor
+      <select value={conditions.seller_id ?? ''} onChange={event => updateConditions({ ...conditions, seller_id: event.target.value ? Number(event.target.value) : null })} className={fieldClass}>
+        <option value="">Cualquiera</option>
+        {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+      </select>
+    </label>
+    <label className="grid gap-1 text-[10px] text-gray-500">Etiqueta
+      <select value={conditions.tag_id ?? ''} onChange={event => updateConditions({ ...conditions, tag_id: event.target.value ? Number(event.target.value) : null })} className={fieldClass}>
+        <option value="">Cualquiera</option>
+        {tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+      </select>
+    </label>
+    <div className="space-y-2 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={!!conditions.require_open_window} onChange={event => updateConditions({ ...conditions, require_open_window: event.target.checked })} />Ventana de WhatsApp abierta</label>
+      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Horario laboral 08:00–18:00</label>
+    </div>
+    <button type="button" onClick={() => updateConditions({})} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Limpiar condiciones</button>
   </div>
 }
 

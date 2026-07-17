@@ -231,17 +231,9 @@ def _wa_message_id(evolution_response: dict) -> str | None:
     return key.get("id") if isinstance(key, dict) else None
 
 
-async def _require_open_customer_service_window(chat_id: str) -> dict:
-    window = await get_customer_service_window(chat_id)
-    if window is None:
+async def _require_existing_lead(chat_id: str) -> None:
+    if await get_customer_service_window(chat_id) is None:
         raise HTTPException(404, "Lead no encontrado")
-    if not window["is_open"]:
-        raise HTTPException(
-            409,
-            "La ventana de atención de 24 horas está cerrada. "
-            "Para volver a contactar al cliente debes usar una plantilla oficial aprobada por WhatsApp.",
-        )
-    return window
 
 
 @router.get("", response_model=ChatPage)
@@ -434,8 +426,7 @@ async def send_message(chat_id: str, body: SendMessageRequest):
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
-    await _require_open_customer_service_window(chat_id)
-
+    await _require_existing_lead(chat_id)
     try:
         evolution_response = await send_whatsapp_text(chat_id, text)
     except EvolutionApiError as e:
@@ -453,7 +444,7 @@ async def send_message(chat_id: str, body: SendMessageRequest):
 @router.post("/{chat_id}/audio", response_model=Message)
 async def send_audio(chat_id: str, body: SendMediaRequest):
     """Nota de voz grabada en vivo (PTT) — endpoint sendWhatsAppAudio."""
-    await _require_open_customer_service_window(chat_id)
+    await _require_existing_lead(chat_id)
     try:
         media_url = save_media_file(body.content_type, body.data_base64)
     except ValueError as e:
@@ -483,7 +474,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
 async def send_media(chat_id: str, body: SendMediaRequest):
     """Adjuntar un archivo ya existente — imagen, video, audio (como archivo,
     no nota de voz) o documento — vía sendMedia."""
-    await _require_open_customer_service_window(chat_id)
+    await _require_existing_lead(chat_id)
     mediatype = _mediatype_from_content_type(body.content_type)
     if mediatype not in ("image", "video", "audio", "document"):
         raise HTTPException(status_code=400, detail="Tipo de archivo no soportado")
@@ -565,7 +556,7 @@ async def send_template(
         await manager.broadcast({"type": "chats_updated"})
         return [message]
 
-    await _require_open_customer_service_window(chat_id)
+    await _require_existing_lead(chat_id)
     if template["interactive_type"] != "none":
         chat = await fetch_chat(chat_id)
         if chat is None:
@@ -687,7 +678,7 @@ async def send_template(
 
 @router.post("/{chat_id}/location", response_model=Message)
 async def send_location(chat_id: str, body: SendLocationRequest):
-    await _require_open_customer_service_window(chat_id)
+    await _require_existing_lead(chat_id)
     try:
         evolution_response = await send_whatsapp_location(chat_id, body.latitude, body.longitude)
     except EvolutionApiError as e:
