@@ -1,3 +1,11 @@
+import type {
+  AutomationActionTypeValue, AutomationBuilderModeValue, AutomationExecutionStatusValue,
+  AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue,
+  FlowHandleValue, FlowNodeTypeValue, NotificationTypeValue, TaskPriorityCatalogValue,
+  TaskStatusCatalogValue, TaskTypeCatalogValue,
+} from '../domain/automationCatalog'
+import { AutomationActionType, FlowNodeType } from '../domain/automationCatalog'
+
 export const LEAD_STAGES = [
   'nuevo',
   'calificacion',
@@ -12,6 +20,10 @@ export const LEAD_STAGES = [
 ] as const
 
 export type LeadStage = (typeof LEAD_STAGES)[number]
+
+export function isLeadStage(value: string): value is LeadStage {
+  return LEAD_STAGES.some(stage => stage === value)
+}
 
 export interface Tag {
   id: number
@@ -62,7 +74,7 @@ export interface InternalNote {
 
 export interface UserNotification {
   id: number
-  notification_type: string
+  notification_type: NotificationTypeValue
   title: string
   body: string
   lead_id: string | null
@@ -183,9 +195,9 @@ export interface SellerOption {
   role: UserRole
 }
 
-export type TaskType = 'whatsapp' | 'llamada' | 'cotizacion' | 'cita' | 'seguimiento' | 'otro'
-export type TaskStatus = 'pending' | 'completed' | 'canceled'
-export type TaskPriority = 'low' | 'normal' | 'high'
+export type TaskType = TaskTypeCatalogValue
+export type TaskStatus = TaskStatusCatalogValue
+export type TaskPriority = TaskPriorityCatalogValue
 
 export interface LeadTask {
   id: number
@@ -273,22 +285,8 @@ export interface TemplateAttachment {
   library_asset_id: number | null
 }
 
-export type AutomationTrigger =
-  | 'lead_created'
-  | 'stage_changed'
-  | 'message_received'
-  | 'seller_response_overdue'
-  | 'customer_response_overdue'
-  | 'task_due'
-
-export type AutomationActionType =
-  | 'create_task'
-  | 'assign_seller'
-  | 'add_tag'
-  | 'remove_tag'
-  | 'change_stage'
-  | 'notify'
-  | 'send_template'
+export type AutomationTrigger = AutomationTriggerValue
+export type AutomationActionType = AutomationActionTypeValue
 
 export interface AutomationConditions {
   stage?: LeadStage | null
@@ -300,52 +298,75 @@ export interface AutomationConditions {
   business_hours_only?: boolean
 }
 
-export interface AutomationAction {
-  type: AutomationActionType
-  title?: string
-  description?: string | null
-  task_type?: TaskType
-  priority?: TaskPriority
-  due_minutes?: number
-  remind_minutes_before?: number
-  assigned_user_id?: number | null
-  user_id?: number | null
-  tag_id?: number
-  stage?: LeadStage
-  recipient?: 'seller' | 'specific'
-  body?: string
-  template_id?: number
+export interface CreateTaskAutomationAction {
+  type: typeof AutomationActionType.CreateTask
+  title: string
+  description: string | null
+  task_type: TaskType
+  priority: TaskPriority
+  due_minutes: number
+  remind_minutes_before: number
+  assigned_user_id: number | null
 }
 
-export type AutomationFlowNodeType = 'trigger' | 'condition' | 'action' | 'wait' | 'end'
-export type AutomationFlowConditionType =
-  | 'stage_equals'
-  | 'origin_contains'
-  | 'service_contains'
-  | 'seller_equals'
-  | 'tag_present'
-  | 'whatsapp_window_open'
-  | 'business_hours'
+export interface AssignSellerAutomationAction {
+  type: typeof AutomationActionType.AssignSeller
+  user_id: number | null
+}
 
-export interface AutomationFlowNode {
+export interface TagAutomationAction {
+  type: typeof AutomationActionType.AddTag | typeof AutomationActionType.RemoveTag
+  tag_id: number | null
+}
+
+export interface ChangeStageAutomationAction {
+  type: typeof AutomationActionType.ChangeStage
+  stage: LeadStage
+}
+
+export interface NotifyAutomationAction {
+  type: typeof AutomationActionType.Notify
+  recipient: AutomationRecipientValue
+  user_id: number | null
+  title: string
+  body: string
+}
+
+export interface SendTemplateAutomationAction {
+  type: typeof AutomationActionType.SendTemplate
+  template_id: number | null
+}
+
+export type AutomationAction =
+  | CreateTaskAutomationAction
+  | AssignSellerAutomationAction
+  | TagAutomationAction
+  | ChangeStageAutomationAction
+  | NotifyAutomationAction
+  | SendTemplateAutomationAction
+
+export type AutomationFlowNodeType = FlowNodeTypeValue
+export type AutomationFlowConditionType = FlowConditionTypeValue
+
+interface BaseAutomationFlowNode<TType extends AutomationFlowNodeType, TData> {
   id: string
-  type: AutomationFlowNodeType
+  type: TType
   position: { x: number; y: number }
-  data: {
-    trigger_type?: AutomationTrigger
-    minutes?: number
-    condition_type?: AutomationFlowConditionType
-    value?: string | number | boolean | null
-    action?: AutomationAction
-    label?: string
-  }
+  data: TData
 }
+
+export type AutomationFlowNode =
+  | BaseAutomationFlowNode<typeof FlowNodeType.Trigger, { trigger_type: AutomationTrigger; minutes?: number }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Condition, { condition_type: AutomationFlowConditionType; value: string | number | boolean | null }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Action, { action: AutomationAction }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { minutes: number }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.End, { label: string }>
 
 export interface AutomationFlowEdge {
   id: string
   source: string
   target: string
-  source_handle: 'next' | 'yes' | 'no'
+  source_handle: FlowHandleValue
 }
 
 export interface AutomationFlowDefinition {
@@ -360,7 +381,7 @@ export interface AutomationRule {
   trigger_config: { minutes?: number }
   conditions: AutomationConditions
   actions: AutomationAction[]
-  builder_mode: 'simple' | 'visual'
+  builder_mode: AutomationBuilderModeValue
   flow_definition: AutomationFlowDefinition | Record<string, never>
   published_flow_definition: AutomationFlowDefinition | null
   flow_version: number
@@ -370,7 +391,7 @@ export interface AutomationRule {
   created_by_name: string
   execution_count: number
   last_execution_at: string | null
-  last_execution_status: string | null
+  last_execution_status: AutomationExecutionStatusValue | null
   created_at: string
   updated_at: string
 }
@@ -382,7 +403,7 @@ export interface AutomationExecution {
   lead_id: string | null
   lead_name: string | null
   trigger_type: AutomationTrigger
-  status: 'scheduled' | 'running' | 'completed' | 'failed' | 'skipped'
+  status: AutomationExecutionStatusValue
   scheduled_for: string
   started_at: string | null
   finished_at: string | null

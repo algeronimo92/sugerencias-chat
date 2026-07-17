@@ -6,6 +6,14 @@ from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from domain_types import (
+    AutomationBuilderMode,
+    AutomationExecutionStatus,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
+
 
 class Base(DeclarativeBase):
     pass
@@ -223,9 +231,9 @@ class LeadTask(Base):
     lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
-    task_type: Mapped[str] = mapped_column(Text, default="seguimiento")
-    status: Mapped[str] = mapped_column(Text, default="pending")
-    priority: Mapped[str] = mapped_column(Text, default="normal")
+    task_type: Mapped[str] = mapped_column(Text, default=TaskType.FOLLOW_UP)
+    status: Mapped[str] = mapped_column(Text, default=TaskStatus.PENDING)
+    priority: Mapped[str] = mapped_column(Text, default=TaskPriority.NORMAL)
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -340,7 +348,11 @@ class AutomationRule(Base):
     trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     conditions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     actions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
-    builder_mode: Mapped[str] = mapped_column(Text, default="simple", server_default="simple")
+    builder_mode: Mapped[str] = mapped_column(
+        Text,
+        default=AutomationBuilderMode.SIMPLE,
+        server_default=AutomationBuilderMode.SIMPLE.value,
+    )
     flow_definition: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
     flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -384,7 +396,11 @@ class AutomationExecution(Base):
     trigger_type: Mapped[str] = mapped_column(Text)
     event_key: Mapped[str] = mapped_column(Text)
     event_payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
-    status: Mapped[str] = mapped_column(Text, default="scheduled", server_default="scheduled")
+    status: Mapped[str] = mapped_column(
+        Text,
+        default=AutomationExecutionStatus.SCHEDULED,
+        server_default=AutomationExecutionStatus.SCHEDULED.value,
+    )
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 
+from domain_types import TaskStatus
 from db.models import User
 from models.schemas import TaskCreate, TaskItem, TaskUpdate
 from services.auth_service import get_current_user
@@ -18,7 +19,7 @@ async def get_tasks(
     all_users: bool = False,
     user: User = Depends(get_current_user),
 ):
-    if status and status not in ("pending", "completed", "canceled"):
+    if status and status not in frozenset(TaskStatus):
         raise HTTPException(400, "Estado inválido")
     if user.role != "admin" and (assigned_user_id is not None or all_users):
         raise HTTPException(403, "Solo un administrador puede consultar tareas de otros usuarios")

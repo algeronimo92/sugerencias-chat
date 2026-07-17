@@ -1,7 +1,7 @@
 import { useEffect, useState, type DragEvent } from 'react'
 import { AlertCircle, Check, GripVertical, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
 import type { Chat, LeadStage } from '../types'
-import { LEAD_STAGES } from '../types'
+import { isLeadStage, LEAD_STAGES } from '../types'
 import { useBulkAssignTag, useBulkMoveStage, useKanbanCounts, useKanbanStage, useMoveLeadStage } from '../hooks/useKanban'
 import { useTags } from '../hooks/useLeadMeta'
 import { avatarInitial, displayName } from '../utils/chat'
@@ -132,7 +132,10 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
           id={`stage-${chat.chat_id}`}
           value={chat.stage}
           disabled={isMoving}
-          onChange={(event) => onMove(chat, event.target.value as LeadStage)}
+          onChange={(event) => {
+            const stage = event.target.value
+            if (isLeadStage(stage)) onMove(chat, stage)
+          }}
           className="w-full rounded-md border-0 bg-transparent px-1 py-1 text-[11px] font-medium text-gray-500 outline-none hover:bg-gray-50 focus:ring-2 focus:ring-green-500 disabled:cursor-wait dark:text-gray-400 dark:hover:bg-gray-700"
         >
           {LEAD_STAGES.map((stage) => (
@@ -361,8 +364,8 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             value=""
             disabled={isBulkBusy}
             onChange={(event) => {
-              const stage = event.target.value as LeadStage
-              if (stage) handleBulkMove(stage)
+              const stage = event.target.value
+              if (isLeadStage(stage)) handleBulkMove(stage)
             }}
             className="rounded-md border border-green-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none disabled:cursor-wait disabled:opacity-60 dark:border-green-800 dark:bg-gray-800 dark:text-gray-200"
           >

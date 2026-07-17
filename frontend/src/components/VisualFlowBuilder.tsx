@@ -5,12 +5,11 @@ import {
 } from 'lucide-react'
 import client from '../api/client'
 import type {
-  AutomationAction, AutomationActionType, AutomationFlowConditionType,
+  AutomationAction, AutomationActionType,
   AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, AutomationRule, AutomationTrigger, Chat, LeadStage,
-  TaskPriority, TaskType,
+  AutomationFlowNodeType, AutomationRule, Chat,
 } from '../types'
-import { LEAD_STAGES } from '../types'
+import { isLeadStage, LEAD_STAGES } from '../types'
 import {
   useCreateVisualFlow, usePublishVisualFlow, useSaveVisualFlow,
   useSimulateVisualFlow, type AutomationFlowSimulation,
@@ -19,33 +18,30 @@ import { useUsers } from '../hooks/useUsers'
 import { useTags } from '../hooks/useLeadMeta'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
-
-const TRIGGERS: Array<{ value: AutomationTrigger; label: string }> = [
-  { value: 'lead_created', label: 'Lead nuevo' },
-  { value: 'stage_changed', label: 'Cambio de etapa' },
-  { value: 'message_received', label: 'Mensaje recibido' },
-  { value: 'seller_response_overdue', label: 'Vendedor sin responder' },
-  { value: 'customer_response_overdue', label: 'Cliente sin responder' },
-  { value: 'task_due', label: 'Tarea vencida' },
-]
-
-const ACTION_LABELS: Record<AutomationActionType, string> = {
-  create_task: 'Crear tarea', assign_seller: 'Asignar vendedor', add_tag: 'Agregar etiqueta',
-  remove_tag: 'Quitar etiqueta', change_stage: 'Cambiar etapa', notify: 'Notificar internamente',
-  send_template: 'Enviar plantilla WhatsApp',
-}
-
-const CONDITION_LABELS: Record<AutomationFlowConditionType, string> = {
-  stage_equals: 'Etapa es', origin_contains: 'Origen contiene', service_contains: 'Servicio contiene',
-  seller_equals: 'Vendedor es', tag_present: 'Tiene etiqueta',
-  whatsapp_window_open: 'Ventana WhatsApp abierta', business_hours: 'Está en horario laboral',
-}
-
-const TASK_TYPES: Array<{ value: TaskType; label: string }> = [
-  { value: 'whatsapp', label: 'WhatsApp' }, { value: 'llamada', label: 'Llamada' },
-  { value: 'cotizacion', label: 'Cotización' }, { value: 'cita', label: 'Cita' },
-  { value: 'seguimiento', label: 'Seguimiento' }, { value: 'otro', label: 'Otro' },
-]
+import {
+  AUTOMATION_ACTION_LABELS as ACTION_LABELS,
+  AUTOMATION_TRIGGERS as TRIGGERS,
+  AutomationActionType as ActionType,
+  AutomationRecipient,
+  AutomationTrigger as TriggerType,
+  FLOW_CONDITION_LABELS as CONDITION_LABELS,
+  FLOW_NODE_LABELS,
+  FlowConditionType as ConditionType,
+  FlowHandle,
+  FlowNodeType as NodeType,
+  RESPONSE_OVERDUE_TRIGGERS,
+  TASK_PRIORITY_OPTIONS,
+  TASK_TYPE_OPTIONS as TASK_TYPES,
+  TaskPriorityValue,
+  TaskTypeValue,
+  assertNever,
+  isAutomationActionType,
+  isAutomationTrigger,
+  isFlowConditionType,
+  isFlowNodeType,
+  isTaskPriority,
+  isTaskType,
+} from '../domain/automationCatalog'
 
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 112
@@ -54,63 +50,83 @@ const CANVAS_HEIGHT = 1100
 const fieldClass = 'w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100'
 
 function defaultAction(type: AutomationActionType): AutomationAction {
-  if (type === 'create_task') return { type, title: 'Dar seguimiento a {{nombre}}', description: '', task_type: 'seguimiento', priority: 'normal', due_minutes: 60, remind_minutes_before: 15, assigned_user_id: null }
-  if (type === 'assign_seller') return { type, user_id: null }
-  if (type === 'add_tag' || type === 'remove_tag') return { type, tag_id: undefined }
-  if (type === 'change_stage') return { type, stage: 'calificacion' }
-  if (type === 'notify') return { type, recipient: 'seller', user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
-  return { type, template_id: undefined }
+  switch (type) {
+    case ActionType.CreateTask:
+      return { type, title: 'Dar seguimiento a {{nombre}}', description: '', task_type: TaskTypeValue.FollowUp, priority: TaskPriorityValue.Normal, due_minutes: 60, remind_minutes_before: 15, assigned_user_id: null }
+    case ActionType.AssignSeller:
+      return { type, user_id: null }
+    case ActionType.AddTag:
+    case ActionType.RemoveTag:
+      return { type, tag_id: null }
+    case ActionType.ChangeStage:
+      return { type, stage: 'calificacion' }
+    case ActionType.Notify:
+      return { type, recipient: AutomationRecipient.Seller, user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
+    case ActionType.SendTemplate:
+      return { type, template_id: null }
+    default:
+      return assertNever(type)
+  }
 }
 
 function initialFlow(): AutomationFlowDefinition {
   return {
     nodes: [
-      { id: 'trigger-1', type: 'trigger', position: { x: 70, y: 220 }, data: { trigger_type: 'lead_created' } },
-      { id: 'action-1', type: 'action', position: { x: 390, y: 220 }, data: { action: defaultAction('create_task') } },
-      { id: 'end-1', type: 'end', position: { x: 710, y: 220 }, data: { label: 'Fin' } },
+      { id: 'trigger-1', type: NodeType.Trigger, position: { x: 70, y: 220 }, data: { trigger_type: TriggerType.LeadCreated } },
+      { id: 'action-1', type: NodeType.Action, position: { x: 390, y: 220 }, data: { action: defaultAction(ActionType.CreateTask) } },
+      { id: 'end-1', type: NodeType.End, position: { x: 710, y: 220 }, data: { label: 'Fin' } },
     ],
     edges: [
-      { id: 'edge-trigger-1-action-1', source: 'trigger-1', target: 'action-1', source_handle: 'next' },
-      { id: 'edge-action-1-end-1', source: 'action-1', target: 'end-1', source_handle: 'next' },
+      { id: 'edge-trigger-1-action-1', source: 'trigger-1', target: 'action-1', source_handle: FlowHandle.Next },
+      { id: 'edge-action-1-end-1', source: 'action-1', target: 'end-1', source_handle: FlowHandle.Next },
     ],
   }
 }
 
 function isFlowDefinition(value: unknown): value is AutomationFlowDefinition {
   if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<AutomationFlowDefinition>
-  return Array.isArray(candidate.nodes) && Array.isArray(candidate.edges)
+  return 'nodes' in value && 'edges' in value && Array.isArray(value.nodes) && Array.isArray(value.edges)
 }
 
-function nodeData(type: AutomationFlowNodeType): AutomationFlowNode['data'] {
-  if (type === 'condition') return { condition_type: 'stage_equals', value: 'nuevo' }
-  if (type === 'action') return { action: defaultAction('create_task') }
-  if (type === 'wait') return { minutes: 30 }
-  if (type === 'end') return { label: 'Fin' }
-  return { trigger_type: 'lead_created' }
+function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: number): AutomationFlowNode {
+  const position = { x, y }
+  switch (type) {
+    case NodeType.Trigger:
+      return { id, type, position, data: { trigger_type: TriggerType.LeadCreated } }
+    case NodeType.Condition:
+      return { id, type, position, data: { condition_type: ConditionType.StageEquals, value: 'nuevo' } }
+    case NodeType.Action:
+      return { id, type, position, data: { action: defaultAction(ActionType.CreateTask) } }
+    case NodeType.Wait:
+      return { id, type, position, data: { minutes: 30 } }
+    case NodeType.End:
+      return { id, type, position, data: { label: 'Fin' } }
+    default:
+      return assertNever(type)
+  }
 }
 
 function nodeTone(type: AutomationFlowNodeType) {
-  if (type === 'trigger') return 'border-green-400 bg-green-50 dark:border-green-800 dark:bg-green-950/30'
-  if (type === 'condition') return 'border-amber-400 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30'
-  if (type === 'action') return 'border-violet-400 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30'
-  if (type === 'wait') return 'border-blue-400 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30'
+  if (type === NodeType.Trigger) return 'border-green-400 bg-green-50 dark:border-green-800 dark:bg-green-950/30'
+  if (type === NodeType.Condition) return 'border-amber-400 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30'
+  if (type === NodeType.Action) return 'border-violet-400 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30'
+  if (type === NodeType.Wait) return 'border-blue-400 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30'
   return 'border-gray-400 bg-gray-50 dark:border-gray-700 dark:bg-gray-800'
 }
 
 function nodeIcon(type: AutomationFlowNodeType) {
-  if (type === 'trigger') return <Zap className="h-4 w-4 text-green-600" />
-  if (type === 'condition') return <Split className="h-4 w-4 text-amber-600" />
-  if (type === 'action') return <Activity className="h-4 w-4 text-violet-600" />
-  if (type === 'wait') return <Clock3 className="h-4 w-4 text-blue-600" />
+  if (type === NodeType.Trigger) return <Zap className="h-4 w-4 text-green-600" />
+  if (type === NodeType.Condition) return <Split className="h-4 w-4 text-amber-600" />
+  if (type === NodeType.Action) return <Activity className="h-4 w-4 text-violet-600" />
+  if (type === NodeType.Wait) return <Clock3 className="h-4 w-4 text-blue-600" />
   return <CheckCircle2 className="h-4 w-4 text-gray-500" />
 }
 
 function nodeTitle(node: AutomationFlowNode) {
-  if (node.type === 'trigger') return TRIGGERS.find(item => item.value === node.data.trigger_type)?.label ?? 'Disparador'
-  if (node.type === 'condition') return CONDITION_LABELS[node.data.condition_type ?? 'stage_equals']
-  if (node.type === 'action') return ACTION_LABELS[node.data.action?.type ?? 'create_task']
-  if (node.type === 'wait') return `Esperar ${node.data.minutes ?? 0} min`
+  if (node.type === NodeType.Trigger) return TRIGGERS.find(item => item.value === node.data.trigger_type)?.label ?? 'Disparador'
+  if (node.type === NodeType.Condition) return CONDITION_LABELS[node.data.condition_type]
+  if (node.type === NodeType.Action) return ACTION_LABELS[node.data.action.type]
+  if (node.type === NodeType.Wait) return `Esperar ${node.data.minutes} min`
   return node.data.label || 'Fin'
 }
 
@@ -134,7 +150,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     return isFlowDefinition(definition) && definition.nodes.length ? definition : initialFlow()
   })
   const [selectedId, setSelectedId] = useState<string | null>(flow.nodes[0]?.id ?? null)
-  const [connecting, setConnecting] = useState<{ source: string; handle: 'next' | 'yes' | 'no' } | null>(null)
+  const [connecting, setConnecting] = useState<{ source: string; handle: AutomationFlowEdge['source_handle'] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [simulationOpen, setSimulationOpen] = useState(false)
@@ -148,29 +164,30 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none' && template.attachments.length === 0), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
 
-  function updateNode(nodeId: string, patch: Partial<AutomationFlowNode['data']>) {
+  function replaceNode(nextNode: AutomationFlowNode) {
     setFlow(current => ({
       ...current,
-      nodes: current.nodes.map(node => node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node),
+      nodes: current.nodes.map(node => node.id === nextNode.id ? nextNode : node),
     }))
   }
 
-  function updateAction(patch: Partial<AutomationAction>) {
-    if (!selected || selected.type !== 'action') return
-    updateNode(selected.id, { action: { ...selected.data.action, ...patch } as AutomationAction })
+  function replaceSelectedAction(nextAction: AutomationAction) {
+    if (!selected || selected.type !== NodeType.Action) return
+    replaceNode({ ...selected, data: { action: nextAction } })
   }
 
   function addNode(type: AutomationFlowNodeType, x: number, y: number) {
-    if (type === 'trigger' && flow.nodes.some(node => node.type === 'trigger')) {
+    if (type === NodeType.Trigger && flow.nodes.some(node => node.type === NodeType.Trigger)) {
       setError('El flujo solo puede tener un disparador.')
       return
     }
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    const node: AutomationFlowNode = {
-      id, type,
-      position: { x: Math.max(10, Math.min(CANVAS_WIDTH - NODE_WIDTH - 10, x)), y: Math.max(10, Math.min(CANVAS_HEIGHT - NODE_HEIGHT - 10, y)) },
-      data: nodeData(type),
-    }
+    const node = createFlowNode(
+      type,
+      id,
+      Math.max(10, Math.min(CANVAS_WIDTH - NODE_WIDTH - 10, x)),
+      Math.max(10, Math.min(CANVAS_HEIGHT - NODE_HEIGHT - 10, y)),
+    )
     setFlow(current => ({ ...current, nodes: [...current.nodes, node] }))
     setSelectedId(id)
     setError(null)
@@ -178,7 +195,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
 
   function removeNode(nodeId: string) {
     const node = flow.nodes.find(item => item.id === nodeId)
-    if (node?.type === 'trigger') { setError('El disparador no se puede eliminar; puedes cambiar su tipo.'); return }
+    if (node?.type === NodeType.Trigger) { setError('El disparador no se puede eliminar; puedes cambiar su tipo.'); return }
     setFlow(current => ({
       nodes: current.nodes.filter(item => item.id !== nodeId),
       edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
@@ -189,7 +206,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   function connectTo(target: string) {
     if (!connecting || connecting.source === target) return
     const targetNode = flow.nodes.find(node => node.id === target)
-    if (!targetNode || targetNode.type === 'trigger') { setError('El disparador no puede recibir conexiones.'); return }
+    if (!targetNode || targetNode.type === NodeType.Trigger) { setError('El disparador no puede recibir conexiones.'); return }
     const edge: AutomationFlowEdge = {
       id: `edge-${connecting.source}-${connecting.handle}-${target}-${Date.now()}`,
       source: connecting.source, target, source_handle: connecting.handle,
@@ -211,9 +228,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     const rect = event.currentTarget.getBoundingClientRect()
     const x = event.clientX - rect.left - NODE_WIDTH / 2
     const y = event.clientY - rect.top - 24
-    const paletteType = event.dataTransfer.getData('application/x-flow-palette') as AutomationFlowNodeType
+    const paletteValue = event.dataTransfer.getData('application/x-flow-palette')
     const movingId = event.dataTransfer.getData('application/x-flow-node')
-    if (paletteType) { addNode(paletteType, x, y); return }
+    if (isFlowNodeType(paletteValue)) { addNode(paletteValue, x, y); return }
     if (movingId) {
       setFlow(current => ({
         ...current,
@@ -226,7 +243,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   }
 
   function autoLayout() {
-    const trigger = flow.nodes.find(node => node.type === 'trigger')
+    const trigger = flow.nodes.find(node => node.type === NodeType.Trigger)
     if (!trigger) return
     const levels = new Map<string, number>([[trigger.id, 0]])
     const queue = [trigger.id]
@@ -313,8 +330,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       <aside className="w-48 shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Arrastra al lienzo</p>
         {([
-          ['condition', 'Condición', Split, 'Rama Sí/No'], ['action', 'Acción', Activity, 'Ejecuta una operación'],
-          ['wait', 'Espera', Clock3, 'Continúa más tarde'], ['end', 'Fin', CheckCircle2, 'Termina esta ruta'],
+          [NodeType.Condition, FLOW_NODE_LABELS[NodeType.Condition], Split, 'Rama Sí/No'],
+          [NodeType.Action, FLOW_NODE_LABELS[NodeType.Action], Activity, 'Ejecuta una operación'],
+          [NodeType.Wait, FLOW_NODE_LABELS[NodeType.Wait], Clock3, 'Continúa más tarde'],
+          [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-gray-200 bg-gray-50 p-3 active:cursor-grabbing dark:border-gray-700 dark:bg-gray-800"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-gray-100"><Icon className="h-4 w-4 text-green-600" />{label}</div><p className="mt-1 text-[10px] text-gray-500">{description}</p></div>)}
         <div className="mt-4 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"><strong>Cómo conectar:</strong> pulsa una salida del bloque y después “Conectar aquí” en el destino.</div>
       </aside>
@@ -330,24 +349,24 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
               const sx = source.position.x + NODE_WIDTH; const sy = source.position.y + NODE_HEIGHT / 2
               const tx = target.position.x; const ty = target.position.y + NODE_HEIGHT / 2
               const bend = Math.max(60, Math.abs(tx - sx) * .45)
-              return <g key={edge.id}><path d={`M${sx},${sy} C${sx + bend},${sy} ${tx - bend},${ty} ${tx},${ty}`} fill="none" stroke={edge.source_handle === 'yes' ? '#22c55e' : edge.source_handle === 'no' ? '#ef4444' : '#94a3b8'} strokeWidth="2" markerEnd="url(#flow-arrow)" /><text x={(sx + tx) / 2} y={(sy + ty) / 2 - 7} textAnchor="middle" className="fill-gray-500 text-[10px]">{edge.source_handle === 'yes' ? 'Sí' : edge.source_handle === 'no' ? 'No' : ''}</text></g>
+              return <g key={edge.id}><path d={`M${sx},${sy} C${sx + bend},${sy} ${tx - bend},${ty} ${tx},${ty}`} fill="none" stroke={edge.source_handle === FlowHandle.Yes ? '#22c55e' : edge.source_handle === FlowHandle.No ? '#ef4444' : '#94a3b8'} strokeWidth="2" markerEnd="url(#flow-arrow)" /><text x={(sx + tx) / 2} y={(sy + ty) / 2 - 7} textAnchor="middle" className="fill-gray-500 text-[10px]">{edge.source_handle === FlowHandle.Yes ? 'Sí' : edge.source_handle === FlowHandle.No ? 'No' : ''}</text></g>
             })}
           </svg>
           {flow.nodes.map(node => <div key={node.id} onClick={() => { setSelectedId(node.id); if (connecting) connectTo(node.id) }} className={`absolute rounded-xl border-2 p-3 shadow-md transition ${nodeTone(node.type)} ${selectedId === node.id ? 'ring-2 ring-green-500 ring-offset-2 dark:ring-offset-gray-950' : ''}`} style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT, left: node.position.x, top: node.position.y }}>
-            {connecting && node.type !== 'trigger' && connecting.source !== node.id && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-green-600 px-2 py-0.5 text-[9px] font-bold text-white shadow">Conectar aquí</span>}
-            <div className="flex items-start gap-2"><button type="button" draggable onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData('application/x-flow-node', node.id) }} className="cursor-grab rounded p-0.5 text-gray-400 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>{nodeIcon(node.type)}<div className="min-w-0 flex-1"><p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{node.type === 'trigger' ? 'Disparador' : node.type === 'condition' ? 'Condición' : node.type === 'action' ? 'Acción' : node.type === 'wait' ? 'Espera' : 'Fin'}</p><p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{nodeTitle(node)}</p></div>{node.type !== 'trigger' && <button type="button" onClick={event => { event.stopPropagation(); removeNode(node.id) }} className="text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
-            {node.type !== 'end' && <div className="mt-3 flex justify-end gap-1">{node.type === 'condition' ? <><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: 'yes' }) }} className="rounded-full bg-green-600 px-2 py-1 text-[9px] font-bold text-white">Sí →</button><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: 'no' }) }} className="rounded-full bg-red-500 px-2 py-1 text-[9px] font-bold text-white">No →</button></> : <button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: 'next' }) }} className="rounded-full bg-gray-700 px-2 py-1 text-[9px] font-bold text-white dark:bg-gray-600">Siguiente →</button>}</div>}
+            {connecting && node.type !== NodeType.Trigger && connecting.source !== node.id && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-green-600 px-2 py-0.5 text-[9px] font-bold text-white shadow">Conectar aquí</span>}
+            <div className="flex items-start gap-2"><button type="button" draggable onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData('application/x-flow-node', node.id) }} className="cursor-grab rounded p-0.5 text-gray-400 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>{nodeIcon(node.type)}<div className="min-w-0 flex-1"><p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{FLOW_NODE_LABELS[node.type]}</p><p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{nodeTitle(node)}</p></div>{node.type !== NodeType.Trigger && <button type="button" onClick={event => { event.stopPropagation(); removeNode(node.id) }} className="text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
+            {node.type !== NodeType.End && <div className="mt-3 flex justify-end gap-1">{node.type === NodeType.Condition ? <><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.Yes }) }} className="rounded-full bg-green-600 px-2 py-1 text-[9px] font-bold text-white">Sí →</button><button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.No }) }} className="rounded-full bg-red-500 px-2 py-1 text-[9px] font-bold text-white">No →</button></> : <button type="button" onClick={event => { event.stopPropagation(); setConnecting({ source: node.id, handle: FlowHandle.Next }) }} className="rounded-full bg-gray-700 px-2 py-1 text-[9px] font-bold text-white dark:bg-gray-600">Siguiente →</button>}</div>}
           </div>)}
         </div>
       </main>
 
       <aside className="w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
         {!selected ? <p className="py-16 text-center text-xs text-gray-500">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-gray-900 dark:text-white">{nodeTitle(selected)}</p><p className="text-[10px] text-gray-500">Propiedades del bloque</p></div></div>
-          {selected.type === 'trigger' && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Evento<select value={selected.data.trigger_type} onChange={event => updateNode(selected.id, { trigger_type: event.target.value as AutomationTrigger })} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{['seller_response_overdue', 'customer_response_overdue'].includes(selected.data.trigger_type ?? '') && <label className="grid gap-1 text-[10px] text-gray-500">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => updateNode(selected.id, { minutes: Number(event.target.value) })} className={fieldClass} /></label>}</div>}
-          {selected.type === 'condition' && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Comprobar<select value={selected.data.condition_type} onChange={event => updateNode(selected.id, { condition_type: event.target.value as AutomationFlowConditionType, value: event.target.value === 'stage_equals' ? 'nuevo' : null })} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{selected.data.condition_type === 'stage_equals' && <select value={String(selected.data.value ?? 'nuevo')} onChange={event => updateNode(selected.id, { value: event.target.value })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</select>}{selected.data.condition_type === 'origin_contains' && <input value={String(selected.data.value ?? '')} onChange={event => updateNode(selected.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} />}{selected.data.condition_type === 'service_contains' && <input value={String(selected.data.value ?? '')} onChange={event => updateNode(selected.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} />}{selected.data.condition_type === 'seller_equals' && <select value={String(selected.data.value ?? '')} onChange={event => updateNode(selected.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}{selected.data.condition_type === 'tag_present' && <select value={String(selected.data.value ?? '')} onChange={event => updateNode(selected.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>}<p className="rounded-lg bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Conecta las dos salidas: Sí cuando se cumple y No cuando no se cumple.</p></div>}
-          {selected.type === 'wait' && <label className="grid gap-1 text-[10px] text-gray-500">Esperar minutos<input type="number" min={1} max={10080} value={selected.data.minutes ?? 30} onChange={event => updateNode(selected.id, { minutes: Number(event.target.value) })} className={fieldClass} /></label>}
-          {selected.type === 'end' && <label className="grid gap-1 text-[10px] text-gray-500">Nombre de esta salida<input maxLength={80} value={selected.data.label ?? 'Fin'} onChange={event => updateNode(selected.id, { label: event.target.value })} className={fieldClass} /></label>}
-          {selected.type === 'action' && selected.data.action && <ActionEditor action={selected.data.action} updateAction={updateAction} users={activeUsers} tags={tags} templates={automaticTemplates} />}
+          {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Evento<select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-gray-500">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
+          {selected.type === NodeType.Condition && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Comprobar<select value={selected.data.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) replaceNode({ ...selected, data: { condition_type: value, value: value === ConditionType.StageEquals ? 'nuevo' : null } }) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{selected.data.condition_type === ConditionType.StageEquals && <select value={String(selected.data.value ?? 'nuevo')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</select>}{selected.data.condition_type === ConditionType.OriginContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Facebook" className={fieldClass} />}{selected.data.condition_type === ConditionType.ServiceContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Limpieza" className={fieldClass} />}{selected.data.condition_type === ConditionType.SellerEquals && <select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona vendedor</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}{selected.data.condition_type === ConditionType.TagPresent && <select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>}<p className="rounded-lg bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Conecta las dos salidas: Sí cuando se cumple y No cuando no se cumple.</p></div>}
+          {selected.type === NodeType.Wait && <label className="grid gap-1 text-[10px] text-gray-500">Esperar minutos<input type="number" min={1} max={10080} value={selected.data.minutes} onChange={event => replaceNode({ ...selected, data: { minutes: Number(event.target.value) } })} className={fieldClass} /></label>}
+          {selected.type === NodeType.End && <label className="grid gap-1 text-[10px] text-gray-500">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { label: event.target.value } })} className={fieldClass} /></label>}
+          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} templates={automaticTemplates} />}
           <div className="mt-5 border-t border-gray-100 pt-4 dark:border-gray-800"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">Conexiones de salida</p>{flow.edges.filter(edge => edge.source === selected.id).length === 0 ? <p className="text-[10px] text-gray-500">Sin conexiones.</p> : flow.edges.filter(edge => edge.source === selected.id).map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-[10px] dark:bg-gray-800"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{edge.source_handle} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
       </aside>
@@ -359,20 +378,20 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
 
 interface ActionEditorProps {
   action: AutomationAction
-  updateAction: (patch: Partial<AutomationAction>) => void
+  updateAction: (action: AutomationAction) => void
   users: Array<{ id: number; name: string }>
   tags: Array<{ id: number; name: string }>
   templates: Array<{ id: number; name: string }>
 }
 
 function ActionEditor({ action, updateAction, users, tags, templates }: ActionEditorProps) {
-  return <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Acción<select value={action.type} onChange={event => updateAction(defaultAction(event.target.value as AutomationActionType))} className={fieldClass}>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    {action.type === 'create_task' && <><label className="grid gap-1 text-[10px] text-gray-500">Título<input value={action.title ?? ''} onChange={event => updateAction({ title: event.target.value })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-gray-500">Descripción<textarea rows={2} value={action.description ?? ''} onChange={event => updateAction({ description: event.target.value })} className={fieldClass} /></label><div className="grid grid-cols-2 gap-2"><label className="grid gap-1 text-[10px] text-gray-500">Tipo<select value={action.task_type} onChange={event => updateAction({ task_type: event.target.value as TaskType })} className={fieldClass}>{TASK_TYPES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="grid gap-1 text-[10px] text-gray-500">Prioridad<select value={action.priority} onChange={event => updateAction({ priority: event.target.value as TaskPriority })} className={fieldClass}><option value="low">Baja</option><option value="normal">Normal</option><option value="high">Alta</option></select></label><label className="grid gap-1 text-[10px] text-gray-500">Vence en min<input type="number" min={1} max={43200} value={action.due_minutes} onChange={event => updateAction({ due_minutes: Number(event.target.value) })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-gray-500">Recordar antes<input type="number" min={0} value={action.remind_minutes_before} onChange={event => updateAction({ remind_minutes_before: Number(event.target.value) })} className={fieldClass} /></label></div><label className="grid gap-1 text-[10px] text-gray-500">Responsable<select value={action.assigned_user_id ?? ''} onChange={event => updateAction({ assigned_user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Vendedor del lead</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label></>}
-    {action.type === 'assign_seller' && <select value={action.user_id ?? ''} onChange={event => updateAction({ user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}
-    {(action.type === 'add_tag' || action.type === 'remove_tag') && <select value={action.tag_id ?? ''} onChange={event => updateAction({ tag_id: Number(event.target.value) || undefined })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>}
-    {action.type === 'change_stage' && <select value={action.stage} onChange={event => updateAction({ stage: event.target.value as LeadStage })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</select>}
-    {action.type === 'notify' && <><select value={action.recipient} onChange={event => updateAction({ recipient: event.target.value as 'seller' | 'specific', user_id: null })} className={fieldClass}><option value="seller">Vendedor del lead</option><option value="specific">Usuario específico</option></select>{action.recipient === 'specific' && <select value={action.user_id ?? ''} onChange={event => updateAction({ user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona usuario</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}<input value={action.title ?? ''} onChange={event => updateAction({ title: event.target.value })} placeholder="Título" className={fieldClass} /><textarea rows={3} value={action.body ?? ''} onChange={event => updateAction({ body: event.target.value })} placeholder="Contenido" className={fieldClass} /></>}
-    {action.type === 'send_template' && <><select value={action.template_id ?? ''} onChange={event => updateAction({ template_id: Number(event.target.value) || undefined })} className={fieldClass}><option value="">Selecciona plantilla</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select><p className="text-[10px] text-amber-600">Solo plantillas internas de texto y con ventana de 24 horas abierta.</p></>}
+  return <div className="space-y-3"><label className="grid gap-1 text-[10px] text-gray-500">Acción<select value={action.type} onChange={event => { if (isAutomationActionType(event.target.value)) updateAction(defaultAction(event.target.value)) }} className={fieldClass}>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {action.type === ActionType.CreateTask && <><label className="grid gap-1 text-[10px] text-gray-500">Título<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-gray-500">Descripción<textarea rows={2} value={action.description ?? ''} onChange={event => updateAction({ ...action, description: event.target.value })} className={fieldClass} /></label><div className="grid grid-cols-2 gap-2"><label className="grid gap-1 text-[10px] text-gray-500">Tipo<select value={action.task_type} onChange={event => { const value = event.target.value; if (isTaskType(value)) updateAction({ ...action, task_type: value }) }} className={fieldClass}>{TASK_TYPES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="grid gap-1 text-[10px] text-gray-500">Prioridad<select value={action.priority} onChange={event => { const value = event.target.value; if (isTaskPriority(value)) updateAction({ ...action, priority: value }) }} className={fieldClass}>{TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="grid gap-1 text-[10px] text-gray-500">Vence en min<input type="number" min={1} max={43200} value={action.due_minutes} onChange={event => updateAction({ ...action, due_minutes: Number(event.target.value) })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-gray-500">Recordar antes<input type="number" min={0} value={action.remind_minutes_before} onChange={event => updateAction({ ...action, remind_minutes_before: Number(event.target.value) })} className={fieldClass} /></label></div><label className="grid gap-1 text-[10px] text-gray-500">Responsable<select value={action.assigned_user_id ?? ''} onChange={event => updateAction({ ...action, assigned_user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Vendedor del lead</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label></>}
+    {action.type === ActionType.AssignSeller && <select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}
+    {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>}
+    {action.type === ActionType.ChangeStage && <select value={action.stage} onChange={event => { const value = event.target.value; if (isLeadStage(value)) updateAction({ ...action, stage: value }) }} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</select>}
+    {action.type === ActionType.Notify && <><select value={action.recipient} onChange={event => updateAction({ ...action, recipient: event.target.value === AutomationRecipient.Specific ? AutomationRecipient.Specific : AutomationRecipient.Seller, user_id: null })} className={fieldClass}><option value={AutomationRecipient.Seller}>Vendedor del lead</option><option value={AutomationRecipient.Specific}>Usuario específico</option></select>{action.recipient === AutomationRecipient.Specific && <select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona usuario</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select>}<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} placeholder="Título" className={fieldClass} /><textarea rows={3} value={action.body} onChange={event => updateAction({ ...action, body: event.target.value })} placeholder="Contenido" className={fieldClass} /></>}
+    {action.type === ActionType.SendTemplate && <><select value={action.template_id ?? ''} onChange={event => updateAction({ ...action, template_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona plantilla</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select><p className="text-[10px] text-amber-600">Solo plantillas internas de texto y con ventana de 24 horas abierta.</p></>}
     <div className="rounded-lg bg-gray-50 p-2 text-[10px] text-gray-500 dark:bg-gray-800"><MessageSquareText className="mr-1 inline h-3 w-3" />Variables: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}.</div>
   </div>
 }

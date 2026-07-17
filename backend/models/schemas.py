@@ -3,6 +3,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from domain_types import (
+    AutomationBuilderMode,
+    AutomationExecutionStatus,
+    AutomationTrigger,
+    NotificationType,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
+
 
 LeadStage = Literal[
     "nuevo",
@@ -93,7 +103,7 @@ class InternalNoteUpdate(BaseModel):
 
 class NotificationItem(BaseModel):
     id: int
-    notification_type: str
+    notification_type: NotificationType
     title: str
     body: str
     lead_id: str | None = None
@@ -223,17 +233,12 @@ class SuggestionResponse(BaseModel):
     sugerencias: list[Sugerencia]
 
 
-TaskType = Literal["whatsapp", "llamada", "cotizacion", "cita", "seguimiento", "otro"]
-TaskStatus = Literal["pending", "completed", "canceled"]
-TaskPriority = Literal["low", "normal", "high"]
-
-
 class TaskCreate(BaseModel):
     lead_id: str
     title: str
     description: str | None = None
-    task_type: TaskType = "seguimiento"
-    priority: TaskPriority = "normal"
+    task_type: TaskType = TaskType.FOLLOW_UP
+    priority: TaskPriority = TaskPriority.NORMAL
     due_at: datetime
     remind_at: datetime | None = None
     assigned_user_id: int | None = None
@@ -386,16 +391,6 @@ class TemplateFavoriteUpdate(BaseModel):
     is_favorite: bool
 
 
-AutomationTrigger = Literal[
-    "lead_created",
-    "stage_changed",
-    "message_received",
-    "seller_response_overdue",
-    "customer_response_overdue",
-    "task_due",
-]
-
-
 class AutomationRuleCreate(BaseModel):
     name: str
     trigger_type: AutomationTrigger
@@ -423,7 +418,7 @@ class AutomationRuleItem(BaseModel):
     trigger_config: dict
     conditions: dict
     actions: list[dict]
-    builder_mode: Literal["simple", "visual"] = "simple"
+    builder_mode: AutomationBuilderMode = AutomationBuilderMode.SIMPLE
     flow_definition: dict = Field(default_factory=dict)
     published_flow_definition: dict | None = None
     flow_version: int = 0
@@ -445,7 +440,7 @@ class AutomationExecutionItem(BaseModel):
     lead_id: str | None = None
     lead_name: str | None = None
     trigger_type: AutomationTrigger
-    status: Literal["scheduled", "running", "completed", "failed", "skipped"]
+    status: AutomationExecutionStatus
     scheduled_for: str
     started_at: str | None = None
     finished_at: str | None = None

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
+from domain_types import AutomationTrigger
 from db.models import Lead, LeadActivity, LeadStage, LeadTag, LeadTagAssignment, User, WspMessage
 from db.session import get_sessionmaker
 
@@ -431,7 +432,7 @@ async def update_lead_stage(
             await _record_activity(
                 session,
                 chat_id,
-                "stage_changed",
+                AutomationTrigger.STAGE_CHANGED,
                 actor_type,
                 actor_user_id,
                 {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage},
@@ -514,7 +515,7 @@ async def create_lead(
             await _record_activity(
                 session,
                 chat_id,
-                "lead_created",
+                AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
                 new_value={"name": name, "phone": phone},

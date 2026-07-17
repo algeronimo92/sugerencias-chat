@@ -1,20 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
-import { KanbanBoard } from './components/KanbanBoard'
 import { LoginPage } from './components/LoginPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
-import { TasksPage } from './components/TasksPage'
-import { TemplatesPage } from './components/TemplatesPage'
-import { DashboardPage } from './components/DashboardPage'
-import { MediaLibraryPage } from './components/MediaLibraryPage'
 import { NotificationCenter } from './components/NotificationCenter'
-import { AutomationsPage } from './components/AutomationsPage'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
 import type { InternalMentionAlert } from './hooks/useChats'
@@ -22,6 +16,25 @@ import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
 import { queryClient } from './queryClient'
+
+const KanbanBoard = lazy(() =>
+  import('./components/KanbanBoard').then(module => ({ default: module.KanbanBoard })),
+)
+const TasksPage = lazy(() =>
+  import('./components/TasksPage').then(module => ({ default: module.TasksPage })),
+)
+const TemplatesPage = lazy(() =>
+  import('./components/TemplatesPage').then(module => ({ default: module.TemplatesPage })),
+)
+const DashboardPage = lazy(() =>
+  import('./components/DashboardPage').then(module => ({ default: module.DashboardPage })),
+)
+const MediaLibraryPage = lazy(() =>
+  import('./components/MediaLibraryPage').then(module => ({ default: module.MediaLibraryPage })),
+)
+const AutomationsPage = lazy(() =>
+  import('./components/AutomationsPage').then(module => ({ default: module.AutomationsPage })),
+)
 
 const EMPTY_CHAT_FILTERS: ChatFilters = {
   unreadOnly: false,
@@ -34,6 +47,17 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
   lastSender: '',
   inactiveDays: null,
   waitingTime: '',
+}
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Cargando vista…
+      </div>
+    </div>
+  )
 }
 
 function MainLayout() {
@@ -339,83 +363,85 @@ function MainLayout() {
         </div>
       )}
 
-      {isTasks ? (
-        <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
-      ) : isDashboard && me?.role === 'admin' ? (
-        <DashboardPage
-          onOpenTasks={() => navigate('/tasks')}
-          onFilterChats={(filters) => {
-            setChatFilter('all')
-            setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
-            navigate('/')
-          }}
-        />
-      ) : isTemplates && me?.role === 'admin' ? (
-        <TemplatesPage />
-      ) : isAutomations && me?.role === 'admin' ? (
-        <AutomationsPage />
-      ) : isMediaLibrary && me?.role === 'admin' ? (
-        <MediaLibraryPage />
-      ) : isKanban ? (
-        <KanbanBoard onOpenChat={handleSelectChat} />
-      ) : (
-      <div className="flex flex-1 overflow-hidden">
-        {/* Panel izquierdo — Lista de chats */}
-        <div className="w-80 shrink-0 h-full overflow-hidden">
-          <ChatList
-            chats={chats}
-            isLoading={isLoading}
-            error={!!error}
-            search={search}
-            onSearchChange={setSearch}
-            filter={chatFilter}
-            onFilterChange={setChatFilter}
-            unreadCount={unreadCount}
-            advancedFilters={advancedFilters}
-            onAdvancedFiltersChange={setAdvancedFilters}
-            onRefresh={refetch}
-            selectedId={selectedChat?.chat_id ?? null}
-            onSelect={handleSelectChat}
-            hasNextPage={!!hasNextPage}
-            isFetchingNextPage={isFetchingNextPage}
-            hasNextPageError={isFetchNextPageError}
-            onLoadMore={handleLoadMore}
+      <Suspense fallback={<PageLoader />}>
+        {isTasks ? (
+          <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
+        ) : isDashboard && me?.role === 'admin' ? (
+          <DashboardPage
+            onOpenTasks={() => navigate('/tasks')}
+            onFilterChats={(filters) => {
+              setChatFilter('all')
+              setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
+              navigate('/')
+            }}
           />
-        </div>
-
-        {/* Panel central — Conversación */}
-        <div className="flex-1 h-full overflow-hidden">
-          {selectedChat ? (
-            <ChatThread
-              chat={selectedChat}
-              onRefreshSuggestions={() => requestSuggestions(selectedChat)}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
-              <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
-              <p className="text-sm text-gray-400 dark:text-gray-600">Selecciona un lead para ver la conversación</p>
+        ) : isTemplates && me?.role === 'admin' ? (
+          <TemplatesPage />
+        ) : isAutomations && me?.role === 'admin' ? (
+          <AutomationsPage />
+        ) : isMediaLibrary && me?.role === 'admin' ? (
+          <MediaLibraryPage />
+        ) : isKanban ? (
+          <KanbanBoard onOpenChat={handleSelectChat} />
+        ) : (
+          <div className="flex flex-1 overflow-hidden">
+            {/* Panel izquierdo — Lista de chats */}
+            <div className="w-80 shrink-0 h-full overflow-hidden">
+              <ChatList
+                chats={chats}
+                isLoading={isLoading}
+                error={!!error}
+                search={search}
+                onSearchChange={setSearch}
+                filter={chatFilter}
+                onFilterChange={setChatFilter}
+                unreadCount={unreadCount}
+                advancedFilters={advancedFilters}
+                onAdvancedFiltersChange={setAdvancedFilters}
+                onRefresh={refetch}
+                selectedId={selectedChat?.chat_id ?? null}
+                onSelect={handleSelectChat}
+                hasNextPage={!!hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                hasNextPageError={isFetchNextPageError}
+                onLoadMore={handleLoadMore}
+              />
             </div>
-          )}
-        </div>
 
-        {/* Panel derecho — Sugerencias */}
-        <div className="w-96 shrink-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
-          {selectedChat ? (
-            <SuggestionPanel
-              chat={selectedChat}
-              data={suggestionData}
-              isLoading={isPending}
-              error={apiError}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">
-              <Sparkles className="w-12 h-12" strokeWidth={1.5} />
-              <p className="text-sm text-gray-400 dark:text-gray-600 text-center px-6">Selecciona un lead para ver las sugerencias</p>
+            {/* Panel central — Conversación */}
+            <div className="flex-1 h-full overflow-hidden">
+              {selectedChat ? (
+                <ChatThread
+                  chat={selectedChat}
+                  onRefreshSuggestions={() => requestSuggestions(selectedChat)}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
+                  <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
+                  <p className="text-sm text-gray-400 dark:text-gray-600">Selecciona un lead para ver la conversación</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-      )}
+
+            {/* Panel derecho — Sugerencias */}
+            <div className="w-96 shrink-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
+              {selectedChat ? (
+                <SuggestionPanel
+                  chat={selectedChat}
+                  data={suggestionData}
+                  isLoading={isPending}
+                  error={apiError}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">
+                  <Sparkles className="w-12 h-12" strokeWidth={1.5} />
+                  <p className="text-sm text-gray-400 dark:text-gray-600 text-center px-6">Selecciona un lead para ver las sugerencias</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Suspense>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from domain_types import AutomationBuilderMode
 from db.models import User
 from models.schemas import (
     AutomationExecutionItem,
@@ -61,7 +62,7 @@ async def patch_flow(
     _admin: User = Depends(require_admin),
 ):
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != "visual":
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         raise HTTPException(404, "Flujo visual no encontrado")
     try:
         item = await save_visual_flow(
@@ -107,7 +108,7 @@ async def patch_rule(
     if current is None:
         raise HTTPException(404, "Automatización no encontrada")
     requested = body.model_dump(exclude_unset=True)
-    if current["builder_mode"] == "visual":
+    if current["builder_mode"] == AutomationBuilderMode.VISUAL:
         # Una regla visual no tiene actions/conditions propias: mandarla por
         # validate_automation_rule fallaría con un error confuso.
         if not set(requested) <= {"is_active", "name"}:

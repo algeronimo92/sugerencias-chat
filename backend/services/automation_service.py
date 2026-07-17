@@ -8,6 +8,20 @@ import httpx
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from domain_types import (
+    AutomationActionType,
+    AutomationBuilderMode,
+    AutomationExecutionStatus,
+    AutomationRecipient,
+    AutomationTrigger,
+    FlowConditionType,
+    FlowHandle,
+    FlowNodeType,
+    NotificationType,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
 from db.models import (
     AutomationExecution,
     AutomationFlowVersion,
@@ -52,28 +66,14 @@ STALE_EXECUTION_MINUTES = 15
 # minutos configurados más esta gracia (3 días): activar una regla no debe
 # disparar contra todo el historial de conversaciones viejas.
 OVERDUE_LOOKBACK_GRACE_MINUTES = 4320
-TRIGGER_TYPES = {
-    "lead_created",
-    "stage_changed",
-    "message_received",
-    "seller_response_overdue",
-    "customer_response_overdue",
-    "task_due",
-}
-ACTION_TYPES = {
-    "create_task",
-    "assign_seller",
-    "add_tag",
-    "remove_tag",
-    "change_stage",
-    "notify",
-    "send_template",
-}
-FLOW_NODE_TYPES = {"trigger", "condition", "action", "wait", "end"}
-FLOW_CONDITION_TYPES = {
-    "stage_equals", "origin_contains", "service_contains", "seller_equals",
-    "tag_present", "whatsapp_window_open", "business_hours",
-}
+TRIGGER_TYPES = frozenset(AutomationTrigger)
+ACTION_TYPES = frozenset(AutomationActionType)
+FLOW_NODE_TYPES = frozenset(FlowNodeType)
+FLOW_CONDITION_TYPES = frozenset(FlowConditionType)
+FLOW_HANDLES = frozenset(FlowHandle)
+AUTOMATION_RECIPIENTS = frozenset(AutomationRecipient)
+TASK_TYPES = frozenset(TaskType)
+TASK_PRIORITIES = frozenset(TaskPriority)
 MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
 CRM_VARIABLES = {"nombre", "telefono", "servicio", "vendedor", "fecha_actual"}
@@ -116,7 +116,7 @@ def _rule_dict(row) -> dict:
         "trigger_config": row["trigger_config"] or {},
         "conditions": row["conditions"] or {},
         "actions": row["actions"] or [],
-        "builder_mode": row["builder_mode"] or "simple",
+        "builder_mode": row["builder_mode"] or AutomationBuilderMode.SIMPLE,
         "flow_definition": row["flow_definition"] or {},
         "published_flow_definition": row["published_flow_definition"],
         "flow_version": row["flow_version"] or 0,
@@ -275,7 +275,10 @@ async def validate_automation_rule(values: dict) -> dict:
     if trigger_type not in TRIGGER_TYPES:
         raise ValueError("Disparador no soportado")
     trigger_config = values.get("trigger_config") if isinstance(values.get("trigger_config"), dict) else {}
-    if trigger_type in {"seller_response_overdue", "customer_response_overdue"}:
+    if trigger_type in {
+        AutomationTrigger.SELLER_RESPONSE_OVERDUE,
+        AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+    }:
         minutes = int(trigger_config.get("minutes") or 0)
         if not 1 <= minutes <= 43200:
             raise ValueError("La demora debe estar entre 1 minuto y 30 días")
@@ -307,7 +310,7 @@ async def validate_automation_rule(values: dict) -> dict:
         if not isinstance(raw, dict) or raw.get("type") not in ACTION_TYPES:
             raise ValueError(f"Acción {position}: tipo no soportado")
         action_type = raw["type"]
-        if action_type == "create_task":
+        if action_type == AutomationActionType.CREATE_TASK:
             title = str(raw.get("title") or "").strip()
             due_minutes = int(raw.get("due_minutes") or 0)
             remind_before = int(raw.get("remind_minutes_before") or 0)
@@ -322,37 +325,45 @@ async def validate_automation_rule(values: dict) -> dict:
                 "type": action_type,
                 "title": title,
                 "description": str(raw.get("description") or "").strip()[:1000] or None,
-                "task_type": raw.get("task_type") if raw.get("task_type") in {"whatsapp", "llamada", "cotizacion", "cita", "seguimiento", "otro"} else "seguimiento",
-                "priority": raw.get("priority") if raw.get("priority") in {"low", "normal", "high"} else "normal",
+                "task_type": raw.get("task_type") if raw.get("task_type") in TASK_TYPES else TaskType.FOLLOW_UP,
+                "priority": raw.get("priority") if raw.get("priority") in TASK_PRIORITIES else TaskPriority.NORMAL,
                 "due_minutes": due_minutes,
                 "remind_minutes_before": remind_before,
                 "assigned_user_id": assignee,
             })
-        elif action_type == "assign_seller":
+        elif action_type == AutomationActionType.ASSIGN_SELLER:
             user_id = int(raw.get("user_id") or 0)
             if not user_id:
                 raise ValueError(f"Acción {position}: selecciona un vendedor")
             referenced_users.add(user_id)
             normalized_actions.append({"type": action_type, "user_id": user_id})
-        elif action_type in {"add_tag", "remove_tag"}:
+        elif action_type in {AutomationActionType.ADD_TAG, AutomationActionType.REMOVE_TAG}:
             tag_id = int(raw.get("tag_id") or 0)
             if not tag_id:
                 raise ValueError(f"Acción {position}: selecciona una etiqueta")
             referenced_tags.add(tag_id)
             normalized_actions.append({"type": action_type, "tag_id": tag_id})
-        elif action_type == "change_stage":
+        elif action_type == AutomationActionType.CHANGE_STAGE:
             stage = str(raw.get("stage") or "")
             if stage not in {item.value for item in LeadStage}:
                 raise ValueError(f"Acción {position}: etapa inválida")
             normalized_actions.append({"type": action_type, "stage": stage})
-        elif action_type == "notify":
+        elif action_type == AutomationActionType.NOTIFY:
             title = str(raw.get("title") or "").strip()
             body = str(raw.get("body") or "").strip()
-            recipient = raw.get("recipient") if raw.get("recipient") in {"seller", "specific"} else "seller"
-            user_id = int(raw.get("user_id") or 0) if recipient == "specific" else None
+            recipient = (
+                raw.get("recipient")
+                if raw.get("recipient") in AUTOMATION_RECIPIENTS
+                else AutomationRecipient.SELLER
+            )
+            user_id = (
+                int(raw.get("user_id") or 0)
+                if recipient == AutomationRecipient.SPECIFIC
+                else None
+            )
             if not title or not body or len(title) > 160 or len(body) > 1000:
                 raise ValueError(f"Acción {position}: título o contenido de notificación inválido")
-            if recipient == "specific" and not user_id:
+            if recipient == AutomationRecipient.SPECIFIC and not user_id:
                 raise ValueError(f"Acción {position}: selecciona el destinatario")
             if user_id:
                 referenced_users.add(user_id)
@@ -439,20 +450,23 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
     value = data.get("value")
     user_id = None
     tag_id = None
-    if condition_type == "stage_equals":
+    if condition_type == FlowConditionType.STAGE_EQUALS:
         value = str(value or "")
         if value not in {stage.value for stage in LeadStage}:
             raise ValueError(f"Condición {position}: etapa inválida")
-    elif condition_type in {"origin_contains", "service_contains"}:
+    elif condition_type in {
+        FlowConditionType.ORIGIN_CONTAINS,
+        FlowConditionType.SERVICE_CONTAINS,
+    }:
         value = str(value or "").strip()
         if not value or len(value) > 120:
             raise ValueError(f"Condición {position}: escribe un valor de hasta 120 caracteres")
-    elif condition_type == "seller_equals":
+    elif condition_type == FlowConditionType.SELLER_EQUALS:
         user_id = int(value or 0)
         if not user_id:
             raise ValueError(f"Condición {position}: selecciona un vendedor")
         value = user_id
-    elif condition_type == "tag_present":
+    elif condition_type == FlowConditionType.TAG_PRESENT:
         tag_id = int(value or 0)
         if not tag_id:
             raise ValueError(f"Condición {position}: selecciona una etiqueta")
@@ -498,19 +512,26 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
             raise ValueError(f"Conexión {position}: formato inválido")
         source = str(raw_edge.get("source") or "")
         target = str(raw_edge.get("target") or "")
-        handle = str(raw_edge.get("source_handle") or "next")
+        handle = str(raw_edge.get("source_handle") or FlowHandle.NEXT)
         edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
         if source not in ids or target not in ids or source == target:
             raise ValueError(f"Conexión {position}: origen o destino inválido")
-        if handle not in {"next", "yes", "no"} or edge_id in edge_ids:
+        if handle not in FLOW_HANDLES or edge_id in edge_ids:
             raise ValueError(f"Conexión {position}: salida o identificador inválido")
         edge_ids.add(edge_id)
         edges.append({"id": edge_id, "source": source, "target": target, "source_handle": handle})
-    trigger = next((node for node in nodes if node["type"] == "trigger"), None)
+    trigger = next((node for node in nodes if node["type"] == FlowNodeType.TRIGGER), None)
     trigger_data = trigger["data"] if trigger else {}
-    trigger_type = trigger_data.get("trigger_type") if trigger_data.get("trigger_type") in TRIGGER_TYPES else "lead_created"
+    trigger_type = (
+        trigger_data.get("trigger_type")
+        if trigger_data.get("trigger_type") in TRIGGER_TYPES
+        else AutomationTrigger.LEAD_CREATED
+    )
     trigger_config = {}
-    if trigger_type in {"seller_response_overdue", "customer_response_overdue"}:
+    if trigger_type in {
+        AutomationTrigger.SELLER_RESPONSE_OVERDUE,
+        AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+    }:
         minutes = int(trigger_data.get("minutes") or 30)
         trigger_config = {"minutes": max(1, min(43200, minutes))}
     return {
@@ -551,12 +572,20 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             raise ValueError(f"Bloque {position}: tipo no soportado")
         ids.add(node_id)
         normalized_data: dict
-        if node_type == "trigger":
+        if node_type == FlowNodeType.TRIGGER:
             trigger_type = data.get("trigger_type")
-            trigger_config = {"minutes": data.get("minutes")} if trigger_type in {"seller_response_overdue", "customer_response_overdue"} else {}
+            trigger_config = (
+                {"minutes": data.get("minutes")}
+                if trigger_type in {
+                    AutomationTrigger.SELLER_RESPONSE_OVERDUE,
+                    AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+                }
+                else {}
+            )
             trigger_values = await validate_automation_rule({
                 "name": name, "trigger_type": trigger_type, "trigger_config": trigger_config,
-                "conditions": {}, "actions": [{"type": "change_stage", "stage": "nuevo"}],
+                "conditions": {},
+                "actions": [{"type": AutomationActionType.CHANGE_STAGE, "stage": "nuevo"}],
                 "delay_minutes": 0, "is_active": False,
             })
             normalized_data = {
@@ -564,17 +593,17 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
                 "minutes": trigger_values["trigger_config"].get("minutes"),
             }
             trigger_nodes.append({"id": node_id, "data": normalized_data})
-        elif node_type == "condition":
+        elif node_type == FlowNodeType.CONDITION:
             normalized_data, user_id, tag_id = _normalize_flow_condition(data, position)
             if user_id:
                 condition_users.add(user_id)
             if tag_id:
                 condition_tags.add(tag_id)
-        elif node_type == "action":
+        elif node_type == FlowNodeType.ACTION:
             action = data.get("action") if isinstance(data.get("action"), dict) else {}
             normalized_data = {"action": action}
             action_nodes.append((len(normalized_nodes), action))
-        elif node_type == "wait":
+        elif node_type == FlowNodeType.WAIT:
             minutes = int(data.get("minutes") or 0)
             if not 1 <= minutes <= 10080:
                 raise ValueError(f"Espera {position}: configura entre 1 minuto y 7 días")
@@ -631,7 +660,7 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             raise ValueError(f"Conexión {position}: formato inválido")
         source = str(raw_edge.get("source") or "")
         target = str(raw_edge.get("target") or "")
-        handle = str(raw_edge.get("source_handle") or "next")
+        handle = str(raw_edge.get("source_handle") or FlowHandle.NEXT)
         edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
         if source not in ids or target not in ids or source == target:
             raise ValueError(f"Conexión {position}: origen o destino inválido")
@@ -648,14 +677,14 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
     for node in normalized_nodes:
         node_id = node["id"]
         edges = outgoing[node_id]
-        if node["type"] == "end":
+        if node["type"] == FlowNodeType.END:
             if edges:
                 raise ValueError("Un bloque Fin no puede tener conexiones de salida")
-        elif node["type"] == "condition":
+        elif node["type"] == FlowNodeType.CONDITION:
             handles = [edge["source_handle"] for edge in edges]
-            if sorted(handles) != ["no", "yes"]:
+            if sorted(handles) != sorted([FlowHandle.NO, FlowHandle.YES]):
                 raise ValueError("Cada condición debe tener exactamente una salida Sí y una salida No")
-        elif len(edges) != 1 or edges[0]["source_handle"] != "next":
+        elif len(edges) != 1 or edges[0]["source_handle"] != FlowHandle.NEXT:
             raise ValueError("Cada disparador, acción o espera debe tener exactamente una salida")
         if node_id != trigger_id and not incoming[node_id]:
             raise ValueError("Todos los bloques deben estar conectados desde el disparador")
@@ -695,7 +724,8 @@ async def create_visual_flow(name: str, definition: dict, user_id: int) -> dict:
             trigger_type=validated["trigger_type"],
             trigger_config=validated["trigger_config"],
             conditions={}, actions=[], delay_minutes=0, is_active=False,
-            builder_mode="visual", flow_definition=validated["flow_definition"],
+            builder_mode=AutomationBuilderMode.VISUAL,
+            flow_definition=validated["flow_definition"],
             published_flow_definition=None, flow_version=0,
             created_by_user_id=user_id, created_at=now, updated_at=now,
         ).returning(AutomationRule.id))).scalar_one()
@@ -705,7 +735,7 @@ async def create_visual_flow(name: str, definition: dict, user_id: int) -> dict:
 
 async def save_visual_flow(rule_id: int, name: str, definition: dict) -> dict | None:
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != "visual":
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         return None
     validated = normalize_visual_draft(name, definition)
     return await update_automation_rule(rule_id, {
@@ -716,7 +746,7 @@ async def save_visual_flow(rule_id: int, name: str, definition: dict) -> dict | 
 
 async def publish_visual_flow(rule_id: int) -> dict | None:
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != "visual":
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         return None
     validated = await validate_visual_flow(current["name"], current["flow_definition"])
     now = datetime.now(timezone.utc)
@@ -745,7 +775,7 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
 
 
 async def schedule_automation_event(
-    trigger_type: str,
+    trigger_type: AutomationTrigger,
     lead_id: str,
     event_key: str,
     payload: dict | None = None,
@@ -778,14 +808,16 @@ async def schedule_automation_event(
                     trigger_type=trigger_type,
                     event_key=event_key,
                     event_payload=payload or {},
-                    status="scheduled",
+                    status=AutomationExecutionStatus.SCHEDULED,
                     scheduled_for=now + timedelta(minutes=rule["delay_minutes"]),
                     action_results=[],
                     flow_state={
                         "flow_version": rule["flow_version"],
                         "current_node_id": None,
                         "path": [],
-                    } if rule["builder_mode"] == "visual" else {},
+                    }
+                    if rule["builder_mode"] == AutomationBuilderMode.VISUAL
+                    else {},
                     created_at=now,
                 ).on_conflict_do_nothing(
                     index_elements=[AutomationExecution.rule_id, AutomationExecution.event_key]
@@ -802,10 +834,15 @@ async def trigger_lead_created(lead_id: str) -> None:
     async with get_sessionmaker()() as session:
         activity_id = await session.scalar(
             select(LeadActivity.id).where(
-                LeadActivity.lead_id == lead_id, LeadActivity.event_type == "lead_created"
+                LeadActivity.lead_id == lead_id,
+                LeadActivity.event_type == AutomationTrigger.LEAD_CREATED,
             ).order_by(LeadActivity.id.desc()).limit(1)
         )
-    await schedule_automation_event("lead_created", lead_id, f"lead:{activity_id or lead_id}")
+    await schedule_automation_event(
+        AutomationTrigger.LEAD_CREATED,
+        lead_id,
+        f"lead:{activity_id or lead_id}",
+    )
     _wake.set()
 
 
@@ -813,12 +850,15 @@ async def trigger_stage_changed(lead_id: str) -> None:
     async with get_sessionmaker()() as session:
         row = (await session.execute(
             select(LeadActivity.id, LeadActivity.old_value, LeadActivity.new_value).where(
-                LeadActivity.lead_id == lead_id, LeadActivity.event_type == "stage_changed"
+                LeadActivity.lead_id == lead_id,
+                LeadActivity.event_type == AutomationTrigger.STAGE_CHANGED,
             ).order_by(LeadActivity.id.desc()).limit(1)
         )).mappings().first()
     if row:
         await schedule_automation_event(
-            "stage_changed", lead_id, f"stage:{row['id']}",
+            AutomationTrigger.STAGE_CHANGED,
+            lead_id,
+            f"stage:{row['id']}",
             {"old_value": row["old_value"], "new_value": row["new_value"]},
         )
         _wake.set()
@@ -832,7 +872,9 @@ async def trigger_inbound_message(message: dict) -> None:
     if not message_key:
         return
     await schedule_automation_event(
-        "message_received", lead_id, f"message:{message_key}",
+        AutomationTrigger.MESSAGE_RECEIVED,
+        lead_id,
+        f"message:{message_key}",
         {"message_id": message_key, "content": message.get("content")},
     )
     async with get_sessionmaker()() as session:
@@ -842,12 +884,14 @@ async def trigger_inbound_message(message: dict) -> None:
         has_recorded_creation = await session.scalar(
             select(LeadActivity.id).where(
                 LeadActivity.lead_id == lead_id,
-                LeadActivity.event_type == "lead_created",
+                LeadActivity.event_type == AutomationTrigger.LEAD_CREATED,
             ).limit(1)
         )
     if message_count == 1 and not has_recorded_creation:
         await schedule_automation_event(
-            "lead_created", lead_id, f"lead:first-message:{message_key}",
+            AutomationTrigger.LEAD_CREATED,
+            lead_id,
+            f"lead:first-message:{message_key}",
             {"source": "first_inbound_message"},
         )
     _wake.set()
@@ -879,22 +923,22 @@ async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, s
 async def _matches_flow_condition(data: dict, chat: dict) -> tuple[bool, str]:
     condition_type = data.get("condition_type")
     value = data.get("value")
-    if condition_type == "stage_equals":
+    if condition_type == FlowConditionType.STAGE_EQUALS:
         matches = chat.get("stage") == value
         return matches, f"Etapa {'coincide' if matches else 'no coincide'} con {value}"
-    if condition_type == "origin_contains":
+    if condition_type == FlowConditionType.ORIGIN_CONTAINS:
         matches = str(value).lower() in (chat.get("origen") or "").lower()
         return matches, f"Origen {'contiene' if matches else 'no contiene'} {value}"
-    if condition_type == "service_contains":
+    if condition_type == FlowConditionType.SERVICE_CONTAINS:
         matches = str(value).lower() in (chat.get("servicio_interes") or "").lower()
         return matches, f"Servicio {'contiene' if matches else 'no contiene'} {value}"
-    if condition_type == "seller_equals":
+    if condition_type == FlowConditionType.SELLER_EQUALS:
         matches = chat.get("vendedor_id") == value
         return matches, "Vendedor coincide" if matches else "Vendedor no coincide"
-    if condition_type == "tag_present":
+    if condition_type == FlowConditionType.TAG_PRESENT:
         matches = value in {tag["id"] for tag in chat.get("tags", [])}
         return matches, "Etiqueta presente" if matches else "Etiqueta ausente"
-    if condition_type == "whatsapp_window_open":
+    if condition_type == FlowConditionType.WHATSAPP_WINDOW_OPEN:
         window = await get_customer_service_window(chat["chat_id"])
         matches = bool(window and window["is_open"])
         return matches, "Ventana de WhatsApp abierta" if matches else "Ventana de WhatsApp cerrada"
@@ -906,7 +950,7 @@ async def _matches_flow_condition(data: dict, chat: dict) -> tuple[bool, str]:
 def _flow_indexes(definition: dict) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:
     nodes = {node["id"]: node for node in definition.get("nodes", [])}
     edges = {
-        (edge["source"], edge.get("source_handle") or "next"): edge["target"]
+        (edge["source"], edge.get("source_handle") or FlowHandle.NEXT): edge["target"]
         for edge in definition.get("edges", [])
     }
     return nodes, edges
@@ -914,46 +958,56 @@ def _flow_indexes(definition: dict) -> tuple[dict[str, dict], dict[tuple[str, st
 
 async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != "visual":
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         raise ValueError("Flujo visual no encontrado")
     validated = await validate_visual_flow(current["name"], current["flow_definition"])
     chat = await fetch_chat(lead_id)
     if not chat:
         raise ValueError("Lead no encontrado")
     nodes, edges = _flow_indexes(validated["flow_definition"])
-    trigger = next(node for node in nodes.values() if node["type"] == "trigger")
+    trigger = next(
+        node for node in nodes.values() if node["type"] == FlowNodeType.TRIGGER
+    )
     current_id = trigger["id"]
     path: list[dict] = []
     for _ in range(MAX_FLOW_NODES + 1):
         node = nodes[current_id]
-        if node["type"] == "trigger":
-            path.append({"node_id": current_id, "type": "trigger", "status": "matched"})
-            current_id = edges[(current_id, "next")]
-        elif node["type"] == "condition":
+        if node["type"] == FlowNodeType.TRIGGER:
+            path.append({"node_id": current_id, "type": FlowNodeType.TRIGGER, "status": "matched"})
+            current_id = edges[(current_id, FlowHandle.NEXT)]
+        elif node["type"] == FlowNodeType.CONDITION:
             matches, detail = await _matches_flow_condition(node["data"], chat)
-            branch = "yes" if matches else "no"
+            branch = FlowHandle.YES if matches else FlowHandle.NO
             path.append({
-                "node_id": current_id, "type": "condition", "status": "evaluated",
+                "node_id": current_id,
+                "type": FlowNodeType.CONDITION,
+                "status": "evaluated",
                 "branch": branch, "detail": detail,
             })
             current_id = edges[(current_id, branch)]
-        elif node["type"] == "action":
+        elif node["type"] == FlowNodeType.ACTION:
             action = node["data"]["action"]
             result = {"node_id": current_id, "type": action["type"], "status": "would_run"}
-            if action["type"] == "send_template":
+            if action["type"] == AutomationActionType.SEND_TEMPLATE:
                 window = await get_customer_service_window(chat["chat_id"])
                 if not window or not window["is_open"]:
                     result.update(status="would_fail", detail="La ventana de 24 horas está cerrada")
             path.append(result)
-            current_id = edges[(current_id, "next")]
-        elif node["type"] == "wait":
+            current_id = edges[(current_id, FlowHandle.NEXT)]
+        elif node["type"] == FlowNodeType.WAIT:
             path.append({
-                "node_id": current_id, "type": "wait", "status": "would_wait",
+                "node_id": current_id,
+                "type": FlowNodeType.WAIT,
+                "status": "would_wait",
                 "minutes": node["data"]["minutes"],
             })
-            current_id = edges[(current_id, "next")]
+            current_id = edges[(current_id, FlowHandle.NEXT)]
         else:
-            path.append({"node_id": current_id, "type": "end", "status": "completed"})
+            path.append({
+                "node_id": current_id,
+                "type": FlowNodeType.END,
+                "status": AutomationExecutionStatus.COMPLETED,
+            })
             return {
                 "lead_id": chat["chat_id"], "lead_name": chat.get("name"),
                 "flow_version": current["flow_version"], "path": path,
@@ -962,7 +1016,10 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
 
 
 async def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
-    if action.get("recipient") == "specific" and action.get("user_id"):
+    if (
+        action.get("recipient") == AutomationRecipient.SPECIFIC
+        and action.get("user_id")
+    ):
         return int(action["user_id"])
     if chat.get("vendedor_id"):
         return int(chat["vendedor_id"])
@@ -973,7 +1030,7 @@ async def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
 
 async def _execute_action(action: dict, chat: dict, execution: AutomationExecution, rule: AutomationRule) -> dict:
     action_type = action["type"]
-    if action_type == "create_task":
+    if action_type == AutomationActionType.CREATE_TASK:
         assigned_user_id = action.get("assigned_user_id") or chat.get("vendedor_id") or execution.event_payload.get("assigned_user_id")
         if not assigned_user_id:
             raise ValueError("No se puede crear la tarea porque el lead no tiene vendedor")
@@ -991,8 +1048,12 @@ async def _execute_action(action: dict, chat: dict, execution: AutomationExecuti
             "assigned_user_id": assigned_user_id,
         }, rule.created_by_user_id)
         await manager.broadcast({"type": "tasks_updated"})
-        return {"type": action_type, "status": "completed", "task_id": task["id"]}
-    if action_type == "assign_seller":
+        return {
+            "type": action_type,
+            "status": AutomationExecutionStatus.COMPLETED,
+            "task_id": task["id"],
+        }
+    if action_type == AutomationActionType.ASSIGN_SELLER:
         updated = await update_lead(
             chat["chat_id"], {"vendedor_id": action["user_id"]}, "system", rule.created_by_user_id
         )
@@ -1000,16 +1061,32 @@ async def _execute_action(action: dict, chat: dict, execution: AutomationExecuti
             raise ValueError("Lead no encontrado")
         chat.update(updated)
         await manager.broadcast({"type": "chats_updated"})
-        return {"type": action_type, "status": "completed", "user_id": action["user_id"]}
-    if action_type == "add_tag":
+        return {
+            "type": action_type,
+            "status": AutomationExecutionStatus.COMPLETED,
+            "user_id": action["user_id"],
+        }
+    if action_type == AutomationActionType.ADD_TAG:
         if not await assign_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id):
             raise ValueError("Lead o etiqueta no encontrado")
         await manager.broadcast({"type": "chats_updated"})
-        return {"type": action_type, "status": "completed", "tag_id": action["tag_id"]}
-    if action_type == "remove_tag":
+        return {
+            "type": action_type,
+            "status": AutomationExecutionStatus.COMPLETED,
+            "tag_id": action["tag_id"],
+        }
+    if action_type == AutomationActionType.REMOVE_TAG:
         removed = await remove_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id)
-        return {"type": action_type, "status": "completed" if removed else "skipped", "tag_id": action["tag_id"]}
-    if action_type == "change_stage":
+        return {
+            "type": action_type,
+            "status": (
+                AutomationExecutionStatus.COMPLETED
+                if removed
+                else AutomationExecutionStatus.SKIPPED
+            ),
+            "tag_id": action["tag_id"],
+        }
+    if action_type == AutomationActionType.CHANGE_STAGE:
         updated = await update_lead_stage(
             chat["chat_id"], LeadStage(action["stage"]), "system", rule.created_by_user_id,
             {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
@@ -1018,12 +1095,16 @@ async def _execute_action(action: dict, chat: dict, execution: AutomationExecuti
             raise ValueError("Lead no encontrado")
         chat.update(updated)
         await manager.broadcast({"type": "chats_updated"})
-        return {"type": action_type, "status": "completed", "stage": action["stage"]}
-    if action_type == "notify":
+        return {
+            "type": action_type,
+            "status": AutomationExecutionStatus.COMPLETED,
+            "stage": action["stage"],
+        }
+    if action_type == AutomationActionType.NOTIFY:
         user_id = await _resolve_recipient(action, chat, execution.event_payload or {})
         notification = await create_system_notification(
             user_id,
-            "automation",
+            NotificationType.AUTOMATION,
             _render(action["title"], chat),
             _render(action["body"], chat),
             chat["chat_id"],
@@ -1031,7 +1112,12 @@ async def _execute_action(action: dict, chat: dict, execution: AutomationExecuti
             {"automation_rule_id": rule.id, "automation_rule_name": rule.name},
         )
         await manager.send_to_user(user_id, {"type": "notification_created", "notification": notification})
-        return {"type": action_type, "status": "completed", "notification_id": notification["id"], "user_id": user_id}
+        return {
+            "type": action_type,
+            "status": AutomationExecutionStatus.COMPLETED,
+            "notification_id": notification["id"],
+            "user_id": user_id,
+        }
     async with get_sessionmaker()() as session:
         template = await session.get(MessageTemplate, action["template_id"])
         attachment_count = await session.scalar(
@@ -1052,12 +1138,17 @@ async def _execute_action(action: dict, chat: dict, execution: AutomationExecuti
     )
     await record_template_use(template.id, rule.created_by_user_id)
     await manager.broadcast({"type": "chats_updated"})
-    return {"type": action_type, "status": "completed", "message_id": message["id"], "template_id": template.id}
+    return {
+        "type": action_type,
+        "status": AutomationExecutionStatus.COMPLETED,
+        "message_id": message["id"],
+        "template_id": template.id,
+    }
 
 
 async def _persist_visual_execution(
     execution_id: int,
-    status: str,
+    status: AutomationExecutionStatus,
     results: list[dict],
     current_node_id: str | None,
     path: list[str],
@@ -1075,7 +1166,11 @@ async def _persist_visual_execution(
         },
         "error": error,
     }
-    if status in {"completed", "failed", "skipped"}:
+    if status in {
+        AutomationExecutionStatus.COMPLETED,
+        AutomationExecutionStatus.FAILED,
+        AutomationExecutionStatus.SKIPPED,
+    }:
         values["finished_at"] = datetime.now(timezone.utc)
     if scheduled_for is not None:
         values["scheduled_for"] = scheduled_for
@@ -1094,7 +1189,7 @@ async def _notify_execution_failure(rule: AutomationRule, execution: AutomationE
     try:
         notification = await create_system_notification(
             rule.created_by_user_id,
-            "automation",
+            NotificationType.AUTOMATION,
             f"Automatización con error: {rule.name}"[:160],
             (error or "La ejecución falló")[:1000],
             execution.lead_id,
@@ -1130,7 +1225,12 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
     nodes, edges = _flow_indexes(definition)
     if not nodes:
         await _persist_visual_execution(
-            execution.id, "failed", execution.action_results or [], None, [], flow_version,
+            execution.id,
+            AutomationExecutionStatus.FAILED,
+            execution.action_results or [],
+            None,
+            [],
+            flow_version,
             "El flujo no tiene una versión publicada",
         )
         return
@@ -1138,7 +1238,14 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
     results = list(execution.action_results or [])
     current_id = state.get("current_node_id")
     if not current_id:
-        trigger = next((node for node in nodes.values() if node["type"] == "trigger"), None)
+        trigger = next(
+            (
+                node
+                for node in nodes.values()
+                if node["type"] == FlowNodeType.TRIGGER
+            ),
+            None,
+        )
         current_id = trigger["id"] if trigger else None
     try:
         for _ in range(MAX_FLOW_NODES + 1):
@@ -1146,60 +1253,116 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                 raise ValueError("El flujo perdió la referencia al siguiente bloque")
             node = nodes[current_id]
             path.append(current_id)
-            if node["type"] == "trigger":
-                current_id = edges[(current_id, "next")]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
+            if node["type"] == FlowNodeType.TRIGGER:
+                current_id = edges[(current_id, FlowHandle.NEXT)]
+                await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                )
                 continue
-            if node["type"] == "condition":
+            if node["type"] == FlowNodeType.CONDITION:
                 matches, detail = await _matches_flow_condition(node["data"], chat)
-                branch = "yes" if matches else "no"
+                branch = FlowHandle.YES if matches else FlowHandle.NO
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
-                    "type": "condition", "status": "completed", "branch": branch,
+                    "type": FlowNodeType.CONDITION,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                    "branch": branch,
                     "detail": detail,
                 })
                 current_id = edges[(current_id, branch)]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
+                await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                )
                 continue
-            if node["type"] == "action":
+            if node["type"] == FlowNodeType.ACTION:
                 action = node["data"]["action"]
                 result = await _execute_action(action, chat, execution, rule)
                 results.append({"position": len(results) + 1, "node_id": node["id"], **result})
-                current_id = edges[(current_id, "next")]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
+                current_id = edges[(current_id, FlowHandle.NEXT)]
+                await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                )
                 continue
-            if node["type"] == "wait":
+            if node["type"] == FlowNodeType.WAIT:
                 minutes = node["data"]["minutes"]
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
-                    "type": "wait", "status": "scheduled", "minutes": minutes,
+                    "type": FlowNodeType.WAIT,
+                    "status": AutomationExecutionStatus.SCHEDULED,
+                    "minutes": minutes,
                 })
-                current_id = edges[(current_id, "next")]
+                current_id = edges[(current_id, FlowHandle.NEXT)]
                 await _persist_visual_execution(
-                    execution.id, "scheduled", results, current_id, path, flow_version,
+                    execution.id,
+                    AutomationExecutionStatus.SCHEDULED,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
                     scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=minutes),
                 )
                 return
             results.append({
                 "position": len(results) + 1, "node_id": node["id"],
-                "type": "end", "status": "completed",
+                "type": FlowNodeType.END,
+                "status": AutomationExecutionStatus.COMPLETED,
             })
-            await _persist_visual_execution(execution.id, "completed", results, None, path, flow_version)
+            await _persist_visual_execution(
+                execution.id,
+                AutomationExecutionStatus.COMPLETED,
+                results,
+                None,
+                path,
+                flow_version,
+            )
             return
         raise ValueError("El flujo excedió el máximo de bloques permitidos")
     except (KeyError, ValueError, EvolutionApiError, httpx.HTTPError) as exc:
         action_type = "flow"
-        if current_id in nodes and nodes[current_id]["type"] == "action":
-            action_type = nodes[current_id]["data"].get("action", {}).get("type", "action")
+        if current_id in nodes and nodes[current_id]["type"] == FlowNodeType.ACTION:
+            action_type = nodes[current_id]["data"].get("action", {}).get("type", FlowNodeType.ACTION)
         results.append({
             "position": len(results) + 1, "node_id": current_id,
-            "type": action_type, "status": "failed", "error": str(exc),
+            "type": action_type,
+            "status": AutomationExecutionStatus.FAILED,
+            "error": str(exc),
         })
-        await _persist_visual_execution(execution.id, "failed", results, current_id, path, flow_version, str(exc))
+        await _persist_visual_execution(
+            execution.id,
+            AutomationExecutionStatus.FAILED,
+            results,
+            current_id,
+            path,
+            flow_version,
+            str(exc),
+        )
         await _notify_execution_failure(rule, execution, str(exc))
     except Exception as exc:
         logger.exception("Unexpected error running visual automation execution %s", execution.id)
-        await _persist_visual_execution(execution.id, "failed", results, current_id, path, flow_version, str(exc))
+        await _persist_visual_execution(
+            execution.id,
+            AutomationExecutionStatus.FAILED,
+            results,
+            current_id,
+            path,
+            flow_version,
+            str(exc),
+        )
         await _notify_execution_failure(rule, execution, str(exc))
 
 
@@ -1214,7 +1377,11 @@ async def _run_execution(execution_id: int) -> None:
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
-            ).values(status="skipped", error="La regla fue desactivada", finished_at=now))
+            ).values(
+                status=AutomationExecutionStatus.SKIPPED,
+                error="La regla fue desactivada",
+                finished_at=now,
+            ))
             await session.commit()
         return
     chat = await fetch_chat(execution.lead_id) if execution.lead_id else None
@@ -1222,11 +1389,15 @@ async def _run_execution(execution_id: int) -> None:
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
-            ).values(status="failed", error="Lead no encontrado", finished_at=now))
+            ).values(
+                status=AutomationExecutionStatus.FAILED,
+                error="Lead no encontrado",
+                finished_at=now,
+            ))
             await session.commit()
         await _notify_execution_failure(rule, execution, "Lead no encontrado")
         return
-    if rule.builder_mode == "visual":
+    if rule.builder_mode == AutomationBuilderMode.VISUAL:
         await _run_visual_execution(execution, rule, chat)
         return
     results = list(execution.action_results or [])
@@ -1239,7 +1410,11 @@ async def _run_execution(execution_id: int) -> None:
             async with get_sessionmaker()() as session:
                 await session.execute(update(AutomationExecution).where(
                     AutomationExecution.id == execution_id
-                ).values(status="skipped", error=reason, finished_at=datetime.now(timezone.utc)))
+                ).values(
+                    status=AutomationExecutionStatus.SKIPPED,
+                    error=reason,
+                    finished_at=datetime.now(timezone.utc),
+                ))
                 await session.commit()
             return
     actions = list(rule.actions or [])
@@ -1256,11 +1431,21 @@ async def _run_execution(execution_id: int) -> None:
                 await session.commit()
     except (ValueError, EvolutionApiError, httpx.HTTPError) as exc:
         failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
-        results.append({"position": len(results) + 1, "type": failed_type, "status": "failed", "error": str(exc)})
+        results.append({
+            "position": len(results) + 1,
+            "type": failed_type,
+            "status": AutomationExecutionStatus.FAILED,
+            "error": str(exc),
+        })
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
-            ).values(status="failed", action_results=results, error=str(exc), finished_at=datetime.now(timezone.utc)))
+            ).values(
+                status=AutomationExecutionStatus.FAILED,
+                action_results=results,
+                error=str(exc),
+                finished_at=datetime.now(timezone.utc),
+            ))
             await session.commit()
         await _notify_execution_failure(rule, execution, str(exc))
     except Exception as exc:
@@ -1268,14 +1453,24 @@ async def _run_execution(execution_id: int) -> None:
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
-            ).values(status="failed", action_results=results, error=str(exc), finished_at=datetime.now(timezone.utc)))
+            ).values(
+                status=AutomationExecutionStatus.FAILED,
+                action_results=results,
+                error=str(exc),
+                finished_at=datetime.now(timezone.utc),
+            ))
             await session.commit()
         await _notify_execution_failure(rule, execution, str(exc))
     else:
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
-            ).values(status="completed", action_results=results, error=None, finished_at=datetime.now(timezone.utc)))
+            ).values(
+                status=AutomationExecutionStatus.COMPLETED,
+                action_results=results,
+                error=None,
+                finished_at=datetime.now(timezone.utc),
+            ))
             await session.commit()
 
 
@@ -1284,7 +1479,7 @@ async def process_due_automation_executions(limit: int = 20) -> int:
     async with get_sessionmaker()() as session:
         ids = (await session.execute(
             select(AutomationExecution.id).where(
-                AutomationExecution.status == "scheduled",
+                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
                 AutomationExecution.scheduled_for <= now,
             ).order_by(AutomationExecution.scheduled_for.asc()).limit(limit).with_for_update(skip_locked=True)
         )).scalars().all()
@@ -1292,7 +1487,9 @@ async def process_due_automation_executions(limit: int = 20) -> int:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id.in_(ids)
             ).values(
-                status="running", started_at=now, error=None,
+                status=AutomationExecutionStatus.RUNNING,
+                started_at=now,
+                error=None,
                 attempts=AutomationExecution.attempts + 1,
             ))
         await session.commit()
@@ -1314,7 +1511,10 @@ async def _discover_recent_inbound_messages() -> None:
     async with get_sessionmaker()() as session:
         has_rules = await session.scalar(select(AutomationRule.id).where(
             AutomationRule.is_active.is_(True),
-            AutomationRule.trigger_type.in_(["message_received", "lead_created"]),
+            AutomationRule.trigger_type.in_([
+                AutomationTrigger.MESSAGE_RECEIVED,
+                AutomationTrigger.LEAD_CREATED,
+            ]),
         ).limit(1))
         if not has_rules:
             return
@@ -1325,7 +1525,9 @@ async def _discover_recent_inbound_messages() -> None:
         )).mappings().all()
     for row in rows:
         await schedule_automation_event(
-            "message_received", row["chat_id"], f"message:{row['wa_message_id'] or row['id']}",
+            AutomationTrigger.MESSAGE_RECEIVED,
+            row["chat_id"],
+            f"message:{row['wa_message_id'] or row['id']}",
             {"message_id": str(row["wa_message_id"] or row["id"]), "content": row["content"]},
         )
 
@@ -1334,22 +1536,29 @@ async def _discover_timed_events() -> None:
     async with get_sessionmaker()() as session:
         rules = (await session.execute(select(AutomationRule).where(
             AutomationRule.is_active.is_(True),
-            AutomationRule.trigger_type.in_(["seller_response_overdue", "customer_response_overdue", "task_due"]),
+            AutomationRule.trigger_type.in_([
+                AutomationTrigger.SELLER_RESPONSE_OVERDUE,
+                AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+                AutomationTrigger.TASK_DUE,
+            ]),
         ))).scalars().all()
     for rule in rules:
-        if rule.trigger_type == "task_due":
+        if rule.trigger_type == AutomationTrigger.TASK_DUE:
             async with get_sessionmaker()() as session:
                 tasks = (await session.execute(select(
                     LeadTask.id, LeadTask.lead_id, LeadTask.assigned_user_id, LeadTask.title,
                     LeadTask.due_at,
                 ).where(
-                    LeadTask.status == "pending", LeadTask.due_at <= datetime.now(timezone.utc)
+                    LeadTask.status == TaskStatus.PENDING,
+                    LeadTask.due_at <= datetime.now(timezone.utc),
                 ).limit(200))).mappings().all()
             for task in tasks:
                 # Clave anclada al vencimiento: editar título o prioridad de la
                 # tarea no re-dispara la regla; mover la fecha límite sí.
                 await schedule_automation_event(
-                    "task_due", task["lead_id"], f"task:{task['id']}:{_ts(task['due_at'])}", {
+                    AutomationTrigger.TASK_DUE,
+                    task["lead_id"],
+                    f"task:{task['id']}:{_ts(task['due_at'])}", {
                         "task_id": task["id"],
                         "assigned_user_id": task["assigned_user_id"],
                         "title": task["title"],
@@ -1357,7 +1566,11 @@ async def _discover_timed_events() -> None:
                     }, rule.id
                 )
             continue
-        expected_sender = "cliente" if rule.trigger_type == "seller_response_overdue" else "vendedor"
+        expected_sender = (
+            "cliente"
+            if rule.trigger_type == AutomationTrigger.SELLER_RESPONSE_OVERDUE
+            else "vendedor"
+        )
         now = datetime.now(timezone.utc)
         minutes = int((rule.trigger_config or {}).get("minutes", 1))
         threshold = now - timedelta(minutes=minutes)
@@ -1377,7 +1590,7 @@ async def _discover_timed_events() -> None:
                 last_message.c.sent_at <= threshold,
             ).limit(500))).mappings().all()
             anchors: dict[str, int] = {}
-            if rule.trigger_type == "customer_response_overdue" and rows:
+            if rule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE and rows:
                 # La deduplicación se ancla al último mensaje DEL CLIENTE: los
                 # follow-ups que envía la propia regla crean mensajes nuevos
                 # del vendedor y, sin este ancla, cada uno re-dispararía la
@@ -1392,13 +1605,13 @@ async def _discover_timed_events() -> None:
                     ).distinct(WspMessage.chat_id)
                 )).all())
         for row in rows:
-            if rule.trigger_type == "customer_response_overdue":
+            if rule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
                 anchor = anchors.get(row["chat_id"])
                 event_key = f"silence:{anchor}" if anchor else f"silence:none:{row['chat_id']}"
             else:
                 event_key = f"overdue:{row['id']}"
             await schedule_automation_event(
-                rule.trigger_type,
+                AutomationTrigger(rule.trigger_type),
                 row["chat_id"],
                 event_key,
                 {"last_message_id": str(row["id"]), "last_sender": row["sender"], "last_message_at": _ts(row["sent_at"])},
@@ -1413,18 +1626,22 @@ async def _release_stale_executions() -> None:
         # Las que ya agotaron sus reclamos no se re-agendan más: quedan failed
         # para que el fallo sea visible en vez de reintentarse para siempre.
         exhausted = (await session.execute(update(AutomationExecution).where(
-            AutomationExecution.status == "running",
+            AutomationExecution.status == AutomationExecutionStatus.RUNNING,
             AutomationExecution.started_at < cutoff,
             AutomationExecution.attempts >= MAX_EXECUTION_ATTEMPTS,
         ).values(
-            status="failed",
+            status=AutomationExecutionStatus.FAILED,
             error="Interrumpida demasiadas veces; no se volverá a reintentar",
             finished_at=now,
         ).returning(AutomationExecution.id))).scalars().all()
         await session.execute(update(AutomationExecution).where(
-            AutomationExecution.status == "running",
+            AutomationExecution.status == AutomationExecutionStatus.RUNNING,
             AutomationExecution.started_at < cutoff,
-        ).values(status="scheduled", started_at=None, error="Reintentando una ejecución interrumpida"))
+        ).values(
+            status=AutomationExecutionStatus.SCHEDULED,
+            started_at=None,
+            error="Reintentando una ejecución interrumpida",
+        ))
         await session.commit()
     for execution_id in exhausted:
         async with get_sessionmaker()() as session:
@@ -1449,7 +1666,7 @@ async def backfill_automation_state() -> None:
         published_rules = (await session.execute(select(
             AutomationRule.id, AutomationRule.flow_version, AutomationRule.published_flow_definition,
         ).where(
-            AutomationRule.builder_mode == "visual",
+            AutomationRule.builder_mode == AutomationBuilderMode.VISUAL,
             AutomationRule.published_flow_definition.is_not(None),
             AutomationRule.flow_version > 0,
         ))).mappings().all()
@@ -1465,7 +1682,7 @@ async def backfill_automation_state() -> None:
 
         rows = (await session.execute(
             select(AutomationExecution.id, AutomationExecution.rule_id, AutomationExecution.event_key).where(
-                AutomationExecution.trigger_type == "task_due"
+                AutomationExecution.trigger_type == AutomationTrigger.TASK_DUE
             ).order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc())
         )).mappings().all()
         task_ids = {

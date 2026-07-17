@@ -5,6 +5,7 @@ import client from '../api/client'
 import type { Chat, ChatFilters, LeadInput, LeadUpdateInput } from '../types'
 import type { NotificationOptions } from './useNotifications'
 import { parseContent } from '../utils/message'
+import { NotificationType } from '../domain/automationCatalog'
 
 interface ChatsPage {
   items: Chat[]
@@ -127,7 +128,7 @@ export function useChatUpdates(
               () => { if (notification.lead_id) navigate(`/chat/${notification.lead_id}`) },
               { force: true, tag: `notification-${notification.id}` },
             )
-            if (notification.notification_type === 'internal_note_mention' && notification.lead_id) {
+            if (notification.notification_type === NotificationType.InternalNoteMention && notification.lead_id) {
               internalMentionRef.current({
                 notificationId: notification.id,
                 leadId: notification.lead_id,

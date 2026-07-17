@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select, update
 
+from domain_types import NotificationType
 from db.models import UserNotification
 from db.session import get_sessionmaker
 
@@ -26,7 +27,7 @@ def _notification(row) -> dict:
 
 async def create_system_notification(
     user_id: int,
-    notification_type: str,
+    notification_type: NotificationType,
     title: str,
     body: str,
     lead_id: str | None = None,
@@ -64,7 +65,7 @@ async def create_mention_notifications(note: dict, user_ids: list[int], actor) -
             notification_id = (await session.execute(
                 insert(UserNotification).values(
                     user_id=user_id,
-                    notification_type="internal_note_mention",
+                    notification_type=NotificationType.INTERNAL_NOTE_MENTION,
                     title=f"{actor.name} te mencionó en una nota",
                     body=note["content"],
                     lead_id=note["lead_id"],

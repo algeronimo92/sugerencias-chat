@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 
+from domain_types import TaskStatus
 from db.models import Lead, LeadStage, LeadTask, User, WspMessage
 from db.session import get_sessionmaker
 
@@ -49,10 +50,16 @@ async def get_dashboard_metrics(days: int) -> dict:
         new_leads = await session.scalar(select(func.count(Lead.remote_jid)).where(Lead.created_at >= start)) or 0
         awaiting_reply = await session.scalar(select(func.count(Lead.remote_jid)).where(latest_sender == "cliente")) or 0
         overdue_tasks = await session.scalar(
-            select(func.count(LeadTask.id)).where(LeadTask.status == "pending", LeadTask.due_at < now)
+            select(func.count(LeadTask.id)).where(
+                LeadTask.status == TaskStatus.PENDING,
+                LeadTask.due_at < now,
+            )
         ) or 0
         completed_tasks = await session.scalar(
-            select(func.count(LeadTask.id)).where(LeadTask.status == "completed", LeadTask.completed_at >= start)
+            select(func.count(LeadTask.id)).where(
+                LeadTask.status == TaskStatus.COMPLETED,
+                LeadTask.completed_at >= start,
+            )
         ) or 0
         avg_response_seconds = await session.scalar(
             select(func.avg(func.extract("epoch", next_seller_response - customer_message.sent_at))).where(

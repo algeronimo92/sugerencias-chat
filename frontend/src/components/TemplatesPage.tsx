@@ -1,39 +1,52 @@
 import { useRef, useState } from 'react'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { LeadStage, MediaAsset, MessageTemplate, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
-import { LEAD_STAGES } from '../types'
+import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplateAttachment, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
+import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
 
-const TASK_TYPES: { value: TaskType; label: string }[] = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'llamada', label: 'Llamada' },
-  { value: 'cotizacion', label: 'Cotización' },
-  { value: 'cita', label: 'Cita' },
-  { value: 'seguimiento', label: 'Seguimiento' },
-  { value: 'otro', label: 'Otro' },
-]
+interface TemplateFormState {
+  name: string
+  shortcut: string
+  content: string
+  category: string
+  stage: LeadStage | ''
+  taskType: TaskType | ''
+  templateType: MessageTemplate['template_type']
+  officialName: string
+  officialLanguage: string
+  officialCategory: NonNullable<MessageTemplate['official_category']>
+  officialStatus: NonNullable<MessageTemplate['official_status']>
+  officialParameterValues: string[]
+  interactiveType: MessageTemplate['interactive_type']
+  interactiveTitle: string
+  interactiveFooter: string
+  interactiveButtonText: string
+  interactiveButtons: TemplateInteractiveButton[]
+  interactiveSections: TemplateInteractiveSection[]
+}
 
-const EMPTY_FORM = {
+const EMPTY_FORM: TemplateFormState = {
   name: '',
   shortcut: '',
   content: '',
   category: 'seguimiento',
-  stage: '' as LeadStage | '',
-  taskType: '' as TaskType | '',
-  templateType: 'internal' as MessageTemplate['template_type'],
+  stage: '',
+  taskType: '',
+  templateType: 'internal',
   officialName: '',
   officialLanguage: 'es',
-  officialCategory: 'UTILITY' as NonNullable<MessageTemplate['official_category']>,
-  officialStatus: 'PENDING' as NonNullable<MessageTemplate['official_status']>,
-  officialParameterValues: [] as string[],
-  interactiveType: 'none' as MessageTemplate['interactive_type'],
+  officialCategory: 'UTILITY',
+  officialStatus: 'PENDING',
+  officialParameterValues: [],
+  interactiveType: 'none',
   interactiveTitle: '',
   interactiveFooter: 'DermicaPro',
   interactiveButtonText: 'Ver opciones',
-  interactiveButtons: [{ type: 'reply', displayText: '', id: 'reply_1' }] as TemplateInteractiveButton[],
-  interactiveSections: [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }] as TemplateInteractiveSection[],
+  interactiveButtons: [{ type: 'reply', displayText: '', id: 'reply_1' }],
+  interactiveSections: [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
 }
 
 function officialParameterCount(content: string) {
@@ -527,7 +540,7 @@ export function TemplatesPage() {
               />
               <select
                 value={form.stage}
-                onChange={(event) => setForm((f) => ({ ...f, stage: event.target.value as LeadStage | '' }))}
+                onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
                 className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               >
                 <option value="">Cualquier etapa</option>
@@ -535,7 +548,7 @@ export function TemplatesPage() {
               </select>
               <select
                 value={form.taskType}
-                onChange={(event) => setForm((f) => ({ ...f, taskType: event.target.value as TaskType | '' }))}
+                onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, taskType: value === '' || isTaskType(value) ? value : f.taskType })) }}
                 className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               >
                 <option value="">Cualquier tarea</option>
