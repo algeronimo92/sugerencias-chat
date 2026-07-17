@@ -356,6 +356,25 @@ class AutomationRule(Base):
     )
 
 
+class AutomationFlowVersion(Base):
+    """Definición publicada de un flujo visual, una fila por versión. Las
+    ejecuciones guardan (rule_id, flow_version) en flow_state y resuelven la
+    definición acá — así una ejecución con esperas termina con la versión con
+    la que arrancó aunque el flujo se republique."""
+
+    __tablename__ = "automation_flow_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_automation_flow_versions_rule_version", rule_id, version, unique=True),
+    )
+
+
 class AutomationExecution(Base):
     __tablename__ = "automation_executions"
 
@@ -366,6 +385,7 @@ class AutomationExecution(Base):
     event_key: Mapped[str] = mapped_column(Text)
     event_payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     status: Mapped[str] = mapped_column(Text, default="scheduled", server_default="scheduled")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

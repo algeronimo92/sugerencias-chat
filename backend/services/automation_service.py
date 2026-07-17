@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from db.models import (
     AutomationExecution,
+    AutomationFlowVersion,
     AutomationRule,
     Lead,
     LeadActivity,
@@ -39,6 +40,18 @@ from services.ws_manager import manager
 logger = logging.getLogger(__name__)
 AUTOMATION_POLL_SECONDS = 10
 MAX_ACTIONS = 10
+# Cuántas ejecuciones vencidas corren en paralelo por ciclo del watcher.
+MAX_CONCURRENT_EXECUTIONS = 5
+# Reclamos máximos de una misma ejecución antes de marcarla failed — evita
+# reintentar para siempre una ejecución que se interrumpe una y otra vez.
+MAX_EXECUTION_ATTEMPTS = 3
+# Un flujo visual legítimo (varias llamadas a Evolution API de 30-60s) puede
+# superar los 10 minutos; con menos margen se re-agendaría una ejecución viva.
+STALE_EXECUTION_MINUTES = 15
+# Las reglas de "sin responder" solo miran chats con actividad dentro de los
+# minutos configurados más esta gracia (3 días): activar una regla no debe
+# disparar contra todo el historial de conversaciones viejas.
+OVERDUE_LOOKBACK_GRACE_MINUTES = 4320
 TRIGGER_TYPES = {
     "lead_created",
     "stage_changed",
@@ -64,6 +77,11 @@ FLOW_CONDITION_TYPES = {
 MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
 CRM_VARIABLES = {"nombre", "telefono", "servicio", "vendedor", "fecha_actual"}
+
+# Los triggers de los routers lo activan para que watch_automations procese la
+# cola de inmediato sin bloquear la request HTTP del usuario (una acción
+# send_template puede tardar hasta 30s esperando a Evolution API).
+_wake = asyncio.Event()
 
 
 def _ts(value):
@@ -701,15 +719,29 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
     if current is None or current["builder_mode"] != "visual":
         return None
     validated = await validate_visual_flow(current["name"], current["flow_definition"])
-    return await update_automation_rule(rule_id, {
-        "name": validated["name"],
-        "trigger_type": validated["trigger_type"],
-        "trigger_config": validated["trigger_config"],
-        "flow_definition": validated["flow_definition"],
-        "published_flow_definition": validated["flow_definition"],
-        "flow_version": current["flow_version"] + 1,
-        "is_active": True,
-    })
+    now = datetime.now(timezone.utc)
+    new_version = current["flow_version"] + 1
+    async with get_sessionmaker()() as session:
+        await session.execute(update(AutomationRule).where(AutomationRule.id == rule_id).values(
+            name=validated["name"],
+            trigger_type=validated["trigger_type"],
+            trigger_config=validated["trigger_config"],
+            flow_definition=validated["flow_definition"],
+            published_flow_definition=validated["flow_definition"],
+            flow_version=new_version,
+            is_active=True,
+            updated_at=now,
+        ))
+        await session.execute(pg_insert(AutomationFlowVersion).values(
+            rule_id=rule_id,
+            version=new_version,
+            definition=validated["flow_definition"],
+            created_at=now,
+        ).on_conflict_do_nothing(
+            index_elements=[AutomationFlowVersion.rule_id, AutomationFlowVersion.version]
+        ))
+        await session.commit()
+    return await get_automation_rule(rule_id)
 
 
 async def schedule_automation_event(
@@ -723,7 +755,7 @@ async def schedule_automation_event(
         return 0
     stmt = select(
         AutomationRule.id, AutomationRule.delay_minutes, AutomationRule.builder_mode,
-        AutomationRule.published_flow_definition, AutomationRule.flow_version,
+        AutomationRule.flow_version,
     ).where(
         AutomationRule.is_active.is_(True), AutomationRule.trigger_type == trigger_type
     )
@@ -731,7 +763,9 @@ async def schedule_automation_event(
         stmt = stmt.where(AutomationRule.id == rule_id)
     async with get_sessionmaker()() as session:
         if await session.get(Lead, lead_id) is None:
-            logger.warning("Evento de automatización ignorado: lead %s no existe", lead_id)
+            # debug y no warning: el watcher redescubre mensajes de chats sin
+            # lead cada ciclo y un warning por chat cada 10s inunda el log.
+            logger.debug("Evento de automatización ignorado: lead %s no existe", lead_id)
             return 0
         rules = (await session.execute(stmt)).mappings().all()
         now = datetime.now(timezone.utc)
@@ -748,7 +782,6 @@ async def schedule_automation_event(
                     scheduled_for=now + timedelta(minutes=rule["delay_minutes"]),
                     action_results=[],
                     flow_state={
-                        "definition": rule["published_flow_definition"],
                         "flow_version": rule["flow_version"],
                         "current_node_id": None,
                         "path": [],
@@ -773,7 +806,7 @@ async def trigger_lead_created(lead_id: str) -> None:
             ).order_by(LeadActivity.id.desc()).limit(1)
         )
     await schedule_automation_event("lead_created", lead_id, f"lead:{activity_id or lead_id}")
-    await process_due_automation_executions()
+    _wake.set()
 
 
 async def trigger_stage_changed(lead_id: str) -> None:
@@ -788,7 +821,7 @@ async def trigger_stage_changed(lead_id: str) -> None:
             "stage_changed", lead_id, f"stage:{row['id']}",
             {"old_value": row["old_value"], "new_value": row["new_value"]},
         )
-        await process_due_automation_executions()
+        _wake.set()
 
 
 async def trigger_inbound_message(message: dict) -> None:
@@ -817,7 +850,7 @@ async def trigger_inbound_message(message: dict) -> None:
             "lead_created", lead_id, f"lead:first-message:{message_key}",
             {"source": "first_inbound_message"},
         )
-    await process_due_automation_executions()
+    _wake.set()
 
 
 async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, str | None]:
@@ -1028,7 +1061,6 @@ async def _persist_visual_execution(
     results: list[dict],
     current_node_id: str | None,
     path: list[str],
-    definition: dict,
     flow_version: int,
     error: str | None = None,
     scheduled_for: datetime | None = None,
@@ -1037,7 +1069,6 @@ async def _persist_visual_execution(
         "status": status,
         "action_results": results,
         "flow_state": {
-            "definition": definition,
             "flow_version": flow_version,
             "current_node_id": current_node_id,
             "path": path,
@@ -1057,14 +1088,49 @@ async def _persist_visual_execution(
         await session.commit()
 
 
+async def _notify_execution_failure(rule: AutomationRule, execution: AutomationExecution, error: str) -> None:
+    """Avisa al admin que creó la regla cuando una ejecución queda en failed —
+    sin esto los fallos solo se descubren entrando al historial a mirar."""
+    try:
+        notification = await create_system_notification(
+            rule.created_by_user_id,
+            "automation",
+            f"Automatización con error: {rule.name}"[:160],
+            (error or "La ejecución falló")[:1000],
+            execution.lead_id,
+            f"execution-failed:{execution.id}",
+            {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
+        )
+        await manager.send_to_user(
+            rule.created_by_user_id, {"type": "notification_created", "notification": notification}
+        )
+    except Exception:
+        logger.exception("No se pudo notificar el fallo de la ejecución %s", execution.id)
+
+
+async def _resolve_flow_definition(rule: AutomationRule, state: dict, flow_version: int) -> dict:
+    # Orden de resolución: snapshot legacy embebido en flow_state (ejecuciones
+    # en vuelo anteriores a automation_flow_versions) → la versión pinneada en
+    # la tabla de versiones → la última definición publicada de la regla.
+    legacy = state.get("definition")
+    if legacy:
+        return legacy
+    async with get_sessionmaker()() as session:
+        definition = await session.scalar(select(AutomationFlowVersion.definition).where(
+            AutomationFlowVersion.rule_id == rule.id,
+            AutomationFlowVersion.version == flow_version,
+        ))
+    return definition or rule.published_flow_definition or {}
+
+
 async def _run_visual_execution(execution: AutomationExecution, rule: AutomationRule, chat: dict) -> None:
     state = execution.flow_state or {}
-    definition = state.get("definition") or rule.published_flow_definition or {}
     flow_version = int(state.get("flow_version") or rule.flow_version or 0)
+    definition = await _resolve_flow_definition(rule, state, flow_version)
     nodes, edges = _flow_indexes(definition)
     if not nodes:
         await _persist_visual_execution(
-            execution.id, "failed", execution.action_results or [], None, [], definition, flow_version,
+            execution.id, "failed", execution.action_results or [], None, [], flow_version,
             "El flujo no tiene una versión publicada",
         )
         return
@@ -1082,7 +1148,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
             path.append(current_id)
             if node["type"] == "trigger":
                 current_id = edges[(current_id, "next")]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, definition, flow_version)
+                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
                 continue
             if node["type"] == "condition":
                 matches, detail = await _matches_flow_condition(node["data"], chat)
@@ -1093,14 +1159,14 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                     "detail": detail,
                 })
                 current_id = edges[(current_id, branch)]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, definition, flow_version)
+                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
                 continue
             if node["type"] == "action":
                 action = node["data"]["action"]
                 result = await _execute_action(action, chat, execution, rule)
                 results.append({"position": len(results) + 1, "node_id": node["id"], **result})
                 current_id = edges[(current_id, "next")]
-                await _persist_visual_execution(execution.id, "running", results, current_id, path, definition, flow_version)
+                await _persist_visual_execution(execution.id, "running", results, current_id, path, flow_version)
                 continue
             if node["type"] == "wait":
                 minutes = node["data"]["minutes"]
@@ -1110,7 +1176,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                 })
                 current_id = edges[(current_id, "next")]
                 await _persist_visual_execution(
-                    execution.id, "scheduled", results, current_id, path, definition, flow_version,
+                    execution.id, "scheduled", results, current_id, path, flow_version,
                     scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=minutes),
                 )
                 return
@@ -1118,7 +1184,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                 "position": len(results) + 1, "node_id": node["id"],
                 "type": "end", "status": "completed",
             })
-            await _persist_visual_execution(execution.id, "completed", results, None, path, definition, flow_version)
+            await _persist_visual_execution(execution.id, "completed", results, None, path, flow_version)
             return
         raise ValueError("El flujo excedió el máximo de bloques permitidos")
     except (KeyError, ValueError, EvolutionApiError, httpx.HTTPError) as exc:
@@ -1129,10 +1195,12 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
             "position": len(results) + 1, "node_id": current_id,
             "type": action_type, "status": "failed", "error": str(exc),
         })
-        await _persist_visual_execution(execution.id, "failed", results, current_id, path, definition, flow_version, str(exc))
+        await _persist_visual_execution(execution.id, "failed", results, current_id, path, flow_version, str(exc))
+        await _notify_execution_failure(rule, execution, str(exc))
     except Exception as exc:
         logger.exception("Unexpected error running visual automation execution %s", execution.id)
-        await _persist_visual_execution(execution.id, "failed", results, current_id, path, definition, flow_version, str(exc))
+        await _persist_visual_execution(execution.id, "failed", results, current_id, path, flow_version, str(exc))
+        await _notify_execution_failure(rule, execution, str(exc))
 
 
 async def _run_execution(execution_id: int) -> None:
@@ -1156,30 +1224,45 @@ async def _run_execution(execution_id: int) -> None:
                 AutomationExecution.id == execution_id
             ).values(status="failed", error="Lead no encontrado", finished_at=now))
             await session.commit()
+        await _notify_execution_failure(rule, execution, "Lead no encontrado")
         return
     if rule.builder_mode == "visual":
         await _run_visual_execution(execution, rule, chat)
         return
-    matches, reason = await _matches_conditions(rule, chat)
-    if not matches:
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(status="skipped", error=reason, finished_at=datetime.now(timezone.utc)))
-            await session.commit()
-        return
-    results: list[dict] = []
+    results = list(execution.action_results or [])
+    if not results:
+        # Solo se evalúan condiciones en el primer intento: al reanudar una
+        # ejecución interrumpida las acciones ya corridas pudieron cambiar el
+        # estado del lead y un skip aquí dejaría la regla a medias.
+        matches, reason = await _matches_conditions(rule, chat)
+        if not matches:
+            async with get_sessionmaker()() as session:
+                await session.execute(update(AutomationExecution).where(
+                    AutomationExecution.id == execution_id
+                ).values(status="skipped", error=reason, finished_at=datetime.now(timezone.utc)))
+                await session.commit()
+            return
+    actions = list(rule.actions or [])
     try:
-        for index, action in enumerate(rule.actions or [], start=1):
-            result = await _execute_action(action, chat, execution, rule)
-            results.append({"position": index, **result})
+        # Reanuda desde la primera acción sin resultado persistido — un
+        # reintento tras un crash no repite WhatsApps ni tareas ya creadas.
+        for index in range(len(results), len(actions)):
+            result = await _execute_action(actions[index], chat, execution, rule)
+            results.append({"position": index + 1, **result})
+            async with get_sessionmaker()() as session:
+                await session.execute(update(AutomationExecution).where(
+                    AutomationExecution.id == execution_id
+                ).values(action_results=results))
+                await session.commit()
     except (ValueError, EvolutionApiError, httpx.HTTPError) as exc:
-        results.append({"position": len(results) + 1, "type": (rule.actions or [])[len(results)].get("type"), "status": "failed", "error": str(exc)})
+        failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
+        results.append({"position": len(results) + 1, "type": failed_type, "status": "failed", "error": str(exc)})
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id
             ).values(status="failed", action_results=results, error=str(exc), finished_at=datetime.now(timezone.utc)))
             await session.commit()
+        await _notify_execution_failure(rule, execution, str(exc))
     except Exception as exc:
         logger.exception("Unexpected error running automation execution %s", execution_id)
         async with get_sessionmaker()() as session:
@@ -1187,6 +1270,7 @@ async def _run_execution(execution_id: int) -> None:
                 AutomationExecution.id == execution_id
             ).values(status="failed", action_results=results, error=str(exc), finished_at=datetime.now(timezone.utc)))
             await session.commit()
+        await _notify_execution_failure(rule, execution, str(exc))
     else:
         async with get_sessionmaker()() as session:
             await session.execute(update(AutomationExecution).where(
@@ -1207,18 +1291,33 @@ async def process_due_automation_executions(limit: int = 20) -> int:
         if ids:
             await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id.in_(ids)
-            ).values(status="running", started_at=now, error=None))
+            ).values(
+                status="running", started_at=now, error=None,
+                attempts=AutomationExecution.attempts + 1,
+            ))
         await session.commit()
-    for execution_id in ids:
-        await _run_execution(execution_id)
-    if ids:
-        await manager.broadcast({"type": "automations_updated"})
+    if not ids:
+        return 0
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXECUTIONS)
+
+    async def run_bounded(execution_id: int) -> None:
+        async with semaphore:
+            await _run_execution(execution_id)
+
+    await asyncio.gather(*(run_bounded(execution_id) for execution_id in ids))
+    await manager.broadcast({"type": "automations_updated"})
     return len(ids)
 
 
 async def _discover_recent_inbound_messages() -> None:
     since = datetime.now(timezone.utc) - timedelta(minutes=5)
     async with get_sessionmaker()() as session:
+        has_rules = await session.scalar(select(AutomationRule.id).where(
+            AutomationRule.is_active.is_(True),
+            AutomationRule.trigger_type.in_(["message_received", "lead_created"]),
+        ).limit(1))
+        if not has_rules:
+            return
         rows = (await session.execute(
             select(WspMessage.id, WspMessage.wa_message_id, WspMessage.chat_id, WspMessage.content).where(
                 WspMessage.sender == "cliente", WspMessage.sent_at >= since
@@ -1242,13 +1341,15 @@ async def _discover_timed_events() -> None:
             async with get_sessionmaker()() as session:
                 tasks = (await session.execute(select(
                     LeadTask.id, LeadTask.lead_id, LeadTask.assigned_user_id, LeadTask.title,
-                    LeadTask.due_at, LeadTask.updated_at,
+                    LeadTask.due_at,
                 ).where(
                     LeadTask.status == "pending", LeadTask.due_at <= datetime.now(timezone.utc)
                 ).limit(200))).mappings().all()
             for task in tasks:
+                # Clave anclada al vencimiento: editar título o prioridad de la
+                # tarea no re-dispara la regla; mover la fecha límite sí.
                 await schedule_automation_event(
-                    "task_due", task["lead_id"], f"task:{task['id']}:{_ts(task['updated_at'])}", {
+                    "task_due", task["lead_id"], f"task:{task['id']}:{_ts(task['due_at'])}", {
                         "task_id": task["id"],
                         "assigned_user_id": task["assigned_user_id"],
                         "title": task["title"],
@@ -1257,42 +1358,146 @@ async def _discover_timed_events() -> None:
                 )
             continue
         expected_sender = "cliente" if rule.trigger_type == "seller_response_overdue" else "vendedor"
-        threshold = datetime.now(timezone.utc) - timedelta(minutes=int((rule.trigger_config or {}).get("minutes", 1)))
-        last_message = (
-            select(
-                WspMessage.id,
-                WspMessage.chat_id,
-                WspMessage.sender,
-                WspMessage.sent_at,
-                func.row_number().over(
-                    partition_by=WspMessage.chat_id,
-                    order_by=(WspMessage.sent_at.desc(), WspMessage.id.desc()),
-                ).label("position"),
-            ).subquery()
-        )
+        now = datetime.now(timezone.utc)
+        minutes = int((rule.trigger_config or {}).get("minutes", 1))
+        threshold = now - timedelta(minutes=minutes)
+        # Solo silencios recientes: chats sin actividad desde antes del
+        # lookback no disparan — activar una regla no puede provocar un envío
+        # masivo a conversaciones viejas. La cota además permite que la query
+        # use idx_wsp_messages_sent_at en vez de recorrer toda la tabla.
+        lookback = now - timedelta(minutes=minutes + OVERDUE_LOOKBACK_GRACE_MINUTES)
+        last_message = select(
+            WspMessage.id, WspMessage.chat_id, WspMessage.sender, WspMessage.sent_at,
+        ).where(WspMessage.sent_at >= lookback).order_by(
+            WspMessage.chat_id, WspMessage.sent_at.desc(), WspMessage.id.desc()
+        ).distinct(WspMessage.chat_id).subquery()
         async with get_sessionmaker()() as session:
             rows = (await session.execute(select(last_message).where(
-                last_message.c.position == 1,
                 last_message.c.sender == expected_sender,
                 last_message.c.sent_at <= threshold,
             ).limit(500))).mappings().all()
+            anchors: dict[str, int] = {}
+            if rule.trigger_type == "customer_response_overdue" and rows:
+                # La deduplicación se ancla al último mensaje DEL CLIENTE: los
+                # follow-ups que envía la propia regla crean mensajes nuevos
+                # del vendedor y, sin este ancla, cada uno re-dispararía la
+                # regla en un goteo infinito hasta que el cliente responda.
+                anchors = dict((await session.execute(
+                    select(WspMessage.chat_id, WspMessage.id).where(
+                        WspMessage.chat_id.in_([row["chat_id"] for row in rows]),
+                        WspMessage.sender == "cliente",
+                        WspMessage.sent_at >= lookback,
+                    ).order_by(
+                        WspMessage.chat_id, WspMessage.sent_at.desc(), WspMessage.id.desc()
+                    ).distinct(WspMessage.chat_id)
+                )).all())
         for row in rows:
+            if rule.trigger_type == "customer_response_overdue":
+                anchor = anchors.get(row["chat_id"])
+                event_key = f"silence:{anchor}" if anchor else f"silence:none:{row['chat_id']}"
+            else:
+                event_key = f"overdue:{row['id']}"
             await schedule_automation_event(
                 rule.trigger_type,
                 row["chat_id"],
-                f"overdue:{row['id']}",
+                event_key,
                 {"last_message_id": str(row["id"]), "last_sender": row["sender"], "last_message_at": _ts(row["sent_at"])},
                 rule.id,
             )
 
 
 async def _release_stale_executions() -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=STALE_EXECUTION_MINUTES)
     async with get_sessionmaker()() as session:
+        # Las que ya agotaron sus reclamos no se re-agendan más: quedan failed
+        # para que el fallo sea visible en vez de reintentarse para siempre.
+        exhausted = (await session.execute(update(AutomationExecution).where(
+            AutomationExecution.status == "running",
+            AutomationExecution.started_at < cutoff,
+            AutomationExecution.attempts >= MAX_EXECUTION_ATTEMPTS,
+        ).values(
+            status="failed",
+            error="Interrumpida demasiadas veces; no se volverá a reintentar",
+            finished_at=now,
+        ).returning(AutomationExecution.id))).scalars().all()
         await session.execute(update(AutomationExecution).where(
             AutomationExecution.status == "running",
             AutomationExecution.started_at < cutoff,
         ).values(status="scheduled", started_at=None, error="Reintentando una ejecución interrumpida"))
+        await session.commit()
+    for execution_id in exhausted:
+        async with get_sessionmaker()() as session:
+            execution = await session.get(AutomationExecution, execution_id)
+            rule = await session.get(AutomationRule, execution.rule_id) if execution else None
+        if execution and rule:
+            await _notify_execution_failure(rule, execution, execution.error or "")
+
+
+async def backfill_automation_state() -> None:
+    """Migraciones de datos idempotentes que corren al arranque.
+
+    1. Copia las definiciones publicadas a automation_flow_versions — las
+       instalaciones previas solo las tenían embebidas en la regla y en el
+       flow_state de cada ejecución.
+    2. Reescribe las claves de eventos task_due del formato viejo
+       task:{id}:{updated_at} al nuevo task:{id}:{due_at}, para que el deploy
+       no re-dispare automatizaciones de tareas ya procesadas.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        published_rules = (await session.execute(select(
+            AutomationRule.id, AutomationRule.flow_version, AutomationRule.published_flow_definition,
+        ).where(
+            AutomationRule.builder_mode == "visual",
+            AutomationRule.published_flow_definition.is_not(None),
+            AutomationRule.flow_version > 0,
+        ))).mappings().all()
+        for rule in published_rules:
+            await session.execute(pg_insert(AutomationFlowVersion).values(
+                rule_id=rule["id"],
+                version=rule["flow_version"],
+                definition=rule["published_flow_definition"],
+                created_at=now,
+            ).on_conflict_do_nothing(
+                index_elements=[AutomationFlowVersion.rule_id, AutomationFlowVersion.version]
+            ))
+
+        rows = (await session.execute(
+            select(AutomationExecution.id, AutomationExecution.rule_id, AutomationExecution.event_key).where(
+                AutomationExecution.trigger_type == "task_due"
+            ).order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc())
+        )).mappings().all()
+        task_ids = {
+            int(row["event_key"].split(":")[1])
+            for row in rows
+            if row["event_key"].startswith("task:") and row["event_key"].split(":")[1].isdigit()
+        }
+        due_map: dict[int, datetime] = {}
+        if task_ids:
+            due_map = dict((await session.execute(
+                select(LeadTask.id, LeadTask.due_at).where(LeadTask.id.in_(task_ids))
+            )).all())
+        existing_keys = {(row["rule_id"], row["event_key"]) for row in rows}
+        migrated: set[tuple[int, int]] = set()
+        for row in rows:  # ordenadas de más reciente a más antigua
+            parts = row["event_key"].split(":")
+            if len(parts) < 3 or parts[0] != "task" or not parts[1].isdigit():
+                continue
+            task_id = int(parts[1])
+            if (row["rule_id"], task_id) in migrated:
+                continue
+            migrated.add((row["rule_id"], task_id))
+            due_at = due_map.get(task_id)
+            if due_at is None:
+                continue
+            new_key = f"task:{task_id}:{_ts(due_at)}"
+            if new_key == row["event_key"] or (row["rule_id"], new_key) in existing_keys:
+                continue
+            await session.execute(update(AutomationExecution).where(
+                AutomationExecution.id == row["id"]
+            ).values(event_key=new_key))
+            existing_keys.add((row["rule_id"], new_key))
         await session.commit()
 
 
@@ -1307,4 +1512,11 @@ async def watch_automations() -> None:
             raise
         except Exception:
             logger.exception("Error processing automations")
-        await asyncio.sleep(AUTOMATION_POLL_SECONDS)
+        # Duerme hasta el próximo ciclo o hasta que un trigger active _wake —
+        # así los eventos de los routers se procesan al instante sin que la
+        # request HTTP tenga que esperar a las acciones.
+        try:
+            await asyncio.wait_for(_wake.wait(), timeout=AUTOMATION_POLL_SECONDS)
+        except TimeoutError:
+            pass
+        _wake.clear()

@@ -107,10 +107,25 @@ async def patch_rule(
     if current is None:
         raise HTTPException(404, "Automatización no encontrada")
     requested = body.model_dump(exclude_unset=True)
-    if set(requested) == {"is_active"} and (
-        requested["is_active"] is False
-        or (current["builder_mode"] == "visual" and current["published_flow_definition"])
-    ):
+    if current["builder_mode"] == "visual":
+        # Una regla visual no tiene actions/conditions propias: mandarla por
+        # validate_automation_rule fallaría con un error confuso.
+        if not set(requested) <= {"is_active", "name"}:
+            raise HTTPException(400, "Los flujos visuales se editan desde el constructor de flujos")
+        values: dict = {}
+        if "name" in requested:
+            name = str(requested["name"] or "").strip()
+            if not name or len(name) > 120:
+                raise HTTPException(400, "El nombre debe tener entre 1 y 120 caracteres")
+            values["name"] = name
+        if "is_active" in requested:
+            if requested["is_active"] and not current["published_flow_definition"]:
+                raise HTTPException(400, "Publica el flujo antes de activarlo")
+            values["is_active"] = requested["is_active"]
+        if not values:
+            raise HTTPException(400, "Nada que actualizar")
+        item = await update_automation_rule(rule_id, values)
+    elif set(requested) == {"is_active"} and requested["is_active"] is False:
         item = await update_automation_rule(rule_id, requested)
     else:
         merged = {

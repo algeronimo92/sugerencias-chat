@@ -15,7 +15,7 @@ from services.chat_watcher import watch_chats
 from services.db_service import get_user_by_id, seed_admin_if_needed
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
-from services.automation_service import watch_automations
+from services.automation_service import backfill_automation_state, watch_automations
 
 
 @asynccontextmanager
@@ -42,7 +42,15 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS published_flow_definition JSONB"))
         await conn.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS flow_version INTEGER NOT NULL DEFAULT 0"))
         await conn.execute(text("ALTER TABLE automation_executions ADD COLUMN IF NOT EXISTS flow_state JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        await conn.execute(text("ALTER TABLE automation_executions ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)"))
+        # Las queries de discovery de automatizaciones filtran por rango de
+        # tiempo — sin estos índices son full scans cada ciclo del watcher.
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_wsp_messages_sent_at ON wsp_messages(sent_at)"))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lead_tasks_due_pending "
+            "ON lead_tasks(due_at) WHERE status = 'pending'"
+        ))
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_message_templates_type_status "
             "ON message_templates(template_type, official_status, is_active)"
@@ -132,6 +140,8 @@ async def lifespan(app: FastAPI):
 
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
+
+    await backfill_automation_state()
 
     watcher_task = asyncio.create_task(watch_chats())
     reminder_task = asyncio.create_task(watch_task_reminders())
