@@ -668,6 +668,51 @@ async def mark_chat_read(chat_id: str) -> None:
         await session.commit()
 
 
+async def mark_chat_read_from_whatsapp_receipt(wa_message_id: str) -> dict | None:
+    """Avanza la lectura interna hasta un mensaje del cliente leído en WhatsApp.
+
+    Se usa el ``sent_at`` del mensaje como marca de agua, no la hora actual:
+    así un recibo tardío nunca marca como vistos mensajes que llegaron después.
+    Solo acepta filas de ``sender=cliente`` para no confundir el READ de un
+    mensaje saliente (el lead lo leyó) con una lectura hecha por el vendedor.
+    """
+    message_stmt = (
+        select(WspMessage.chat_id, WspMessage.sent_at)
+        .where(
+            WspMessage.wa_message_id == wa_message_id,
+            WspMessage.sender == "cliente",
+        )
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        message = (await session.execute(message_stmt)).mappings().first()
+        if message is None:
+            return None
+
+        update_stmt = (
+            update(Lead)
+            .where(
+                Lead.remote_jid == message["chat_id"],
+                or_(
+                    Lead.last_read_at.is_(None),
+                    Lead.last_read_at < message["sent_at"],
+                ),
+            )
+            .values(last_read_at=message["sent_at"])
+            .returning(Lead.remote_jid)
+        )
+        chat_id = (await session.execute(update_stmt)).scalar_one_or_none()
+        if chat_id is None:
+            return None
+        await session.commit()
+
+    return {
+        "chat_id": chat_id,
+        "last_read_at": _fmt_ts(message["sent_at"]),
+    }
+
+
 async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
     """IDs de WhatsApp de los mensajes del cliente sin ver en este chat —
     para avisarle a Evolution API que se leyeron (markMessageAsRead). Hay

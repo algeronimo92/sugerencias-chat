@@ -1,5 +1,9 @@
 from domain_types import MessageStatus
-from services.message_status_service import parse_message_status_updates
+from services.message_status_service import (
+    MessageStatusEvent,
+    parse_message_status_events,
+    parse_message_status_updates,
+)
 
 
 def test_accepts_existing_flat_n8n_contract():
@@ -69,3 +73,26 @@ def test_batch_keeps_most_advanced_status_and_ignores_pending():
     }
 
     assert parse_message_status_updates(payload) == [("WA-4", MessageStatus.PLAYED)]
+
+
+def test_preserves_incoming_direction_from_flat_n8n_contract():
+    assert parse_message_status_events({
+        "wa_message_id": "WA-INCOMING",
+        "status": "READ",
+        "fromMe": False,
+    }) == [
+        MessageStatusEvent("WA-INCOMING", MessageStatus.READ, False),
+    ]
+
+
+def test_batch_keeps_direction_when_advanced_status_omits_it():
+    payload = {
+        "data": [
+            {"keyId": "WA-DIRECTION", "status": "DELIVERY_ACK", "fromMe": False},
+            {"keyId": "WA-DIRECTION", "status": "READ"},
+        ]
+    }
+
+    assert parse_message_status_events(payload) == [
+        MessageStatusEvent("WA-DIRECTION", MessageStatus.READ, False),
+    ]

@@ -158,6 +158,7 @@ class CustomerServiceWindow(BaseModel):
 class MessageStatusUpdate(BaseModel):
     wa_message_id: str
     status: str
+    from_me: bool | None = None
 
 
 class SendMessageRequest(BaseModel):

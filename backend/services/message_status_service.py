@@ -7,6 +7,7 @@ también puede enviar el contrato plano que ya usaba la aplicación.
 """
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from domain_types import MessageStatus
@@ -34,6 +35,15 @@ MESSAGE_STATUS_RANK = {
     MessageStatus.READ: 3,
     MessageStatus.PLAYED: 4,
 }
+
+
+@dataclass(frozen=True)
+class MessageStatusEvent:
+    wa_message_id: str
+    status: MessageStatus
+    # ``False`` identifica un mensaje del cliente leído desde alguno de los
+    # dispositivos vinculados a la instancia (por ejemplo WhatsApp Web).
+    from_me: bool | None = None
 
 
 def normalize_message_status(value: Any) -> MessageStatus | None:
@@ -100,19 +110,56 @@ def _status(item: dict[str, Any]) -> MessageStatus | None:
     return None
 
 
-def parse_message_status_updates(payload: Any) -> list[tuple[str, MessageStatus]]:
+def _from_me(item: dict[str, Any]) -> bool | None:
+    for field in ("from_me", "fromMe"):
+        value = item.get(field)
+        if isinstance(value, bool):
+            return value
+
+    key = item.get("key")
+    if isinstance(key, dict):
+        value = key.get("fromMe")
+        if isinstance(value, bool):
+            return value
+    return None
+
+
+def parse_message_status_events(payload: Any) -> list[MessageStatusEvent]:
     """Extrae y deduplica actualizaciones de un payload plano o nativo.
 
     Si el mismo mensaje aparece varias veces en un lote, conserva el estado
-    más avanzado para que el orden del lote no produzca regresiones.
+    más avanzado para que el orden del lote no produzca regresiones. También
+    conserva ``fromMe`` cuando Evolution o n8n incluyen la dirección.
     """
-    updates: dict[str, MessageStatus] = {}
+    updates: dict[str, MessageStatusEvent] = {}
     for item in _event_items(payload):
         wa_message_id = _message_id(item)
         status = _status(item)
         if wa_message_id is None or status is None:
             continue
+        from_me = _from_me(item)
         current = updates.get(wa_message_id)
-        if current is None or MESSAGE_STATUS_RANK[status] > MESSAGE_STATUS_RANK[current]:
-            updates[wa_message_id] = status
-    return list(updates.items())
+        if current is None:
+            updates[wa_message_id] = MessageStatusEvent(wa_message_id, status, from_me)
+            continue
+        if MESSAGE_STATUS_RANK[status] > MESSAGE_STATUS_RANK[current.status]:
+            updates[wa_message_id] = MessageStatusEvent(
+                wa_message_id,
+                status,
+                from_me if from_me is not None else current.from_me,
+            )
+        elif current.from_me is None and from_me is not None:
+            updates[wa_message_id] = MessageStatusEvent(
+                wa_message_id,
+                current.status,
+                from_me,
+            )
+    return list(updates.values())
+
+
+def parse_message_status_updates(payload: Any) -> list[tuple[str, MessageStatus]]:
+    """Contrato compatible para consumidores que solo necesitan ID y estado."""
+    return [
+        (event.wa_message_id, event.status)
+        for event in parse_message_status_events(payload)
+    ]

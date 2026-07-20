@@ -78,9 +78,12 @@ Content-Type: application/json
 ```
 
 El endpoint también acepta el contrato plano
-`{"wa_message_id": "...", "status": "READ"}`. Los cambios se publican por
-WebSocket y el chat muestra un check gris al enviar, dos grises al entregar y
-dos azules al leer. La migración manual para instalaciones existentes es
+`{"wa_message_id": "...", "status": "READ", "from_me": false}`. Los cambios
+se publican por WebSocket y el chat muestra un check gris al enviar, dos grises
+al entregar y dos azules al leer. Si `READ`/`PLAYED` llega con `from_me=false`,
+el backend interpreta que un dispositivo vinculado (por ejemplo WhatsApp Web)
+leyó un mensaje del cliente y avanza `last_read_at` hasta la fecha exacta de ese
+mensaje; no marca como vistos mensajes posteriores. La migración manual para instalaciones existentes es
 `backend/migrations/016_message_delivery_status.sql`; el backend también la
 aplica de forma idempotente al arrancar.
 

@@ -81,7 +81,8 @@ class WspMessage(Base):
     # los eventos de cambio de estado (entregado/leído) contra esta fila.
     wa_message_id: Mapped[str | None] = mapped_column(Text)
     # SERVER_ACK / DELIVERY_ACK / READ / PLAYED, tal cual lo manda Evolution
-    # API. Solo tiene sentido para mensajes del vendedor (sender="vendedor").
+    # API. En mensajes del cliente, READ/PLAYED también permite sincronizar la
+    # lectura hecha desde un dispositivo vinculado (p. ej. WhatsApp Web).
     status: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
