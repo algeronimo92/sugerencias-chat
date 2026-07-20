@@ -105,12 +105,12 @@ type TimelineItem =
  * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
 function MessageStatusTicks({ status }: { status: MessageStatus }) {
   if (status === 'READ' || status === 'PLAYED') {
-    return <CheckCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+    return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-blue-500 shrink-0" /></span>
   }
   if (status === 'DELIVERY_ACK') {
-    return <CheckCheck className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+    return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
   }
-  return <Check className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+  return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
 }
 
 export function ChatThread({ chat, onRefreshSuggestions }: Props) {

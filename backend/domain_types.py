@@ -86,3 +86,30 @@ class TaskPriority(StrEnum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
+
+
+class MessageSender(StrEnum):
+    """Quién envió el mensaje en wsp_messages.sender."""
+
+    CUSTOMER = "cliente"
+    SELLER = "vendedor"
+
+
+class MessageStatus(StrEnum):
+    """Estados de entrega que reporta Evolution API para los mensajes salientes."""
+
+    SERVER_ACK = "SERVER_ACK"
+    DELIVERY_ACK = "DELIVERY_ACK"
+    READ = "READ"
+    PLAYED = "PLAYED"
+
+
+class TemplateType(StrEnum):
+    INTERNAL = "internal"
+    OFFICIAL = "official"
+
+
+class InteractiveType(StrEnum):
+    NONE = "none"
+    BUTTONS = "buttons"
+    LIST = "list"

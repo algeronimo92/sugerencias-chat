@@ -296,6 +296,7 @@ export interface AutomationConditions {
   tag_id?: number | null
   require_open_window?: boolean
   business_hours_only?: boolean
+  cooldown_minutes?: number | null
 }
 
 export interface CreateTaskAutomationAction {
@@ -387,6 +388,7 @@ export interface AutomationRule {
   published_flow_definition: AutomationFlowDefinition | null
   flow_version: number
   delay_minutes: number
+  max_executions_per_hour: number | null
   is_active: boolean
   created_by_user_id: number
   created_by_name: string

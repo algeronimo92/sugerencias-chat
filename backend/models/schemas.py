@@ -398,6 +398,7 @@ class AutomationRuleCreate(BaseModel):
     conditions: dict = Field(default_factory=dict)
     actions: list[dict] = Field(default_factory=list)
     delay_minutes: int = Field(default=0, ge=0, le=10080)
+    max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool = True
 
 
@@ -408,6 +409,7 @@ class AutomationRuleUpdate(BaseModel):
     conditions: dict | None = None
     actions: list[dict] | None = None
     delay_minutes: int | None = Field(default=None, ge=0, le=10080)
+    max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool | None = None
 
 
@@ -423,6 +425,7 @@ class AutomationRuleItem(BaseModel):
     published_flow_definition: dict | None = None
     flow_version: int = 0
     delay_minutes: int
+    max_executions_per_hour: int | None = None
     is_active: bool
     created_by_user_id: int
     created_by_name: str
@@ -462,3 +465,11 @@ class AutomationFlowUpdate(BaseModel):
 
 class AutomationFlowSimulationRequest(BaseModel):
     lead_id: str
+
+
+class AutomationFlowVersionItem(BaseModel):
+    version: int
+    created_at: str
+    node_count: int
+    edge_count: int
+    is_current: bool

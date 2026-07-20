@@ -66,6 +66,24 @@ Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
 como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
 después de agregar el mapeo al nodo de inserción de n8n.
 
+### Doble check de mensajes enviados
+
+La instancia de Evolution debe tener habilitado el evento `MESSAGES_UPDATE`.
+n8n puede reenviar el JSON original, sin transformarlo, a:
+
+```text
+POST https://chat.dermicapro.app/api/webhooks/message-status
+X-Webhook-Token: <mismo valor de INBOUND_WEBHOOK_TOKEN>
+Content-Type: application/json
+```
+
+El endpoint también acepta el contrato plano
+`{"wa_message_id": "...", "status": "READ"}`. Los cambios se publican por
+WebSocket y el chat muestra un check gris al enviar, dos grises al entregar y
+dos azules al leer. La migración manual para instalaciones existentes es
+`backend/migrations/016_message_delivery_status.sql`; el backend también la
+aplica de forma idempotente al arrancar.
+
 ### Etiquetas, filtros e historial de cambios
 
 La lista de leads permite combinar búsqueda, no leídos, etapas, etiquetas

@@ -10,6 +10,7 @@ export interface AutomationRuleInput {
   conditions: AutomationConditions
   actions: AutomationAction[]
   delay_minutes: number
+  max_executions_per_hour: number | null
   is_active: boolean
 }
 
@@ -51,6 +52,27 @@ export function useUpdateAutomation() {
   })
 }
 
+export function useDuplicateAutomation() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<AutomationRule>(`/api/automations/${id}/duplicate`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
+export function useRetryExecution() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/retry`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
+export function useCancelExecution() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/cancel`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
 export function useCreateVisualFlow() {
   return useMutation({
     mutationFn: async (input: { name: string; flow_definition: AutomationFlowDefinition }) =>
@@ -70,6 +92,30 @@ export function useSaveVisualFlow() {
 export function usePublishVisualFlow() {
   return useMutation({
     mutationFn: async (id: number) => (await client.post<AutomationRule>(`/api/automations/${id}/publish`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
+export interface AutomationFlowVersion {
+  version: number
+  created_at: string
+  node_count: number
+  edge_count: number
+  is_current: boolean
+}
+
+export function useFlowVersions(ruleId: number | null) {
+  return useQuery({
+    queryKey: ['automation-flow-versions', ruleId],
+    queryFn: async () => (await client.get<AutomationFlowVersion[]>(`/api/automations/${ruleId}/versions`)).data,
+    enabled: ruleId != null,
+  })
+}
+
+export function useRestoreFlowVersion() {
+  return useMutation({
+    mutationFn: async ({ id, version }: { id: number; version: number }) =>
+      (await client.post<AutomationRule>(`/api/automations/${id}/versions/${version}/restore`)).data,
     onSuccess: invalidateAutomations,
   })
 }

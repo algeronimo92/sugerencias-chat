@@ -6,6 +6,16 @@ class EvolutionApiError(Exception):
     pass
 
 
+def mediatype_from_content_type(content_type: str) -> str:
+    if content_type.startswith("image/"):
+        return "image"
+    if content_type.startswith("video/"):
+        return "video"
+    if content_type.startswith("audio/"):
+        return "audio"
+    return "document"
+
+
 async def _config() -> tuple[str, str, str]:
     api_url = await get_effective("evolution_api_url")
     api_key = await get_effective("evolution_api_key")

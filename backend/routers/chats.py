@@ -52,6 +52,7 @@ from services.auth_service import get_current_user
 from services.evolution_service import (
     EvolutionApiError,
     mark_messages_as_read,
+    mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_audio,
     send_whatsapp_buttons,
     send_whatsapp_list,
@@ -210,16 +211,6 @@ _LEAD_FIELD_TO_COLUMN = {
     "origen": "origen",
     "notas": "notas",
 }
-
-
-def _mediatype_from_content_type(content_type: str) -> str:
-    if content_type.startswith("image/"):
-        return "image"
-    if content_type.startswith("video/"):
-        return "video"
-    if content_type.startswith("audio/"):
-        return "audio"
-    return "document"
 
 
 def _wa_message_id(evolution_response: dict) -> str | None:

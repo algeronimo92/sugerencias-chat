@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import re
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import func, insert, select, update
@@ -17,10 +15,14 @@ from domain_types import (
     FlowConditionType,
     FlowHandle,
     FlowNodeType,
+    InteractiveType,
+    MessageSender,
+    MessageStatus,
     NotificationType,
     TaskPriority,
     TaskStatus,
     TaskType,
+    TemplateType,
 )
 from db.models import (
     AutomationExecution,
@@ -46,7 +48,25 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import EvolutionApiError, send_whatsapp_text
+from services.evolution_service import (
+    EvolutionApiError,
+    mediatype_from_content_type,
+    send_whatsapp_media,
+    send_whatsapp_text,
+)
+from services.automation_deps import DEFAULT_DEPS, AutomationDeps
+from services.automation_rules import (
+    business_timezone,
+    flow_indexes,
+    is_business_hours,
+    matches_static_conditions,
+    normalize_conditions,
+    normalize_edges,
+    normalize_flow_position,
+    render_variables,
+    unknown_variables,
+    validate_graph_topology,
+)
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
 from services.ws_manager import manager
@@ -62,6 +82,9 @@ MAX_EXECUTION_ATTEMPTS = 3
 # Un flujo visual legítimo (varias llamadas a Evolution API de 30-60s) puede
 # superar los 10 minutos; con menos margen se re-agendaría una ejecución viva.
 STALE_EXECUTION_MINUTES = 15
+# Cuando una regla alcanza su max_executions_per_hour, las ejecuciones que
+# quedan afuera del cupo se re-agendan este tiempo después en vez de perderse.
+RATE_LIMIT_RETRY_MINUTES = 10
 # Las reglas de "sin responder" solo miran chats con actividad dentro de los
 # minutos configurados más esta gracia (3 días): activar una regla no debe
 # disparar contra todo el historial de conversaciones viejas.
@@ -76,31 +99,19 @@ TASK_TYPES = frozenset(TaskType)
 TASK_PRIORITIES = frozenset(TaskPriority)
 MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
-CRM_VARIABLES = {"nombre", "telefono", "servicio", "vendedor", "fecha_actual"}
+MAX_WHATSAPP_TEXT_LENGTH = 4096
 
 # Los triggers de los routers lo activan para que watch_automations procese la
 # cola de inmediato sin bloquear la request HTTP del usuario (una acción
 # send_template puede tardar hasta 30s esperando a Evolution API).
 _wake = asyncio.Event()
 
+_render = render_variables
+_unknown_variables = unknown_variables
+
 
 def _ts(value):
     return value.isoformat().replace("+00:00", "Z") if value else None
-
-
-def _render(value: str, chat: dict) -> str:
-    values = {
-        "nombre": chat.get("name") or "",
-        "telefono": chat.get("phone") or "",
-        "servicio": chat.get("servicio_interes") or "",
-        "vendedor": chat.get("vendedor") or "",
-        "fecha_actual": datetime.now(ZoneInfo("America/Lima")).strftime("%d/%m/%Y"),
-    }
-    return re.sub(r"\{\{(\w+)\}\}", lambda match: values.get(match.group(1), match.group(0)), value)
-
-
-def _unknown_variables(value: str) -> set[str]:
-    return set(re.findall(r"\{\{(\w+)\}\}", value)) - CRM_VARIABLES
 
 
 def _wa_message_id(response: dict) -> str | None:
@@ -121,6 +132,7 @@ def _rule_dict(row) -> dict:
         "published_flow_definition": row["published_flow_definition"],
         "flow_version": row["flow_version"] or 0,
         "delay_minutes": row["delay_minutes"],
+        "max_executions_per_hour": row["max_executions_per_hour"],
         "is_active": row["is_active"],
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
@@ -186,6 +198,7 @@ async def list_automation_rules() -> list[dict]:
         AutomationRule.published_flow_definition,
         AutomationRule.flow_version,
         AutomationRule.delay_minutes,
+        AutomationRule.max_executions_per_hour,
         AutomationRule.is_active,
         AutomationRule.created_by_user_id,
         User.name.label("created_by_name"),
@@ -221,6 +234,37 @@ async def create_automation_rule(values: dict, user_id: int) -> dict:
     return await get_automation_rule(rule_id)
 
 
+async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
+    current = await get_automation_rule(rule_id)
+    if current is None:
+        return None
+    is_visual = current["builder_mode"] == AutomationBuilderMode.VISUAL
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        new_id = (await session.execute(insert(AutomationRule).values(
+            name=f"{current['name']} (copia)"[:120],
+            trigger_type=current["trigger_type"],
+            trigger_config=current["trigger_config"],
+            conditions={} if is_visual else current["conditions"],
+            actions=[] if is_visual else current["actions"],
+            delay_minutes=0 if is_visual else current["delay_minutes"],
+            max_executions_per_hour=current["max_executions_per_hour"],
+            # Siempre arranca inactiva: evita tener dos reglas idénticas
+            # corriendo a la vez sin que el usuario lo haya decidido.
+            is_active=False,
+            builder_mode=current["builder_mode"],
+            flow_definition=current["flow_definition"] if is_visual else {},
+            published_flow_definition=None,
+            flow_version=0,
+            created_by_user_id=user_id,
+            created_at=now,
+            updated_at=now,
+        ).returning(AutomationRule.id))).scalar_one()
+        await session.commit()
+    await manager.broadcast({"type": "automations_updated"})
+    return await get_automation_rule(new_id)
+
+
 async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
     if values:
         values["updated_at"] = datetime.now(timezone.utc)
@@ -238,6 +282,7 @@ async def list_automation_executions(
     rule_id: int | None = None,
     status: str | None = None,
     limit: int = 100,
+    execution_id: int | None = None,
 ) -> list[dict]:
     stmt = select(
         AutomationExecution.id,
@@ -261,26 +306,64 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
     if status:
         stmt = stmt.where(AutomationExecution.status == status)
+    if execution_id is not None:
+        stmt = stmt.where(AutomationExecution.id == execution_id)
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [_execution_dict(row) for row in rows]
 
 
-def _normalize_automation_conditions(raw_conditions: object) -> dict:
-    conditions = raw_conditions if isinstance(raw_conditions, dict) else {}
-    normalized = {
-        "stage": str(conditions.get("stage") or "").strip() or None,
-        "origin_contains": str(conditions.get("origin_contains") or "").strip()[:120] or None,
-        "service_contains": str(conditions.get("service_contains") or "").strip()[:120] or None,
-        "seller_id": int(conditions["seller_id"]) if conditions.get("seller_id") else None,
-        "tag_id": int(conditions["tag_id"]) if conditions.get("tag_id") else None,
-        "require_open_window": bool(conditions.get("require_open_window", False)),
-        "business_hours_only": bool(conditions.get("business_hours_only", False)),
-    }
-    if normalized["stage"] and normalized["stage"] not in {stage.value for stage in LeadStage}:
-        raise ValueError("Etapa de condición inválida")
-    return normalized
+async def get_automation_execution(execution_id: int) -> dict | None:
+    rows = await list_automation_executions(execution_id=execution_id, limit=1)
+    return rows[0] if rows else None
+
+
+async def retry_automation_execution(execution_id: int) -> dict | None:
+    """Reintenta una ejecución failed o skipped desde donde quedó — no repite
+    acciones ya persistidas en action_results. Nunca aplica a completed: eso
+    reiniciaría el flujo desde el disparador y reenviaría lo ya enviado."""
+    async with get_sessionmaker()() as session:
+        execution = await session.get(AutomationExecution, execution_id)
+        if execution is None or execution.status not in {
+            AutomationExecutionStatus.FAILED, AutomationExecutionStatus.SKIPPED,
+        }:
+            return None
+        await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id
+        ).values(
+            status=AutomationExecutionStatus.SCHEDULED,
+            scheduled_for=datetime.now(timezone.utc),
+            started_at=None,
+            finished_at=None,
+            error=None,
+        ))
+        await session.commit()
+    await manager.broadcast({"type": "automations_updated"})
+    _wake.set()
+    return await get_automation_execution(execution_id)
+
+
+async def cancel_automation_execution(execution_id: int) -> dict | None:
+    async with get_sessionmaker()() as session:
+        execution = await session.get(AutomationExecution, execution_id)
+        if execution is None or execution.status not in {
+            AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.RUNNING,
+        }:
+            return None
+        await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id
+        ).values(
+            status=AutomationExecutionStatus.SKIPPED,
+            error="Cancelada manualmente",
+            finished_at=datetime.now(timezone.utc),
+        ))
+        await session.commit()
+    await manager.broadcast({"type": "automations_updated"})
+    return await get_automation_execution(execution_id)
+
+
+_normalize_automation_conditions = normalize_conditions
 
 
 async def validate_automation_rule(values: dict) -> dict:
@@ -414,20 +497,18 @@ async def validate_automation_rule(values: dict) -> dict:
             templates = (await session.execute(
                 select(MessageTemplate).where(MessageTemplate.id.in_(referenced_templates))
             )).scalars().all()
-            valid_ids = set()
-            for template in templates:
-                attachment_count = await session.scalar(
-                    select(func.count(TemplateAttachment.id)).where(TemplateAttachment.template_id == template.id)
-                )
-                if (
-                    template.is_active
-                    and template.template_type == "internal"
-                    and template.interactive_type == "none"
-                    and not attachment_count
-                ):
-                    valid_ids.add(template.id)
+            valid_ids = {
+                template.id for template in templates
+                if template.is_active
+                and template.template_type == "internal"
+                and template.interactive_type == "none"
+            }
             if valid_ids != referenced_templates:
-                raise ValueError("El envío automático solo admite plantillas internas activas de texto")
+                raise ValueError("El envío automático solo admite plantillas internas activas (sin botones/listas)")
+
+    max_per_hour = values.get("max_executions_per_hour")
+    if max_per_hour is not None and not 1 <= int(max_per_hour) <= 1000:
+        raise ValueError("El límite por hora debe estar entre 1 y 1000")
 
     return {
         "name": name,
@@ -436,16 +517,12 @@ async def validate_automation_rule(values: dict) -> dict:
         "conditions": normalized_conditions,
         "actions": normalized_actions,
         "delay_minutes": int(values.get("delay_minutes") or 0),
+        "max_executions_per_hour": int(max_per_hour) if max_per_hour else None,
         "is_active": bool(values.get("is_active", True)),
     }
 
 
-def _normalize_flow_position(value: object) -> dict:
-    position = value if isinstance(value, dict) else {}
-    return {
-        "x": max(0, min(4000, int(position.get("x") or 0))),
-        "y": max(0, min(4000, int(position.get("y") or 0))),
-    }
+_normalize_flow_position = normalize_flow_position
 
 
 def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
@@ -511,21 +588,7 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
             "position": _normalize_flow_position(raw_node.get("position")),
             "data": raw_node.get("data") if isinstance(raw_node.get("data"), dict) else {},
         })
-    edges: list[dict] = []
-    edge_ids: set[str] = set()
-    for position, raw_edge in enumerate(raw_edges, start=1):
-        if not isinstance(raw_edge, dict):
-            raise ValueError(f"Conexión {position}: formato inválido")
-        source = str(raw_edge.get("source") or "")
-        target = str(raw_edge.get("target") or "")
-        handle = str(raw_edge.get("source_handle") or FlowHandle.NEXT)
-        edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
-        if source not in ids or target not in ids or source == target:
-            raise ValueError(f"Conexión {position}: origen o destino inválido")
-        if handle not in FLOW_HANDLES or edge_id in edge_ids:
-            raise ValueError(f"Conexión {position}: salida o identificador inválido")
-        edge_ids.add(edge_id)
-        edges.append({"id": edge_id, "source": source, "target": target, "source_handle": handle})
+    edges = normalize_edges(raw_edges, ids, allow_duplicate_handles=False)
     trigger = next((node for node in nodes if node["type"] == FlowNodeType.TRIGGER), None)
     trigger_data = trigger["data"] if trigger else {}
     trigger_type = (
@@ -659,61 +722,8 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             if found != condition_tags:
                 raise ValueError("Alguna etiqueta usada en una condición no existe o está inactiva")
 
-    normalized_edges: list[dict] = []
-    outgoing: dict[str, list[dict]] = {node_id: [] for node_id in ids}
-    incoming: dict[str, int] = {node_id: 0 for node_id in ids}
-    edge_ids: set[str] = set()
-    for position, raw_edge in enumerate(raw_edges, start=1):
-        if not isinstance(raw_edge, dict):
-            raise ValueError(f"Conexión {position}: formato inválido")
-        source = str(raw_edge.get("source") or "")
-        target = str(raw_edge.get("target") or "")
-        handle = str(raw_edge.get("source_handle") or FlowHandle.NEXT)
-        edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
-        if source not in ids or target not in ids or source == target:
-            raise ValueError(f"Conexión {position}: origen o destino inválido")
-        if edge_id in edge_ids:
-            raise ValueError(f"Conexión {position}: identificador duplicado")
-        edge_ids.add(edge_id)
-        edge = {"id": edge_id, "source": source, "target": target, "source_handle": handle}
-        normalized_edges.append(edge)
-        outgoing[source].append(edge)
-        incoming[target] += 1
-
-    nodes_by_id = {node["id"]: node for node in normalized_nodes}
-    trigger_id = trigger_nodes[0]["id"]
-    for node in normalized_nodes:
-        node_id = node["id"]
-        edges = outgoing[node_id]
-        if node["type"] == FlowNodeType.END:
-            if edges:
-                raise ValueError("Un bloque Fin no puede tener conexiones de salida")
-        elif node["type"] == FlowNodeType.CONDITION:
-            handles = [edge["source_handle"] for edge in edges]
-            if sorted(handles) != sorted([FlowHandle.NO, FlowHandle.YES]):
-                raise ValueError("Cada condición debe tener exactamente una salida Sí y una salida No")
-        elif len(edges) != 1 or edges[0]["source_handle"] != FlowHandle.NEXT:
-            raise ValueError("Cada disparador, acción o espera debe tener exactamente una salida")
-        if node_id != trigger_id and not incoming[node_id]:
-            raise ValueError("Todos los bloques deben estar conectados desde el disparador")
-
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def walk(node_id: str) -> None:
-        if node_id in visiting:
-            raise ValueError("El flujo contiene un ciclo. Usa una espera y una nueva regla para evitar bucles")
-        if node_id in visited:
-            return
-        visiting.add(node_id)
-        for edge in outgoing[node_id]:
-            walk(edge["target"])
-        visiting.remove(node_id)
-        visited.add(node_id)
-
-    walk(trigger_id)
-    if visited != ids:
-        raise ValueError("Hay bloques que no son alcanzables desde el disparador")
+    normalized_edges = normalize_edges(raw_edges, ids)
+    validate_graph_topology(normalized_nodes, normalized_edges, trigger_nodes[0]["id"])
 
     return {
         "name": name,
@@ -786,6 +796,50 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
         ))
         await session.commit()
     return await get_automation_rule(rule_id)
+
+
+async def list_flow_versions(rule_id: int) -> list[dict]:
+    """Versiones publicadas de un flujo visual, de la más nueva a la más vieja."""
+    current = await get_automation_rule(rule_id)
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+        return []
+    stmt = select(
+        AutomationFlowVersion.version,
+        AutomationFlowVersion.definition,
+        AutomationFlowVersion.created_at,
+    ).where(AutomationFlowVersion.rule_id == rule_id).order_by(AutomationFlowVersion.version.desc())
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [
+        {
+            "version": row["version"],
+            "created_at": _ts(row["created_at"]),
+            "node_count": len((row["definition"] or {}).get("nodes") or []),
+            "edge_count": len((row["definition"] or {}).get("edges") or []),
+            "is_current": row["version"] == current["flow_version"],
+        }
+        for row in rows
+    ]
+
+
+async def restore_flow_version(rule_id: int, version: int) -> dict | None:
+    """Carga una versión publicada como borrador.
+
+    No republica ni reactiva: deja el flujo listo para revisar y, si convence,
+    publicar. Así restaurar nunca cambia por sí solo lo que se está ejecutando.
+    """
+    current = await get_automation_rule(rule_id)
+    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+        return None
+    async with get_sessionmaker()() as session:
+        definition = await session.scalar(select(AutomationFlowVersion.definition).where(
+            AutomationFlowVersion.rule_id == rule_id,
+            AutomationFlowVersion.version == version,
+        ))
+    if not definition:
+        return None
+    validated = normalize_visual_draft(current["name"], definition)
+    return await update_automation_rule(rule_id, {"flow_definition": validated["flow_definition"]})
 
 
 async def schedule_automation_event(
@@ -911,36 +965,54 @@ async def trigger_inbound_message(message: dict) -> None:
     _wake.set()
 
 
+async def _cooldown_blocked(rule_id: int, chat_id: str, minutes: int, deps: AutomationDeps) -> bool:
+    """La ejecución en curso todavía está en running/scheduled, nunca en
+    completed, así que no hace falta excluirla para que no se bloquee a sí
+    misma."""
+    cutoff = deps.now() - timedelta(minutes=minutes)
+    async with deps.session() as session:
+        recent = await session.scalar(
+            select(AutomationExecution.id).where(
+                AutomationExecution.rule_id == rule_id,
+                AutomationExecution.lead_id == chat_id,
+                AutomationExecution.status == AutomationExecutionStatus.COMPLETED,
+                AutomationExecution.finished_at >= cutoff,
+            ).limit(1)
+        )
+    return recent is not None
+
+
 async def _matches_condition_values(
     conditions: dict,
     chat: dict,
+    rule_id: int | None = None,
+    deps: AutomationDeps = DEFAULT_DEPS,
 ) -> tuple[bool, str | None]:
-    if conditions.get("stage") and chat.get("stage") != conditions["stage"]:
-        return False, "La etapa no coincide"
-    if conditions.get("origin_contains") and conditions["origin_contains"].lower() not in (chat.get("origen") or "").lower():
-        return False, "El origen no coincide"
-    if conditions.get("service_contains") and conditions["service_contains"].lower() not in (chat.get("servicio_interes") or "").lower():
-        return False, "El servicio no coincide"
-    if conditions.get("seller_id") and chat.get("vendedor_id") != conditions["seller_id"]:
-        return False, "El vendedor no coincide"
-    if conditions.get("tag_id") and conditions["tag_id"] not in {tag["id"] for tag in chat.get("tags", [])}:
-        return False, "La etiqueta no está asignada"
+    if conditions.get("cooldown_minutes") and rule_id is not None:
+        minutes = conditions["cooldown_minutes"]
+        if await _cooldown_blocked(rule_id, chat["chat_id"], minutes, deps):
+            return False, f"Ya se ejecutó para este lead hace menos de {minutes} minutos"
+    matches, reason = matches_static_conditions(conditions, chat)
+    if not matches:
+        return False, reason
     if conditions.get("require_open_window"):
-        window = await get_customer_service_window(chat["chat_id"])
+        window = await deps.get_customer_service_window(chat["chat_id"])
         if not window or not window["is_open"]:
             return False, "La ventana de WhatsApp está cerrada"
-    if conditions.get("business_hours_only"):
-        local_now = datetime.now(ZoneInfo("America/Lima"))
-        if local_now.weekday() >= 5 or not 8 <= local_now.hour < 18:
-            return False, "Fuera del horario laboral (lunes a viernes, 08:00–18:00)"
+    if conditions.get("business_hours_only") and not is_business_hours(deps.now().astimezone(business_timezone())):
+        return False, "Fuera del horario laboral (lunes a viernes, 08:00–18:00)"
     return True, None
 
 
-async def _matches_conditions(rule: AutomationRule, chat: dict) -> tuple[bool, str | None]:
-    return await _matches_condition_values(rule.conditions or {}, chat)
+async def _matches_conditions(
+    rule: AutomationRule, chat: dict, deps: AutomationDeps = DEFAULT_DEPS
+) -> tuple[bool, str | None]:
+    return await _matches_condition_values(rule.conditions or {}, chat, rule.id, deps)
 
 
-async def _matches_flow_condition(data: dict, chat: dict) -> tuple[bool, str]:
+async def _matches_flow_condition(
+    data: dict, chat: dict, deps: AutomationDeps = DEFAULT_DEPS
+) -> tuple[bool, str]:
     condition_type = data.get("condition_type")
     value = data.get("value")
     if condition_type == FlowConditionType.STAGE_EQUALS:
@@ -959,21 +1031,14 @@ async def _matches_flow_condition(data: dict, chat: dict) -> tuple[bool, str]:
         matches = value in {tag["id"] for tag in chat.get("tags", [])}
         return matches, "Etiqueta presente" if matches else "Etiqueta ausente"
     if condition_type == FlowConditionType.WHATSAPP_WINDOW_OPEN:
-        window = await get_customer_service_window(chat["chat_id"])
+        window = await deps.get_customer_service_window(chat["chat_id"])
         matches = bool(window and window["is_open"])
         return matches, "Ventana de WhatsApp abierta" if matches else "Ventana de WhatsApp cerrada"
-    local_now = datetime.now(ZoneInfo("America/Lima"))
-    matches = local_now.weekday() < 5 and 8 <= local_now.hour < 18
+    matches = is_business_hours(deps.now().astimezone(business_timezone()))
     return matches, "Dentro del horario laboral" if matches else "Fuera del horario laboral"
 
 
-def _flow_indexes(definition: dict) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:
-    nodes = {node["id"]: node for node in definition.get("nodes", [])}
-    edges = {
-        (edge["source"], edge.get("source_handle") or FlowHandle.NEXT): edge["target"]
-        for edge in definition.get("edges", [])
-    }
-    return nodes, edges
+_flow_indexes = flow_indexes
 
 
 async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
@@ -984,7 +1049,7 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
     chat = await fetch_chat(lead_id)
     if not chat:
         raise ValueError("Lead no encontrado")
-    matches, reason = await _matches_condition_values(validated["conditions"], chat)
+    matches, reason = await _matches_condition_values(validated["conditions"], chat, rule_id)
     if not matches:
         return {
             "lead_id": chat["chat_id"],
@@ -1047,7 +1112,7 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
     raise ValueError("La simulación excedió el máximo de bloques")
 
 
-async def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
+def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
     if (
         action.get("recipient") == AutomationRecipient.SPECIFIC
         and action.get("user_id")
@@ -1060,122 +1125,170 @@ async def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
     raise ValueError("El lead no tiene vendedor asignado")
 
 
-async def _execute_action(action: dict, chat: dict, execution: AutomationExecution, rule: AutomationRule) -> dict:
-    action_type = action["type"]
-    if action_type == AutomationActionType.CREATE_TASK:
-        assigned_user_id = action.get("assigned_user_id") or chat.get("vendedor_id") or execution.event_payload.get("assigned_user_id")
-        if not assigned_user_id:
-            raise ValueError("No se puede crear la tarea porque el lead no tiene vendedor")
-        now = datetime.now(timezone.utc)
-        due_at = now + timedelta(minutes=action["due_minutes"])
-        remind_at = due_at - timedelta(minutes=action["remind_minutes_before"]) if action["remind_minutes_before"] else None
-        task = await create_task({
-            "lead_id": chat["chat_id"],
-            "title": _render(action["title"], chat),
-            "description": _render(action["description"], chat) if action.get("description") else None,
-            "task_type": action["task_type"],
-            "priority": action["priority"],
-            "due_at": due_at,
-            "remind_at": remind_at,
-            "assigned_user_id": assigned_user_id,
-        }, rule.created_by_user_id)
-        await manager.broadcast({"type": "tasks_updated"})
-        return {
-            "type": action_type,
-            "status": AutomationExecutionStatus.COMPLETED,
-            "task_id": task["id"],
-        }
-    if action_type == AutomationActionType.ASSIGN_SELLER:
-        updated = await update_lead(
-            chat["chat_id"], {"vendedor_id": action["user_id"]}, "system", rule.created_by_user_id
-        )
-        if not updated:
-            raise ValueError("Lead no encontrado")
-        chat.update(updated)
-        await manager.broadcast({"type": "chats_updated"})
-        return {
-            "type": action_type,
-            "status": AutomationExecutionStatus.COMPLETED,
-            "user_id": action["user_id"],
-        }
-    if action_type == AutomationActionType.ADD_TAG:
-        if not await assign_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id):
-            raise ValueError("Lead o etiqueta no encontrado")
-        await manager.broadcast({"type": "chats_updated"})
-        return {
-            "type": action_type,
-            "status": AutomationExecutionStatus.COMPLETED,
-            "tag_id": action["tag_id"],
-        }
-    if action_type == AutomationActionType.REMOVE_TAG:
-        removed = await remove_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id)
-        return {
-            "type": action_type,
-            "status": (
-                AutomationExecutionStatus.COMPLETED
-                if removed
-                else AutomationExecutionStatus.SKIPPED
-            ),
-            "tag_id": action["tag_id"],
-        }
-    if action_type == AutomationActionType.CHANGE_STAGE:
-        updated = await update_lead_stage(
-            chat["chat_id"], LeadStage(action["stage"]), "system", rule.created_by_user_id,
-            {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
-        )
-        if not updated:
-            raise ValueError("Lead no encontrado")
-        chat.update(updated)
-        await manager.broadcast({"type": "chats_updated"})
-        return {
-            "type": action_type,
-            "status": AutomationExecutionStatus.COMPLETED,
-            "stage": action["stage"],
-        }
-    if action_type == AutomationActionType.NOTIFY:
-        user_id = await _resolve_recipient(action, chat, execution.event_payload or {})
-        notification = await create_system_notification(
-            user_id,
-            NotificationType.AUTOMATION,
-            _render(action["title"], chat),
-            _render(action["body"], chat),
-            chat["chat_id"],
-            str(execution.id),
-            {"automation_rule_id": rule.id, "automation_rule_name": rule.name},
-        )
-        await manager.send_to_user(user_id, {"type": "notification_created", "notification": notification})
-        return {
-            "type": action_type,
-            "status": AutomationExecutionStatus.COMPLETED,
-            "notification_id": notification["id"],
-            "user_id": user_id,
-        }
-    async with get_sessionmaker()() as session:
+async def _action_create_task(action, chat, execution, rule, deps) -> dict:
+    assigned_user_id = (
+        action.get("assigned_user_id")
+        or chat.get("vendedor_id")
+        or (execution.event_payload or {}).get("assigned_user_id")
+    )
+    if not assigned_user_id:
+        raise ValueError("No se puede crear la tarea porque el lead no tiene vendedor")
+    due_at = deps.now() + timedelta(minutes=action["due_minutes"])
+    remind_at = (
+        due_at - timedelta(minutes=action["remind_minutes_before"])
+        if action["remind_minutes_before"]
+        else None
+    )
+    task = await deps.create_task({
+        "lead_id": chat["chat_id"],
+        "title": _render(action["title"], chat),
+        "description": _render(action["description"], chat) if action.get("description") else None,
+        "task_type": action["task_type"],
+        "priority": action["priority"],
+        "due_at": due_at,
+        "remind_at": remind_at,
+        "assigned_user_id": assigned_user_id,
+    }, rule.created_by_user_id)
+    await deps.broadcast({"type": "tasks_updated"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "task_id": task["id"]}
+
+
+async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
+    updated = await deps.update_lead(
+        chat["chat_id"], {"vendedor_id": action["user_id"]}, "system", rule.created_by_user_id
+    )
+    if not updated:
+        raise ValueError("Lead no encontrado")
+    chat.update(updated)
+    await deps.broadcast({"type": "chats_updated"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "user_id": action["user_id"]}
+
+
+async def _action_add_tag(action, chat, execution, rule, deps) -> dict:
+    if not await deps.assign_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id):
+        raise ValueError("Lead o etiqueta no encontrado")
+    await deps.broadcast({"type": "chats_updated"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
+
+
+async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
+    removed = await deps.remove_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id)
+    return {
+        "status": (
+            AutomationExecutionStatus.COMPLETED if removed else AutomationExecutionStatus.SKIPPED
+        ),
+        "tag_id": action["tag_id"],
+    }
+
+
+async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
+    updated = await deps.update_lead_stage(
+        chat["chat_id"], LeadStage(action["stage"]), "system", rule.created_by_user_id,
+        {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
+    )
+    if not updated:
+        raise ValueError("Lead no encontrado")
+    chat.update(updated)
+    await deps.broadcast({"type": "chats_updated"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "stage": action["stage"]}
+
+
+async def _action_notify(action, chat, execution, rule, deps) -> dict:
+    user_id = _resolve_recipient(action, chat, execution.event_payload or {})
+    notification = await deps.create_notification(
+        user_id,
+        NotificationType.AUTOMATION,
+        _render(action["title"], chat),
+        _render(action["body"], chat),
+        chat["chat_id"],
+        str(execution.id),
+        {"automation_rule_id": rule.id, "automation_rule_name": rule.name},
+    )
+    await deps.send_to_user(user_id, {"type": "notification_created", "notification": notification})
+    return {
+        "status": AutomationExecutionStatus.COMPLETED,
+        "notification_id": notification["id"],
+        "user_id": user_id,
+    }
+
+
+async def _action_send_template(action, chat, execution, rule, deps) -> dict:
+    async with deps.session() as session:
         template = await session.get(MessageTemplate, action["template_id"])
-        attachment_count = await session.scalar(
-            select(func.count(TemplateAttachment.id)).where(TemplateAttachment.template_id == action["template_id"])
-        )
-    if not template or not template.is_active or template.template_type != "internal" or template.interactive_type != "none" or attachment_count:
-        raise ValueError("La plantilla automática dejó de ser una plantilla interna de texto válida")
-    window = await get_customer_service_window(chat["chat_id"])
+        attachments = (await session.execute(
+            select(TemplateAttachment).where(TemplateAttachment.template_id == action["template_id"])
+            .order_by(TemplateAttachment.position, TemplateAttachment.id)
+        )).scalars().all()
+    if (
+        not template
+        or not template.is_active
+        or template.template_type != TemplateType.INTERNAL
+        or template.interactive_type != InteractiveType.NONE
+    ):
+        raise ValueError("La plantilla automática dejó de ser una plantilla interna válida")
+    window = await deps.get_customer_service_window(chat["chat_id"])
     if not window or not window["is_open"]:
         raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
     text = _render(template.content, chat).strip()
-    if not text or len(text) > 4096:
+    if not text and not attachments:
+        raise ValueError("La plantilla no tiene contenido para enviar")
+    if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado de la plantilla no es válido")
-    response = await send_whatsapp_text(chat["chat_id"], text)
-    message = await insert_message(
-        chat["chat_id"], "vendedor", text,
-        wa_message_id=_wa_message_id(response), status="SERVER_ACK",
-    )
-    await record_template_use(template.id, rule.created_by_user_id)
-    await manager.broadcast({"type": "chats_updated"})
+
+    sent: list[dict] = []
+    if text:
+        response = await deps.send_text(chat["chat_id"], text)
+        sent.append(await deps.insert_message(
+            chat["chat_id"], MessageSender.SELLER, text,
+            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        ))
+    for attachment in attachments:
+        try:
+            encoded = deps.read_media_base64(attachment.media_url)
+        except FileNotFoundError:
+            raise ValueError(f"No se encontró el adjunto {attachment.filename}")
+        mediatype = mediatype_from_content_type(attachment.content_type)
+        response = await deps.send_media(chat["chat_id"], encoded, mediatype, filename=attachment.filename)
+        tag = mediatype if mediatype in ("image", "video", "audio") else "other"
+        media_content = f"<{tag}>{attachment.filename if tag == 'other' else ''}</{tag}>"
+        sent.append(await deps.insert_message(
+            chat["chat_id"], MessageSender.SELLER, media_content, media_url=attachment.media_url,
+            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        ))
+    await deps.record_template_use(template.id, rule.created_by_user_id)
+    await deps.broadcast({"type": "chats_updated"})
     return {
-        "type": action_type,
         "status": AutomationExecutionStatus.COMPLETED,
-        "message_id": message["id"],
+        "message_ids": [message["id"] for message in sent],
         "template_id": template.id,
     }
+
+
+# Un handler por tipo de acción: agregar una acción nueva es sumar una entrada
+# acá y su validación, sin tocar el despachador ni las acciones existentes.
+ACTION_HANDLERS = {
+    AutomationActionType.CREATE_TASK: _action_create_task,
+    AutomationActionType.ASSIGN_SELLER: _action_assign_seller,
+    AutomationActionType.ADD_TAG: _action_add_tag,
+    AutomationActionType.REMOVE_TAG: _action_remove_tag,
+    AutomationActionType.CHANGE_STAGE: _action_change_stage,
+    AutomationActionType.NOTIFY: _action_notify,
+    AutomationActionType.SEND_TEMPLATE: _action_send_template,
+}
+
+
+async def _execute_action(
+    action: dict,
+    chat: dict,
+    execution: AutomationExecution,
+    rule: AutomationRule,
+    deps: AutomationDeps = DEFAULT_DEPS,
+) -> dict:
+    handler = ACTION_HANDLERS.get(action["type"])
+    if handler is None:
+        raise ValueError(f"Acción no soportada: {action['type']}")
+    result = await handler(action, chat, execution, rule, deps)
+    return {"type": action["type"], **result}
 
 
 async def _persist_visual_execution(
@@ -1187,6 +1300,7 @@ async def _persist_visual_execution(
     flow_version: int,
     error: str | None = None,
     scheduled_for: datetime | None = None,
+    deps: AutomationDeps = DEFAULT_DEPS,
 ) -> None:
     values = {
         "status": status,
@@ -1198,28 +1312,25 @@ async def _persist_visual_execution(
         },
         "error": error,
     }
-    if status in {
-        AutomationExecutionStatus.COMPLETED,
-        AutomationExecutionStatus.FAILED,
-        AutomationExecutionStatus.SKIPPED,
-    }:
-        values["finished_at"] = datetime.now(timezone.utc)
     if scheduled_for is not None:
+        # Una espera del flujo: la ejecución vuelve a la cola, así que se
+        # limpian las marcas de "ya arrancó/terminó".
         values["scheduled_for"] = scheduled_for
         values["started_at"] = None
         values["finished_at"] = None
-    async with get_sessionmaker()() as session:
-        await session.execute(update(AutomationExecution).where(
-            AutomationExecution.id == execution_id
-        ).values(**values))
-        await session.commit()
+    await _save_execution(execution_id, deps, **values)
 
 
-async def _notify_execution_failure(rule: AutomationRule, execution: AutomationExecution, error: str) -> None:
+async def _notify_execution_failure(
+    rule: AutomationRule,
+    execution: AutomationExecution,
+    error: str,
+    deps: AutomationDeps = DEFAULT_DEPS,
+) -> None:
     """Avisa al admin que creó la regla cuando una ejecución queda en failed —
     sin esto los fallos solo se descubren entrando al historial a mirar."""
     try:
-        notification = await create_system_notification(
+        notification = await deps.create_notification(
             rule.created_by_user_id,
             NotificationType.AUTOMATION,
             f"Automatización con error: {rule.name}"[:160],
@@ -1228,14 +1339,16 @@ async def _notify_execution_failure(rule: AutomationRule, execution: AutomationE
             f"execution-failed:{execution.id}",
             {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
         )
-        await manager.send_to_user(
+        await deps.send_to_user(
             rule.created_by_user_id, {"type": "notification_created", "notification": notification}
         )
     except Exception:
         logger.exception("No se pudo notificar el fallo de la ejecución %s", execution.id)
 
 
-async def _resolve_flow_definition(rule: AutomationRule, state: dict, flow_version: int) -> dict:
+async def _resolve_flow_definition(
+    rule: AutomationRule, state: dict, flow_version: int, deps: AutomationDeps = DEFAULT_DEPS
+) -> dict:
     # Orden de resolución: snapshot legacy embebido en flow_state (ejecuciones
     # en vuelo anteriores a automation_flow_versions) → la versión pinneada en
     # la tabla de versiones → la última definición publicada de la regla.
@@ -1250,10 +1363,13 @@ async def _resolve_flow_definition(rule: AutomationRule, state: dict, flow_versi
     return definition or rule.published_flow_definition or {}
 
 
-async def _run_visual_execution(execution: AutomationExecution, rule: AutomationRule, chat: dict) -> None:
+async def _run_visual_execution(
+    execution: AutomationExecution, rule: AutomationRule, chat: dict,
+    deps: AutomationDeps = DEFAULT_DEPS,
+) -> None:
     state = execution.flow_state or {}
     flow_version = int(state.get("flow_version") or rule.flow_version or 0)
-    definition = await _resolve_flow_definition(rule, state, flow_version)
+    definition = await _resolve_flow_definition(rule, state, flow_version, deps)
     nodes, edges = _flow_indexes(definition)
     if not nodes:
         await _persist_visual_execution(
@@ -1264,6 +1380,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
             [],
             flow_version,
             "El flujo no tiene una versión publicada",
+        deps=deps,
         )
         return
     path = list(state.get("path") or [])
@@ -1273,6 +1390,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
         matches, reason = await _matches_condition_values(
             definition.get("conditions") if isinstance(definition.get("conditions"), dict) else {},
             chat,
+            rule.id,
         )
         if not matches:
             results.append({
@@ -1289,6 +1407,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                 path,
                 flow_version,
                 reason,
+            deps=deps,
             )
             return
         trigger = next(
@@ -1315,10 +1434,11 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                     current_id,
                     path,
                     flow_version,
+                deps=deps,
                 )
                 continue
             if node["type"] == FlowNodeType.CONDITION:
-                matches, detail = await _matches_flow_condition(node["data"], chat)
+                matches, detail = await _matches_flow_condition(node["data"], chat, deps)
                 branch = FlowHandle.YES if matches else FlowHandle.NO
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
@@ -1335,11 +1455,12 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                     current_id,
                     path,
                     flow_version,
+                deps=deps,
                 )
                 continue
             if node["type"] == FlowNodeType.ACTION:
                 action = node["data"]["action"]
-                result = await _execute_action(action, chat, execution, rule)
+                result = await _execute_action(action, chat, execution, rule, deps)
                 results.append({"position": len(results) + 1, "node_id": node["id"], **result})
                 current_id = edges[(current_id, FlowHandle.NEXT)]
                 await _persist_visual_execution(
@@ -1349,6 +1470,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                     current_id,
                     path,
                     flow_version,
+                deps=deps,
                 )
                 continue
             if node["type"] == FlowNodeType.WAIT:
@@ -1368,6 +1490,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                     path,
                     flow_version,
                     scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=minutes),
+                deps=deps,
                 )
                 return
             results.append({
@@ -1382,6 +1505,7 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
                 None,
                 path,
                 flow_version,
+            deps=deps,
             )
             return
         raise ValueError("El flujo excedió el máximo de bloques permitidos")
@@ -1403,8 +1527,9 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
             path,
             flow_version,
             str(exc),
+        deps=deps,
         )
-        await _notify_execution_failure(rule, execution, str(exc))
+        await _notify_execution_failure(rule, execution, str(exc), deps)
     except Exception as exc:
         logger.exception("Unexpected error running visual automation execution %s", execution.id)
         await _persist_visual_execution(
@@ -1415,73 +1540,103 @@ async def _run_visual_execution(execution: AutomationExecution, rule: Automation
             path,
             flow_version,
             str(exc),
+        deps=deps,
         )
         await _notify_execution_failure(rule, execution, str(exc))
 
 
-async def _run_execution(execution_id: int) -> None:
-    async with get_sessionmaker()() as session:
+async def _save_execution(
+    execution_id: int,
+    deps: AutomationDeps = DEFAULT_DEPS,
+    **values,
+) -> None:
+    """Único punto de escritura del estado de una ejecución.
+
+    Pone finished_at solo cuando el estado es terminal, para que ninguna rama
+    se olvide de marcarlo (antes esto estaba copiado en 15 lugares)."""
+    if values.get("status") in {
+        AutomationExecutionStatus.COMPLETED,
+        AutomationExecutionStatus.FAILED,
+        AutomationExecutionStatus.SKIPPED,
+    }:
+        values.setdefault("finished_at", deps.now())
+    async with deps.session() as session:
+        await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id
+        ).values(**values))
+        await session.commit()
+
+
+async def _rate_limit_reached(rule: AutomationRule, deps: AutomationDeps) -> bool:
+    if not rule.max_executions_per_hour:
+        return False
+    since = deps.now() - timedelta(hours=1)
+    async with deps.session() as session:
+        recent = await session.scalar(
+            select(func.count(AutomationExecution.id)).where(
+                AutomationExecution.rule_id == rule.id,
+                AutomationExecution.status == AutomationExecutionStatus.COMPLETED,
+                AutomationExecution.finished_at >= since,
+            )
+        )
+    return (recent or 0) >= rule.max_executions_per_hour
+
+
+async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS) -> None:
+    async with deps.session() as session:
         execution = await session.get(AutomationExecution, execution_id)
         rule = await session.get(AutomationRule, execution.rule_id) if execution else None
     if not execution or not rule:
         return
-    now = datetime.now(timezone.utc)
     if not rule.is_active:
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(
-                status=AutomationExecutionStatus.SKIPPED,
-                error="La regla fue desactivada",
-                finished_at=now,
-            ))
-            await session.commit()
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.SKIPPED, error="La regla fue desactivada",
+        )
         return
-    chat = await fetch_chat(execution.lead_id) if execution.lead_id else None
+    if await _rate_limit_reached(rule, deps):
+        # Se re-agenda en vez de descartarse: el tope frena el ritmo, no
+        # cancela el trabajo pendiente.
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.SCHEDULED,
+            scheduled_for=deps.now() + timedelta(minutes=RATE_LIMIT_RETRY_MINUTES),
+            started_at=None,
+            error=f"Límite de {rule.max_executions_per_hour} ejecuciones/hora alcanzado; reintentando más tarde",
+        )
+        return
+    chat = await deps.fetch_chat(execution.lead_id) if execution.lead_id else None
     if not chat:
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(
-                status=AutomationExecutionStatus.FAILED,
-                error="Lead no encontrado",
-                finished_at=now,
-            ))
-            await session.commit()
-        await _notify_execution_failure(rule, execution, "Lead no encontrado")
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.FAILED, error="Lead no encontrado",
+        )
+        await _notify_execution_failure(rule, execution, "Lead no encontrado", deps)
         return
     if rule.builder_mode == AutomationBuilderMode.VISUAL:
-        await _run_visual_execution(execution, rule, chat)
+        await _run_visual_execution(execution, rule, chat, deps)
         return
+
     results = list(execution.action_results or [])
     if not results:
         # Solo se evalúan condiciones en el primer intento: al reanudar una
         # ejecución interrumpida las acciones ya corridas pudieron cambiar el
         # estado del lead y un skip aquí dejaría la regla a medias.
-        matches, reason = await _matches_conditions(rule, chat)
+        matches, reason = await _matches_conditions(rule, chat, deps)
         if not matches:
-            async with get_sessionmaker()() as session:
-                await session.execute(update(AutomationExecution).where(
-                    AutomationExecution.id == execution_id
-                ).values(
-                    status=AutomationExecutionStatus.SKIPPED,
-                    error=reason,
-                    finished_at=datetime.now(timezone.utc),
-                ))
-                await session.commit()
+            await _save_execution(
+                execution_id, deps,
+                status=AutomationExecutionStatus.SKIPPED, error=reason,
+            )
             return
     actions = list(rule.actions or [])
     try:
         # Reanuda desde la primera acción sin resultado persistido — un
         # reintento tras un crash no repite WhatsApps ni tareas ya creadas.
         for index in range(len(results), len(actions)):
-            result = await _execute_action(actions[index], chat, execution, rule)
+            result = await _execute_action(actions[index], chat, execution, rule, deps)
             results.append({"position": index + 1, **result})
-            async with get_sessionmaker()() as session:
-                await session.execute(update(AutomationExecution).where(
-                    AutomationExecution.id == execution_id
-                ).values(action_results=results))
-                await session.commit()
+            await _save_execution(execution_id, deps, action_results=results)
     except (ValueError, EvolutionApiError, httpx.HTTPError) as exc:
         failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
         results.append({
@@ -1490,41 +1645,23 @@ async def _run_execution(execution_id: int) -> None:
             "status": AutomationExecutionStatus.FAILED,
             "error": str(exc),
         })
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(
-                status=AutomationExecutionStatus.FAILED,
-                action_results=results,
-                error=str(exc),
-                finished_at=datetime.now(timezone.utc),
-            ))
-            await session.commit()
-        await _notify_execution_failure(rule, execution, str(exc))
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.FAILED, action_results=results, error=str(exc),
+        )
+        await _notify_execution_failure(rule, execution, str(exc), deps)
     except Exception as exc:
         logger.exception("Unexpected error running automation execution %s", execution_id)
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(
-                status=AutomationExecutionStatus.FAILED,
-                action_results=results,
-                error=str(exc),
-                finished_at=datetime.now(timezone.utc),
-            ))
-            await session.commit()
-        await _notify_execution_failure(rule, execution, str(exc))
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.FAILED, action_results=results, error=str(exc),
+        )
+        await _notify_execution_failure(rule, execution, str(exc), deps)
     else:
-        async with get_sessionmaker()() as session:
-            await session.execute(update(AutomationExecution).where(
-                AutomationExecution.id == execution_id
-            ).values(
-                status=AutomationExecutionStatus.COMPLETED,
-                action_results=results,
-                error=None,
-                finished_at=datetime.now(timezone.utc),
-            ))
-            await session.commit()
+        await _save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.COMPLETED, action_results=results, error=None,
+        )
 
 
 async def process_due_automation_executions(limit: int = 20) -> int:

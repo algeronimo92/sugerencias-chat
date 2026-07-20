@@ -357,6 +357,11 @@ class AutomationRule(Base):
     published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
     flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     delay_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Tope de seguridad: si se completan >= N ejecuciones en la última hora,
+    # las siguientes se re-agendan para más tarde en vez de correr — protege
+    # contra un bug o una condición mal armada que dispare de más y arriesgue
+    # el número de WhatsApp por spam. None = sin límite.
+    max_executions_per_hour: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

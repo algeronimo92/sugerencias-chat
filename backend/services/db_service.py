@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, delete, exists, func, insert, or_, select, true, update
+from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
@@ -620,12 +620,35 @@ async def insert_message(
 
 
 async def update_message_status(wa_message_id: str, status: str) -> dict | None:
-    """Actualiza el estado (entregado/leído) de un mensaje ya guardado, por su
-    ID de WhatsApp. Devuelve None si no hay ningún mensaje con ese id (por
-    ejemplo, uno enviado antes de que esta columna existiera)."""
+    """Avanza el estado de un mensaje sin permitir regresiones.
+
+    Los webhooks pueden llegar repetidos o fuera de orden. El ``WHERE`` hace
+    atómica la comparación para que READ/PLAYED nunca vuelva a DELIVERY_ACK.
+    Devuelve None si el ID no existe o el evento no aporta un estado nuevo.
+    """
+    status_rank = {
+        "SERVER_ACK": 1,
+        "DELIVERY_ACK": 2,
+        "READ": 3,
+        "PLAYED": 4,
+    }
+    incoming_rank = status_rank.get(status)
+    if incoming_rank is None:
+        return None
+
+    current_rank = case(
+        (WspMessage.status == "SERVER_ACK", 1),
+        (WspMessage.status == "DELIVERY_ACK", 2),
+        (WspMessage.status == "READ", 3),
+        (WspMessage.status == "PLAYED", 4),
+        else_=0,
+    )
     stmt = (
         update(WspMessage)
-        .where(WspMessage.wa_message_id == wa_message_id)
+        .where(
+            WspMessage.wa_message_id == wa_message_id,
+            current_rank < incoming_rank,
+        )
         .values(status=status)
         .returning(WspMessage.id, WspMessage.chat_id)
     )

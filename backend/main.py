@@ -102,6 +102,10 @@ async def lifespan(app: FastAPI):
         # permite actualizar instalaciones que ya tenían lead_tasks.
         await _add_column_if_missing(conn, "lead_tasks", "reminder_sent_at", "TIMESTAMPTZ")
         await _add_column_if_missing(conn, "leads", "vendedor_id", "INTEGER")
+        # wsp_messages es una tabla externa ya existente; create_all no puede
+        # agregar estas columnas, necesarias para relacionar MESSAGES_UPDATE.
+        await _add_column_if_missing(conn, "wsp_messages", "wa_message_id", "TEXT")
+        await _add_column_if_missing(conn, "wsp_messages", "status", "TEXT")
         await _add_column_if_missing(conn, "message_templates", "visibility", "TEXT NOT NULL DEFAULT 'global'")
         await _add_column_if_missing(conn, "message_templates", "template_type", "TEXT NOT NULL DEFAULT 'internal'")
         await _add_column_if_missing(conn, "message_templates", "official_name", "TEXT")
@@ -117,6 +121,7 @@ async def lifespan(app: FastAPI):
         await _add_column_if_missing(conn, "automation_rules", "flow_version", "INTEGER NOT NULL DEFAULT 0")
         await _add_column_if_missing(conn, "automation_executions", "flow_state", "JSONB NOT NULL DEFAULT '{}'::jsonb")
         await _add_column_if_missing(conn, "automation_executions", "attempts", "INTEGER NOT NULL DEFAULT 0")
+        await _add_column_if_missing(conn, "automation_rules", "max_executions_per_hour", "INTEGER")
         await _create_index_if_missing(
             conn, "idx_automation_rules_builder_mode",
             "CREATE INDEX idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)",
@@ -126,6 +131,11 @@ async def lifespan(app: FastAPI):
         await _create_index_if_missing(
             conn, "idx_wsp_messages_sent_at",
             "CREATE INDEX idx_wsp_messages_sent_at ON wsp_messages(sent_at)",
+        )
+        await _create_index_if_missing(
+            conn, "idx_wsp_messages_wa_message_id",
+            "CREATE INDEX idx_wsp_messages_wa_message_id "
+            "ON wsp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL",
         )
         await _create_index_if_missing(
             conn, "idx_lead_tasks_due_pending",
