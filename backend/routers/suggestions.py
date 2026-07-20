@@ -1,9 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from db.models import LeadStage as DbLeadStage
 from models.schemas import SuggestionRequest, SuggestionResponse
-from services.db_service import cache_suggestion, get_cached_suggestion, update_lead_stage
+from services.db_service import cache_suggestion, fetch_chat, get_cached_suggestion, update_lead_stage
 from services.n8n_service import call_n8n
 from services.ws_manager import manager
+from services.automation_service import trigger_stage_changed
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
 
@@ -22,6 +27,7 @@ async def get_suggestions(body: SuggestionRequest):
     # El Structured Output Parser del workflow obliga al agente a devolver
     # `output.estado`. Esa decisión es la única fuente de verdad: se persiste
     # al terminar la ejecución y luego se avisa a todos los paneles abiertos.
+    previous = await fetch_chat(body.chat_id)
     lead = await update_lead_stage(
         body.chat_id,
         DbLeadStage(result.estado),
@@ -42,4 +48,9 @@ async def get_suggestions(body: SuggestionRequest):
             },
         }
     )
+    if previous and previous["stage"] != result.estado:
+        try:
+            await trigger_stage_changed(body.chat_id)
+        except Exception:
+            logger.exception("No se pudo programar la automatización de cambio de etapa del agente")
     return result

@@ -5,14 +5,14 @@ import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import { useMe } from '../hooks/useAuth'
 import { useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
+import { TASK_PRIORITY_LABELS, TaskPriorityValue, TaskStatusValue } from '../domain/automationCatalog'
+import type { TaskPriority } from '../types'
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300',
-  normal: 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400',
-  high: 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400',
+const PRIORITY_COLORS: Record<TaskPriority, string> = {
+  [TaskPriorityValue.Low]: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300',
+  [TaskPriorityValue.Normal]: 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400',
+  [TaskPriorityValue.High]: 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400',
 }
-
-const PRIORITY_LABELS: Record<string, string> = { low: 'Baja', normal: 'Normal', high: 'Alta' }
 
 function bucketTasks(tasks: LeadTask[]) {
   const groups: Record<'vencidas' | 'hoy' | 'proximas', LeadTask[]> = { vencidas: [], hoy: [], proximas: [] }
@@ -44,7 +44,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
 
   function handleComplete(id: number) {
     setError(null)
-    update({ id, status: 'completed' }, { onError: (err) => setError(extractErrorMessage(err)) })
+    update({ id, status: TaskStatusValue.Completed }, { onError: (err) => setError(extractErrorMessage(err)) })
   }
 
   return (
@@ -96,7 +96,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
 
                       <div className="mt-3 flex items-center gap-3">
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PRIORITY_COLORS[task.priority]}`}>
-                          {PRIORITY_LABELS[task.priority]}
+                          {TASK_PRIORITY_LABELS[task.priority]}
                         </span>
                         <button
                           type="button"

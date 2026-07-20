@@ -5,6 +5,7 @@ import client from '../api/client'
 import type { Chat, ChatFilters, LeadInput, LeadUpdateInput } from '../types'
 import type { NotificationOptions } from './useNotifications'
 import { parseContent } from '../utils/message'
+import { NotificationType } from '../domain/automationCatalog'
 
 interface ChatsPage {
   items: Chat[]
@@ -26,6 +27,7 @@ async function fetchChatsPage(search: string, pageParam: PageParam, filters?: Ch
   if (filters?.origin.trim()) params.origin = filters.origin.trim()
   if (filters?.lastSender) params.last_sender = filters.lastSender
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
+  if (filters?.waitingTime) params.waiting_time = filters.waitingTime
   if (pageParam) {
     params.cursor_id = pageParam.cursorId
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
@@ -50,6 +52,8 @@ interface LatestMessage {
 }
 
 type NotifyFn = (title: string, body: string, onClick: () => void, options?: NotificationOptions) => void
+export interface InternalMentionAlert { notificationId: number; leadId: string; authorName: string; content: string }
+type InternalMentionFn = (alert: InternalMentionAlert) => void
 
 /** Escucha el websocket del backend y refresca chats/mensajes en cuanto hay
  * novedades. También dispara una notificación cuando el mensaje nuevo es de
@@ -59,7 +63,11 @@ type NotifyFn = (title: string, body: string, onClick: () => void, options?: Not
  * `notify` se recibe por parámetro (en vez de llamar a useNotifications acá
  * adentro) para que el estado de permiso de notificaciones quede en una
  * única instancia, compartida con el botón del header que lo controla. */
-export function useChatUpdates(activeChatId: string | null = null, notify: NotifyFn = () => {}) {
+export function useChatUpdates(
+  activeChatId: string | null = null,
+  notify: NotifyFn = () => {},
+  onInternalMention: InternalMentionFn = () => {},
+) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const lastNotifiedMessageIdRef = useRef<string | null>(null)
@@ -69,6 +77,8 @@ export function useChatUpdates(activeChatId: string | null = null, notify: Notif
   void activeChatId
   const notifyRef = useRef(notify)
   notifyRef.current = notify
+  const internalMentionRef = useRef(onInternalMention)
+  internalMentionRef.current = onInternalMention
 
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -91,6 +101,59 @@ export function useChatUpdates(activeChatId: string | null = null, notify: Notif
           if (payload.type === 'media_library_updated') {
             queryClient.invalidateQueries({ queryKey: ['media-library'] })
           }
+          if (payload.type === 'internal_notes_updated') {
+            queryClient.invalidateQueries({ queryKey: ['internal-notes', payload.lead_id] })
+            queryClient.invalidateQueries({ queryKey: ['lead-activity', payload.lead_id] })
+          }
+          if (payload.type === 'notifications_updated') {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          }
+          if (payload.type === 'automations_updated') {
+            queryClient.invalidateQueries({ queryKey: ['automations'] })
+            queryClient.invalidateQueries({ queryKey: ['automation-executions'] })
+          }
+          if (payload.type === 'notification_created') {
+            const notification = payload.notification as {
+              id: number
+              notification_type: string
+              title: string
+              body: string
+              lead_id: string | null
+              metadata: { author_name?: string } | null
+            }
+            queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            notifyRef.current(
+              notification.title,
+              notification.body.length > 140 ? `${notification.body.slice(0, 137)}...` : notification.body,
+              () => { if (notification.lead_id) navigate(`/chat/${notification.lead_id}`) },
+              { force: true, tag: `notification-${notification.id}` },
+            )
+            if (notification.notification_type === NotificationType.InternalNoteMention && notification.lead_id) {
+              internalMentionRef.current({
+                notificationId: notification.id,
+                leadId: notification.lead_id,
+                authorName: notification.metadata?.author_name ?? 'Un usuario',
+                content: notification.body,
+              })
+            }
+          }
+          if (payload.type === 'internal_note_mention') {
+            const note = payload.note as { id: number; lead_id: string; content: string }
+            const mentionedBy = payload.mentioned_by as { name: string }
+            queryClient.invalidateQueries({ queryKey: ['internal-notes', note.lead_id] })
+            notifyRef.current(
+              `${mentionedBy.name} te mencionó en una nota`,
+              note.content.length > 140 ? `${note.content.slice(0, 137)}...` : note.content,
+              () => navigate(`/chat/${note.lead_id}`),
+              { force: true, tag: `internal-note-${note.id}` },
+            )
+            internalMentionRef.current({
+              notificationId: note.id,
+              leadId: note.lead_id,
+              authorName: mentionedBy.name,
+              content: note.content,
+            })
+          }
           if (payload.type === 'task_reminder') {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             const task = payload.task as { task_id: number; lead_id: string; lead_name: string | null; title: string }
@@ -109,6 +172,7 @@ export function useChatUpdates(activeChatId: string | null = null, notify: Notif
             queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
             // También refresca el hilo de mensajes abierto, si lo hay
             queryClient.invalidateQueries({ queryKey: ['messages'] })
+            queryClient.invalidateQueries({ queryKey: ['customer-service-window'] })
 
             const latest = payload.latest_message as LatestMessage | undefined
             if (

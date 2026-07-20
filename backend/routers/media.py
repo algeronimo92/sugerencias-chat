@@ -6,12 +6,10 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
+from services.media_storage import MEDIA_DIR
 from services.settings_service import get_effective
 
 router = APIRouter(prefix="/api/media", tags=["media"])
-
-MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
-MEDIA_DIR.mkdir(exist_ok=True)
 
 ALLOWED_CONTENT_PREFIXES = ("image/", "video/", "audio/")
 # Documentos: se enumeran explícito en vez de aceptar cualquier content_type,
@@ -84,6 +82,8 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
     except Exception:
         raise ValueError("base64 inválido")
 
+    if not raw:
+        raise ValueError("El archivo está vacío")
     if len(raw) > MAX_BYTES:
         raise ValueError("Archivo demasiado grande")
 

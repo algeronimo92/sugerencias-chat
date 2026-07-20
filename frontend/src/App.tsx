@@ -1,24 +1,40 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BarChart3, Bell, BellOff, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessagesSquare, Settings as SettingsIcon, Sparkles, Moon, Sun } from 'lucide-react'
+import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters, SuggestionResponse } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
-import { KanbanBoard } from './components/KanbanBoard'
 import { LoginPage } from './components/LoginPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
-import { TasksPage } from './components/TasksPage'
-import { TemplatesPage } from './components/TemplatesPage'
-import { DashboardPage } from './components/DashboardPage'
-import { MediaLibraryPage } from './components/MediaLibraryPage'
+import { NotificationCenter } from './components/NotificationCenter'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
+import type { InternalMentionAlert } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions } from './hooks/useSuggestions'
 import { useTheme } from './hooks/useTheme'
 import { queryClient } from './queryClient'
+
+const KanbanBoard = lazy(() =>
+  import('./components/KanbanBoard').then(module => ({ default: module.KanbanBoard })),
+)
+const TasksPage = lazy(() =>
+  import('./components/TasksPage').then(module => ({ default: module.TasksPage })),
+)
+const TemplatesPage = lazy(() =>
+  import('./components/TemplatesPage').then(module => ({ default: module.TemplatesPage })),
+)
+const DashboardPage = lazy(() =>
+  import('./components/DashboardPage').then(module => ({ default: module.DashboardPage })),
+)
+const MediaLibraryPage = lazy(() =>
+  import('./components/MediaLibraryPage').then(module => ({ default: module.MediaLibraryPage })),
+)
+const AutomationsPage = lazy(() =>
+  import('./components/AutomationsPage').then(module => ({ default: module.AutomationsPage })),
+)
 
 const EMPTY_CHAT_FILTERS: ChatFilters = {
   unreadOnly: false,
@@ -30,6 +46,18 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
   origin: '',
   lastSender: '',
   inactiveDays: null,
+  waitingTime: '',
+}
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Cargando vista…
+      </div>
+    </div>
+  )
 }
 
 function MainLayout() {
@@ -43,6 +71,7 @@ function MainLayout() {
   const isTemplates = location.pathname === '/templates'
   const isMediaLibrary = location.pathname === '/media-library'
   const isDashboard = location.pathname === '/dashboard'
+  const isAutomations = location.pathname === '/automations'
   const isChats = location.pathname === '/' || location.pathname.startsWith('/chat/')
 
   const { theme, toggleTheme } = useTheme()
@@ -50,6 +79,14 @@ function MainLayout() {
   const { data: unreadCount = 0 } = useUnreadCount()
   const { permission: notificationPermission, requestPermission: requestNotificationPermission, notify } =
     useNotifications(unreadCount)
+  const [internalMention, setInternalMention] = useState<InternalMentionAlert | null>(null)
+  const surfacedNotificationIdsRef = useRef(new Set<number>())
+
+  function showInternalMention(alert: InternalMentionAlert) {
+    if (surfacedNotificationIdsRef.current.has(alert.notificationId)) return
+    surfacedNotificationIdsRef.current.add(alert.notificationId)
+    setInternalMention(alert)
+  }
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -69,7 +106,13 @@ function MainLayout() {
     return () => clearTimeout(timeout)
   }, [search])
 
-  useChatUpdates(chatId ?? null, notify)
+  useChatUpdates(chatId ?? null, notify, showInternalMention)
+
+  useEffect(() => {
+    if (!internalMention) return
+    const timeout = window.setTimeout(() => setInternalMention(null), 8000)
+    return () => window.clearTimeout(timeout)
+  }, [internalMention])
 
   const {
     data,
@@ -229,6 +272,19 @@ function MainLayout() {
           )}
           {me?.role === 'admin' && (
             <button
+              onClick={() => navigate('/automations')}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                isAutomations
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              <Workflow className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">Automatizaciones</span>
+            </button>
+          )}
+          {me?.role === 'admin' && (
+            <button
               onClick={() => navigate('/templates')}
               className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 isTemplates
@@ -270,35 +326,11 @@ function MainLayout() {
             <SettingsIcon className="w-4 h-4" />
           </button>
         )}
-        {notificationPermission !== 'unsupported' && (
-          <button
-            onClick={notificationPermission === 'default' ? requestNotificationPermission : undefined}
-            disabled={notificationPermission !== 'default'}
-            aria-label={
-              notificationPermission === 'granted'
-                ? 'Notificaciones activadas'
-                : notificationPermission === 'denied'
-                  ? 'Notificaciones bloqueadas por el navegador'
-                  : 'Activar notificaciones de mensajes nuevos'
-            }
-            title={
-              notificationPermission === 'granted'
-                ? 'Notificaciones activadas'
-                : notificationPermission === 'denied'
-                  ? 'Bloqueadas — habilitalas desde la configuración del navegador'
-                  : 'Activar notificaciones de mensajes nuevos'
-            }
-            className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
-              notificationPermission === 'granted'
-                ? 'text-green-600 dark:text-green-500'
-                : notificationPermission === 'denied'
-                  ? 'text-gray-300 dark:text-gray-700 cursor-not-allowed'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            {notificationPermission === 'denied' ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-          </button>
-        )}
+        <NotificationCenter
+          browserPermission={notificationPermission}
+          onRequestBrowserPermission={requestNotificationPermission}
+          onNewNotification={showInternalMention}
+        />
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
@@ -318,87 +350,136 @@ function MainLayout() {
 
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
 
-      {isTasks ? (
-        <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
-      ) : isDashboard && me?.role === 'admin' ? (
-        <DashboardPage
-          onOpenTasks={() => navigate('/tasks')}
-          onFilterChats={(filters) => {
-            setChatFilter('all')
-            setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
-            navigate('/')
-          }}
-        />
-      ) : isTemplates && me?.role === 'admin' ? (
-        <TemplatesPage />
-      ) : isMediaLibrary && me?.role === 'admin' ? (
-        <MediaLibraryPage />
-      ) : isKanban ? (
-        <KanbanBoard onOpenChat={handleSelectChat} />
-      ) : (
-      <div className="flex flex-1 overflow-hidden">
-        {/* Panel izquierdo — Lista de chats */}
-        <div className="w-80 shrink-0 h-full overflow-hidden">
-          <ChatList
-            chats={chats}
-            isLoading={isLoading}
-            error={!!error}
-            search={search}
-            onSearchChange={setSearch}
-            filter={chatFilter}
-            onFilterChange={setChatFilter}
-            unreadCount={unreadCount}
-            advancedFilters={advancedFilters}
-            onAdvancedFiltersChange={setAdvancedFilters}
-            onRefresh={refetch}
-            selectedId={selectedChat?.chat_id ?? null}
-            onSelect={handleSelectChat}
-            hasNextPage={!!hasNextPage}
-            isFetchingNextPage={isFetchingNextPage}
-            hasNextPageError={isFetchNextPageError}
-            onLoadMore={handleLoadMore}
-          />
+      {internalMention && (
+        <div className="fixed right-4 top-16 z-[70] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 shadow-2xl dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"><MessageSquareLock className="h-4 w-4" /></span>
+            <button type="button" onClick={() => { navigate(`/chat/${internalMention.leadId}`); setInternalMention(null) }} className="min-w-0 flex-1 text-left">
+              <span className="block text-xs font-semibold">{internalMention.authorName} te mencionó</span>
+              <span className="mt-0.5 block line-clamp-2 text-xs text-amber-800/80 dark:text-amber-200/80">{internalMention.content}</span>
+            </button>
+            <button type="button" onClick={() => setInternalMention(null)} className="rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900"><X className="h-4 w-4" /></button>
+          </div>
         </div>
-
-        {/* Panel central — Conversación */}
-        <div className="flex-1 h-full overflow-hidden">
-          {selectedChat ? (
-            <ChatThread
-              chat={selectedChat}
-              onRefreshSuggestions={() => requestSuggestions(selectedChat)}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
-              <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
-              <p className="text-sm text-gray-400 dark:text-gray-600">Selecciona un lead para ver la conversación</p>
-            </div>
-          )}
-        </div>
-
-        {/* Panel derecho — Sugerencias */}
-        <div className="w-96 shrink-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
-          {selectedChat ? (
-            <SuggestionPanel
-              chat={selectedChat}
-              data={suggestionData}
-              isLoading={isPending}
-              error={apiError}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">
-              <Sparkles className="w-12 h-12" strokeWidth={1.5} />
-              <p className="text-sm text-gray-400 dark:text-gray-600 text-center px-6">Selecciona un lead para ver las sugerencias</p>
-            </div>
-          )}
-        </div>
-      </div>
       )}
+
+      <Suspense fallback={<PageLoader />}>
+        {isTasks ? (
+          <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
+        ) : isDashboard && me?.role === 'admin' ? (
+          <DashboardPage
+            onOpenTasks={() => navigate('/tasks')}
+            onFilterChats={(filters) => {
+              setChatFilter('all')
+              setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
+              navigate('/')
+            }}
+          />
+        ) : isTemplates && me?.role === 'admin' ? (
+          <TemplatesPage />
+        ) : isAutomations && me?.role === 'admin' ? (
+          <AutomationsPage />
+        ) : isMediaLibrary && me?.role === 'admin' ? (
+          <MediaLibraryPage />
+        ) : isKanban ? (
+          <KanbanBoard onOpenChat={handleSelectChat} />
+        ) : (
+          <div className="flex flex-1 overflow-hidden">
+            {/* Panel izquierdo — Lista de chats */}
+            <div className="w-80 shrink-0 h-full overflow-hidden">
+              <ChatList
+                chats={chats}
+                isLoading={isLoading}
+                error={!!error}
+                search={search}
+                onSearchChange={setSearch}
+                filter={chatFilter}
+                onFilterChange={setChatFilter}
+                unreadCount={unreadCount}
+                advancedFilters={advancedFilters}
+                onAdvancedFiltersChange={setAdvancedFilters}
+                onRefresh={refetch}
+                selectedId={selectedChat?.chat_id ?? null}
+                onSelect={handleSelectChat}
+                hasNextPage={!!hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                hasNextPageError={isFetchNextPageError}
+                onLoadMore={handleLoadMore}
+              />
+            </div>
+
+            {/* Panel central — Conversación */}
+            <div className="flex-1 h-full overflow-hidden">
+              {selectedChat ? (
+                <ChatThread
+                  chat={selectedChat}
+                  onRefreshSuggestions={() => requestSuggestions(selectedChat)}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
+                  <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
+                  <p className="text-sm text-gray-400 dark:text-gray-600">Selecciona un lead para ver la conversación</p>
+                </div>
+              )}
+            </div>
+
+            {/* Panel derecho — Sugerencias */}
+            <div className="w-96 shrink-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
+              {selectedChat ? (
+                <SuggestionPanel
+                  chat={selectedChat}
+                  data={suggestionData}
+                  isLoading={isPending}
+                  error={apiError}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">
+                  <Sparkles className="w-12 h-12" strokeWidth={1.5} />
+                  <p className="text-sm text-gray-400 dark:text-gray-600 text-center px-6">Selecciona un lead para ver las sugerencias</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Suspense>
     </div>
   )
 }
 
 function AuthGate() {
-  const { data: me, isLoading } = useMe()
+  const { data: me, error, isError, isLoading, isFetching, refetch } = useMe()
+
+  if (isError) {
+    const detail = error instanceof Error && error.message !== 'Network Error'
+      ? error.message
+      : 'No se pudo establecer conexión con el servidor.'
+
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100 p-4 dark:bg-gray-950">
+        <div role="alert" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-gray-900">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
+            <AlertTriangle className="h-6 w-6" />
+          </span>
+          <h1 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Backend no disponible</h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            El frontend está funcionando, pero no pudo consultar tu sesión en el servidor.
+          </p>
+          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            {detail}
+          </p>
+          <button
+            type="button"
+            disabled={isFetching}
+            onClick={() => { void refetch() }}
+            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            {isFetching ? 'Reconectando…' : 'Reintentar conexión'}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading || me === undefined) {
     return (
@@ -422,6 +503,7 @@ function AuthGate() {
         <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

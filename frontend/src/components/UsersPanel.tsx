@@ -167,7 +167,8 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
             value={user.role}
             disabled={isPending || isSelf}
             onChange={(e) => updateUser({ id: user.id, role: e.target.value as UserRole })}
-            className="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-2 py-1 outline-none disabled:opacity-50"
+            className="text-xs rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200
+            dark:text-gray-300 dark:border-gray-700 px-2 py-1 outline-none disabled:opacity-50"
           >
             <option value="vendedor">Vendedor</option>
             <option value="admin">Admin</option>
@@ -176,7 +177,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
             type="button"
             disabled={isPending || isSelf}
             onClick={() => updateUser({ id: user.id, is_active: !user.is_active })}
-            className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
             {user.is_active ? 'Desactivar' : 'Activar'}
           </button>

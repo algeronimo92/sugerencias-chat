@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Clock3, Loader2, MessageCircleReply, RefreshCw, TrendingUp, Users } from 'lucide-react'
 import { useState } from 'react'
-import type { ChatFilters, DashboardMetricItem, DashboardPoint, LeadStage } from '../types'
+import type { ChatFilters, DashboardMetricItem, DashboardPoint } from '../types'
+import { isLeadStage } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../utils/errors'
 
@@ -302,7 +303,9 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
                 <BarList
                   items={data.stages}
                   labels={STAGE_LABELS}
-                  onSelect={(stage) => onFilterChats({ stages: [stage as LeadStage] })}
+                  onSelect={(stage) => {
+                    if (isLeadStage(stage)) onFilterChats({ stages: [stage] })
+                  }}
                 />
               </Panel>
               <Panel title="Carga por vendedor">

@@ -6,6 +6,14 @@ from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from domain_types import (
+    AutomationBuilderMode,
+    AutomationExecutionStatus,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
+
 
 class Base(DeclarativeBase):
     pass
@@ -73,7 +81,8 @@ class WspMessage(Base):
     # los eventos de cambio de estado (entregado/leído) contra esta fila.
     wa_message_id: Mapped[str | None] = mapped_column(Text)
     # SERVER_ACK / DELIVERY_ACK / READ / PLAYED, tal cual lo manda Evolution
-    # API. Solo tiene sentido para mensajes del vendedor (sender="vendedor").
+    # API. En mensajes del cliente, READ/PLAYED también permite sincronizar la
+    # lectura hecha desde un dispositivo vinculado (p. ej. WhatsApp Web).
     status: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
@@ -167,6 +176,55 @@ class LeadActivity(Base):
     )
 
 
+class LeadNote(Base):
+    __tablename__ = "lead_notes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_lead_notes_lead_created", lead_id, created_at, id),)
+
+
+class LeadNoteMention(Base):
+    __tablename__ = "lead_note_mentions"
+
+    note_id: Mapped[int] = mapped_column(
+        ForeignKey("lead_notes.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_lead_note_mentions_user", user_id, created_at.desc()),)
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    notification_type: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    source_id: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_user_notifications_user_created", user_id, created_at.desc()),
+        Index("idx_user_notifications_user_read", user_id, read_at),
+        Index("idx_user_notifications_lead", lead_id),
+    )
+
+
 class LeadTask(Base):
     __tablename__ = "lead_tasks"
 
@@ -174,9 +232,9 @@ class LeadTask(Base):
     lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
-    task_type: Mapped[str] = mapped_column(Text, default="seguimiento")
-    status: Mapped[str] = mapped_column(Text, default="pending")
-    priority: Mapped[str] = mapped_column(Text, default="normal")
+    task_type: Mapped[str] = mapped_column(Text, default=TaskType.FOLLOW_UP)
+    status: Mapped[str] = mapped_column(Text, default=TaskStatus.PENDING)
+    priority: Mapped[str] = mapped_column(Text, default=TaskPriority.NORMAL)
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -206,12 +264,22 @@ class MessageTemplate(Base):
     service: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     visibility: Mapped[str] = mapped_column(Text, default="global", server_default="global")
+    template_type: Mapped[str] = mapped_column(Text, default="internal", server_default="internal")
+    official_name: Mapped[str | None] = mapped_column(Text)
+    official_language: Mapped[str | None] = mapped_column(Text)
+    official_category: Mapped[str | None] = mapped_column(Text)
+    official_status: Mapped[str | None] = mapped_column(Text)
+    official_parameter_values: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    interactive_type: Mapped[str] = mapped_column(Text, default="none", server_default="none")
+    interactive_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("idx_message_templates_active_category", is_active, category),
+        Index("idx_message_templates_type_status", template_type, official_status, is_active),
+        Index("idx_message_templates_interactive_type", interactive_type, is_active),
         Index(
             "uq_templates_global_shortcut_lower",
             func.lower(shortcut),
@@ -270,3 +338,87 @@ class TemplateAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("idx_template_attachments_template_position", template_id, position),)
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text)
+    trigger_type: Mapped[str] = mapped_column(Text)
+    trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    conditions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    actions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    builder_mode: Mapped[str] = mapped_column(
+        Text,
+        default=AutomationBuilderMode.SIMPLE,
+        server_default=AutomationBuilderMode.SIMPLE.value,
+    )
+    flow_definition: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
+    flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    delay_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Tope de seguridad: si se completan >= N ejecuciones en la última hora,
+    # las siguientes se re-agendan para más tarde en vez de correr — protege
+    # contra un bug o una condición mal armada que dispare de más y arriesgue
+    # el número de WhatsApp por spam. None = sin límite.
+    max_executions_per_hour: Mapped[int | None] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_automation_rules_trigger_active", trigger_type, is_active),
+        Index("idx_automation_rules_builder_mode", builder_mode, is_active),
+    )
+
+
+class AutomationFlowVersion(Base):
+    """Definición publicada de un flujo visual, una fila por versión. Las
+    ejecuciones guardan (rule_id, flow_version) en flow_state y resuelven la
+    definición acá — así una ejecución con esperas termina con la versión con
+    la que arrancó aunque el flujo se republique."""
+
+    __tablename__ = "automation_flow_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_automation_flow_versions_rule_version", rule_id, version, unique=True),
+    )
+
+
+class AutomationExecution(Base):
+    __tablename__ = "automation_executions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"))
+    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    trigger_type: Mapped[str] = mapped_column(Text)
+    event_key: Mapped[str] = mapped_column(Text)
+    event_payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(
+        Text,
+        default=AutomationExecutionStatus.SCHEDULED,
+        server_default=AutomationExecutionStatus.SCHEDULED.value,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action_results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    flow_state: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),
+        Index("idx_automation_executions_due", status, scheduled_for),
+        Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),
+        Index("idx_automation_executions_lead_created", lead_id, created_at.desc()),
+    )

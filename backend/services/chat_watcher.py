@@ -3,6 +3,7 @@ import logging
 
 from services.db_service import fetch_chat_signature, fetch_latest_message
 from services.ws_manager import manager
+from services.automation_service import trigger_inbound_message
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ async def watch_chats() -> None:
                 latest = await fetch_latest_message()
                 if latest is not None:
                     payload["latest_message"] = latest
+                    await trigger_inbound_message(latest)
                 await manager.broadcast(payload)
             last_signature = signature
         except Exception:

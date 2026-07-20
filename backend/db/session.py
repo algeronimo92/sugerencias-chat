@@ -26,7 +26,9 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         _engine = create_async_engine(
-            _to_async_url(settings.database_url), connect_args={"ssl": False}
+            _to_async_url(settings.database_url),
+            connect_args={"ssl": False, "timeout": 10},
+            pool_pre_ping=True,
         )
     return _engine
 

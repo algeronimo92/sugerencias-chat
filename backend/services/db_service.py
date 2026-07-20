@@ -1,15 +1,17 @@
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, delete, exists, func, insert, or_, select, true, update
+from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
+from domain_types import AutomationTrigger
 from db.models import Lead, LeadActivity, LeadStage, LeadTag, LeadTagAssignment, User, WspMessage
 from db.session import get_sessionmaker
 
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
 MESSAGES_PAGE_SIZE = 50
+CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
 
 
 class LeadAlreadyExistsError(Exception):
@@ -56,6 +58,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "last_message": row["last_message"],
         "last_message_sender": row["last_message_sender"],
         "timestamp": _fmt_ts(row["timestamp"]),
+        "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
         "tags": tags or [],
     }
@@ -131,6 +134,15 @@ def _has_unread_messages_condition():
     )
 
 
+def _last_customer_message_at_subquery():
+    return (
+        select(func.max(WspMessage.sent_at))
+        .where(WspMessage.chat_id == Lead.remote_jid, WspMessage.sender == "cliente")
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+
+
 def _has_tag_condition(tag_id: int):
     return exists(
         select(LeadTagAssignment.tag_id)
@@ -175,6 +187,7 @@ def _chat_columns(last_message):
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
         last_message.c.sent_at.label("timestamp"),
+        _last_customer_message_at_subquery().label("last_customer_message_at"),
         _unread_count_subquery().label("unread_count"),
     )
 
@@ -214,6 +227,7 @@ async def fetch_chats(
     origin: str | None = None,
     last_sender: str | None = None,
     inactive_days: int | None = None,
+    waiting_time: str | None = None,
 ) -> dict:
     last_message = _last_message_subquery()
 
@@ -244,6 +258,20 @@ async def fetch_chats(
     if inactive_days is not None and inactive_days > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=inactive_days)
         stmt = stmt.where(or_(last_message.c.sent_at < cutoff, last_message.c.sent_at.is_(None)))
+    if waiting_time in ("any", "fresh", "warning", "urgent"):
+        now = datetime.now(timezone.utc)
+        warning_cutoff = now - timedelta(minutes=10)
+        urgent_cutoff = now - timedelta(hours=1)
+        stmt = stmt.where(last_message.c.sender == "cliente")
+        if waiting_time == "fresh":
+            stmt = stmt.where(last_message.c.sent_at > warning_cutoff)
+        elif waiting_time == "warning":
+            stmt = stmt.where(
+                last_message.c.sent_at <= warning_cutoff,
+                last_message.c.sent_at > urgent_cutoff,
+            )
+        elif waiting_time == "urgent":
+            stmt = stmt.where(last_message.c.sent_at <= urgent_cutoff)
 
     if cursor_id is not None:
         stmt = stmt.where(_cursor_condition(last_message, cursor_ts, cursor_id))
@@ -278,6 +306,28 @@ async def fetch_chat(chat_id: str) -> dict | None:
         tags_by_lead = await _tags_by_lead(session, [chat_id]) if row is not None else {}
 
     return _row_to_chat(row, tags_by_lead.get(chat_id)) if row is not None else None
+
+
+async def get_customer_service_window(chat_id: str) -> dict | None:
+    async with get_sessionmaker()() as session:
+        if await session.get(Lead, chat_id) is None:
+            return None
+        last_customer_message_at = await session.scalar(
+            select(func.max(WspMessage.sent_at)).where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.sender == "cliente",
+            )
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
+    seconds_remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
+    return {
+        "is_open": seconds_remaining > 0,
+        "last_customer_message_at": _fmt_ts(last_customer_message_at),
+        "expires_at": _fmt_ts(expires_at),
+        "seconds_remaining": seconds_remaining,
+    }
 
 
 async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
@@ -382,7 +432,7 @@ async def update_lead_stage(
             await _record_activity(
                 session,
                 chat_id,
-                "stage_changed",
+                AutomationTrigger.STAGE_CHANGED,
                 actor_type,
                 actor_user_id,
                 {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage},
@@ -465,7 +515,7 @@ async def create_lead(
             await _record_activity(
                 session,
                 chat_id,
-                "lead_created",
+                AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
                 new_value={"name": name, "phone": phone},
@@ -570,12 +620,35 @@ async def insert_message(
 
 
 async def update_message_status(wa_message_id: str, status: str) -> dict | None:
-    """Actualiza el estado (entregado/leído) de un mensaje ya guardado, por su
-    ID de WhatsApp. Devuelve None si no hay ningún mensaje con ese id (por
-    ejemplo, uno enviado antes de que esta columna existiera)."""
+    """Avanza el estado de un mensaje sin permitir regresiones.
+
+    Los webhooks pueden llegar repetidos o fuera de orden. El ``WHERE`` hace
+    atómica la comparación para que READ/PLAYED nunca vuelva a DELIVERY_ACK.
+    Devuelve None si el ID no existe o el evento no aporta un estado nuevo.
+    """
+    status_rank = {
+        "SERVER_ACK": 1,
+        "DELIVERY_ACK": 2,
+        "READ": 3,
+        "PLAYED": 4,
+    }
+    incoming_rank = status_rank.get(status)
+    if incoming_rank is None:
+        return None
+
+    current_rank = case(
+        (WspMessage.status == "SERVER_ACK", 1),
+        (WspMessage.status == "DELIVERY_ACK", 2),
+        (WspMessage.status == "READ", 3),
+        (WspMessage.status == "PLAYED", 4),
+        else_=0,
+    )
     stmt = (
         update(WspMessage)
-        .where(WspMessage.wa_message_id == wa_message_id)
+        .where(
+            WspMessage.wa_message_id == wa_message_id,
+            current_rank < incoming_rank,
+        )
         .values(status=status)
         .returning(WspMessage.id, WspMessage.chat_id)
     )
@@ -593,6 +666,51 @@ async def mark_chat_read(chat_id: str) -> None:
     async with get_sessionmaker()() as session:
         await session.execute(stmt)
         await session.commit()
+
+
+async def mark_chat_read_from_whatsapp_receipt(wa_message_id: str) -> dict | None:
+    """Avanza la lectura interna hasta un mensaje del cliente leído en WhatsApp.
+
+    Se usa el ``sent_at`` del mensaje como marca de agua, no la hora actual:
+    así un recibo tardío nunca marca como vistos mensajes que llegaron después.
+    Solo acepta filas de ``sender=cliente`` para no confundir el READ de un
+    mensaje saliente (el lead lo leyó) con una lectura hecha por el vendedor.
+    """
+    message_stmt = (
+        select(WspMessage.chat_id, WspMessage.sent_at)
+        .where(
+            WspMessage.wa_message_id == wa_message_id,
+            WspMessage.sender == "cliente",
+        )
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        message = (await session.execute(message_stmt)).mappings().first()
+        if message is None:
+            return None
+
+        update_stmt = (
+            update(Lead)
+            .where(
+                Lead.remote_jid == message["chat_id"],
+                or_(
+                    Lead.last_read_at.is_(None),
+                    Lead.last_read_at < message["sent_at"],
+                ),
+            )
+            .values(last_read_at=message["sent_at"])
+            .returning(Lead.remote_jid)
+        )
+        chat_id = (await session.execute(update_stmt)).scalar_one_or_none()
+        if chat_id is None:
+            return None
+        await session.commit()
+
+    return {
+        "chat_id": chat_id,
+        "last_read_at": _fmt_ts(message["sent_at"]),
+    }
 
 
 async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:

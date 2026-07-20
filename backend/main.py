@@ -1,52 +1,183 @@
 import asyncio
 import contextlib
-from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+import logging
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncConnection
 from config import settings
 from db.models import Base
 from db.session import close_engine, get_engine
-from routers import auth, chats, dashboard, media, media_library, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks
+from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks
 from routers.media import MEDIA_DIR
 from services.auth_service import COOKIE_NAME, decode_access_token, get_current_user, hash_password, require_admin
 from services.chat_watcher import watch_chats
 from services.db_service import get_user_by_id, seed_admin_if_needed
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
+from services.automation_service import backfill_automation_state, watch_automations
+
+logger = logging.getLogger(__name__)
+DATABASE_RETRY_MAX_SECONDS = 30
+
+
+async def _begin_database_transaction_with_retry(
+) -> tuple[AbstractAsyncContextManager[AsyncConnection], AsyncConnection]:
+    attempt = 0
+    while True:
+        attempt += 1
+        transaction = get_engine().begin()
+        try:
+            connection = await transaction.__aenter__()
+            if attempt > 1:
+                logger.info("Database connection recovered after %s attempts", attempt)
+            return transaction, connection
+        except (OSError, SQLAlchemyError) as exc:
+            await close_engine()
+            delay = min(2 ** (attempt - 1), DATABASE_RETRY_MAX_SECONDS)
+            logger.warning(
+                "Database unavailable during startup (attempt %s, %s); retrying in %ss",
+                attempt,
+                type(exc).__name__,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
+async def _column_exists(conn: AsyncConnection, table: str, column: str) -> bool:
+    result = await conn.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = :table "
+        "AND column_name = :column)"
+    ), {"table": table, "column": column})
+    return bool(result.scalar())
+
+
+async def _index_exists(conn: AsyncConnection, index: str) -> bool:
+    result = await conn.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+        "WHERE schemaname = current_schema() AND indexname = :index)"
+    ), {"index": index})
+    return bool(result.scalar())
+
+
+async def _constraint_exists(conn: AsyncConnection, constraint: str) -> bool:
+    result = await conn.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM pg_constraint "
+        "WHERE conname = :constraint AND connamespace = current_schema()::regnamespace)"
+    ), {"constraint": constraint})
+    return bool(result.scalar())
+
+
+async def _add_column_if_missing(
+    conn: AsyncConnection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    if not await _column_exists(conn, table, column):
+        await conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}'))
+
+
+async def _create_index_if_missing(
+    conn: AsyncConnection,
+    index: str,
+    statement: str,
+) -> None:
+    if not await _index_exists(conn, index):
+        await conn.execute(text(statement))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # create_all no toca las tablas ya existentes (leads, wsp_messages, que
     # vienen de la DB externa) — solo crea las que falten, como app_settings/users.
-    async with get_engine().begin() as conn:
+    database_transaction, conn = await _begin_database_transaction_with_retry()
+    try:
         await conn.run_sync(Base.metadata.create_all)
         # create_all no altera tablas existentes. Esta migración idempotente
         # permite actualizar instalaciones que ya tenían lead_tasks.
-        await conn.execute(text("ALTER TABLE lead_tasks ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ"))
-        await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS vendedor_id INTEGER"))
-        await conn.execute(text("ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'global'"))
-        await conn.execute(text("ALTER TABLE message_templates DROP CONSTRAINT IF EXISTS message_templates_shortcut_key"))
-        await conn.execute(text("DROP INDEX IF EXISTS uq_message_templates_shortcut_lower"))
-        await conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_templates_global_shortcut_lower "
-            "ON message_templates(lower(shortcut)) WHERE visibility = 'global' AND shortcut IS NOT NULL"
-        ))
-        await conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_templates_personal_shortcut_owner "
+        await _add_column_if_missing(conn, "lead_tasks", "reminder_sent_at", "TIMESTAMPTZ")
+        await _add_column_if_missing(conn, "leads", "vendedor_id", "INTEGER")
+        # wsp_messages es una tabla externa ya existente; create_all no puede
+        # agregar estas columnas, necesarias para relacionar MESSAGES_UPDATE.
+        await _add_column_if_missing(conn, "wsp_messages", "wa_message_id", "TEXT")
+        await _add_column_if_missing(conn, "wsp_messages", "status", "TEXT")
+        await _add_column_if_missing(conn, "message_templates", "visibility", "TEXT NOT NULL DEFAULT 'global'")
+        await _add_column_if_missing(conn, "message_templates", "template_type", "TEXT NOT NULL DEFAULT 'internal'")
+        await _add_column_if_missing(conn, "message_templates", "official_name", "TEXT")
+        await _add_column_if_missing(conn, "message_templates", "official_language", "TEXT")
+        await _add_column_if_missing(conn, "message_templates", "official_category", "TEXT")
+        await _add_column_if_missing(conn, "message_templates", "official_status", "TEXT")
+        await _add_column_if_missing(conn, "message_templates", "official_parameter_values", "JSONB NOT NULL DEFAULT '[]'::jsonb")
+        await _add_column_if_missing(conn, "message_templates", "interactive_type", "TEXT NOT NULL DEFAULT 'none'")
+        await _add_column_if_missing(conn, "message_templates", "interactive_config", "JSONB NOT NULL DEFAULT '{}'::jsonb")
+        await _add_column_if_missing(conn, "automation_rules", "builder_mode", "TEXT NOT NULL DEFAULT 'simple'")
+        await _add_column_if_missing(conn, "automation_rules", "flow_definition", "JSONB NOT NULL DEFAULT '{}'::jsonb")
+        await _add_column_if_missing(conn, "automation_rules", "published_flow_definition", "JSONB")
+        await _add_column_if_missing(conn, "automation_rules", "flow_version", "INTEGER NOT NULL DEFAULT 0")
+        await _add_column_if_missing(conn, "automation_executions", "flow_state", "JSONB NOT NULL DEFAULT '{}'::jsonb")
+        await _add_column_if_missing(conn, "automation_executions", "attempts", "INTEGER NOT NULL DEFAULT 0")
+        await _add_column_if_missing(conn, "automation_rules", "max_executions_per_hour", "INTEGER")
+        await _create_index_if_missing(
+            conn, "idx_automation_rules_builder_mode",
+            "CREATE INDEX idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)",
+        )
+        # Las queries de discovery de automatizaciones filtran por rango de
+        # tiempo — sin estos índices son full scans cada ciclo del watcher.
+        await _create_index_if_missing(
+            conn, "idx_wsp_messages_sent_at",
+            "CREATE INDEX idx_wsp_messages_sent_at ON wsp_messages(sent_at)",
+        )
+        await _create_index_if_missing(
+            conn, "idx_wsp_messages_wa_message_id",
+            "CREATE INDEX idx_wsp_messages_wa_message_id "
+            "ON wsp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL",
+        )
+        await _create_index_if_missing(
+            conn, "idx_lead_tasks_due_pending",
+            "CREATE INDEX idx_lead_tasks_due_pending "
+            "ON lead_tasks(due_at) WHERE status = 'pending'",
+        )
+        await _create_index_if_missing(
+            conn, "idx_message_templates_type_status",
+            "CREATE INDEX idx_message_templates_type_status ON message_templates(template_type, official_status, is_active)",
+        )
+        await _create_index_if_missing(
+            conn, "idx_message_templates_interactive_type",
+            "CREATE INDEX idx_message_templates_interactive_type ON message_templates(interactive_type, is_active)",
+        )
+        if await _constraint_exists(conn, "message_templates_shortcut_key"):
+            await conn.execute(text("ALTER TABLE message_templates DROP CONSTRAINT message_templates_shortcut_key"))
+        if await _index_exists(conn, "uq_message_templates_shortcut_lower"):
+            await conn.execute(text("DROP INDEX uq_message_templates_shortcut_lower"))
+        await _create_index_if_missing(
+            conn, "uq_templates_global_shortcut_lower",
+            "CREATE UNIQUE INDEX uq_templates_global_shortcut_lower "
+            "ON message_templates(lower(shortcut)) WHERE visibility = 'global' AND shortcut IS NOT NULL",
+        )
+        await _create_index_if_missing(
+            conn, "uq_templates_personal_shortcut_owner",
+            "CREATE UNIQUE INDEX uq_templates_personal_shortcut_owner "
             "ON message_templates(created_by_user_id, lower(shortcut)) "
-            "WHERE visibility = 'personal' AND shortcut IS NOT NULL"
-        ))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_leads_vendedor_id ON leads(vendedor_id)"))
-        await conn.execute(text(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint "
-            "WHERE conname IN ('fk_leads_vendedor_id_users', 'leads_vendedor_id_fkey')) THEN "
-            "ALTER TABLE leads ADD CONSTRAINT fk_leads_vendedor_id_users "
-            "FOREIGN KEY (vendedor_id) REFERENCES users(id) ON DELETE SET NULL; "
-            "END IF; END $$"
-        ))
+            "WHERE visibility = 'personal' AND shortcut IS NOT NULL",
+        )
+        await _create_index_if_missing(
+            conn, "idx_leads_vendedor_id",
+            "CREATE INDEX idx_leads_vendedor_id ON leads(vendedor_id)",
+        )
+        has_lead_seller_fk = (
+            await _constraint_exists(conn, "fk_leads_vendedor_id_users")
+            or await _constraint_exists(conn, "leads_vendedor_id_fkey")
+        )
+        if not has_lead_seller_fk:
+            await conn.execute(text(
+                "ALTER TABLE leads ADD CONSTRAINT fk_leads_vendedor_id_users "
+                "FOREIGN KEY (vendedor_id) REFERENCES users(id) ON DELETE SET NULL"
+            ))
         # Vincula automáticamente textos históricos cuyo nombre coincide con
         # un único usuario activo. Los no coincidentes permanecen visibles
         # mediante el fallback a la columna vendedor.
@@ -57,25 +188,21 @@ async def lifespan(app: FastAPI):
             ") matched WHERE l.vendedor_id IS NULL AND l.vendedor IS NOT NULL "
             "AND lower(trim(l.vendedor)) = matched.normalized_name"
         ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lead_tasks_pending_reminder "
-            "ON lead_tasks(remind_at) WHERE status = 'pending' AND reminder_sent_at IS NULL"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE template_attachments "
-            "ADD COLUMN IF NOT EXISTS library_asset_id INTEGER"
-        ))
-        await conn.execute(text(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint "
-            "WHERE conname = 'template_attachments_library_asset_id_fkey') THEN "
-            "ALTER TABLE template_attachments ADD CONSTRAINT template_attachments_library_asset_id_fkey "
-            "FOREIGN KEY (library_asset_id) REFERENCES media_assets(id) ON DELETE RESTRICT; "
-            "END IF; END $$"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_template_attachments_library_asset "
-            "ON template_attachments(library_asset_id)"
-        ))
+        await _create_index_if_missing(
+            conn, "idx_lead_tasks_pending_reminder",
+            "CREATE INDEX idx_lead_tasks_pending_reminder "
+            "ON lead_tasks(remind_at) WHERE status = 'pending' AND reminder_sent_at IS NULL",
+        )
+        await _add_column_if_missing(conn, "template_attachments", "library_asset_id", "INTEGER")
+        if not await _constraint_exists(conn, "template_attachments_library_asset_id_fkey"):
+            await conn.execute(text(
+                "ALTER TABLE template_attachments ADD CONSTRAINT template_attachments_library_asset_id_fkey "
+                "FOREIGN KEY (library_asset_id) REFERENCES media_assets(id) ON DELETE RESTRICT"
+            ))
+        await _create_index_if_missing(
+            conn, "idx_template_attachments_library_asset",
+            "CREATE INDEX idx_template_attachments_library_asset ON template_attachments(library_asset_id)",
+        )
         # Los adjuntos creados antes de la biblioteca también pasan a estar
         # disponibles para reutilizarlos, sin duplicar el archivo físico.
         await conn.execute(text(
@@ -90,19 +217,43 @@ async def lifespan(app: FastAPI):
             "FROM media_assets ma WHERE ta.library_asset_id IS NULL "
             "AND ma.media_url = ta.media_url"
         ))
+        await _add_column_if_missing(conn, "lead_note_mentions", "read_at", "TIMESTAMPTZ")
+        await conn.execute(text(
+            "INSERT INTO user_notifications "
+            "(user_id, notification_type, title, body, lead_id, source_id, metadata, read_at, created_at) "
+            "SELECT m.user_id, 'internal_note_mention', u.name || ' te mencionó en una nota', "
+            "n.content, n.lead_id, n.id::text, "
+            "jsonb_build_object('note_id', n.id, 'author_user_id', u.id, 'author_name', u.name), "
+            "m.read_at, m.created_at FROM lead_note_mentions m "
+            "JOIN lead_notes n ON n.id = m.note_id JOIN users u ON u.id = n.author_user_id "
+            "WHERE m.user_id <> n.author_user_id AND NOT EXISTS ("
+            "SELECT 1 FROM user_notifications un WHERE un.user_id = m.user_id "
+            "AND un.notification_type = 'internal_note_mention' AND un.source_id = n.id::text)"
+        ))
+    except BaseException as exc:
+        await database_transaction.__aexit__(type(exc), exc, exc.__traceback__)
+        raise
+    else:
+        await database_transaction.__aexit__(None, None, None)
 
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
 
+    await backfill_automation_state()
+
     watcher_task = asyncio.create_task(watch_chats())
     reminder_task = asyncio.create_task(watch_task_reminders())
+    automation_task = asyncio.create_task(watch_automations())
     yield
     watcher_task.cancel()
     reminder_task.cancel()
+    automation_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await watcher_task
     with contextlib.suppress(asyncio.CancelledError):
         await reminder_task
+    with contextlib.suppress(asyncio.CancelledError):
+        await automation_task
     await close_engine()
 
 
@@ -126,13 +277,27 @@ app.include_router(tags.router)
 app.include_router(tasks.router)
 app.include_router(templates.router)
 app.include_router(media_library.router)
+app.include_router(internal_notes.router)
+app.include_router(notifications.router)
 app.include_router(dashboard.router)
+app.include_router(automations.router)
 # webhooks y media.upload los llama n8n directamente (autenticados con su
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)
 app.include_router(media.router)
 
 app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+
+
+@app.get("/health", tags=["health"])
+async def health():
+    try:
+        async with get_engine().connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except (OSError, SQLAlchemyError) as exc:
+        logger.warning("Health check failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "ok", "database": "ok"}
 
 
 @app.websocket("/ws/chats")
@@ -145,13 +310,9 @@ async def chats_websocket(websocket: WebSocket):
         return
 
     await manager.connect(websocket, user.id)
+    await websocket.send_json({"type": "notifications_updated"})
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}

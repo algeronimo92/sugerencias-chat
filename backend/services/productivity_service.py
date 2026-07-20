@@ -4,6 +4,7 @@ from sqlalchemy import and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from domain_types import TaskStatus
 from db.models import Lead, LeadTask, MessageTemplate, TemplateAttachment, TemplateUserState, User
 from db.session import get_sessionmaker
 
@@ -19,7 +20,10 @@ def _task(row):
         "status": row["status"], "priority": row["priority"], "due_at": _ts(row["due_at"]),
         "remind_at": _ts(row["remind_at"]), "assigned_user_id": row["assigned_user_id"],
         "assigned_user_name": row["assigned_user_name"],
-        "is_overdue": row["status"] == "pending" and row["due_at"] < datetime.now(timezone.utc),
+        "is_overdue": (
+            row["status"] == TaskStatus.PENDING
+            and row["due_at"] < datetime.now(timezone.utc)
+        ),
         "created_at": _ts(row["created_at"]),
     }
 
@@ -57,7 +61,13 @@ async def list_tasks(
 
 async def create_task(values: dict, user_id: int):
     now = datetime.now(timezone.utc)
-    values = {**values, "created_by_user_id": user_id, "created_at": now, "updated_at": now, "status": "pending"}
+    values = {
+        **values,
+        "created_by_user_id": user_id,
+        "created_at": now,
+        "updated_at": now,
+        "status": TaskStatus.PENDING,
+    }
     async with get_sessionmaker()() as session:
         result = await session.execute(insert(LeadTask).values(**values).returning(LeadTask.id))
         task_id = result.scalar_one()
@@ -75,11 +85,11 @@ async def update_task(task_id: int, values: dict, user_id: int):
     values["updated_at"] = datetime.now(timezone.utc)
     if "remind_at" in values:
         values["reminder_sent_at"] = None
-    if values.get("status") == "completed":
+    if values.get("status") == TaskStatus.COMPLETED:
         values.update(completed_at=datetime.now(timezone.utc), completed_by_user_id=user_id)
     elif "status" in values:
         values.update(completed_at=None, completed_by_user_id=None)
-        if values["status"] == "pending":
+        if values["status"] == TaskStatus.PENDING:
             values["reminder_sent_at"] = None
     stmt = update(LeadTask).where(LeadTask.id == task_id).values(**values)
     async with get_sessionmaker()() as session:
@@ -101,7 +111,7 @@ async def claim_due_reminders() -> list[dict]:
     stmt = (
         select(LeadTask)
         .where(
-            LeadTask.status == "pending",
+            LeadTask.status == TaskStatus.PENDING,
             LeadTask.remind_at.is_not(None),
             LeadTask.remind_at <= now,
             LeadTask.reminder_sent_at.is_(None),
@@ -133,7 +143,7 @@ async def release_reminder(task_id: int) -> None:
     async with get_sessionmaker()() as session:
         await session.execute(
             update(LeadTask)
-            .where(LeadTask.id == task_id, LeadTask.status == "pending")
+            .where(LeadTask.id == task_id, LeadTask.status == TaskStatus.PENDING)
             .values(reminder_sent_at=None)
         )
         await session.commit()
@@ -145,6 +155,12 @@ def _template(row, attachments: list[dict] | None = None):
         "shortcut": row["shortcut"], "category": row["category"], "stage": row["stage"],
         "task_type": row["task_type"], "service": row["service"], "is_active": row["is_active"],
         "visibility": row["visibility"], "is_favorite": bool(row["is_favorite"]),
+        "template_type": row["template_type"], "official_name": row["official_name"],
+        "official_language": row["official_language"], "official_category": row["official_category"],
+        "official_status": row["official_status"],
+        "official_parameter_values": row["official_parameter_values"] or [],
+        "interactive_type": row["interactive_type"],
+        "interactive_config": row["interactive_config"] or {},
         "last_used_at": _ts(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
         "attachments": attachments or [],
     }
@@ -156,6 +172,10 @@ async def list_templates(user_id: int, include_inactive=False):
             MessageTemplate.id, MessageTemplate.name, MessageTemplate.content, MessageTemplate.shortcut,
             MessageTemplate.category, MessageTemplate.stage, MessageTemplate.task_type,
             MessageTemplate.service, MessageTemplate.is_active, MessageTemplate.visibility,
+            MessageTemplate.template_type, MessageTemplate.official_name,
+            MessageTemplate.official_language, MessageTemplate.official_category,
+            MessageTemplate.official_status, MessageTemplate.official_parameter_values,
+            MessageTemplate.interactive_type, MessageTemplate.interactive_config,
             TemplateUserState.is_favorite, TemplateUserState.last_used_at, TemplateUserState.use_count,
         )
         .outerjoin(
@@ -214,7 +234,9 @@ async def update_template(template_id: int, values: dict):
 async def create_personal_template(name: str, content: str, shortcut: str | None, user_id: int):
     return await create_template(
         {"name": name, "content": content, "shortcut": shortcut, "category": "personal", "stage": None,
-         "task_type": None, "service": None, "is_active": True, "visibility": "personal"},
+         "task_type": None, "service": None, "is_active": True, "visibility": "personal",
+         "template_type": "internal", "official_parameter_values": [],
+         "interactive_type": "none", "interactive_config": {}},
         user_id,
     )
 
@@ -270,6 +292,10 @@ async def add_template_attachment(
         exists = await session.get(MessageTemplate, template_id)
         if not exists:
             return None
+        if exists.template_type == "official" or exists.interactive_type != "none":
+            raise ValueError(
+                "Las plantillas oficiales o interactivas no usan adjuntos internos"
+            )
         total = await session.scalar(
             select(func.count(TemplateAttachment.id)).where(TemplateAttachment.template_id == template_id)
         )

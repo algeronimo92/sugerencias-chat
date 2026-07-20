@@ -1,4 +1,5 @@
 import type { Chat } from '../types'
+import { LockKeyhole } from 'lucide-react'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, waitingTier } from '../utils/chat'
 import { parseContent } from '../utils/message'
 
@@ -44,6 +45,10 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
   const awaitingReply = isAwaitingReply(chat)
   const elapsedMs = awaitingReply && chat.timestamp ? Date.now() - new Date(chat.timestamp).getTime() : 0
   const tier = waitingTier(elapsedMs)
+  const customerWindowExpiresAt = chat.last_customer_message_at
+    ? new Date(chat.last_customer_message_at).getTime() + 24 * 60 * 60 * 1000
+    : 0
+  const isCustomerWindowOpen = customerWindowExpiresAt > Date.now()
 
   return (
     <button
@@ -89,6 +94,11 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
             {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
             <span className="truncate">{previewText}</span>
           </p>
+          {!isCustomerWindowOpen && (
+            <span title="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">
+              <LockKeyhole className="h-3.5 w-3.5" />
+            </span>
+          )}
           {chat.unread_count > 0 && (
             <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-green-600 text-white text-[11px] font-semibold flex items-center justify-center">
               {chat.unread_count > 99 ? '99+' : chat.unread_count}

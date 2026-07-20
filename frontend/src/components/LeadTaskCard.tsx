@@ -4,15 +4,15 @@ import type { Chat, TaskPriority, TaskType } from '../types'
 import { useCreateTask, useTasks, useUpdateTask } from '../hooks/useTasks'
 import { extractErrorMessage } from '../utils/errors'
 import { useMe } from '../hooks/useAuth'
-
-const TASK_TYPES: { value: TaskType; label: string }[] = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'llamada', label: 'Llamada' },
-  { value: 'cotizacion', label: 'Cotización' },
-  { value: 'cita', label: 'Cita' },
-  { value: 'seguimiento', label: 'Seguimiento' },
-  { value: 'otro', label: 'Otro' },
-]
+import {
+  TASK_TYPE_OPTIONS as TASK_TYPES,
+  TASK_PRIORITY_OPTIONS,
+  TaskPriorityValue,
+  TaskStatusValue,
+  TaskTypeValue,
+  isTaskPriority,
+  isTaskType,
+} from '../domain/automationCatalog'
 
 export function LeadTaskCard({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
@@ -22,8 +22,8 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
   const { mutate: update, isPending: isCompleting } = useUpdateTask()
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('Seguimiento por WhatsApp')
-  const [type, setType] = useState<TaskType>('whatsapp')
-  const [priority, setPriority] = useState<TaskPriority>('normal')
+  const [type, setType] = useState<TaskType>(TaskTypeValue.WhatsApp)
+  const [priority, setPriority] = useState<TaskPriority>(TaskPriorityValue.Normal)
   const tomorrow = new Date(Date.now() + 86400000)
   tomorrow.setMinutes(0, 0, 0)
   const localInputValue = (date: Date) => {
@@ -51,7 +51,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
 
   function handleComplete(id: number) {
     setError(null)
-    update({ id, status: 'completed' }, { onError: (err) => setError(extractErrorMessage(err)) })
+    update({ id, status: TaskStatusValue.Completed }, { onError: (err) => setError(extractErrorMessage(err)) })
   }
 
   return (
@@ -106,19 +106,17 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           <div className="grid grid-cols-2 gap-2">
             <select
               value={type}
-              onChange={(event) => setType(event.target.value as TaskType)}
+              onChange={(event) => { if (isTaskType(event.target.value)) setType(event.target.value) }}
               className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
             >
               {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
             </select>
             <select
               value={priority}
-              onChange={(event) => setPriority(event.target.value as TaskPriority)}
+              onChange={(event) => { if (isTaskPriority(event.target.value)) setPriority(event.target.value) }}
               className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
             >
-              <option value="low">Baja</option>
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
+              {TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
           <input

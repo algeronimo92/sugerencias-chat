@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BookmarkPlus, Check, CheckCheck, FileText, Loader2, Maximize2, RefreshCw, Send } from 'lucide-react'
-import type { Chat, MessageStatus } from '../types'
+import { BookmarkPlus, Check, CheckCheck, FileText, Loader2, Maximize2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
+import type { Chat, InternalNote, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
@@ -16,6 +16,12 @@ import { VoiceRecorder } from './VoiceRecorder'
 import { TemplatePicker } from './TemplatePicker'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
+import { InternalNoteComposer } from './InternalNoteComposer'
+import { InternalNoteCard } from './InternalNoteCard'
+import { useInternalNotes } from '../hooks/useInternalNotes'
+import { useMe } from '../hooks/useAuth'
+import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
+import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 
 const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
 const MEDIA_ACCEPT = 'image/*,video/*'
@@ -91,16 +97,20 @@ interface OpenMedia {
   alt: string
 }
 
+type TimelineItem =
+  | { kind: 'message'; key: string; sentAt: string | null; message: Message }
+  | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
+
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
 function MessageStatusTicks({ status }: { status: MessageStatus }) {
   if (status === 'READ' || status === 'PLAYED') {
-    return <CheckCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+    return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-blue-500 shrink-0" /></span>
   }
   if (status === 'DELIVERY_ACK') {
-    return <CheckCheck className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+    return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
   }
-  return <Check className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+  return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
 }
 
 export function ChatThread({ chat, onRefreshSuggestions }: Props) {
@@ -118,6 +128,27 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   // orden de páginas, pero se conserva el orden ascendente dentro de cada
   // página, para renderizar el historial de viejo a nuevo.
   const messages = [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items)
+  const { data: notes = [] } = useInternalNotes(chat.chat_id)
+  const { data: me } = useMe()
+  const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
+  const timeline = useMemo<TimelineItem[]>(() => [
+    ...messages.map(message => ({
+      kind: 'message' as const,
+      key: `message-${message.id}`,
+      sentAt: message.sent_at,
+      message,
+    })),
+    ...notes.map(note => ({
+      kind: 'note' as const,
+      key: `note-${note.id}`,
+      sentAt: note.created_at,
+      note,
+    })),
+  ].sort((a, b) => {
+    const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
+    const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
+    return aTime - bTime || a.key.localeCompare(b.key)
+  }), [messages, notes])
   // Algunos mensajes (ej. audios recién enviados) todavía no tienen sent_at
   // confirmado. Si se comparara solo contra el vecino inmediato, un mensaje
   // sin fecha "cortaría" el grupo del día y el siguiente mensaje dispararía
@@ -125,28 +156,29 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   // se compara contra el último día CON fecha confirmada, no contra el
   // mensaje anterior a secas.
   const dateSeparators = useMemo(() => {
-    const separators = new Map<number, boolean>()
+    const separators = new Map<string, boolean>()
     let lastDay: string | null = null
-    for (const m of messages) {
-      if (!m.sent_at) continue
-      const day = new Date(m.sent_at).toDateString()
-      separators.set(m.id, day !== lastDay)
+    for (const item of timeline) {
+      if (!item.sentAt) continue
+      const day = new Date(item.sentAt).toDateString()
+      separators.set(item.key, day !== lastDay)
       lastDay = day
     }
     return separators
-  }, [messages])
+  }, [timeline])
   const pageCount = messagePages?.pages.length ?? 0
-  const lastMessageId = messages.at(-1)?.id ?? null
+  const lastTimelineKey = timeline.at(-1)?.key ?? null
   const threadRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const initialScrollDoneRef = useRef(false)
   const isNearBottomRef = useRef(true)
   const loadingOlderRef = useRef(false)
-  const latestMessageIdRef = useRef<number | null>(null)
+  const latestTimelineKeyRef = useRef<string | null>(null)
   const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
+  const [isNoteMode, setIsNoteMode] = useState(false)
 
   const [draft, setDraft] = useState('')
   const [slashIndex, setSlashIndex] = useState(0)
@@ -192,7 +224,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     if (slashQuery === null) return []
     const query = slashQuery.toLowerCase()
     return templates
-      .filter((t) => t.shortcut?.toLowerCase().startsWith(query))
+      .filter((t) => t.template_type === 'internal' && t.shortcut?.toLowerCase().startsWith(query))
       .sort((a, b) => Number(b.stage === chat.stage) - Number(a.stage === chat.stage))
       .slice(0, 6)
   }, [templates, slashQuery, chat.stage])
@@ -200,7 +232,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const activeSlashIndex = Math.min(slashIndex, Math.max(slashSuggestions.length - 1, 0))
 
   function selectSlashTemplate(template: (typeof slashSuggestions)[number]) {
-    if (template.attachments.length) setMultimediaTemplate(template)
+    if (template.interactive_type !== 'none' || template.attachments.length) setMultimediaTemplate(template)
     else { setDraft(renderTemplate(template, chat)); recordTemplateUse.mutate(template.id) }
     setSlashIndex(0)
     setSlashDismissed(true)
@@ -212,7 +244,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     initialScrollDoneRef.current = false
     isNearBottomRef.current = true
     loadingOlderRef.current = false
-    latestMessageIdRef.current = null
+    latestTimelineKeyRef.current = null
     prependSnapshotRef.current = null
   }, [chat.chat_id])
 
@@ -225,7 +257,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         container.scrollTop = container.scrollHeight
         initialScrollDoneRef.current = true
         isNearBottomRef.current = true
-        latestMessageIdRef.current = lastMessageId
+        latestTimelineKeyRef.current = lastTimelineKey
       })
       return
     }
@@ -241,13 +273,13 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
       return
     }
 
-    if (lastMessageId !== latestMessageIdRef.current) {
-      latestMessageIdRef.current = lastMessageId
+    if (lastTimelineKey !== latestTimelineKeyRef.current) {
+      latestTimelineKeyRef.current = lastTimelineKey
       if (isNearBottomRef.current) {
         requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }))
       }
     }
-  }, [chat.chat_id, isLoading, lastMessageId, messages.length, pageCount])
+  }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount])
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
@@ -259,6 +291,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     setPendingLocation(null)
     setSlashIndex(0)
     setSlashDismissed(false)
+    setIsNoteMode(false)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -409,7 +442,10 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
           </div>
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{displayName(chat)}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{displayName(chat)}</p>
+            <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
+          </div>
         </div>
         <button
           onClick={handleRefresh}
@@ -433,7 +469,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
         {error && (
           <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">Error al cargar mensajes.</p>
         )}
-        {!isLoading && !error && messages.length === 0 && (
+        {!isLoading && !error && timeline.length === 0 && (
           <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin mensajes en este chat.</p>
         )}
         {!isLoading && !error && hasNextPage && (
@@ -461,7 +497,27 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
             {isFetchingNextPage ? 'Cargando anteriores...' : 'Cargar mensajes anteriores'}
           </button>
         )}
-        {messages.map((m) => {
+        {timeline.map((item) => {
+          const showDateSeparator = dateSeparators.get(item.key) ?? false
+          if (item.kind === 'note') {
+            return (
+              <Fragment key={item.key}>
+                {showDateSeparator && (
+                  <div className="flex justify-center py-1">
+                    <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                      {formatDayLabel(item.sentAt)}
+                    </span>
+                  </div>
+                )}
+                <InternalNoteCard
+                  chatId={chat.chat_id}
+                  note={item.note}
+                  canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
+                />
+              </Fragment>
+            )
+          }
+          const m = item.message
           const isVendedor = m.sender === 'vendedor'
           const { kind, icon: Icon, label, text } = parseContent(m.content)
           // Si el archivo falló al cargar (ej. no existe en este entorno),
@@ -470,9 +526,8 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           // con nuestro caption de abajo.
           const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
           const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
-          const showDateSeparator = dateSeparators.get(m.id) ?? false
           return (
-            <Fragment key={m.id}>
+            <Fragment key={item.key}>
               {showDateSeparator && (
                 <div className="flex justify-center py-1">
                   <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
@@ -632,10 +687,28 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
       </div>
 
       {/* Compose */}
-      <form
-        onSubmit={handleSend}
-        className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3"
-      >
+      {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
+      {isNoteMode ? (
+        <InternalNoteComposer
+          chatId={chat.chat_id}
+          onCancel={() => setIsNoteMode(false)}
+          onCreated={() => setIsNoteMode(false)}
+        />
+      ) : (
+        <form
+          onSubmit={handleSend}
+          className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3"
+        >
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-[11px] font-medium text-green-700 dark:text-green-400">Mensaje de WhatsApp</span>
+          <button
+            type="button"
+            onClick={() => setIsNoteMode(true)}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+          >
+            <MessageSquareLock className="h-3.5 w-3.5" /> Cambiar a nota interna
+          </button>
+        </div>
         {sendError && (
           <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
         )}
@@ -724,7 +797,8 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
             />
           )}
         </div>
-      </form>
+        </form>
+      )}
 
       {openMedia && (
         <MediaLightbox

@@ -6,6 +6,16 @@ class EvolutionApiError(Exception):
     pass
 
 
+def mediatype_from_content_type(content_type: str) -> str:
+    if content_type.startswith("image/"):
+        return "image"
+    if content_type.startswith("video/"):
+        return "video"
+    if content_type.startswith("audio/"):
+        return "audio"
+    return "document"
+
+
 async def _config() -> tuple[str, str, str]:
     api_url = await get_effective("evolution_api_url")
     api_key = await get_effective("evolution_api_key")
@@ -28,6 +38,102 @@ async def _post(url: str, api_key: str, payload: dict, timeout: float) -> dict:
         if response.is_error:
             raise EvolutionApiError(f"Evolution API respondió {response.status_code}: {response.text}")
         return response.json()
+
+
+async def get_template_capabilities() -> dict:
+    """Detecta si la instancia usa la integración Meta de Evolution.
+
+    Evolution expone sendTemplate en el router general, pero el adaptador
+    Baileys responde "Method not available". Se consulta la instancia para
+    poder explicarlo antes de que el usuario intente enviar.
+    """
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/instance/fetchInstances"
+    headers = {"apikey": api_key}
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(url, headers=headers)
+        if response.is_error:
+            raise EvolutionApiError(
+                f"Evolution API respondió {response.status_code} al consultar la instancia"
+            )
+        rows = response.json()
+
+    integration = None
+    for row in rows if isinstance(rows, list) else []:
+        row_name = row.get("name") or (row.get("instance") or {}).get("instanceName")
+        if row_name == instance:
+            integration = row.get("integration") or (row.get("instance") or {}).get("integration")
+            break
+    normalized = str(integration).upper() if integration else None
+    supported = normalized == "WHATSAPP-BUSINESS"
+    return {
+        "integration": normalized,
+        "official_sending_supported": supported,
+        "reason": None if supported else (
+            "La instancia de Evolution usa Baileys. Las plantillas oficiales requieren "
+            "una instancia con integración WHATSAPP-BUSINESS (Meta Cloud API)."
+        ),
+    }
+
+
+async def send_whatsapp_template(
+    chat_id: str,
+    name: str,
+    language: str,
+    components: list[dict],
+) -> dict:
+    capabilities = await get_template_capabilities()
+    if not capabilities["official_sending_supported"]:
+        raise EvolutionApiError(capabilities["reason"] or "La instancia no admite plantillas oficiales")
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/message/sendTemplate/{instance}"
+    payload = {
+        "number": chat_id,
+        "name": name,
+        "language": language,
+        "components": components,
+    }
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def send_whatsapp_buttons(
+    chat_id: str,
+    title: str,
+    description: str,
+    footer: str,
+    buttons: list[dict],
+) -> dict:
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/message/sendButtons/{instance}"
+    payload = {
+        "number": chat_id,
+        "title": title,
+        "description": description,
+        "buttons": buttons,
+    }
+    payload["footer"] = footer.strip() or "DermicaPro"
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def send_whatsapp_list(
+    chat_id: str,
+    title: str,
+    description: str,
+    footer_text: str,
+    button_text: str,
+    sections: list[dict],
+) -> dict:
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/message/sendList/{instance}"
+    payload = {
+        "number": chat_id,
+        "title": title,
+        "description": description,
+        "footerText": footer_text.strip() or "DermicaPro",
+        "buttonText": button_text,
+        "sections": sections,
+    }
+    return await _post(url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_text(chat_id: str, text: str) -> dict:
