@@ -24,33 +24,37 @@ async def get_suggestions(body: SuggestionRequest):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Error llamando n8n: {str(e)}")
 
-    # El Structured Output Parser del workflow obliga al agente a devolver
-    # `output.estado`. Esa decisión es la única fuente de verdad: se persiste
-    # al terminar la ejecución y luego se avisa a todos los paneles abiertos.
+    # Si el workflow manda `output.estado`, esa decisión es la única fuente
+    # de verdad para la etapa: se persiste al terminar la ejecución y luego
+    # se avisa a todos los paneles abiertos. El workflow actual ya no lo
+    # incluye siempre (ver senal_compra/alerta en SuggestionResponse), así
+    # que si no viene no se toca la etapa del lead.
     previous = await fetch_chat(body.chat_id)
-    lead = await update_lead_stage(
-        body.chat_id,
-        DbLeadStage(result.estado),
-        actor_type="agent",
-        metadata={"confidence": result.confianza, "reason": result.analisis},
-    )
-    if lead is None:
+    if previous is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if result.estado is not None:
+        await update_lead_stage(
+            body.chat_id,
+            DbLeadStage(result.estado),
+            actor_type="agent",
+            metadata={"confidence": result.confianza, "reason": result.analisis},
+        )
 
     await cache_suggestion(body.chat_id, result.model_dump())
 
-    await manager.broadcast(
-        {
-            "type": "chats_updated",
-            "lead_stage_updated": {
-                "chat_id": body.chat_id,
-                "stage": result.estado,
-            },
-        }
-    )
-    if previous and previous["stage"] != result.estado:
-        try:
-            await trigger_stage_changed(body.chat_id)
-        except Exception:
-            logger.exception("No se pudo programar la automatización de cambio de etapa del agente")
+    if result.estado is not None:
+        await manager.broadcast(
+            {
+                "type": "chats_updated",
+                "lead_stage_updated": {
+                    "chat_id": body.chat_id,
+                    "stage": result.estado,
+                },
+            }
+        )
+        if previous and previous["stage"] != result.estado:
+            try:
+                await trigger_stage_changed(body.chat_id)
+            except Exception:
+                logger.exception("No se pudo programar la automatización de cambio de etapa del agente")
     return result

@@ -1,4 +1,4 @@
-import { Sparkles, AlertTriangle } from 'lucide-react'
+import { Sparkles, AlertTriangle, TrendingUp } from 'lucide-react'
 import type { Chat, SuggestionResponse } from '../types'
 import { LeadInfo } from './LeadInfo'
 import { LeadStatus } from './LeadStatus'
@@ -48,14 +48,34 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
 
         {data && !isLoading && (
           <>
-            {/* Estado + Confianza */}
-            <LeadStatus estado={data.estado} confianza={data.confianza} />
+            {/* Estado (si el agente lo mandó) + Confianza + Señal de compra */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {data.estado && <LeadStatus estado={data.estado} confianza={data.confianza} />}
+              {!data.estado && (
+                <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                  Confianza: {data.confianza}
+                </span>
+              )}
+              {data.senal_compra && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400">
+                  <TrendingUp className="w-3 h-3" /> Señal de compra
+                </span>
+              )}
+            </div>
 
             {/* Objeción detectada */}
             {data.tipo_objecion && (
               <div className="flex items-start gap-2 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900 rounded-xl px-4 py-2.5 text-sm text-yellow-800 dark:text-yellow-400">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 <p><span className="font-semibold">Objeción detectada:</span> {data.tipo_objecion}</p>
+              </div>
+            )}
+
+            {/* Alerta del agente */}
+            {data.alerta && (
+              <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-xl px-4 py-2.5 text-sm text-red-700 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <p><span className="font-semibold">Alerta:</span> {data.alerta}</p>
               </div>
             )}
 

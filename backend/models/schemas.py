@@ -228,11 +228,15 @@ class Sugerencia(BaseModel):
 
 
 class SuggestionResponse(BaseModel):
-    # Debe coincidir con el enum `lead_estado` y con el Structured Output
-    # Parser del agente n8n. Pydantic rechaza cualquier etapa inventada antes
-    # de que llegue a PostgreSQL.
-    estado: LeadStage
+    # `estado` es opcional: el workflow de n8n dejó de incluirlo en su salida
+    # (ver senal_compra/alerta más abajo) y solo mandaba tipo_objecion en
+    # versiones previas. Si algún día vuelve a mandarlo, debe coincidir con
+    # el enum `lead_estado` — Pydantic rechaza cualquier etapa inventada
+    # antes de que llegue a PostgreSQL.
+    estado: LeadStage | None = None
     tipo_objecion: str | None = None
+    senal_compra: bool = False
+    alerta: str | None = None
     confianza: str
     analisis: str
     sugerencias: list[Sugerencia]

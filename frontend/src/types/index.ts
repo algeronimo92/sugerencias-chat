@@ -161,8 +161,10 @@ export interface Sugerencia {
 }
 
 export interface SuggestionResponse {
-  estado: LeadStage
+  estado: LeadStage | null
   tipo_objecion: string | null
+  senal_compra: boolean
+  alerta: string | null
   confianza: string
   analisis: string
   sugerencias: Sugerencia[]
