@@ -16,15 +16,18 @@ from domain_types import (
 
 LeadStage = Literal[
     "nuevo",
-    "calificacion",
-    "cotizacion",
-    "objecion",
-    "cierre",
+    "en_diagnostico",
+    "calificado",
+    "oferta_presentada",
+    "en_objecion",
     "agendado",
+    "cliente_activo",
     "postventa",
-    "sin_respuesta",
-    "reactivacion",
+    "en_seguimiento",
+    "en_nutricion",
     "perdido",
+    "descalificado",
+    "baja",
 ]
 
 
@@ -38,6 +41,7 @@ class Chat(BaseModel):
     origen: str | None = None
     notas: str | None = None
     stage: LeadStage = "nuevo"
+    con_especialista: bool = False
     last_message: str | None = None
     last_message_sender: str | None = None
     timestamp: str | None = None

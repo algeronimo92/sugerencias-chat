@@ -1,8 +1,19 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -21,15 +32,18 @@ class Base(DeclarativeBase):
 
 class LeadStage(str, Enum):
     nuevo = "nuevo"
-    calificacion = "calificacion"
-    cotizacion = "cotizacion"
-    objecion = "objecion"
-    cierre = "cierre"
+    en_diagnostico = "en_diagnostico"
+    calificado = "calificado"
+    oferta_presentada = "oferta_presentada"
+    en_objecion = "en_objecion"
     agendado = "agendado"
+    cliente_activo = "cliente_activo"
     postventa = "postventa"
-    sin_respuesta = "sin_respuesta"
-    reactivacion = "reactivacion"
+    en_seguimiento = "en_seguimiento"
+    en_nutricion = "en_nutricion"
     perdido = "perdido"
+    descalificado = "descalificado"
+    baja = "baja"
 
 
 class Lead(Base):
@@ -64,6 +78,15 @@ class Lead(Base):
     # services/db_service.py:get_cached_suggestion.
     cached_suggestion: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cached_suggestion_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Chat derivado a un especialista humano — flag independiente del estado,
+    # no una etapa del Kanban.
+    con_especialista: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    razon_perdido: Mapped[str | None] = mapped_column(Text)
+    fecha_recontacto: Mapped[date | None] = mapped_column(Date)
+    contador_noshow: Mapped[int | None] = mapped_column(SmallInteger)
+    proxima_cita: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    toques_seguimiento: Mapped[int | None] = mapped_column(SmallInteger)
+    fecha_ultimo_toque: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("idx_leads_vendedor_id", vendedor_id),)
 

@@ -105,12 +105,12 @@ class TestTagsAndStage:
 
     async def test_change_stage_updates_local_chat_for_later_actions(self, deps, recorder):
         chat = make_chat(stage="nuevo")
-        action = {"type": AutomationActionType.CHANGE_STAGE, "stage": "cierre"}
+        action = {"type": AutomationActionType.CHANGE_STAGE, "stage": "oferta_presentada"}
         await _execute_action(action, chat, make_execution(), make_rule(), deps)
-        assert recorder.stage_changes == [("51999@s.whatsapp.net", "cierre")]
+        assert recorder.stage_changes == [("51999@s.whatsapp.net", "oferta_presentada")]
         # El chat en memoria se actualiza para que una acción posterior de la
         # misma ejecución vea la etapa nueva.
-        assert chat["stage"] == "cierre"
+        assert chat["stage"] == "oferta_presentada"
 
 
 class TestNotify:

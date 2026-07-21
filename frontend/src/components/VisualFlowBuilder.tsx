@@ -56,7 +56,7 @@ function defaultAction(type: AutomationActionType): AutomationAction {
     case ActionType.RemoveTag:
       return { type, tag_id: null }
     case ActionType.ChangeStage:
-      return { type, stage: 'calificacion' }
+      return { type, stage: 'en_diagnostico' }
     case ActionType.Notify:
       return { type, recipient: AutomationRecipient.Seller, user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
     case ActionType.SendTemplate:

@@ -7,16 +7,21 @@ import type {
 import { AutomationActionType, FlowNodeType } from '../domain/automationCatalog'
 
 export const LEAD_STAGES = [
+  // Flujo principal
   'nuevo',
-  'calificacion',
-  'cotizacion',
-  'objecion',
-  'cierre',
+  'en_diagnostico',
+  'calificado',
+  'oferta_presentada',
+  'en_objecion',
   'agendado',
+  'cliente_activo',
   'postventa',
-  'sin_respuesta',
-  'reactivacion',
+  // Columnas secundarias
+  'en_seguimiento',
+  'en_nutricion',
   'perdido',
+  'descalificado',
+  'baja',
 ] as const
 
 export type LeadStage = (typeof LEAD_STAGES)[number]
@@ -100,6 +105,7 @@ export interface Chat {
   origen: string | null
   notas: string | null
   stage: LeadStage
+  con_especialista: boolean
   last_message: string | null
   last_message_sender: string | null
   timestamp: string | null

@@ -95,7 +95,7 @@ class TestMatchesStaticConditions:
         assert matches_static_conditions({}, {"stage": "nuevo"}) == (True, None)
 
     def test_stage_mismatch_is_reported(self):
-        matches, reason = matches_static_conditions({"stage": "cierre"}, {"stage": "nuevo"})
+        matches, reason = matches_static_conditions({"stage": "oferta_presentada"}, {"stage": "nuevo"})
         assert matches is False
         assert "etapa" in reason.lower()
 

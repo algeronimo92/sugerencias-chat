@@ -7,15 +7,18 @@ import { extractErrorMessage } from '../utils/errors'
 
 const STAGE_LABELS: Record<string, string> = {
   nuevo: 'Nuevo',
-  calificacion: 'Calificación',
-  cotizacion: 'Cotización',
-  objecion: 'Objeción',
-  cierre: 'Cierre',
+  en_diagnostico: 'En diagnóstico',
+  calificado: 'Calificado',
+  oferta_presentada: 'Oferta presentada',
+  en_objecion: 'En objeción',
   agendado: 'Agendado',
+  cliente_activo: 'Cliente activo',
   postventa: 'Postventa',
-  sin_respuesta: 'Sin respuesta',
-  reactivacion: 'Reactivación',
+  en_seguimiento: 'En seguimiento',
+  en_nutricion: 'En nutrición',
   perdido: 'Perdido',
+  descalificado: 'Descalificado',
+  baja: 'Baja',
 }
 
 // Estos son los buckets "sin dato" que arma el backend (COALESCE) para que

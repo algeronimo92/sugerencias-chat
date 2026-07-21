@@ -9,15 +9,18 @@ import { parseContent } from '../utils/message'
 
 const STAGE_META: Record<LeadStage, { label: string; dot: string; header: string }> = {
   nuevo: { label: 'Nuevo', dot: 'bg-sky-500', header: 'border-sky-400' },
-  calificacion: { label: 'Calificación', dot: 'bg-indigo-500', header: 'border-indigo-400' },
-  cotizacion: { label: 'Cotización', dot: 'bg-violet-500', header: 'border-violet-400' },
-  objecion: { label: 'Objeción', dot: 'bg-amber-500', header: 'border-amber-400' },
-  cierre: { label: 'Cierre', dot: 'bg-orange-500', header: 'border-orange-400' },
-  agendado: { label: 'Agendado', dot: 'bg-cyan-500', header: 'border-cyan-400' },
+  en_diagnostico: { label: 'En diagnóstico', dot: 'bg-indigo-500', header: 'border-indigo-400' },
+  calificado: { label: 'Calificado', dot: 'bg-cyan-500', header: 'border-cyan-400' },
+  oferta_presentada: { label: 'Oferta presentada', dot: 'bg-violet-500', header: 'border-violet-400' },
+  en_objecion: { label: 'En objeción', dot: 'bg-amber-500', header: 'border-amber-400' },
+  agendado: { label: 'Agendado', dot: 'bg-blue-500', header: 'border-blue-400' },
+  cliente_activo: { label: 'Cliente activo', dot: 'bg-green-500', header: 'border-green-400' },
   postventa: { label: 'Postventa', dot: 'bg-emerald-500', header: 'border-emerald-400' },
-  sin_respuesta: { label: 'Sin respuesta', dot: 'bg-slate-500', header: 'border-slate-400' },
-  reactivacion: { label: 'Reactivación', dot: 'bg-fuchsia-500', header: 'border-fuchsia-400' },
+  en_seguimiento: { label: 'En seguimiento', dot: 'bg-slate-500', header: 'border-slate-400' },
+  en_nutricion: { label: 'En nutrición', dot: 'bg-fuchsia-500', header: 'border-fuchsia-400' },
   perdido: { label: 'Perdido', dot: 'bg-rose-500', header: 'border-rose-400' },
+  descalificado: { label: 'Descalificado', dot: 'bg-stone-500', header: 'border-stone-400' },
+  baja: { label: 'Baja', dot: 'bg-gray-500', header: 'border-gray-400' },
 }
 
 interface KanbanCardProps {
@@ -93,6 +96,11 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
               <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{displayName(chat)}</p>
               <GripVertical className="h-4 w-4 shrink-0 text-gray-300 group-hover:text-gray-500 dark:text-gray-600" />
             </div>
+            {chat.con_especialista && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
+                <UserRound className="h-2.5 w-2.5" /> Con especialista
+              </span>
+            )}
             <p className="mt-0.5 truncate text-[11px] text-gray-400 dark:text-gray-500">{chat.phone || chat.chat_id}</p>
           </div>
         </div>

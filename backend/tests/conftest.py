@@ -151,7 +151,7 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
 
     async def update_lead_stage(chat_id, stage, actor_type="system", actor_user_id=None, metadata=None):
         # .value y no str(): LeadStage es (str, Enum) y no StrEnum, así que
-        # str() devolvería "LeadStage.cierre" en vez de "cierre".
+        # str() devolvería "LeadStage.en_objecion" en vez de "en_objecion".
         value = getattr(stage, "value", stage)
         recorder.stage_changes.append((chat_id, value))
         return {"stage": value}
