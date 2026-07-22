@@ -7,6 +7,8 @@ python-dotenv==1.0.1
 pydantic-settings==2.5.2
 bcrypt==4.2.1
 PyJWT==2.9.0
+cryptography==49.0.0
+minio==7.2.20
 # La zona horaria del negocio (America/Lima) se resuelve con zoneinfo, que en
 # Windows y en imágenes slim no trae la base de datos de zonas del sistema.
 tzdata==2024.2

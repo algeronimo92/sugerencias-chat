@@ -4,12 +4,14 @@ import type { SettingItem } from '../types'
 import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import { extractErrorMessage } from '../utils/errors'
 import { UsersPanel } from './UsersPanel'
+import { WhatsappPanel } from './WhatsappPanel'
 
 interface Props {
   onClose: () => void
+  initialTab?: Tab
 }
 
-type Tab = 'claves' | 'usuarios'
+type Tab = 'claves' | 'whatsapp' | 'usuarios'
 
 const TAB_CLASS = (active: boolean) =>
   `px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -31,8 +33,8 @@ function groupItems(items: SettingItem[]): { group: string; groupLabel: string; 
   return groups
 }
 
-export function SettingsDialog({ onClose }: Props) {
-  const [tab, setTab] = useState<Tab>('claves')
+export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const { data, isLoading, error } = useSettings(tab === 'claves')
   const { mutate: save, isPending: isSaving } = useSaveSettings()
 
@@ -129,6 +131,9 @@ export function SettingsDialog({ onClose }: Props) {
               <button type="button" onClick={() => setTab('claves')} className={TAB_CLASS(tab === 'claves')}>
                 Claves
               </button>
+              <button type="button" onClick={() => setTab('whatsapp')} className={TAB_CLASS(tab === 'whatsapp')}>
+                WhatsApp
+              </button>
               <button type="button" onClick={() => setTab('usuarios')} className={TAB_CLASS(tab === 'usuarios')}>
                 Usuarios
               </button>
@@ -145,6 +150,8 @@ export function SettingsDialog({ onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           {tab === 'usuarios' && <UsersPanel />}
+
+          {tab === 'whatsapp' && <WhatsappPanel onGoToClaves={() => setTab('claves')} />}
 
           {tab === 'claves' && isLoading && (
             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Cargando configuración...</p>

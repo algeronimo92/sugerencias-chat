@@ -58,12 +58,13 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
     <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          <CalendarClock className="h-3.5 w-3.5" /> Próxima acción
+          <CalendarClock className="h-3.5 w-3.5" /> Próxima tarea pendiente
         </div>
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          aria-label="Programar seguimiento"
+          aria-label="Crear una tarea para este lead"
+          title="Crear tarea"
           className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -77,7 +78,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
             <div>
               <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{next.title}</p>
               <p className={`text-xs ${next.is_overdue ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                {new Date(next.due_at).toLocaleString('es-PE')} · {next.assigned_user_name}
+                {next.is_overdue ? 'Vencida' : 'Vence'}: {new Date(next.due_at).toLocaleString('es-PE')} · Responsable: {next.assigned_user_name}
               </p>
             </div>
           </div>
@@ -85,13 +86,15 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
             type="button"
             onClick={() => handleComplete(next.id)}
             disabled={isCompleting}
+            aria-label={`Marcar como completada: ${next.title}`}
+            title="Marcar tarea como completada"
             className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-green-600 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-700"
           >
             {isCompleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           </button>
         </div>
       ) : (
-        <p className="text-xs text-gray-400">Sin seguimiento programado.</p>
+        <p className="text-xs text-gray-400">No hay tareas pendientes programadas.</p>
       )}
 
       {open && (
@@ -99,6 +102,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            placeholder="Ej. Llamar para confirmar la cita"
             required
             className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
           />
@@ -130,7 +134,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
             disabled={isCreating}
             className="flex w-full items-center justify-center gap-1.5 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
           >
-            {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Programar'}
+            {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Guardar tarea'}
           </button>
           {error && <p className="text-xs text-red-500">{error}</p>}
         </form>

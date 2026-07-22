@@ -29,10 +29,11 @@ async def new_message_webhook(x_webhook_token: str | None = Header(default=None)
     """Llamado por n8n justo después de guardar un mensaje nuevo en la DB."""
     await _check_token(x_webhook_token)
 
-    payload = {"type": "chats_updated"}
+    payload = {"type": "chats_updated", "reason": "inbound_message"}
     latest = await fetch_latest_message()
     if latest is not None:
         payload["latest_message"] = latest
+        payload["chat_id"] = latest["chat_id"]
         try:
             await trigger_inbound_message(latest)
         except Exception:
@@ -73,7 +74,18 @@ async def message_status_webhook(
                 read_synced.append(read_update)
 
     if changed or read_synced:
-        await manager.broadcast({"type": "chats_updated"})
+        chat_ids = {
+            item["chat_id"]
+            for item in [*changed, *read_synced]
+            if item.get("chat_id")
+        }
+        if chat_ids:
+            for chat_id in chat_ids:
+                await manager.broadcast(
+                    {"type": "chats_updated", "chat_id": chat_id, "reason": "message_status"}
+                )
+        else:
+            await manager.broadcast({"type": "chats_updated", "reason": "message_status"})
 
     return {
         "status": "ok",

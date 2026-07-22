@@ -15,6 +15,16 @@ cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 
 **Primer login:** la app requiere iniciar sesión. Para crear la primera cuenta (admin), completá `SECRET_KEY` (generarla con `openssl rand -hex 32`), `ADMIN_EMAIL` y `ADMIN_PASSWORD` en `backend/.env` antes de levantar el backend por primera vez — se crea automáticamente al arrancar si la tabla `users` está vacía. Después de loguearte podés borrar `ADMIN_PASSWORD` del archivo (no se vuelve a leer una vez que existe algún usuario). Desde "Configuración → Usuarios" el admin da de alta al resto del equipo (vendedores).
 
+**Cifrado de configuración:** definí también `SETTINGS_ENCRYPTION_KEY` con una
+clave base64-url aleatoria de 32 bytes (el comando de generación está en
+`backend/.env.example`). Los tokens y API keys escritos en `app_settings` se
+guardan con AES-GCM autenticado, permanecen enmascarados en la API y solo se
+descifran dentro del backend. URLs, IDs y parámetros operativos se conservan
+en texto plano para que la UI y las integraciones externas puedan utilizarlos.
+Al arrancar, el backend normaliza automáticamente las filas históricas según
+esta política. Guardá una copia segura de la clave fuera de PostgreSQL:
+perderla impide recuperar los valores secretos.
+
 ### 2. Reverse proxy (Traefik)
 
 Se levanta una sola vez por servidor; es compartido entre proyectos que enruten por dominio.
@@ -65,6 +75,29 @@ POST {EVOLUTION_API_URL}/chat/markMessageAsRead/{EVOLUTION_INSTANCE}
 Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
 como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
 después de agregar el mapeo al nodo de inserción de n8n.
+
+Si una integración guardó mensajes con `sender` en `NULL` pero conservó su
+`wa_message_id`, se puede recuperar `key.fromMe` directamente desde Evolution.
+Primero ejecutar la simulación, que no escribe en PostgreSQL:
+
+```bash
+docker compose exec -T backend python -m scripts.backfill_message_senders
+```
+
+El reporte solo muestra conteos y nunca imprime contenido, credenciales ni IDs
+de WhatsApp. Después de revisar cuántos registros se resolvieron, aplicar el
+resultado explícitamente:
+
+```bash
+docker compose exec -T backend python -m scripts.backfill_message_senders --apply
+```
+
+Se pueden usar `--limit 5`, `--chat-id <remoteJid>` y `--concurrency 5` para
+hacer una prueba acotada. Solo se actualizan filas que todavía tengan
+`sender IS NULL` y cuya respuesta contenga un `fromMe` booleano inequívoco.
+Después del backfill, aplicar
+`backend/migrations/019_wsp_message_sender_not_null.sql` para que PostgreSQL
+rechace cualquier nuevo mensaje que no indique `cliente` o `vendedor`.
 
 ### Doble check de mensajes enviados
 
@@ -236,3 +269,25 @@ usar `message/sendButtons` o `message/sendList` en Evolution API. Las variables
 del CRM también se resuelven en títulos, pies, botones, secciones y opciones.
 Estos mensajes requieren que la ventana de atención esté abierta. La migración
 correspondiente está en `backend/migrations/011_interactive_templates.sql`.
+
+### Envío asíncrono y diagnóstico de latencia
+
+Los mensajes de texto se registran primero como `PENDING` junto con una fila
+durable en `message_outbox`. El request HTTP responde sin esperar a Evolution
+API; un worker integrado los envía en segundo plano, conserva el orden por chat
+y hace hasta tres intentos antes de marcar el mensaje como `FAILED`. Esto no
+requiere RabbitMQ para el volumen actual y evita perder trabajos si el backend
+se reinicia. La migración manual equivalente está en
+`backend/migrations/017_message_outbox.sql`.
+
+Desde el panel de un lead también puede programarse un texto para una fecha y
+hora futuras. El registro permanece en `scheduled_messages` y puede cancelarse
+mientras siga programado. Al vencer, el worker comprueba la ventana de atención
+de 24 horas y recién entonces crea el mensaje `PENDING` y su trabajo de outbox.
+La vista muestra si quedó programado, está enviándose, fue enviado o falló. La
+migración manual está en `backend/migrations/018_scheduled_messages.sql`.
+
+Cada respuesta HTTP expone `Server-Timing` y `X-DB-Queries` para separar tiempo
+total, PostgreSQL y llamadas a Evolution, n8n o ElevenLabs desde DevTools. La
+ruta `/health` comprueba que el proceso vive y `/health/ready` verifica además
+la conexión con la base; los healthchecks de Docker usan esta última.

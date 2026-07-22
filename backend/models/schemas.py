@@ -133,6 +133,11 @@ class KanbanPage(BaseModel):
     has_more: bool
 
 
+class KanbanSnapshot(BaseModel):
+    counts: dict[LeadStage, int]
+    stages: dict[LeadStage, KanbanPage]
+
+
 class LeadStageUpdate(BaseModel):
     stage: LeadStage
 
@@ -150,6 +155,24 @@ class Message(BaseModel):
 class MessagePage(BaseModel):
     items: list[Message]
     has_more: bool
+
+
+class ScheduledMessageCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+    scheduled_at: datetime
+
+
+class ScheduledMessageItem(BaseModel):
+    id: int
+    lead_id: str
+    text: str
+    scheduled_at: str
+    status: Literal["scheduled", "processing", "queued", "sent", "failed", "cancelled"]
+    created_by_user_id: int
+    created_by_user_name: str
+    queued_message_id: int | None = None
+    error: str | None = None
+    created_at: str
 
 
 class CustomerServiceWindow(BaseModel):
@@ -216,6 +239,9 @@ class SellerItem(BaseModel):
 class SuggestionRequest(BaseModel):
     chat_id: str
     phone: str | None = None
+    # Ignora la sugerencia cacheada y vuelve a pedirle una nueva a n8n — el
+    # vendedor pide otras opciones porque las actuales no le sirven.
+    force: bool = False
 
 
 class Sugerencia(BaseModel):

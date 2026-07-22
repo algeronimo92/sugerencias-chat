@@ -1,9 +1,36 @@
+import asyncio
+import logging
+
 import httpx
-from services.settings_service import get_effective
+from time import monotonic, perf_counter
+from services.performance import record_external_duration
+from services.settings_service import get_effective_many
+
+logger = logging.getLogger(__name__)
 
 
 class EvolutionApiError(Exception):
     pass
+
+
+_http_client: httpx.AsyncClient | None = None
+_capabilities_cache: tuple[float, dict] | None = None
+
+
+def _client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+    return _http_client
+
+
+async def close_evolution_client() -> None:
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
 
 
 def mediatype_from_content_type(content_type: str) -> str:
@@ -17,14 +44,30 @@ def mediatype_from_content_type(content_type: str) -> str:
 
 
 async def _config() -> tuple[str, str, str]:
-    api_url = await get_effective("evolution_api_url")
-    api_key = await get_effective("evolution_api_key")
-    instance = await get_effective("evolution_instance")
+    values = await get_effective_many((
+        "evolution_api_url",
+        "evolution_api_key",
+        "evolution_instance",
+    ))
+    api_url = values["evolution_api_url"]
+    api_key = values["evolution_api_key"]
+    instance = values["evolution_instance"]
     if not (api_url and api_key and instance):
         raise EvolutionApiError(
             "Evolution API no está configurada (URL / API key / instancia)"
         )
     return api_url, api_key, instance
+
+
+async def is_configured() -> bool:
+    """True si están cargadas URL, API key e instancia. Lo usa la UI de
+    conexión para no intentar pedir el QR sin credenciales."""
+    values = await get_effective_many((
+        "evolution_api_url",
+        "evolution_api_key",
+        "evolution_instance",
+    ))
+    return all(values.values())
 
 
 async def _post(url: str, api_key: str, payload: dict, timeout: float) -> dict:
@@ -33,11 +76,14 @@ async def _post(url: str, api_key: str, payload: dict, timeout: float) -> dict:
     payload mal formado es indistinguible de cualquier otro error y hay que
     ir a probar con curl a mano para saber qué se quejó realmente."""
     headers = {"apikey": api_key}
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        if response.is_error:
-            raise EvolutionApiError(f"Evolution API respondió {response.status_code}: {response.text}")
-        return response.json()
+    started_at = perf_counter()
+    try:
+        response = await _client().post(url, json=payload, headers=headers, timeout=timeout)
+    finally:
+        record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        raise EvolutionApiError(f"Evolution API respondió {response.status_code}: {response.text}")
+    return response.json()
 
 
 async def get_template_capabilities() -> dict:
@@ -47,16 +93,22 @@ async def get_template_capabilities() -> dict:
     Baileys responde "Method not available". Se consulta la instancia para
     poder explicarlo antes de que el usuario intente enviar.
     """
+    global _capabilities_cache
+    if _capabilities_cache and _capabilities_cache[0] > monotonic():
+        return _capabilities_cache[1]
     api_url, api_key, instance = await _config()
     url = f"{api_url.rstrip('/')}/instance/fetchInstances"
     headers = {"apikey": api_key}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(url, headers=headers)
-        if response.is_error:
-            raise EvolutionApiError(
-                f"Evolution API respondió {response.status_code} al consultar la instancia"
-            )
-        rows = response.json()
+    started_at = perf_counter()
+    try:
+        response = await _client().get(url, headers=headers, timeout=20.0)
+    finally:
+        record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        raise EvolutionApiError(
+            f"Evolution API respondió {response.status_code} al consultar la instancia"
+        )
+    rows = response.json()
 
     integration = None
     for row in rows if isinstance(rows, list) else []:
@@ -66,7 +118,7 @@ async def get_template_capabilities() -> dict:
             break
     normalized = str(integration).upper() if integration else None
     supported = normalized == "WHATSAPP-BUSINESS"
-    return {
+    result = {
         "integration": normalized,
         "official_sending_supported": supported,
         "reason": None if supported else (
@@ -74,6 +126,8 @@ async def get_template_capabilities() -> dict:
             "una instancia con integración WHATSAPP-BUSINESS (Meta Cloud API)."
         ),
     }
+    _capabilities_cache = (monotonic() + 300.0, result)
+    return result
 
 
 async def send_whatsapp_template(
@@ -213,3 +267,117 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
         ]
     }
     return await _post(url, api_key, payload, timeout=30.0)
+
+
+# --- Vinculación de la instancia por QR ---------------------------------------
+# Estos endpoints administran el enlace de la instancia con un teléfono
+# WhatsApp (escanear el QR desde Configuración). La API key nunca sale al
+# navegador: el frontend siempre pasa por estos proxies del backend.
+
+
+async def get_connection_state() -> dict:
+    """Estado de vinculación de la instancia.
+
+    Normaliza a ``state``: ``open`` (vinculada), ``connecting`` (esperando el
+    escaneo del QR), ``close`` (desvinculada), ``missing`` (la instancia no
+    existe en Evolution) o ``unknown``.
+    """
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/instance/connectionState/{instance}"
+    headers = {"apikey": api_key}
+    started_at = perf_counter()
+    try:
+        response = await _client().get(url, headers=headers, timeout=20.0)
+    finally:
+        record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+    if response.status_code == 404:
+        return {"state": "missing", "instance": instance}
+    if response.is_error:
+        raise EvolutionApiError(
+            f"Evolution API respondió {response.status_code} al consultar el estado: {response.text}"
+        )
+    data = response.json()
+    state = (data.get("instance") or {}).get("state") or data.get("state")
+    return {"state": state or "unknown", "instance": instance}
+
+
+QR_CONNECT_ATTEMPTS = 3
+QR_CONNECT_DELAY_SECONDS = 1.5
+
+
+def _extract_qr(data: object) -> tuple[str | None, str | None, str | None, str | None]:
+    """Saca (base64, code, pairingCode, state) de la respuesta de /connect.
+
+    Evolution devuelve el QR plano en /connect o anidado en `qrcode` (al crear
+    la instancia). El base64 a veces viene sin el prefijo `data:`."""
+    if not isinstance(data, dict):
+        return None, None, None, None
+    qr = data["qrcode"] if isinstance(data.get("qrcode"), dict) else data
+    base64 = qr.get("base64") if isinstance(qr, dict) else None
+    code = qr.get("code") if isinstance(qr, dict) else None
+    pairing_code = qr.get("pairingCode") if isinstance(qr, dict) else None
+    state = (data.get("instance") or {}).get("state") if isinstance(data.get("instance"), dict) else data.get("state")
+    if base64 and not base64.startswith("data:"):
+        base64 = f"data:image/png;base64,{base64}"
+    return base64, code, pairing_code, state
+
+
+async def connect_instance() -> dict:
+    """Pide a Evolution el QR para vincular la instancia.
+
+    Justo después de un logout, Evolution suele tardar uno o dos intentos en
+    generar el QR (lo entrega de forma asíncrona), así que se reintenta antes
+    de rendirse. Si la instancia ya está vinculada no hay QR: se informa como
+    tal en vez de fallar."""
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/instance/connect/{instance}"
+    headers = {"apikey": api_key}
+
+    last_state: str | None = None
+    for attempt in range(1, QR_CONNECT_ATTEMPTS + 1):
+        started_at = perf_counter()
+        try:
+            response = await _client().get(url, headers=headers, timeout=20.0)
+        finally:
+            record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+        if response.is_error:
+            raise EvolutionApiError(
+                f"Evolution API respondió {response.status_code} al pedir el QR: {response.text}"
+            )
+        data = response.json()
+        base64, code, pairing_code, state = _extract_qr(data)
+        last_state = state
+        if base64:
+            return {"base64": base64, "code": code, "pairing_code": pairing_code, "instance": instance, "state": state}
+        if state == "open":
+            # Ya vinculada: no hay QR que mostrar (el estado se refleja aparte).
+            return {"base64": None, "code": None, "pairing_code": None, "instance": instance, "state": "open"}
+        logger.warning(
+            "connect_instance: Evolution no devolvió QR (intento %d/%d, state=%s): %r",
+            attempt, QR_CONNECT_ATTEMPTS, state, data,
+        )
+        if attempt < QR_CONNECT_ATTEMPTS:
+            await asyncio.sleep(QR_CONNECT_DELAY_SECONDS)
+
+    raise EvolutionApiError(
+        "Evolution no devolvió el código QR"
+        + (f" (estado: {last_state})" if last_state else "")
+        + ". Esperá unos segundos y probá de nuevo; si sigue igual, reiniciá la instancia en Evolution."
+    )
+
+
+async def logout_instance() -> dict:
+    """Desvincula el teléfono de la instancia (cierra la sesión de WhatsApp)."""
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/instance/logout/{instance}"
+    headers = {"apikey": api_key}
+    started_at = perf_counter()
+    try:
+        response = await _client().delete(url, headers=headers, timeout=20.0)
+    finally:
+        record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        raise EvolutionApiError(
+            f"Evolution API respondió {response.status_code} al desvincular: {response.text}"
+        )
+    return {"status": "ok", "instance": instance}

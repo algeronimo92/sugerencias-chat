@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 
 import httpx
 from sqlalchemy import func, insert, select, update
@@ -1160,14 +1161,14 @@ async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({"type": "chats_updated"})
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "lead_updated"})
     return {"status": AutomationExecutionStatus.COMPLETED, "user_id": action["user_id"]}
 
 
 async def _action_add_tag(action, chat, execution, rule, deps) -> dict:
     if not await deps.assign_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id):
         raise ValueError("Lead o etiqueta no encontrado")
-    await deps.broadcast({"type": "chats_updated"})
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "tag_changed"})
     return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
 
 
@@ -1189,7 +1190,7 @@ async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({"type": "chats_updated"})
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "stage_changed"})
     return {"status": AutomationExecutionStatus.COMPLETED, "stage": action["stage"]}
 
 
@@ -1256,7 +1257,7 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
             wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
         ))
     await deps.record_template_use(template.id, rule.created_by_user_id)
-    await deps.broadcast({"type": "chats_updated"})
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "message_ids": [message["id"] for message in sent],
@@ -1909,11 +1910,15 @@ async def backfill_automation_state() -> None:
 
 
 async def watch_automations() -> None:
+    next_housekeeping_at = 0.0
     while True:
         try:
-            await _release_stale_executions()
-            await _discover_recent_inbound_messages()
-            await _discover_timed_events()
+            now_mono = monotonic()
+            if now_mono >= next_housekeeping_at:
+                await _release_stale_executions()
+                await _discover_recent_inbound_messages()
+                await _discover_timed_events()
+                next_housekeeping_at = now_mono + 60.0
             await process_due_automation_executions()
         except asyncio.CancelledError:
             raise

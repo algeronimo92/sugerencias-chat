@@ -1,24 +1,31 @@
 import asyncio
 import contextlib
 import logging
+from time import perf_counter
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 from config import settings
 from db.models import Base
 from db.session import close_engine, get_engine
-from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks
-from routers.media import MEDIA_DIR
-from services.auth_service import COOKIE_NAME, decode_access_token, get_current_user, hash_password, require_admin
+from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
+from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin
 from services.chat_watcher import watch_chats
-from services.db_service import get_user_by_id, seed_admin_if_needed
+from services.db_service import seed_admin_if_needed
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
 from services.automation_service import backfill_automation_state, watch_automations
+from services.evolution_service import close_evolution_client
+from services.n8n_service import close_n8n_client
+from services.tts_service import close_tts_client
+from services.message_outbox import watch_message_outbox
+from services.scheduled_message_service import watch_scheduled_messages
+from services.performance import begin_request_metrics, finish_request_metrics
+from services.media_storage import MediaStorageError, check_media_storage
+from services.settings_service import migrate_settings_encryption
 
 logger = logging.getLogger(__name__)
 DATABASE_RETRY_MAX_SECONDS = 30
@@ -236,6 +243,15 @@ async def lifespan(app: FastAPI):
     else:
         await database_transaction.__aexit__(None, None, None)
 
+    encrypted_settings, decrypted_settings = await migrate_settings_encryption()
+    if encrypted_settings or decrypted_settings:
+        logger.info(
+            "Normalized persisted application settings: encrypted_secrets=%s "
+            "decrypted_public=%s",
+            encrypted_settings,
+            decrypted_settings,
+        )
+
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
 
@@ -244,20 +260,55 @@ async def lifespan(app: FastAPI):
     watcher_task = asyncio.create_task(watch_chats())
     reminder_task = asyncio.create_task(watch_task_reminders())
     automation_task = asyncio.create_task(watch_automations())
+    outbox_task = asyncio.create_task(watch_message_outbox())
+    scheduled_messages_task = asyncio.create_task(watch_scheduled_messages())
     yield
     watcher_task.cancel()
     reminder_task.cancel()
     automation_task.cancel()
+    outbox_task.cancel()
+    scheduled_messages_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await watcher_task
     with contextlib.suppress(asyncio.CancelledError):
         await reminder_task
     with contextlib.suppress(asyncio.CancelledError):
         await automation_task
+    with contextlib.suppress(asyncio.CancelledError):
+        await outbox_task
+    with contextlib.suppress(asyncio.CancelledError):
+        await scheduled_messages_task
+    await close_evolution_client()
+    await close_n8n_client()
+    await close_tts_client()
     await close_engine()
 
 
 app = FastAPI(title="WSP Suggestions API", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def add_performance_headers(request, call_next):
+    tokens = begin_request_metrics()
+    started_at = perf_counter()
+    try:
+        response = await call_next(request)
+    except BaseException:
+        finish_request_metrics(tokens)
+        raise
+    total_ms = (perf_counter() - started_at) * 1000
+    metrics = finish_request_metrics(tokens)
+    timings = [f"app;dur={total_ms:.1f}", f"db;dur={metrics.database_ms:.1f}"]
+    timings.extend(f"{name};dur={duration:.1f}" for name, duration in metrics.external_ms.items())
+    response.headers["Server-Timing"] = ", ".join(timings)
+    response.headers["X-DB-Queries"] = str(metrics.query_count)
+    if total_ms >= 1000:
+        logger.info(
+            "Slow request %s %s total=%.1fms db=%.1fms queries=%s external=%s",
+            request.method, request.url.path, total_ms, metrics.database_ms,
+            metrics.query_count, metrics.external_ms,
+        )
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -273,8 +324,10 @@ app.include_router(chats.router, dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
 app.include_router(tts.router, dependencies=[Depends(get_current_user)])
 app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
+app.include_router(whatsapp.router, dependencies=[Depends(require_admin)])
 app.include_router(tags.router)
 app.include_router(tasks.router)
+app.include_router(scheduled_messages.router)
 app.include_router(templates.router)
 app.include_router(media_library.router)
 app.include_router(internal_notes.router)
@@ -285,34 +338,43 @@ app.include_router(automations.router)
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)
 app.include_router(media.router)
-
-app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+app.include_router(media.files_router)
 
 
 @app.get("/health", tags=["health"])
 async def health():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+async def readiness():
     try:
         async with get_engine().connect() as connection:
             await connection.execute(text("SELECT 1"))
+        storage = await asyncio.to_thread(check_media_storage)
+    except MediaStorageError as exc:
+        logger.warning("Storage health check failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Media storage unavailable") from exc
     except (OSError, SQLAlchemyError) as exc:
         logger.warning("Health check failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "media_storage": storage["backend"]}
 
 
 @app.websocket("/ws/chats")
 async def chats_websocket(websocket: WebSocket):
     token = websocket.cookies.get(COOKIE_NAME)
-    user_id = decode_access_token(token) if token else None
-    user = await get_user_by_id(user_id) if user_id is not None else None
-    if user is None or not user.is_active:
+    user = await get_user_from_token(token)
+    if user is None:
         await websocket.close(code=4401)
         return
 
     await manager.connect(websocket, user.id)
-    await websocket.send_json({"type": "notifications_updated"})
     try:
+        await websocket.send_json({"type": "notifications_updated"})
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
         await manager.disconnect(websocket)

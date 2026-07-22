@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
 import type { AutomationAction, AutomationConditions, AutomationExecution, AutomationFlowDefinition, AutomationRule, AutomationTrigger } from '../types'
+import { useChatSocketConnected } from './useChats'
 
 export interface AutomationRuleInput {
   name: string
@@ -15,20 +16,22 @@ export interface AutomationRuleInput {
 }
 
 export function useAutomationRules() {
+  const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['automations'],
     queryFn: async () => (await client.get<AutomationRule[]>('/api/automations')).data,
-    refetchInterval: 30_000,
+    refetchInterval: connected ? false : 60_000,
   })
 }
 
 export function useAutomationExecutions(ruleId?: number, status?: string) {
+  const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['automation-executions', ruleId ?? 'all', status ?? 'all'],
     queryFn: async () => (await client.get<AutomationExecution[]>('/api/automations/executions', {
       params: { rule_id: ruleId, status, limit: 200 },
     })).data,
-    refetchInterval: 15_000,
+    refetchInterval: connected ? false : 60_000,
   })
 }
 

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, insert, select, update
 
-from db.models import Lead, LeadActivity, LeadNote, LeadNoteMention, User
+from db.models import Lead, LeadActivity, LeadNote, LeadNoteMention, User, UserNotification
 from db.session import get_sessionmaker
 
 
@@ -58,12 +58,12 @@ async def _mentions_for_notes(session, note_ids: list[int]) -> dict[int, list[di
 
 async def list_internal_notes(lead_id: str) -> list[dict] | None:
     async with get_sessionmaker()() as session:
-        if await session.get(Lead, lead_id) is None:
-            return None
         rows = (await session.execute(
             _note_query().where(LeadNote.lead_id == lead_id)
             .order_by(LeadNote.created_at.asc(), LeadNote.id.asc())
         )).mappings().all()
+        if not rows and await session.get(Lead, lead_id) is None:
+            return None
         mentions = await _mentions_for_notes(session, [row["id"] for row in rows])
     return [_note(row, mentions.get(row["id"])) for row in rows]
 
@@ -209,3 +209,34 @@ async def mark_internal_mentions_read(lead_id: str, user_id: int) -> None:
             .values(read_at=datetime.now(timezone.utc))
         )
         await session.commit()
+
+
+async def mark_note_views_read(lead_id: str, user_id: int) -> bool:
+    """Marca menciones y notificaciones del lead en una sola transacción."""
+    note_ids = select(LeadNote.id).where(LeadNote.lead_id == lead_id)
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        mention_result = await session.execute(
+            update(LeadNoteMention)
+            .where(
+                LeadNoteMention.user_id == user_id,
+                LeadNoteMention.read_at.is_(None),
+                LeadNoteMention.note_id.in_(note_ids),
+            )
+            .values(read_at=now)
+        )
+        notification_result = await session.execute(
+            update(UserNotification)
+            .where(
+                UserNotification.user_id == user_id,
+                UserNotification.lead_id == lead_id,
+                UserNotification.read_at.is_(None),
+            )
+            .values(read_at=now)
+        )
+        changed = bool(mention_result.rowcount or notification_result.rowcount)
+        if changed:
+            await session.commit()
+        else:
+            await session.rollback()
+    return changed

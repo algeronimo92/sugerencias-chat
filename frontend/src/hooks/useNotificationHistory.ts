@@ -1,8 +1,10 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { NotificationPage } from '../types'
+import { useChatSocketConnected } from './useChats'
 
 export function useNotificationHistory(unreadOnly = false) {
+  const connected = useChatSocketConnected()
   return useInfiniteQuery({
     queryKey: ['notifications', unreadOnly],
     queryFn: async ({ pageParam }) => (await client.get<NotificationPage>('/api/notifications', {
@@ -13,7 +15,7 @@ export function useNotificationHistory(unreadOnly = false) {
       ? pages.reduce((total, page) => total + page.items.length, 0)
       : undefined,
     staleTime: 15_000,
-    refetchInterval: 10_000,
+    refetchInterval: connected ? false : 60_000,
     refetchOnWindowFocus: true,
     retry: 2,
   })

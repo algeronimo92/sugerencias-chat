@@ -1,15 +1,24 @@
+import asyncio
 import base64
 import mimetypes
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from services.media_storage import MEDIA_DIR
+from services.media_storage import (
+    MediaNotFoundError,
+    MediaStorageError,
+    iter_media,
+    save_media_bytes,
+    stat_media,
+)
 from services.settings_service import get_effective
 
 router = APIRouter(prefix="/api/media", tags=["media"])
+files_router = APIRouter(tags=["media-files"])
 
 ALLOWED_CONTENT_PREFIXES = ("image/", "video/", "audio/")
 # Documentos: se enumeran explícito en vez de aceptar cualquier content_type,
@@ -64,7 +73,7 @@ def normalize_media_content_type(content_type: str, filename: str | None = None)
 
 
 def save_media_file(content_type: str, data_base64: str, filename: str | None = None) -> str:
-    """Decodifica y guarda un archivo base64 en MEDIA_DIR, devuelve su media_url.
+    """Decodifica y guarda un archivo base64, y devuelve su media_url estable.
     Lanza ValueError con el motivo si el archivo no es válido.
 
     La extensión se toma del filename original cuando está disponible, en vez
@@ -96,9 +105,62 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
         ext = mimetypes.guess_extension(content_type) or ""
 
     stored_filename = f"{uuid.uuid4().hex}{ext}"
-    (MEDIA_DIR / stored_filename).write_bytes(raw)
+    return save_media_bytes(stored_filename, raw, content_type)
 
-    return f"/media/{stored_filename}"
+
+def _requested_range(value: str | None, size: int) -> tuple[int, int, int]:
+    """Devuelve (inicio, longitud, status) para un único rango HTTP."""
+    if not value:
+        return 0, size, 200
+    try:
+        unit, selection = value.split("=", 1)
+        if unit.strip().lower() != "bytes" or "," in selection:
+            raise ValueError
+        start_text, end_text = selection.strip().split("-", 1)
+        if not start_text:
+            suffix = int(end_text)
+            if suffix <= 0:
+                raise ValueError
+            start = max(size - suffix, 0)
+            end = size - 1
+        else:
+            start = int(start_text)
+            end = min(int(end_text), size - 1) if end_text else size - 1
+            if start < 0 or start >= size or end < start:
+                raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(416, "Rango no válido", headers={"Content-Range": f"bytes */{size}"})
+    return start, end - start + 1, 206
+
+
+@files_router.api_route("/media/{filename}", methods=["GET", "HEAD"])
+def get_media_file(filename: str, request: Request, range_header: str | None = Header(default=None, alias="Range")):
+    """Entrega archivos locales o privados de MinIO conservando URLs históricas."""
+    media_url = f"/media/{filename}"
+    try:
+        info = stat_media(media_url)
+    except MediaNotFoundError:
+        raise HTTPException(404, "Archivo no encontrado")
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
+
+    start, length, status_code = _requested_range(range_header, info.size)
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if status_code == 206:
+        headers["Content-Range"] = f"bytes {start}-{start + length - 1}/{info.size}"
+    if request.method == "HEAD":
+        return Response(status_code=status_code, headers=headers, media_type=info.content_type)
+    return StreamingResponse(
+        iter_media(media_url, start, length),
+        status_code=status_code,
+        headers=headers,
+        media_type=info.content_type,
+    )
 
 
 @router.post("/upload")
@@ -111,9 +173,11 @@ async def upload_media(
         raise HTTPException(status_code=401, detail="Token inválido")
 
     try:
-        media_url = save_media_file(body.content_type, body.data_base64)
+        media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))
+    except MediaStorageError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     return {"media_url": media_url}

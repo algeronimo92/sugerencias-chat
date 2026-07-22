@@ -2,26 +2,18 @@ import { useEffect, useState, type DragEvent } from 'react'
 import { AlertCircle, Check, GripVertical, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
 import type { Chat, LeadStage } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
-import { useBulkAssignTag, useBulkMoveStage, useKanbanCounts, useKanbanStage, useMoveLeadStage } from '../hooks/useKanban'
+import {
+  useBulkAssignTag,
+  useBulkMoveStage,
+  useKanbanSnapshot,
+  useLoadKanbanStage,
+  useMoveLeadStage,
+  type KanbanPage,
+} from '../hooks/useKanban'
 import { useTags } from '../hooks/useLeadMeta'
+import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { avatarInitial, displayName } from '../utils/chat'
 import { parseContent } from '../utils/message'
-
-const STAGE_META: Record<LeadStage, { label: string; dot: string; header: string }> = {
-  nuevo: { label: 'Nuevo', dot: 'bg-sky-500', header: 'border-sky-400' },
-  en_diagnostico: { label: 'En diagnóstico', dot: 'bg-indigo-500', header: 'border-indigo-400' },
-  calificado: { label: 'Calificado', dot: 'bg-cyan-500', header: 'border-cyan-400' },
-  oferta_presentada: { label: 'Oferta presentada', dot: 'bg-violet-500', header: 'border-violet-400' },
-  en_objecion: { label: 'En objeción', dot: 'bg-amber-500', header: 'border-amber-400' },
-  agendado: { label: 'Agendado', dot: 'bg-blue-500', header: 'border-blue-400' },
-  cliente_activo: { label: 'Cliente activo', dot: 'bg-green-500', header: 'border-green-400' },
-  postventa: { label: 'Postventa', dot: 'bg-emerald-500', header: 'border-emerald-400' },
-  en_seguimiento: { label: 'En seguimiento', dot: 'bg-slate-500', header: 'border-slate-400' },
-  en_nutricion: { label: 'En nutrición', dot: 'bg-fuchsia-500', header: 'border-fuchsia-400' },
-  perdido: { label: 'Perdido', dot: 'bg-rose-500', header: 'border-rose-400' },
-  descalificado: { label: 'Descalificado', dot: 'bg-stone-500', header: 'border-stone-400' },
-  baja: { label: 'Baja', dot: 'bg-gray-500', header: 'border-gray-400' },
-}
 
 interface KanbanCardProps {
   chat: Chat
@@ -148,7 +140,7 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
         >
           {LEAD_STAGES.map((stage) => (
             <option key={stage} value={stage}>
-              Mover a {STAGE_META[stage].label}
+              Mover a {LEAD_STAGE_META[stage].label}
             </option>
           ))}
         </select>
@@ -161,6 +153,9 @@ interface KanbanColumnProps {
   stage: LeadStage
   search: string
   total: number
+  initialPage: KanbanPage | undefined
+  snapshotLoading: boolean
+  snapshotError: boolean
   draggedChat: Chat | null
   movingIds: Set<string>
   selectedIds: Set<string>
@@ -175,6 +170,9 @@ function KanbanColumn({
   stage,
   search,
   total,
+  initialPage,
+  snapshotLoading,
+  snapshotError,
   draggedChat,
   movingIds,
   selectedIds,
@@ -185,9 +183,20 @@ function KanbanColumn({
   onMove,
 }: KanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false)
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useKanbanStage(stage, search)
-  const chats = data?.pages.flatMap((page) => page.items) ?? []
-  const meta = STAGE_META[stage]
+  const [extraPages, setExtraPages] = useState<KanbanPage[]>([])
+  const loadNextPage = useLoadKanbanStage()
+  useEffect(() => setExtraPages([]), [initialPage, search])
+  const chats = [...(initialPage?.items ?? []), ...extraPages.flatMap((page) => page.items)]
+  const lastPage = extraPages.at(-1) ?? initialPage
+  const hasNextPage = lastPage?.has_more ?? false
+  const meta = LEAD_STAGE_META[stage]
+
+  function fetchNextPage() {
+    loadNextPage.mutate(
+      { stage, search, offset: chats.length },
+      { onSuccess: (page) => setExtraPages((current) => [...current, page]) }
+    )
+  }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
@@ -219,15 +228,15 @@ function KanbanColumn({
       </header>
 
       <div className="flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-3">
-        {isLoading && (
+        {snapshotLoading && (
           <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
         )}
-        {isError && (
+        {snapshotError && (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-center text-xs text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
             <AlertCircle className="h-5 w-5" /> No se pudo cargar esta etapa
           </div>
         )}
-        {!isLoading && !isError && chats.length === 0 && (
+        {!snapshotLoading && !snapshotError && chats.length === 0 && (
           <div className={`rounded-xl border border-dashed p-5 text-center text-xs ${isDragOver ? 'border-green-400 text-green-600' : 'border-gray-300 text-gray-400 dark:border-gray-700 dark:text-gray-600'}`}>
             {isDragOver ? 'Suelta aquí' : search ? 'Sin resultados' : 'Sin leads en esta etapa'}
           </div>
@@ -248,10 +257,10 @@ function KanbanColumn({
         {hasNextPage && (
           <button
             onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
+            disabled={loadNextPage.isPending}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-wait dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
           >
-            {isFetchingNextPage && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {loadNextPage.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Cargar más
           </button>
         )}
@@ -271,7 +280,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkError, setBulkError] = useState<string | null>(null)
-  const { data: counts } = useKanbanCounts(debouncedSearch)
+  const { data: snapshot, isLoading: snapshotLoading, isError: snapshotError } = useKanbanSnapshot(debouncedSearch)
   const { data: tags = [] } = useTags()
   const { mutate: moveLead } = useMoveLeadStage()
   const { mutate: bulkMoveStage, isPending: isBulkMoving } = useBulkMoveStage()
@@ -380,7 +389,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             <option value="">Mover a...</option>
             {LEAD_STAGES.map((stage) => (
               <option key={stage} value={stage}>
-                {STAGE_META[stage].label}
+                {LEAD_STAGE_META[stage].label}
               </option>
             ))}
           </select>
@@ -429,7 +438,10 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             key={stage}
             stage={stage}
             search={debouncedSearch}
-            total={counts?.[stage] ?? 0}
+            total={snapshot?.counts[stage] ?? 0}
+            initialPage={snapshot?.stages[stage]}
+            snapshotLoading={snapshotLoading}
+            snapshotError={snapshotError}
             draggedChat={draggedChat}
             movingIds={movingIds}
             selectedIds={selectedIds}

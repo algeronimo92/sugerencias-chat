@@ -24,7 +24,11 @@ async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypa
     })
 
     mark_read.assert_awaited_once_with("WA-INCOMING")
-    broadcast.assert_awaited_once_with({"type": "chats_updated"})
+    broadcast.assert_awaited_once_with({
+        "type": "chats_updated",
+        "chat_id": "51999999999@s.whatsapp.net",
+        "reason": "message_status",
+    })
     assert result["matched"] is True
     assert result["read_count"] == 1
 
@@ -49,7 +53,11 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
     })
 
     mark_read.assert_not_awaited()
-    broadcast.assert_awaited_once_with({"type": "chats_updated"})
+    broadcast.assert_awaited_once_with({
+        "type": "chats_updated",
+        "chat_id": "51999999999@s.whatsapp.net",
+        "reason": "message_status",
+    })
     assert result["updated_count"] == 1
     assert result["read_count"] == 0
 

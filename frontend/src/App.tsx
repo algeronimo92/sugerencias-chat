@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
-import type { Chat, ChatFilters, SuggestionResponse } from './types'
+import type { Chat, ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { LoginPage } from './components/LoginPage'
@@ -10,10 +10,11 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { SuggestionPanel } from './components/SuggestionPanel'
 import { NotificationCenter } from './components/NotificationCenter'
 import { useLogout, useMe } from './hooks/useAuth'
-import { useChats, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
+import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
 import type { InternalMentionAlert } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
-import { useSuggestions } from './hooks/useSuggestions'
+import { useSuggestions, useRefreshSuggestions } from './hooks/useSuggestions'
+import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
 import { queryClient } from './queryClient'
 
@@ -76,6 +77,12 @@ function MainLayout() {
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'claves' | 'whatsapp' | 'usuarios'>('claves')
+
+  function openSettings(tab: 'claves' | 'whatsapp' | 'usuarios' = 'claves') {
+    setSettingsInitialTab(tab)
+    setIsSettingsOpen(true)
+  }
   const { data: unreadCount = 0 } = useUnreadCount()
   const { permission: notificationPermission, requestPermission: requestNotificationPermission, notify } =
     useNotifications(unreadCount)
@@ -126,47 +133,35 @@ function MainLayout() {
   } = useInfiniteChats(debouncedSearch, effectiveFilters)
   const chats = data?.pages.flatMap((page) => page.items) ?? []
 
+  // Estado de la conexión de WhatsApp — solo admin (el endpoint es admin-only).
+  // Alimenta el CTA del estado vacío cuando la instancia no está vinculada.
+  const { data: whatsappStatus } = useWhatsappStatus({ enabled: me?.role === 'admin' })
+  const showConnectWhatsapp = me?.role === 'admin' && whatsappStatus != null && whatsappStatus.state !== 'open'
+
   function handleLoadMore() {
     if (hasNextPage && !isFetchingNextPage) return fetchNextPage()
   }
 
-  // Consulta aparte para resolver el chat seleccionado por su chat_id,
-  // independiente del texto de búsqueda de la lista (si no, buscar algo
-  // que no matchee el chat abierto lo "cerraría" solo).
-  const { data: selectedChatResult } = useChats(chatId ?? '', { enabled: !!chatId })
-  const selectedChat = chatId ? (selectedChatResult?.find((c) => c.chat_id === chatId) ?? null) : null
+  // Consulta directa por clave primaria, independiente de la búsqueda de la lista.
+  const { data: selectedChat = null } = useChat(chatId ?? null)
 
-  const [suggestionData, setSuggestionData] = useState<SuggestionResponse | null>(null)
-  const [apiError, setApiError] = useState<string | null>(null)
-  const { mutate, isPending } = useSuggestions()
+  const rqClient = useQueryClient()
 
-  function requestSuggestions(chat: Chat) {
-    setSuggestionData(null)
-    setApiError(null)
+  // Sugerencias cacheadas por chat: reabrir un lead ya visto las muestra al
+  // instante (sin volver a llamar a n8n) y solo revalida en segundo plano si
+  // quedaron obsoletas. La invalidación al llegar un mensaje nuevo del cliente
+  // vive en useChatUpdates, para que la vista no quede mostrando algo viejo.
+  const {
+    data: suggestionData = null,
+    isLoading: isSuggestionsLoading,
+    isFetching: isSuggestionsFetching,
+    error: suggestionsError,
+  } = useSuggestions(selectedChat?.chat_id ?? null, selectedChat?.phone ?? null)
 
-    mutate(
-      { chat_id: chat.chat_id, phone: chat.phone },
-      {
-        onSuccess: (data) => setSuggestionData(data),
-        onError: (err: unknown) => {
-          const msg = err instanceof Error ? err.message : 'Error desconocido'
-          setApiError(msg)
-        },
-      }
-    )
-  }
+  // "Pedir otras": fuerza un juego nuevo cuando las cacheadas no sirven.
+  const { mutate: regenerateSuggestions, isPending: isRegenerating } = useRefreshSuggestions()
 
-  // Dispara la consulta de sugerencias cuando cambia el chat seleccionado
-  // (por click en la lista o por cargar la URL directamente).
-  useEffect(() => {
-    if (selectedChat) {
-      requestSuggestions(selectedChat)
-    } else {
-      setSuggestionData(null)
-      setApiError(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChat?.chat_id])
+  const suggestionsErrorMessage = suggestionsError instanceof Error ? suggestionsError.message : null
 
   const { mutate: markChatRead } = useMarkChatRead()
 
@@ -175,7 +170,9 @@ function MainLayout() {
   // siguen pendientes hasta que el usuario regrese.
   useEffect(() => {
     function markVisibleChatRead() {
-      if (chatId && !document.hidden && document.hasFocus()) markChatRead(chatId)
+      if (chatId && selectedChat && selectedChat.unread_count > 0 && !document.hidden && document.hasFocus()) {
+        markChatRead(chatId)
+      }
     }
 
     markVisibleChatRead()
@@ -187,7 +184,7 @@ function MainLayout() {
     }
     // selectedChat.timestamp cambia si llega un mensaje al chat abierto.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, selectedChat?.timestamp])
+  }, [chatId, selectedChat?.unread_count])
 
   function handleSelectChat(chat: Chat) {
     navigate(`/chat/${chat.chat_id}`)
@@ -318,7 +315,7 @@ function MainLayout() {
         )}
         {me?.role === 'admin' && (
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => openSettings('claves')}
             aria-label="Configuración"
             title="Configuración"
             className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
@@ -348,7 +345,7 @@ function MainLayout() {
         </button>
       </div>
 
-      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
+      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} initialTab={settingsInitialTab} />}
 
       {internalMention && (
         <div className="fixed right-4 top-16 z-[70] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 shadow-2xl dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
@@ -405,6 +402,8 @@ function MainLayout() {
                 isFetchingNextPage={isFetchingNextPage}
                 hasNextPageError={isFetchNextPageError}
                 onLoadMore={handleLoadMore}
+                showConnectWhatsapp={showConnectWhatsapp}
+                onConnectWhatsapp={() => openSettings('whatsapp')}
               />
             </div>
 
@@ -413,7 +412,7 @@ function MainLayout() {
               {selectedChat ? (
                 <ChatThread
                   chat={selectedChat}
-                  onRefreshSuggestions={() => requestSuggestions(selectedChat)}
+                  onRefreshSuggestions={() => rqClient.invalidateQueries({ queryKey: ['suggestions', selectedChat.chat_id] })}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
@@ -429,8 +428,10 @@ function MainLayout() {
                 <SuggestionPanel
                   chat={selectedChat}
                   data={suggestionData}
-                  isLoading={isPending}
-                  error={apiError}
+                  isLoading={isSuggestionsLoading || isRegenerating}
+                  isRefreshing={isSuggestionsFetching && !isSuggestionsLoading && !isRegenerating}
+                  error={suggestionsErrorMessage}
+                  onRegenerate={() => regenerateSuggestions({ chat_id: selectedChat.chat_id, phone: selectedChat.phone })}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">

@@ -103,7 +103,17 @@ type TimelineItem =
 
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
-function MessageStatusTicks({ status }: { status: MessageStatus }) {
+function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetry?: () => void }) {
+  if (status === 'PENDING') {
+    return <span className="inline-flex items-center gap-1 text-gray-400" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
+  }
+  if (status === 'FAILED') {
+    return (
+      <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label="No se pudo confirmar el envío. Reintentar" title="Reintentar envío">
+        <RefreshCw aria-hidden="true" className="h-3 w-3" /> No enviado · Reintentar
+      </button>
+    )
+  }
   if (status === 'READ' || status === 'PLAYED') {
     return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-blue-500 shrink-0" /></span>
   }
@@ -127,7 +137,10 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
   // orden de páginas, pero se conserva el orden ascendente dentro de cada
   // página, para renderizar el historial de viejo a nuevo.
-  const messages = [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items)
+  const messages = useMemo(
+    () => [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items),
+    [messagePages],
+  )
   const { data: notes = [] } = useInternalNotes(chat.chat_id)
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
@@ -192,7 +205,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { mutate: sendMessage, isPending: isSending, error: sendError } = useSendMessage(chat.chat_id)
+  const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
   const { mutate: sendMedia, isPending: isSendingMedia } = useSendMedia(chat.chat_id)
   const { mutate: sendLocation, isPending: isSendingLocation } = useSendLocation(chat.chat_id)
@@ -297,8 +310,14 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || isSending) return
-    sendMessage(text, { onSuccess: () => setDraft('') })
+    if (!text) return
+    setDraft('')
+    sendMessage(text)
+  }
+
+  function handleRetryMessage(message: Message) {
+    if (!message.content?.trim()) return
+    retryMessage(message)
   }
 
   async function handleAudioRecorded(blob: Blob) {
@@ -676,7 +695,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                     </button>
                   )}
                   <span>{formatMessageTime(m.sent_at)}</span>
-                  {isVendedor && <MessageStatusTicks status={m.status} />}
+                  {isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}
                 </div>
               </div>
             </div>
@@ -782,11 +801,10 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
           {draft.trim() && !isRecordingAudio ? (
             <button
               type="submit"
-              disabled={isSending}
               aria-label="Enviar mensaje"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
             >
-              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <Send className="w-4 h-4" />
             </button>
           ) : (
             <VoiceRecorder

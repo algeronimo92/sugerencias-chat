@@ -311,15 +311,23 @@ async def fetch_chat(chat_id: str) -> dict | None:
 
 
 async def get_customer_service_window(chat_id: str) -> dict | None:
-    async with get_sessionmaker()() as session:
-        if await session.get(Lead, chat_id) is None:
-            return None
-        last_customer_message_at = await session.scalar(
-            select(func.max(WspMessage.sent_at)).where(
-                WspMessage.chat_id == chat_id,
-                WspMessage.sender == "cliente",
-            )
+    last_customer_message = (
+        select(func.max(WspMessage.sent_at))
+        .where(
+            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.sender == "cliente",
         )
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(
+            select(Lead.remote_jid, last_customer_message.label("last_customer_message_at"))
+            .where(Lead.remote_jid == chat_id)
+        )).mappings().one_or_none()
+    if row is None:
+        return None
+    last_customer_message_at = row["last_customer_message_at"]
 
     now = datetime.now(timezone.utc)
     expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
@@ -330,6 +338,13 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
         "expires_at": _fmt_ts(expires_at),
         "seconds_remaining": seconds_remaining,
     }
+
+
+async def lead_exists(chat_id: str) -> bool:
+    """Validación ligera para operaciones que no necesitan la ventana de servicio."""
+    stmt = select(exists().where(Lead.remote_jid == chat_id))
+    async with get_sessionmaker()() as session:
+        return bool(await session.scalar(stmt))
 
 
 async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
@@ -351,6 +366,63 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
     for stage, total in rows:
         counts[stage.value if isinstance(stage, LeadStage) else stage] = total
     return counts
+
+
+async def fetch_kanban_snapshot(
+    search: str | None = None,
+    limit: int = KANBAN_PAGE_SIZE,
+) -> dict:
+    """Primera página de todas las columnas en una sola consulta.
+
+    El conteo total viaja como una ventana por etapa, evitando las 14
+    solicitudes (conteos + 13 columnas) que hacía la vista al abrirse.
+    """
+    last_message = _last_message_subquery()
+    ranked_stmt = (
+        select(
+            *_chat_columns(last_message),
+            func.count().over(partition_by=Lead.estado).label("stage_total"),
+            func.row_number().over(
+                partition_by=Lead.estado,
+                order_by=(
+                    last_message.c.sent_at.desc().nulls_last(),
+                    Lead.updated_at.desc(),
+                    Lead.remote_jid.desc(),
+                ),
+            ).label("stage_rank"),
+        )
+        .join(last_message, true(), isouter=True)
+    )
+    if search:
+        ranked_stmt = ranked_stmt.where(_chat_search_condition(last_message, search))
+
+    ranked = ranked_stmt.subquery()
+    stmt = (
+        select(ranked)
+        .where(ranked.c.stage_rank <= limit)
+        .order_by(ranked.c.stage, ranked.c.stage_rank)
+    )
+
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+        tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in rows])
+
+    counts = {stage.value: 0 for stage in LeadStage}
+    stages = {
+        stage.value: {"items": [], "has_more": False}
+        for stage in LeadStage
+    }
+    for row in rows:
+        stage = row["stage"]
+        stage_key = stage.value if isinstance(stage, LeadStage) else stage
+        counts[stage_key] = row["stage_total"]
+        stages[stage_key]["items"].append(
+            _row_to_chat(row, tags_by_lead.get(row["chat_id"]))
+        )
+
+    for stage_key, page in stages.items():
+        page["has_more"] = counts[stage_key] > len(page["items"])
+    return {"counts": counts, "stages": stages}
 
 
 async def fetch_kanban_stage(
@@ -418,6 +490,7 @@ async def update_lead_stage(
     actor_type: str = "system",
     actor_user_id: int | None = None,
     metadata: dict | None = None,
+    include_chat: bool = True,
 ) -> dict | None:
     async with get_sessionmaker()() as session:
         old_stage = (
@@ -425,7 +498,8 @@ async def update_lead_stage(
         ).scalar_one_or_none()
         if old_stage is None:
             return None
-        if old_stage != stage:
+        changed = old_stage != stage
+        if changed:
             await session.execute(
                 update(Lead)
                 .where(Lead.remote_jid == chat_id)
@@ -443,6 +517,8 @@ async def update_lead_stage(
             )
         await session.commit()
 
+    if not include_chat:
+        return {"chat_id": chat_id, "stage": stage.value, "changed": changed}
     return await fetch_chat(chat_id)
 
 
@@ -451,37 +527,41 @@ async def get_cached_suggestion(chat_id: str) -> dict | None:
     que siga vigente: tiene que existir Y no haber llegado ningún mensaje del
     cliente después de que se generó (un mensaje del propio vendedor no la
     invalida — la sugerencia sigue siendo válida para lo que dijo el cliente)."""
-    stmt = select(Lead.cached_suggestion, Lead.cached_suggestion_at).where(Lead.remote_jid == chat_id)
-    async with get_sessionmaker()() as session:
-        row = (await session.execute(stmt)).first()
-
-    if row is None or row.cached_suggestion is None or row.cached_suggestion_at is None:
-        return None
-
-    newer_message_stmt = (
-        select(WspMessage.id)
-        .where(
-            WspMessage.chat_id == chat_id,
+    has_newer_message = exists(
+        select(WspMessage.id).where(
+            WspMessage.chat_id == Lead.remote_jid,
             WspMessage.sender == "cliente",
-            WspMessage.sent_at > row.cached_suggestion_at,
+            WspMessage.sent_at > Lead.cached_suggestion_at,
         )
-        .limit(1)
     )
+    stmt = select(
+        Lead.cached_suggestion,
+        Lead.cached_suggestion_at,
+        has_newer_message.label("has_newer_message"),
+    ).where(Lead.remote_jid == chat_id)
     async with get_sessionmaker()() as session:
-        has_newer_message = (await session.execute(newer_message_stmt)).first() is not None
+        row = (await session.execute(stmt)).mappings().one_or_none()
 
-    return None if has_newer_message else row.cached_suggestion
+    if (
+        row is None
+        or row["cached_suggestion"] is None
+        or row["cached_suggestion_at"] is None
+        or row["has_newer_message"]
+    ):
+        return None
+    return row["cached_suggestion"]
 
 
-async def cache_suggestion(chat_id: str, suggestion: dict) -> None:
+async def cache_suggestion(chat_id: str, suggestion: dict) -> bool:
     stmt = (
         update(Lead)
         .where(Lead.remote_jid == chat_id)
         .values(cached_suggestion=suggestion, cached_suggestion_at=datetime.now(timezone.utc))
     )
     async with get_sessionmaker()() as session:
-        await session.execute(stmt)
+        result = await session.execute(stmt)
         await session.commit()
+    return result.rowcount > 0
 
 
 async def create_lead(

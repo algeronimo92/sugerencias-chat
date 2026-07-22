@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { AlertCircle, Loader2, RefreshCw, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
+import { AlertCircle, Loader2, RefreshCw, Search, SlidersHorizontal, Smartphone, UserPlus, X } from 'lucide-react'
 import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
 import { useCreateLead } from '../hooks/useChats'
 import { useTags } from '../hooks/useLeadMeta'
@@ -27,6 +27,10 @@ interface Props {
   isFetchingNextPage: boolean
   hasNextPageError: boolean
   onLoadMore: () => unknown
+  // Muestra un llamado a conectar WhatsApp en el estado vacío (solo admin, y
+  // solo cuando la instancia no está vinculada).
+  showConnectWhatsapp?: boolean
+  onConnectWhatsapp?: () => void
 }
 
 const ROW_ESTIMATE_PX = 68
@@ -83,6 +87,8 @@ export function ChatList({
   isFetchingNextPage,
   hasNextPageError,
   onLoadMore,
+  showConnectWhatsapp = false,
+  onConnectWhatsapp,
 }: Props) {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -456,13 +462,34 @@ export function ChatList({
           </p>
         )}
         {!isLoading && chats.length === 0 && !error && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-            {filter === 'unread' && !search
-              ? 'No hay chats sin leer.'
-              : filter === 'mine' && !search
-                ? 'No tenés leads asignados.'
-                : 'Sin resultados.'}
-          </p>
+          <div className="py-8 text-center">
+            <p className="text-sm text-gray-400 dark:text-gray-500">
+              {search
+                ? 'Sin resultados.'
+                : filter === 'unread'
+                  ? 'No hay chats sin leer.'
+                  : filter === 'mine'
+                    ? 'No tenés leads asignados.'
+                    : 'Sin leads todavía.'}
+            </p>
+            {showConnectWhatsapp && filter === 'all' && !search && (
+              <div className="mx-4 mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-left dark:border-green-900 dark:bg-green-950/30">
+                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-green-800 dark:text-green-400">
+                  <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
+                </div>
+                <p className="mb-3 text-xs text-green-700/80 dark:text-green-500/80">
+                  Vinculá tu instancia escaneando el QR para empezar a recibir mensajes.
+                </p>
+                <button
+                  type="button"
+                  onClick={onConnectWhatsapp}
+                  className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                >
+                  Conectar WhatsApp
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {!isLoading && chats.length > 0 && (
           <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>

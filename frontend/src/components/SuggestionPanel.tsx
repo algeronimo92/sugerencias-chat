@@ -1,20 +1,26 @@
-import { Sparkles, AlertTriangle, TrendingUp } from 'lucide-react'
+import { Sparkles, AlertTriangle, RefreshCw, TrendingUp } from 'lucide-react'
 import type { Chat, SuggestionResponse } from '../types'
 import { LeadInfo } from './LeadInfo'
-import { LeadStatus } from './LeadStatus'
 import { SuggestionCard } from './SuggestionCard'
 import { LeadActivityPanel } from './LeadActivityPanel'
 import { LeadTagsPanel } from './LeadTagsPanel'
 import { LeadTaskCard } from './LeadTaskCard'
+import { ScheduledMessageCard } from './ScheduledMessageCard'
 
 interface Props {
   chat: Chat
   data: SuggestionResponse | null
   isLoading: boolean
+  /** Revalidación en segundo plano con datos ya en pantalla: no bloquea la
+   * vista, solo gira el icono del botón para avisar que se está actualizando. */
+  isRefreshing?: boolean
   error: string | null
+  /** Pide a n8n un juego nuevo de sugerencias, ignorando la caché del lead. */
+  onRegenerate: () => void
 }
 
-export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
+export function SuggestionPanel({ chat, data, isLoading, isRefreshing = false, error, onRegenerate }: Props) {
+  const busy = isLoading || isRefreshing
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -23,6 +29,16 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           Sugerencias IA
         </p>
+        <button
+          type="button"
+          onClick={onRegenerate}
+          disabled={busy}
+          title="Pedir otras sugerencias a n8n"
+          className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
+          Pedir otras
+        </button>
       </div>
 
       {/* Content */}
@@ -30,6 +46,7 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
         {/* Datos del lead (siempre visibles desde la DB) */}
         <LeadInfo chat={chat} />
         <LeadTaskCard chat={chat} />
+        <ScheduledMessageCard chat={chat} />
         <LeadTagsPanel chat={chat} />
         <LeadActivityPanel chatId={chat.chat_id} />
 
@@ -48,14 +65,11 @@ export function SuggestionPanel({ chat, data, isLoading, error }: Props) {
 
         {data && !isLoading && (
           <>
-            {/* Estado (si el agente lo mandó) + Confianza + Señal de compra */}
+            {/* El estado se muestra en LeadInfo desde la DB. */}
             <div className="flex items-center gap-2 flex-wrap">
-              {data.estado && <LeadStatus estado={data.estado} confianza={data.confianza} />}
-              {!data.estado && (
-                <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                  Confianza: {data.confianza}
-                </span>
-              )}
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                Confianza: {data.confianza}
+              </span>
               {data.senal_compra && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400">
                   <TrendingUp className="w-3 h-3" /> Señal de compra

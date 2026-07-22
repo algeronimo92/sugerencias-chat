@@ -10,8 +10,7 @@ export function useCustomerServiceWindow(chatId: string | null) {
       `/api/chats/${encodeURIComponent(chatId as string)}/service-window`,
     )).data,
     enabled: !!chatId,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
+    staleTime: 60_000,
     refetchOnWindowFocus: true,
   })
 }

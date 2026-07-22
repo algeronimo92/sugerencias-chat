@@ -1,11 +1,20 @@
+import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass
+from time import monotonic
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from config import settings as env_settings
 from db.models import AppSetting
 from db.session import get_sessionmaker
+from services.secret_cipher import (
+    decrypt_secret,
+    encrypt_secret,
+    is_encrypted,
+    needs_reencryption,
+)
 
 
 @dataclass(frozen=True)
@@ -48,27 +57,68 @@ SETTING_DEFS: list[SettingDef] = [
     ),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
+SETTINGS_CACHE_TTL_SECONDS = 30.0
+_effective_cache: dict[str, str] | None = None
+_effective_cache_expires_at = 0.0
+_effective_cache_lock = asyncio.Lock()
 
 
-async def _db_values() -> dict[str, str | None]:
+async def _raw_db_values() -> dict[str, str | None]:
     async with get_sessionmaker()() as session:
         rows = (await session.execute(select(AppSetting.key, AppSetting.value))).all()
     return {key: value for key, value in rows}
+
+
+async def _db_values() -> dict[str, str | None]:
+    raw = await _raw_db_values()
+    return {
+        key: decrypt_secret(key, value) if value else value
+        for key, value in raw.items()
+    }
 
 
 def _env_default(key: str) -> str:
     return getattr(env_settings, key, "") or ""
 
 
+def invalidate_settings_cache() -> None:
+    global _effective_cache, _effective_cache_expires_at
+    _effective_cache = None
+    _effective_cache_expires_at = 0.0
+
+
+async def _effective_values() -> dict[str, str]:
+    global _effective_cache, _effective_cache_expires_at
+    now = monotonic()
+    if _effective_cache is not None and now < _effective_cache_expires_at:
+        return _effective_cache
+
+    async with _effective_cache_lock:
+        now = monotonic()
+        if _effective_cache is not None and now < _effective_cache_expires_at:
+            return _effective_cache
+        db_values = await _db_values()
+        _effective_cache = {
+            key: db_values.get(key) or _env_default(key)
+            for key in _DEFS_BY_KEY
+        }
+        _effective_cache_expires_at = monotonic() + SETTINGS_CACHE_TTL_SECONDS
+        return _effective_cache
+
+
+async def get_effective_many(keys: Iterable[str]) -> dict[str, str]:
+    """Resuelve varias claves con una sola carga de DB y una caché corta.
+
+    La invalidación local hace inmediatos los cambios; el TTL evita valores
+    obsoletos entre procesos cuando el despliegue usa más de un worker.
+    """
+    requested = tuple(keys)
+    values = await _effective_values()
+    return {key: values.get(key, _env_default(key)) for key in requested}
+
+
 async def get_effective(key: str) -> str:
-    """Valor a usar en runtime: el guardado en DB si no está vacío, si no el
-    de la variable de entorno (permite que .env siga funcionando como
-    "semilla" hasta que se cargue algo distinto desde la UI)."""
-    async with get_sessionmaker()() as session:
-        row = (
-            await session.execute(select(AppSetting.value).where(AppSetting.key == key))
-        ).scalar_one_or_none()
-    return row if row else _env_default(key)
+    return (await get_effective_many((key,)))[key]
 
 
 async def list_settings() -> list[dict]:
@@ -100,10 +150,58 @@ async def update_settings(values: dict[str, str]) -> None:
 
     async with get_sessionmaker()() as session:
         for key, value in values.items():
+            definition = _DEFS_BY_KEY[key]
+            stored_value = (
+                encrypt_secret(key, value)
+                if value and definition.secret
+                else value or None
+            )
             stmt = (
                 pg_insert(AppSetting)
-                .values(key=key, value=value)
-                .on_conflict_do_update(index_elements=[AppSetting.key], set_={"value": value})
+                .values(key=key, value=stored_value)
+                .on_conflict_do_update(index_elements=[AppSetting.key], set_={"value": stored_value})
             )
             await session.execute(stmt)
         await session.commit()
+    async with _effective_cache_lock:
+        invalidate_settings_cache()
+
+
+async def migrate_settings_encryption() -> tuple[int, int]:
+    """Normaliza filas históricas según la sensibilidad de cada ajuste.
+
+    Los tokens y API keys quedan cifrados. URLs, identificadores y parámetros
+    operativos quedan en texto plano para que puedan consumirlos la UI y las
+    integraciones que leen ``app_settings``. Es idempotente; un ciphertext
+    corrupto o una clave incorrecta detienen el arranque antes de sobrescribirlo.
+    """
+    raw = await _raw_db_values()
+    replacements: dict[str, str] = {}
+    encrypted_count = 0
+    decrypted_count = 0
+    for key, value in raw.items():
+        definition = _DEFS_BY_KEY.get(key)
+        if not definition or not value:
+            continue
+
+        if definition.secret:
+            if not needs_reencryption(key, value):
+                continue
+            plaintext = decrypt_secret(key, value)
+            replacements[key] = encrypt_secret(key, plaintext)
+            encrypted_count += 1
+        elif is_encrypted(value):
+            replacements[key] = decrypt_secret(key, value)
+            decrypted_count += 1
+
+    if not replacements:
+        return 0, 0
+    async with get_sessionmaker()() as session:
+        for key, value in replacements.items():
+            await session.execute(
+                update(AppSetting).where(AppSetting.key == key).values(value=value)
+            )
+        await session.commit()
+    async with _effective_cache_lock:
+        invalidate_settings_cache()
+    return encrypted_count, decrypted_count

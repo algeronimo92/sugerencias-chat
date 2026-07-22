@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 
 from fastapi import WebSocket
 
@@ -21,21 +20,30 @@ class ConnectionManager:
     async def broadcast(self, message: dict) -> None:
         async with self._lock:
             connections = list(self._connections)
-        for websocket in connections:
-            with contextlib.suppress(Exception):
-                await websocket.send_json(message)
+
+        async def deliver(websocket: WebSocket) -> WebSocket | None:
+            try:
+                await asyncio.wait_for(websocket.send_json(message), timeout=2.0)
+                return None
+            except Exception:
+                return websocket
+
+        dead = [item for item in await asyncio.gather(*(deliver(ws) for ws in connections)) if item]
+        if dead:
+            async with self._lock:
+                for websocket in dead:
+                    self._connections.pop(websocket, None)
 
     async def send_to_user(self, user_id: int, message: dict) -> bool:
         async with self._lock:
             connections = [ws for ws, owner_id in self._connections.items() if owner_id == user_id]
-        delivered = False
-        for websocket in connections:
-            try:
-                await websocket.send_json(message)
-                delivered = True
-            except Exception:
-                pass
-        return delivered
+        if not connections:
+            return False
+        results = await asyncio.gather(*(
+            asyncio.wait_for(websocket.send_json(message), timeout=2.0)
+            for websocket in connections
+        ), return_exceptions=True)
+        return any(not isinstance(result, BaseException) for result in results)
 
 
 manager = ConnectionManager()
