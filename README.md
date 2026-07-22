@@ -76,6 +76,29 @@ Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
 como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
 después de agregar el mapeo al nodo de inserción de n8n.
 
+Si una integración guardó mensajes con `sender` en `NULL` pero conservó su
+`wa_message_id`, se puede recuperar `key.fromMe` directamente desde Evolution.
+Primero ejecutar la simulación, que no escribe en PostgreSQL:
+
+```bash
+docker compose exec -T backend python -m scripts.backfill_message_senders
+```
+
+El reporte solo muestra conteos y nunca imprime contenido, credenciales ni IDs
+de WhatsApp. Después de revisar cuántos registros se resolvieron, aplicar el
+resultado explícitamente:
+
+```bash
+docker compose exec -T backend python -m scripts.backfill_message_senders --apply
+```
+
+Se pueden usar `--limit 5`, `--chat-id <remoteJid>` y `--concurrency 5` para
+hacer una prueba acotada. Solo se actualizan filas que todavía tengan
+`sender IS NULL` y cuya respuesta contenga un `fromMe` booleano inequívoco.
+Después del backfill, aplicar
+`backend/migrations/019_wsp_message_sender_not_null.sql` para que PostgreSQL
+rechace cualquier nuevo mensaje que no indique `cliente` o `vendedor`.
+
 ### Doble check de mensajes enviados
 
 La instancia de Evolution debe tener habilitado el evento `MESSAGES_UPDATE`.

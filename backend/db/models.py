@@ -96,7 +96,7 @@ class WspMessage(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text)
-    sender: Mapped[str | None] = mapped_column(Text)
+    sender: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     media_url: Mapped[str | None] = mapped_column(Text)
