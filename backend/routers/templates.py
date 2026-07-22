@@ -10,8 +10,9 @@ from services.productivity_service import (
     add_template_attachment, create_personal_template, create_template, list_templates,
     record_template_use, remove_template_attachment, set_template_favorite, update_template,
 )
-from routers.media import MEDIA_DIR, normalize_media_content_type, save_media_file
+from routers.media import normalize_media_content_type, save_media_file
 from services.media_library_service import create_media_asset, delete_media_asset, get_media_asset
+from services.media_storage import MediaStorageError, delete_media, media_size
 from services.ws_manager import manager
 from services.evolution_service import EvolutionApiError, get_template_capabilities
 
@@ -307,10 +308,12 @@ async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admi
         )
     except ValueError as exc:
         raise HTTPException(413 if "grande" in str(exc) else 400, str(exc))
-    path = MEDIA_DIR / media_url.rsplit("/", 1)[-1]
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
     try:
+        size_bytes = await asyncio.to_thread(media_size, media_url)
         asset = await create_media_asset(
-            media_url, content_type, body.filename, path.stat().st_size, admin.id
+            media_url, content_type, body.filename, size_bytes, admin.id
         )
         item = await add_template_attachment(
             template_id, media_url, content_type, body.filename, asset["id"]
@@ -318,16 +321,33 @@ async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admi
     except ValueError as exc:
         if "asset" in locals():
             await delete_media_asset(asset["id"])
-        path.unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
         raise HTTPException(400, str(exc))
+    except MediaStorageError as exc:
+        if "asset" in locals():
+            await delete_media_asset(asset["id"])
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
+        raise HTTPException(503, str(exc))
     except Exception:
         if "asset" in locals():
             await delete_media_asset(asset["id"])
-        path.unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
         raise
     if item is None:
         await delete_media_asset(asset["id"])
-        path.unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
         raise HTTPException(404, "Plantilla no encontrada")
     await manager.broadcast({"type": "templates_updated"})
     await manager.broadcast({"type": "media_library_updated"})
@@ -366,7 +386,10 @@ async def delete_attachment(attachment_id: int, _admin: User = Depends(require_a
     if attachment is None:
         raise HTTPException(404, "Adjunto no encontrado")
     if attachment["library_asset_id"] is None:
-        (MEDIA_DIR / attachment["media_url"].rsplit("/", 1)[-1]).unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(delete_media, attachment["media_url"])
+        except MediaStorageError as exc:
+            raise HTTPException(503, str(exc))
     await manager.broadcast({"type": "templates_updated"})
     await manager.broadcast({"type": "media_library_updated"})
     return {"status": "ok"}

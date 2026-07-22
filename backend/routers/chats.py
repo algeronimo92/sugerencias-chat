@@ -1,4 +1,3 @@
-import base64
 import asyncio
 import logging
 import re
@@ -26,7 +25,8 @@ from models.schemas import (
     SendTemplateRequest,
     SellerItem,
 )
-from routers.media import MEDIA_DIR, save_media_file
+from routers.media import save_media_file
+from services.media_storage import MediaStorageError, read_media_base64
 from services.db_service import (
     CHATS_PAGE_SIZE,
     KANBAN_PAGE_SIZE,
@@ -450,6 +450,8 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))
+    except MediaStorageError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     try:
         evolution_response = await send_whatsapp_audio(chat_id, body.data_base64)
@@ -486,6 +488,8 @@ async def send_media(chat_id: str, body: SendMediaRequest):
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))
+    except MediaStorageError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     try:
         evolution_response = await send_whatsapp_media(chat_id, body.data_base64, mediatype, filename=body.filename)
@@ -654,11 +658,10 @@ async def send_template(
                 chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(response), status="SERVER_ACK"
             ))
         for attachment in template["attachments"]:
-            path = (MEDIA_DIR / attachment["media_url"].rsplit("/", 1)[-1]).resolve()
-            if path.parent != MEDIA_DIR.resolve() or not path.is_file():
+            try:
+                encoded = await asyncio.to_thread(read_media_base64, attachment["media_url"])
+            except (FileNotFoundError, MediaStorageError):
                 raise EvolutionApiError(f"No se encontró el adjunto {attachment['filename']}")
-            raw = await asyncio.to_thread(path.read_bytes)
-            encoded = base64.b64encode(raw).decode("ascii")
             mediatype = _mediatype_from_content_type(attachment["content_type"])
             response = await send_whatsapp_media(
                 chat_id, encoded, mediatype, filename=attachment["filename"]

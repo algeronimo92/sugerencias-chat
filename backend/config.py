@@ -25,6 +25,20 @@ class Settings(BaseSettings):
     elevenlabs_use_speaker_boost: str = "true"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # Almacenamiento multimedia. "local" conserva el comportamiento anterior;
+    # "minio" usa un bucket privado y mantiene las URLs /media/<archivo>.
+    media_storage_backend: str = "local"
+    media_local_read_fallback: bool = False
+    media_dual_write_local: bool = False
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = ""
+    minio_region: str = "us-east-1"
+    minio_secure: bool = True
+    minio_verify_tls: bool = True
+    minio_prefix: str = "dermicapro"
+
     # Firma de los JWT de sesión — cambiarla invalida todas las sesiones activas.
     secret_key: str
     # Clave maestra opcional para cifrar secretos guardados en app_settings.

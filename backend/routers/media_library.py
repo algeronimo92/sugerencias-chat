@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from db.models import User
 from models.schemas import MediaAssetCreate, MediaAssetItem
-from routers.media import MEDIA_DIR, normalize_media_content_type, save_media_file
+from routers.media import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user, require_admin
 from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets
+from services.media_storage import MediaStorageError, delete_media, media_size
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/media-library", tags=["media-library"])
@@ -31,18 +32,29 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
         )
     except ValueError as exc:
         raise HTTPException(413 if "grande" in str(exc) else 400, str(exc))
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
 
-    path = MEDIA_DIR / media_url.rsplit("/", 1)[-1]
     try:
+        size_bytes = await asyncio.to_thread(media_size, media_url)
         item = await create_media_asset(
             media_url=media_url,
             content_type=content_type,
             filename=body.filename,
-            size_bytes=path.stat().st_size,
+            size_bytes=size_bytes,
             uploaded_by_user_id=admin.id,
         )
+    except MediaStorageError as exc:
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
+        raise HTTPException(503, str(exc))
     except Exception:
-        path.unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
         raise
     await manager.broadcast({"type": "media_library_updated"})
     return item
@@ -56,6 +68,9 @@ async def delete_library_asset(asset_id: int, _admin: User = Depends(require_adm
         raise HTTPException(409, str(exc))
     if media_url is None:
         raise HTTPException(404, "Archivo no encontrado")
-    (MEDIA_DIR / media_url.rsplit("/", 1)[-1]).unlink(missing_ok=True)
+    try:
+        await asyncio.to_thread(delete_media, media_url)
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
     await manager.broadcast({"type": "media_library_updated"})
     return {"status": "ok"}

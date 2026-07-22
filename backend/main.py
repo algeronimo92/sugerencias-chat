@@ -5,7 +5,6 @@ from time import perf_counter
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -13,7 +12,6 @@ from config import settings
 from db.models import Base
 from db.session import close_engine, get_engine
 from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
-from routers.media import MEDIA_DIR
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed
@@ -26,6 +24,7 @@ from services.tts_service import close_tts_client
 from services.message_outbox import watch_message_outbox
 from services.scheduled_message_service import watch_scheduled_messages
 from services.performance import begin_request_metrics, finish_request_metrics
+from services.media_storage import MediaStorageError, check_media_storage
 from services.settings_service import migrate_settings_encryption
 
 logger = logging.getLogger(__name__)
@@ -339,8 +338,7 @@ app.include_router(automations.router)
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)
 app.include_router(media.router)
-
-app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+app.include_router(media.files_router)
 
 
 @app.get("/health", tags=["health"])
@@ -353,10 +351,14 @@ async def readiness():
     try:
         async with get_engine().connect() as connection:
             await connection.execute(text("SELECT 1"))
+        storage = await asyncio.to_thread(check_media_storage)
+    except MediaStorageError as exc:
+        logger.warning("Storage health check failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Media storage unavailable") from exc
     except (OSError, SQLAlchemyError) as exc:
         logger.warning("Health check failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "media_storage": storage["backend"]}
 
 
 @app.websocket("/ws/chats")
