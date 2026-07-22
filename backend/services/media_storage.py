@@ -43,6 +43,7 @@ class MediaObjectStat:
     content_type: str
     source: str
     sha256: str | None = None
+    object_name: str | None = None
 
 
 def storage_backend() -> str:
@@ -95,6 +96,28 @@ def _object_name(media_url: str) -> str:
     return _object_name_from_filename(_media_filename(media_url))
 
 
+def _object_name_candidates(media_url: str) -> tuple[str, ...]:
+    """Devuelve las posibles claves para una URL histórica.
+
+    Las URLs persistidas no guardan el content type. Algunos audios antiguos
+    tampoco tienen extensión, por lo que inferir la categoría únicamente por
+    el nombre los clasifica como ``files`` aunque estén en ``audio``. Se prueba
+    primero la ruta inferida y después las demás categorías para mantener
+    compatibilidad sin cambiar las URLs almacenadas en PostgreSQL.
+    """
+    filename = _media_filename(media_url)
+    prefix = settings.minio_prefix.strip().strip("/")
+
+    def object_name(category: str) -> str:
+        relative_name = f"{category}/{filename}"
+        return f"{prefix}/{relative_name}" if prefix else relative_name
+
+    primary = _object_name_from_filename(filename)
+    candidates = [primary]
+    candidates.extend(object_name(category) for category in ("images", "audio", "video", "files"))
+    return tuple(dict.fromkeys(candidates))
+
+
 def _validate_minio_config() -> None:
     endpoint = settings.minio_endpoint.strip().rstrip("/")
     if not endpoint or not settings.minio_bucket.strip():
@@ -143,18 +166,24 @@ def _metadata_sha256(metadata: dict | None) -> str | None:
 
 
 def _minio_stat(media_url: str) -> MediaObjectStat:
-    try:
-        result = get_minio_client().stat_object(
-            settings.minio_bucket.strip(), _object_name(media_url)
+    for object_name in _object_name_candidates(media_url):
+        try:
+            result = get_minio_client().stat_object(
+                settings.minio_bucket.strip(), object_name
+            )
+        except Exception as exc:
+            if _is_not_found(exc):
+                continue
+            raise MediaStorageError(f"No se pudo consultar MinIO: {type(exc).__name__}") from exc
+        content_type = getattr(result, "content_type", None) or "application/octet-stream"
+        return MediaObjectStat(
+            int(result.size),
+            content_type,
+            "minio",
+            _metadata_sha256(getattr(result, "metadata", None)),
+            object_name,
         )
-    except Exception as exc:
-        if _is_not_found(exc):
-            raise MediaNotFoundError(media_url) from exc
-        raise MediaStorageError(f"No se pudo consultar MinIO: {type(exc).__name__}") from exc
-    content_type = getattr(result, "content_type", None) or "application/octet-stream"
-    return MediaObjectStat(
-        int(result.size), content_type, "minio", _metadata_sha256(getattr(result, "metadata", None))
-    )
+    raise MediaNotFoundError(media_url)
 
 
 def stat_media(media_url: str) -> MediaObjectStat:
@@ -187,12 +216,12 @@ def _iter_local(path: Path, offset: int, length: int) -> Iterator[bytes]:
             yield chunk
 
 
-def _iter_minio(media_url: str, offset: int, length: int) -> Iterator[bytes]:
+def _iter_minio(object_name: str, offset: int, length: int) -> Iterator[bytes]:
     response = None
     try:
         response = get_minio_client().get_object(
             settings.minio_bucket.strip(),
-            _object_name(media_url),
+            object_name,
             offset=offset,
             length=length,
         )
@@ -219,7 +248,9 @@ def iter_media(media_url: str, offset: int = 0, length: int | None = None) -> It
     selected_length = available if length is None else min(max(length, 0), available)
     if info.source == "local":
         return _iter_local(_local_path(media_url), offset, selected_length)
-    return _iter_minio(media_url, offset, selected_length)
+    if not info.object_name:  # pragma: no cover - estado defensivo
+        raise MediaStorageError(f"MinIO no devolvió la clave del objeto: {media_url}")
+    return _iter_minio(info.object_name, offset, selected_length)
 
 
 def read_media_bytes(media_url: str) -> bytes:
@@ -272,7 +303,11 @@ def delete_media(media_url: str) -> None:
         return
 
     try:
-        get_minio_client().remove_object(settings.minio_bucket.strip(), _object_name(media_url))
+        info = _minio_stat(media_url)
+        if info.object_name:
+            get_minio_client().remove_object(settings.minio_bucket.strip(), info.object_name)
+    except MediaNotFoundError:
+        pass
     except Exception as exc:
         raise MediaStorageError(f"No se pudo eliminar de MinIO: {type(exc).__name__}") from exc
     if settings.media_dual_write_local or settings.media_local_read_fallback:

@@ -1,9 +1,11 @@
 import hashlib
+import base64
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
+from routers import media
 from routers.media import _requested_range
 from services import media_storage as storage
 
@@ -120,6 +122,44 @@ def test_minio_backend_uploads_reads_ranges_and_deletes(media_dir, monkeypatch):
 
     storage.delete_media(url)
     assert ("crm-media", "dermicapro/audio/voice.ogg") not in fake.objects
+
+
+def test_minio_resolves_extensionless_audio_in_audio_prefix(media_dir, monkeypatch):
+    fake = FakeMinio()
+    configure_minio(monkeypatch, fake)
+    object_name = "dermicapro/audio/extensionless"
+    fake.objects[("crm-media", object_name)] = {
+        "data": b"opus-audio",
+        "content_type": "audio/webm",
+        "metadata": {},
+    }
+
+    url = "/media/extensionless"
+    info = storage.stat_media(url)
+    assert info.source == "minio"
+    assert info.object_name == object_name
+    assert storage.read_media_bytes(url) == b"opus-audio"
+
+    storage.delete_media(url)
+    assert ("crm-media", object_name) not in fake.objects
+
+
+def test_audio_webm_gets_stable_extension(monkeypatch):
+    saved = {}
+
+    def fake_save(filename, data, content_type):
+        saved.update(filename=filename, data=data, content_type=content_type)
+        return f"/media/{filename}"
+
+    monkeypatch.setattr(media, "save_media_bytes", fake_save)
+    result = media.save_media_file(
+        "audio/webm;codecs=opus",
+        base64.b64encode(b"webm-audio").decode("ascii"),
+    )
+
+    assert result.endswith(".weba")
+    assert saved["filename"].endswith(".weba")
+    assert saved["content_type"] == "audio/webm"
 
 
 def test_minio_transition_can_dual_write_and_fallback_to_local(media_dir, monkeypatch):

@@ -38,7 +38,7 @@ ALLOWED_DOCUMENT_TYPES = (
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
 SAFE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".mov",
-    ".mp3", ".wav", ".ogg", ".m4a", ".pdf", ".doc", ".docx", ".xls",
+    ".mp3", ".wav", ".ogg", ".m4a", ".weba", ".pdf", ".doc", ".docx", ".xls",
     ".xlsx", ".ppt", ".pptx", ".txt", ".zip",
 }
 EXTENSION_CONTENT_TYPES = {
@@ -46,6 +46,7 @@ EXTENSION_CONTENT_TYPES = {
     ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4",
     ".webm": "video/webm", ".mov": "video/quicktime", ".mp3": "audio/mpeg",
     ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+    ".weba": "audio/webm",
     ".pdf": "application/pdf", ".doc": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".xls": "application/vnd.ms-excel",
@@ -53,6 +54,17 @@ EXTENSION_CONTENT_TYPES = {
     ".ppt": "application/vnd.ms-powerpoint",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".txt": "text/plain", ".zip": "application/zip",
+}
+
+# ``mimetypes`` depende de la base de tipos de la imagen del sistema. Alpine
+# no siempre conoce audio/webm, lo que antes dejaba las notas de voz sin
+# extensión y hacía imposible inferir su categoría al leerlas después.
+CONTENT_TYPE_EXTENSIONS = {
+    "audio/webm": ".weba",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/wav": ".wav",
 }
 
 
@@ -102,7 +114,7 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
         if candidate in SAFE_EXTENSIONS:
             ext = candidate
     if not ext:
-        ext = mimetypes.guess_extension(content_type) or ""
+        ext = CONTENT_TYPE_EXTENSIONS.get(content_type) or mimetypes.guess_extension(content_type) or ""
 
     stored_filename = f"{uuid.uuid4().hex}{ext}"
     return save_media_bytes(stored_filename, raw, content_type)
