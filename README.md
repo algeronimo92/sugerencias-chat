@@ -17,11 +17,13 @@ cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 
 **Cifrado de configuración:** definí también `SETTINGS_ENCRYPTION_KEY` con una
 clave base64-url aleatoria de 32 bytes (el comando de generación está en
-`backend/.env.example`). Todos los valores escritos en `app_settings` se
-guardan con AES-GCM autenticado; los secretos continúan enmascarados en la API
-y solo se descifran dentro del backend. Al arrancar, las filas históricas en
-texto plano se migran automáticamente. Guardá una copia segura de la clave
-fuera de PostgreSQL: perderla impide recuperar esos valores.
+`backend/.env.example`). Los tokens y API keys escritos en `app_settings` se
+guardan con AES-GCM autenticado, permanecen enmascarados en la API y solo se
+descifran dentro del backend. URLs, IDs y parámetros operativos se conservan
+en texto plano para que la UI y las integraciones externas puedan utilizarlos.
+Al arrancar, el backend normaliza automáticamente las filas históricas según
+esta política. Guardá una copia segura de la clave fuera de PostgreSQL:
+perderla impide recuperar los valores secretos.
 
 ### 2. Reverse proxy (Traefik)
 

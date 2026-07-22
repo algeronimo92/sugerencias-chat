@@ -55,7 +55,7 @@ async def test_invalidating_cache_forces_a_reload(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_updating_setting_never_persists_plaintext(monkeypatch):
+async def test_updating_secret_setting_never_persists_plaintext(monkeypatch):
     statements = []
 
     class FakeSession:
@@ -84,6 +84,83 @@ async def test_updating_setting_never_persists_plaintext(monkeypatch):
     serialized_params = " ".join(str(value) for value in params.values())
     assert "plain-secret" not in serialized_params
     assert secret_cipher.ENCRYPTED_PREFIX in serialized_params
+
+
+@pytest.mark.asyncio
+async def test_updating_public_setting_persists_usable_plaintext(monkeypatch):
+    statements = []
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, statement):
+            statements.append(statement)
+
+        async def commit(self):
+            return None
+
+    monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
+
+    public_url = "https://evolution.example.test"
+    await settings_service.update_settings({"evolution_api_url": public_url})
+
+    params = statements[0].compile().params
+    serialized_params = " ".join(str(value) for value in params.values())
+    assert public_url in serialized_params
+    assert secret_cipher.ENCRYPTED_PREFIX not in serialized_params
+
+
+@pytest.mark.asyncio
+async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypatch):
+    statements = []
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, statement):
+            statements.append(statement)
+
+        async def commit(self):
+            return None
+
+    monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
+    monkeypatch.setattr(
+        secret_cipher.settings,
+        "settings_encryption_key",
+        base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
+    )
+    public_url = "https://n8n.example.test/webhook"
+    encrypted_public_url = secret_cipher.encrypt_secret(
+        "n8n_webhook_url", public_url
+    )
+    monkeypatch.setattr(
+        settings_service,
+        "_raw_db_values",
+        AsyncMock(return_value={
+            "n8n_webhook_url": encrypted_public_url,
+            "n8n_webhook_token": "legacy-plaintext-token",
+            "evolution_instance": "already-plain",
+        }),
+    )
+
+    assert await settings_service.migrate_settings_encryption() == (1, 1)
+
+    serialized_statements = [
+        " ".join(str(value) for value in statement.compile().params.values())
+        for statement in statements
+    ]
+    serialized = " ".join(serialized_statements)
+    assert public_url in serialized
+    assert "legacy-plaintext-token" not in serialized
+    assert sum(secret_cipher.ENCRYPTED_PREFIX in item for item in serialized_statements) == 1
 
 
 @pytest.mark.asyncio

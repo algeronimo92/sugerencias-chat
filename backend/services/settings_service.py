@@ -9,7 +9,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from config import settings as env_settings
 from db.models import AppSetting
 from db.session import get_sessionmaker
-from services.secret_cipher import decrypt_secret, encrypt_secret, needs_reencryption
+from services.secret_cipher import (
+    decrypt_secret,
+    encrypt_secret,
+    is_encrypted,
+    needs_reencryption,
+)
 
 
 @dataclass(frozen=True)
@@ -145,7 +150,12 @@ async def update_settings(values: dict[str, str]) -> None:
 
     async with get_sessionmaker()() as session:
         for key, value in values.items():
-            stored_value = encrypt_secret(key, value) if value else None
+            definition = _DEFS_BY_KEY[key]
+            stored_value = (
+                encrypt_secret(key, value)
+                if value and definition.secret
+                else value or None
+            )
             stmt = (
                 pg_insert(AppSetting)
                 .values(key=key, value=stored_value)
@@ -157,22 +167,35 @@ async def update_settings(values: dict[str, str]) -> None:
         invalidate_settings_cache()
 
 
-async def migrate_settings_encryption() -> int:
-    """Cifra filas históricas y rota las hechas con la clave de compatibilidad.
+async def migrate_settings_encryption() -> tuple[int, int]:
+    """Normaliza filas históricas según la sensibilidad de cada ajuste.
 
-    Es idempotente. Un ciphertext corrupto o una clave incorrecta detienen el
-    arranque para evitar sobrescribir secretos que ya no puedan recuperarse.
+    Los tokens y API keys quedan cifrados. URLs, identificadores y parámetros
+    operativos quedan en texto plano para que puedan consumirlos la UI y las
+    integraciones que leen ``app_settings``. Es idempotente; un ciphertext
+    corrupto o una clave incorrecta detienen el arranque antes de sobrescribirlo.
     """
     raw = await _raw_db_values()
     replacements: dict[str, str] = {}
+    encrypted_count = 0
+    decrypted_count = 0
     for key, value in raw.items():
-        if not value or not needs_reencryption(key, value):
+        definition = _DEFS_BY_KEY.get(key)
+        if not definition or not value:
             continue
-        plaintext = decrypt_secret(key, value)
-        replacements[key] = encrypt_secret(key, plaintext)
+
+        if definition.secret:
+            if not needs_reencryption(key, value):
+                continue
+            plaintext = decrypt_secret(key, value)
+            replacements[key] = encrypt_secret(key, plaintext)
+            encrypted_count += 1
+        elif is_encrypted(value):
+            replacements[key] = decrypt_secret(key, value)
+            decrypted_count += 1
 
     if not replacements:
-        return 0
+        return 0, 0
     async with get_sessionmaker()() as session:
         for key, value in replacements.items():
             await session.execute(
@@ -181,4 +204,4 @@ async def migrate_settings_encryption() -> int:
         await session.commit()
     async with _effective_cache_lock:
         invalidate_settings_cache()
-    return len(replacements)
+    return encrypted_count, decrypted_count

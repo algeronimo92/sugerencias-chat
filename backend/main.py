@@ -244,9 +244,14 @@ async def lifespan(app: FastAPI):
     else:
         await database_transaction.__aexit__(None, None, None)
 
-    migrated_settings = await migrate_settings_encryption()
-    if migrated_settings:
-        logger.info("Encrypted %s persisted application settings", migrated_settings)
+    encrypted_settings, decrypted_settings = await migrate_settings_encryption()
+    if encrypted_settings or decrypted_settings:
+        logger.info(
+            "Normalized persisted application settings: encrypted_secrets=%s "
+            "decrypted_public=%s",
+            encrypted_settings,
+            decrypted_settings,
+        )
 
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
