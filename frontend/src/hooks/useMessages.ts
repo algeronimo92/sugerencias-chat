@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Message } from '../types'
 
@@ -41,14 +41,81 @@ async function sendMessage(chatId: string, text: string): Promise<Message> {
   return data
 }
 
+let nextOptimisticMessageId = -1
+
+interface SendMessageContext {
+  optimisticId: number
+}
+
+function updateMessageCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  chatId: string,
+  update: (message: Message) => Message | null,
+) {
+  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+    if (!current) return current
+    return {
+      ...current,
+      pages: current.pages.map(page => ({
+        ...page,
+        items: page.items.map(update).filter((message): message is Message => message !== null),
+      })),
+    }
+  })
+}
+
 export function useSendMessage(chatId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
+  const mutation = useMutation<Message, Error, string, SendMessageContext>({
+    mutationKey: ['send-message', chatId],
     mutationFn: (text: string) => sendMessage(chatId, text),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    onMutate: async (text) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      const optimisticId = nextOptimisticMessageId--
+      const optimisticMessage: Message = {
+        id: optimisticId,
+        sender: 'vendedor',
+        content: text,
+        sent_at: new Date().toISOString(),
+        media_url: null,
+        wa_message_id: null,
+        status: 'PENDING',
+      }
+      queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+        if (!current) {
+          return { pages: [{ items: [optimisticMessage], has_more: false }], pageParams: [null] }
+        }
+        const pages = [...current.pages]
+        const newestPage = pages[0] ?? { items: [], has_more: false }
+        pages[0] = { ...newestPage, items: [...newestPage.items, optimisticMessage] }
+        return { ...current, pages }
+      })
+      return { optimisticId }
+    },
+    onSuccess: (message, _text, context) => {
+      if (context) {
+        updateMessageCache(queryClient, chatId, current => current.id === context.optimisticId ? message : current)
+      }
+      // La respuesta ya contiene el mensaje definitivo. No se invalida toda la
+      // conversación aquí porque otro envío concurrente podría seguir en estado
+      // optimista y un refetch lo quitaría temporalmente de la vista.
+    },
+    onError: (_error, _text, context) => {
+      if (context) {
+        updateMessageCache(queryClient, chatId, current => current.id === context.optimisticId
+          ? { ...current, status: 'FAILED' }
+          : current)
+      }
     },
   })
+
+  function retryMessage(message: Message) {
+    if (message.status !== 'FAILED' || !message.content?.trim()) return
+    updateMessageCache(queryClient, chatId, current => current.id === message.id ? null : current)
+    mutation.mutate(message.content)
+  }
+
+  return { ...mutation, retryMessage }
 }
 
 interface AudioPayload {

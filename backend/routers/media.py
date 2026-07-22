@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import mimetypes
 import uuid
@@ -111,7 +112,7 @@ async def upload_media(
         raise HTTPException(status_code=401, detail="Token inválido")
 
     try:
-        media_url = save_media_file(body.content_type, body.data_base64)
+        media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))

@@ -14,7 +14,13 @@
       "Bash(node -p \"require\\('./node_modules/@xyflow/react/package.json'\\).version\")",
       "Bash(node -p \"JSON.stringify\\(require\\('./node_modules/@xyflow/react/package.json'\\).peerDependencies\\)\")",
       "Bash(echo \"TSC_EXIT:$?\")",
-      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); import main; print\\('BACKEND IMPORT OK'\\)\")"
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); import main; print\\('BACKEND IMPORT OK'\\)\")",
+      "WebFetch(domain:doc.evolution-api.com)",
+      "WebSearch",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(grep -iE \"=\\\\s*['\\\\\"]\\(sk-|eyJ|[A-Za-z0-9]{32,}\\)\")",
+      "Bash(grep -inE \"key\\\\s*=\\\\s*['\\\\\"][A-Za-z0-9+/=]{16,}|secret\\\\s*=\\\\s*['\\\\\"]\" backend/services/secret_cipher.py)",
+      "Bash(git commit *)"
     ],
     "additionalDirectories": [
       "\\tmp"

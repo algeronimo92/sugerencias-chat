@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db.models import User
-from services.auth_service import hash_password, require_admin
+from services.auth_service import hash_password, invalidate_user_cache, require_admin
 from services.db_service import (
     EmailAlreadyExistsError,
     LastAdminError,
@@ -52,12 +52,14 @@ async def add_user(body: CreateUserRequest):
         raise HTTPException(status_code=400, detail="La contraseña no puede estar vacía")
 
     try:
-        return await create_user(
+        user = await create_user(
             email=body.email.strip().lower(),
             name=body.name.strip(),
             password_hash=hash_password(body.password),
             role=body.role,
         )
+        invalidate_user_cache(user["id"])
+        return user
     except EmailAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
 
@@ -78,6 +80,7 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    invalidate_user_cache(user_id)
     return user
 
 
@@ -89,4 +92,5 @@ async def reset_password(user_id: int, body: ResetPasswordRequest):
     ok = await set_user_password(user_id, hash_password(body.new_password))
     if not ok:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    invalidate_user_cache(user_id)
     return {"status": "ok"}

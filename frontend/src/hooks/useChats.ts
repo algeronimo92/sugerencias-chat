@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
@@ -42,6 +42,27 @@ function chatsSocketUrl(): string {
 }
 
 const RECONNECT_DELAY_MS = 3_000
+const socketListeners = new Set<() => void>()
+let socketConnected = false
+
+function setSocketConnected(value: boolean) {
+  if (socketConnected === value) return
+  socketConnected = value
+  socketListeners.forEach(listener => listener())
+}
+
+export function useChatSocketConnected() {
+  return useSyncExternalStore(
+    listener => {
+      socketListeners.add(listener)
+      return () => {
+        socketListeners.delete(listener)
+      }
+    },
+    () => socketConnected,
+    () => false,
+  )
+}
 
 interface LatestMessage {
   message_id: string
@@ -87,6 +108,7 @@ export function useChatUpdates(
 
     function connect() {
       socket = new WebSocket(chatsSocketUrl())
+      socket.onopen = () => setSocketConnected(true)
 
       socket.onmessage = (event) => {
         try {
@@ -94,6 +116,12 @@ export function useChatUpdates(
           if (payload.type === 'tasks_updated') {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+          }
+          if (payload.type === 'scheduled_messages_updated') {
+            const scheduledChatId = typeof payload.chat_id === 'string' ? payload.chat_id : undefined
+            queryClient.invalidateQueries({
+              queryKey: scheduledChatId ? ['scheduled-messages', scheduledChatId] : ['scheduled-messages'],
+            })
           }
           if (payload.type === 'templates_updated') {
             queryClient.invalidateQueries({ queryKey: ['templates'] })
@@ -165,16 +193,43 @@ export function useChatUpdates(
             )
           }
           if (payload.type === 'chats_updated') {
-            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-            queryClient.invalidateQueries({ queryKey: ['chats'] })
-            queryClient.invalidateQueries({ queryKey: ['kanban'] })
-            queryClient.invalidateQueries({ queryKey: ['unread-count'] })
-            queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
-            // También refresca el hilo de mensajes abierto, si lo hay
-            queryClient.invalidateQueries({ queryKey: ['messages'] })
-            queryClient.invalidateQueries({ queryKey: ['customer-service-window'] })
-
             const latest = payload.latest_message as LatestMessage | undefined
+            const changedChatId = typeof payload.chat_id === 'string' ? payload.chat_id : latest?.chat_id
+            const reason = typeof payload.reason === 'string' ? payload.reason : 'unknown'
+
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+            queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+            if (changedChatId) {
+              queryClient.invalidateQueries({ queryKey: ['chat', changedChatId] })
+              if (reason !== 'message_status' && reason !== 'read') {
+                queryClient.invalidateQueries({ queryKey: ['lead-activity', changedChatId] })
+              }
+              if (queryClient.isMutating({ mutationKey: ['send-message', changedChatId] }) === 0) {
+                queryClient.invalidateQueries({ queryKey: ['messages', changedChatId] })
+              }
+              if (reason === 'inbound_message') {
+                queryClient.invalidateQueries({ queryKey: ['customer-service-window', changedChatId] })
+              }
+            } else {
+              queryClient.invalidateQueries({ queryKey: ['messages'] })
+              queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+              queryClient.invalidateQueries({ queryKey: ['customer-service-window'] })
+            }
+            if (['lead_created', 'lead_updated', 'stage_changed', 'tag_changed'].includes(reason) || !changedChatId) {
+              queryClient.invalidateQueries({ queryKey: ['kanban'] })
+            }
+            if (['inbound_message', 'outbound_message', 'lead_created', 'stage_changed'].includes(reason)) {
+              queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            }
+
+            if (latest && latest.sender === 'cliente') {
+              // Un mensaje nuevo del cliente deja obsoleta la sugerencia
+              // cacheada de ese chat. Se invalida SIEMPRE (esté abierto o solo
+              // en la lista): si está abierto se refetchea al instante y la
+              // vista se actualiza; si no, queda marcada como stale y se
+              // regenera al reabrirlo, nunca mostrando la recomendación vieja.
+              queryClient.invalidateQueries({ queryKey: ['suggestions', latest.chat_id] })
+            }
             if (
               latest &&
               latest.sender === 'cliente' &&
@@ -195,6 +250,7 @@ export function useChatUpdates(
       }
 
       socket.onclose = () => {
+        setSocketConnected(false)
         if (!stopped) {
           reconnectTimeout = setTimeout(connect, RECONNECT_DELAY_MS)
         }
@@ -205,35 +261,38 @@ export function useChatUpdates(
 
     return () => {
       stopped = true
+      setSocketConnected(false)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
       socket?.close()
     }
   }, [queryClient, navigate])
 }
 
-/** Resuelve un único chat (por id vía el parámetro search) fuera de la lista paginada. */
-export function useChats(search: string = '', options?: { enabled?: boolean }) {
+/** Resuelve un único chat por su clave primaria, sin búsqueda ILIKE. */
+export function useChat(chatId: string | null) {
+  const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['chats', 'lookup', search],
-    queryFn: async () => (await fetchChatsPage(search, null)).items,
-    enabled: options?.enabled ?? true,
+    queryKey: ['chat', chatId],
+    queryFn: async () => (await client.get<Chat>(`/api/chats/${encodeURIComponent(chatId as string)}`)).data,
+    enabled: !!chatId,
     staleTime: 30_000,
-    // Respaldo por si el websocket se desconecta
-    refetchInterval: 20_000,
+    refetchInterval: connected ? false : 60_000,
   })
 }
 
 export function useUnreadCount() {
+  const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['unread-count'],
     queryFn: async () => (await client.get<{ count: number }>('/api/chats/unread-count')).data.count,
     staleTime: 10_000,
-    refetchInterval: 20_000,
+    refetchInterval: connected ? false : 60_000,
   })
 }
 
 /** Lista de leads con scroll infinito, paginada por cursor. */
 export function useInfiniteChats(search: string = '', filters: ChatFilters) {
+  const connected = useChatSocketConnected()
   return useInfiniteQuery({
     queryKey: ['chats', 'list', search, filters],
     queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters),
@@ -245,7 +304,7 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
     },
     staleTime: 30_000,
     // Respaldo por si el websocket se desconecta
-    refetchInterval: 20_000,
+    refetchInterval: connected ? false : 60_000,
     // Sin esto, los 3 reintentos automáticos de React Query absorben el
     // error antes de que isFetchNextPageError llegue a ser true, y el botón
     // "Reintentar" de la UI nunca se muestra.

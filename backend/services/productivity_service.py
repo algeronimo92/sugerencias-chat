@@ -109,7 +109,8 @@ async def claim_due_reminders() -> list[dict]:
     """
     now = datetime.now(timezone.utc)
     stmt = (
-        select(LeadTask)
+        select(LeadTask, Lead.nombre.label("lead_name"))
+        .outerjoin(Lead, Lead.remote_jid == LeadTask.lead_id)
         .where(
             LeadTask.status == TaskStatus.PENDING,
             LeadTask.remind_at.is_not(None),
@@ -118,14 +119,13 @@ async def claim_due_reminders() -> list[dict]:
         )
         .order_by(LeadTask.remind_at.asc())
         .limit(100)
-        .with_for_update(skip_locked=True)
+        .with_for_update(of=LeadTask, skip_locked=True)
     )
     async with get_sessionmaker()() as session:
-        tasks = (await session.execute(stmt)).scalars().all()
+        rows = (await session.execute(stmt)).all()
         reminders = []
-        for task in tasks:
+        for task, lead_name in rows:
             task.reminder_sent_at = now
-            lead_name = await session.scalar(select(Lead.nombre).where(Lead.remote_jid == task.lead_id))
             reminders.append({
                 "task_id": task.id,
                 "lead_id": task.lead_id,
@@ -134,7 +134,8 @@ async def claim_due_reminders() -> list[dict]:
                 "assigned_user_id": task.assigned_user_id,
                 "due_at": _ts(task.due_at),
             })
-        await session.commit()
+        if rows:
+            await session.commit()
     return reminders
 
 

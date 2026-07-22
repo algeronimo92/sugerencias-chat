@@ -8,7 +8,7 @@ from services.automation_service import trigger_inbound_message
 logger = logging.getLogger(__name__)
 
 # Respaldo del webhook de n8n (routers/webhooks.py) por si esa llamada llegara a fallar.
-POLL_INTERVAL_SECONDS = 20
+POLL_INTERVAL_SECONDS = 60
 
 
 async def watch_chats() -> None:
@@ -18,10 +18,11 @@ async def watch_chats() -> None:
         try:
             signature = await fetch_chat_signature()
             if last_signature is not None and signature != last_signature:
-                payload = {"type": "chats_updated"}
+                payload = {"type": "chats_updated", "reason": "external_message"}
                 latest = await fetch_latest_message()
                 if latest is not None:
                     payload["latest_message"] = latest
+                    payload["chat_id"] = latest["chat_id"]
                     await trigger_inbound_message(latest)
                 await manager.broadcast(payload)
             last_signature = signature

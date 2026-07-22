@@ -118,6 +118,79 @@ class WspMessage(Base):
     )
 
 
+class MessageOutbox(Base):
+    """Trabajo durable para enviar mensajes sin bloquear el request HTTP."""
+
+    __tablename__ = "message_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("wsp_messages.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    chat_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("leads.remote_jid", ondelete="CASCADE"),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_message_outbox_pending", status, next_attempt_at, id),
+        Index("idx_message_outbox_chat_order", chat_id, id),
+    )
+
+
+class ScheduledMessage(Base):
+    """Mensaje que se convertirá en trabajo de outbox al llegar su hora."""
+
+    __tablename__ = "scheduled_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("leads.remote_jid", ondelete="CASCADE"),
+        nullable=False,
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="scheduled")
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    queued_message_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("wsp_messages.id", ondelete="SET NULL"),
+        unique=True,
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_scheduled_messages_due", status, scheduled_at, id),
+        Index("idx_scheduled_messages_lead", lead_id, scheduled_at.desc()),
+    )
+
+
 class AppSetting(Base):
     """Configuración editable desde la app (API keys de servicios externos:
     n8n, Evolution API, ElevenLabs, y los que se vayan sumando). Los valores acá

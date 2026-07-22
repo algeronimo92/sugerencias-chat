@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -301,7 +302,9 @@ async def post_template_use(template_id: int, user: User = Depends(get_current_u
 async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admin: User = Depends(require_admin)):
     content_type = normalize_media_content_type(body.content_type, body.filename)
     try:
-        media_url = save_media_file(content_type, body.data_base64, body.filename)
+        media_url = await asyncio.to_thread(
+            save_media_file, content_type, body.data_base64, body.filename
+        )
     except ValueError as exc:
         raise HTTPException(413 if "grande" in str(exc) else 400, str(exc))
     path = MEDIA_DIR / media_url.rsplit("/", 1)[-1]

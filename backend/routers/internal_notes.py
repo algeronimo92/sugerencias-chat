@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from db.models import User
 from models.schemas import InternalNoteCreate, InternalNoteItem, InternalNoteUpdate
@@ -8,10 +8,10 @@ from services.internal_notes_service import (
     delete_internal_note,
     get_internal_note,
     list_internal_notes,
-    mark_internal_mentions_read,
+    mark_note_views_read,
     update_internal_note,
 )
-from services.notification_service import create_mention_notifications, mark_lead_notifications_read
+from services.notification_service import create_mention_notifications
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/chats/{chat_id}/notes", tags=["internal-notes"])
@@ -25,14 +25,21 @@ async def _notify_mentions(note: dict, user_ids: list[int], actor: User) -> None
         })
 
 
+async def _mark_note_views(chat_id: str, user_id: int) -> None:
+    if await mark_note_views_read(chat_id, user_id):
+        await manager.send_to_user(user_id, {"type": "notifications_updated"})
+
+
 @router.get("", response_model=list[InternalNoteItem])
-async def get_notes(chat_id: str, user: User = Depends(get_current_user)):
+async def get_notes(
+    chat_id: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+):
     notes = await list_internal_notes(chat_id)
     if notes is None:
         raise HTTPException(404, "Lead no encontrado")
-    await mark_internal_mentions_read(chat_id, user.id)
-    if await mark_lead_notifications_read(chat_id, user.id):
-        await manager.send_to_user(user.id, {"type": "notifications_updated"})
+    background_tasks.add_task(_mark_note_views, chat_id, user.id)
     return notes
 
 

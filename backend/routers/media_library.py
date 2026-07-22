@@ -1,3 +1,4 @@
+import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,7 +26,9 @@ async def get_library(
 async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(require_admin)):
     content_type = normalize_media_content_type(body.content_type, body.filename)
     try:
-        media_url = save_media_file(content_type, body.data_base64, body.filename)
+        media_url = await asyncio.to_thread(
+            save_media_file, content_type, body.data_base64, body.filename
+        )
     except ValueError as exc:
         raise HTTPException(413 if "grande" in str(exc) else 400, str(exc))
 

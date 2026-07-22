@@ -132,7 +132,7 @@ export interface LeadUpdateInput {
   notas?: string | null
 }
 
-export type MessageStatus = 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null
+export type MessageStatus = 'PENDING' | 'FAILED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null
 
 export interface Message {
   id: number
@@ -142,6 +142,21 @@ export interface Message {
   media_url: string | null
   wa_message_id: string | null
   status: MessageStatus
+}
+
+export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
+
+export interface ScheduledMessage {
+  id: number
+  lead_id: string
+  text: string
+  scheduled_at: string
+  status: ScheduledMessageStatus
+  created_by_user_id: number
+  created_by_user_name: string
+  queued_message_id: number | null
+  error: string | null
+  created_at: string
 }
 
 export interface CustomerServiceWindow {

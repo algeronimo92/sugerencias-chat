@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 
 import bcrypt
 import jwt
@@ -9,6 +11,8 @@ from db.models import User
 
 COOKIE_NAME = "access_token"
 JWT_ALGORITHM = "HS256"
+_user_cache: dict[int, tuple[float, User | None]] = {}
+_user_cache_lock = asyncio.Lock()
 
 
 def hash_password(password: str) -> str:
@@ -33,26 +37,53 @@ def decode_access_token(token: str) -> int | None:
         return None
 
 
-async def _user_from_token(token: str | None) -> User | None:
-    """Rol y is_active se leen siempre de la DB (no del JWT): así, si un admin
-    desactiva o degrada a alguien, el efecto es inmediato en vez de esperar a
-    que expire el token."""
+def invalidate_user_cache(user_id: int | None = None) -> None:
+    if user_id is None:
+        _user_cache.clear()
+    else:
+        _user_cache.pop(user_id, None)
+
+
+async def _cached_user(user_id: int) -> User | None:
+    now = monotonic()
+    cached = _user_cache.get(user_id)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+
+    async with _user_cache_lock:
+        now = monotonic()
+        cached = _user_cache.get(user_id)
+        if cached is not None and now < cached[0]:
+            return cached[1]
+        from services.db_service import get_user_by_id  # evita ciclo
+
+        user = await get_user_by_id(user_id)
+        if user is not None and not user.is_active:
+            user = None
+        _user_cache[user_id] = (
+            now + max(0.0, settings.auth_user_cache_ttl_seconds),
+            user,
+        )
+        return user
+
+
+async def get_user_from_token(token: str | None) -> User | None:
+    """Valida el JWT y refresca rol/estado con una caché corta.
+
+    Las mutaciones de usuarios invalidan localmente la entrada, y otros
+    workers convergen dentro del TTL configurado.
+    """
     if not token:
         return None
     user_id = decode_access_token(token)
     if user_id is None:
         return None
 
-    from services.db_service import get_user_by_id  # import diferido: evita ciclo con db_service
-
-    user = await get_user_by_id(user_id)
-    if user is None or not user.is_active:
-        return None
-    return user
+    return await _cached_user(user_id)
 
 
 async def get_current_user(request: Request) -> User:
-    user = await _user_from_token(request.cookies.get(COOKIE_NAME))
+    user = await get_user_from_token(request.cookies.get(COOKIE_NAME))
     if user is None:
         raise HTTPException(status_code=401, detail="No autenticado")
     return user

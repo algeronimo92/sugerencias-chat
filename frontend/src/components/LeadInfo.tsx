@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Contact, Phone, Tag, User, MapPin, FileText, Pencil, type LucideIcon } from 'lucide-react'
+import { CircleDot, Contact, Phone, Tag, User, MapPin, FileText, Pencil, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
+import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { useUpdateLead } from '../hooks/useChats'
 import { displayPhone } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -10,14 +11,24 @@ interface Props {
   chat: Chat
 }
 
+interface LeadInfoField {
+  label: string
+  value: string | null
+  icon: LucideIcon
+  iconClassName?: string
+  valueClassName?: string
+}
+
 export function LeadInfo({ chat }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
+  const stageMeta = LEAD_STAGE_META[chat.stage]
 
-  const fields: { label: string; value: string | null; icon: LucideIcon }[] = [
+  const fields: LeadInfoField[] = [
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
+    { label: 'Estado', value: stageMeta.label, icon: CircleDot, iconClassName: stageMeta.accent, valueClassName: stageMeta.badge },
     { label: 'Servicio', value: chat.servicio_interes, icon: Tag },
     { label: 'Vendedor', value: chat.vendedor, icon: User },
     { label: 'Origen', value: chat.origen, icon: MapPin },
@@ -52,12 +63,14 @@ export function LeadInfo({ chat }: Props) {
 
       {fields.length > 0 && (
         <dl className="space-y-2.5">
-          {fields.map(({ label, value, icon: Icon }) => (
+          {fields.map(({ label, value, icon: Icon, iconClassName, valueClassName }) => (
             <div key={label} className="flex items-start gap-2.5 text-sm">
-              <Icon className="w-4 h-4 text-gray-400 dark:text-gray-500 mt-0.5 shrink-0" />
+              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClassName ?? 'text-gray-400 dark:text-gray-500'}`} />
               <div className="min-w-0">
                 <dt className="text-[11px] font-medium text-gray-400 dark:text-gray-500 leading-none mb-0.5">{label}</dt>
-                <dd className="text-gray-700 dark:text-gray-300 leading-snug">{value}</dd>
+                <dd className={valueClassName ? `inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${valueClassName}` : 'text-gray-700 dark:text-gray-300 leading-snug'}>
+                  {value}
+                </dd>
               </div>
             </div>
           ))}

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import settings
+from services.performance import install_db_timing
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -28,8 +29,12 @@ def get_engine() -> AsyncEngine:
         _engine = create_async_engine(
             _to_async_url(settings.database_url),
             connect_args={"ssl": False, "timeout": 10},
-            pool_pre_ping=True,
+            pool_pre_ping=settings.database_pool_pre_ping,
+            pool_size=settings.database_pool_size,
+            max_overflow=settings.database_max_overflow,
+            pool_recycle=settings.database_pool_recycle_seconds,
         )
+        install_db_timing(_engine)
     return _engine
 
 

@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -11,6 +12,7 @@ from models.schemas import (
     ChatPage,
     CustomerServiceWindow,
     KanbanPage,
+    KanbanSnapshot,
     LeadCreate,
     LeadStage,
     LeadStageUpdate,
@@ -35,12 +37,14 @@ from services.db_service import (
     fetch_chat,
     fetch_chats,
     fetch_kanban_counts,
+    fetch_kanban_snapshot,
     fetch_kanban_stage,
     fetch_messages,
     list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
     insert_message,
+    lead_exists,
     mark_chat_read,
     list_active_sellers,
     get_customer_service_window,
@@ -63,6 +67,7 @@ from services.evolution_service import (
     get_template_capabilities,
 )
 from services.ws_manager import manager
+from services.message_outbox import enqueue_text_message
 from services.productivity_service import list_templates, record_template_use
 from services.automation_service import trigger_lead_created, trigger_stage_changed
 
@@ -223,7 +228,7 @@ def _wa_message_id(evolution_response: dict) -> str | None:
 
 
 async def _require_existing_lead(chat_id: str) -> None:
-    if await get_customer_service_window(chat_id) is None:
+    if not await lead_exists(chat_id):
         raise HTTPException(404, "Lead no encontrado")
 
 
@@ -280,6 +285,11 @@ async def get_kanban_counts(search: str | None = None):
     return await fetch_kanban_counts(search.strip() if search else None)
 
 
+@router.get("/kanban/snapshot", response_model=KanbanSnapshot)
+async def get_kanban_snapshot(search: str | None = None):
+    return await fetch_kanban_snapshot(search.strip() if search else None)
+
+
 @router.get("/kanban/{stage}", response_model=KanbanPage)
 async def get_kanban_stage(
     stage: LeadStage,
@@ -302,7 +312,7 @@ async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depe
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "stage_changed"})
     if previous and previous["stage"] != body.stage:
         try:
             await trigger_stage_changed(chat_id)
@@ -337,7 +347,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": lead["chat_id"], "reason": "lead_created"})
     try:
         await trigger_lead_created(lead["chat_id"])
     except Exception:
@@ -359,7 +369,7 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
     return lead
 
 
@@ -368,11 +378,19 @@ async def get_sellers():
     return await list_active_sellers()
 
 
+@router.get("/{chat_id}", response_model=Chat)
+async def get_chat(chat_id: str):
+    chat = await fetch_chat(chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    return chat
+
+
 @router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)
 async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
     if not await assign_tag(chat_id, tag_id, user.id):
         raise HTTPException(status_code=404, detail="Lead o etiqueta no encontrados")
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "tag_changed"})
     return await fetch_chat(chat_id)
 
 
@@ -380,7 +398,7 @@ async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_curre
 async def delete_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
     if not await remove_tag(chat_id, tag_id, user.id):
         raise HTTPException(status_code=404, detail="La etiqueta no está asignada")
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "tag_changed"})
     return await fetch_chat(chat_id)
 
 
@@ -418,17 +436,8 @@ async def send_message(chat_id: str, body: SendMessageRequest):
     if not text:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
     await _require_existing_lead(chat_id)
-    try:
-        evolution_response = await send_whatsapp_text(chat_id, text)
-    except EvolutionApiError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
-
-    message = await insert_message(
-        chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(evolution_response), status="SERVER_ACK"
-    )
-    await manager.broadcast({"type": "chats_updated"})
+    message = await enqueue_text_message(chat_id, text)
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
@@ -437,7 +446,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
     """Nota de voz grabada en vivo (PTT) — endpoint sendWhatsAppAudio."""
     await _require_existing_lead(chat_id)
     try:
-        media_url = save_media_file(body.content_type, body.data_base64)
+        media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))
@@ -457,7 +466,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
         wa_message_id=_wa_message_id(evolution_response),
         status="SERVER_ACK",
     )
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
     return message
 
 
@@ -471,7 +480,9 @@ async def send_media(chat_id: str, body: SendMediaRequest):
         raise HTTPException(status_code=400, detail="Tipo de archivo no soportado")
 
     try:
-        media_url = save_media_file(body.content_type, body.data_base64, filename=body.filename)
+        media_url = await asyncio.to_thread(
+            save_media_file, body.content_type, body.data_base64, body.filename
+        )
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))
@@ -498,7 +509,7 @@ async def send_media(chat_id: str, body: SendMediaRequest):
         wa_message_id=_wa_message_id(evolution_response),
         status="SERVER_ACK",
     )
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
     return message
 
 
@@ -544,7 +555,7 @@ async def send_template(
             status="SERVER_ACK",
         )
         await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated"})
+        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
         return [message]
 
     await _require_existing_lead(chat_id)
@@ -627,7 +638,7 @@ async def send_template(
             wa_message_id=_wa_message_id(response), status="SERVER_ACK",
         )
         await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated"})
+        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
         return [message]
 
     if not text and not template["attachments"]:
@@ -646,7 +657,8 @@ async def send_template(
             path = (MEDIA_DIR / attachment["media_url"].rsplit("/", 1)[-1]).resolve()
             if path.parent != MEDIA_DIR.resolve() or not path.is_file():
                 raise EvolutionApiError(f"No se encontró el adjunto {attachment['filename']}")
-            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+            raw = await asyncio.to_thread(path.read_bytes)
+            encoded = base64.b64encode(raw).decode("ascii")
             mediatype = _mediatype_from_content_type(attachment["content_type"])
             response = await send_whatsapp_media(
                 chat_id, encoded, mediatype, filename=attachment["filename"]
@@ -659,11 +671,11 @@ async def send_template(
             ))
     except (EvolutionApiError, httpx.HTTPError) as exc:
         if sent:
-            await manager.broadcast({"type": "chats_updated"})
+            await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
         raise HTTPException(502, detail=f"Envío parcial: se enviaron {len(sent)} elementos. {exc}")
 
     await record_template_use(template_id, user.id)
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
     return sent
 
 
@@ -681,7 +693,7 @@ async def send_location(chat_id: str, body: SendLocationRequest):
     message = await insert_message(
         chat_id, sender="vendedor", content=content, wa_message_id=_wa_message_id(evolution_response), status="SERVER_ACK"
     )
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
     return message
 
 
@@ -707,5 +719,5 @@ async def read_chat(chat_id: str):
             )
 
     await mark_chat_read(chat_id)
-    await manager.broadcast({"type": "chats_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "read"})
     return {"status": "ok"}
