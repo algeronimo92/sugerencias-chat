@@ -6,7 +6,21 @@ from sqlalchemy import and_, case, delete, exists, false, func, insert, or_, sel
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
-from db.models import Lead, LeadActivity, LeadStage, LeadTag, LeadTagAssignment, User, WspMessage
+from db.models import (
+    AutomationExecution,
+    Lead,
+    LeadActivity,
+    LeadNote,
+    LeadStage,
+    LeadTag,
+    LeadTagAssignment,
+    LeadTask,
+    MessageOutbox,
+    ScheduledMessage,
+    User,
+    UserNotification,
+    WspMessage,
+)
 from db.session import get_sessionmaker
 
 CHATS_PAGE_SIZE = 30
@@ -16,6 +30,13 @@ CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
 
 
 class LeadAlreadyExistsError(Exception):
+    pass
+
+
+class LeadHasMessagesError(Exception):
+    """El teléfono de un lead con conversación no se puede cambiar: el JID es
+    la identidad del chat en WhatsApp y re-apuntarlo mezclaría historiales."""
+
     pass
 
 
@@ -768,8 +789,13 @@ async def create_lead(
     origen: str | None = None,
     notas: str | None = None,
     actor_user_id: int | None = None,
+    remote_jid: str | None = None,
 ) -> dict:
-    chat_id = _phone_to_jid(phone)
+    # phone llega ya normalizado (solo dígitos E.164). Si Evolution devolvió el
+    # JID canónico se usa ese — puede diferir del tipeado (p. ej. México/AR) y
+    # entonces telefono se deriva del JID, que es la identidad real del chat.
+    chat_id = remote_jid or _phone_to_jid(phone)
+    digits = re.sub(r"\D", "", chat_id.split("@", 1)[0]) or re.sub(r"\D", "", phone)
     seller_name = None
     if vendedor_id is not None:
         async with get_sessionmaker()() as lookup_session:
@@ -779,7 +805,7 @@ async def create_lead(
             seller_name = seller.name
     stmt = insert(Lead).values(
         remote_jid=chat_id,
-        telefono=phone,
+        telefono=f"+{digits}",
         nombre=name,
         servicio_interes=servicio_interes,
         vendedor_id=vendedor_id,
@@ -796,7 +822,7 @@ async def create_lead(
                 AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
-                new_value={"name": name, "phone": phone},
+                new_value={"name": name, "phone": f"+{digits}"},
             )
             await session.commit()
         except IntegrityError:
@@ -851,6 +877,92 @@ async def update_lead(
         await session.commit()
 
     return await fetch_chat(chat_id)
+
+
+# Tablas que apuntan a leads.remote_jid y deben migrarse en un re-key.
+# wsp_messages no tiene FK (va defensivo: la precondición exige que esté
+# vacía); el resto tiene FK sin ON UPDATE CASCADE, por eso el re-key es
+# INSERT nuevo → UPDATE hijas → DELETE viejo y no un UPDATE de la PK.
+_REKEY_CHILDREN: list[tuple[type, str]] = [
+    (WspMessage, "chat_id"),
+    (MessageOutbox, "chat_id"),
+    (ScheduledMessage, "lead_id"),
+    (LeadTagAssignment, "lead_id"),
+    (LeadActivity, "lead_id"),
+    (LeadNote, "lead_id"),
+    (UserNotification, "lead_id"),
+    (LeadTask, "lead_id"),
+    (AutomationExecution, "lead_id"),
+]
+
+
+async def rekey_lead_phone(
+    old_jid: str,
+    new_digits: str,
+    new_jid: str | None = None,
+    actor_user_id: int | None = None,
+) -> dict | None:
+    """Cambia el número de un lead sin conversación, migrando sus datos al
+    nuevo JID en una sola transacción. Devuelve el chat nuevo, o None si el
+    lead no existe. Levanta LeadHasMessagesError si ya tiene mensajes y
+    LeadAlreadyExistsError si el número nuevo ya está cargado."""
+    target_jid = new_jid or _phone_to_jid(new_digits)
+    # Igual que en create_lead: si el JID canónico difiere de lo tipeado,
+    # telefono se deriva del JID, que es la identidad real del chat.
+    new_digits = re.sub(r"\D", "", target_jid.split("@", 1)[0]) or new_digits
+    async with get_sessionmaker()() as session:
+        old_row = (
+            await session.execute(
+                select(Lead.__table__).where(Lead.remote_jid == old_jid).with_for_update()
+            )
+        ).mappings().first()
+        if old_row is None:
+            return None
+
+        has_messages = (
+            await session.execute(
+                select(exists().where(WspMessage.chat_id == old_jid))
+            )
+        ).scalar()
+        if has_messages:
+            raise LeadHasMessagesError(old_jid)
+
+        collision = (
+            await session.execute(
+                select(exists().where(Lead.remote_jid == target_jid))
+            )
+        ).scalar()
+        if collision:
+            raise LeadAlreadyExistsError(target_jid)
+
+        new_values = dict(old_row)
+        new_values["remote_jid"] = target_jid
+        new_values["telefono"] = f"+{new_digits}"
+        new_values["updated_at"] = datetime.now(timezone.utc)
+        await session.execute(insert(Lead).values(**new_values))
+
+        for model, column in _REKEY_CHILDREN:
+            col = getattr(model, column)
+            await session.execute(
+                update(model).where(col == old_jid).values(**{column: target_jid})
+            )
+
+        # Recién después de migrar las hijas: borrarlo antes las arrastraría
+        # por el ON DELETE CASCADE.
+        await session.execute(delete(Lead).where(Lead.remote_jid == old_jid))
+
+        await _record_activity(
+            session,
+            target_jid,
+            "lead_updated",
+            "user" if actor_user_id is not None else "system",
+            actor_user_id,
+            {"phone": old_row["telefono"]},
+            {"phone": f"+{new_digits}"},
+        )
+        await session.commit()
+
+    return await fetch_chat(target_jid)
 
 
 async def insert_message(

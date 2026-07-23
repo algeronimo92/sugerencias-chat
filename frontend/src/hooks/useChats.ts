@@ -316,6 +316,31 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
   })
 }
 
+/** Código de país por defecto para el form de leads (configurable en
+ * Configuración). staleTime infinito: cambia una vez cada nunca. */
+export function usePhoneConfig() {
+  return useQuery({
+    queryKey: ['phone-config'],
+    queryFn: async () =>
+      (await client.get<{ default_country_code: string }>('/api/chats/phone-config')).data,
+    staleTime: Infinity,
+  })
+}
+
+/** Busca si ya existe un lead con exactamente ese número (match por JID; la
+ * búsqueda del servidor es por substring, el filtro fino se hace acá). */
+export function useDuplicateLead(digits: string | null) {
+  return useQuery({
+    queryKey: ['duplicate-lead', digits],
+    queryFn: async () => {
+      const { data } = await client.get<ChatsPage>('/api/chats', { params: { search: digits } })
+      return data.items.find((chat) => chat.chat_id === `${digits}@s.whatsapp.net`) ?? null
+    },
+    enabled: !!digits && digits.length >= 8,
+    staleTime: 15_000,
+  })
+}
+
 async function createLead(payload: LeadInput): Promise<Chat> {
   const { data } = await client.post<Chat>('/api/chats', payload)
   return data
@@ -341,7 +366,13 @@ export function useUpdateLead(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.chat_id !== chatId) {
+        // Cambió el número (re-key del JID): el lead ahora vive bajo otro id
+        // y cualquier cache del viejo (mensajes, ventana, notas…) quedó huérfana.
+        queryClient.invalidateQueries()
+        return
+      }
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
     },

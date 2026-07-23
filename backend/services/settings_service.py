@@ -55,6 +55,7 @@ SETTING_DEFS: list[SettingDef] = [
         "ElevenLabs (texto a voz)",
         secret=False,
     ),
+    SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0

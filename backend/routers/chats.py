@@ -32,6 +32,7 @@ from services.db_service import (
     KANBAN_PAGE_SIZE,
     MESSAGES_PAGE_SIZE,
     LeadAlreadyExistsError,
+    LeadHasMessagesError,
     create_lead,
     assign_tag,
     fetch_chat,
@@ -48,6 +49,7 @@ from services.db_service import (
     mark_chat_read,
     list_active_sellers,
     get_customer_service_window,
+    rekey_lead_phone,
     remove_tag,
     update_lead,
     update_lead_stage,
@@ -55,6 +57,7 @@ from services.db_service import (
 from services.auth_service import get_current_user
 from services.evolution_service import (
     EvolutionApiError,
+    check_whatsapp_numbers,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_audio,
@@ -65,6 +68,12 @@ from services.evolution_service import (
     send_whatsapp_template,
     send_whatsapp_text,
     get_template_capabilities,
+)
+from services.phone_utils import (
+    PhoneValidationError,
+    digits_to_jid,
+    effective_country_code,
+    normalize_phone,
 )
 from services.ws_manager import manager
 from services.message_outbox import enqueue_text_message
@@ -323,26 +332,51 @@ async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depe
     return lead
 
 
+async def _verify_whatsapp_number(digits: str) -> tuple[bool | None, str | None]:
+    """(existe, jid canónico). existe=None significa que no se pudo verificar
+    (Evolution caída o sin configurar): se sigue adelante igual — bloquear el
+    alta de leads porque WhatsApp está desconectado dejaría el CRM inusable."""
+    try:
+        rows = await check_whatsapp_numbers([digits])
+    except (EvolutionApiError, httpx.HTTPError):
+        logger.warning("No se pudo verificar el número %s en WhatsApp; se continúa igual", digits, exc_info=True)
+        return None, None
+    row = rows[0] if rows and isinstance(rows[0], dict) else None
+    if row is None:
+        return None, None
+    jid = row.get("jid")
+    if not (isinstance(jid, str) and jid.endswith("@s.whatsapp.net")):
+        jid = None
+    return bool(row.get("exists")), jid
+
+
 @router.post("", response_model=Chat, status_code=201)
 async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
-    phone = body.phone.strip()
     name = body.name.strip()
-    if not phone:
-        raise HTTPException(status_code=400, detail="El teléfono es obligatorio")
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    try:
+        digits = normalize_phone(body.phone, await effective_country_code())
+    except PhoneValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if user.role != "admin" and body.vendedor_id not in (None, user.id):
         raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
+
+    exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
+    if exists_wa is False:
+        raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
+
     try:
         lead = await create_lead(
-            phone=phone,
+            phone=digits,
             name=name,
             servicio_interes=body.servicio_interes,
             vendedor_id=body.vendedor_id,
             origen=body.origen,
             notas=body.notas,
             actor_user_id=user.id,
+            remote_jid=canonical_jid,
         )
     except LeadAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
@@ -364,6 +398,35 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     values = {
         _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
     }
+
+    # El teléfono es la identidad del chat (remote_jid): no se puede vaciar y
+    # cambiarlo exige re-key. Un phone: null explícito se ignora.
+    new_phone = values.pop("telefono", None)
+    if new_phone:
+        try:
+            digits = normalize_phone(new_phone, await effective_country_code())
+        except PhoneValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        new_jid = digits_to_jid(digits)
+        if new_jid != chat_id:
+            exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
+            if exists_wa is False:
+                raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
+            try:
+                rekeyed = await rekey_lead_phone(chat_id, digits, canonical_jid or new_jid, user.id)
+            except LeadHasMessagesError:
+                raise HTTPException(
+                    status_code=409,
+                    detail="No se puede cambiar el teléfono: el lead ya tiene conversación en WhatsApp",
+                )
+            except LeadAlreadyExistsError:
+                raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
+            if rekeyed is None:
+                raise HTTPException(status_code=404, detail="Lead no encontrado")
+            chat_id = rekeyed["chat_id"]
+        else:
+            values["telefono"] = f"+{digits}"
+
     try:
         lead = await update_lead(chat_id, values, "user", user.id)
     except ValueError as exc:
@@ -378,6 +441,14 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
 @router.get("/sellers", response_model=list[SellerItem])
 async def get_sellers():
     return await list_active_sellers()
+
+
+@router.get("/phone-config")
+async def get_phone_config():
+    """Código de país por defecto para el form de leads. Existe aparte de
+    /api/settings porque aquel es admin-only y los vendedores también crean
+    leads."""
+    return {"default_country_code": await effective_country_code()}
 
 
 @router.get("/{chat_id}", response_model=Chat)

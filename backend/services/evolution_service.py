@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Any
 
 import httpx
 from time import monotonic, perf_counter
@@ -70,7 +71,7 @@ async def is_configured() -> bool:
     return all(values.values())
 
 
-async def _post(url: str, api_key: str, payload: dict, timeout: float) -> dict:
+async def _post(url: str, api_key: str, payload: dict, timeout: float) -> Any:
     """POST a Evolution API. Si responde con error, la excepción incluye el
     body de la respuesta (no solo el status code) — sin esto, un 400 por un
     payload mal formado es indistinguible de cualquier otro error y hay que
@@ -128,6 +129,17 @@ async def get_template_capabilities() -> dict:
     }
     _capabilities_cache = (monotonic() + 300.0, result)
     return result
+
+
+async def check_whatsapp_numbers(numbers: list[str]) -> list[dict]:
+    """Consulta si los números (solo dígitos, con código de país) existen en
+    WhatsApp. Devuelve la lista cruda de Evolution: [{exists, jid, number}, …].
+    Timeout corto a propósito: el alta de leads no puede quedar rehén de una
+    instancia colgada (el llamador hace fail-open ante EvolutionApiError)."""
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/chat/whatsappNumbers/{instance}"
+    result = await _post(url, api_key, {"numbers": numbers}, timeout=10.0)
+    return result if isinstance(result, list) else []
 
 
 async def send_whatsapp_template(

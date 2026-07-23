@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     elevenlabs_style: str = "1"
     elevenlabs_speed: str = "1.2"
     elevenlabs_use_speaker_boost: str = "true"
+    # Código de país (sin +) que se antepone a teléfonos tipeados en formato
+    # local al crear/editar leads. Editable desde Configuración (app_settings).
+    default_country_code: str = "51"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Almacenamiento multimedia. "local" conserva el comportamiento anterior;

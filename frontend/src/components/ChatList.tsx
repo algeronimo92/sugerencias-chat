@@ -145,6 +145,7 @@ export function ChatList({
   }
 
   function handleCreateLead(values: LeadUpdateInput) {
+    if (isSavingNewLead) return
     setCreateError(null)
     createLead(
       {
@@ -575,6 +576,10 @@ export function ChatList({
           error={createError}
           onSubmit={handleCreateLead}
           onCancel={() => setIsCreating(false)}
+          onOpenExisting={(chat) => {
+            setIsCreating(false)
+            onSelect(chat)
+          }}
         />
       )}
     </div>

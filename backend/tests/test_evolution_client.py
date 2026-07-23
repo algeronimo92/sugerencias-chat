@@ -25,6 +25,39 @@ async def test_config_loads_all_evolution_values_together(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_check_whatsapp_numbers_posts_to_chat_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test/", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value=[{"exists": True, "jid": "51906471403@s.whatsapp.net"}])
+    monkeypatch.setattr(evolution_service, "_post", post)
+
+    result = await evolution_service.check_whatsapp_numbers(["51906471403"])
+
+    assert result == [{"exists": True, "jid": "51906471403@s.whatsapp.net"}]
+    post.assert_awaited_once_with(
+        "https://evolution.test/chat/whatsappNumbers/dermica",
+        "secret",
+        {"numbers": ["51906471403"]},
+        timeout=10.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_whatsapp_numbers_tolerates_non_list_response(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(evolution_service, "_post", AsyncMock(return_value={"status": "ok"}))
+
+    assert await evolution_service.check_whatsapp_numbers(["51906471403"]) == []
+
+
+@pytest.mark.asyncio
 async def test_http_client_is_reused_and_closed(monkeypatch):
     client = AsyncMock()
     client.is_closed = False

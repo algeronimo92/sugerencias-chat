@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CircleDot, Contact, Phone, Tag, User, MapPin, FileText, Pencil, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
@@ -22,6 +23,7 @@ interface LeadInfoField {
 export function LeadInfo({ chat }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const navigate = useNavigate()
   const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
   const stageMeta = LEAD_STAGE_META[chat.stage]
 
@@ -36,9 +38,14 @@ export function LeadInfo({ chat }: Props) {
   ].filter((f) => f.value)
 
   function handleUpdate(values: LeadUpdateInput) {
+    if (isSaving) return
     setEditError(null)
     updateLead(values, {
-      onSuccess: () => setIsEditing(false),
+      onSuccess: (updated) => {
+        setIsEditing(false)
+        // Cambió el número: el lead vive bajo otro chat_id, hay que seguirlo.
+        if (updated.chat_id !== chat.chat_id) navigate(`/chat/${updated.chat_id}`)
+      },
       onError: (err) => setEditError(extractErrorMessage(err)),
     })
   }
@@ -81,6 +88,7 @@ export function LeadInfo({ chat }: Props) {
         <LeadFormDialog
           title="Editar lead"
           submitLabel="Guardar"
+          canEditPhone={chat.last_message == null}
           initial={{
             phone: chat.phone,
             name: chat.name,
