@@ -83,10 +83,8 @@ def media_dir(tmp_path, monkeypatch):
     return path
 
 
-def configure_minio(monkeypatch, fake: FakeMinio, *, fallback=False, dual_write=False):
+def configure_minio(monkeypatch, fake: FakeMinio):
     monkeypatch.setattr(storage.settings, "media_storage_backend", "minio")
-    monkeypatch.setattr(storage.settings, "media_local_read_fallback", fallback)
-    monkeypatch.setattr(storage.settings, "media_dual_write_local", dual_write)
     monkeypatch.setattr(storage.settings, "minio_endpoint", "minio.internal:9000")
     monkeypatch.setattr(storage.settings, "minio_access_key", "access")
     monkeypatch.setattr(storage.settings, "minio_secret_key", "secret")
@@ -122,6 +120,23 @@ def test_minio_backend_uploads_reads_ranges_and_deletes(media_dir, monkeypatch):
 
     storage.delete_media(url)
     assert ("crm-media", "dermicapro/audio/voice.ogg") not in fake.objects
+
+
+def test_minio_object_removed_between_stat_and_read_raises_not_found(media_dir, monkeypatch):
+    """Regresión: get_object() fallando con NoSuchKey después de un stat_object()
+    exitoso debía traducirse a MediaNotFoundError, pero un rename de parámetro en
+    ``_iter_minio`` dejó una referencia a una variable inexistente que producía un
+    NameError sin controlar (y una respuesta HTTP truncada en el navegador)."""
+    class FlakyMinio(FakeMinio):
+        def get_object(self, bucket, object_name, offset=0, length=0):
+            raise FakeS3Error("NoSuchKey")
+
+    fake = FlakyMinio()
+    configure_minio(monkeypatch, fake)
+    url = storage.save_media_bytes("photo.jpg", b"pixels", "image/jpeg")
+
+    with pytest.raises(storage.MediaNotFoundError):
+        b"".join(storage.iter_media(url))
 
 
 def test_minio_resolves_extensionless_audio_in_audio_prefix(media_dir, monkeypatch):
@@ -160,22 +175,6 @@ def test_audio_webm_gets_stable_extension(monkeypatch):
     assert result.endswith(".weba")
     assert saved["filename"].endswith(".weba")
     assert saved["content_type"] == "audio/webm"
-
-
-def test_minio_transition_can_dual_write_and_fallback_to_local(media_dir, monkeypatch):
-    fake = FakeMinio()
-    configure_minio(monkeypatch, fake, fallback=True, dual_write=True)
-
-    url = storage.save_media_bytes("new.mp4", b"video", "video/mp4")
-    assert (media_dir / "new.mp4").read_bytes() == b"video"
-
-    (media_dir / "legacy.jpg").write_bytes(b"legacy")
-    info = storage.stat_media("/media/legacy.jpg")
-    assert info.source == "local"
-    assert storage.read_media_bytes("/media/legacy.jpg") == b"legacy"
-
-    storage.delete_media(url)
-    assert not (media_dir / "new.mp4").exists()
 
 
 def test_rejects_paths_outside_media_namespace(media_dir, monkeypatch):

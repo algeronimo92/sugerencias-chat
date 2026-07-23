@@ -189,15 +189,7 @@ def _minio_stat(media_url: str) -> MediaObjectStat:
 def stat_media(media_url: str) -> MediaObjectStat:
     if storage_backend() == "local":
         return _local_stat(_local_path(media_url))
-
-    try:
-        return _minio_stat(media_url)
-    except (MediaNotFoundError, MediaStorageError):
-        local_path = _local_path(media_url)
-        if settings.media_local_read_fallback and local_path.is_file():
-            logger.warning("Usando fallback local para %s", media_url)
-            return _local_stat(local_path)
-        raise
+    return _minio_stat(media_url)
 
 
 def media_size(media_url: str) -> int:
@@ -234,7 +226,9 @@ def _iter_minio(object_name: str, offset: int, length: int) -> Iterator[bytes]:
             yield chunk
     except Exception as exc:
         if _is_not_found(exc):
-            raise MediaNotFoundError(media_url) from exc
+            logger.warning("Objeto %s desapareció de MinIO entre el stat y la lectura", object_name)
+            raise MediaNotFoundError(object_name) from exc
+        logger.exception("Fallo leyendo %s desde MinIO a mitad de la respuesta", object_name)
         raise MediaStorageError(f"No se pudo leer desde MinIO: {type(exc).__name__}") from exc
     finally:
         if response is not None:
@@ -288,18 +282,12 @@ def save_media_bytes(filename: str, data: bytes, content_type: str) -> str:
     except Exception as exc:
         raise MediaStorageError(f"No se pudo guardar en MinIO: {type(exc).__name__}") from exc
 
-    if settings.media_dual_write_local:
-        try:
-            _write_local(filename, data)
-        except OSError:
-            logger.exception("MinIO guardó %s, pero falló la copia local de transición", media_url)
     return media_url
 
 
 def delete_media(media_url: str) -> None:
-    local_path = _local_path(media_url)
     if storage_backend() == "local":
-        local_path.unlink(missing_ok=True)
+        _local_path(media_url).unlink(missing_ok=True)
         return
 
     try:
@@ -310,8 +298,6 @@ def delete_media(media_url: str) -> None:
         pass
     except Exception as exc:
         raise MediaStorageError(f"No se pudo eliminar de MinIO: {type(exc).__name__}") from exc
-    if settings.media_dual_write_local or settings.media_local_read_fallback:
-        local_path.unlink(missing_ok=True)
 
 
 def check_media_storage() -> dict[str, str]:

@@ -28,8 +28,6 @@ class Settings(BaseSettings):
     # Almacenamiento multimedia. "local" conserva el comportamiento anterior;
     # "minio" usa un bucket privado y mantiene las URLs /media/<archivo>.
     media_storage_backend: str = "local"
-    media_local_read_fallback: bool = False
-    media_dual_write_local: bool = False
     minio_endpoint: str = ""
     minio_access_key: str = ""
     minio_secret_key: str = ""
