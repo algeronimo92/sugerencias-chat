@@ -2,13 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="apple-mobile-web-app-title" content="DermicaPro" />
     <!-- Se funde con el header de la app: verde wa-primary-strong en claro, wa-head-dark en oscuro.
          El tema es un toggle manual (localStorage), así que el script de abajo y useTheme
-         mantienen este meta sincronizado; el valor inicial es solo fallback sin JS. -->
+         mantienen este meta sincronizado; el valor inicial es solo fallback sin JS.
+         Safari 26+ lo ignora y muestrea el background del <body> (ver index.css);
+         Chrome Android y la PWA instalada sí lo usan. -->
     <meta name="theme-color" content="#008069" />
-    <title>frontend</title>
+    <title>DermicaPro</title>
     <script>
       (function () {
         var stored = localStorage.getItem('theme')

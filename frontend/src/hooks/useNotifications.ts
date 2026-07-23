@@ -39,7 +39,7 @@ export function useNotifications(unreadCount: number) {
 
       // tag fijo: si llegan varias seguidas, la última reemplaza a la
       // anterior en vez de apilar notificaciones.
-      const n = new Notification(title, { body, icon: '/favicon.svg', tag: options?.tag ?? 'wsp-nuevo-mensaje' })
+      const n = new Notification(title, { body, icon: '/icon-192.png', tag: options?.tag ?? 'wsp-nuevo-mensaje' })
       n.onclick = () => {
         window.focus()
         onClick()
