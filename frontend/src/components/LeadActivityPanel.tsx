@@ -1,5 +1,6 @@
 import { ChevronDown, History, Loader2 } from 'lucide-react'
 import { useLeadActivity } from '../hooks/useLeadMeta'
+import { parseContent } from '../utils/message'
 import type { LeadActivity } from '../types'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -60,6 +61,8 @@ export function LeadActivityPanel({ chatId }: { chatId: string }) {
         {!isLoading && data.length === 0 && <p className="text-center text-xs text-wa-muted">Todavía no hay cambios registrados.</p>}
         {data.map((item) => {
           const summary = changeSummary(item)
+          const triggerContent = (item.metadata?.trigger_message as { content?: string } | undefined)?.content
+          const trigger = triggerContent ? parseContent(triggerContent) : null
           return (
             <div key={item.id} className="relative border-l-2 border-wa-primary pl-3">
               <p className="text-xs font-medium text-gray-800 dark:text-wa-text-dark">{EVENT_LABELS[item.event_type] ?? item.event_type}</p>
@@ -67,6 +70,11 @@ export function LeadActivityPanel({ chatId }: { chatId: string }) {
               {summary && <p className="mt-1 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">{summary}</p>}
               {item.metadata?.reason != null && (
                 <p className="mt-1 text-[11px] italic text-wa-muted">{String(item.metadata.reason)}</p>
+              )}
+              {trigger && (trigger.text || trigger.label) && (
+                <p className="mt-1 border-l-2 border-wa-primary/50 pl-2 text-[11px] italic text-gray-600 dark:text-gray-300">
+                  «{trigger.text || trigger.label}»
+                </p>
               )}
             </div>
           )

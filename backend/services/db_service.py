@@ -645,6 +645,29 @@ async def update_lead_stage(
                 .where(Lead.remote_jid == chat_id)
                 .values(estado=stage, updated_at=datetime.now(timezone.utc))
             )
+            # Se congela el último mensaje del cliente en la auditoría: el
+            # chat sigue creciendo después del cambio, así que sin esta foto
+            # no habría forma de saber qué dijo la persona para ser movida.
+            trigger = (
+                await session.execute(
+                    select(WspMessage.id, WspMessage.content, WspMessage.sent_at)
+                    .where(WspMessage.chat_id == chat_id, WspMessage.sender == "cliente")
+                    .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+                    .limit(1)
+                )
+            ).mappings().first()
+            if trigger is not None:
+                content = (trigger["content"] or "").strip()
+                if len(content) > 300:
+                    content = content[:300] + "…"
+                metadata = {
+                    **(metadata or {}),
+                    "trigger_message": {
+                        "id": trigger["id"],
+                        "content": content,
+                        "sent_at": _fmt_ts(trigger["sent_at"]),
+                    },
+                }
             await _record_activity(
                 session,
                 chat_id,

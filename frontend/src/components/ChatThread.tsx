@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { BookmarkPlus, Check, CheckCheck, ChevronDown, FileText, Loader2, Maximize2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
-import type { Chat, InternalNote, Message, MessageStatus } from '../types'
+import type { Chat, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
@@ -19,6 +19,8 @@ import { TemplateSendDialog } from './TemplateSendDialog'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useInternalNotes } from '../hooks/useInternalNotes'
+import { useLeadActivity } from '../hooks/useLeadMeta'
+import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
@@ -102,6 +104,7 @@ interface OpenMedia {
 type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
+  | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
 
 // Duración del resaltado al saltar a un mensaje desde la búsqueda.
 const MESSAGE_FLASH_MS = 2000
@@ -160,6 +163,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
     [messagePages],
   )
   const { data: notes = [] } = useInternalNotes(chat.chat_id)
+  const { data: leadActivity = [] } = useLeadActivity(chat.chat_id)
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
   const timeline = useMemo<TimelineItem[]>(() => [
@@ -175,11 +179,22 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
       sentAt: note.created_at,
       note,
     })),
+    // Cambios de estado del lead como eventos del hilo, en la posición
+    // cronológica en que ocurrieron: los mensajes de arriba son el contexto
+    // de por qué se movió.
+    ...leadActivity
+      .filter(item => item.event_type === 'stage_changed')
+      .map(item => ({
+        kind: 'activity' as const,
+        key: `activity-${item.id}`,
+        sentAt: item.created_at,
+        activity: item,
+      })),
   ].sort((a, b) => {
     const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
     const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
     return aTime - bTime || a.key.localeCompare(b.key)
-  }), [messages, notes])
+  }), [messages, notes, leadActivity])
   // Algunos mensajes (ej. audios recién enviados) todavía no tienen sent_at
   // confirmado. Si se comparara solo contra el vecino inmediato, un mensaje
   // sin fecha "cortaría" el grupo del día y el siguiente mensaje dispararía
@@ -707,6 +722,20 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
         )}
         {timeline.map((item, index) => {
           const showDateSeparator = dateSeparators.get(item.key) ?? false
+          if (item.kind === 'activity') {
+            return (
+              <Fragment key={item.key}>
+                {showDateSeparator && (
+                  <div className="flex justify-center py-2">
+                    <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
+                      {formatDayLabel(item.sentAt)}
+                    </span>
+                  </div>
+                )}
+                <StageChangeCard activity={item.activity} />
+              </Fragment>
+            )
+          }
           if (item.kind === 'note') {
             return (
               <Fragment key={item.key}>

@@ -1,15 +1,18 @@
 from typing import Any
 
 from fastapi import APIRouter, Body, Header, HTTPException
+from pydantic import BaseModel
+from db.models import LeadStage
 from services.db_service import (
     fetch_latest_message,
     mark_chat_read_from_whatsapp_receipt,
+    update_lead_stage,
     update_message_status,
 )
 from services.message_status_service import parse_message_status_events
 from services.settings_service import get_effective
 from services.ws_manager import manager
-from services.automation_service import trigger_inbound_message
+from services.automation_service import trigger_inbound_message, trigger_stage_changed
 
 import logging
 
@@ -41,6 +44,64 @@ async def new_message_webhook(x_webhook_token: str | None = Header(default=None)
 
     await manager.broadcast(payload)
     return {"status": "ok"}
+
+
+class LeadStageWebhookBody(BaseModel):
+    chat_id: str
+    # None = el agente no decidió etapa en esta corrida; el webhook no hace
+    # nada, así n8n puede llamarlo siempre sin un nodo IF adelante.
+    estado: str | None = None
+    razonamiento: str | None = None
+
+
+@router.post("/lead-stage")
+async def lead_stage_webhook(
+    body: LeadStageWebhookBody,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Llamado por n8n cuando el agente analista decide la etapa del lead.
+
+    Reemplaza el UPDATE directo a ``leads.estado`` que hacía el workflow: al
+    pasar por acá el cambio queda auditado en ``lead_activity`` (con el
+    razonamiento del agente y la foto del último mensaje del cliente), se
+    notifica a los paneles abiertos y se disparan las automatizaciones de
+    cambio de etapa.
+    """
+    await _check_token(x_webhook_token)
+
+    if body.estado is None:
+        return {"status": "ok", "changed": False, "stage": None}
+
+    try:
+        stage = LeadStage(body.estado)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Estado inválido: {body.estado!r}. Válidos: {[s.value for s in LeadStage]}",
+        )
+
+    metadata = {"reason": body.razonamiento} if body.razonamiento else None
+    result = await update_lead_stage(
+        body.chat_id, stage, actor_type="agent", metadata=metadata, include_chat=False
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+
+    if result["changed"]:
+        await manager.broadcast(
+            {
+                "type": "chats_updated",
+                "chat_id": body.chat_id,
+                "reason": "stage_changed",
+                "lead_stage_updated": {"chat_id": body.chat_id, "stage": stage.value},
+            }
+        )
+        try:
+            await trigger_stage_changed(body.chat_id)
+        except Exception:
+            logger.exception("No se pudo programar la automatización de cambio de etapa del webhook")
+
+    return {"status": "ok", "changed": result["changed"], "stage": stage.value}
 
 
 @router.post("/message-status")
