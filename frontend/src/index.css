@@ -64,7 +64,11 @@
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: #f0f2f5;
+  /* Safari 26+ (Liquid Glass) ignora <meta theme-color> y tiñe su barra con
+     el background-color del <body> (el <html> no cuenta). Se pinta del color
+     del header para que la barra se funda con la app; el fondo gris real de
+     la app vive en #root, que cubre todo el viewport. */
+  background: #008069;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -78,19 +82,14 @@ html {
      Va en CSS y no en <meta> porque el tema es un toggle manual (.dark),
      no necesariamente el prefers-color-scheme del sistema. */
   color-scheme: light;
-  /* Lienzo del documento al color del header: Safari macOS tiñe su barra
-     muestreando este fondo (no siempre respeta <meta theme-color>). El body
-     pinta todo el viewport encima, así que nunca se ve dentro de la página. */
-  background-color: #008069;
 }
 
 html.dark {
   color-scheme: dark;
-  background-color: #202c33;
 }
 
 .dark body {
-  background: #0c1317;
+  background: #202c33;
 }
 
 #root {
@@ -99,6 +98,11 @@ html.dark {
   min-width: 0;
   height: 100vh;
   overflow: hidden;
+  background: #f0f2f5;
+}
+
+.dark #root {
+  background: #0c1317;
 }
 
 /* Scrollbars finos, en los grises de la paleta WhatsApp */
