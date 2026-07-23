@@ -107,6 +107,11 @@ class WspMessage(Base):
     # API. En mensajes del cliente, READ/PLAYED también permite sincronizar la
     # lectura hecha desde un dispositivo vinculado (p. ej. WhatsApp Web).
     status: Mapped[str | None] = mapped_column(Text)
+    # Dimensiones de la imagen adjunta, calculadas de forma perezosa al servir
+    # el chat: el frontend reserva el espacio exacto antes de que cargue.
+    # 0/0 significa "no se pudo medir, no reintentar"; NULL, "todavía no".
+    media_width: Mapped[int | None] = mapped_column(Integer)
+    media_height: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (
         Index(

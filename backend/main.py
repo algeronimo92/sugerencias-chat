@@ -14,7 +14,7 @@ from db.session import close_engine, get_engine
 from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin
 from services.chat_watcher import watch_chats
-from services.db_service import seed_admin_if_needed
+from services.db_service import seed_admin_if_needed, set_unaccent_enabled
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
 from services.automation_service import backfill_automation_state, watch_automations
@@ -98,6 +98,43 @@ async def _create_index_if_missing(
         await conn.execute(text(statement))
 
 
+async def _setup_search_unaccent() -> None:
+    """Migración 020 aplicada al arrancar: búsqueda insensible a acentos.
+
+    En transacción propia: si el usuario de la base (externa) no puede crear
+    extensiones, la búsqueda degrada a ILIKE sin unaccent en vez de romper
+    el startup o dejar la transacción principal abortada.
+    """
+    try:
+        async with get_engine().begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            await conn.execute(text(
+                "CREATE OR REPLACE FUNCTION f_unaccent(text) RETURNS text AS "
+                "$$ SELECT public.unaccent('public.unaccent', $1) $$ "
+                "LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT"
+            ))
+            await _create_index_if_missing(
+                conn, "idx_wsp_messages_content_trgm",
+                "CREATE INDEX idx_wsp_messages_content_trgm "
+                "ON wsp_messages USING gin (f_unaccent(content) gin_trgm_ops)",
+            )
+            await _create_index_if_missing(
+                conn, "idx_leads_nombre_trgm",
+                "CREATE INDEX idx_leads_nombre_trgm "
+                "ON leads USING gin (f_unaccent(nombre) gin_trgm_ops)",
+            )
+        set_unaccent_enabled(True)
+    except (OSError, SQLAlchemyError) as exc:
+        set_unaccent_enabled(False)
+        logger.warning(
+            "No se pudo habilitar unaccent (%s); la búsqueda seguirá siendo "
+            "sensible a acentos. Aplicar backend/migrations/020_search_unaccent.sql "
+            "con un usuario con permisos.",
+            type(exc).__name__,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # create_all no toca las tablas ya existentes (leads, wsp_messages, que
@@ -113,6 +150,10 @@ async def lifespan(app: FastAPI):
         # agregar estas columnas, necesarias para relacionar MESSAGES_UPDATE.
         await _add_column_if_missing(conn, "wsp_messages", "wa_message_id", "TEXT")
         await _add_column_if_missing(conn, "wsp_messages", "status", "TEXT")
+        # Dimensiones de imágenes para que el chat reserve el espacio exacto;
+        # se rellenan de forma perezosa al servir cada página de mensajes.
+        await _add_column_if_missing(conn, "wsp_messages", "media_width", "INTEGER")
+        await _add_column_if_missing(conn, "wsp_messages", "media_height", "INTEGER")
         await _add_column_if_missing(conn, "message_templates", "visibility", "TEXT NOT NULL DEFAULT 'global'")
         await _add_column_if_missing(conn, "message_templates", "template_type", "TEXT NOT NULL DEFAULT 'internal'")
         await _add_column_if_missing(conn, "message_templates", "official_name", "TEXT")
@@ -242,6 +283,8 @@ async def lifespan(app: FastAPI):
         raise
     else:
         await database_transaction.__aexit__(None, None, None)
+
+    await _setup_search_unaccent()
 
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
     if encrypted_settings or decrypted_settings:

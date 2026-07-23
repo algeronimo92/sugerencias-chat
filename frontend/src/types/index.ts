@@ -112,6 +112,13 @@ export interface Chat {
   last_customer_message_at: string | null
   unread_count: number
   tags: Tag[]
+  /** Solo con búsqueda activa: 2 = match por nombre/teléfono, 1 = por
+   * campos CRM (vendedor/servicio/origen), 0 = solo por un mensaje. */
+  search_rank?: number
+  /** Mensaje que contiene el término buscado, para mostrar en el preview. */
+  matched_message?: string | null
+  /** Id de ese mensaje: al abrir el chat se salta hasta él y se resalta. */
+  matched_message_id?: number | null
 }
 
 export interface LeadInput {
@@ -142,6 +149,10 @@ export interface Message {
   media_url: string | null
   wa_message_id: string | null
   status: MessageStatus
+  /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
+   * antes de que cargue, para que la conversación no se mueva. */
+  media_width?: number | null
+  media_height?: number | null
 }
 
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'

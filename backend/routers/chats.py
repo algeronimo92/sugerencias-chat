@@ -248,12 +248,13 @@ async def get_chats(
     last_sender: str | None = Query(default=None, pattern="^(cliente|vendedor)$"),
     inactive_days: int | None = Query(default=None, ge=1, le=3650),
     waiting_time: str | None = Query(default=None, pattern="^(any|fresh|warning|urgent)$"),
+    cursor_rank: int | None = Query(default=None, ge=0, le=2),
 ):
     try:
         parsed_stages = [DbLeadStage(value) for value in stages.split(",") if value] if stages else None
         parsed_tag_ids = [int(value) for value in tag_ids.split(",") if value] if tag_ids else None
         return await fetch_chats(
-            search,
+            search.strip() if search else None,
             cursor_ts,
             cursor_id,
             limit,
@@ -267,6 +268,7 @@ async def get_chats(
             last_sender,
             inactive_days,
             waiting_time,
+            cursor_rank,
         )
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Filtros inválidos")
@@ -413,9 +415,10 @@ async def get_messages(
     cursor_ts: datetime | None = None,
     cursor_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=MESSAGES_PAGE_SIZE, ge=1, le=100),
+    until_id: int | None = Query(default=None, ge=1),
 ):
     try:
-        return await fetch_messages(chat_id, cursor_ts, cursor_id, limit)
+        return await fetch_messages(chat_id, cursor_ts, cursor_id, limit, until_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

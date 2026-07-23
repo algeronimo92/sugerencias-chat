@@ -120,6 +120,18 @@ mensaje; no marca como vistos mensajes posteriores. La migración manual para in
 `backend/migrations/016_message_delivery_status.sql`; el backend también la
 aplica de forma idempotente al arrancar.
 
+### Búsqueda estilo WhatsApp
+
+La búsqueda de la lista de leads y del Kanban ignora acentos ("jose" encuentra
+"José"), busca en todo el historial de mensajes del chat (no solo en el
+último), y matchea teléfonos por dígitos sin importar el formato guardado
+("1112345678" encuentra "+54 9 11 1234-5678"). Los caracteres `%` y `_` se
+buscan como texto literal. El backend habilita las extensiones `unaccent` y
+`pg_trgm` de forma idempotente al arrancar; si el usuario de la base no tiene
+permisos para crear extensiones, la búsqueda degrada a sensible a acentos y
+queda `backend/migrations/020_search_unaccent.sql` para aplicar manualmente
+con un superusuario.
+
 ### Etiquetas, filtros e historial de cambios
 
 La lista de leads permite combinar búsqueda, no leídos, etapas, etiquetas

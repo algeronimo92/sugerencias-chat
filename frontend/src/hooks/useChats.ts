@@ -12,8 +12,10 @@ interface ChatsPage {
   has_more: boolean
 }
 
-/** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend). */
-type PageParam = { cursorTs: string | null; cursorId: string } | null
+/** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend).
+ * cursorRank indica en qué sección del orden con búsqueda quedó esa fila
+ * (2 = matches por nombre, 1 = por campos CRM, 0 = por mensaje). */
+type PageParam = { cursorTs: string | null; cursorId: string; cursorRank?: number } | null
 
 async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
   const params: Record<string, string> = {}
@@ -31,6 +33,7 @@ async function fetchChatsPage(search: string, pageParam: PageParam, filters?: Ch
   if (pageParam) {
     params.cursor_id = pageParam.cursorId
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
+    if (search) params.cursor_rank = String(pageParam.cursorRank ?? 2)
   }
   const { data } = await client.get<ChatsPage>('/api/chats', { params })
   return data
@@ -300,7 +303,7 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
     getNextPageParam: (lastPage) => {
       if (!lastPage.has_more || lastPage.items.length === 0) return undefined
       const last = lastPage.items[lastPage.items.length - 1]
-      return { cursorTs: last.timestamp, cursorId: last.chat_id }
+      return { cursorTs: last.timestamp, cursorId: last.chat_id, cursorRank: last.search_rank ?? 2 }
     },
     staleTime: 30_000,
     // Respaldo por si el websocket se desconecta

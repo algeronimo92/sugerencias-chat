@@ -48,6 +48,12 @@ class Chat(BaseModel):
     last_customer_message_at: str | None = None
     unread_count: int = 0
     tags: list["Tag"] = Field(default_factory=list)
+    # Solo significativos con búsqueda activa. search_rank: 2 = match por
+    # nombre/teléfono, 1 = por campos CRM, 0 = solo por un mensaje (en ese
+    # caso matched_message trae el mensaje que contiene el término).
+    search_rank: int = 2
+    matched_message: str | None = None
+    matched_message_id: int | None = None
 
 
 class Tag(BaseModel):
@@ -150,6 +156,10 @@ class Message(BaseModel):
     media_url: str | None = None
     wa_message_id: str | None = None
     status: str | None = None
+    # Dimensiones de la imagen adjunta: el frontend reserva el espacio exacto
+    # antes de que cargue, para que la conversación no se mueva.
+    media_width: int | None = None
+    media_height: int | None = None
 
 
 class MessagePage(BaseModel):

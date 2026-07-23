@@ -29,6 +29,31 @@ export function parseContent(content: string | null): ParsedContent {
   return { kind, ...KIND_META[kind], text: inner.trim() }
 }
 
+function foldText(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+/** Recorta el texto para que el término buscado quede visible al inicio del
+ * preview (como WhatsApp): si el match está más adelante, se antepone "… "
+ * y se arranca un poco antes de la coincidencia. Insensible a acentos. */
+export function searchSnippet(text: string, term: string, context = 20): string {
+  const needle = foldText(term.trim())
+  if (!needle) return text
+  const index = foldText(text).indexOf(needle)
+  if (index <= context) return text
+  return '… ' + text.slice(index - context).trimStart()
+}
+
+/** Parte el texto en [antes, match, después] para resaltar la coincidencia,
+ * o null si el término no aparece. Insensible a acentos. */
+export function splitOnMatch(text: string, term: string): [string, string, string] | null {
+  const trimmed = term.trim()
+  if (!trimmed) return null
+  const index = foldText(text).indexOf(foldText(trimmed))
+  if (index < 0) return null
+  return [text.slice(0, index), text.slice(index, index + trimmed.length), text.slice(index + trimmed.length)]
+}
+
 export function formatMessageTime(sentAt: string | null): string {
   if (!sentAt) return ''
   const d = new Date(sentAt)

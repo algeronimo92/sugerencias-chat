@@ -515,6 +515,7 @@ export function ChatList({
                       chat={chat}
                       isSelected={chat.chat_id === selectedId}
                       isHighlighted={chat.chat_id === highlightedId}
+                      search={search}
                       onClick={() => onSelect(chat)}
                     />
                   ) : (

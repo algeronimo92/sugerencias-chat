@@ -88,6 +88,9 @@ function describeGeolocationError(err: GeolocationPositionError): string {
 
 interface Props {
   chat: Chat
+  /** Mensaje al que saltar y resaltar al abrir (desde un resultado de
+   * búsqueda que matcheó por un mensaje del historial). */
+  highlightMessageId?: number | null
   onRefreshSuggestions: () => void
 }
 
@@ -100,6 +103,18 @@ interface OpenMedia {
 type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
+
+// Duración del resaltado al saltar a un mensaje desde la búsqueda.
+const MESSAGE_FLASH_MS = 2000
+// Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
+const IMAGE_MAX_HEIGHT_PX = 320
+// Padding horizontal (px-3.5 x2) + bordes de la burbuja: lo que se descuenta
+// del ancho máximo de la burbuja (75% del hilo) para el contenido.
+const BUBBLE_CHROME_PX = 30
+// Ventana durante la cual las imágenes que van cargando re-anclan el scroll
+// al mensaje saltado (no guardamos dimensiones de media, así que no se puede
+// reservar el espacio exacto por adelantado).
+const MEDIA_SETTLE_MS = 4000
 
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
@@ -123,7 +138,7 @@ function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetr
   return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
 }
 
-export function ChatThread({ chat, onRefreshSuggestions }: Props) {
+export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestions }: Props) {
   const {
     data: messagePages,
     isLoading,
@@ -133,7 +148,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useMessages(chat.chat_id)
+  } = useMessages(chat.chat_id, highlightMessageId)
   // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
   // orden de páginas, pero se conserva el orden ascendente dentro de cada
   // página, para renderizar el historial de viejo a nuevo.
@@ -188,6 +203,15 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   const loadingOlderRef = useRef(false)
   const latestTimelineKeyRef = useRef<string | null>(null)
   const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+  // Salto al mensaje matcheado por la búsqueda: pendiente hasta que el
+  // mensaje esté cargado; el flash se apaga solo y la clase con transición
+  // hace que el resaltado se desvanezca.
+  const pendingJumpRef = useRef<number | null>(null)
+  const jumpAttemptsRef = useRef(0)
+  // Ancla activa tras el salto: cada media que carga vuelve a centrar el
+  // mensaje hasta que expira o el usuario scrollea a mano.
+  const anchorRef = useRef<{ messageId: number; until: number } | null>(null)
+  const [flashMessageId, setFlashMessageId] = useState<number | null>(null)
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
@@ -262,15 +286,98 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
   }, [chat.chat_id])
 
   useEffect(() => {
+    pendingJumpRef.current = highlightMessageId
+    jumpAttemptsRef.current = 0
+    anchorRef.current = null
+    setFlashMessageId(null)
+  }, [chat.chat_id, highlightMessageId])
+
+  function jumpToMessage(container: HTMLElement, messageId: number): boolean {
+    const el = container.querySelector(`[data-message-id="${messageId}"]`)
+    if (!el) return false
+    pendingJumpRef.current = null
+    isNearBottomRef.current = false
+    anchorRef.current = { messageId, until: Date.now() + MEDIA_SETTLE_MS }
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: 'center' })
+      setFlashMessageId(messageId)
+      window.setTimeout(() => setFlashMessageId(null), MESSAGE_FLASH_MS)
+    })
+    return true
+  }
+
+  // Las imágenes/videos no reservan altura antes de cargar, así que cada
+  // carga empuja el layout. Este handler (capture: load no burbujea) vuelve
+  // a centrar el mensaje saltado mientras el ancla siga viva, o mantiene la
+  // vista pegada al fondo en una apertura normal.
+  function handleMediaSettled() {
+    const container = threadRef.current
+    if (!container || !initialScrollDoneRef.current) return
+    const anchor = anchorRef.current
+    if (anchor && Date.now() < anchor.until) {
+      container
+        .querySelector(`[data-message-id="${anchor.messageId}"]`)
+        ?.scrollIntoView({ block: 'center' })
+      return
+    }
+    if (isNearBottomRef.current) {
+      container.scrollTop = container.scrollHeight
+    }
+  }
+
+  // El scroll manual del usuario suelta el ancla (wheel/touch no se disparan
+  // con scrollIntoView, así que no interfiere con el re-anclado).
+  function releaseAnchor() {
+    anchorRef.current = null
+  }
+
+  // Ancho del hilo, para calcular el tamaño exacto al que va a renderizar
+  // cada imagen/video y reservar esa caja antes de que cargue.
+  const [threadWidth, setThreadWidth] = useState(0)
+  useEffect(() => {
+    const el = threadRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      setThreadWidth(entries[0].contentRect.width)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  /** Caja exacta de render de una imagen/video: proporción original escalada
+   * al tope de alto (320px) y al ancho útil de la burbuja (75% del hilo menos
+   * padding). Reservarla por adelantado evita que el chat se mueva al cargar. */
+  function mediaBoxDimensions(m: Message): { width?: number; height?: number; style?: { width: number; height: number } } {
+    if (!m.media_width || !m.media_height) return {}
+    let width = m.media_width
+    let height = m.media_height
+    if (height > IMAGE_MAX_HEIGHT_PX) {
+      width = Math.round((width * IMAGE_MAX_HEIGHT_PX) / height)
+      height = IMAGE_MAX_HEIGHT_PX
+    }
+    if (threadWidth > 0) {
+      const maxContentWidth = Math.floor(threadWidth * 0.75) - BUBBLE_CHROME_PX
+      if (maxContentWidth > 0 && width > maxContentWidth) {
+        height = Math.round((height * maxContentWidth) / width)
+        width = maxContentWidth
+      }
+    }
+    return { width, height, style: { width, height } }
+  }
+
+  useEffect(() => {
     const container = threadRef.current
     if (!container || isLoading) return
 
     if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true
+      latestTimelineKeyRef.current = lastTimelineKey
+      if (pendingJumpRef.current && jumpToMessage(container, pendingJumpRef.current)) {
+        return
+      }
       requestAnimationFrame(() => {
         container.scrollTop = container.scrollHeight
-        initialScrollDoneRef.current = true
         isNearBottomRef.current = true
-        latestTimelineKeyRef.current = lastTimelineKey
       })
       return
     }
@@ -293,6 +400,21 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
       }
     }
   }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount])
+
+  // Si el chat ya estaba cacheado sin el mensaje buscado (la primera página
+  // agrandada solo aplica con cache vacía), se pagina hacia atrás hasta
+  // encontrarlo, con tope para no recorrer historiales enormes.
+  useEffect(() => {
+    const container = threadRef.current
+    const target = pendingJumpRef.current
+    if (!container || !target || isLoading || !initialScrollDoneRef.current) return
+    if (jumpToMessage(container, target)) return
+    if (hasNextPage && !isFetchingNextPage && jumpAttemptsRef.current < 20) {
+      jumpAttemptsRef.current += 1
+      void fetchNextPage()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, pageCount, hasNextPage, isFetchingNextPage, highlightMessageId])
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
@@ -480,6 +602,10 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
       <div
         ref={threadRef}
         onScroll={handleThreadScroll}
+        onLoadCapture={handleMediaSettled}
+        onLoadedMetadataCapture={handleMediaSettled}
+        onWheelCapture={releaseAnchor}
+        onTouchMoveCapture={releaseAnchor}
         className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
       >
         {isLoading && (
@@ -554,13 +680,13 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                   </span>
                 </div>
               )}
-              <div className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`} data-message-id={m.id}>
               <div
-                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm border ${
+                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm border transition-all duration-700 ${
                   isVendedor
                     ? 'bg-green-100 dark:bg-green-950/50 border-green-200 dark:border-green-900 text-gray-800 dark:text-gray-100 rounded-tr-sm'
                     : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-sm'
-                }`}
+                } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
               >
                 {!mediaSrc && kind !== 'text' && kind !== 'location' && Icon && (
                   <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wide">
@@ -572,6 +698,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                   <img
                     src={mediaSrc}
                     alt={text || 'Imagen'}
+                    {...mediaBoxDimensions(m)}
                     onClick={() => setOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
                     onError={markMediaFailed}
                     className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
@@ -579,7 +706,7 @@ export function ChatThread({ chat, onRefreshSuggestions }: Props) {
                 )}
                 {mediaSrc && kind === 'video' && (
                   <div className="relative mb-1.5 inline-block">
-                    <video controls src={mediaSrc} onError={markMediaFailed} className="rounded-lg max-w-full max-h-80" />
+                    <video controls src={mediaSrc} onError={markMediaFailed} {...mediaBoxDimensions(m)} className="rounded-lg max-w-full max-h-80" />
                     <button
                       onClick={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
                       aria-label="Agrandar video"

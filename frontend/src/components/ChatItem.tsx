@@ -1,12 +1,15 @@
 import type { Chat } from '../types'
 import { LockKeyhole } from 'lucide-react'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, waitingTier } from '../utils/chat'
-import { parseContent } from '../utils/message'
+import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 
 interface Props {
   chat: Chat
   isSelected: boolean
   isHighlighted: boolean
+  /** Término de búsqueda activo: centra el preview en la coincidencia y la
+   * resalta cuando el chat matcheó por un mensaje del historial. */
+  search?: string
   onClick: () => void
 }
 
@@ -34,10 +37,17 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
-  const preview = parseContent(chat.last_message)
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick }: Props) {
+  // Como WhatsApp: si el chat entró al resultado de búsqueda solo por un
+  // mensaje del historial, el preview muestra ese mensaje y no el último.
+  const isMessageMatch = chat.search_rank === 0 && !!chat.matched_message
+  const preview = parseContent(isMessageMatch ? chat.matched_message! : chat.last_message)
   const Icon = preview.icon
-  const previewText = preview.kind === 'location' ? preview.label : preview.text || '—'
+  const rawPreviewText = preview.kind === 'location' ? preview.label : preview.text || '—'
+  // El término puede estar en el medio de un mensaje largo: el snippet lo
+  // deja visible al inicio del preview y el split lo resalta en negrita.
+  const previewText = isMessageMatch ? searchSnippet(rawPreviewText, search) : rawPreviewText
+  const matchParts = isMessageMatch ? splitOnMatch(previewText, search) : null
 
   // El tiempo transcurrido se recalcula en cada render con Date.now(); no
   // hace falta un timer propio porque la lista ya refresca sola (websocket
@@ -92,7 +102,15 @@ export function ChatItem({ chat, isSelected, isHighlighted, onClick }: Props) {
         <div className="flex items-baseline justify-between gap-2 mt-0.5">
           <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1 min-w-0">
             {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
-            <span className="truncate">{previewText}</span>
+            {matchParts ? (
+              <span className="truncate">
+                {matchParts[0]}
+                <strong className="font-semibold text-gray-700 dark:text-gray-200">{matchParts[1]}</strong>
+                {matchParts[2]}
+              </span>
+            ) : (
+              <span className="truncate">{previewText}</span>
+            )}
           </p>
           {!isCustomerWindowOpen && (
             <span title="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">

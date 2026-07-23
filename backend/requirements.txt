@@ -9,6 +9,9 @@ bcrypt==4.2.1
 PyJWT==2.9.0
 cryptography==49.0.0
 minio==7.2.20
+# Dimensiones de imágenes recibidas: el frontend reserva el espacio exacto
+# antes de que carguen, para que el chat no se mueva (placeholders).
+Pillow==11.1.0
 # La zona horaria del negocio (America/Lima) se resuelve con zoneinfo, que en
 # Windows y en imágenes slim no trae la base de datos de zonas del sistema.
 tzdata==2024.2

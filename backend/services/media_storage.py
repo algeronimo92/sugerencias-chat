@@ -257,6 +257,102 @@ def read_media_base64(media_url: str) -> str:
     return base64.b64encode(read_media_bytes(media_url)).decode("ascii")
 
 
+def image_dimensions(media_url: str) -> tuple[int, int] | None:
+    """Ancho/alto de una imagen almacenada, o None si no se pudo medir.
+    PIL solo lee la cabecera del archivo para esto, no decodifica entera."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(read_media_bytes(media_url))) as img:
+            return img.width, img.height
+    except Exception:
+        return None
+
+
+def _mp4_boxes(data: bytes, start: int, end: int):
+    """Itera los boxes ISO BMFF de un rango: (tipo, inicio_payload, fin)."""
+    pos = start
+    while pos + 8 <= end:
+        size = int.from_bytes(data[pos:pos + 4], "big")
+        box_type = data[pos + 4:pos + 8]
+        header = 8
+        if size == 1:
+            if pos + 16 > end:
+                return
+            size = int.from_bytes(data[pos + 8:pos + 16], "big")
+            header = 16
+        elif size == 0:
+            size = end - pos
+        if size < header or pos + size > end:
+            return
+        yield box_type, pos + header, pos + size
+        pos += size
+
+
+def _mp4_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Dimensiones de presentación de un MP4/MOV vía moov > trak > tkhd.
+
+    Los videos de teléfono en portrait suelen venir con los frames en
+    landscape más una matriz de rotación en tkhd: si la matriz rota 90/270
+    (a y d en 0), el ancho/alto se intercambian para reflejar cómo se ve."""
+    for _, moov_s, moov_e in (b for b in _mp4_boxes(data, 0, len(data)) if b[0] == b"moov"):
+        for _, trak_s, trak_e in (b for b in _mp4_boxes(data, moov_s, moov_e) if b[0] == b"trak"):
+            for _, tk_s, tk_e in (b for b in _mp4_boxes(data, trak_s, trak_e) if b[0] == b"tkhd"):
+                version = data[tk_s]
+                # payload: version+flags(4) + campos v0(20)/v1(32), luego
+                # reserved(8)+layer(2)+alt(2)+volume(2)+reserved(2) = 16
+                matrix_off = tk_s + (36 if version == 1 else 24) + 16
+                width_off = matrix_off + 36
+                if width_off + 8 > tk_e:
+                    continue
+                width = int.from_bytes(data[width_off:width_off + 4], "big") >> 16
+                height = int.from_bytes(data[width_off + 4:width_off + 8], "big") >> 16
+                if not width or not height:
+                    continue  # pista de audio u otra sin video
+                a = int.from_bytes(data[matrix_off:matrix_off + 4], "big", signed=True)
+                d = int.from_bytes(data[matrix_off + 16:matrix_off + 20], "big", signed=True)
+                if a == 0 and d == 0:
+                    width, height = height, width
+                return width, height
+    return None
+
+
+def video_dimensions(media_url: str) -> tuple[int, int] | None:
+    """Ancho/alto de presentación de un video almacenado (MP4/MOV), o None.
+
+    No descarga el archivo entero: recorre los headers de los boxes de primer
+    nivel con lecturas por rango (saltando mdat, que es el video en sí) y
+    solo baja el box moov, que pesa unos pocos KB."""
+    def read_range(offset: int, length: int) -> bytes:
+        return b"".join(iter_media(media_url, offset, length))
+
+    try:
+        size = media_size(media_url)
+        pos = 0
+        for _ in range(32):  # un MP4 tiene un puñado de boxes de primer nivel
+            if pos + 8 > size:
+                return None
+            header = read_range(pos, 16)
+            if len(header) < 8:
+                return None
+            box_size = int.from_bytes(header[0:4], "big")
+            box_type = header[4:8]
+            if box_size == 1 and len(header) >= 16:
+                box_size = int.from_bytes(header[8:16], "big")
+            elif box_size == 0:
+                box_size = size - pos
+            if box_size < 8:
+                return None
+            if box_type == b"moov":
+                return _mp4_dimensions(read_range(pos, min(box_size, 8 * 1024 * 1024)))
+            pos += box_size
+        return None
+    except Exception:
+        return None
+
+
 def _write_local(filename: str, data: bytes) -> None:
     _local_path_from_filename(filename).write_bytes(data)
 

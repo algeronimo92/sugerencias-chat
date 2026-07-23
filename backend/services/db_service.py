@@ -1,7 +1,8 @@
+import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, true, update
+from sqlalchemy import and_, case, delete, exists, false, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
@@ -62,6 +63,10 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
         "tags": tags or [],
+        # Presentes solo cuando la consulta llevaba búsqueda activa.
+        "search_rank": row["search_rank"] if "search_rank" in row else 2,
+        "matched_message": row["matched_message"] if "matched_message" in row else None,
+        "matched_message_id": row["matched_message_id"] if "matched_message_id" in row else None,
     }
 
 
@@ -157,19 +162,121 @@ def _has_tag_condition(tag_id: int):
     )
 
 
-def _chat_search_condition(last_message, search: str):
-    pattern = f"%{search}%"
-    return or_(
-        Lead.remote_jid.ilike(pattern),
-        Lead.telefono.ilike(pattern),
-        Lead.nombre.ilike(pattern),
-        Lead.servicio_interes.ilike(pattern),
-        func.coalesce(
-            select(User.name).where(User.id == Lead.vendedor_id).scalar_subquery(),
-            Lead.vendedor,
-        ).ilike(pattern),
-        Lead.origen.ilike(pattern),
-        last_message.c.content.ilike(pattern),
+def _escape_like(search: str) -> str:
+    """Escapa los wildcards de LIKE para que '100%' o 'user_1' se busquen
+    como texto literal y no como patrón."""
+    return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# f_unaccent la instala el startup (o la migración 020). Si la base no lo
+# permitió, el flag queda en False y la búsqueda degrada a ILIKE con acentos.
+_unaccent_enabled = True
+
+
+def set_unaccent_enabled(enabled: bool) -> None:
+    global _unaccent_enabled
+    _unaccent_enabled = enabled
+
+
+def _unaccent_ilike(column, pattern: str):
+    # Matching insensible a acentos ("jose" encuentra "José"), como la
+    # búsqueda de WhatsApp.
+    if _unaccent_enabled:
+        return func.f_unaccent(column).ilike(func.f_unaccent(pattern), escape="\\")
+    return column.ilike(pattern, escape="\\")
+
+
+def _identity_conditions(search: str) -> list:
+    """Nombre/teléfono/JID del lead: lo que busca el usuario la mayoría de
+    las veces, y lo que WhatsApp muestra primero."""
+    pattern = f"%{_escape_like(search)}%"
+    conditions = [
+        Lead.remote_jid.ilike(pattern, escape="\\"),
+        Lead.telefono.ilike(pattern, escape="\\"),
+        _unaccent_ilike(Lead.nombre, pattern),
+    ]
+
+    # Teléfonos: comparar solo dígitos contra solo dígitos, para que
+    # "1112345678" encuentre "+54 9 11 1234-5678" sin importar el formato.
+    digits = re.sub(r"\D", "", search)
+    if len(digits) >= 5:
+        digits_pattern = f"%{digits}%"
+        conditions.append(
+            func.regexp_replace(Lead.telefono, r"\D", "", "g").like(digits_pattern)
+        )
+        conditions.append(
+            func.regexp_replace(Lead.remote_jid, r"\D", "", "g").like(digits_pattern)
+        )
+    return conditions
+
+
+def _crm_field_conditions(search: str) -> list:
+    """Campos CRM (vendedor/servicio/origen). Siguen siendo buscables, pero
+    rankean debajo de los matches por nombre: si no, buscar el nombre de un
+    vendedor entierra al lead que se llama igual bajo todos sus asignados."""
+    pattern = f"%{_escape_like(search)}%"
+    return [
+        _unaccent_ilike(Lead.servicio_interes, pattern),
+        _unaccent_ilike(
+            func.coalesce(
+                select(User.name).where(User.id == Lead.vendedor_id).scalar_subquery(),
+                Lead.vendedor,
+            ),
+            pattern,
+        ),
+        _unaccent_ilike(Lead.origen, pattern),
+    ]
+
+
+def _lead_field_conditions(search: str) -> list:
+    return _identity_conditions(search) + _crm_field_conditions(search)
+
+
+def _message_match_condition(search: str):
+    """Historial completo del chat, no solo el último mensaje: en WhatsApp
+    un chat aparece aunque el término esté en un mensaje viejo."""
+    pattern = f"%{_escape_like(search)}%"
+    return exists(
+        select(WspMessage.id)
+        .where(
+            WspMessage.chat_id == Lead.remote_jid,
+            _unaccent_ilike(WspMessage.content, pattern),
+        )
+        .correlate(Lead)
+    )
+
+
+def _chat_search_condition(search: str):
+    return or_(*_lead_field_conditions(search), _message_match_condition(search))
+
+
+def _search_rank_expression(search: str):
+    """Sección del resultado, como WhatsApp: 2 = match por nombre/teléfono,
+    1 = match por campos CRM (vendedor/servicio/origen), 0 = solo por un
+    mensaje del historial. Los coalesce evitan que un NULL (p. ej. nombre
+    vacío) descoloque la fila en el ORDER BY."""
+    return case(
+        (func.coalesce(or_(*_identity_conditions(search)), false()), 2),
+        (func.coalesce(or_(*_crm_field_conditions(search)), false()), 1),
+        else_=0,
+    )
+
+
+def _matched_message_subquery(search: str, column=None):
+    """Mensaje más reciente que contiene el término: su contenido se muestra
+    en el preview del resultado (como WhatsApp) y su id permite saltar hasta
+    él al abrir la conversación."""
+    pattern = f"%{_escape_like(search)}%"
+    return (
+        select(column if column is not None else WspMessage.content)
+        .where(
+            WspMessage.chat_id == Lead.remote_jid,
+            _unaccent_ilike(WspMessage.content, pattern),
+        )
+        .order_by(WspMessage.sent_at.desc())
+        .limit(1)
+        .correlate(Lead)
+        .scalar_subquery()
     )
 
 
@@ -230,16 +337,23 @@ async def fetch_chats(
     last_sender: str | None = None,
     inactive_days: int | None = None,
     waiting_time: str | None = None,
+    cursor_rank: int | None = None,
 ) -> dict:
     last_message = _last_message_subquery()
 
+    columns = list(_chat_columns(last_message))
+    if search:
+        columns.append(_search_rank_expression(search).label("search_rank"))
+        columns.append(_matched_message_subquery(search).label("matched_message"))
+        columns.append(_matched_message_subquery(search, WspMessage.id).label("matched_message_id"))
+
     stmt = (
-        select(*_chat_columns(last_message))
+        select(*columns)
         .join(last_message, true(), isouter=True)
     )
 
     if search:
-        stmt = stmt.where(_chat_search_condition(last_message, search))
+        stmt = stmt.where(_chat_search_condition(search))
 
     if unread_only:
         stmt = stmt.where(_has_unread_messages_condition())
@@ -276,13 +390,25 @@ async def fetch_chats(
             stmt = stmt.where(last_message.c.sent_at <= urgent_cutoff)
 
     if cursor_id is not None:
-        stmt = stmt.where(_cursor_condition(last_message, cursor_ts, cursor_id))
+        base_cursor = _cursor_condition(last_message, cursor_ts, cursor_id)
+        if search:
+            # El orden con búsqueda antepone search_rank DESC; el cursor
+            # necesita saber en qué sección quedó la última fila. Sin
+            # cursor_rank (cliente viejo) se asume la sección de arriba.
+            rank = _search_rank_expression(search)
+            section = cursor_rank if cursor_rank is not None else 2
+            stmt = stmt.where(or_(rank < section, and_(rank == section, base_cursor)))
+        else:
+            stmt = stmt.where(base_cursor)
 
     # Se pide una fila de más para saber si hay página siguiente sin un
     # COUNT(*) aparte; se descarta antes de devolver los resultados.
-    stmt = stmt.order_by(
-        last_message.c.sent_at.desc().nulls_last(), Lead.remote_jid.desc()
-    ).limit(limit + 1)
+    order_keys = [last_message.c.sent_at.desc().nulls_last(), Lead.remote_jid.desc()]
+    if search:
+        # Como WhatsApp: primero los chats cuyo nombre/datos matchean, después
+        # los que solo matchean por un mensaje del historial.
+        order_keys.insert(0, _search_rank_expression(search).desc())
+    stmt = stmt.order_by(*order_keys).limit(limit + 1)
 
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
@@ -357,7 +483,7 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
         .group_by(Lead.estado)
     )
     if search:
-        stmt = stmt.where(_chat_search_condition(last_message, search))
+        stmt = stmt.where(_chat_search_condition(search))
 
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).all()
@@ -378,23 +504,30 @@ async def fetch_kanban_snapshot(
     solicitudes (conteos + 13 columnas) que hacía la vista al abrirse.
     """
     last_message = _last_message_subquery()
+    columns = list(_chat_columns(last_message))
+    rank_order = [
+        last_message.c.sent_at.desc().nulls_last(),
+        Lead.updated_at.desc(),
+        Lead.remote_jid.desc(),
+    ]
+    if search:
+        columns.append(_search_rank_expression(search).label("search_rank"))
+        columns.append(_matched_message_subquery(search).label("matched_message"))
+        columns.append(_matched_message_subquery(search, WspMessage.id).label("matched_message_id"))
+        rank_order.insert(0, _search_rank_expression(search).desc())
     ranked_stmt = (
         select(
-            *_chat_columns(last_message),
+            *columns,
             func.count().over(partition_by=Lead.estado).label("stage_total"),
             func.row_number().over(
                 partition_by=Lead.estado,
-                order_by=(
-                    last_message.c.sent_at.desc().nulls_last(),
-                    Lead.updated_at.desc(),
-                    Lead.remote_jid.desc(),
-                ),
+                order_by=tuple(rank_order),
             ).label("stage_rank"),
         )
         .join(last_message, true(), isouter=True)
     )
     if search:
-        ranked_stmt = ranked_stmt.where(_chat_search_condition(last_message, search))
+        ranked_stmt = ranked_stmt.where(_chat_search_condition(search))
 
     ranked = ranked_stmt.subquery()
     stmt = (
@@ -434,19 +567,26 @@ async def fetch_kanban_stage(
     """Página independiente de una columna del Kanban. Esto evita renderizar
     los más de mil leads de la base en una sola carga."""
     last_message = _last_message_subquery()
+    columns = list(_chat_columns(last_message))
+    order_keys = [
+        last_message.c.sent_at.desc().nulls_last(),
+        Lead.updated_at.desc(),
+        Lead.remote_jid.desc(),
+    ]
+    if search:
+        columns.append(_search_rank_expression(search).label("search_rank"))
+        columns.append(_matched_message_subquery(search).label("matched_message"))
+        columns.append(_matched_message_subquery(search, WspMessage.id).label("matched_message_id"))
+        order_keys.insert(0, _search_rank_expression(search).desc())
     stmt = (
-        select(*_chat_columns(last_message))
+        select(*columns)
         .join(last_message, true(), isouter=True)
         .where(Lead.estado == stage)
     )
     if search:
-        stmt = stmt.where(_chat_search_condition(last_message, search))
+        stmt = stmt.where(_chat_search_condition(search))
 
-    stmt = stmt.order_by(
-        last_message.c.sent_at.desc().nulls_last(),
-        Lead.updated_at.desc(),
-        Lead.remote_jid.desc(),
-    ).offset(offset).limit(limit + 1)
+    stmt = stmt.order_by(*order_keys).offset(offset).limit(limit + 1)
 
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
@@ -868,11 +1008,17 @@ async def fetch_latest_message() -> dict | None:
     }
 
 
+# Techo del salto a un mensaje de búsqueda: evita cargar una conversación
+# gigante entera si el match está muy atrás en el historial.
+JUMP_TO_MESSAGE_MAX = 1000
+
+
 async def fetch_messages(
     chat_id: str,
     cursor_ts: datetime | None = None,
     cursor_id: int | None = None,
     limit: int = MESSAGES_PAGE_SIZE,
+    until_id: int | None = None,
 ) -> dict:
     """Devuelve una página hacia atrás del historial.
 
@@ -880,38 +1026,64 @@ async def fetch_messages(
     los mensajes más recientes. La respuesta se invierte a ascendente para
     que cada página se pueda renderizar en el orden natural de conversación.
     `id` desempata mensajes con el mismo timestamp y evita saltos/duplicados.
+
+    Con `until_id` (abrir un chat desde un resultado de búsqueda por mensaje)
+    la primera página se agranda hasta incluir ese mensaje, más una página de
+    contexto anterior, para poder hacer scroll hasta él y resaltarlo.
     """
     if (cursor_ts is None) != (cursor_id is None):
         raise ValueError("cursor_ts y cursor_id deben enviarse juntos")
 
-    stmt = (
-        select(
-            WspMessage.id,
-            WspMessage.sender,
-            WspMessage.content,
-            WspMessage.sent_at,
-            WspMessage.media_url,
-            WspMessage.wa_message_id,
-            WspMessage.status,
-        )
-        .where(WspMessage.chat_id == chat_id)
-        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
-        .limit(limit + 1)
-    )
-
-    if cursor_ts is not None and cursor_id is not None:
-        stmt = stmt.where(
-            or_(
-                WspMessage.sent_at < cursor_ts,
-                and_(WspMessage.sent_at == cursor_ts, WspMessage.id < cursor_id),
-            )
-        )
-
     async with get_sessionmaker()() as session:
+        if until_id is not None and cursor_id is None:
+            target_ts = await session.scalar(
+                select(WspMessage.sent_at).where(
+                    WspMessage.id == until_id, WspMessage.chat_id == chat_id
+                )
+            )
+            if target_ts is not None:
+                span_count = await session.scalar(
+                    select(func.count()).where(
+                        WspMessage.chat_id == chat_id,
+                        or_(
+                            WspMessage.sent_at > target_ts,
+                            and_(WspMessage.sent_at == target_ts, WspMessage.id >= until_id),
+                        ),
+                    )
+                )
+                limit = min(span_count + limit, JUMP_TO_MESSAGE_MAX)
+
+        stmt = (
+            select(
+                WspMessage.id,
+                WspMessage.sender,
+                WspMessage.content,
+                WspMessage.sent_at,
+                WspMessage.media_url,
+                WspMessage.wa_message_id,
+                WspMessage.status,
+                WspMessage.media_width,
+                WspMessage.media_height,
+            )
+            .where(WspMessage.chat_id == chat_id)
+            .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+            .limit(limit + 1)
+        )
+
+        if cursor_ts is not None and cursor_id is not None:
+            stmt = stmt.where(
+                or_(
+                    WspMessage.sent_at < cursor_ts,
+                    and_(WspMessage.sent_at == cursor_ts, WspMessage.id < cursor_id),
+                )
+            )
+
         rows = (await session.execute(stmt)).mappings().all()
 
-    has_more = len(rows) > limit
-    rows = list(reversed(rows[:limit]))
+        has_more = len(rows) > limit
+        page = [dict(r) for r in reversed(rows[:limit])]
+        await _fill_media_dimensions(session, page)
+
     items = [
         {
             "id": r["id"],
@@ -921,10 +1093,38 @@ async def fetch_messages(
             "media_url": r["media_url"],
             "wa_message_id": r["wa_message_id"],
             "status": r["status"],
+            # 0/0 (= no medible) no le sirve al frontend: se expone como None.
+            "media_width": r["media_width"] or None,
+            "media_height": r["media_height"] or None,
         }
-        for r in rows
+        for r in page
     ]
     return {"items": items, "has_more": has_more}
+
+
+async def _fill_media_dimensions(session, rows: list[dict]) -> None:
+    """Completa y persiste media_width/height de imágenes y videos que aún no
+    lo tienen, para que el frontend reserve el espacio exacto antes de que
+    carguen. Corre una sola vez por mensaje (backfill perezoso); 0/0 marca
+    los que no se pudieron medir para no reintentarlos en cada apertura."""
+    from services.media_storage import image_dimensions, video_dimensions
+
+    pending = [
+        r for r in rows
+        if r["media_url"] and r["media_width"] is None
+        and (r["content"] or "").startswith(("<image", "<video"))
+    ]
+    for r in pending:
+        measure = image_dimensions if r["content"].startswith("<image") else video_dimensions
+        dims = await asyncio.to_thread(measure, r["media_url"])
+        r["media_width"], r["media_height"] = dims if dims else (0, 0)
+        await session.execute(
+            update(WspMessage)
+            .where(WspMessage.id == r["id"])
+            .values(media_width=r["media_width"], media_height=r["media_height"])
+        )
+    if pending:
+        await session.commit()
 
 
 async def list_tags(include_inactive: bool = False) -> list[dict]:

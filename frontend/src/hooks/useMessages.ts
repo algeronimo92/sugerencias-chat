@@ -9,20 +9,29 @@ interface MessagePage {
 
 type MessageCursor = { cursorTs: string; cursorId: number } | null
 
-async function fetchMessages(chatId: string, cursor: MessageCursor): Promise<MessagePage> {
+async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {
   const params: Record<string, string | number> = {}
   if (cursor) {
     params.cursor_ts = cursor.cursorTs
     params.cursor_id = cursor.cursorId
+  } else if (untilId) {
+    // Primera página al abrir desde un resultado de búsqueda por mensaje:
+    // el backend la agranda hasta incluir el mensaje matcheado.
+    params.until_id = untilId
   }
   const { data } = await client.get<MessagePage>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { params })
   return data
 }
 
-export function useMessages(chatId: string | null) {
+// untilId no forma parte de la queryKey a propósito: los updates optimistas
+// de useSendMessage escriben sobre ['messages', chatId] exacto. Solo influye
+// en cómo se pide la primera página cuando la cache está vacía; si el chat ya
+// estaba cacheado sin el mensaje buscado, ChatThread pagina hacia atrás hasta
+// encontrarlo.
+export function useMessages(chatId: string | null, untilId?: number | null) {
   return useInfiniteQuery({
     queryKey: ['messages', chatId],
-    queryFn: ({ pageParam }) => fetchMessages(chatId as string, pageParam),
+    queryFn: ({ pageParam }) => fetchMessages(chatId as string, pageParam, untilId),
     enabled: !!chatId,
     initialPageParam: null as MessageCursor,
     getNextPageParam: (lastPage) => {
