@@ -10,6 +10,22 @@ export type PhoneCheck =
 
 export const FALLBACK_COUNTRY_CODE = '51'
 
+/** Formato local por código de país (espejo de LOCAL_RULES del backend).
+ * Perú: celulares de 9 dígitos que empiezan con 9, o fijos de 8 dígitos
+ * (área 1 = Lima, o 2 dígitos 41-87 = provincias). */
+const LOCAL_RULES: Record<string, { pattern: RegExp; error: string; maxDigits: number }> = {
+  '51': {
+    pattern: /^(?:9\d{8}|[14-8]\d{7})$/,
+    error: 'Revisá el número: en Perú los celulares tienen 9 dígitos (empiezan con 9) y los fijos 8',
+    maxDigits: 9,
+  },
+}
+
+/** Tope de dígitos para un número local del país configurado (null = sin regla). */
+export function localMaxDigits(countryCode: string): number | null {
+  return LOCAL_RULES[countryCode]?.maxDigits ?? null
+}
+
 export function normalizePhone(raw: string, defaultCountryCode: string): PhoneCheck {
   const stripped = raw.trim()
   if (!stripped) return { status: 'empty' }
@@ -22,7 +38,20 @@ export function normalizePhone(raw: string, defaultCountryCode: string): PhoneCh
 
   const cc = defaultCountryCode.replace(/\D/g, '') || FALLBACK_COUNTRY_CODE
   const hasCountryCode = stripped.startsWith('+') || (digits.startsWith(cc) && digits.length >= cc.length + 8)
-  if (!hasCountryCode) digits = cc + digits
+  let local: string | null
+  if (hasCountryCode) {
+    local = digits.startsWith(cc) ? digits.slice(cc.length) : null
+  } else {
+    // El "0" inicial es el prefijo nacional ("01 234 5678"): no forma parte
+    // del número internacional.
+    local = digits.startsWith('0') ? digits.slice(1) : digits
+    digits = cc + local
+  }
+
+  const rule = LOCAL_RULES[cc]
+  if (rule && local != null && !rule.pattern.test(local)) {
+    return { status: 'invalid', error: rule.error }
+  }
 
   if (!/^[1-9]\d{7,14}$/.test(digits)) {
     return { status: 'invalid', error: 'Revisá el número: debe tener entre 8 y 15 dígitos' }

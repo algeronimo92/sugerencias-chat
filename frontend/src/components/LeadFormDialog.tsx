@@ -4,7 +4,7 @@ import type { Chat, LeadUpdateInput } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
-import { FALLBACK_COUNTRY_CODE, normalizePhone } from '../utils/phone'
+import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
 import { Button, fieldClass, labelClass } from './ui'
 
 interface Props {
@@ -100,6 +100,23 @@ export function LeadFormDialog({
   const submitDisabled =
     isSubmitting || (canEditPhone && (phoneInvalid || duplicateBlocks || (!!requirePhoneAndName && phoneCheck.status !== 'valid')))
 
+  function handlePhoneChange(value: string) {
+    // Tope de tipeo para el país configurado (Perú: 9 dígitos el celular, +1
+    // por el posible "0" nacional; con el 51 adelante, 11). Los números con
+    // "+" son internacionales y se validan aparte.
+    const max = localMaxDigits(countryCode)
+    if (max != null && !value.trim().startsWith('+')) {
+      const valueDigits = value.replace(/\D/g, '')
+      const limit = valueDigits.startsWith(countryCode)
+        ? countryCode.length + max
+        : valueDigits.startsWith('0')
+          ? max + 1
+          : max
+      if (valueDigits.length > limit) return
+    }
+    setPhone(value)
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (isSubmitting || submitDisabled) return
@@ -165,7 +182,7 @@ export function LeadFormDialog({
                 inputMode="tel"
                 autoComplete="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value)}
                 placeholder="906 471 403"
                 required={requirePhoneAndName}
                 disabled={!canEditPhone}

@@ -32,6 +32,26 @@ def test_other_default_country_code():
     assert normalize_phone("91112345678", "54") == "5491112345678"
 
 
+def test_peru_local_rules_rejected():
+    with pytest.raises(PhoneValidationError):
+        normalize_phone("90647140", "51")  # 8 dígitos empezando en 9: ni celular ni fijo
+    with pytest.raises(PhoneValidationError):
+        normalize_phone("9064714031", "51")  # celular de 10 dígitos
+    with pytest.raises(PhoneValidationError):
+        normalize_phone("306471403", "51")  # 9 dígitos que no empiezan con 9
+    with pytest.raises(PhoneValidationError):
+        normalize_phone("+51 906 471 40", "51")  # internacional con local corto
+    with pytest.raises(PhoneValidationError):
+        normalize_phone("519064714031", "51")  # 51 + 10 dígitos
+
+
+def test_peru_landlines_accepted():
+    assert normalize_phone("(01) 234 5678", "51") == "5112345678"  # Lima con 0 nacional
+    assert normalize_phone("084 123456", "51") == "5184123456"  # Cusco con 0 nacional
+    assert normalize_phone("84123456", "51") == "5184123456"
+    assert normalize_phone("+51 1 234 5678", "51") == "5112345678"
+
+
 def test_letters_rejected():
     with pytest.raises(PhoneValidationError):
         normalize_phone("abc", "51")
