@@ -2,6 +2,58 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ============================================================
+   Sistema de diseño — paleta WhatsApp
+   Tokens consumibles como utilidades Tailwind: bg-wa-primary,
+   text-wa-muted, dark:bg-wa-panel-dark, rounded-bubble, etc.
+   ============================================================ */
+@theme {
+  /* Marca */
+  --color-wa-primary: #00a884; /* verde de acción: FAB, badges, CTA */
+  --color-wa-primary-strong: #008069; /* header claro / hover de CTA */
+  --color-wa-primary-deep: #006e5b; /* estado presionado */
+  --color-wa-accent: #53bdeb; /* informativo / enlaces / tick leído */
+
+  /* Fondo del hilo de chat */
+  --color-wa-chat: #efeae2;
+  --color-wa-chat-dark: #0b141a;
+
+  /* Burbujas */
+  --color-wa-out: #d9fdd3;
+  --color-wa-out-dark: #005c4b;
+  --color-wa-in: #ffffff;
+  --color-wa-in-dark: #202c33;
+
+  /* Superficies */
+  --color-wa-panel: #ffffff; /* paneles laterales / tarjetas (claro) */
+  --color-wa-panel-dark: #111b21; /* paneles laterales / tarjetas (oscuro) */
+  --color-wa-app: #f0f2f5; /* fondo general de la app (claro) */
+  --color-wa-app-dark: #0c1317; /* fondo general de la app (oscuro) */
+  --color-wa-head: #f0f2f5; /* headers/composer secundarios (claro) */
+  --color-wa-head-dark: #202c33; /* headers/composer secundarios (oscuro) */
+  --color-wa-field: #f0f2f5; /* inputs en píldora (claro) */
+  --color-wa-field-dark: #2a3942; /* inputs en píldora (oscuro) */
+  --color-wa-hover: #f5f6f6; /* hover de fila (claro) */
+  --color-wa-hover-dark: #202c33; /* hover de fila (oscuro) */
+  --color-wa-active: #f0f2f5; /* fila seleccionada (claro) */
+  --color-wa-active-dark: #2a3942; /* fila seleccionada (oscuro) */
+
+  /* Bordes */
+  --color-wa-border: #e9edef;
+  --color-wa-border-dark: #222d34;
+
+  /* Texto */
+  --color-wa-text: #111b21;
+  --color-wa-text-dark: #e9edef;
+  --color-wa-muted: #667781;
+  --color-wa-muted-dark: #8696a0;
+  --color-wa-faint: #8696a0; /* metadatos dentro de burbujas (claro) */
+  --color-wa-faint-dark: #667781;
+
+  /* Radio de burbuja (~WhatsApp) */
+  --radius-bubble: 7.5px;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -25,7 +77,7 @@ html {
 }
 
 .dark body {
-  background: #0f172a;
+  background: #0c1317;
 }
 
 #root {
@@ -36,13 +88,14 @@ html {
   overflow: hidden;
 }
 
+/* Scrollbars finos, en los grises de la paleta WhatsApp */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: #c5cdd3 transparent;
 }
 
 .dark * {
-  scrollbar-color: #475569 transparent;
+  scrollbar-color: #374248 transparent;
 }
 
 ::-webkit-scrollbar {
@@ -55,25 +108,73 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: #c5cdd3;
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: #a5aeb5;
   background-clip: content-box;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background-color: #475569;
+  background-color: #374248;
   background-clip: content-box;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background-color: #64748b;
+  background-color: #4a5961;
   background-clip: content-box;
+}
+
+/* "Colita" de las burbujas: solo el primer mensaje de un grupo la lleva.
+   El triángulo hereda el color de fondo de la burbuja vía las variables. */
+.bubble-tail-out,
+.bubble-tail-in {
+  position: relative;
+}
+
+.bubble-tail-out::after,
+.bubble-tail-in::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-top: 8px solid var(--color-wa-out);
+}
+
+.bubble-tail-out::after {
+  right: -7px;
+  border-right: 8px solid transparent;
+}
+
+.dark .bubble-tail-out::after {
+  border-top-color: var(--color-wa-out-dark);
+}
+
+.bubble-tail-in::after {
+  left: -7px;
+  border-top-color: var(--color-wa-in);
+  border-left: 8px solid transparent;
+}
+
+.dark .bubble-tail-in::after {
+  border-top-color: var(--color-wa-in-dark);
+}
+
+/* Accesibilidad: sin animaciones para quien las desactivó en el sistema */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Los controles nativos no heredan siempre el color correcto al cambiar de
@@ -82,25 +183,25 @@ html {
 .automation-form input:not([type="checkbox"]),
 .automation-form select,
 .automation-form textarea {
-  color: #111827;
-  caret-color: #111827;
+  color: #111b21;
+  caret-color: #111b21;
 }
 
 .automation-form input::placeholder,
 .automation-form textarea::placeholder {
-  color: #9ca3af;
+  color: #8696a0;
   opacity: 1;
 }
 
 .automation-form input[type="checkbox"] {
-  accent-color: #16a34a;
+  accent-color: #00a884;
 }
 
 .dark .automation-form input:not([type="checkbox"]),
 .dark .automation-form select,
 .dark .automation-form textarea {
-  color: #f3f4f6;
-  caret-color: #f3f4f6;
+  color: #e9edef;
+  caret-color: #e9edef;
   color-scheme: dark;
 }
 
@@ -110,10 +211,10 @@ html {
 
 .dark .automation-form input::placeholder,
 .dark .automation-form textarea::placeholder {
-  color: #94a3b8;
+  color: #8696a0;
 }
 
 .dark .automation-form option {
-  background-color: #1f2937;
-  color: #f3f4f6;
+  background-color: #202c33;
+  color: #e9edef;
 }

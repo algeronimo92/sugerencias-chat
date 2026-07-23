@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { AlertCircle, Loader2, RefreshCw, Search, SlidersHorizontal, Smartphone, UserPlus, X } from 'lucide-react'
+import { AlertCircle, Loader2, MessagesSquare, RefreshCw, Search, SlidersHorizontal, Smartphone, UserPlus, X } from 'lucide-react'
 import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
-import { useCreateLead } from '../hooks/useChats'
+import { useChatSocketConnected, useCreateLead } from '../hooks/useChats'
 import { useTags } from '../hooks/useLeadMeta'
 import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
+import { Button, EmptyState, Skeleton } from './ui'
 
 interface Props {
   chats: Chat[]
@@ -35,6 +36,9 @@ interface Props {
 
 const ROW_ESTIMATE_PX = 68
 const HIGHLIGHT_DURATION_MS = 2000
+// Margen antes de mostrar el aviso de conexión degradada: cubre el parpadeo
+// del socket durante el arranque y las reconexiones automáticas (3s de retry).
+const OFFLINE_BANNER_DELAY_MS = 5_000
 
 function LoadMoreRow({
   isFetchingNextPage,
@@ -63,7 +67,7 @@ function LoadMoreRow({
   return (
     <div className="py-4 flex items-center justify-center">
       {isFetchingNextPage && (
-        <Loader2 className="w-4 h-4 text-gray-300 dark:text-gray-600 animate-spin" />
+        <Loader2 className="w-4 h-4 text-wa-muted/60 dark:text-wa-muted-dark/60 animate-spin" />
       )}
     </div>
   )
@@ -91,6 +95,8 @@ export function ChatList({
   onConnectWhatsapp,
 }: Props) {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false)
+  const socketConnected = useChatSocketConnected()
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -184,6 +190,18 @@ export function ChatList({
     prevTopIdRef.current = topId
   }, [topId])
 
+  // El WebSocket mantiene la lista al día; el refresh manual solo se ofrece
+  // cuando la conexión en tiempo real lleva un rato caída (queda el polling
+  // de respaldo de 60s, pero el usuario puede no querer esperarlo).
+  useEffect(() => {
+    if (socketConnected) {
+      setShowOfflineBanner(false)
+      return
+    }
+    const timeout = setTimeout(() => setShowOfflineBanner(true), OFFLINE_BANNER_DELAY_MS)
+    return () => clearTimeout(timeout)
+  }, [socketConnected])
+
   async function handleRefresh() {
     setIsManualRefreshing(true)
     try {
@@ -237,54 +255,49 @@ export function ChatList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [virtualItems, chats.length, hasNextPage, isFetchingNextPage, hasNextPageError, onLoadMore])
 
+  const segmentClass = (active: boolean) =>
+    `flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+      active
+        ? 'bg-white text-wa-text shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
+        : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
+    }`
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
+    <div className="flex flex-col h-full bg-white dark:bg-wa-panel-dark border-r border-wa-border dark:border-wa-border-dark">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Leads</h1>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setCreateError(null)
-                setIsCreating(true)
-              }}
-              aria-label="Agregar lead"
-              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              Agregar
-            </button>
-            <button
-              onClick={handleRefresh}
-              disabled={isManualRefreshing}
-              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
-          </div>
+      <div className="px-3 py-3 border-b border-wa-border dark:border-wa-border-dark">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h1 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Leads</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setCreateError(null)
+              setIsCreating(true)
+            }}
+            aria-label="Agregar lead"
+          >
+            <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
+            Agregar
+          </Button>
         </div>
+        {/* Búsqueda en píldora gris, como WhatsApp */}
         <div className="relative">
-          <Search className="w-4 h-4 text-gray-400 dark:text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-wa-muted dark:text-wa-muted-dark absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Buscar lead..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            className="w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-full pl-10 pr-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
           />
         </div>
-        <div className="mt-2 flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800" role="group" aria-label="Filtrar leads">
+        <div className="mt-2 flex rounded-lg bg-wa-field p-1 dark:bg-wa-field-dark" role="group" aria-label="Filtrar leads">
           <button
             type="button"
             onClick={() => onFilterChange('all')}
             aria-pressed={filter === 'all'}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              filter === 'all'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
+            className={segmentClass(filter === 'all')}
           >
             Todos
           </button>
@@ -292,15 +305,11 @@ export function ChatList({
             type="button"
             onClick={() => onFilterChange('unread')}
             aria-pressed={filter === 'unread'}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              filter === 'unread'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
+            className={`flex items-center justify-center gap-1.5 ${segmentClass(filter === 'unread')}`}
           >
             No leídos
             {unreadCount > 0 && (
-              <span className="min-w-4 rounded-full bg-green-600 px-1 text-[10px] leading-4 text-white">
+              <span className="min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -309,11 +318,7 @@ export function ChatList({
             type="button"
             onClick={() => onFilterChange('mine')}
             aria-pressed={filter === 'mine'}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              filter === 'mine'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
+            className={segmentClass(filter === 'mine')}
           >
             Mis leads
           </button>
@@ -323,23 +328,23 @@ export function ChatList({
           onClick={() => setShowFilters((value) => !value)}
           className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
             showFilters || activeAdvancedFilterCount > 0
-              ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400'
-              : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
+              ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary'
+              : 'border-wa-border text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark'
           }`}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
           Filtros avanzados
           {activeAdvancedFilterCount > 0 && (
-            <span className="min-w-4 rounded-full bg-green-600 px-1 text-[10px] leading-4 text-white">
+            <span className="min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
               {activeAdvancedFilterCount}
             </span>
           )}
         </button>
 
         {showFilters && (
-          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-lg border border-wa-border bg-wa-field/60 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/40">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Etapas</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">Etapas</span>
               {activeAdvancedFilterCount > 0 && (
                 <button type="button" onClick={clearAdvancedFilters} className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-600">
                   <X className="h-3 w-3" /> Limpiar
@@ -352,10 +357,10 @@ export function ChatList({
                   key={stage}
                   type="button"
                   onClick={() => toggleStage(stage)}
-                  className={`rounded-full border px-2 py-1 text-[11px] capitalize ${
+                  className={`rounded-full border px-2 py-1 text-[11px] capitalize transition-colors ${
                     advancedFilters.stages.includes(stage)
-                      ? 'border-green-500 bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
-                      : 'border-gray-200 bg-white text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                      ? 'border-wa-primary bg-wa-primary/15 text-wa-primary-strong dark:bg-wa-primary/20 dark:text-wa-primary'
+                      : 'border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark'
                   }`}
                 >
                   {stage.replace('_', ' ')}
@@ -366,11 +371,11 @@ export function ChatList({
             {tags.length > 0 && (
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Etiquetas</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">Etiquetas</span>
                   <select
                     value={advancedFilters.tagMode}
                     onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, tagMode: event.target.value as 'any' | 'all' })}
-                    className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                    className="rounded border border-wa-border bg-white px-1.5 py-0.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
                   >
                     <option value="any">Cualquiera</option>
                     <option value="all">Todas</option>
@@ -382,10 +387,10 @@ export function ChatList({
                       key={tag.id}
                       type="button"
                       onClick={() => toggleTag(tag.id)}
-                      className={`rounded-full border px-2 py-1 text-[11px] ${
+                      className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
                         advancedFilters.tagIds.includes(tag.id)
                           ? 'text-white'
-                          : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                          : 'border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark'
                       }`}
                       style={advancedFilters.tagIds.includes(tag.id) ? { backgroundColor: tag.color, borderColor: tag.color } : undefined}
                     >
@@ -406,13 +411,13 @@ export function ChatList({
                   value={advancedFilters[key]}
                   onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, [key]: event.target.value })}
                   placeholder={label}
-                  className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                  className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
                 />
               ))}
               <select
                 value={advancedFilters.sellerId ?? ''}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, sellerId: event.target.value ? Number(event.target.value) : null })}
-                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
               >
                 <option value="">Cualquier vendedor</option>
                 {sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
@@ -420,7 +425,7 @@ export function ChatList({
               <select
                 value={advancedFilters.lastSender}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, lastSender: event.target.value as ChatFilters['lastSender'] })}
-                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
               >
                 <option value="">Último emisor</option>
                 <option value="cliente">Cliente</option>
@@ -432,13 +437,13 @@ export function ChatList({
                 value={advancedFilters.inactiveDays ?? ''}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, inactiveDays: event.target.value ? Number(event.target.value) : null })}
                 placeholder="Inactivo (días)"
-                className="min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
               />
               <select
                 value={advancedFilters.waitingTime}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, waitingTime: event.target.value as ChatFilters['waitingTime'] })}
                 title="Tiempo desde el último mensaje del cliente sin respuesta del vendedor"
-                className="col-span-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                className="col-span-2 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
               >
                 <option value="">Tiempo sin responder</option>
                 <option value="any">Todos esperando respuesta</option>
@@ -451,10 +456,36 @@ export function ChatList({
         )}
       </div>
 
+      {/* Conexión degradada: el refresh manual solo existe cuando hace falta */}
+      {showOfflineBanner && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">Sin conexión en tiempo real</span>
+          <button
+            onClick={handleRefresh}
+            disabled={isManualRefreshing}
+            className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 font-semibold transition-colors hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
+          >
+            <RefreshCw className={`h-3 w-3 ${isManualRefreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+            {isManualRefreshing ? 'Actualizando…' : 'Actualizar ahora'}
+          </button>
+        </div>
+      )}
+
       {/* List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isLoading && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Cargando leads...</p>
+          <div aria-label="Cargando leads" className="px-3 py-2 space-y-1">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-3 w-2/3" />
+                  <Skeleton className="h-3 w-5/6" />
+                </div>
+              </div>
+            ))}
+          </div>
         )}
         {error && (
           <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">
@@ -462,28 +493,31 @@ export function ChatList({
           </p>
         )}
         {!isLoading && chats.length === 0 && !error && (
-          <div className="py-8 text-center">
-            <p className="text-sm text-gray-400 dark:text-gray-500">
-              {search
-                ? 'Sin resultados.'
-                : filter === 'unread'
-                  ? 'No hay chats sin leer.'
-                  : filter === 'mine'
-                    ? 'No tenés leads asignados.'
-                    : 'Sin leads todavía.'}
-            </p>
+          <div className="py-4">
+            <EmptyState
+              icon={MessagesSquare}
+              title={
+                search
+                  ? 'Sin resultados.'
+                  : filter === 'unread'
+                    ? 'No hay chats sin leer.'
+                    : filter === 'mine'
+                      ? 'No tenés leads asignados.'
+                      : 'Sin leads todavía.'
+              }
+            />
             {showConnectWhatsapp && filter === 'all' && !search && (
-              <div className="mx-4 mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-left dark:border-green-900 dark:bg-green-950/30">
-                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-green-800 dark:text-green-400">
+              <div className="mx-4 mt-2 rounded-xl border border-wa-primary/30 bg-wa-primary/10 p-4 text-left dark:border-wa-primary/30 dark:bg-wa-primary/15">
+                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-wa-primary-strong dark:text-wa-primary">
                   <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
                 </div>
-                <p className="mb-3 text-xs text-green-700/80 dark:text-green-500/80">
+                <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
                   Vinculá tu instancia escaneando el QR para empezar a recibir mensajes.
                 </p>
                 <button
                   type="button"
                   onClick={onConnectWhatsapp}
-                  className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                  className="rounded-lg bg-wa-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-wa-primary-strong"
                 >
                   Conectar WhatsApp
                 </button>

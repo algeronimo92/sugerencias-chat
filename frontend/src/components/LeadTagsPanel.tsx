@@ -45,8 +45,8 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
         <TagIcon className="h-3.5 w-3.5" /> Etiquetas
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -64,7 +64,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
             </button>
           </span>
         ))}
-        {chat.tags.length === 0 && <span className="text-xs text-gray-400">Sin etiquetas</span>}
+        {chat.tags.length === 0 && <span className="text-xs text-wa-muted">Sin etiquetas</span>}
       </div>
 
       {available.length > 0 && (
@@ -72,19 +72,19 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
           <select
             value={selectedTagId}
             onChange={(event) => setSelectedTagId(event.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+            className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-gray-300"
           >
             <option value="">Agregar etiqueta…</option>
             {available.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
           </select>
-          <button type="button" onClick={handleAssign} disabled={!selectedTagId || isAssigning} className="rounded-md bg-green-600 px-2 text-white hover:bg-green-700 disabled:opacity-40">
+          <button type="button" onClick={handleAssign} disabled={!selectedTagId || isAssigning} className="rounded-md bg-wa-primary px-2 text-white hover:bg-wa-primary-strong disabled:opacity-40">
             {isAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           </button>
         </div>
       )}
 
       {me?.role === 'admin' && (
-        <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 dark:border-gray-700">
+        <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5 border-t border-wa-border pt-2 dark:border-wa-border-dark">
           <input
             type="color"
             value={newColor}
@@ -96,8 +96,8 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
             className="h-7 w-8 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0"
             aria-label="Color"
           />
-          <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nueva etiqueta" className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200" />
-          <button type="submit" disabled={!newName.trim() || isCreating} className="rounded-md border border-gray-200 px-2 py-1.5 text-xs text-gray-500 hover:text-green-600 disabled:opacity-40 dark:border-gray-700">
+          <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nueva etiqueta" className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark" />
+          <button type="submit" disabled={!newName.trim() || isCreating} className="rounded-md border border-wa-border px-2 py-1.5 text-xs text-wa-muted hover:text-wa-primary-strong disabled:opacity-40 dark:border-wa-border-dark">
             {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Crear'}
           </button>
         </form>

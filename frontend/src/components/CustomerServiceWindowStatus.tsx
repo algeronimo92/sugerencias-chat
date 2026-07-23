@@ -25,7 +25,7 @@ function formatRemaining(seconds: number) {
 
 export function CustomerServiceWindowBadge({ data, isLoading }: { data?: CustomerServiceWindow; isLoading: boolean }) {
   const remaining = useRemainingSeconds(data?.expires_at)
-  if (isLoading && !data) return <span className="text-[10px] text-gray-400">Comprobando ventana...</span>
+  if (isLoading && !data) return <span className="text-[10px] text-wa-muted">Comprobando ventana...</span>
   const isOpen = !!data?.is_open && remaining > 0
   if (!isOpen) {
     return (
@@ -37,7 +37,7 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const urgent = remaining <= 2 * 3600
   const warning = remaining <= 6 * 3600
   return (
-    <span title={`La ventana vence ${new Date(data.expires_at as string).toLocaleString()}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400'}`}>
+    <span title={`La ventana vence ${new Date(data.expires_at as string).toLocaleString()}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/40 dark:text-wa-primary'}`}>
       {urgent ? <AlertTriangle className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
       {formatRemaining(remaining)}
     </span>

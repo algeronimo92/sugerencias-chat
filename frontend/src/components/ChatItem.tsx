@@ -20,13 +20,13 @@ function formatTime(timestamp: string | null): string {
 }
 
 const TIER_TEXT_CLASS: Record<string, string> = {
-  fresh: 'text-green-700 dark:text-green-500',
+  fresh: 'text-wa-primary-strong dark:text-wa-primary',
   warning: 'text-amber-700 dark:text-amber-400',
   urgent: 'text-red-700 dark:text-red-400',
 }
 
 const TIER_DOT_CLASS: Record<string, string> = {
-  fresh: 'bg-green-500',
+  fresh: 'bg-wa-primary',
   warning: 'bg-amber-500',
   urgent: 'bg-red-500 animate-pulse',
 }
@@ -63,24 +63,22 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-700 border-l-2 ${
+      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200 ${
         isSelected
-          ? 'bg-green-50 dark:bg-green-950/40 border-green-600'
+          ? 'bg-wa-active dark:bg-wa-active-dark'
           : isHighlighted
-            ? 'bg-amber-50 dark:bg-amber-900/40 border-transparent ring-1 ring-inset ring-amber-400 dark:ring-amber-500'
-            : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60'
+            ? 'bg-amber-50 dark:bg-amber-900/40 ring-1 ring-inset ring-amber-400 dark:ring-amber-500'
+            : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
       }`}
     >
-      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white font-semibold text-sm shrink-0">
+      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-base shrink-0">
         {avatarInitial(chat)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-baseline">
           <span
-            className={`text-sm truncate ${
-              chat.unread_count > 0
-                ? 'font-semibold text-gray-900 dark:text-gray-100'
-                : 'font-medium text-gray-900 dark:text-gray-100'
+            className={`text-sm truncate text-wa-text dark:text-wa-text-dark ${
+              chat.unread_count > 0 ? 'font-semibold' : 'font-medium'
             }`}
           >
             {displayName(chat)}
@@ -94,18 +92,24 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
               {formatElapsedShort(elapsedMs)}
             </span>
           ) : (
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 ml-2 shrink-0">
+            <span
+              className={`text-[11px] ml-2 shrink-0 ${
+                chat.unread_count > 0
+                  ? 'font-medium text-wa-primary'
+                  : 'text-wa-muted dark:text-wa-muted-dark'
+              }`}
+            >
               {formatTime(chat.timestamp)}
             </span>
           )}
         </div>
         <div className="flex items-baseline justify-between gap-2 mt-0.5">
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1 min-w-0">
-            {Icon && <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
+          <p className="text-[13px] text-wa-muted dark:text-wa-muted-dark truncate flex items-center gap-1 min-w-0">
+            {Icon && <Icon className="w-3.5 h-3.5 text-wa-muted dark:text-wa-muted-dark shrink-0" />}
             {matchParts ? (
               <span className="truncate">
                 {matchParts[0]}
-                <strong className="font-semibold text-gray-700 dark:text-gray-200">{matchParts[1]}</strong>
+                <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{matchParts[1]}</strong>
                 {matchParts[2]}
               </span>
             ) : (
@@ -118,7 +122,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             </span>
           )}
           {chat.unread_count > 0 && (
-            <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-green-600 text-white text-[11px] font-semibold flex items-center justify-center">
+            <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-wa-primary text-white text-[11px] font-semibold flex items-center justify-center">
               {chat.unread_count > 99 ? '99+' : chat.unread_count}
             </span>
           )}
@@ -135,7 +139,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
               </span>
             ))}
             {chat.tags.length > 2 && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">+{chat.tags.length - 2}</span>
+              <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">+{chat.tags.length - 2}</span>
             )}
           </div>
         )}

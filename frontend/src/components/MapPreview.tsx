@@ -12,7 +12,7 @@ export function MapPreview({ latitude, longitude, zoom = 16, className = '' }: P
   const { url, markerXPercent, markerYPercent } = getStaticMapTile(latitude, longitude, zoom)
 
   return (
-    <div className={`relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800 ${className}`}>
+    <div className={`relative aspect-square overflow-hidden bg-wa-field dark:bg-wa-head-dark ${className}`}>
       <img src={url} alt="Vista previa del mapa" className="w-full h-full object-cover" loading="lazy" />
       <MapPin
         className="absolute w-7 h-7 text-red-600 drop-shadow-md -translate-x-1/2 -translate-y-full pointer-events-none"

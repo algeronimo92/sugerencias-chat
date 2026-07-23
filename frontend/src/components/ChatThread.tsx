@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BookmarkPlus, Check, CheckCheck, FileText, Loader2, Maximize2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
+import { BookmarkPlus, Check, CheckCheck, ChevronDown, FileText, Loader2, Maximize2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
 import type { Chat, InternalNote, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
@@ -31,8 +31,8 @@ const DOCUMENT_COLORS: Record<string, string> = {
   pdf: 'bg-red-500',
   doc: 'bg-blue-500',
   docx: 'bg-blue-500',
-  xls: 'bg-green-600',
-  xlsx: 'bg-green-600',
+  xls: 'bg-wa-primary',
+  xlsx: 'bg-wa-primary',
   ppt: 'bg-orange-500',
   pptx: 'bg-orange-500',
   txt: 'bg-gray-500',
@@ -91,7 +91,6 @@ interface Props {
   /** Mensaje al que saltar y resaltar al abrir (desde un resultado de
    * búsqueda que matcheó por un mensaje del historial). */
   highlightMessageId?: number | null
-  onRefreshSuggestions: () => void
 }
 
 interface OpenMedia {
@@ -108,19 +107,25 @@ type TimelineItem =
 const MESSAGE_FLASH_MS = 2000
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320
-// Padding horizontal (px-3.5 x2) + bordes de la burbuja: lo que se descuenta
-// del ancho máximo de la burbuja (75% del hilo) para el contenido.
-const BUBBLE_CHROME_PX = 30
+// Padding horizontal (px-3.5 x2) de la burbuja (sin bordes, como WhatsApp):
+// lo que se descuenta del ancho máximo de la burbuja (75% del hilo) para el
+// contenido.
+const BUBBLE_CHROME_PX = 28
 // Ventana durante la cual las imágenes que van cargando re-anclan el scroll
-// al mensaje saltado (no guardamos dimensiones de media, así que no se puede
-// reservar el espacio exacto por adelantado).
+// al mensaje saltado — o, en una apertura normal, re-pegan la vista al fondo
+// (no guardamos dimensiones de toda la media, así que no se puede reservar el
+// espacio exacto por adelantado).
 const MEDIA_SETTLE_MS = 4000
+// Distancia al fondo a partir de la cual se ofrece el botón "ir al último
+// mensaje" (mayor que el umbral de auto-scroll para que no parpadee cerca
+// del borde).
+const SCROLL_TO_BOTTOM_THRESHOLD_PX = 300
 
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
 function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetry?: () => void }) {
   if (status === 'PENDING') {
-    return <span className="inline-flex items-center gap-1 text-gray-400" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
+    return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
   }
   if (status === 'FAILED') {
     return (
@@ -130,21 +135,19 @@ function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetr
     )
   }
   if (status === 'READ' || status === 'PLAYED') {
-    return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-blue-500 shrink-0" /></span>
+    return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-accent shrink-0" /></span>
   }
   if (status === 'DELIVERY_ACK') {
-    return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
+    return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
   }
-  return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" /></span>
+  return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
 }
 
-export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestions }: Props) {
+export function ChatThread({ chat, highlightMessageId = null }: Props) {
   const {
     data: messagePages,
     isLoading,
     error,
-    refetch,
-    isRefetching,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -211,6 +214,14 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
   // Ancla activa tras el salto: cada media que carga vuelve a centrar el
   // mensaje hasta que expira o el usuario scrollea a mano.
   const anchorRef = useRef<{ messageId: number; until: number } | null>(null)
+  // Fondo "pegajoso" tras abrir el chat: mientras la ventana esté viva, cada
+  // crecimiento del contenido (media sin caja reservada, fuentes, re-medición
+  // del ancho) vuelve a pegar la vista al último mensaje. Igual que el ancla
+  // del salto: expira sola o la suelta el scroll manual.
+  const stickToBottomUntilRef = useRef(0)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [hasNewWhileAway, setHasNewWhileAway] = useState(false)
   const [flashMessageId, setFlashMessageId] = useState<number | null>(null)
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
@@ -283,6 +294,9 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
     loadingOlderRef.current = false
     latestTimelineKeyRef.current = null
     prependSnapshotRef.current = null
+    stickToBottomUntilRef.current = 0
+    setShowScrollToBottom(false)
+    setHasNewWhileAway(false)
   }, [chat.chat_id])
 
   useEffect(() => {
@@ -325,10 +339,12 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
     }
   }
 
-  // El scroll manual del usuario suelta el ancla (wheel/touch no se disparan
-  // con scrollIntoView, así que no interfiere con el re-anclado).
+  // El scroll manual del usuario suelta el ancla y el fondo pegajoso
+  // (wheel/touch no se disparan con scrollIntoView, así que no interfiere
+  // con el re-anclado).
   function releaseAnchor() {
     anchorRef.current = null
+    stickToBottomUntilRef.current = 0
   }
 
   // Ancho del hilo, para calcular el tamaño exacto al que va a renderizar
@@ -341,6 +357,37 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
       setThreadWidth(entries[0].contentRect.width)
     })
     observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Los eventos load no cubren todos los reflows (la re-medición del ancho
+  // del hilo re-escala las cajas de media sin disparar load, y fuentes/audio
+  // players también empujan el layout). Observar el alto real del contenido
+  // cubre cualquier causa: mientras haya un ancla viva se re-centra el
+  // mensaje saltado; mientras el fondo pegajoso siga activo (o el usuario ya
+  // esté leyendo el final) se re-pega al último mensaje.
+  useEffect(() => {
+    const content = contentRef.current
+    if (!content) return
+    const observer = new ResizeObserver(() => {
+      const container = threadRef.current
+      if (!container) return
+      const anchor = anchorRef.current
+      if (anchor && Date.now() < anchor.until) {
+        container
+          .querySelector(`[data-message-id="${anchor.messageId}"]`)
+          ?.scrollIntoView({ block: 'center' })
+        return
+      }
+      if (pendingJumpRef.current) return
+      if (
+        Date.now() < stickToBottomUntilRef.current ||
+        (initialScrollDoneRef.current && isNearBottomRef.current)
+      ) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
+    observer.observe(content)
     return () => observer.disconnect()
   }, [])
 
@@ -372,8 +419,12 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
     if (!initialScrollDoneRef.current) {
       initialScrollDoneRef.current = true
       latestTimelineKeyRef.current = lastTimelineKey
-      if (pendingJumpRef.current && jumpToMessage(container, pendingJumpRef.current)) {
-        return
+      if (pendingJumpRef.current) {
+        if (jumpToMessage(container, pendingJumpRef.current)) return
+      } else {
+        // La ventana arranca acá y no dentro del rAF: cualquier reflow entre
+        // este efecto y el primer frame ya tiene que re-pegar al fondo.
+        stickToBottomUntilRef.current = Date.now() + MEDIA_SETTLE_MS
       }
       requestAnimationFrame(() => {
         container.scrollTop = container.scrollHeight
@@ -397,6 +448,10 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
       latestTimelineKeyRef.current = lastTimelineKey
       if (isNearBottomRef.current) {
         requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }))
+      } else {
+        // Está leyendo historial: no se lo mueve, pero el botón de bajar
+        // avisa que llegó algo nuevo.
+        setHasNewWhileAway(true)
       }
     }
   }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount])
@@ -540,17 +595,17 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
     }
   }
 
-  function handleRefresh() {
-    refetch()
-    onRefreshSuggestions()
-  }
-
   function handleThreadScroll() {
     const container = threadRef.current
     if (!container) return
 
-    isNearBottomRef.current =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 120
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight
+    isNearBottomRef.current = distanceFromBottom < 120
+    if (isNearBottomRef.current) setHasNewWhileAway(false)
+    // React ignora el set cuando el valor no cambia: esto no re-renderiza en
+    // cada tick de scroll.
+    setShowScrollToBottom(distanceFromBottom > SCROLL_TO_BOTTOM_THRESHOLD_PX)
 
     if (
       container.scrollTop > 80 ||
@@ -562,6 +617,9 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
     }
 
     loadingOlderRef.current = true
+    // Al paginar hacia atrás manda la restauración del snapshot, nunca el
+    // fondo pegajoso de la apertura.
+    stickToBottomUntilRef.current = 0
     prependSnapshotRef.current = {
       scrollHeight: container.scrollHeight,
       scrollTop: container.scrollTop,
@@ -575,30 +633,31 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
       })
   }
 
+  function scrollToBottom() {
+    releaseAnchor()
+    isNearBottomRef.current = true
+    setHasNewWhileAway(false)
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-gray-950">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between">
+    <div className="flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
+      {/* Header — gris claro / #202C33, como el header de conversación de WhatsApp */}
+      <div className="px-4 py-2.5 border-b border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white font-semibold text-xs shrink-0">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{displayName(chat)}</p>
+            <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">{displayName(chat)}</p>
             <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
           </div>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={isRefetching}
-          className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-500 font-medium transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
-          {isRefetching ? 'Actualizando...' : 'Actualizar'}
-        </button>
       </div>
 
-      {/* Thread */}
+      {/* Thread — el wrapper relativo permite flotar el botón "ir al final"
+          por fuera del scroll, así no se desplaza con el contenido. */}
+      <div className="relative flex-1 min-h-0">
       <div
         ref={threadRef}
         onScroll={handleThreadScroll}
@@ -606,16 +665,19 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
         onLoadedMetadataCapture={handleMediaSettled}
         onWheelCapture={releaseAnchor}
         onTouchMoveCapture={releaseAnchor}
-        className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
+        className="h-full overflow-y-auto px-6 py-4"
       >
+      {/* El observer mide este div (no el scroller): su alto es el del
+          contenido real, que es lo que cambia cuando la media asienta. */}
+      <div ref={contentRef} className="flex flex-col">
         {isLoading && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Cargando mensajes...</p>
+          <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Cargando mensajes...</p>
         )}
         {error && (
           <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">Error al cargar mensajes.</p>
         )}
         {!isLoading && !error && timeline.length === 0 && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin mensajes en este chat.</p>
+          <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Sin mensajes en este chat.</p>
         )}
         {!isLoading && !error && hasNextPage && (
           <button
@@ -623,6 +685,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
               const container = threadRef.current
               if (!container || isFetchingNextPage || loadingOlderRef.current) return
               loadingOlderRef.current = true
+              stickToBottomUntilRef.current = 0
               prependSnapshotRef.current = {
                 scrollHeight: container.scrollHeight,
                 scrollTop: container.scrollTop,
@@ -636,34 +699,44 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                 })
             }}
             disabled={isFetchingNextPage}
-            className="mx-auto flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 shadow-sm hover:bg-gray-50 disabled:cursor-wait dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+            className="mx-auto my-2 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover disabled:cursor-wait dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
           >
             {isFetchingNextPage && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {isFetchingNextPage ? 'Cargando anteriores...' : 'Cargar mensajes anteriores'}
           </button>
         )}
-        {timeline.map((item) => {
+        {timeline.map((item, index) => {
           const showDateSeparator = dateSeparators.get(item.key) ?? false
           if (item.kind === 'note') {
             return (
               <Fragment key={item.key}>
                 {showDateSeparator && (
-                  <div className="flex justify-center py-1">
-                    <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                  <div className="flex justify-center py-2">
+                    <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
                       {formatDayLabel(item.sentAt)}
                     </span>
                   </div>
                 )}
-                <InternalNoteCard
-                  chatId={chat.chat_id}
-                  note={item.note}
-                  canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
-                />
+                <div className="my-2">
+                  <InternalNoteCard
+                    chatId={chat.chat_id}
+                    note={item.note}
+                    canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
+                  />
+                </div>
               </Fragment>
             )
           }
           const m = item.message
           const isVendedor = m.sender === 'vendedor'
+          // Agrupación estilo WhatsApp: mensajes consecutivos del mismo autor
+          // se pegan entre sí y solo el primero lleva la "colita".
+          const prevItem = index > 0 ? timeline[index - 1] : null
+          const isFirstOfGroup =
+            showDateSeparator ||
+            !prevItem ||
+            prevItem.kind !== 'message' ||
+            prevItem.message.sender !== m.sender
           const { kind, icon: Icon, label, text } = parseContent(m.content)
           // Si el archivo falló al cargar (ej. no existe en este entorno),
           // lo tratamos como si no hubiera media: el navegador muestra su
@@ -674,22 +747,25 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
           return (
             <Fragment key={item.key}>
               {showDateSeparator && (
-                <div className="flex justify-center py-1">
-                  <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                <div className="flex justify-center py-2">
+                  <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
                     {formatDayLabel(m.sent_at as string)}
                   </span>
                 </div>
               )}
-              <div className={`flex ${isVendedor ? 'justify-end' : 'justify-start'}`} data-message-id={m.id}>
               <div
-                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm border transition-all duration-700 ${
+                className={`flex ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
+                data-message-id={m.id}
+              >
+              <div
+                className={`max-w-[75%] rounded-bubble px-3.5 py-2 text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${
                   isVendedor
-                    ? 'bg-green-100 dark:bg-green-950/50 border-green-200 dark:border-green-900 text-gray-800 dark:text-gray-100 rounded-tr-sm'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-sm'
+                    ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
+                    : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
                 } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
               >
                 {!mediaSrc && kind !== 'text' && kind !== 'location' && Icon && (
-                  <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                  <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
                     <Icon className="w-3 h-3" />
                     <span>{label}</span>
                   </div>
@@ -733,10 +809,10 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                       <FileText className="w-4 h-4" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-800 dark:text-gray-100 truncate not-italic font-medium">
+                      <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">
                         {text || 'Documento'}
                       </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 not-italic">
+                      <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
                         {documentExtension(text || '')}
                       </p>
                     </div>
@@ -758,7 +834,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                   )
                 })()}
                 {kind !== 'other' && kind !== 'location' && (
-                  <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-gray-600 dark:text-gray-400' : ''}`}>
+                  <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-wa-muted dark:text-wa-text-dark/70' : ''}`}>
                     {text ? (
                       parseRichText(text).map((segment, i) => {
                         switch (segment.type) {
@@ -769,7 +845,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                                 href={segment.text}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 break-all not-italic"
+                                className="underline text-sky-600 dark:text-wa-accent hover:text-sky-800 dark:hover:text-sky-300 break-all not-italic"
                               >
                                 {segment.text}
                               </a>
@@ -806,17 +882,17 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                         }
                       })
                     ) : (
-                      <span className="italic text-gray-400 dark:text-gray-500">Sin contenido</span>
+                      <span className="italic text-wa-faint dark:text-wa-text-dark/50">Sin contenido</span>
                     )}
                   </p>
                 )}
-                <div className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
                   {isVendedor && kind === 'text' && text.trim() && (
                     <button
                       type="button"
                       title="Guardar como plantilla personal"
                       onClick={() => setTemplateContentToSave(text.trim())}
-                      className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-green-600 hover:opacity-100"
+                      className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-wa-primary-strong dark:hover:text-wa-primary hover:opacity-100"
                     >
                       <BookmarkPlus className="h-3 w-3" />
                     </button>
@@ -831,6 +907,28 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
         })}
         <div ref={bottomRef} />
       </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={scrollToBottom}
+        aria-label="Ir al último mensaje"
+        title="Ir al último mensaje"
+        aria-hidden={!showScrollToBottom}
+        tabIndex={showScrollToBottom ? 0 : -1}
+        className={`absolute bottom-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-wa-border bg-white text-wa-muted shadow-md transition-all duration-200 ease-out hover:bg-wa-hover active:bg-wa-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark ${
+          showScrollToBottom ? 'scale-100 opacity-100' : 'pointer-events-none scale-90 opacity-0'
+        }`}
+      >
+        <ChevronDown aria-hidden="true" className="h-5 w-5" />
+        {hasNewWhileAway && (
+          <span
+            aria-hidden="true"
+            className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-wa-primary ring-2 ring-white dark:ring-wa-head-dark"
+          />
+        )}
+      </button>
+      </div>
 
       {/* Compose */}
       {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
@@ -843,10 +941,10 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
       ) : (
         <form
           onSubmit={handleSend}
-          className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3"
+          className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark p-3"
         >
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-[11px] font-medium text-green-700 dark:text-green-400">Mensaje de WhatsApp</span>
+          <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
           <button
             type="button"
             onClick={() => setIsNoteMode(true)}
@@ -888,7 +986,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
           {!isRecordingAudio && (
             <div className="relative flex-1">
               {slashSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-gray-200 bg-white p-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
                   {slashSuggestions.map((template, i) => (
                     <button
                       key={template.id}
@@ -897,14 +995,14 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                       onClick={() => selectSlashTemplate(template)}
                       onMouseEnter={() => setSlashIndex(i)}
                       className={`block w-full rounded-lg px-3 py-2 text-left ${
-                        i === activeSlashIndex ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                        i === activeSlashIndex ? 'bg-wa-active dark:bg-wa-active-dark' : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
                       }`}
                     >
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">/{template.shortcut}</p>
-                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{renderTemplate(template, chat)}</p>
+                      <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">/{template.shortcut}</p>
+                      <p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{renderTemplate(template, chat)}</p>
                     </button>
                   ))}
-                  <p className="border-t border-gray-100 px-3 pt-1.5 text-[10px] text-gray-400 dark:border-gray-700">
+                  <p className="border-t border-wa-border px-3 pt-1.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
                     ↑↓ para navegar · Enter para insertar · Esc para cerrar
                   </p>
                 </div>
@@ -920,7 +1018,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
                 onKeyDown={handleKeyDown}
                 placeholder="Escribí un mensaje... (/ para usar una plantilla)"
                 rows={1}
-                className="w-full resize-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500 max-h-32"
+                className="w-full resize-none text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow max-h-32"
               />
             </div>
           )}
@@ -929,7 +1027,7 @@ export function ChatThread({ chat, highlightMessageId = null, onRefreshSuggestio
             <button
               type="submit"
               aria-label="Enviar mensaje"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-wa-primary text-white hover:bg-wa-primary-strong active:bg-wa-primary-deep transition-colors shadow-sm"
             >
               <Send className="w-4 h-4" />
             </button>

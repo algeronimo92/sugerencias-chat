@@ -4,6 +4,7 @@ import type { ChatFilters, DashboardMetricItem, DashboardPoint } from '../types'
 import { isLeadStage } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../utils/errors'
+import { Button } from './ui'
 
 const STAGE_LABELS: Record<string, string> = {
   nuevo: 'Nuevo',
@@ -53,16 +54,16 @@ function MetricCard({ label, value, hint, icon: Icon, danger = false, onClick }:
     <>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
-          <p className={`mt-1 text-2xl font-semibold ${danger ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+          <p className="text-xs font-medium text-wa-muted dark:text-wa-muted-dark">{label}</p>
+          <p className={`mt-1 text-2xl font-semibold ${danger ? 'text-red-600 dark:text-red-400' : 'text-wa-text dark:text-white'}`}>
             {value}
           </p>
         </div>
-        <span className={`rounded-lg p-2 ${danger ? 'bg-red-50 text-red-600 dark:bg-red-950/50' : 'bg-green-50 text-green-600 dark:bg-green-950/50'}`}>
+        <span className={`rounded-lg p-2 ${danger ? 'bg-red-50 text-red-600 dark:bg-red-950/50' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/50'}`}>
           <Icon className="h-4 w-4" />
         </span>
       </div>
-      <p className="mt-2 text-[11px] text-gray-400">{hint}</p>
+      <p className="mt-2 text-[11px] text-wa-muted">{hint}</p>
     </>
   )
 
@@ -71,7 +72,7 @@ function MetricCard({ label, value, hint, icon: Icon, danger = false, onClick }:
       <button
         type="button"
         onClick={onClick}
-        className="rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-green-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-green-800"
+        className="rounded-xl border border-wa-border bg-white p-4 text-left shadow-sm transition-colors hover:border-wa-primary/40 hover:shadow-md dark:border-wa-border-dark dark:bg-wa-panel-dark dark:hover:border-green-800"
       >
         {content}
       </button>
@@ -79,7 +80,7 @@ function MetricCard({ label, value, hint, icon: Icon, danger = false, onClick }:
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {content}
     </div>
   )
@@ -93,7 +94,7 @@ interface BarListProps {
 
 function BarList({ items, labels, onSelect }: BarListProps) {
   if (items.length === 0) {
-    return <p className="py-4 text-center text-xs text-gray-400">Sin datos todavía</p>
+    return <p className="py-4 text-center text-xs text-wa-muted">Sin datos todavía</p>
   }
 
   const max = Math.max(...items.map((item) => item.value), 1)
@@ -104,14 +105,14 @@ function BarList({ items, labels, onSelect }: BarListProps) {
         const label = labels?.[item.name] ?? item.name
         const selectable = !!onSelect && !PLACEHOLDER_NAMES.has(item.name)
         const bar = (
-          <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-            <div className="h-full rounded-full bg-green-500" style={{ width: `${(item.value / max) * 100}%` }} />
+          <div className="h-2 overflow-hidden rounded-full bg-wa-field dark:bg-wa-head-dark">
+            <div className="h-full rounded-full bg-wa-primary" style={{ width: `${(item.value / max) * 100}%` }} />
           </div>
         )
         const header = (
           <div className="mb-1 flex justify-between gap-3 text-xs">
             <span className="truncate text-gray-600 dark:text-gray-300">{label}</span>
-            <span className="font-medium text-gray-800 dark:text-gray-100">{item.value}</span>
+            <span className="font-medium text-gray-800 dark:text-wa-text-dark">{item.value}</span>
           </div>
         )
 
@@ -158,8 +159,8 @@ function TrendChart({ points }: { points: DashboardPoint[] }) {
       <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full" role="img" aria-label="Leads nuevos por día">
         <defs>
           <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#22c55e" stopOpacity=".28" />
-            <stop offset="1" stopColor="#22c55e" stopOpacity="0" />
+            <stop offset="0" stopColor="#00a884" stopOpacity=".28" />
+            <stop offset="1" stopColor="#00a884" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 0.25, 0.5, 0.75, 1].map((value) => (
@@ -170,22 +171,22 @@ function TrendChart({ points }: { points: DashboardPoint[] }) {
             y1={padding + (height - padding * 2) * value}
             y2={padding + (height - padding * 2) * value}
             stroke="currentColor"
-            className="text-gray-100 dark:text-gray-800"
+            className="text-wa-text-dark dark:text-gray-800"
           />
         ))}
         {area && <polygon points={area} fill="url(#dashboardArea)" />}
-        <polyline points={line} fill="none" stroke="#16a34a" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={line} fill="none" stroke="#008069" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
         {coordinates
           .filter((_, index) => points.length <= 14 || index % Math.ceil(points.length / 14) === 0)
           .map((point) => (
-            <circle key={point.date} cx={point.x} cy={point.y} r="3" fill="#16a34a">
+            <circle key={point.date} cx={point.x} cy={point.y} r="3" fill="#008069">
               <title>
                 {new Date(`${point.date}T00:00:00`).toLocaleDateString('es-PE')}: {point.value}
               </title>
             </circle>
           ))}
       </svg>
-      <div className="flex justify-between text-[10px] text-gray-400">
+      <div className="flex justify-between text-[10px] text-wa-muted">
         <span>{points[0] ? new Date(`${points[0].date}T00:00:00`).toLocaleDateString('es-PE') : ''}</span>
         <span>{points.at(-1) ? new Date(`${points.at(-1)?.date}T00:00:00`).toLocaleDateString('es-PE') : ''}</span>
       </div>
@@ -195,8 +196,8 @@ function TrendChart({ points }: { points: DashboardPoint[] }) {
 
 function Panel({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}>
-      <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</h2>
+    <section className={`rounded-xl border border-wa-border bg-white p-5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark ${className}`}>
+      <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-wa-text-dark">{title}</h2>
       {children}
     </section>
   )
@@ -212,31 +213,33 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
   const { data, isLoading, isFetching, error, refetch } = useDashboard(days)
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 dark:bg-gray-950">
+    <div className="h-full overflow-y-auto bg-wa-app p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Dashboard CRM</h1>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Atención, seguimiento y distribución de leads</p>
+            <h1 className="text-xl font-semibold text-wa-text dark:text-white">Dashboard CRM</h1>
+            <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">Atención, seguimiento y distribución de leads</p>
           </div>
           <div className="flex items-center gap-2">
             {data && (
-              <span className="text-[11px] text-gray-400" title={new Date(data.generated_at).toLocaleString('es-PE')}>
+              <span className="text-[11px] text-wa-muted dark:text-wa-muted-dark" title={new Date(data.generated_at).toLocaleString('es-PE')}>
                 Actualizado {formatRelativeTime(data.generated_at)}
               </span>
             )}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="icon"
               onClick={() => refetch()}
               disabled={isFetching}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-medium text-gray-500 hover:text-green-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+              aria-label="Actualizar métricas"
+              title="Actualizar métricas"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
+            </Button>
             <select
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             >
               <option value={7}>Últimos 7 días</option>
               <option value={30}>Últimos 30 días</option>
@@ -247,7 +250,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
 
         {isLoading && (
           <div className="flex justify-center py-24">
-            <Loader2 className="h-7 w-7 animate-spin text-green-600" />
+            <Loader2 className="h-7 w-7 animate-spin text-wa-primary-strong" />
           </div>
         )}
 

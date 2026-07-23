@@ -100,7 +100,7 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
       <div className="flex items-end gap-2">
         <div className="relative flex-1">
           {suggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+            <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
               {suggestions.map((user, index) => (
                 <button
                   key={user.id}
@@ -108,10 +108,10 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
                   onMouseDown={event => event.preventDefault()}
                   onClick={() => selectMention(user)}
                   onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left ${index === activeIndex ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left ${index === activeIndex ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-wa-hover dark:hover:bg-wa-active-dark'}`}
                 >
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-xs font-semibold text-violet-700 dark:bg-violet-950 dark:text-violet-300">{user.name.charAt(0).toUpperCase()}</span>
-                  <span><span className="block text-sm font-medium text-gray-800 dark:text-gray-100">{user.name}</span><span className="block text-[10px] text-gray-400">{user.role}</span></span>
+                  <span><span className="block text-sm font-medium text-gray-800 dark:text-wa-text-dark">{user.name}</span><span className="block text-[10px] text-wa-muted">{user.role}</span></span>
                 </button>
               ))}
             </div>
@@ -137,7 +137,7 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
               }
               if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) handleSubmit(event)
             }}
-            className="max-h-32 w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-gray-900 dark:text-gray-100"
+            className="max-h-32 w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-wa-text outline-none placeholder:text-wa-muted focus:border-transparent focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-wa-panel-dark dark:text-wa-text-dark"
           />
         </div>
         <button type="submit" disabled={!content.trim() || createNote.isPending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40" title="Guardar nota interna">

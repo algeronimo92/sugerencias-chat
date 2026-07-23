@@ -297,7 +297,7 @@ export function TemplatesPage() {
     const validFiles = files.filter(file => validateAttachmentFile(file) == null)
     const existingCount = editingTemplate?.attachments.length ?? 0
     const available = Math.max(0, 10 - existingCount - pendingAttachments.length)
-    if (validFiles.length > available) fileErrors.push(`Solo puedes agregar ${available} archivo${available === 1 ? '' : 's'} más.`)
+    if (validFiles.length > available) fileErrors.push(`Solo podés agregar ${available} archivo${available === 1 ? '' : 's'} más.`)
     if (fileErrors.length) setError(fileErrors.join('\n'))
     setPendingAttachments(current => [
       ...current,
@@ -414,17 +414,17 @@ export function TemplatesPage() {
   const maxInteractiveButtons = form.interactiveButtons.some(button => button.type === 'reply') ? 3 : 2
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 dark:bg-gray-950">
+    <div className="h-full overflow-y-auto bg-wa-app p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-green-600" />
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Plantillas</h1>
+            <FileText className="h-5 w-5 text-wa-primary-strong" />
+            <h1 className="text-xl font-semibold text-wa-text dark:text-white">Plantillas</h1>
           </div>
           <button
             type="button"
             onClick={() => (open ? closeForm() : openCreateForm())}
-            className="flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700"
+            className="flex items-center gap-2 rounded-md bg-wa-primary px-3 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong"
           >
             <Plus className="h-4 w-4" /> Nueva plantilla
           </button>
@@ -444,8 +444,8 @@ export function TemplatesPage() {
         )}
 
         {open && (
-          <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+          <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-xl border border-wa-border bg-white p-4 text-wa-text shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
+            <h2 className="text-sm font-semibold text-gray-800 dark:text-wa-text-dark">
               {editingId != null ? 'Editar plantilla' : 'Nueva plantilla'}
             </h2>
             <div className="grid gap-2 md:grid-cols-2">
@@ -453,45 +453,45 @@ export function TemplatesPage() {
                 type="button"
                 disabled={editingId != null}
                 onClick={() => setForm(f => ({ ...f, templateType: 'internal' }))}
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'internal' ? 'border-green-500 bg-green-50 dark:bg-green-950/30' : 'border-gray-200 dark:border-gray-700'}`}
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'internal' ? 'border-wa-primary bg-green-50 dark:bg-green-950/30' : 'border-wa-border dark:border-wa-border-dark'}`}
               >
-                <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
-                <span><span className="block text-sm font-semibold">Plantilla interna</span><span className="block text-xs text-gray-500 dark:text-gray-400">Respuesta rápida; requiere ventana abierta.</span></span>
+                <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-wa-primary-strong" />
+                <span><span className="block text-sm font-semibold">Plantilla interna</span><span className="block text-xs text-wa-muted dark:text-wa-muted-dark">Respuesta rápida; requiere ventana abierta.</span></span>
               </button>
               <button
                 type="button"
                 disabled={editingId != null}
                 onClick={() => setForm(f => ({ ...f, templateType: 'official' }))}
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'official' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-700'}`}
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'official' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-wa-border dark:border-wa-border-dark'}`}
               >
                 <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-                <span><span className="block text-sm font-semibold">Plantilla oficial</span><span className="block text-xs text-gray-500 dark:text-gray-400">Aprobada por Meta; puede reabrir una conversación.</span></span>
+                <span><span className="block text-sm font-semibold">Plantilla oficial</span><span className="block text-xs text-wa-muted dark:text-wa-muted-dark">Aprobada por Meta; puede reabrir una conversación.</span></span>
               </button>
             </div>
             {form.templateType === 'internal' && (
-              <div className="grid grid-cols-3 gap-2 rounded-xl bg-gray-50 p-1.5 dark:bg-gray-900/50">
+              <div className="grid grid-cols-3 gap-2 rounded-xl bg-wa-hover p-1.5 dark:bg-wa-panel-dark/50">
                 {([
                   ['none', MessageSquareText, 'Texto'],
                   ['buttons', MousePointerClick, 'Botones'],
                   ['list', ListIcon, 'Lista'],
                 ] as const).map(([value, Icon, label]) => (
-                  <button key={value} type="button" onClick={() => { setForm(f => ({ ...f, interactiveType: value })); if (value !== 'none') setPendingAttachments([]) }} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold ${form.interactiveType === value ? 'bg-white text-green-700 shadow-sm dark:bg-gray-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}><Icon className="h-3.5 w-3.5" />{label}</button>
+                  <button key={value} type="button" onClick={() => { setForm(f => ({ ...f, interactiveType: value })); if (value !== 'none') setPendingAttachments([]) }} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold ${form.interactiveType === value ? 'bg-white text-wa-primary-strong shadow-sm dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'}`}><Icon className="h-3.5 w-3.5" />{label}</button>
                 ))}
               </div>
             )}
             {form.templateType === 'official' && (
               <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20 md:grid-cols-2">
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Nombre exacto en Meta
-                  <input required maxLength={512} pattern="[a-z0-9_]+" value={form.officialName} onChange={event => setForm(f => ({ ...f, officialName: event.target.value.toLowerCase() }))} placeholder="seguimiento_cliente" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-gray-900" />
+                  <input required maxLength={512} pattern="[a-z0-9_]+" value={form.officialName} onChange={event => setForm(f => ({ ...f, officialName: event.target.value.toLowerCase() }))} placeholder="seguimiento_cliente" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Idioma
-                  <input required maxLength={6} pattern="[a-z]{2,3}(_[A-Z]{2})?" value={form.officialLanguage} onChange={event => setForm(f => ({ ...f, officialLanguage: event.target.value }))} placeholder="es" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-gray-900" />
+                  <input required maxLength={6} pattern="[a-z]{2,3}(_[A-Z]{2})?" value={form.officialLanguage} onChange={event => setForm(f => ({ ...f, officialLanguage: event.target.value }))} placeholder="es" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Categoría oficial
-                  <select value={form.officialCategory} onChange={event => setForm(f => ({ ...f, officialCategory: event.target.value as NonNullable<MessageTemplate['official_category']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-gray-900"><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></select>
+                  <select value={form.officialCategory} onChange={event => setForm(f => ({ ...f, officialCategory: event.target.value as NonNullable<MessageTemplate['official_category']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></select>
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Estado en Meta
-                  <select value={form.officialStatus} onChange={event => setForm(f => ({ ...f, officialStatus: event.target.value as NonNullable<MessageTemplate['official_status']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-gray-900"><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="REJECTED">Rechazada</option><option value="PAUSED">Pausada</option><option value="DISABLED">Deshabilitada</option></select>
+                  <select value={form.officialStatus} onChange={event => setForm(f => ({ ...f, officialStatus: event.target.value as NonNullable<MessageTemplate['official_status']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="REJECTED">Rechazada</option><option value="PAUSED">Pausada</option><option value="DISABLED">Deshabilitada</option></select>
                 </label>
                 <p className="text-[11px] text-blue-700 dark:text-blue-300 md:col-span-2">Estos datos deben coincidir exactamente con la plantilla existente en Meta. La aprobación directa se incorporará en la integración posterior con Meta.</p>
               </div>
@@ -503,7 +503,7 @@ export function TemplatesPage() {
                 placeholder="Nombre"
                 value={form.name}
                 onChange={(event) => setForm((f) => ({ ...f, name: event.target.value }))}
-                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               />
               <input
                 maxLength={50}
@@ -511,7 +511,7 @@ export function TemplatesPage() {
                 placeholder="Atajo, ej. cotizacion"
                 value={form.shortcut}
                 onChange={(event) => setForm((f) => ({ ...f, shortcut: event.target.value }))}
-                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               />
             </div>
             <textarea
@@ -527,7 +527,7 @@ export function TemplatesPage() {
                   ? resizeOfficialParameters(event.target.value, f.officialParameterValues)
                   : f.officialParameterValues,
               }))}
-              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             />
             <div className="grid gap-3 md:grid-cols-2">
               <input
@@ -536,12 +536,12 @@ export function TemplatesPage() {
                 placeholder="Categoría"
                 value={form.category}
                 onChange={(event) => setForm((f) => ({ ...f, category: event.target.value }))}
-                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               />
               <select
                 value={form.stage}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
-                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier etapa</option>
                 {LEAD_STAGES.map((x) => <option key={x} value={x}>{x}</option>)}
@@ -549,21 +549,21 @@ export function TemplatesPage() {
               <select
                 value={form.taskType}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, taskType: value === '' || isTaskType(value) ? value : f.taskType })) }}
-                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier tarea</option>
                 {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
               </select>
             </div>
             {form.templateType === 'official' ? (
-              <div className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400">El texto aprobado usa variables numéricas consecutivas: {'{{1}}'}, {'{{2}}'}, ... Configura qué dato enviará el CRM en cada posición.</p>
+              <div className="grid gap-2 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
+                <p className="text-xs text-wa-muted dark:text-wa-muted-dark">El texto aprobado usa variables numéricas consecutivas: {'{{1}}'}, {'{{2}}'}, ... Configura qué dato enviará el CRM en cada posición.</p>
                 {form.officialParameterValues.map((value, index) => (
-                  <label key={index} className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 sm:grid-cols-[80px_1fr] sm:items-center"><span>{`{{${index + 1}}}`}</span><input required value={value} onChange={event => setForm(f => ({ ...f, officialParameterValues: f.officialParameterValues.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} placeholder="Ej. {{nombre}}" className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900" /></label>
+                  <label key={index} className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 sm:grid-cols-[80px_1fr] sm:items-center"><span>{`{{${index + 1}}}`}</span><input required value={value} onChange={event => setForm(f => ({ ...f, officialParameterValues: f.officialParameterValues.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} placeholder="Ej. {{nombre}}" className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark" /></label>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
                 Variables: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}
               </p>
             )}
@@ -571,41 +571,41 @@ export function TemplatesPage() {
               <div className="grid gap-3 rounded-xl border border-green-200 bg-green-50/50 p-3 dark:border-green-900 dark:bg-green-950/20">
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Título interactivo
-                    <input required maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-gray-900" />
+                    <input required maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                   <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Pie de mensaje
-                    <input maxLength={60} value={form.interactiveFooter} onChange={event => setForm(f => ({ ...f, interactiveFooter: event.target.value }))} placeholder="DermicaPro" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-gray-900" />
+                    <input maxLength={60} value={form.interactiveFooter} onChange={event => setForm(f => ({ ...f, interactiveFooter: event.target.value }))} placeholder="DermicaPro" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                 </div>
                 {form.interactiveType === 'buttons' && (
                   <div className="grid gap-2">
-                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Botones ({form.interactiveButtons.some(button => button.type === 'reply') ? 'máximo 3 respuestas' : 'máximo 2 CTA'})</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { type: 'reply', displayText: '', id: `reply_${f.interactiveButtons.length + 1}` }] }))} className="flex items-center gap-1 text-xs font-medium text-green-700 disabled:opacity-40 dark:text-green-400"><Plus className="h-3 w-3" />Agregar</button></div>
+                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Botones ({form.interactiveButtons.some(button => button.type === 'reply') ? 'máximo 3 respuestas' : 'máximo 2 CTA'})</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { type: 'reply', displayText: '', id: `reply_${f.interactiveButtons.length + 1}` }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar</button></div>
                     {form.interactiveButtons.map((button, index) => {
                       const field = button.type === 'reply' ? 'id' : button.type === 'url' ? 'url' : button.type === 'call' ? 'phoneNumber' : 'copyCode'
-                      return <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-gray-900 md:grid-cols-[120px_1fr_1fr_auto]">
-                        <select value={button.type} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as TemplateInteractiveButton['type'], displayText: item.displayText } : item) }))} className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800"><option value="reply">Respuesta</option><option value="url">Abrir URL</option><option value="call">Llamar</option><option value="copy">Copiar código</option></select>
-                        <input required maxLength={20} value={button.displayText} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, displayText: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" />
-                        <input required type={field === 'url' ? 'url' : 'text'} inputMode={field === 'phoneNumber' ? 'tel' : 'text'} maxLength={field === 'url' ? 2048 : field === 'phoneNumber' ? 20 : 256} value={String(button[field] ?? '')} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: event.target.value } : item) }))} placeholder={field === 'id' ? 'ID de respuesta' : field === 'url' ? 'https://...' : field === 'phoneNumber' ? '+519...' : 'Código'} className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                      return <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-wa-panel-dark md:grid-cols-[120px_1fr_1fr_auto]">
+                        <select value={button.type} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as TemplateInteractiveButton['type'], displayText: item.displayText } : item) }))} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="reply">Respuesta</option><option value="url">Abrir URL</option><option value="call">Llamar</option><option value="copy">Copiar código</option></select>
+                        <input required maxLength={20} value={button.displayText} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, displayText: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                        <input required type={field === 'url' ? 'url' : 'text'} inputMode={field === 'phoneNumber' ? 'tel' : 'text'} maxLength={field === 'url' ? 2048 : field === 'phoneNumber' ? 20 : 256} value={String(button[field] ?? '')} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: event.target.value } : item) }))} placeholder={field === 'id' ? 'ID de respuesta' : field === 'url' ? 'https://...' : field === 'phoneNumber' ? '+519...' : 'Código'} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                         <button type="button" disabled={form.interactiveButtons.length === 1} onClick={() => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     })}
-                    <p className="text-[11px] text-gray-500">Los botones de respuesta no pueden mezclarse con URL, llamada o copia.</p>
+                    <p className="text-[11px] text-wa-muted">Los botones de respuesta no pueden mezclarse con URL, llamada o copia.</p>
                   </div>
                 )}
                 {form.interactiveType === 'list' && (
                   <div className="grid gap-2">
                     <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Texto del botón que abre la lista
-                      <input required maxLength={20} value={form.interactiveButtonText} onChange={event => setForm(f => ({ ...f, interactiveButtonText: event.target.value }))} placeholder="Ver opciones" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-gray-900" />
+                      <input required maxLength={20} value={form.interactiveButtonText} onChange={event => setForm(f => ({ ...f, interactiveButtonText: event.target.value }))} placeholder="Ver opciones" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                     </label>
-                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Secciones y opciones ({totalInteractiveRows}/10)</p><button type="button" disabled={form.interactiveSections.length >= 10 || totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: [...f.interactiveSections, { title: `Sección ${f.interactiveSections.length + 1}`, rows: [{ title: '', description: '', rowId: `option_${f.interactiveSections.length + 1}_1` }] }] }))} className="flex items-center gap-1 text-xs font-medium text-green-700 disabled:opacity-40 dark:text-green-400"><Plus className="h-3 w-3" />Sección</button></div>
+                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Secciones y opciones ({totalInteractiveRows}/10)</p><button type="button" disabled={form.interactiveSections.length >= 10 || totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: [...f.interactiveSections, { title: `Sección ${f.interactiveSections.length + 1}`, rows: [{ title: '', description: '', rowId: `option_${f.interactiveSections.length + 1}_1` }] }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Sección</button></div>
                     {form.interactiveSections.map((section, sectionIndex) => (
-                      <div key={sectionIndex} className="grid gap-2 rounded-lg border border-green-200 bg-white p-3 dark:border-green-900 dark:bg-gray-900">
-                        <div className="flex gap-2"><input required maxLength={24} value={section.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, title: event.target.value } : item) }))} placeholder="Título de sección" className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" /><button type="button" disabled={form.interactiveSections.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.filter((_, index) => index !== sectionIndex) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>
-                        {section.rows.map((row, rowIndex) => <div key={rowIndex} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input required maxLength={24} value={row.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, title: event.target.value } : option) } : item) }))} placeholder="Opción" className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" /><input required value={row.description} maxLength={72} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, description: event.target.value } : option) } : item) }))} placeholder="Descripción obligatoria" className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" /><input required maxLength={200} value={row.rowId} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, rowId: event.target.value } : option) } : item) }))} placeholder="ID único" className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-800" /><button type="button" disabled={section.rows.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.filter((_, optionIndex) => optionIndex !== rowIndex) } : item) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>)}
-                        <button type="button" disabled={totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: [...item.rows, { title: '', description: '', rowId: `option_${sectionIndex + 1}_${item.rows.length + 1}` }] } : item) }))} className="flex items-center gap-1 text-xs font-medium text-green-700 disabled:opacity-40 dark:text-green-400"><Plus className="h-3 w-3" />Agregar opción</button>
+                      <div key={sectionIndex} className="grid gap-2 rounded-lg border border-green-200 bg-white p-3 dark:border-green-900 dark:bg-wa-panel-dark">
+                        <div className="flex gap-2"><input required maxLength={24} value={section.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, title: event.target.value } : item) }))} placeholder="Título de sección" className="min-w-0 flex-1 rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><button type="button" disabled={form.interactiveSections.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.filter((_, index) => index !== sectionIndex) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>
+                        {section.rows.map((row, rowIndex) => <div key={rowIndex} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input required maxLength={24} value={row.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, title: event.target.value } : option) } : item) }))} placeholder="Opción" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input required value={row.description} maxLength={72} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, description: event.target.value } : option) } : item) }))} placeholder="Descripción obligatoria" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input required maxLength={200} value={row.rowId} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, rowId: event.target.value } : option) } : item) }))} placeholder="ID único" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><button type="button" disabled={section.rows.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.filter((_, optionIndex) => optionIndex !== rowIndex) } : item) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>)}
+                        <button type="button" disabled={totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: [...item.rows, { title: '', description: '', rowId: `option_${sectionIndex + 1}_${item.rows.length + 1}` }] } : item) }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar opción</button>
                       </div>
                     ))}
-                    <p className="text-[11px] text-gray-500">Máximo 10 opciones en total. Los IDs no son visibles para el cliente.</p>
+                    <p className="text-[11px] text-wa-muted">Máximo 10 opciones en total. Los IDs no son visibles para el cliente.</p>
                   </div>
                 )}
               </div>
@@ -617,14 +617,14 @@ export function TemplatesPage() {
               onDrop={handleDrop}
               className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
                 isDraggingFiles
-                  ? 'border-green-500 bg-green-50 dark:border-green-400 dark:bg-green-950/30'
+                  ? 'border-wa-primary bg-green-50 dark:border-wa-primary dark:bg-green-950/30'
                   : 'border-gray-300 dark:border-gray-600'
               }`}
             >
-              <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 py-2 text-center text-sm font-medium text-gray-600 hover:text-green-600 dark:text-gray-300 dark:hover:text-green-400">
-                {isDraggingFiles ? <UploadCloud className="h-7 w-7 text-green-600" /> : <ImagePlus className="h-6 w-6" />}
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 py-2 text-center text-sm font-medium text-gray-600 hover:text-wa-primary-strong dark:text-gray-300 dark:hover:text-wa-primary">
+                {isDraggingFiles ? <UploadCloud className="h-7 w-7 text-wa-primary-strong" /> : <ImagePlus className="h-6 w-6" />}
                 <span>{isDraggingFiles ? 'Suelta los archivos aquí' : 'Arrastra archivos aquí o haz clic para seleccionarlos'}</span>
-                <span className="text-xs font-normal text-gray-400">Imágenes, videos, audios o documentos</span>
+                <span className="text-xs font-normal text-wa-muted">Imágenes, videos, audios o documentos</span>
                 <input
                   type="file"
                   multiple
@@ -644,11 +644,11 @@ export function TemplatesPage() {
               {((editingTemplate?.attachments.length ?? 0) > 0 || pendingAttachments.length > 0) && (
                 <div className="mt-3 space-y-1">
                   {editingTemplate?.attachments.map(attachment => (
-                    <div key={attachment.id} className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                    <div key={attachment.id} className="flex items-center justify-between gap-3 rounded-md border border-wa-border bg-wa-hover px-3 py-2 text-xs text-gray-700 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
                       <span className="flex min-w-0 items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-400" />
                         <span className="truncate" title={attachment.filename}>{attachment.filename}</span>
-                        <span className="hidden shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] uppercase text-gray-600 dark:bg-gray-700 dark:text-gray-300 sm:inline">
+                        <span className="hidden shrink-0 rounded bg-wa-border px-1.5 py-0.5 text-[10px] uppercase text-gray-600 dark:bg-wa-active-dark dark:text-gray-300 sm:inline">
                           {attachment.content_type.split('/')[0] || 'archivo'}
                         </span>
                       </span>
@@ -664,7 +664,7 @@ export function TemplatesPage() {
                           {attachment.source === 'library' && <FolderOpen className="h-3.5 w-3.5 shrink-0" />}
                           {attachment.source === 'upload' && <FileText className="h-4 w-4 shrink-0" />}
                           <span className="truncate" title={filename}>{filename}</span>
-                          <span className="hidden shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] uppercase text-green-700 dark:bg-green-900/60 dark:text-green-300 sm:inline">
+                          <span className="hidden shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] uppercase text-wa-primary-strong dark:bg-green-900/60 dark:text-green-300 sm:inline">
                             {contentType.split('/')[0] || 'archivo'}
                           </span>
                         </span>
@@ -674,7 +674,7 @@ export function TemplatesPage() {
                   })}
                 </div>
               )}
-              <p className="mt-2 text-[11px] text-gray-400">Máximo 25 MB por archivo. Se enviarán en el orden agregado.</p>
+              <p className="mt-2 text-[11px] text-wa-muted">Máximo 25 MB por archivo. Se enviarán en el orden agregado.</p>
             </div>}
             {libraryOpen && (
               <MediaLibraryPicker
@@ -688,14 +688,14 @@ export function TemplatesPage() {
             <div className="flex gap-2">
               <button
                 disabled={isSaving}
-                className="flex items-center justify-center gap-1.5 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 rounded-md bg-wa-primary px-4 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId != null ? 'Guardar cambios' : 'Guardar plantilla'}
               </button>
               <button
                 type="button"
                 onClick={closeForm}
-                className="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="rounded-md px-4 py-2 text-sm font-medium text-wa-muted hover:text-gray-700 dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
               >
                 Cancelar
               </button>
@@ -705,24 +705,24 @@ export function TemplatesPage() {
 
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-wa-muted" />
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {data.map((template) => (
               <article
                 key={template.id}
-                className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${!template.is_active ? 'opacity-60' : ''}`}
+                className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark ${!template.is_active ? 'opacity-60' : ''}`}
               >
                 <div className="flex justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <h2 className="truncate font-medium text-gray-900 dark:text-white">{template.name}</h2>
+                      <h2 className="truncate font-medium text-wa-text dark:text-white">{template.name}</h2>
                       {template.is_favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-yellow-400 text-yellow-400" />}
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${template.template_type === 'official' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{template.template_type === 'official' ? 'Oficial' : 'Interna'}</span>
-                      {template.interactive_type !== 'none' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-green-700 dark:bg-green-950 dark:text-green-300">{template.interactive_type === 'buttons' ? 'Botones' : 'Lista'}</span>}
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${template.template_type === 'official' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-wa-field text-gray-600 dark:bg-wa-active-dark dark:text-gray-300'}`}>{template.template_type === 'official' ? 'Oficial' : 'Interna'}</span>
+                      {template.interactive_type !== 'none' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-wa-primary-strong dark:bg-green-950 dark:text-green-300">{template.interactive_type === 'buttons' ? 'Botones' : 'Lista'}</span>}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
                       {template.category}
                       {template.shortcut ? ` · /${template.shortcut}` : ''}
                       {template.visibility === 'personal' ? ' · Personal' : ' · Equipo'}
@@ -735,17 +735,17 @@ export function TemplatesPage() {
                       type="button"
                       title="Editar"
                       onClick={() => openEditForm(template)}
-                      className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="rounded-md p-1 hover:bg-wa-field dark:hover:bg-wa-active-dark"
                     >
-                      <Pencil className="h-4 w-4 text-gray-400 hover:text-green-600" />
+                      <Pencil className="h-4 w-4 text-wa-muted hover:text-wa-primary-strong" />
                     </button>
                     <button
                       type="button"
                       title={template.is_active ? 'Desactivar' : 'Activar'}
                       onClick={() => handleToggleActive(template.id, !template.is_active)}
-                      className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="rounded-md p-1 hover:bg-wa-field dark:hover:bg-wa-active-dark"
                     >
-                      <Power className={`h-4 w-4 ${template.is_active ? 'text-green-600' : 'text-gray-400'}`} />
+                      <Power className={`h-4 w-4 ${template.is_active ? 'text-wa-primary-strong' : 'text-wa-muted'}`} />
                     </button>
                   </div>
                 </div>
@@ -754,7 +754,7 @@ export function TemplatesPage() {
               </article>
             ))}
             {data.length === 0 && (
-              <p className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-sm text-gray-400 dark:border-gray-700 md:col-span-2">
+              <p className="rounded-xl border border-dashed border-wa-border p-4 text-center text-sm text-wa-muted dark:border-wa-border-dark md:col-span-2">
                 Sin plantillas
               </p>
             )}

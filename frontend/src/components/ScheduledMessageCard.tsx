@@ -27,9 +27,9 @@ const STATUS_META: Record<ScheduledMessageStatus, { label: string; className: st
   scheduled: { label: 'Programado', className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' },
   processing: { label: 'Preparando', className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
   queued: { label: 'Enviando', className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
-  sent: { label: 'Enviado', className: 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-300' },
+  sent: { label: 'Enviado', className: 'bg-green-50 text-wa-primary-strong dark:bg-green-950/50 dark:text-green-300' },
   failed: { label: 'No enviado', className: 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300' },
-  cancelled: { label: 'Cancelado', className: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  cancelled: { label: 'Cancelado', className: 'bg-wa-field text-gray-600 dark:bg-wa-active-dark dark:text-gray-300' },
 }
 
 
@@ -46,22 +46,22 @@ function ScheduledItem({
   const canCancel = item.status === 'scheduled' || item.status === 'failed'
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-gray-900/60">
+    <div className="rounded-lg border border-wa-border bg-wa-hover p-2.5 dark:border-wa-border-dark dark:bg-wa-panel-dark/60">
       <div className="flex items-start gap-2">
         {item.status === 'sent' ? (
-          <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+          <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-wa-primary-strong" />
         ) : item.status === 'failed' ? (
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
         ) : (
           <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
         )}
         <div className="min-w-0 flex-1">
-          <p className="whitespace-pre-wrap break-words text-xs text-gray-800 dark:text-gray-100">{item.text}</p>
+          <p className="whitespace-pre-wrap break-words text-xs text-gray-800 dark:text-wa-text-dark">{item.text}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.className}`}>
               {meta.label}
             </span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+            <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">
               {new Date(item.scheduled_at).toLocaleString('es-PE')}
             </span>
           </div>
@@ -74,7 +74,7 @@ function ScheduledItem({
             disabled={cancelling}
             aria-label={item.status === 'failed' ? 'Descartar mensaje fallido' : 'Cancelar mensaje programado'}
             title={item.status === 'failed' ? 'Descartar' : 'Cancelar envío'}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-200 hover:text-red-500 disabled:opacity-40 dark:hover:bg-gray-700"
+            className="rounded-md p-1 text-wa-muted hover:bg-wa-border hover:text-red-500 disabled:opacity-40 dark:hover:bg-wa-active-dark"
           >
             {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
           </button>
@@ -133,9 +133,9 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
           <Send className="h-3.5 w-3.5" /> Mensajes programados
         </div>
         <button
@@ -143,14 +143,14 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
           onClick={() => setOpen((current) => !current)}
           aria-label="Programar un mensaje de WhatsApp"
           title="Programar mensaje"
-          className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700"
+          className="rounded-md p-1 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
         >
           {open ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
         </button>
       </div>
 
       {open && (
-        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-wa-border pt-3 dark:border-wa-border-dark">
           <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300">
             Mensaje para el cliente
             <textarea
@@ -160,7 +160,7 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
               rows={3}
               required
               placeholder="Ej. Hola, ¿pudiste realizar el pago?"
-              className="mt-1 w-full resize-y rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="mt-1 w-full resize-y rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             />
           </label>
           <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300">
@@ -171,15 +171,15 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
               min={toLocalInput(new Date())}
               onChange={(event) => setScheduledAt(event.target.value)}
               required
-              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="mt-1 w-full rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-800 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             />
           </label>
-          <p className="text-[11px] leading-relaxed text-gray-400">
+          <p className="text-[11px] leading-relaxed text-wa-muted">
             Se enviará automáticamente aunque cierres el navegador. A esa hora se verificará la ventana de atención de 24 horas de WhatsApp.
           </p>
           <button
             disabled={create.isPending}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-wa-primary py-1.5 text-xs font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
           >
             {create.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
             Programar envío
@@ -188,9 +188,9 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
       )}
 
       <div className="mt-2 space-y-2">
-        {isLoading && <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>}
+        {isLoading && <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-wa-muted" /></div>}
         {!isLoading && data.length === 0 && !open && (
-          <p className="text-xs text-gray-400">No hay mensajes pendientes de envío.</p>
+          <p className="text-xs text-wa-muted">No hay mensajes pendientes de envío.</p>
         )}
         {data.map((item) => (
           <ScheduledItem

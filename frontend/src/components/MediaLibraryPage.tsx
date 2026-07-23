@@ -48,8 +48,8 @@ function AssetPreview({ asset }: { asset: MediaAsset }) {
     )
   }
   return (
-    <div className="flex h-36 items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <FileText className="h-12 w-12 text-gray-400" />
+    <div className="flex h-36 items-center justify-center bg-wa-hover dark:bg-wa-panel-dark">
+      <FileText className="h-12 w-12 text-wa-muted" />
     </div>
   )
 }
@@ -115,13 +115,13 @@ export function MediaLibraryPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 dark:bg-gray-950">
+    <div className="h-full overflow-y-auto bg-wa-app p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-6xl">
         <div className="mb-5 flex items-center gap-2">
-          <Image className="h-5 w-5 text-green-600" />
+          <Image className="h-5 w-5 text-wa-primary-strong" />
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Biblioteca de archivos</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Archivos reutilizables para las plantillas del equipo</p>
+            <h1 className="text-xl font-semibold text-wa-text dark:text-white">Biblioteca de archivos</h1>
+            <p className="text-xs text-wa-muted dark:text-wa-muted-dark">Archivos reutilizables para las plantillas del equipo</p>
           </div>
         </div>
 
@@ -137,13 +137,13 @@ export function MediaLibraryPage() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`mb-5 rounded-xl border-2 border-dashed p-5 transition-colors ${
-            isDragging ? 'border-green-500 bg-green-50 dark:bg-green-950/30' : 'border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900'
+            isDragging ? 'border-wa-primary bg-green-50 dark:bg-green-950/30' : 'border-gray-300 bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark'
           }`}
         >
-          <label className="flex cursor-pointer flex-col items-center gap-1.5 text-center text-sm font-medium text-gray-600 hover:text-green-600 dark:text-gray-300">
-            {uploadingName ? <Loader2 className="h-7 w-7 animate-spin text-green-600" /> : <UploadCloud className="h-7 w-7" />}
+          <label className="flex cursor-pointer flex-col items-center gap-1.5 text-center text-sm font-medium text-gray-600 hover:text-wa-primary-strong dark:text-gray-300">
+            {uploadingName ? <Loader2 className="h-7 w-7 animate-spin text-wa-primary-strong" /> : <UploadCloud className="h-7 w-7" />}
             <span>{uploadingName ? `Subiendo ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Arrastra archivos o haz clic para subir'}</span>
-            <span className="text-xs font-normal text-gray-400">Máximo 25 MB por archivo</span>
+            <span className="text-xs font-normal text-wa-muted">Máximo 25 MB por archivo</span>
             <input
               type="file"
               multiple
@@ -160,12 +160,12 @@ export function MediaLibraryPage() {
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-wa-muted" />
             <input
               value={search}
               onChange={event => setSearch(event.target.value)}
               placeholder="Buscar por nombre o tipo"
-              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              className="w-full rounded-lg border border-wa-border bg-white py-2 pl-9 pr-3 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             />
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -174,7 +174,7 @@ export function MediaLibraryPage() {
                 key={filter.value}
                 type="button"
                 onClick={() => setKind(filter.value)}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${kind === filter.value ? 'bg-green-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800'}`}
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${kind === filter.value ? 'bg-wa-primary text-white' : 'bg-white text-wa-muted hover:bg-wa-field dark:bg-wa-panel-dark dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}
               >
                 {filter.label}
               </button>
@@ -183,9 +183,9 @@ export function MediaLibraryPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
         ) : data.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 py-16 text-center text-sm text-gray-400 dark:border-gray-700">
+          <div className="rounded-xl border border-dashed border-gray-300 py-16 text-center text-sm text-wa-muted dark:border-wa-border-dark">
             <FileIcon className="mx-auto mb-2 h-8 w-8" />
             No hay archivos que coincidan
           </div>
@@ -194,24 +194,24 @@ export function MediaLibraryPage() {
             {data.map(asset => {
               const url = resolveMediaUrl(asset.media_url) ?? '#'
               return (
-                <article key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <article key={asset.id} className="overflow-hidden rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
                   <AssetPreview asset={asset} />
                   <div className="p-3">
-                    <a href={url} target="_blank" rel="noreferrer" title={asset.filename} className="block truncate text-sm font-medium text-gray-800 hover:text-green-600 dark:text-gray-100">
+                    <a href={url} target="_blank" rel="noreferrer" title={asset.filename} className="block truncate text-sm font-medium text-gray-800 hover:text-wa-primary-strong dark:text-wa-text-dark">
                       {asset.filename}
                     </a>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-wa-muted">
                       <span>{formatBytes(asset.size_bytes)}</span>
                       <span>{asset.use_count ? `Usado ${asset.use_count}x` : 'Sin usar'}</span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2 dark:border-gray-700">
-                      <span className="truncate text-[11px] text-gray-400">{asset.uploaded_by_name ?? 'Archivo migrado'}</span>
+                    <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-2 dark:border-wa-border-dark">
+                      <span className="truncate text-[11px] text-wa-muted">{asset.uploaded_by_name ?? 'Archivo migrado'}</span>
                       <button
                         type="button"
                         onClick={() => deleteAsset(asset)}
                         disabled={remove.isPending || asset.use_count > 0}
                         title={asset.use_count ? 'Primero quita el archivo de las plantillas' : 'Eliminar archivo'}
-                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"
+                        className="rounded p-1 text-wa-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

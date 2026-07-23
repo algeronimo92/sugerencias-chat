@@ -68,7 +68,7 @@ export function InternalNoteCard({ chatId, note, canManage }: Props) {
 
         {editing ? (
           <div>
-            <textarea autoFocus value={content} maxLength={5000} rows={3} onChange={event => setContent(event.target.value)} className="w-full resize-y rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-gray-900 dark:text-gray-100" />
+            <textarea autoFocus value={content} maxLength={5000} rows={3} onChange={event => setContent(event.target.value)} className="w-full resize-y rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-wa-text outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-wa-panel-dark dark:text-wa-text-dark" />
             {update.error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{extractErrorMessage(update.error)}</p>}
             <div className="mt-2 flex justify-end gap-1.5">
               <button type="button" onClick={() => setEditing(false)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/40"><X className="h-3.5 w-3.5" />Cancelar</button>

@@ -46,15 +46,15 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+        className="w-full max-w-md bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Enviar como nota de voz</p>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
+          <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar como nota de voz</p>
           <button
             onClick={onClose}
             aria-label="Cerrar"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -62,7 +62,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
 
         <div className="p-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            <label className="block text-xs font-medium text-wa-muted dark:text-wa-muted-dark mb-1">
               Texto a convertir en audio
             </label>
             <textarea
@@ -70,9 +70,9 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
               onChange={(e) => handleTextChange(e.target.value)}
               rows={4}
               autoFocus
-              className="w-full text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-none"
+              className="w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent resize-none"
             />
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark mt-1">
               Ajustá abreviaturas o números (ej. "min." → "minutos") para que se escuche natural.
             </p>
           </div>
@@ -86,7 +86,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
               type="button"
               onClick={handleGenerate}
               disabled={isGenerating || !text.trim()}
-              className="w-full py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2 text-sm font-medium text-white bg-gray-600 hover:bg-wa-active-dark disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mic className="w-3.5 h-3.5" />}
               Generar audio
@@ -94,17 +94,17 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
           )}
         </div>
 
-        <div className="flex border-t border-gray-100 dark:border-gray-800">
+        <div className="flex border-t border-wa-border dark:border-wa-border-dark">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-wa-hover dark:hover:bg-wa-head-dark transition-colors"
           >
             Cancelar
           </button>
           <button
             onClick={handleSend}
             disabled={!audio || isSending}
-            className="flex-1 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 border-l border-gray-100 dark:border-gray-800"
+            className="flex-1 py-2.5 text-sm font-medium text-white bg-wa-primary hover:bg-wa-primary-strong disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 border-l border-wa-border dark:border-wa-border-dark"
           >
             {isSending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Enviar audio

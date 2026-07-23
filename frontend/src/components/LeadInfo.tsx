@@ -44,9 +44,9 @@ export function LeadInfo({ chat }: Props) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4">
+    <div className="bg-white dark:bg-wa-head-dark rounded-xl border border-wa-border dark:border-wa-border-dark p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        <h3 className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide">
           Datos del lead
         </h3>
         <button
@@ -55,7 +55,7 @@ export function LeadInfo({ chat }: Props) {
             setIsEditing(true)
           }}
           aria-label="Editar lead"
-          className="text-gray-400 hover:text-green-600 dark:hover:text-green-500 transition-colors"
+          className="text-wa-muted dark:text-wa-muted-dark hover:text-wa-primary-strong dark:hover:text-wa-primary transition-colors"
         >
           <Pencil className="w-3.5 h-3.5" />
         </button>
@@ -65,9 +65,9 @@ export function LeadInfo({ chat }: Props) {
         <dl className="space-y-2.5">
           {fields.map(({ label, value, icon: Icon, iconClassName, valueClassName }) => (
             <div key={label} className="flex items-start gap-2.5 text-sm">
-              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClassName ?? 'text-gray-400 dark:text-gray-500'}`} />
+              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClassName ?? 'text-wa-muted dark:text-wa-muted-dark'}`} />
               <div className="min-w-0">
-                <dt className="text-[11px] font-medium text-gray-400 dark:text-gray-500 leading-none mb-0.5">{label}</dt>
+                <dt className="text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark leading-none mb-0.5">{label}</dt>
                 <dd className={valueClassName ? `inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${valueClassName}` : 'text-gray-700 dark:text-gray-300 leading-snug'}>
                   {value}
                 </dd>

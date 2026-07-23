@@ -61,19 +61,19 @@ export function AttachMenu({
         onClick={() => setIsOpen((v) => !v)}
         disabled={disabled}
         aria-label="Adjuntar archivo"
-        className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300 hover:bg-wa-border dark:hover:bg-wa-active-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-52 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1.5 z-10">
+        <div className="absolute bottom-full left-0 mb-2 w-52 bg-white dark:bg-wa-head-dark rounded-xl shadow-lg border border-wa-border dark:border-wa-border-dark py-1.5 z-10">
           {ITEMS.map(({ key, label, icon: Icon, color }) => (
             <button
               key={key}
               type="button"
               onClick={() => handleSelect(key)}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-wa-text-dark hover:bg-wa-hover dark:hover:bg-wa-active-dark/60 transition-colors"
             >
               <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 ${color}`}>
                 <Icon className="w-4 h-4" />

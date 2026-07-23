@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
@@ -16,6 +16,7 @@ import { useNotifications } from './hooks/useNotifications'
 import { useSuggestions, useRefreshSuggestions } from './hooks/useSuggestions'
 import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
+import { Button, Spinner } from './components/ui'
 import { queryClient } from './queryClient'
 
 const KanbanBoard = lazy(() =>
@@ -52,11 +53,8 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
 
 function PageLoader() {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
-      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        Cargando vista…
-      </div>
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-wa-app dark:bg-wa-app-dark">
+      <Spinner label="Cargando vista…" />
     </div>
   )
 }
@@ -145,7 +143,6 @@ function MainLayout() {
   // Consulta directa por clave primaria, independiente de la búsqueda de la lista.
   const { data: selectedChat = null } = useChat(chatId ?? null)
 
-  const rqClient = useQueryClient()
 
   // Sugerencias cacheadas por chat: reabrir un lead ya visto las muestra al
   // instante (sin volver a llamar a n8n) y solo revalida en segundo plano si
@@ -212,102 +209,65 @@ function MainLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chat_id])
 
+  // Nav sobre la barra verde (#008069) en claro y sobre #202C33 en oscuro,
+  // como WhatsApp Web: pestañas translúcidas blancas, activa más sólida.
+  const navTabClass = (active: boolean) =>
+    `flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+      active
+        ? 'bg-white/25 text-white shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
+        : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'
+    }`
+
+  const headerIconButtonClass =
+    'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark transition-colors'
+
   return (
-    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-hidden bg-gray-100 dark:bg-gray-950">
-      {/* Barra superior */}
-      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-900">
-        <div className="w-6 h-6 rounded-md bg-green-600 flex items-center justify-center">
+    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
+      {/* Barra superior — verde WhatsApp en claro, panel oscuro en dark */}
+      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 bg-wa-primary-strong px-4 dark:border-b dark:border-wa-border-dark dark:bg-wa-head-dark">
+        <div className="w-6 h-6 rounded-md bg-white/20 dark:bg-wa-primary flex items-center justify-center">
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">DermicaPro</span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">CRM</span>
-        <nav className="ml-3 flex items-center rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Vista principal">
-          <button
-            onClick={() => navigate('/')}
-            className={`relative flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              isChats
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
+        <span className="text-sm font-semibold text-white dark:text-wa-text-dark">DermicaPro</span>
+        <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1">CRM</span>
+        <nav className="ml-3 flex items-center rounded-lg bg-black/10 p-0.5 dark:bg-black/20" aria-label="Vista principal">
+          <button onClick={() => navigate('/')} className={`relative ${navTabClass(isChats)}`}>
             <MessagesSquare className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Chats</span>
             {unreadCount > 0 && (
-              <span className="flex min-w-4 items-center justify-center rounded-full bg-green-600 px-1 text-[10px] font-semibold leading-4 text-white">
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-wa-primary-strong dark:bg-wa-primary dark:text-white">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
-          <button
-            onClick={() => navigate('/kanban')}
-            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              isKanban
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
+          <button onClick={() => navigate('/kanban')} className={navTabClass(isKanban)}>
             <Columns3 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Kanban</span>
           </button>
-          <button
-            onClick={() => navigate('/tasks')}
-            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              isTasks
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
+          <button onClick={() => navigate('/tasks')} className={navTabClass(isTasks)}>
             <CalendarClock className="h-3.5 w-3.5" />
             <span className="hidden md:inline">Tareas</span>
           </button>
           {me?.role === 'admin' && (
-            <button
-              onClick={() => navigate('/dashboard')}
-              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                isDashboard
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
+            <button onClick={() => navigate('/dashboard')} className={navTabClass(isDashboard)}>
               <BarChart3 className="h-3.5 w-3.5" />
               <span className="hidden lg:inline">Dashboard</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button
-              onClick={() => navigate('/automations')}
-              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                isAutomations
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
+            <button onClick={() => navigate('/automations')} className={navTabClass(isAutomations)}>
               <Workflow className="h-3.5 w-3.5" />
               <span className="hidden xl:inline">Automatizaciones</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button
-              onClick={() => navigate('/templates')}
-              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                isTemplates
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
+            <button onClick={() => navigate('/templates')} className={navTabClass(isTemplates)}>
               <FileText className="h-3.5 w-3.5" />
               <span className="hidden lg:inline">Plantillas</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button
-              onClick={() => navigate('/media-library')}
-              className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                isMediaLibrary
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-            >
+            <button onClick={() => navigate('/media-library')} className={navTabClass(isMediaLibrary)}>
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="hidden xl:inline">Archivos</span>
             </button>
@@ -315,8 +275,8 @@ function MainLayout() {
         </nav>
         <span className="flex-1" />
         {me && (
-          <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
-            {me.name} <span className="opacity-60">({me.role === 'admin' ? 'admin' : 'vendedor'})</span>
+          <span className="text-xs text-white/70 dark:text-wa-muted-dark hidden sm:inline">
+            {me.name} <span className="opacity-70">({me.role === 'admin' ? 'admin' : 'vendedor'})</span>
           </span>
         )}
         {me?.role === 'admin' && (
@@ -324,7 +284,7 @@ function MainLayout() {
             onClick={() => openSettings('claves')}
             aria-label="Configuración"
             title="Configuración"
-            className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            className={headerIconButtonClass}
           >
             <SettingsIcon className="w-4 h-4" />
           </button>
@@ -337,7 +297,7 @@ function MainLayout() {
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
-          className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          className={headerIconButtonClass}
         >
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
@@ -345,7 +305,7 @@ function MainLayout() {
           onClick={() => logout()}
           aria-label="Cerrar sesión"
           title="Cerrar sesión"
-          className="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          className={headerIconButtonClass}
         >
           <LogOut className="w-4 h-4" />
         </button>
@@ -419,18 +379,17 @@ function MainLayout() {
                 <ChatThread
                   chat={selectedChat}
                   highlightMessageId={(location.state as { highlightMessageId?: number } | null)?.highlightMessageId ?? null}
-                  onRefreshSuggestions={() => rqClient.invalidateQueries({ queryKey: ['suggestions', selectedChat.chat_id] })}
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3 bg-slate-50 dark:bg-gray-900">
-                  <MessagesSquare className="w-12 h-12" strokeWidth={1.5} />
-                  <p className="text-sm text-gray-400 dark:text-gray-600">Selecciona un lead para ver la conversación</p>
+                <div className="flex flex-col items-center justify-center h-full gap-3 border-b-[6px] border-wa-primary bg-wa-app text-wa-muted/50 dark:border-wa-primary/60 dark:bg-wa-panel-dark dark:text-wa-muted-dark/50">
+                  <MessagesSquare className="w-12 h-12" strokeWidth={1.25} />
+                  <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Selecciona un lead para ver la conversación</p>
                 </div>
               )}
             </div>
 
             {/* Panel derecho — Sugerencias */}
-            <div className="w-96 shrink-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
+            <div className="w-96 shrink-0 h-full overflow-hidden bg-wa-app dark:bg-wa-panel-dark border-l border-wa-border dark:border-wa-border-dark">
               {selectedChat ? (
                 <SuggestionPanel
                   chat={selectedChat}
@@ -441,9 +400,9 @@ function MainLayout() {
                   onRegenerate={() => regenerateSuggestions({ chat_id: selectedChat.chat_id, phone: selectedChat.phone })}
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-gray-700 gap-3">
-                  <Sparkles className="w-12 h-12" strokeWidth={1.5} />
-                  <p className="text-sm text-gray-400 dark:text-gray-600 text-center px-6">Selecciona un lead para ver las sugerencias</p>
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-wa-muted/50 dark:text-wa-muted-dark/50">
+                  <Sparkles className="w-12 h-12" strokeWidth={1.25} />
+                  <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center px-6">Selecciona un lead para ver las sugerencias</p>
                 </div>
               )}
             </div>
@@ -463,27 +422,26 @@ function AuthGate() {
       : 'No se pudo establecer conexión con el servidor.'
 
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-100 p-4 dark:bg-gray-950">
-        <div role="alert" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-gray-900">
+      <div className="flex h-screen items-center justify-center bg-wa-app p-4 dark:bg-wa-app-dark">
+        <div role="alert" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-wa-panel-dark">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" />
           </span>
-          <h1 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Backend no disponible</h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          <h1 className="mt-4 text-lg font-semibold text-wa-text dark:text-wa-text-dark">Backend no disponible</h1>
+          <p className="mt-2 text-sm text-wa-muted dark:text-wa-muted-dark">
             El frontend está funcionando, pero no pudo consultar tu sesión en el servidor.
           </p>
-          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+          <p className="mt-3 rounded-lg bg-wa-field px-3 py-2 text-xs text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
             {detail}
           </p>
-          <button
-            type="button"
+          <Button
             disabled={isFetching}
             onClick={() => { void refetch() }}
-            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+            className="mt-5"
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
             {isFetching ? 'Reconectando…' : 'Reintentar conexión'}
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -491,8 +449,8 @@ function AuthGate() {
 
   if (isLoading || me === undefined) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-950">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex items-center justify-center h-screen bg-wa-app dark:bg-wa-app-dark">
+        <Loader2 className="w-6 h-6 animate-spin text-wa-muted dark:text-wa-muted-dark" />
       </div>
     )
   }

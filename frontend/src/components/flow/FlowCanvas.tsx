@@ -43,11 +43,11 @@ function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
 }
 
 const TONES: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'border-green-400 bg-green-50 dark:border-green-700 dark:bg-green-950/40',
+  [FlowNodeType.Trigger]: 'border-wa-primary bg-green-50 dark:border-green-700 dark:bg-green-950/40',
   [FlowNodeType.Condition]: 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40',
   [FlowNodeType.Action]: 'border-violet-400 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/40',
   [FlowNodeType.Wait]: 'border-blue-400 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/40',
-  [FlowNodeType.End]: 'border-gray-400 bg-gray-50 dark:border-gray-600 dark:bg-gray-800',
+  [FlowNodeType.End]: 'border-gray-400 bg-wa-hover dark:border-gray-600 dark:bg-wa-head-dark',
 }
 
 const ICONS: Record<AutomationFlowNodeType, typeof Zap> = {
@@ -71,21 +71,21 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
   return (
     <div
       className={`w-56 rounded-xl border-2 px-3 py-2.5 shadow-sm transition ${TONES[type]} ${
-        selected ? 'ring-2 ring-green-500 ring-offset-2 dark:ring-offset-gray-950' : ''
+        selected ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950' : ''
       }`}
     >
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-600 dark:text-gray-300" />
         <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{FLOW_NODE_LABELS[type]}</p>
-          <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{nodeTitle(type, data)}</p>
+          <p className="text-[9px] font-bold uppercase tracking-wide text-wa-muted">{FLOW_NODE_LABELS[type]}</p>
+          <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{nodeTitle(type, data)}</p>
         </div>
         {type !== FlowNodeType.Trigger && data.onDelete && (
           <button
             type="button"
             title="Eliminar bloque"
             onClick={event => { event.stopPropagation(); data.onDelete?.(id) }}
-            className="nodrag text-gray-400 hover:text-red-500"
+            className="nodrag text-wa-muted hover:text-red-500"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -128,12 +128,12 @@ const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.Condition} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
     <div className="mt-2 flex justify-end gap-3 text-[9px] font-bold">
-      <span className="text-green-600 dark:text-green-400">Sí</span>
+      <span className="text-wa-primary-strong dark:text-wa-primary">Sí</span>
       <span className="text-red-500 dark:text-red-400">No</span>
     </div>
     <Handle
       type="source" position={Position.Right} id={FlowHandle.Yes}
-      style={{ ...HANDLE_STYLE, background: '#22c55e', top: '65%' }}
+      style={{ ...HANDLE_STYLE, background: '#00a884', top: '65%' }}
     />
     <Handle
       type="source" position={Position.Right} id={FlowHandle.No}
@@ -153,7 +153,7 @@ const NODE_TYPES: NodeTypes = {
 }
 
 const EDGE_COLORS: Record<string, string> = {
-  [FlowHandle.Yes]: '#22c55e',
+  [FlowHandle.Yes]: '#00a884',
   [FlowHandle.No]: '#ef4444',
   [FlowHandle.Next]: '#94a3b8',
 }
@@ -270,7 +270,7 @@ function Canvas({
       >
         <Background gap={22} size={1} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable className="!bg-white dark:!bg-gray-900" />
+        <MiniMap pannable zoomable className="!bg-white dark:!bg-wa-panel-dark" />
       </ReactFlow>
     </div>
   )

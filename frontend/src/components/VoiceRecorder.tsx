@@ -113,7 +113,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
 
   if (isRecording) {
     return (
-      <div className="flex-1 flex items-center gap-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+      <div className="flex-1 flex items-center gap-2 bg-wa-hover dark:bg-wa-head-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2">
         <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
         <span className="text-sm text-gray-600 dark:text-gray-300 tabular-nums">{formatElapsed(seconds)}</span>
         <span className="flex-1" />
@@ -121,7 +121,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
           type="button"
           onClick={cancel}
           aria-label="Cancelar grabación"
-          className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+          className="text-wa-muted hover:text-red-500 dark:hover:text-red-400 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -129,7 +129,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
           type="button"
           onClick={stopAndSend}
           aria-label="Enviar audio"
-          className="w-7 h-7 flex items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-wa-primary text-white hover:bg-wa-primary-strong transition-colors"
         >
           <Check className="w-3.5 h-3.5" />
         </button>
@@ -143,7 +143,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
       onClick={startRecording}
       disabled={disabled}
       aria-label="Grabar audio"
-      className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300 hover:bg-wa-border dark:hover:bg-wa-active-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
       <Mic className="w-4 h-4" />
     </button>
