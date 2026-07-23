@@ -4,8 +4,6 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env
-    volumes:
-      - backend_media:/app/media
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
@@ -27,6 +25,3 @@ services:
       - "80:80"
     depends_on:
       - backend
-
-volumes:
-  backend_media:
