@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from db.models import LeadStage as DbLeadStage
-from models.schemas import SuggestionRequest, SuggestionResponse
-from services.db_service import cache_suggestion, get_cached_suggestion, update_lead_stage
+from models.schemas import SuggestionRequest, SuggestionResponse, SuggestionStatus
+from services.db_service import (
+    cache_suggestion,
+    get_cached_suggestion,
+    get_suggestion_status,
+    update_lead_stage,
+)
 from services.n8n_service import call_n8n
 from services.ws_manager import manager
 from services.automation_service import trigger_stage_changed
@@ -11,6 +16,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
+
+
+@router.get("/{chat_id}", response_model=SuggestionStatus)
+async def read_suggestion_status(chat_id: str):
+    """Lectura barata de la sugerencia guardada: nunca genera contenido nuevo.
+    El frontend la usa al abrir un chat (mostrar lo ya generado es gratis) y
+    al llegar un mensaje del cliente (solo para marcarla como desactualizada)."""
+    status = await get_suggestion_status(chat_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    return SuggestionStatus(**status)
 
 
 @router.post("", response_model=SuggestionResponse)

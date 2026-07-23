@@ -1,22 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import client from '../api/client'
-import type { SuggestionResponse } from '../types'
+import type { SuggestionResponse, SuggestionStatus } from '../types'
 
-interface Params {
+interface GenerateParams {
   chat_id: string
   phone: string | null
-  // Salta la sugerencia cacheada y le pide otra nueva a n8n.
+  // Ignora la sugerencia guardada y pide un juego nuevo ("Generá otras").
   force?: boolean
 }
 
-async function fetchSuggestions(params: Params): Promise<SuggestionResponse> {
+async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {
     const { data } = await client.post<SuggestionResponse>('/api/suggestions', params)
     return data
   } catch (err) {
-    // El backend manda el motivo en `detail` (p. ej. "Error llamando n8n: ...").
-    // Se re-lanza como Error normal para que la UI muestre algo legible.
+    // El backend manda el motivo en `detail`. Se re-lanza como Error normal
+    // para que la UI muestre algo legible.
     if (axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object') {
       const detail = (err.response.data as { detail?: unknown }).detail
       if (typeof detail === 'string') throw new Error(detail)
@@ -26,18 +26,22 @@ async function fetchSuggestions(params: Params): Promise<SuggestionResponse> {
 }
 
 /**
- * Sugerencias de n8n para un chat, cacheadas por chat en el cliente.
- *
- * Reabrir un lead ya visto no dispara el spinner "Consultando n8n...":
- * react-query devuelve la última respuesta al instante y solo revalida en
- * segundo plano si quedó obsoleta (staleTime). La caché se invalida al llegar
- * un mensaje nuevo del cliente (ver useChatUpdates en useChats.ts), para que
- * la vista se actualice y no quede mostrando una recomendación vieja.
+ * Estado de la sugerencia guardada del chat: lectura barata (GET) que NUNCA
+ * dispara la generación con IA. Al abrir un lead con sugerencia previa se
+ * muestra al instante y gratis; si no hay nada, la UI ofrece generarla.
+ * Cuando llega un mensaje nuevo del cliente, useChatUpdates invalida esta
+ * query y el refetch solo actualiza `stale` — la regeneración queda siempre
+ * en manos del vendedor.
  */
-export function useSuggestions(chatId: string | null, phone: string | null) {
+export function useSuggestionStatus(chatId: string | null) {
   return useQuery({
     queryKey: ['suggestions', chatId],
-    queryFn: () => fetchSuggestions({ chat_id: chatId as string, phone }),
+    queryFn: async () => {
+      const { data } = await client.get<SuggestionStatus>(
+        `/api/suggestions/${encodeURIComponent(chatId as string)}`,
+      )
+      return data
+    },
     enabled: !!chatId,
     staleTime: 60_000,
     retry: false,
@@ -45,17 +49,23 @@ export function useSuggestions(chatId: string | null, phone: string | null) {
 }
 
 /**
- * "Pedir otras": fuerza a n8n a generar un juego nuevo ignorando la caché del
- * backend y sobreescribe la sugerencia cacheada del chat con el resultado.
+ * Generación a demanda: el único camino que llama a la IA. Sin `force`
+ * aprovecha la sugerencia vigente del backend si existe (gratis) y genera
+ * solo si falta o quedó desactualizada; con `force: true` ("Generá otras")
+ * pide un juego nuevo ignorando lo guardado.
  */
-export function useRefreshSuggestions() {
+export function useGenerateSuggestions() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (params: { chat_id: string; phone: string | null }) =>
-      fetchSuggestions({ ...params, force: true }),
+    mutationKey: ['generate-suggestions'],
+    mutationFn: (params: GenerateParams) => generateSuggestions(params),
     onSuccess: (data, variables) => {
-      queryClient.setQueryData(['suggestions', variables.chat_id], data)
+      queryClient.setQueryData<SuggestionStatus>(['suggestions', variables.chat_id], {
+        suggestion: data,
+        generated_at: new Date().toISOString(),
+        stale: false,
+      })
       // La sugerencia pudo cambiar la etapa del lead / registrar actividad.
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', variables.chat_id] })

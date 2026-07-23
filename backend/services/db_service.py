@@ -715,6 +715,39 @@ async def get_cached_suggestion(chat_id: str) -> dict | None:
     return row["cached_suggestion"]
 
 
+async def get_suggestion_status(chat_id: str) -> dict | None:
+    """Estado completo de la sugerencia guardada de un lead, sin descartar la
+    desactualizada: a diferencia de get_cached_suggestion, acá se devuelve
+    aunque el cliente haya escrito después (`stale=True`), porque la UI la
+    sigue mostrando y solo avisa que quedó vieja — regenerar es siempre una
+    decisión del vendedor, nunca un efecto automático de esta lectura.
+    Devuelve None si el lead no existe."""
+    has_newer_message = exists(
+        select(WspMessage.id).where(
+            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.sender == "cliente",
+            WspMessage.sent_at > Lead.cached_suggestion_at,
+        )
+    )
+    stmt = select(
+        Lead.cached_suggestion,
+        Lead.cached_suggestion_at,
+        has_newer_message.label("has_newer_message"),
+    ).where(Lead.remote_jid == chat_id)
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().one_or_none()
+
+    if row is None:
+        return None
+    if row["cached_suggestion"] is None or row["cached_suggestion_at"] is None:
+        return {"suggestion": None, "generated_at": None, "stale": False}
+    return {
+        "suggestion": row["cached_suggestion"],
+        "generated_at": row["cached_suggestion_at"],
+        "stale": bool(row["has_newer_message"]),
+    }
+
+
 async def cache_suggestion(chat_id: str, suggestion: dict) -> bool:
     stmt = (
         update(Lead)

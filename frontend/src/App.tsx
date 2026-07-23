@@ -13,7 +13,7 @@ import { useLogout, useMe } from './hooks/useAuth'
 import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
 import type { InternalMentionAlert } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
-import { useSuggestions, useRefreshSuggestions } from './hooks/useSuggestions'
+import { useSuggestionStatus, useGenerateSuggestions } from './hooks/useSuggestions'
 import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
 import { Button, Spinner } from './components/ui'
@@ -144,21 +144,23 @@ function MainLayout() {
   const { data: selectedChat = null } = useChat(chatId ?? null)
 
 
-  // Sugerencias cacheadas por chat: reabrir un lead ya visto las muestra al
-  // instante (sin volver a llamar a n8n) y solo revalida en segundo plano si
-  // quedaron obsoletas. La invalidación al llegar un mensaje nuevo del cliente
-  // vive en useChatUpdates, para que la vista no quede mostrando algo viejo.
-  const {
-    data: suggestionData = null,
-    isLoading: isSuggestionsLoading,
-    isFetching: isSuggestionsFetching,
-    error: suggestionsError,
-  } = useSuggestions(selectedChat?.chat_id ?? null, selectedChat?.phone ?? null)
+  // Sugerencias a demanda: al abrir un chat solo se LEE lo ya generado
+  // (gratis, sin IA). Generar es siempre una acción explícita del vendedor.
+  // Si llega un mensaje nuevo del cliente, useChatUpdates invalida esta query
+  // y el refetch apenas marca la sugerencia como desactualizada (stale).
+  const { data: suggestionStatus = null, isLoading: isSuggestionsLoading } =
+    useSuggestionStatus(selectedChat?.chat_id ?? null)
 
-  // "Pedir otras": fuerza un juego nuevo cuando las cacheadas no sirven.
-  const { mutate: regenerateSuggestions, isPending: isRegenerating } = useRefreshSuggestions()
-
-  const suggestionsErrorMessage = suggestionsError instanceof Error ? suggestionsError.message : null
+  // Única vía que llama a la IA: CTA "Generá sugerencias" / "Generá otras".
+  const generateSuggestionsMutation = useGenerateSuggestions()
+  const isGeneratingForSelected =
+    generateSuggestionsMutation.isPending &&
+    generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id
+  const suggestionsErrorMessage =
+    generateSuggestionsMutation.error instanceof Error &&
+    generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id
+      ? generateSuggestionsMutation.error.message
+      : null
 
   const { mutate: markChatRead } = useMarkChatRead()
 
@@ -393,11 +395,19 @@ function MainLayout() {
               {selectedChat ? (
                 <SuggestionPanel
                   chat={selectedChat}
-                  data={suggestionData}
-                  isLoading={isSuggestionsLoading || isRegenerating}
-                  isRefreshing={isSuggestionsFetching && !isSuggestionsLoading && !isRegenerating}
+                  data={suggestionStatus?.suggestion ?? null}
+                  generatedAt={suggestionStatus?.generated_at ?? null}
+                  isStale={suggestionStatus?.stale ?? false}
+                  isLoading={isSuggestionsLoading}
+                  isGenerating={isGeneratingForSelected}
                   error={suggestionsErrorMessage}
-                  onRegenerate={() => regenerateSuggestions({ chat_id: selectedChat.chat_id, phone: selectedChat.phone })}
+                  onGenerate={(force = false) =>
+                    generateSuggestionsMutation.mutate({
+                      chat_id: selectedChat.chat_id,
+                      phone: selectedChat.phone,
+                      force,
+                    })
+                  }
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-wa-muted/50 dark:text-wa-muted-dark/50">

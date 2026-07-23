@@ -278,6 +278,16 @@ class SuggestionResponse(BaseModel):
     sugerencias: list[Sugerencia]
 
 
+class SuggestionStatus(BaseModel):
+    """Estado de la sugerencia guardada de un lead: lectura barata que nunca
+    dispara la generación. `stale` indica que el cliente escribió después de
+    generarse — la UI la muestra igual pero avisa que quedó desactualizada."""
+
+    suggestion: SuggestionResponse | None = None
+    generated_at: datetime | None = None
+    stale: bool = False
+
+
 class TaskCreate(BaseModel):
     lead_id: str
     title: str

@@ -226,11 +226,12 @@ export function useChatUpdates(
             }
 
             if (latest && latest.sender === 'cliente') {
-              // Un mensaje nuevo del cliente deja obsoleta la sugerencia
-              // cacheada de ese chat. Se invalida SIEMPRE (esté abierto o solo
-              // en la lista): si está abierto se refetchea al instante y la
-              // vista se actualiza; si no, queda marcada como stale y se
-              // regenera al reabrirlo, nunca mostrando la recomendación vieja.
+              // Un mensaje nuevo del cliente deja desactualizada la sugerencia
+              // guardada de ese chat. Invalidar acá NO regenera nada: la query
+              // ['suggestions', chatId] es una lectura barata (GET) y su
+              // refetch solo trae `stale: true`, con lo que el panel muestra
+              // el aviso "El cliente volvió a escribir" y deja la regeneración
+              // (que sí cuesta IA) en manos del vendedor.
               queryClient.invalidateQueries({ queryKey: ['suggestions', latest.chat_id] })
             }
             if (

@@ -196,6 +196,14 @@ export interface SuggestionResponse {
   sugerencias: Sugerencia[]
 }
 
+/** Estado de la sugerencia guardada de un lead — lectura barata que nunca
+ * dispara la generación. `stale`: el cliente escribió después de generarse. */
+export interface SuggestionStatus {
+  suggestion: SuggestionResponse | null
+  generated_at: string | null
+  stale: boolean
+}
+
 export interface SettingItem {
   key: string
   label: string

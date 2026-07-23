@@ -4,12 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Se funde con el header de la app: verde wa-primary-strong en claro, wa-head-dark en oscuro.
+         El tema es un toggle manual (localStorage), así que el script de abajo y useTheme
+         mantienen este meta sincronizado; el valor inicial es solo fallback sin JS. -->
+    <meta name="theme-color" content="#008069" />
     <title>frontend</title>
     <script>
       (function () {
         var stored = localStorage.getItem('theme')
         var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', isDark)
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', isDark ? '#202c33' : '#008069')
       })()
     </script>
   </head>
