@@ -1,23 +1,29 @@
-import { useState } from 'react'
 import { Loader2, MessagesSquare } from 'lucide-react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useLogin } from '../hooks/useAuth'
 import { extractErrorMessage } from '../utils/errors'
-import { Input, labelClass } from './ui'
+import { Button, Input, labelClass } from './ui'
+
+const loginSchema = z.object({
+  email: z.string().trim().min(1, 'Ingresa tu email.').email('Ingresa un email válido.'),
+  password: z.string().min(1, 'Ingresa tu contraseña.'),
+})
+
+type LoginValues = z.infer<typeof loginSchema>
 
 export function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const { mutate: login, isPending, error } = useLogin()
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    login({ email: email.trim(), password })
-  }
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  })
 
   return (
     <div className="flex items-center justify-center h-screen bg-wa-app dark:bg-wa-app-dark px-4">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={handleSubmit(values => login(values))}
         className="w-full max-w-sm bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
       >
         <div className="flex flex-col items-center gap-2 px-6 pt-6 pb-4">
@@ -40,12 +46,12 @@ export function LoginPage() {
             <Input
               id="login-email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              {...register('email')}
               autoComplete="username"
               autoFocus
-              required
+              aria-invalid={!!errors.email}
             />
+            {errors.email && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{errors.email.message}</p>}
           </div>
 
           <div>
@@ -53,23 +59,23 @@ export function LoginPage() {
             <Input
               id="login-password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register('password')}
               autoComplete="current-password"
-              required
+              aria-invalid={!!errors.password}
             />
+            {errors.password && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{errors.password.message}</p>}
           </div>
         </div>
 
         <div className="px-6 pb-6">
-          <button
+          <Button
             type="submit"
             disabled={isPending}
-            className="w-full py-2.5 text-sm font-semibold text-white bg-wa-primary hover:bg-wa-primary-strong active:bg-wa-primary-deep disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+            className="h-10 w-full"
           >
             {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Entrar
-          </button>
+          </Button>
         </div>
       </form>
     </div>

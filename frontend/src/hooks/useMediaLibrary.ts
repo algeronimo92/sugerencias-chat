@@ -29,9 +29,31 @@ export function useUploadMediaAsset() {
   })
 }
 
+export function useRenameMediaAsset() {
+  return useMutation({
+    mutationFn: async ({ id, filename }: { id: number; filename: string }) =>
+      (await client.patch<MediaAsset>(`/api/media-library/${id}`, { filename })).data,
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+      queryClient.invalidateQueries({ queryKey: ['templates'] }),
+    ]),
+  })
+}
+
 export function useDeleteMediaAsset() {
   return useMutation({
     mutationFn: async (id: number) => { await client.delete(`/api/media-library/${id}`) },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['media-library'] })
+      const previous = queryClient.getQueriesData<MediaAsset[]>({ queryKey: ['media-library'] })
+      queryClient.setQueriesData<MediaAsset[]>({ queryKey: ['media-library'] }, current =>
+        current?.filter(asset => asset.id !== id),
+      )
+      return { previous }
+    },
+    onError: (_error, _id, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
   })
 }

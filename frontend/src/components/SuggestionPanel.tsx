@@ -43,9 +43,9 @@ export function SuggestionPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3.5 border-b border-wa-border dark:border-wa-border-dark bg-white dark:bg-wa-panel-dark flex items-center gap-2">
+      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-wa-border bg-wa-head px-4 py-2.5 dark:border-wa-border-dark dark:bg-wa-head-dark">
         <Sparkles className="w-4 h-4 text-wa-primary" />
-        <p className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide">
+        <p className="text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-text-dark/80">
           Sugerencias IA
         </p>
         {/* "Generá otras" solo tiene sentido con sugerencias ya generadas. */}

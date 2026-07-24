@@ -1,13 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
 import type { Chat, ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { LoginPage } from './components/LoginPage'
-import { SettingsDialog } from './components/SettingsDialog'
-import { SuggestionPanel } from './components/SuggestionPanel'
 import { NotificationCenter } from './components/NotificationCenter'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
@@ -16,7 +15,7 @@ import { useNotifications } from './hooks/useNotifications'
 import { useSuggestionStatus, useGenerateSuggestions } from './hooks/useSuggestions'
 import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
-import { Button, Spinner } from './components/ui'
+import { AppToaster, Button, Spinner, Tooltip } from './components/ui'
 import { queryClient } from './queryClient'
 
 const KanbanBoard = lazy(() =>
@@ -36,6 +35,12 @@ const MediaLibraryPage = lazy(() =>
 )
 const AutomationsPage = lazy(() =>
   import('./components/AutomationsPage').then(module => ({ default: module.AutomationsPage })),
+)
+const SettingsDialog = lazy(() =>
+  import('./components/SettingsDialog').then(module => ({ default: module.SettingsDialog })),
+)
+const SuggestionPanel = lazy(() =>
+  import('./components/SuggestionPanel').then(module => ({ default: module.SuggestionPanel })),
 )
 
 const EMPTY_CHAT_FILTERS: ChatFilters = {
@@ -211,28 +216,28 @@ function MainLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chat_id])
 
-  // Nav sobre la barra verde (#008069) en claro y sobre #202C33 en oscuro,
-  // como WhatsApp Web: pestañas translúcidas blancas, activa más sólida.
+  // La barra global usa la superficie más profunda; los encabezados de cada
+  // columna usan wa-head-dark para que ambos niveles se distingan sin chocar.
   const navTabClass = (active: boolean) =>
     `flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
       active
-        ? 'bg-white/25 text-white shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
-        : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'
+        ? 'bg-white/25 text-white shadow-sm dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
+        : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
     }`
 
   const headerIconButtonClass =
-    'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark transition-colors'
+    'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark transition-colors'
 
   return (
     <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
-      {/* Barra superior — verde WhatsApp en claro, panel oscuro en dark */}
-      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 bg-wa-primary-strong px-4 dark:border-b dark:border-wa-border-dark dark:bg-wa-head-dark">
+      {/* Barra superior — nivel global, más profundo que los headers locales. */}
+      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-primary-deep bg-wa-primary-strong px-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
         <div className="w-6 h-6 rounded-md bg-white/20 dark:bg-wa-primary flex items-center justify-center">
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
-        <span className="text-sm font-semibold text-white dark:text-wa-text-dark">DermicaPro</span>
+        <span className="text-sm font-semibold text-white">DermicaPro</span>
         <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1">CRM</span>
-        <nav className="ml-3 flex items-center rounded-lg bg-black/10 p-0.5 dark:bg-black/20" aria-label="Vista principal">
+        <nav className="ml-3 flex items-center rounded-lg bg-black/10 p-0.5 dark:border dark:border-white/[0.05] dark:bg-wa-app-dark/70" aria-label="Vista principal">
           <button onClick={() => navigate('/')} className={`relative ${navTabClass(isChats)}`}>
             <MessagesSquare className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Chats</span>
@@ -282,41 +287,44 @@ function MainLayout() {
           </span>
         )}
         {me?.role === 'admin' && (
-          <button
-            onClick={() => openSettings('claves')}
-            aria-label="Configuración"
-            title="Configuración"
-            className={headerIconButtonClass}
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
+          <Tooltip content="Configuración">
+            <button onClick={() => openSettings('claves')} aria-label="Configuración" className={headerIconButtonClass}>
+              <SettingsIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
         )}
         <NotificationCenter
           browserPermission={notificationPermission}
           onRequestBrowserPermission={requestNotificationPermission}
           onNewNotification={showInternalMention}
         />
-        <button
-          onClick={toggleTheme}
-          aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
-          className={headerIconButtonClass}
-        >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-        <button
-          onClick={() => logout()}
-          aria-label="Cerrar sesión"
-          title="Cerrar sesión"
-          className={headerIconButtonClass}
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
+        <Tooltip content={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}>
+          <button onClick={toggleTheme} aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} className={headerIconButtonClass}>
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </Tooltip>
+        <Tooltip content="Cerrar sesión">
+          <button onClick={() => logout()} aria-label="Cerrar sesión" className={headerIconButtonClass}>
+            <LogOut className="w-4 h-4" />
+          </button>
+        </Tooltip>
       </div>
 
-      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} initialTab={settingsInitialTab} />}
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog onClose={() => setIsSettingsOpen(false)} initialTab={settingsInitialTab} />
+        </Suspense>
+      )}
 
+      <AnimatePresence>
       {internalMention && (
-        <div className="fixed right-4 top-16 z-[70] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 shadow-2xl dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <motion.div
+          initial={{ opacity: 0, y: -12, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.98 }}
+          transition={{ duration: 0.18 }}
+          className="fixed right-4 top-16 z-[70] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 shadow-2xl dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
           <div className="flex items-start gap-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"><MessageSquareLock className="h-4 w-4" /></span>
             <button type="button" onClick={() => { navigate(`/chat/${internalMention.leadId}`); setInternalMention(null) }} className="min-w-0 flex-1 text-left">
@@ -325,8 +333,9 @@ function MainLayout() {
             </button>
             <button type="button" onClick={() => setInternalMention(null)} className="rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900"><X className="h-4 w-4" /></button>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       <Suspense fallback={<PageLoader />}>
         {isTasks ? (
@@ -391,7 +400,7 @@ function MainLayout() {
             </div>
 
             {/* Panel derecho — Sugerencias */}
-            <div className="w-96 shrink-0 h-full overflow-hidden bg-wa-app dark:bg-wa-panel-dark border-l border-wa-border dark:border-wa-border-dark">
+            <div className="h-full w-96 shrink-0 overflow-hidden border-l border-wa-border bg-wa-app dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
               {selectedChat ? (
                 <SuggestionPanel
                   chat={selectedChat}
@@ -488,7 +497,10 @@ function AuthGate() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthGate />
+      <MotionConfig reducedMotion="user">
+        <AuthGate />
+        <AppToaster />
+      </MotionConfig>
     </QueryClientProvider>
   )
 }

@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Check, Loader2, MessageSquareLock, Pencil, Trash2, X } from 'lucide-react'
 import type { InternalNote } from '../types'
 import { useDeleteInternalNote, useUpdateInternalNote } from '../hooks/useInternalNotes'
 import { extractErrorMessage } from '../utils/errors'
 import { formatMessageTime } from '../utils/message'
+import { ConfirmDialog } from './ui'
 
 interface Props {
   chatId: string
@@ -38,13 +40,15 @@ export function InternalNoteCard({ chatId, note, canManage }: Props) {
     if (!text || update.isPending) return
     update.mutate(
       { id: note.id, content: text, mentionedUserIds: note.mentions.map(mention => mention.user_id) },
-      { onSuccess: () => setEditing(false) },
+      { onSuccess: () => { setEditing(false); toast.success('Nota actualizada') } },
     )
   }
 
   function deleteNote() {
-    if (!window.confirm('¿Eliminar esta nota interna?')) return
-    remove.mutate(note.id)
+    remove.mutate(note.id, {
+      onSuccess: () => toast.success('Nota eliminada'),
+      onError: error => toast.error(extractErrorMessage(error)),
+    })
   }
 
   return (
@@ -61,7 +65,15 @@ export function InternalNoteCard({ chatId, note, canManage }: Props) {
           {canManage && !editing && (
             <div className="flex shrink-0 items-center gap-0.5">
               <button type="button" onClick={() => { setContent(note.content); setEditing(true) }} title="Editar nota" className="rounded p-1 text-amber-700/60 hover:bg-amber-100 hover:text-amber-800 dark:text-amber-400/70 dark:hover:bg-amber-900/50"><Pencil className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={deleteNote} disabled={remove.isPending} title="Eliminar nota" className="rounded p-1 text-red-500/70 hover:bg-red-100 hover:text-red-700 dark:text-red-400/80 dark:hover:bg-red-950/50"><Trash2 className="h-3.5 w-3.5" /></button>
+              <ConfirmDialog
+                title="Eliminar nota interna"
+                description="Esta nota dejará de estar disponible para el equipo. Esta acción no se puede deshacer."
+                confirmLabel="Eliminar nota"
+                disabled={remove.isPending}
+                onConfirm={deleteNote}
+              >
+                <button type="button" disabled={remove.isPending} aria-busy={remove.isPending} title={remove.isPending ? 'Eliminando nota…' : 'Eliminar nota'} className="rounded p-1 text-red-500/70 hover:bg-red-100 hover:text-red-700 disabled:cursor-wait disabled:opacity-60 dark:text-red-400/80 dark:hover:bg-red-950/50">{remove.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}</button>
+              </ConfirmDialog>
             </div>
           )}
         </header>

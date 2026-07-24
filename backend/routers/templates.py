@@ -7,7 +7,7 @@ from db.models import User
 from models.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateUpdate
 from services.auth_service import get_current_user, require_admin
 from services.productivity_service import (
-    add_template_attachment, create_personal_template, create_template, list_templates,
+    add_template_attachment, create_personal_template, create_template, delete_template as delete_template_record, list_templates,
     record_template_use, remove_template_attachment, set_template_favorite, update_template,
 )
 from routers.media import normalize_media_content_type, save_media_file
@@ -422,3 +422,16 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         raise HTTPException(404, "Plantilla no encontrada")
     await manager.broadcast({"type": "templates_updated"})
     return item
+
+
+@router.delete("/{template_id}")
+async def delete_template(template_id: int, _admin: User = Depends(require_admin)):
+    try:
+        deleted = await delete_template_record(template_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    if deleted is None:
+        raise HTTPException(404, "Plantilla no encontrada")
+    await manager.broadcast({"type": "templates_updated"})
+    await manager.broadcast({"type": "media_library_updated"})
+    return {"status": "ok"}

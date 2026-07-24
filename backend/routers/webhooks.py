@@ -142,8 +142,18 @@ async def message_status_webhook(
         }
         if chat_ids:
             for chat_id in chat_ids:
+                status_updates = [
+                    {"id": item["id"], "status": item["status"]}
+                    for item in changed
+                    if item.get("chat_id") == chat_id
+                ]
                 await manager.broadcast(
-                    {"type": "chats_updated", "chat_id": chat_id, "reason": "message_status"}
+                    {
+                        "type": "chats_updated",
+                        "chat_id": chat_id,
+                        "reason": "message_status",
+                        "message_statuses": status_updates,
+                    }
                 )
         else:
             await manager.broadcast({"type": "chats_updated", "reason": "message_status"})

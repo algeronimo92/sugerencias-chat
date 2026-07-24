@@ -170,6 +170,8 @@ async def lifespan(app: FastAPI):
         await _add_column_if_missing(conn, "automation_executions", "flow_state", "JSONB NOT NULL DEFAULT '{}'::jsonb")
         await _add_column_if_missing(conn, "automation_executions", "attempts", "INTEGER NOT NULL DEFAULT 0")
         await _add_column_if_missing(conn, "automation_rules", "max_executions_per_hour", "INTEGER")
+        # Borrado lógico: conserva ejecuciones y versiones para auditoría.
+        await _add_column_if_missing(conn, "automation_rules", "deleted_at", "TIMESTAMPTZ")
         await _create_index_if_missing(
             conn, "idx_automation_rules_builder_mode",
             "CREATE INDEX idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)",

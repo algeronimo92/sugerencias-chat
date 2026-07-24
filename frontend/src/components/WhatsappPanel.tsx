@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { CheckCircle2, Loader2, LogOut, QrCode, RefreshCw, Smartphone } from 'lucide-react'
 import { useConnectWhatsapp, useLogoutWhatsapp, useWhatsappStatus, type WhatsappQr } from '../hooks/useWhatsapp'
 import { extractErrorMessage } from '../utils/errors'
-import { Button } from './ui'
+import { Button, ConfirmDialog } from './ui'
 
 interface Props {
   onGoToClaves: () => void
@@ -59,14 +60,9 @@ export function WhatsappPanel({ onGoToClaves }: Props) {
     // El logout es lo ÚNICO que "desconecta todo": corta la recepción de
     // mensajes nuevos por n8n hasta volver a vincular. No borra chats guardados,
     // pero se confirma para que no se dispare por error.
-    const ok = window.confirm(
-      'Desvincular WhatsApp corta la recepción de mensajes nuevos (n8n) hasta que ' +
-      'vuelvas a escanear el QR. NO borra ningún chat ya guardado. ¿Desvincular?'
-    )
-    if (!ok) return
     setActionError(null)
     setQr(null)
-    logout(undefined, { onError: (err) => setActionError(extractErrorMessage(err)) })
+    logout(undefined, { onSuccess: () => toast.success('WhatsApp desvinculado'), onError: (err) => setActionError(extractErrorMessage(err)) })
   }
 
   if (isLoading) {
@@ -110,15 +106,22 @@ export function WhatsappPanel({ onGoToClaves }: Props) {
           <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
             Vinculado como dispositivo (tu teléfono sigue siendo el principal). Desvincular no borra ningún chat.
           </p>
-          <button
-            type="button"
-            onClick={handleLogout}
+          <ConfirmDialog
+            title="Desvincular WhatsApp"
+            description="Se detendrá la recepción de mensajes nuevos hasta que vuelvas a escanear el QR. Los chats guardados no se eliminarán."
+            confirmLabel="Desvincular"
             disabled={isLoggingOut}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-wa-border-dark dark:text-red-400 dark:hover:bg-red-950/30"
+            onConfirm={handleLogout}
           >
-            {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            Desvincular
-          </button>
+            <button
+              type="button"
+              disabled={isLoggingOut}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-wa-border-dark dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+              Desvincular
+            </button>
+          </ConfirmDialog>
         </div>
       ) : qr && qr.base64 ? (
         <div className="space-y-3">

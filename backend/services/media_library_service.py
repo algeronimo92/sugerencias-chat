@@ -1,6 +1,8 @@
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import and_, delete, func, insert, or_, select
+from sqlalchemy import and_, delete, func, insert, or_, select, update
 
 from db.models import MediaAsset, TemplateAttachment, User
 from db.session import get_sessionmaker
@@ -97,21 +99,67 @@ async def create_media_asset(
     return asset
 
 
-async def delete_media_asset(asset_id: int) -> str | None:
+def validated_media_filename(filename: str, current_filename: str) -> str:
+    normalized = filename.strip()
+    if not normalized or len(normalized) > 255:
+        raise ValueError("El nombre debe tener entre 1 y 255 caracteres")
+    if normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
+        raise ValueError("El nombre no puede contener rutas")
+    if any(ord(character) < 32 for character in normalized):
+        raise ValueError("El nombre contiene caracteres no permitidos")
+    if Path(normalized).suffix.lower() != Path(current_filename).suffix.lower():
+        raise ValueError("Conserva la extensión original del archivo")
+    return normalized
+
+
+async def rename_media_asset(asset_id: int, filename: str) -> dict | None:
+    """Renombra el metadato sin mover el objeto de MinIO ni cambiar su URL."""
     async with get_sessionmaker()() as session:
-        row = (await session.execute(
-            select(
-                MediaAsset.media_url,
-                func.count(TemplateAttachment.id).label("use_count"),
-            )
-            .outerjoin(TemplateAttachment, TemplateAttachment.library_asset_id == MediaAsset.id)
-            .where(MediaAsset.id == asset_id)
-            .group_by(MediaAsset.id)
-        )).mappings().one_or_none()
-        if row is None:
+        asset = (await session.execute(
+            select(MediaAsset).where(MediaAsset.id == asset_id).with_for_update()
+        )).scalar_one_or_none()
+        if asset is None:
             return None
-        if row["use_count"]:
-            raise ValueError(f"El archivo está usado en {row['use_count']} plantilla(s)")
+        normalized = validated_media_filename(filename, asset.filename)
+        await session.execute(update(MediaAsset).where(
+            MediaAsset.id == asset_id
+        ).values(filename=normalized))
+        await session.execute(update(TemplateAttachment).where(
+            TemplateAttachment.library_asset_id == asset_id
+        ).values(filename=normalized))
+        await session.commit()
+    return await get_media_asset(asset_id)
+
+
+async def delete_media_asset(
+    asset_id: int,
+    *,
+    before_delete: Callable[[str], Awaitable[None]] | None = None,
+) -> str | None:
+    """Elimina un archivo sin dejar base de datos y almacenamiento desincronizados.
+
+    El registro se bloquea mientras se valida su uso. Cuando se proporciona
+    ``before_delete``, el objeto físico se elimina antes de confirmar la
+    transacción; si esa operación falla, el registro permanece intacto.
+    """
+    async with get_sessionmaker()() as session:
+        media_url = (await session.execute(
+            select(MediaAsset.media_url)
+            .where(MediaAsset.id == asset_id)
+            .with_for_update()
+        )).scalar_one_or_none()
+        if media_url is None:
+            return None
+
+        use_count = int(await session.scalar(
+            select(func.count(TemplateAttachment.id))
+            .where(TemplateAttachment.library_asset_id == asset_id)
+        ) or 0)
+        if use_count:
+            raise ValueError(f"El archivo está usado en {use_count} plantilla(s)")
+
+        if before_delete is not None:
+            await before_delete(media_url)
         await session.execute(delete(MediaAsset).where(MediaAsset.id == asset_id))
         await session.commit()
-    return row["media_url"]
+    return media_url

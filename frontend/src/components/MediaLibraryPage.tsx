@@ -1,9 +1,12 @@
 import { useDeferredValue, useRef, useState } from 'react'
-import { File as FileIcon, FileAudio, FileText, Image, Loader2, Search, Trash2, UploadCloud } from 'lucide-react'
+import { toast } from 'sonner'
+import { ExternalLink, Eye, File as FileIcon, FileText, Image, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
 import type { MediaAsset, MediaAssetKind } from '../types'
-import { useDeleteMediaAsset, useMediaLibrary, useUploadMediaAsset } from '../hooks/useMediaLibrary'
+import { useDeleteMediaAsset, useMediaLibrary, useRenameMediaAsset, useUploadMediaAsset } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { resolveMediaUrl } from '../utils/message'
+import { ConfirmDialog, DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
+import { AudioPlayer, VideoPlayer } from './MediaPlayer'
 
 const ACCEPTED_TYPES = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
 const MAX_BYTES = 25 * 1024 * 1024
@@ -31,19 +34,42 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function AssetPreview({ asset }: { asset: MediaAsset }) {
+function splitFilename(filename: string) {
+  const dotIndex = filename.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === filename.length - 1) {
+    return { basename: filename, extension: '' }
+  }
+  return {
+    basename: filename.slice(0, dotIndex),
+    extension: filename.slice(dotIndex),
+  }
+}
+
+function AssetPreview({ asset, onPreview }: { asset: MediaAsset; onPreview: () => void }) {
   const url = resolveMediaUrl(asset.media_url) ?? ''
   if (asset.content_type.startsWith('image/')) {
-    return <img src={url} alt={asset.filename} loading="lazy" className="h-36 w-full object-cover" />
+    return (
+      <button
+        type="button"
+        onClick={onPreview}
+        aria-label={`Ver vista previa de ${asset.filename}`}
+        className="group relative block h-36 w-full overflow-hidden bg-wa-hover text-left dark:bg-wa-panel-dark"
+      >
+        <img src={url} alt={asset.filename} loading="lazy" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100 group-focus-visible:bg-black/30 group-focus-visible:opacity-100">
+          <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold"><Eye className="h-4 w-4" />Vista previa</span>
+        </span>
+      </button>
+    )
   }
   if (asset.content_type.startsWith('video/')) {
-    return <video src={url} preload="metadata" controls className="h-36 w-full bg-black object-contain" />
+    return <VideoPlayer src={url} className="h-36 w-full" />
   }
   if (asset.content_type.startsWith('audio/')) {
     return (
       <div className="flex h-36 flex-col items-center justify-center gap-3 bg-violet-50 px-3 dark:bg-violet-950/20">
-        <FileAudio className="h-10 w-10 text-violet-500" />
-        <audio src={url} controls preload="metadata" className="h-8 w-full" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">Archivo de audio</span>
+        <AudioPlayer src={url} className="w-full" />
       </div>
     )
   }
@@ -60,9 +86,15 @@ export function MediaLibraryPage() {
   const [kind, setKind] = useState<MediaAssetKind | ''>('')
   const { data = [], isLoading } = useMediaLibrary(deferredSearch, kind)
   const upload = useUploadMediaAsset()
+  const rename = useRenameMediaAsset()
   const remove = useDeleteMediaAsset()
   const [error, setError] = useState<string | null>(null)
   const [uploadingName, setUploadingName] = useState<string | null>(null)
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null)
+  const [renameAsset, setRenameAsset] = useState<MediaAsset | null>(null)
+  const [renameBasename, setRenameBasename] = useState('')
+  const [renameExtension, setRenameExtension] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const dragDepth = useRef(0)
 
@@ -82,6 +114,7 @@ export function MediaLibraryPage() {
           filename: file.name,
         })
       }
+      if (files.length) toast.success(files.length === 1 ? 'Archivo subido' : `${files.length} archivos subidos`)
     } catch (err) {
       setError(extractErrorMessage(err))
     } finally {
@@ -109,9 +142,46 @@ export function MediaLibraryPage() {
   }
 
   function deleteAsset(asset: MediaAsset) {
-    if (!window.confirm(`¿Eliminar ${asset.filename} de la biblioteca?`)) return
     setError(null)
-    remove.mutate(asset.id, { onError: err => setError(extractErrorMessage(err)) })
+    remove.mutate(asset.id, { onSuccess: () => toast.success('Archivo eliminado'), onError: err => setError(extractErrorMessage(err)) })
+  }
+
+  function openRename(asset: MediaAsset) {
+    const { basename, extension } = splitFilename(asset.filename)
+    setRenameAsset(asset)
+    setRenameBasename(basename)
+    setRenameExtension(extension)
+    setRenameError(null)
+  }
+
+  function closeRename() {
+    if (rename.isPending) return
+    setRenameAsset(null)
+    setRenameBasename('')
+    setRenameExtension('')
+    setRenameError(null)
+  }
+
+  function submitRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!renameAsset) return
+    const basename = renameBasename.trim()
+    if (!basename || (!renameExtension && basename.includes('.'))) return
+    const filename = `${basename}${renameExtension}`
+    if (filename === renameAsset.filename) return
+    setRenameError(null)
+    rename.mutate(
+      { id: renameAsset.id, filename },
+      {
+        onSuccess: () => {
+          toast.success('Archivo renombrado')
+          setRenameAsset(null)
+          setRenameBasename('')
+          setRenameExtension('')
+        },
+        onError: err => setRenameError(extractErrorMessage(err)),
+      },
+    )
   }
 
   return (
@@ -195,7 +265,7 @@ export function MediaLibraryPage() {
               const url = resolveMediaUrl(asset.media_url) ?? '#'
               return (
                 <article key={asset.id} className="overflow-hidden rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-                  <AssetPreview asset={asset} />
+                  <AssetPreview asset={asset} onPreview={() => setPreviewAsset(asset)} />
                   <div className="p-3">
                     <a href={url} target="_blank" rel="noreferrer" title={asset.filename} className="block truncate text-sm font-medium text-gray-800 hover:text-wa-primary-strong dark:text-wa-text-dark">
                       {asset.filename}
@@ -206,15 +276,37 @@ export function MediaLibraryPage() {
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-2 dark:border-wa-border-dark">
                       <span className="truncate text-[11px] text-wa-muted">{asset.uploaded_by_name ?? 'Archivo migrado'}</span>
+                      <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => deleteAsset(asset)}
-                        disabled={remove.isPending || asset.use_count > 0}
-                        title={asset.use_count ? 'Primero quita el archivo de las plantillas' : 'Eliminar archivo'}
-                        className="rounded p-1 text-wa-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"
+                        disabled={rename.isPending || remove.isPending}
+                        onClick={() => openRename(asset)}
+                        title="Cambiar nombre"
+                        className="rounded p-1 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong disabled:opacity-40 dark:hover:bg-wa-active-dark"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </button>
+                      <ConfirmDialog
+                        title={asset.use_count ? 'Archivo en uso' : 'Eliminar archivo'}
+                        description={asset.use_count
+                          ? `${asset.filename} está asociado a ${asset.use_count} plantilla(s). Quita primero esos adjuntos para evitar romper las plantillas.`
+                          : `¿Quieres eliminar ${asset.filename} de la biblioteca? Esta acción no se puede deshacer.`}
+                        confirmLabel={asset.use_count ? 'Entendido' : 'Eliminar archivo'}
+                        confirmVariant={asset.use_count ? 'secondary' : 'danger'}
+                        cancelLabel={asset.use_count ? 'Cerrar' : 'Cancelar'}
+                        disabled={remove.isPending}
+                        onConfirm={() => { if (!asset.use_count) deleteAsset(asset) }}
+                      >
+                        <button
+                          type="button"
+                          disabled={remove.isPending}
+                          title={asset.use_count ? `Usado en ${asset.use_count} plantilla(s)` : 'Eliminar archivo'}
+                          className="rounded p-1 text-wa-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </ConfirmDialog>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -223,6 +315,72 @@ export function MediaLibraryPage() {
           </div>
         )}
       </div>
+      <Dialog.Root open={renameAsset != null} onOpenChange={open => { if (!open) closeRename() }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={dialogOverlayClass} />
+          <Dialog.Content asChild className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
+            <form onSubmit={submitRename}>
+              <div className="flex items-center justify-between border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
+                <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Cambiar nombre</Dialog.Title>
+                <Dialog.Close asChild><button type="button" disabled={rename.isPending} title="Cerrar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field disabled:opacity-40 dark:hover:bg-wa-head-dark"><X className="h-4 w-4" /></button></Dialog.Close>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                  <label className="grid gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Nombre
+                    <input
+                      autoFocus
+                      required
+                      maxLength={Math.max(1, 255 - renameExtension.length)}
+                      value={renameBasename}
+                      onChange={event => setRenameBasename(event.target.value)}
+                      className="min-w-0 rounded-lg border border-wa-border bg-white px-3 py-2 text-sm font-normal text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Extensión
+                    <input
+                      readOnly
+                      aria-readonly="true"
+                      value={renameExtension || 'Sin extensión'}
+                      title="La extensión está bloqueada para conservar el tipo real del archivo"
+                      className="cursor-not-allowed rounded-lg border border-wa-border bg-wa-field px-3 py-2 text-sm font-medium text-wa-muted outline-none dark:border-wa-border-dark dark:bg-wa-app-dark dark:text-wa-muted-dark"
+                    />
+                  </label>
+                </div>
+                <p className="mt-1.5 text-[11px] text-wa-muted">La extensión está bloqueada. El objeto de MinIO y su URL no cambiarán.</p>
+                {renameError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{renameError}</p>}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-wa-border px-4 py-3 dark:border-wa-border-dark">
+                <button type="button" disabled={rename.isPending} onClick={closeRename} className="rounded-lg px-3 py-2 text-xs font-semibold text-wa-muted hover:bg-wa-field disabled:opacity-40 dark:hover:bg-wa-head-dark">Cancelar</button>
+                <button type="submit" disabled={rename.isPending || !renameBasename.trim() || (!renameExtension && renameBasename.includes('.')) || `${renameBasename.trim()}${renameExtension}` === renameAsset?.filename} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white hover:bg-wa-primary-strong disabled:opacity-40">
+                  {rename.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {rename.isPending ? 'Guardando…' : 'Guardar nombre'}
+                </button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+      <Dialog.Root open={previewAsset != null} onOpenChange={open => { if (!open) setPreviewAsset(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={`${dialogOverlayClass} bg-black/75`} />
+          <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[92vh] w-[calc(100%-2rem)] max-w-6xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
+            <div className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
+              <Dialog.Title className="min-w-0 truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+                {previewAsset?.filename ?? 'Vista previa'}
+              </Dialog.Title>
+              <div className="flex shrink-0 items-center gap-1">
+                {previewAsset && <a href={resolveMediaUrl(previewAsset.media_url) ?? '#'} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40"><ExternalLink className="h-3.5 w-3.5" />Abrir original</a>}
+                <Dialog.Close asChild><button type="button" title="Cerrar vista previa" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-4 w-4" /></button></Dialog.Close>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-wa-app p-3 dark:bg-wa-app-dark sm:p-5">
+              {previewAsset && <img src={resolveMediaUrl(previewAsset.media_url) ?? ''} alt={previewAsset.filename} className="max-h-[calc(92vh-5rem)] max-w-full rounded-lg object-contain shadow-lg" />}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }

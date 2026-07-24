@@ -1048,7 +1048,7 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
             return None
         await session.commit()
 
-    return {"id": row["id"], "chat_id": row["chat_id"]}
+    return {"id": row["id"], "chat_id": row["chat_id"], "status": status}
 
 
 async def mark_chat_read(chat_id: str) -> None:

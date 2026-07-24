@@ -17,6 +17,7 @@ from services.automation_service import (
     cancel_automation_execution,
     create_visual_flow,
     create_automation_rule,
+    delete_automation_rule,
     duplicate_automation_rule,
     get_automation_rule,
     list_automation_executions,
@@ -187,14 +188,32 @@ async def patch_rule(
     return item
 
 
+@router.delete("/{rule_id}")
+async def delete_rule(rule_id: int, _admin: User = Depends(require_admin)):
+    try:
+        result = await delete_automation_rule(rule_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    if result is None:
+        raise HTTPException(404, "Automatización no encontrada")
+    await manager.broadcast({"type": "automations_updated"})
+    return {"status": "ok", **result}
+
+
 @router.get("/executions", response_model=list[AutomationExecutionItem])
 async def get_executions(
     rule_id: int | None = None,
     status: str | None = Query(default=None, pattern="^(scheduled|running|completed|failed|skipped)$"),
+    exclude_skipped: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     _admin: User = Depends(require_admin),
 ):
-    return await list_automation_executions(rule_id, status, limit)
+    return await list_automation_executions(
+        rule_id,
+        status,
+        limit,
+        exclude_skipped=exclude_skipped,
+    )
 
 
 @router.post("/executions/{execution_id}/retry", response_model=AutomationExecutionItem)

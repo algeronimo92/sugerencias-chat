@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { LeadStage, MediaAsset, MessageTemplate, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
-import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplateAttachment, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
+import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
+import { ConfirmDialog, Select } from './ui'
 
 interface TemplateFormState {
   name: string
@@ -219,9 +221,10 @@ export function TemplatesPage() {
   const { data = [], isLoading } = useTemplates(true)
   const { data: capabilities } = useTemplateCapabilities()
   const { mutate: create, isPending: isCreating } = useCreateTemplate()
-  const { mutate: update, isPending: isUpdating } = useUpdateTemplate()
+  const updateTemplate = useUpdateTemplate()
   const uploadAttachment = useUploadTemplateAttachment()
   const addLibraryAttachment = useAddLibraryTemplateAttachment()
+  const deleteTemplate = useDeleteTemplate()
   const deleteAttachment = useDeleteTemplateAttachment()
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -384,7 +387,7 @@ export function TemplatesPage() {
     }
     if (editingId != null) {
       const { template_type: _templateType, ...updatePayload } = payload
-      update({ id: editingId, ...updatePayload }, {
+      updateTemplate.mutate({ id: editingId, ...updatePayload }, {
         onSuccess: async (template) => { try { if (form.templateType === 'internal' && form.interactiveType === 'none') await attachPending(template.id); closeForm() } catch (err) { setError(extractErrorMessage(err)) } },
         onError: (err) => setError(extractErrorMessage(err)),
       })
@@ -398,10 +401,32 @@ export function TemplatesPage() {
 
   function handleToggleActive(id: number, isActive: boolean) {
     setError(null)
-    update({ id, is_active: isActive }, { onError: (err) => setError(extractErrorMessage(err)) })
+    updateTemplate.mutate(
+      { id, is_active: isActive },
+      {
+        onSuccess: () => toast.success(isActive ? 'Plantilla activada' : 'Plantilla desactivada'),
+        onError: (err) => setError(extractErrorMessage(err)),
+      }
+    )
   }
 
-  const isSaving = (editingId != null ? isUpdating : isCreating) || uploadAttachment.isPending || addLibraryAttachment.isPending
+  function handleDeleteAttachment(id: number, filename: string) {
+    setError(null)
+    deleteAttachment.mutate(id, {
+      onSuccess: () => toast.success(`${filename} fue quitado de la plantilla`),
+      onError: err => setError(extractErrorMessage(err)),
+    })
+  }
+
+  function handleDeleteTemplate(id: number, name: string) {
+    setError(null)
+    deleteTemplate.mutate(id, {
+      onSuccess: () => toast.success(`${name} fue eliminada`),
+      onError: err => setError(extractErrorMessage(err)),
+    })
+  }
+
+  const isSaving = (editingId != null ? updateTemplate.isPending : isCreating) || uploadAttachment.isPending || addLibraryAttachment.isPending
   const editingTemplate = data.find(template => template.id === editingId)
   const selectedLibraryIds = new Set(
     pendingAttachments.flatMap(item => item.source === 'library' ? [item.asset.id] : [])
@@ -488,10 +513,10 @@ export function TemplatesPage() {
                   <input required maxLength={6} pattern="[a-z]{2,3}(_[A-Z]{2})?" value={form.officialLanguage} onChange={event => setForm(f => ({ ...f, officialLanguage: event.target.value }))} placeholder="es" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Categoría oficial
-                  <select value={form.officialCategory} onChange={event => setForm(f => ({ ...f, officialCategory: event.target.value as NonNullable<MessageTemplate['official_category']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></select>
+                  <Select value={form.officialCategory} onChange={event => setForm(f => ({ ...f, officialCategory: event.target.value as NonNullable<MessageTemplate['official_category']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></Select>
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Estado en Meta
-                  <select value={form.officialStatus} onChange={event => setForm(f => ({ ...f, officialStatus: event.target.value as NonNullable<MessageTemplate['official_status']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="REJECTED">Rechazada</option><option value="PAUSED">Pausada</option><option value="DISABLED">Deshabilitada</option></select>
+                  <Select value={form.officialStatus} onChange={event => setForm(f => ({ ...f, officialStatus: event.target.value as NonNullable<MessageTemplate['official_status']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="REJECTED">Rechazada</option><option value="PAUSED">Pausada</option><option value="DISABLED">Deshabilitada</option></Select>
                 </label>
                 <p className="text-[11px] text-blue-700 dark:text-blue-300 md:col-span-2">Estos datos deben coincidir exactamente con la plantilla existente en Meta. La aprobación directa se incorporará en la integración posterior con Meta.</p>
               </div>
@@ -538,22 +563,22 @@ export function TemplatesPage() {
                 onChange={(event) => setForm((f) => ({ ...f, category: event.target.value }))}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               />
-              <select
+              <Select
                 value={form.stage}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier etapa</option>
                 {LEAD_STAGES.map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={form.taskType}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, taskType: value === '' || isTaskType(value) ? value : f.taskType })) }}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier tarea</option>
                 {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-              </select>
+              </Select>
             </div>
             {form.templateType === 'official' ? (
               <div className="grid gap-2 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
@@ -583,7 +608,7 @@ export function TemplatesPage() {
                     {form.interactiveButtons.map((button, index) => {
                       const field = button.type === 'reply' ? 'id' : button.type === 'url' ? 'url' : button.type === 'call' ? 'phoneNumber' : 'copyCode'
                       return <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-wa-panel-dark md:grid-cols-[120px_1fr_1fr_auto]">
-                        <select value={button.type} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as TemplateInteractiveButton['type'], displayText: item.displayText } : item) }))} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="reply">Respuesta</option><option value="url">Abrir URL</option><option value="call">Llamar</option><option value="copy">Copiar código</option></select>
+                        <Select value={button.type} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as TemplateInteractiveButton['type'], displayText: item.displayText } : item) }))} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="reply">Respuesta</option><option value="url">Abrir URL</option><option value="call">Llamar</option><option value="copy">Copiar código</option></Select>
                         <input required maxLength={20} value={button.displayText} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, displayText: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                         <input required type={field === 'url' ? 'url' : 'text'} inputMode={field === 'phoneNumber' ? 'tel' : 'text'} maxLength={field === 'url' ? 2048 : field === 'phoneNumber' ? 20 : 256} value={String(button[field] ?? '')} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: event.target.value } : item) }))} placeholder={field === 'id' ? 'ID de respuesta' : field === 'url' ? 'https://...' : field === 'phoneNumber' ? '+519...' : 'Código'} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                         <button type="button" disabled={form.interactiveButtons.length === 1} onClick={() => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
@@ -643,8 +668,10 @@ export function TemplatesPage() {
               </div>
               {((editingTemplate?.attachments.length ?? 0) > 0 || pendingAttachments.length > 0) && (
                 <div className="mt-3 space-y-1">
-                  {editingTemplate?.attachments.map(attachment => (
-                    <div key={attachment.id} className="flex items-center justify-between gap-3 rounded-md border border-wa-border bg-wa-hover px-3 py-2 text-xs text-gray-700 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
+                  {editingTemplate?.attachments.map(attachment => {
+                    const isDeleting = deleteAttachment.isPending && deleteAttachment.variables === attachment.id
+                    return (
+                    <div key={attachment.id} aria-busy={isDeleting} className={`flex items-center justify-between gap-3 rounded-md border border-wa-border bg-wa-hover px-3 py-2 text-xs text-gray-700 transition-opacity dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark ${isDeleting ? 'opacity-70' : ''}`}>
                       <span className="flex min-w-0 items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-400" />
                         <span className="truncate" title={attachment.filename}>{attachment.filename}</span>
@@ -652,9 +679,19 @@ export function TemplatesPage() {
                           {attachment.content_type.split('/')[0] || 'archivo'}
                         </span>
                       </span>
-                      <button type="button" onClick={() => deleteAttachment.mutate(attachment.id)} title="Quitar adjunto" className="shrink-0 rounded p-1 text-red-500 hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/50 dark:hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(attachment.id, attachment.filename)}
+                        disabled={deleteAttachment.isPending}
+                        title={isDeleting ? 'Quitando adjunto…' : 'Quitar adjunto'}
+                        aria-label={isDeleting ? `Quitando ${attachment.filename}` : `Quitar ${attachment.filename}`}
+                        className="shrink-0 rounded p-1 text-red-500 hover:bg-red-100 hover:text-red-700 disabled:cursor-wait disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/50 dark:hover:text-red-300"
+                      >
+                        {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
                     </div>
-                  ))}
+                    )
+                  })}
                   {pendingAttachments.map(attachment => {
                     const filename = attachment.source === 'upload' ? attachment.file.name : attachment.asset.filename
                     const contentType = attachment.source === 'upload' ? attachment.file.type : attachment.asset.content_type
@@ -709,9 +746,16 @@ export function TemplatesPage() {
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {data.map((template) => (
+            {data.map((template) => {
+              const isTogglingActive = updateTemplate.isPending
+                && updateTemplate.variables?.id === template.id
+                && updateTemplate.variables?.is_active !== undefined
+              const isDeleting = deleteTemplate.isPending && deleteTemplate.variables === template.id
+
+              return (
               <article
                 key={template.id}
+                aria-busy={isTogglingActive || isDeleting}
                 className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark ${!template.is_active ? 'opacity-60' : ''}`}
               >
                 <div className="flex justify-between gap-2">
@@ -741,18 +785,42 @@ export function TemplatesPage() {
                     </button>
                     <button
                       type="button"
-                      title={template.is_active ? 'Desactivar' : 'Activar'}
+                      disabled={updateTemplate.isPending}
+                      aria-busy={isTogglingActive}
+                      aria-label={isTogglingActive ? 'Actualizando estado de la plantilla' : template.is_active ? 'Desactivar plantilla' : 'Activar plantilla'}
+                      title={isTogglingActive ? 'Actualizando…' : template.is_active ? 'Desactivar' : 'Activar'}
                       onClick={() => handleToggleActive(template.id, !template.is_active)}
-                      className="rounded-md p-1 hover:bg-wa-field dark:hover:bg-wa-active-dark"
+                      className="rounded-md p-1 hover:bg-wa-field disabled:cursor-wait disabled:opacity-50 dark:hover:bg-wa-active-dark"
                     >
-                      <Power className={`h-4 w-4 ${template.is_active ? 'text-wa-primary-strong' : 'text-wa-muted'}`} />
+                      {isTogglingActive
+                        ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" />
+                        : <Power className={`h-4 w-4 ${template.is_active ? 'text-wa-primary-strong' : 'text-wa-muted'}`} />}
                     </button>
+                    <ConfirmDialog
+                      title={`Eliminar “${template.name}”`}
+                      description="La plantilla desaparecerá para todos. Sus archivos permanecerán en la biblioteca multimedia. Si una automatización todavía la usa, el sistema impedirá el borrado."
+                      confirmLabel="Eliminar plantilla"
+                      disabled={deleteTemplate.isPending}
+                      onConfirm={() => handleDeleteTemplate(template.id, template.name)}
+                    >
+                      <button
+                        type="button"
+                        disabled={deleteTemplate.isPending}
+                        aria-busy={isDeleting}
+                        aria-label={isDeleting ? 'Eliminando plantilla' : `Eliminar ${template.name}`}
+                        title={isDeleting ? 'Eliminando…' : 'Eliminar'}
+                        className="rounded-md p-1 text-red-500 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                      >
+                        {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    </ConfirmDialog>
                   </div>
                 </div>
                 <p className="mt-3 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{template.content}</p>
                 {template.attachments.length>0&&<div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400"><ImagePlus className="h-3.5 w-3.5"/>{template.attachments.length} adjunto{template.attachments.length===1?'':'s'}</div>}
               </article>
-            ))}
+              )
+            })}
             {data.length === 0 && (
               <p className="rounded-xl border border-dashed border-wa-border p-4 text-center text-sm text-wa-muted dark:border-wa-border-dark md:col-span-2">
                 Sin plantillas

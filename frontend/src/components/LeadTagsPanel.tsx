@@ -1,15 +1,17 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react'
 import type { Chat } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useAssignTag, useCreateTag, useRemoveTag, useTags } from '../hooks/useLeadMeta'
 import { extractErrorMessage } from '../utils/errors'
+import { Select } from './ui'
 
 export function LeadTagsPanel({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
   const { data: tags = [] } = useTags()
   const { mutate: assign, isPending: isAssigning } = useAssignTag(chat.chat_id)
-  const { mutate: remove, isPending: isRemoving } = useRemoveTag(chat.chat_id)
+  const removeTag = useRemoveTag(chat.chat_id)
   const { mutate: create, isPending: isCreating } = useCreateTag()
   const [selectedTagId, setSelectedTagId] = useState('')
   const [newName, setNewName] = useState('')
@@ -22,7 +24,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
     if (!selectedTagId) return
     setError(null)
     assign(Number(selectedTagId), {
-      onSuccess: () => setSelectedTagId(''),
+      onSuccess: () => { setSelectedTagId(''); toast.success('Etiqueta asignada') },
       onError: (err) => setError(extractErrorMessage(err)),
     })
   }
@@ -37,7 +39,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
       {
         onSuccess: (tag) => {
           setNewName('')
-          assign(tag.id, { onError: (err) => setError(extractErrorMessage(err)) })
+          assign(tag.id, { onSuccess: () => toast.success('Etiqueta creada y asignada'), onError: (err) => setError(extractErrorMessage(err)) })
         },
         onError: (err) => setError(extractErrorMessage(err)),
       }
@@ -50,33 +52,37 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
         <TagIcon className="h-3.5 w-3.5" /> Etiquetas
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {chat.tags.map((tag) => (
+        {chat.tags.map((tag) => {
+          const isRemoving = removeTag.isPending && removeTag.variables === tag.id
+          return (
           <span key={tag.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-white" style={{ backgroundColor: tag.color }}>
             {tag.name}
             <button
               type="button"
-              onClick={() => remove(tag.id, { onError: (err) => setError(extractErrorMessage(err)) })}
-              disabled={isRemoving}
-              aria-label={`Quitar ${tag.name}`}
-              className="rounded-full hover:bg-black/20 disabled:opacity-50"
+              onClick={() => removeTag.mutate(tag.id, { onSuccess: () => toast.success('Etiqueta eliminada del lead'), onError: (err) => setError(extractErrorMessage(err)) })}
+              disabled={removeTag.isPending}
+              aria-label={isRemoving ? `Quitando ${tag.name}` : `Quitar ${tag.name}`}
+              aria-busy={isRemoving}
+              className="rounded-full hover:bg-black/20 disabled:cursor-wait disabled:opacity-60"
             >
-              <X className="h-3 w-3" />
+              {isRemoving ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
             </button>
           </span>
-        ))}
+          )
+        })}
         {chat.tags.length === 0 && <span className="text-xs text-wa-muted">Sin etiquetas</span>}
       </div>
 
       {available.length > 0 && (
         <div className="mt-2 flex gap-1.5">
-          <select
+          <Select
             value={selectedTagId}
             onChange={(event) => setSelectedTagId(event.target.value)}
             className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-gray-300"
           >
             <option value="">Agregar etiqueta…</option>
             {available.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-          </select>
+          </Select>
           <button type="button" onClick={handleAssign} disabled={!selectedTagId || isAssigning} className="rounded-md bg-wa-primary px-2 text-white hover:bg-wa-primary-strong disabled:opacity-40">
             {isAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           </button>

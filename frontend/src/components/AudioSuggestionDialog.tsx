@@ -3,6 +3,8 @@ import { Loader2, Mic, X } from 'lucide-react'
 import { useSendAudio } from '../hooks/useMessages'
 import { useGenerateSpeech } from '../hooks/useTts'
 import { extractErrorMessage } from '../utils/errors'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
+import { AudioPlayer } from './MediaPlayer'
 
 interface Props {
   chatId: string
@@ -44,13 +46,12 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-md bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Content className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
-          <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar como nota de voz</p>
+          <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar como nota de voz</Dialog.Title>
           <button
             onClick={onClose}
             aria-label="Cerrar"
@@ -80,7 +81,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
           {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
 
           {audio ? (
-            <audio controls autoPlay src={`data:${audio.contentType};base64,${audio.dataBase64}`} className="w-full" />
+            <AudioPlayer autoPlay src={`data:${audio.contentType};base64,${audio.dataBase64}`} className="w-full" ariaLabel="Vista previa de audio generado" />
           ) : (
             <button
               type="button"
@@ -110,7 +111,8 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
             Enviar audio
           </button>
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

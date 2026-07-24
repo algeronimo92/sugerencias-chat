@@ -4,8 +4,18 @@ from sqlalchemy import and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from domain_types import TaskStatus
-from db.models import Lead, LeadTask, MessageTemplate, TemplateAttachment, TemplateUserState, User
+from domain_types import AutomationExecutionStatus, TaskStatus
+from db.models import (
+    AutomationExecution,
+    AutomationFlowVersion,
+    AutomationRule,
+    Lead,
+    LeadTask,
+    MessageTemplate,
+    TemplateAttachment,
+    TemplateUserState,
+    User,
+)
 from db.session import get_sessionmaker
 
 
@@ -230,6 +240,95 @@ async def update_template(template_id: int, values: dict):
     async with get_sessionmaker()() as session:
         owner_id = await session.scalar(select(MessageTemplate.created_by_user_id).where(MessageTemplate.id == template_id))
     return next((item for item in await list_templates(owner_id, True) if item["id"] == template_id), None)
+
+
+def _references_template(value: object, template_id: int) -> bool:
+    """Busca referencias dentro de acciones simples o definiciones visuales."""
+    if isinstance(value, dict):
+        raw_template_id = value.get("template_id")
+        try:
+            if raw_template_id is not None and int(raw_template_id) == template_id:
+                return True
+        except (TypeError, ValueError):
+            pass
+        return any(_references_template(item, template_id) for item in value.values())
+    if isinstance(value, list):
+        return any(_references_template(item, template_id) for item in value)
+    return False
+
+
+async def delete_template(template_id: int) -> bool | None:
+    """Elimina una plantilla solo cuando ninguna automatización vigente la necesita.
+
+    También revisa versiones visuales usadas por ejecuciones pendientes para no
+    convertir una espera ya programada en una ejecución rota.
+    """
+    async with get_sessionmaker()() as session:
+        template = (await session.execute(
+            select(MessageTemplate).where(MessageTemplate.id == template_id).with_for_update()
+        )).scalar_one_or_none()
+        if template is None:
+            return None
+
+        rules = (await session.execute(select(
+            AutomationRule.id,
+            AutomationRule.name,
+            AutomationRule.actions,
+            AutomationRule.flow_definition,
+            AutomationRule.published_flow_definition,
+        ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
+        blockers = {
+            row["id"]: row["name"]
+            for row in rules
+            if any(_references_template(value, template_id) for value in (
+                row["actions"], row["flow_definition"], row["published_flow_definition"],
+            ))
+        }
+
+        rule_names = {row["id"]: row["name"] for row in rules}
+        if rule_names:
+            pending = (await session.execute(select(
+                AutomationExecution.rule_id,
+                AutomationExecution.flow_state,
+            ).where(
+                AutomationExecution.rule_id.in_(list(rule_names)),
+                AutomationExecution.status.in_([
+                    AutomationExecutionStatus.SCHEDULED,
+                    AutomationExecutionStatus.RUNNING,
+                ]),
+            ))).mappings().all()
+            required_versions = {
+                (row["rule_id"], int((row["flow_state"] or {}).get("flow_version") or 0))
+                for row in pending
+                if (row["flow_state"] or {}).get("flow_version")
+            }
+            if required_versions:
+                versions = (await session.execute(select(
+                    AutomationFlowVersion.rule_id,
+                    AutomationFlowVersion.version,
+                    AutomationFlowVersion.definition,
+                ).where(
+                    AutomationFlowVersion.rule_id.in_({rule_id for rule_id, _ in required_versions})
+                ))).mappings().all()
+                for row in versions:
+                    if (
+                        (row["rule_id"], row["version"]) in required_versions
+                        and _references_template(row["definition"], template_id)
+                    ):
+                        blockers[row["rule_id"]] = rule_names[row["rule_id"]]
+
+        if blockers:
+            names = list(dict.fromkeys(blockers.values()))
+            visible = ", ".join(names[:3])
+            suffix = f" y {len(names) - 3} más" if len(names) > 3 else ""
+            raise ValueError(
+                f"La plantilla está usada por: {visible}{suffix}. "
+                "Edita o elimina esas automatizaciones antes de borrar la plantilla."
+            )
+
+        await session.execute(delete(MessageTemplate).where(MessageTemplate.id == template_id))
+        await session.commit()
+    return True
 
 
 async def create_personal_template(name: str, content: str, shortcut: str | None, user_id: int):

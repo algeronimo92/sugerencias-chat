@@ -1,5 +1,6 @@
 import { Check, Clock, Loader2, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import type { LeadTask } from '../types'
 import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import { useMe } from '../hooks/useAuth'
@@ -7,6 +8,7 @@ import { useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { TASK_PRIORITY_LABELS, TaskPriorityValue, TaskStatusValue } from '../domain/automationCatalog'
 import type { TaskPriority } from '../types'
+import { Select } from './ui'
 
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
   [TaskPriorityValue.Low]: 'bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300',
@@ -33,7 +35,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   const allUsers = assignee === 'all'
   const assignedUserId = assignee !== 'mine' && assignee !== 'all' ? Number(assignee) : undefined
   const { data = [], isLoading } = useTasks('pending', undefined, assignedUserId, allUsers)
-  const { mutate: update, isPending: isUpdating } = useUpdateTask()
+  const updateTask = useUpdateTask()
   const [error, setError] = useState<string | null>(null)
   const groups = bucketTasks(data)
   const sections: { title: string; items: LeadTask[] }[] = [
@@ -44,7 +46,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
 
   function handleComplete(id: number) {
     setError(null)
-    update({ id, status: TaskStatusValue.Completed }, { onError: (err) => setError(extractErrorMessage(err)) })
+    updateTask.mutate({ id, status: TaskStatusValue.Completed }, { onSuccess: () => toast.success('Tarea completada'), onError: (err) => setError(extractErrorMessage(err)) })
   }
 
   return (
@@ -53,11 +55,11 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><Clock className="h-5 w-5 text-wa-primary-strong" />
           <h1 className="text-xl font-semibold text-wa-text dark:text-white">Mis tareas</h1></div>
-          {isAdmin && <select value={assignee} onChange={(event) => setAssignee(event.target.value)} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
+          {isAdmin && <Select value={assignee} onChange={(event) => setAssignee(event.target.value)} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
             <option value="mine">Mis tareas</option>
             {users.filter(user => user.is_active && user.id !== me?.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
             <option value="all">Todo el equipo</option>
-          </select>}
+          </Select>}
         </div>
 
         {error && (
@@ -78,8 +80,10 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
                   {section.title} ({section.items.length})
                 </h2>
                 <div className="space-y-3">
-                  {section.items.map((task) => (
-                    <div key={task.id} className="rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
+                  {section.items.map((task) => {
+                    const isCompleting = updateTask.isPending && updateTask.variables?.id === task.id
+                    return (
+                    <div key={task.id} aria-busy={isCompleting} className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm transition-opacity dark:border-wa-border-dark dark:bg-wa-head-dark ${isCompleting ? 'opacity-70' : ''}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-wa-text dark:text-wa-text-dark">{task.title}</p>
@@ -108,14 +112,15 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
                         <button
                           type="button"
                           onClick={() => handleComplete(task.id)}
-                          disabled={isUpdating}
-                          className="flex items-center gap-1 text-xs font-medium text-wa-muted hover:text-wa-primary-strong disabled:opacity-40 dark:text-wa-muted-dark"
+                          disabled={updateTask.isPending}
+                          className="flex items-center gap-1 text-xs font-medium text-wa-muted hover:text-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:text-wa-muted-dark"
                         >
-                          <Check className="h-3.5 w-3.5" /> Completar
+                          {isCompleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} {isCompleting ? 'Completando…' : 'Completar'}
                         </button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                   {section.items.length === 0 && (
                     <p className="rounded-xl border border-dashed border-wa-border p-4 text-center text-sm text-wa-muted dark:border-wa-border-dark">
                       Sin tareas

@@ -13,6 +13,7 @@ import {
   isTaskPriority,
   isTaskType,
 } from '../domain/automationCatalog'
+import { Select } from './ui'
 
 export function LeadTaskCard({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
@@ -108,20 +109,20 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           />
           <p className="text-[11px] text-wa-muted">Se enviará un recordatorio a esa hora.</p>
           <div className="grid grid-cols-2 gap-2">
-            <select
+            <Select
               value={type}
               onChange={(event) => { if (isTaskType(event.target.value)) setType(event.target.value) }}
               className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             >
               {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-            </select>
-            <select
+            </Select>
+            <Select
               value={priority}
               onChange={(event) => { if (isTaskPriority(event.target.value)) setPriority(event.target.value) }}
               className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             >
               {TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
+            </Select>
           </div>
           <input
             type="datetime-local"

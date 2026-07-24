@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BookmarkPlus, Check, CheckCheck, ChevronDown, FileText, Loader2, Maximize2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
+import { BookmarkPlus, Check, CheckCheck, ChevronDown, FileText, Loader2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
 import type { Chat, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
@@ -11,7 +11,9 @@ import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { MapPreview } from './MapPreview'
-import { MediaLightbox } from './MediaLightbox'
+import { MediaLightbox, type MediaLightboxItem } from './MediaLightbox'
+import { AudioPlayer } from './MediaPlayer'
+import { ChatVideoMessage } from './ChatVideoMessage'
 import { VoiceRecorder } from './VoiceRecorder'
 import { TemplatePicker } from './TemplatePicker'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
@@ -125,8 +127,9 @@ const MEDIA_SETTLE_MS = 4000
 const SCROLL_TO_BOTTOM_THRESHOLD_PX = 300
 
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
- * cliente (WhatsApp: SERVER_ACK/DELIVERY_ACK/READ/PLAYED). */
-function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetry?: () => void }) {
+ * cliente. En audios, PLAYED agrega además una confirmación visible de que
+ * el destinatario reprodujo la nota de voz. */
+function MessageStatusTicks({ status, isAudio = false, onRetry }: { status: MessageStatus; isAudio?: boolean; onRetry?: () => void }) {
   if (status === 'PENDING') {
     return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
   }
@@ -137,7 +140,11 @@ function MessageStatusTicks({ status, onRetry }: { status: MessageStatus; onRetr
       </button>
     )
   }
-  if (status === 'READ' || status === 'PLAYED') {
+  if (status === 'PLAYED') {
+    const label = isAudio ? 'Audio escuchado' : 'Leído'
+    return <span aria-label={label} title={label}><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-accent shrink-0" /></span>
+  }
+  if (status === 'READ') {
     return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-accent shrink-0" /></span>
   }
   if (status === 'DELIVERY_ACK') {
@@ -193,7 +200,14 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
   ].sort((a, b) => {
     const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
     const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
-    return aTime - bTime || a.key.localeCompare(b.key)
+    if (aTime !== bTime) return aTime - bTime
+    // Los lotes de plantillas pueden compartir milisegundo. Sus IDs de DB
+    // preservan el orden de la outbox mejor que una comparación textual
+    // ("message-10" quedaría antes de "message-9").
+    if (a.kind === 'message' && b.kind === 'message' && a.message.id > 0 && b.message.id > 0) {
+      return a.message.id - b.message.id
+    }
+    return a.key.localeCompare(b.key)
   }), [messages, notes, leadActivity])
   // Algunos mensajes (ej. audios recién enviados) todavía no tienen sent_at
   // confirmado. Si se comparara solo contra el vecino inmediato, un mensaje
@@ -256,9 +270,9 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
-  const { mutate: sendAudio, isPending: isSendingAudio } = useSendAudio(chat.chat_id)
-  const { mutate: sendMedia, isPending: isSendingMedia } = useSendMedia(chat.chat_id)
-  const { mutate: sendLocation, isPending: isSendingLocation } = useSendLocation(chat.chat_id)
+  const { mutate: sendAudio } = useSendAudio(chat.chat_id)
+  const { mutate: sendMedia } = useSendMedia(chat.chat_id)
+  const { mutate: sendLocation } = useSendLocation(chat.chat_id)
   const { data: templates = [] } = useTemplates()
   const recordTemplateUse = useRecordTemplateUse()
   const sentMessageHistory = useMemo(() => {
@@ -273,6 +287,19 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
     }
     return result
   }, [messages])
+  // Galería disponible para el hilo ya cargado. Conserva el orden real de
+  // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
+  const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
+    const parsed = parseContent(message.content)
+    if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
+    const src = resolveMediaUrl(message.media_url)
+    if (!src) return []
+    return [{
+      src,
+      kind: parsed.kind,
+      alt: parsed.text || (parsed.kind === 'image' ? 'Imagen' : 'Video'),
+    }]
+  }), [messages])
 
   // Mientras el draft es exactamente "/" + texto sin espacios, se interpreta
   // como un atajo de plantilla en progreso (como en Slack/WhatsApp Business).
@@ -572,11 +599,11 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
 
   function handleConfirmLocation() {
     if (!pendingLocation) return
-    sendLocation(pendingLocation, {
-      onSuccess: () => setPendingLocation(null),
+    const location = pendingLocation
+    setPendingLocation(null)
+    sendLocation(location, {
       onError: (err) => {
         setLocationError(extractErrorMessage(err))
-        setPendingLocation(null)
       },
     })
   }
@@ -658,7 +685,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
   return (
     <div className="flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
       {/* Header — gris claro / #202C33, como el header de conversación de WhatsApp */}
-      <div className="px-4 py-2.5 border-b border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark flex items-center justify-between">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-wa-border bg-wa-head px-4 py-2.5 dark:border-wa-border-dark dark:bg-wa-head-dark">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
@@ -773,6 +800,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
           // con nuestro caption de abajo.
           const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
           const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
+          const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video')
           return (
             <Fragment key={item.key}>
               {showDateSeparator && (
@@ -787,7 +815,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                 data-message-id={m.id}
               >
               <div
-                className={`max-w-[75%] rounded-bubble px-3.5 py-2 text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${
+                className={`max-w-[75%] rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
                   isVendedor
                     ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
                     : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
@@ -810,19 +838,23 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                   />
                 )}
                 {mediaSrc && kind === 'video' && (
-                  <div className="relative mb-1.5 inline-block">
-                    <video controls src={mediaSrc} onError={markMediaFailed} {...mediaBoxDimensions(m)} className="rounded-lg max-w-full max-h-80" />
-                    <button
-                      onClick={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
-                      aria-label="Agrandar video"
-                      className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-md bg-black/50 text-white hover:bg-black/70 transition-colors"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  (() => {
+                    const { style } = mediaBoxDimensions(m)
+                    return (
+                      <ChatVideoMessage
+                        src={mediaSrc}
+                        alt={text || 'Video'}
+                        onError={markMediaFailed}
+                        style={style}
+                        className={`max-w-full ${style ? '' : 'h-56 w-[min(100%,360px)]'}`}
+                        onOpenGallery={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
+                        footer={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}</>}
+                      />
+                    )
+                  })()
                 )}
                 {mediaSrc && kind === 'audio' && (
-                  <audio controls src={mediaSrc} onError={markMediaFailed} className="max-w-full mb-1.5" />
+                  <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-64 max-w-full" />
                 )}
                 {mediaSrc && kind === 'other' && (
                   <a
@@ -910,12 +942,10 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                             return <span key={i}>{segment.text}</span>
                         }
                       })
-                    ) : (
-                      <span className="italic text-wa-faint dark:text-wa-text-dark/50">Sin contenido</span>
-                    )}
+                    ) : ""}
                   </p>
                 )}
-                <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
+                {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
                   {isVendedor && kind === 'text' && text.trim() && (
                     <button
                       type="button"
@@ -926,9 +956,27 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                       <BookmarkPlus className="h-3 w-3" />
                     </button>
                   )}
+                  {isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
+                    <span
+                      className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
+                        m.status === 'PLAYED'
+                          ? 'text-wa-accent'
+                          : 'text-wa-muted dark:text-wa-text-dark/60'
+                      }`}
+                      title={m.status === 'PLAYED'
+                        ? 'WhatsApp confirmó que el cliente reprodujo este audio'
+                        : 'WhatsApp todavía no confirmó la reproducción de este audio'}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`h-1.5 w-1.5 rounded-full ${m.status === 'PLAYED' ? 'bg-wa-accent' : 'bg-current opacity-60'}`}
+                      />
+                      {m.status === 'PLAYED' ? 'Escuchado' : 'No escuchado'}
+                    </span>
+                  )}
                   <span>{formatMessageTime(m.sent_at)}</span>
-                  {isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}
-                </div>
+                  {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
+                </div>}
               </div>
             </div>
             </Fragment>
@@ -993,8 +1041,8 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
 
           {!isRecordingAudio && (
             <AttachMenu
-              disabled={isSendingMedia || isLocating || isSendingLocation}
-              isSending={isSendingMedia || isLocating || isSendingLocation}
+              disabled={isLocating}
+              isSending={isLocating}
               onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
               onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
               onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
@@ -1062,7 +1110,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
             </button>
           ) : (
             <VoiceRecorder
-              disabled={isSendingAudio || isSendingMedia || isLocating || isSendingLocation}
+              disabled={isLocating}
               onRecorded={handleAudioRecorded}
               onError={setAudioError}
               onRecordingChange={setIsRecordingAudio}
@@ -1077,6 +1125,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
           src={openMedia.src}
           kind={openMedia.kind}
           alt={openMedia.alt}
+          items={chatMediaItems}
           onClose={() => setOpenMedia(null)}
         />
       )}
@@ -1085,7 +1134,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
         <LocationConfirmDialog
           latitude={pendingLocation.latitude}
           longitude={pendingLocation.longitude}
-          isSending={isSendingLocation}
+          isSending={false}
           onConfirm={handleConfirmLocation}
           onCancel={() => setPendingLocation(null)}
         />
