@@ -5,6 +5,7 @@ import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import { extractErrorMessage } from '../utils/errors'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
 
 interface Props {
   onClose: () => void
@@ -44,6 +45,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [clearingSecretKey, setClearingSecretKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!data) return
@@ -57,14 +59,6 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
       return next
     })
   }, [data])
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
 
   function setField(key: string, value: string) {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -107,11 +101,13 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
 
   function handleClearSecret(key: string) {
     setSaveError(null)
+    setClearingSecretKey(key)
     save(
       { [key]: '' },
       {
         onSuccess: () => setDraft((prev) => ({ ...prev, [key]: '' })),
         onError: (err) => setSaveError(extractErrorMessage(err)),
+        onSettled: () => setClearingSecretKey(null),
       }
     )
   }
@@ -119,14 +115,13 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
   const groups = data ? groupItems(data) : []
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-lg max-h-[85vh] flex flex-col bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark shrink-0">
           <div className="flex items-center gap-3">
-            <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Configuración</p>
+            <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Configuración</Dialog.Title>
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => setTab('claves')} className={TAB_CLASS(tab === 'claves')}>
                 Claves
@@ -198,11 +193,12 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
                           type="button"
                           onClick={() => handleClearSecret(item.key)}
                           disabled={isSaving}
-                          aria-label={`Borrar ${item.label}`}
-                          title="Borrar valor guardado"
-                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-wa-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-colors"
+                          aria-label={clearingSecretKey === item.key ? `Borrando ${item.label}` : `Borrar ${item.label}`}
+                          aria-busy={clearingSecretKey === item.key}
+                          title={clearingSecretKey === item.key ? 'Borrando valor…' : 'Borrar valor guardado'}
+                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-wa-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:cursor-wait disabled:opacity-60 transition-colors"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {clearingSecretKey === item.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                         </button>
                       )}
                     </div>
@@ -227,12 +223,13 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               disabled={isSaving || isLoading}
               className="px-4 py-2 text-sm font-medium text-white bg-wa-primary hover:bg-wa-primary-strong disabled:opacity-50 rounded-lg transition-colors flex items-center gap-1.5"
             >
-              {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isSaving && clearingSecretKey === null && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Guardar
             </button>
           </div>
         )}
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

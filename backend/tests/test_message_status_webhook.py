@@ -28,6 +28,7 @@ async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypa
         "type": "chats_updated",
         "chat_id": "51999999999@s.whatsapp.net",
         "reason": "message_status",
+        "message_statuses": [],
     })
     assert result["matched"] is True
     assert result["read_count"] == 1
@@ -39,7 +40,11 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
     monkeypatch.setattr(
         webhooks,
         "update_message_status",
-        AsyncMock(return_value={"id": 1, "chat_id": "51999999999@s.whatsapp.net"}),
+        AsyncMock(return_value={
+            "id": 1,
+            "chat_id": "51999999999@s.whatsapp.net",
+            "status": "READ",
+        }),
     )
     mark_read = AsyncMock()
     monkeypatch.setattr(webhooks, "mark_chat_read_from_whatsapp_receipt", mark_read)
@@ -57,6 +62,7 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
         "type": "chats_updated",
         "chat_id": "51999999999@s.whatsapp.net",
         "reason": "message_status",
+        "message_statuses": [{"id": 1, "status": "READ"}],
     })
     assert result["updated_count"] == 1
     assert result["read_count"] == 0

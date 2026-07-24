@@ -8,7 +8,7 @@ import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
-import { Button, EmptyState, Skeleton } from './ui'
+import { Button, EmptyState, Select, Skeleton } from './ui'
 
 interface Props {
   chats: Chat[]
@@ -264,10 +264,10 @@ export function ChatList({
     }`
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-wa-panel-dark border-r border-wa-border dark:border-wa-border-dark">
+    <div className="flex h-full flex-col border-r border-wa-border bg-white dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-wa-border dark:border-wa-border-dark">
-        <div className="flex items-center justify-between mb-3 px-1">
+      <div className="border-b border-wa-border px-3 py-3 dark:border-wa-border-dark">
+        <div className="-mx-3 -mt-3 mb-3 flex h-16 shrink-0 items-center justify-between border-b border-wa-border bg-wa-head px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
           <h1 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Leads</h1>
           <Button
             variant="ghost"
@@ -373,14 +373,14 @@ export function ChatList({
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">Etiquetas</span>
-                  <select
+                  <Select
                     value={advancedFilters.tagMode}
                     onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, tagMode: event.target.value as 'any' | 'all' })}
                     className="rounded border border-wa-border bg-white px-1.5 py-0.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
                   >
                     <option value="any">Cualquiera</option>
                     <option value="all">Todas</option>
-                  </select>
+                  </Select>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {tags.map((tag) => (
@@ -415,15 +415,15 @@ export function ChatList({
                   className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
                 />
               ))}
-              <select
+              <Select
                 value={advancedFilters.sellerId ?? ''}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, sellerId: event.target.value ? Number(event.target.value) : null })}
                 className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
               >
                 <option value="">Cualquier vendedor</option>
                 {sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={advancedFilters.lastSender}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, lastSender: event.target.value as ChatFilters['lastSender'] })}
                 className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
@@ -431,7 +431,7 @@ export function ChatList({
                 <option value="">Último emisor</option>
                 <option value="cliente">Cliente</option>
                 <option value="vendedor">Vendedor</option>
-              </select>
+              </Select>
               <input
                 type="number"
                 min={1}
@@ -440,7 +440,7 @@ export function ChatList({
                 placeholder="Inactivo (días)"
                 className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
               />
-              <select
+              <Select
                 value={advancedFilters.waitingTime}
                 onChange={(event) => onAdvancedFiltersChange({ ...advancedFilters, waitingTime: event.target.value as ChatFilters['waitingTime'] })}
                 title="Tiempo desde el último mensaje del cliente sin respuesta del vendedor"
@@ -451,7 +451,7 @@ export function ChatList({
                 <option value="fresh">Menos de 10 minutos</option>
                 <option value="warning">Entre 10 minutos y 1 hora</option>
                 <option value="urgent">Más de 1 hora</option>
-              </select>
+              </Select>
             </div>
           </div>
         )}

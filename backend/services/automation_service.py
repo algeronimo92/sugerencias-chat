@@ -150,6 +150,7 @@ def _execution_dict(row) -> dict:
         "id": row["id"],
         "rule_id": row["rule_id"],
         "rule_name": row["rule_name"],
+        "rule_deleted": bool(row["rule_deleted"]),
         "lead_id": row["lead_id"],
         "lead_name": row["lead_name"],
         "trigger_type": row["trigger_type"],
@@ -208,7 +209,9 @@ async def list_automation_rules() -> list[dict]:
         last_execution_status.label("last_execution_status"),
         AutomationRule.created_at,
         AutomationRule.updated_at,
-    ).join(User, User.id == AutomationRule.created_by_user_id).order_by(
+    ).join(User, User.id == AutomationRule.created_by_user_id).where(
+        AutomationRule.deleted_at.is_(None)
+    ).order_by(
         AutomationRule.is_active.desc(), AutomationRule.updated_at.desc()
     )
     async with get_sessionmaker()() as session:
@@ -271,7 +274,10 @@ async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
         values["updated_at"] = datetime.now(timezone.utc)
         async with get_sessionmaker()() as session:
             result = await session.execute(
-                update(AutomationRule).where(AutomationRule.id == rule_id).values(**values)
+                update(AutomationRule).where(
+                    AutomationRule.id == rule_id,
+                    AutomationRule.deleted_at.is_(None),
+                ).values(**values)
             )
             await session.commit()
         if not result.rowcount:
@@ -279,16 +285,64 @@ async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
     return await get_automation_rule(rule_id)
 
 
+async def delete_automation_rule(rule_id: int) -> dict | None:
+    """Oculta una regla sin destruir sus ejecuciones ni versiones auditables.
+
+    Las ejecuciones programadas se cierran como omitidas. Una ejecución que ya
+    está corriendo bloquea el borrado porque podría completar acciones después
+    de que el usuario creyera eliminada la automatización.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        rule = (await session.execute(
+            select(AutomationRule).where(
+                AutomationRule.id == rule_id,
+                AutomationRule.deleted_at.is_(None),
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if rule is None:
+            return None
+        active_executions = (await session.execute(select(
+            AutomationExecution.id,
+            AutomationExecution.status,
+        ).where(
+            AutomationExecution.rule_id == rule_id,
+            AutomationExecution.status.in_([
+                AutomationExecutionStatus.SCHEDULED,
+                AutomationExecutionStatus.RUNNING,
+            ]),
+        ).with_for_update())).mappings().all()
+        if any(row["status"] == AutomationExecutionStatus.RUNNING for row in active_executions):
+            raise ValueError(
+                "La automatización tiene una ejecución en curso. Cancélala o espera a que termine antes de eliminarla."
+            )
+        scheduled = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.rule_id == rule_id,
+            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+        ).values(
+            status=AutomationExecutionStatus.SKIPPED,
+            error="La automatización fue eliminada",
+            finished_at=now,
+        ))
+        await session.execute(update(AutomationRule).where(
+            AutomationRule.id == rule_id,
+        ).values(is_active=False, deleted_at=now, updated_at=now))
+        await session.commit()
+    return {"id": rule_id, "cancelled_executions": scheduled.rowcount or 0}
+
+
 async def list_automation_executions(
     rule_id: int | None = None,
     status: str | None = None,
     limit: int = 100,
     execution_id: int | None = None,
+    exclude_skipped: bool = False,
 ) -> list[dict]:
     stmt = select(
         AutomationExecution.id,
         AutomationExecution.rule_id,
         AutomationRule.name.label("rule_name"),
+        AutomationRule.deleted_at.is_not(None).label("rule_deleted"),
         AutomationExecution.lead_id,
         Lead.nombre.label("lead_name"),
         AutomationExecution.trigger_type,
@@ -307,6 +361,8 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
     if status:
         stmt = stmt.where(AutomationExecution.status == status)
+    elif exclude_skipped:
+        stmt = stmt.where(AutomationExecution.status != AutomationExecutionStatus.SKIPPED)
     if execution_id is not None:
         stmt = stmt.where(AutomationExecution.id == execution_id)
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
@@ -329,6 +385,9 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
         if execution is None or execution.status not in {
             AutomationExecutionStatus.FAILED, AutomationExecutionStatus.SKIPPED,
         }:
+            return None
+        rule = await session.get(AutomationRule, execution.rule_id)
+        if rule is None or rule.deleted_at is not None or not rule.is_active:
             return None
         await session.execute(update(AutomationExecution).where(
             AutomationExecution.id == execution_id

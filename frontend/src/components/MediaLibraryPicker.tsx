@@ -3,6 +3,7 @@ import { Check, FileText, Image, Loader2, Search, X } from 'lucide-react'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { resolveMediaUrl } from '../utils/message'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
 
 interface Props {
   selectedIds: Set<number>
@@ -27,13 +28,15 @@ export function MediaLibraryPicker({ selectedIds, disabledIds, canSelect, onSele
   const { data = [], isLoading } = useMediaLibrary(deferredSearch, kind)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" aria-label="Seleccionar archivos de la biblioteca" className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-2xl dark:bg-wa-panel-dark">
+    <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-4xl flex-col rounded-xl bg-white shadow-2xl dark:bg-wa-panel-dark`}>
         <div className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark">
           <div className="flex items-center gap-2">
             <Image className="h-5 w-5 text-wa-primary-strong" />
             <div>
-              <h2 className="font-semibold text-wa-text dark:text-white">Biblioteca de archivos</h2>
+              <Dialog.Title className="font-semibold text-wa-text dark:text-white">Biblioteca de archivos</Dialog.Title>
               <p className="text-xs text-wa-muted">Selecciona archivos para esta plantilla</p>
             </div>
           </div>
@@ -86,7 +89,8 @@ export function MediaLibraryPicker({ selectedIds, disabledIds, canSelect, onSele
             </div>
           )}
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

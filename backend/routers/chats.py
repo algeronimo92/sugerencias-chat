@@ -26,7 +26,7 @@ from models.schemas import (
     SellerItem,
 )
 from routers.media import save_media_file
-from services.media_storage import MediaStorageError, read_media_base64
+from services.media_storage import MediaStorageError
 from services.db_service import (
     CHATS_PAGE_SIZE,
     KANBAN_PAGE_SIZE,
@@ -44,7 +44,6 @@ from services.db_service import (
     list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
-    insert_message,
     lead_exists,
     mark_chat_read,
     list_active_sellers,
@@ -60,14 +59,6 @@ from services.evolution_service import (
     check_whatsapp_numbers,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
-    send_whatsapp_audio,
-    send_whatsapp_buttons,
-    send_whatsapp_list,
-    send_whatsapp_location,
-    send_whatsapp_media,
-    send_whatsapp_template,
-    send_whatsapp_text,
-    get_template_capabilities,
 )
 from services.phone_utils import (
     PhoneValidationError,
@@ -76,7 +67,7 @@ from services.phone_utils import (
     normalize_phone,
 )
 from services.ws_manager import manager
-from services.message_outbox import enqueue_text_message
+from services.message_outbox import enqueue_messages, enqueue_text_message, retry_failed_message
 from services.productivity_service import list_templates, record_template_use
 from services.automation_service import trigger_lead_created, trigger_stage_changed
 
@@ -104,62 +95,6 @@ def _render_interactive_config(value, chat: dict):
     if isinstance(value, dict):
         return {key: _render_interactive_config(item, chat) for key, item in value.items()}
     return value
-
-
-def _is_baileys_list_serialization_error(exc: Exception) -> bool:
-    """Detect the known Baileys/long failure before a legacy list is sent."""
-    return "this.isZero is not a function" in str(exc)
-
-
-def _list_text_fallback(title: str, description: str, footer: str, sections: list[dict]) -> str:
-    """Keep a list usable when the installed Evolution/Baileys cannot serialize it."""
-    lines: list[str] = []
-    if title:
-        lines.append(f"*{title}*")
-    if description:
-        lines.append(description)
-
-    option_number = 1
-    for section in sections:
-        section_title = (section.get("title") or "").strip()
-        if section_title:
-            lines.extend(["", f"*{section_title}*"])
-        for row in section.get("rows", []):
-            row_title = (row.get("title") or "").strip()
-            row_description = (row.get("description") or "").strip()
-            option = f"{option_number}. {row_title}"
-            if row_description:
-                option += f" — {row_description}"
-            lines.append(option)
-            option_number += 1
-
-    lines.extend(["", "Responde con el número de la opción que deseas."])
-    if footer:
-        lines.extend(["", footer])
-    return "\n".join(lines)
-
-
-def _buttons_text_fallback(title: str, description: str, footer: str, buttons: list[dict]) -> str:
-    """Render buttons as a deliverable text message for unreliable Baileys versions."""
-    lines = [f"*{title}*", description]
-    reply_only = all(button.get("type") == "reply" for button in buttons)
-    lines.append("")
-    for index, button in enumerate(buttons, start=1):
-        label = str(button.get("displayText") or "").strip()
-        button_type = button.get("type")
-        if button_type == "reply":
-            lines.append(f"{index}. {label}")
-        elif button_type == "url":
-            lines.append(f"• {label}: {button.get('url', '')}")
-        elif button_type == "call":
-            lines.append(f"• {label}: {button.get('phoneNumber', '')}")
-        else:
-            lines.append(f"• {label}: {button.get('copyCode', '')}")
-    if reply_only:
-        lines.extend(["", "Responde con el número de la opción que deseas."])
-    if footer:
-        lines.extend(["", footer])
-    return "\n".join(lines)
 
 
 def _validate_rendered_interactive_message(interactive_type: str, description: str, config: dict) -> None:
@@ -225,15 +160,6 @@ _LEAD_FIELD_TO_COLUMN = {
     "origen": "origen",
     "notas": "notas",
 }
-
-
-def _wa_message_id(evolution_response: dict) -> str | None:
-    """El id de WhatsApp (key.id) que Evolution API devuelve al mandar un
-    mensaje — se guarda para poder matchear después los eventos de estado
-    (entregado/leído). Se accede con .get anidados porque el shape exacto
-    de la respuesta no está documentado de forma confiable."""
-    key = evolution_response.get("key")
-    return key.get("id") if isinstance(key, dict) else None
 
 
 async def _require_existing_lead(chat_id: str) -> None:
@@ -517,7 +443,7 @@ async def send_message(chat_id: str, body: SendMessageRequest):
 
 @router.post("/{chat_id}/audio", response_model=Message)
 async def send_audio(chat_id: str, body: SendMediaRequest):
-    """Nota de voz grabada en vivo (PTT) — endpoint sendWhatsAppAudio."""
+    """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
     try:
         media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
@@ -527,29 +453,18 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
     except MediaStorageError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    try:
-        evolution_response = await send_whatsapp_audio(chat_id, body.data_base64)
-    except EvolutionApiError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
-
-    message = await insert_message(
-        chat_id,
-        sender="vendedor",
-        content="<audio></audio>",
-        media_url=media_url,
-        wa_message_id=_wa_message_id(evolution_response),
-        status="SERVER_ACK",
-    )
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+    message = (await enqueue_messages(chat_id, [{
+        "content": "<audio></audio>",
+        "media_url": media_url,
+        "payload": {"type": "audio", "media_url": media_url},
+    }]))[0]
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
 @router.post("/{chat_id}/media", response_model=Message)
 async def send_media(chat_id: str, body: SendMediaRequest):
-    """Adjuntar un archivo ya existente — imagen, video, audio (como archivo,
-    no nota de voz) o documento — vía sendMedia."""
+    """Guarda y encola un adjunto sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
     mediatype = _mediatype_from_content_type(body.content_type)
     if mediatype not in ("image", "video", "audio", "document"):
@@ -565,13 +480,6 @@ async def send_media(chat_id: str, body: SendMediaRequest):
     except MediaStorageError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    try:
-        evolution_response = await send_whatsapp_media(chat_id, body.data_base64, mediatype, filename=body.filename)
-    except EvolutionApiError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
-
     # El frontend solo reconoce las etiquetas image/video/audio; cualquier
     # otra cosa (documentos) se muestra como adjunto genérico. Para
     # documentos se guarda el nombre real adentro del tag —a diferencia de
@@ -579,15 +487,17 @@ async def send_media(chat_id: str, body: SendMediaRequest):
     # que ese lugar queda libre para el nombre del archivo.
     tag = mediatype if mediatype in ("image", "video", "audio") else "other"
     content = f"<{tag}>{body.filename}</{tag}>" if tag == "other" and body.filename else f"<{tag}></{tag}>"
-    message = await insert_message(
-        chat_id,
-        sender="vendedor",
-        content=content,
-        media_url=media_url,
-        wa_message_id=_wa_message_id(evolution_response),
-        status="SERVER_ACK",
-    )
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+    message = (await enqueue_messages(chat_id, [{
+        "content": content,
+        "media_url": media_url,
+        "payload": {
+            "type": "media",
+            "media_url": media_url,
+            "mediatype": mediatype,
+            "filename": body.filename,
+        },
+    }]))[0]
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
@@ -616,24 +526,17 @@ async def send_template(
                 "type": "body",
                 "parameters": [{"type": "text", "text": value} for value in parameters],
             })
-        try:
-            response = await send_whatsapp_template(
-                chat_id,
-                template["official_name"],
-                template["official_language"],
-                components,
-            )
-        except (EvolutionApiError, httpx.HTTPError) as exc:
-            raise HTTPException(502, detail=f"No se pudo enviar la plantilla oficial: {exc}")
-        message = await insert_message(
-            chat_id,
-            sender="vendedor",
-            content=text or template["content"],
-            wa_message_id=_wa_message_id(response),
-            status="SERVER_ACK",
-        )
+        message = (await enqueue_messages(chat_id, [{
+            "content": text or template["content"],
+            "payload": {
+                "type": "official_template",
+                "name": template["official_name"],
+                "language": template["official_language"],
+                "components": components,
+            },
+        }]))[0]
         await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
         return [message]
 
     await _require_existing_lead(chat_id)
@@ -644,79 +547,23 @@ async def send_template(
         config = _render_interactive_config(template["interactive_config"], chat)
         description = text or _render_crm_value(template["content"], chat)
         _validate_rendered_interactive_message(template["interactive_type"], description, config)
-        fallback_content: str | None = None
-        try:
-            capabilities = await get_template_capabilities()
-            integration = capabilities.get("integration")
-        except (EvolutionApiError, httpx.HTTPError) as exc:
-            # Native interactive messages can return success without reaching
-            # WhatsApp on Baileys. If the adapter cannot be verified, prefer a
-            # normal text message whose delivery path is known to work.
-            logger.warning("Could not detect Evolution adapter; using safe interactive fallback: %s", exc)
-            integration = None
-        use_safe_text = integration != "WHATSAPP-BUSINESS"
-        try:
-            if use_safe_text and template["interactive_type"] == "buttons":
-                fallback_content = _buttons_text_fallback(
-                    config["title"], description,
-                    config.get("footer") or DEFAULT_INTERACTIVE_FOOTER,
-                    config["buttons"],
-                )
-                response = await send_whatsapp_text(chat_id, fallback_content)
-            elif use_safe_text:
-                fallback_content = _list_text_fallback(
-                    config["title"], description,
-                    config.get("footerText") or DEFAULT_INTERACTIVE_FOOTER,
-                    config["sections"],
-                )
-                response = await send_whatsapp_text(chat_id, fallback_content)
-            elif template["interactive_type"] == "buttons":
-                response = await send_whatsapp_buttons(
-                    chat_id,
-                    config["title"],
-                    description,
-                    config.get("footer") or DEFAULT_INTERACTIVE_FOOTER,
-                    config["buttons"],
-                )
-                choices = " · ".join(button["displayText"] for button in config["buttons"])
-            else:
-                try:
-                    response = await send_whatsapp_list(
-                        chat_id, config["title"], description,
-                        config.get("footerText") or DEFAULT_INTERACTIVE_FOOTER,
-                        config["buttonText"], config["sections"],
-                    )
-                except EvolutionApiError as exc:
-                    if not _is_baileys_list_serialization_error(exc):
-                        raise
-                    # Evolution/Baileys failed while serializing the legacy list,
-                    # before WhatsApp received it. Send one text message instead;
-                    # never retry the broken list request and risk a duplicate.
-                    fallback_content = _list_text_fallback(
-                        config["title"], description,
-                        config.get("footerText") or DEFAULT_INTERACTIVE_FOOTER,
-                        config["sections"],
-                    )
-                    logger.warning(
-                        "Evolution/Baileys could not serialize list template %s; using numbered text fallback",
-                        template_id,
-                    )
-                    response = await send_whatsapp_text(chat_id, fallback_content)
-                choices = " · ".join(
-                    row["title"] for section in config["sections"] for row in section["rows"]
-                )
-        except (EvolutionApiError, httpx.HTTPError) as exc:
-            raise HTTPException(502, detail=f"No se pudo enviar el mensaje interactivo: {exc}")
-        if fallback_content is None:
-            content = f"{config['title']}\n{description}\nOpciones: {choices}"
-        else:
-            content = fallback_content
-        message = await insert_message(
-            chat_id, sender="vendedor", content=content,
-            wa_message_id=_wa_message_id(response), status="SERVER_ACK",
+        choices = (
+            " · ".join(button["displayText"] for button in config["buttons"])
+            if template["interactive_type"] == "buttons"
+            else " · ".join(row["title"] for section in config["sections"] for row in section["rows"])
         )
+        content = f"{config['title']}\n{description}\nOpciones: {choices}"
+        message = (await enqueue_messages(chat_id, [{
+            "content": content,
+            "payload": {
+                "type": "interactive",
+                "interactive_type": template["interactive_type"],
+                "description": description,
+                "config": config,
+            },
+        }]))[0]
         await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
         return [message]
 
     if not text and not template["attachments"]:
@@ -724,53 +571,51 @@ async def send_template(
     if len(text) > 4096:
         raise HTTPException(400, "El texto de la plantilla supera el máximo de 4096 caracteres")
 
-    sent: list[dict] = []
-    try:
-        if text:
-            response = await send_whatsapp_text(chat_id, text)
-            sent.append(await insert_message(
-                chat_id, sender="vendedor", content=text, wa_message_id=_wa_message_id(response), status="SERVER_ACK"
-            ))
-        for attachment in template["attachments"]:
-            try:
-                encoded = await asyncio.to_thread(read_media_base64, attachment["media_url"])
-            except (FileNotFoundError, MediaStorageError):
-                raise EvolutionApiError(f"No se encontró el adjunto {attachment['filename']}")
-            mediatype = _mediatype_from_content_type(attachment["content_type"])
-            response = await send_whatsapp_media(
-                chat_id, encoded, mediatype, filename=attachment["filename"]
-            )
-            tag = mediatype if mediatype in ("image", "video", "audio") else "other"
-            content = f"<{tag}>{attachment['filename'] if tag == 'other' else ''}</{tag}>"
-            sent.append(await insert_message(
-                chat_id, sender="vendedor", content=content, media_url=attachment["media_url"],
-                wa_message_id=_wa_message_id(response), status="SERVER_ACK",
-            ))
-    except (EvolutionApiError, httpx.HTTPError) as exc:
-        if sent:
-            await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
-        raise HTTPException(502, detail=f"Envío parcial: se enviaron {len(sent)} elementos. {exc}")
-
+    items: list[dict] = []
+    if text:
+        items.append({"content": text, "payload": {"type": "text", "text": text}})
+    for attachment in template["attachments"]:
+        mediatype = _mediatype_from_content_type(attachment["content_type"])
+        tag = mediatype if mediatype in ("image", "video", "audio") else "other"
+        content = f"<{tag}>{attachment['filename'] if tag == 'other' else ''}</{tag}>"
+        items.append({
+            "content": content,
+            "media_url": attachment["media_url"],
+            "payload": {
+                "type": "media",
+                "media_url": attachment["media_url"],
+                "mediatype": mediatype,
+                "filename": attachment["filename"],
+            },
+        })
+    sent = await enqueue_messages(chat_id, items)
     await record_template_use(template_id, user.id)
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return sent
 
 
 @router.post("/{chat_id}/location", response_model=Message)
 async def send_location(chat_id: str, body: SendLocationRequest):
     await _require_existing_lead(chat_id)
-    try:
-        evolution_response = await send_whatsapp_location(chat_id, body.latitude, body.longitude)
-    except EvolutionApiError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Error llamando a Evolution API: {e}")
-
     content = f"<location>{body.latitude},{body.longitude}</location>"
-    message = await insert_message(
-        chat_id, sender="vendedor", content=content, wa_message_id=_wa_message_id(evolution_response), status="SERVER_ACK"
-    )
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+    message = (await enqueue_messages(chat_id, [{
+        "content": content,
+        "payload": {
+            "type": "location",
+            "latitude": body.latitude,
+            "longitude": body.longitude,
+        },
+    }]))[0]
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
+@router.post("/{chat_id}/messages/{message_id}/retry", response_model=Message)
+async def retry_message(chat_id: str, message_id: int):
+    message = await retry_failed_message(chat_id, message_id)
+    if message is None:
+        raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 

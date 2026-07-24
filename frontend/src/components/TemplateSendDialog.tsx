@@ -7,6 +7,7 @@ import { extractErrorMessage } from '../utils/errors'
 import { parseRichText, resolveMediaUrl } from '../utils/message'
 import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate } from '../utils/templates'
 import { MediaLightbox } from './MediaLightbox'
+import { AudioPlayer, VideoPlayer } from './MediaPlayer'
 
 interface Props {
   chat: Chat
@@ -32,6 +33,13 @@ function attachmentIcon(attachment: TemplateAttachment) {
   if (attachment.content_type.startsWith('video/')) return Video
   if (attachment.content_type.startsWith('audio/')) return FileAudio
   return FileText
+}
+
+function attachmentMessageContent(attachment: TemplateAttachment) {
+  if (attachment.content_type.startsWith('image/')) return '<image></image>'
+  if (attachment.content_type.startsWith('video/')) return '<video></video>'
+  if (attachment.content_type.startsWith('audio/')) return '<audio></audio>'
+  return `<other>${attachment.filename}</other>`
 }
 
 function RichMessage({ text }: { text: string }) {
@@ -62,16 +70,10 @@ function AttachmentBubble({ attachment, onOpen }: { attachment: TemplateAttachme
         </button>
       )}
       {isVideo && (
-        <div className="relative overflow-hidden rounded-lg bg-black">
-          <video src={url} controls preload="metadata" className="max-h-64 w-full min-w-52" />
-          <button type="button" onClick={() => onOpen({ src: url, kind: 'video', alt: attachment.filename })} title="Ampliar video" className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"><Maximize2 className="h-3.5 w-3.5" /></button>
-        </div>
+        <VideoPlayer src={url} className="h-64 min-w-52 w-full" onExpand={() => onOpen({ src: url, kind: 'video', alt: attachment.filename })} />
       )}
       {isAudio && (
-        <div className="flex min-w-64 items-center gap-2 rounded-lg bg-white/60 px-3 py-3 dark:bg-black/20">
-          <FileAudio className="h-7 w-7 shrink-0 text-wa-primary-strong dark:text-wa-primary" />
-          <audio src={url} controls preload="metadata" className="h-9 min-w-0 flex-1" />
-        </div>
+        <AudioPlayer src={url} variant="bubble" className="min-w-64" />
       )}
       {!isImage && !isVideo && !isAudio && (
         <a href={url} target="_blank" rel="noreferrer" className="flex min-w-64 items-center gap-3 rounded-lg bg-white/60 px-3 py-3 hover:bg-white/80 dark:bg-black/20 dark:hover:bg-black/30">
@@ -165,7 +167,24 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
 
   function confirmSend() {
     if (!canSend) return
-    send.mutate({ templateId: template.id, text, parameters: isOfficial ? parameters : [] }, { onSuccess: onClose })
+    const interactiveContent = usesSafeInteractiveFallback
+      ? safeInteractivePreview
+      : `${interactiveConfig.title ?? ''}\n${text}`.trim()
+    const optimisticMessages = isOfficial || isInteractive
+      ? [{ content: isInteractive ? interactiveContent : text }]
+      : [
+          ...(text.trim() ? [{ content: text }] : []),
+          ...attachments.map(attachment => ({
+            content: attachmentMessageContent(attachment),
+            media_url: attachment.media_url,
+          })),
+        ]
+    send.mutate({
+      templateId: template.id,
+      text,
+      parameters: isOfficial ? parameters : [],
+      optimisticMessages,
+    }, { onSuccess: onClose })
   }
 
   return (
@@ -273,7 +292,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
 
               {!isOfficial && !isInteractive && <div className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>Cada elemento se enviará como un mensaje independiente y en el orden mostrado. Si un envío falla, la secuencia se detendrá para evitar archivos fuera de orden.</p>
+                <p>Cada elemento se encolará como un mensaje independiente y conservará el orden mostrado. Si uno falla, podrá reintentarse sin duplicarlo.</p>
               </div>}
 
               {send.error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{extractErrorMessage(send.error)}</div>}
@@ -319,7 +338,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
               <button type="button" onClick={closeDialog} disabled={send.isPending} className="rounded-lg px-3 py-2 text-sm font-medium text-wa-muted hover:bg-wa-field disabled:opacity-40 dark:text-wa-muted-dark dark:hover:bg-wa-head-dark">Cancelar</button>
               <button type="button" onClick={confirmSend} disabled={!canSend} className="flex min-w-40 items-center justify-center gap-2 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white hover:bg-wa-primary-strong disabled:cursor-not-allowed disabled:opacity-40">
                 {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {send.isPending ? `Enviando ${stepCount} elementos...` : isOfficial ? 'Enviar plantilla oficial' : usesSafeInteractiveFallback ? 'Enviar opciones' : isInteractive ? template.interactive_type === 'buttons' ? 'Enviar botones' : 'Enviar lista' : `Enviar ${stepCount} elemento${stepCount === 1 ? '' : 's'}`}
+                {send.isPending ? `Encolando ${stepCount} elementos...` : isOfficial ? 'Enviar plantilla oficial' : usesSafeInteractiveFallback ? 'Enviar opciones' : isInteractive ? template.interactive_type === 'buttons' ? 'Enviar botones' : 'Enviar lista' : `Enviar ${stepCount} elemento${stepCount === 1 ? '' : 's'}`}
               </button>
             </div>
           </footer>

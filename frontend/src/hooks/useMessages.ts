@@ -41,22 +41,58 @@ export function useMessages(chatId: string | null, untilId?: number | null) {
       return { cursorTs: oldest.sent_at, cursorId: oldest.id }
     },
     staleTime: 15_000,
+    // Respaldo del WebSocket: algunas instalaciones de n8n actualizan el
+    // estado directamente en PostgreSQL sin llamar al webhook de la app.
+    // Solo la conversación visible se consulta y el navegador pausa este
+    // intervalo cuando la pestaña queda en segundo plano.
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
     retry: false,
   })
 }
 
-async function sendMessage(chatId: string, text: string): Promise<Message> {
-  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { text })
-  return data
-}
-
 let nextOptimisticMessageId = -1
+let lastOptimisticTimestamp = 0
+const requestTails = new Map<string, Promise<void>>()
 
-interface SendMessageContext {
-  optimisticId: number
+export interface OptimisticMessageDraft {
+  content: string | null
+  media_url?: string | null
 }
 
-function updateMessageCache(
+interface OptimisticContext {
+  optimisticIds: number[]
+}
+
+/** Los requests se serializan por chat, pero todas las burbujas aparecen de
+ * inmediato. Así se conserva el orden de pulsación incluso si una carga de
+ * archivo tarda más que el texto que se escribió después. */
+function orderedRequest<T>(chatId: string, request: () => Promise<T>): Promise<T> {
+  const previous = requestTails.get(chatId) ?? Promise.resolve()
+  const current = previous.then(request)
+  const tail = current.then(() => undefined, () => undefined)
+  requestTails.set(chatId, tail)
+  void tail.finally(() => {
+    if (requestTails.get(chatId) === tail) requestTails.delete(chatId)
+  })
+  return current
+}
+
+function optimisticMessage(draft: OptimisticMessageDraft): Message {
+  const timestamp = Math.max(Date.now(), lastOptimisticTimestamp + 1)
+  lastOptimisticTimestamp = timestamp
+  return {
+    id: nextOptimisticMessageId--,
+    sender: 'vendedor',
+    content: draft.content,
+    sent_at: new Date(timestamp).toISOString(),
+    media_url: draft.media_url ?? null,
+    wa_message_id: null,
+    status: 'PENDING',
+  }
+}
+
+function mutateMessageCache(
   queryClient: ReturnType<typeof useQueryClient>,
   chatId: string,
   update: (message: Message) => Message | null,
@@ -73,58 +109,111 @@ function updateMessageCache(
   })
 }
 
+function appendOptimisticMessages(
+  queryClient: ReturnType<typeof useQueryClient>,
+  chatId: string,
+  drafts: OptimisticMessageDraft[],
+): OptimisticContext {
+  const messages = drafts.map(optimisticMessage)
+  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+    if (!current) return { pages: [{ items: messages, has_more: false }], pageParams: [null] }
+    const pages = [...current.pages]
+    const newestPage = pages[0] ?? { items: [], has_more: false }
+    pages[0] = { ...newestPage, items: [...newestPage.items, ...messages] }
+    return { ...current, pages }
+  })
+  return { optimisticIds: messages.map(message => message.id) }
+}
+
+function removeOptimisticMessages(
+  queryClient: ReturnType<typeof useQueryClient>, chatId: string, context?: OptimisticContext,
+) {
+  if (!context) return
+  const ids = new Set(context.optimisticIds)
+  mutateMessageCache(queryClient, chatId, message => ids.has(message.id) ? null : message)
+}
+
+function reconcileOptimisticMessages(
+  queryClient: ReturnType<typeof useQueryClient>,
+  chatId: string,
+  context: OptimisticContext | undefined,
+  serverMessages: Message[],
+) {
+  const optimisticIds = new Set(context?.optimisticIds ?? [])
+  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+    const base = current ?? { pages: [{ items: [], has_more: false }], pageParams: [null] }
+    const pages = base.pages.map(page => ({
+      ...page,
+      items: page.items.filter(message => !optimisticIds.has(message.id)),
+    }))
+    const knownIds = new Set(pages.flatMap(page => page.items.map(message => message.id)))
+    const missing = serverMessages.filter(message => !knownIds.has(message.id))
+    const newestPage = pages[0] ?? { items: [], has_more: false }
+    pages[0] = { ...newestPage, items: [...newestPage.items, ...missing] }
+    return { ...base, pages }
+  })
+}
+
+/** Cierra la carrera entre el broadcast del worker y la respuesta del POST.
+ * El último envío en vuelo siempre hace un refetch una vez reconciliado. */
+function refetchAfterLastSend(queryClient: ReturnType<typeof useQueryClient>, chatId: string) {
+  // onSettled corre antes de que TanStack cambie la mutación a success/error.
+  // Un timer (no un microtask) deja que esa transición finalice primero.
+  setTimeout(() => {
+    if (queryClient.isMutating({ mutationKey: ['send-message', chatId] }) === 0) {
+      void queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    }
+  }, 0)
+}
+
 export function useSendMessage(chatId: string) {
   const queryClient = useQueryClient()
-  const mutation = useMutation<Message, Error, string, SendMessageContext>({
+  const mutation = useMutation<Message, Error, string, OptimisticContext>({
     mutationKey: ['send-message', chatId],
-    mutationFn: (text: string) => sendMessage(chatId, text),
+    mutationFn: text => orderedRequest(chatId, async () => (
+      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { text })
+    ).data),
     onMutate: async (text) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
-      const optimisticId = nextOptimisticMessageId--
-      const optimisticMessage: Message = {
-        id: optimisticId,
-        sender: 'vendedor',
-        content: text,
-        sent_at: new Date().toISOString(),
-        media_url: null,
-        wa_message_id: null,
-        status: 'PENDING',
-      }
-      queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
-        if (!current) {
-          return { pages: [{ items: [optimisticMessage], has_more: false }], pageParams: [null] }
-        }
-        const pages = [...current.pages]
-        const newestPage = pages[0] ?? { items: [], has_more: false }
-        pages[0] = { ...newestPage, items: [...newestPage.items, optimisticMessage] }
-        return { ...current, pages }
-      })
-      return { optimisticId }
+      return appendOptimisticMessages(queryClient, chatId, [{ content: text }])
     },
     onSuccess: (message, _text, context) => {
-      if (context) {
-        updateMessageCache(queryClient, chatId, current => current.id === context.optimisticId ? message : current)
-      }
-      // La respuesta ya contiene el mensaje definitivo. No se invalida toda la
-      // conversación aquí porque otro envío concurrente podría seguir en estado
-      // optimista y un refetch lo quitaría temporalmente de la vista.
+      reconcileOptimisticMessages(queryClient, chatId, context, [message])
     },
     onError: (_error, _text, context) => {
-      if (context) {
-        updateMessageCache(queryClient, chatId, current => current.id === context.optimisticId
-          ? { ...current, status: 'FAILED' }
-          : current)
-      }
+      removeOptimisticMessages(queryClient, chatId, context)
     },
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
+  })
+
+  const retry = useMutation<Message, Error, Message>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: message => orderedRequest(chatId, async () => (
+      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/retry`)
+    ).data),
+    onMutate: async message => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id
+        ? { ...current, status: 'PENDING', wa_message_id: null }
+        : current)
+    },
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+    },
+    onError: (_error, message) => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id
+        ? { ...current, status: 'FAILED' }
+        : current)
+    },
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 
   function retryMessage(message: Message) {
-    if (message.status !== 'FAILED' || !message.content?.trim()) return
-    updateMessageCache(queryClient, chatId, current => current.id === message.id ? null : current)
-    mutation.mutate(message.content)
+    if (message.status !== 'FAILED' || message.id < 1) return
+    retry.mutate(message)
   }
 
-  return { ...mutation, retryMessage }
+  return { ...mutation, error: mutation.error ?? retry.error, retryMessage }
 }
 
 interface AudioPayload {
@@ -142,11 +231,19 @@ async function sendAudio(chatId: string, { contentType, dataBase64 }: AudioPaylo
 
 export function useSendAudio(chatId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: AudioPayload) => sendAudio(chatId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+  return useMutation<Message, Error, AudioPayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: payload => orderedRequest(chatId, () => sendAudio(chatId, payload)),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content: '<audio></audio>',
+        media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
+      }])
     },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
 
@@ -167,23 +264,49 @@ async function sendMedia(chatId: string, { contentType, dataBase64, filename }: 
 
 export function useSendMedia(chatId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: MediaPayload) => sendMedia(chatId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+  return useMutation<Message, Error, MediaPayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: payload => orderedRequest(chatId, () => sendMedia(chatId, payload)),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      const kind = payload.contentType.startsWith('image/') ? 'image'
+        : payload.contentType.startsWith('video/') ? 'video'
+          : payload.contentType.startsWith('audio/') ? 'audio' : 'other'
+      const content = kind === 'other' ? `<other>${payload.filename ?? 'Archivo'}</other>` : `<${kind}></${kind}>`
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content,
+        media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
+      }])
     },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
+}
+
+interface SendTemplatePayload {
+  templateId: number
+  text: string
+  parameters?: string[]
+  optimisticMessages: OptimisticMessageDraft[]
 }
 
 export function useSendTemplate(chatId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ templateId, text, parameters = [] }: { templateId: number; text: string; parameters?: string[] }) =>
-      (await client.post<Message[]>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+  return useMutation<Message[], Error, SendTemplatePayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: ({ templateId, text, parameters = [] }) => orderedRequest(chatId, async () =>
+      (await client.post<Message[]>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })).data),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      return appendOptimisticMessages(queryClient, chatId, payload.optimisticMessages)
+    },
+    onSuccess: (messages, _payload, context) => {
+      reconcileOptimisticMessages(queryClient, chatId, context, messages)
       queryClient.invalidateQueries({ queryKey: ['templates'] })
     },
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
 
@@ -199,10 +322,17 @@ async function sendLocation(chatId: string, payload: LocationPayload): Promise<M
 
 export function useSendLocation(chatId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: LocationPayload) => sendLocation(chatId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+  return useMutation<Message, Error, LocationPayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: payload => orderedRequest(chatId, () => sendLocation(chatId, payload)),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content: `<location>${payload.latitude},${payload.longitude}</location>`,
+      }])
     },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }

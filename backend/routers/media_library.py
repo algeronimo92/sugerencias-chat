@@ -4,10 +4,10 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 
 from db.models import User
-from models.schemas import MediaAssetCreate, MediaAssetItem
+from models.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from routers.media import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user, require_admin
-from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets
+from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets, rename_media_asset
 from services.media_storage import MediaStorageError, delete_media, media_size
 from services.ws_manager import manager
 
@@ -62,15 +62,33 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
 
 @router.delete("/{asset_id}")
 async def delete_library_asset(asset_id: int, _admin: User = Depends(require_admin)):
+    async def delete_stored_media(media_url: str) -> None:
+        await asyncio.to_thread(delete_media, media_url)
+
     try:
-        media_url = await delete_media_asset(asset_id)
+        media_url = await delete_media_asset(asset_id, before_delete=delete_stored_media)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    if media_url is None:
-        raise HTTPException(404, "Archivo no encontrado")
-    try:
-        await asyncio.to_thread(delete_media, media_url)
     except MediaStorageError as exc:
         raise HTTPException(503, str(exc))
+    if media_url is None:
+        raise HTTPException(404, "Archivo no encontrado")
     await manager.broadcast({"type": "media_library_updated"})
     return {"status": "ok"}
+
+
+@router.patch("/{asset_id}", response_model=MediaAssetItem)
+async def patch_library_asset(
+    asset_id: int,
+    body: MediaAssetUpdate,
+    _admin: User = Depends(require_admin),
+):
+    try:
+        item = await rename_media_asset(asset_id, body.filename)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if item is None:
+        raise HTTPException(404, "Archivo no encontrado")
+    await manager.broadcast({"type": "media_library_updated"})
+    await manager.broadcast({"type": "templates_updated"})
+    return item

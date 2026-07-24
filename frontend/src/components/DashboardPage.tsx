@@ -1,10 +1,11 @@
 import { AlertCircle, CheckCircle2, Clock3, Loader2, MessageCircleReply, RefreshCw, TrendingUp, Users } from 'lucide-react'
 import { useState } from 'react'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip } from 'recharts'
 import type { ChatFilters, DashboardMetricItem, DashboardPoint } from '../types'
 import { isLeadStage } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../utils/errors'
-import { Button } from './ui'
+import { Button, Select } from './ui'
 
 const STAGE_LABELS: Record<string, string> = {
   nuevo: 'Nuevo',
@@ -142,50 +143,28 @@ function BarList({ items, labels, onSelect }: BarListProps) {
 }
 
 function TrendChart({ points }: { points: DashboardPoint[] }) {
-  const width = 800
-  const height = 180
-  const padding = 12
-  const max = Math.max(...points.map((point) => point.value), 1)
-  const coordinates = points.map((point, index) => ({
-    ...point,
-    x: padding + (points.length <= 1 ? 0 : (index * (width - padding * 2)) / (points.length - 1)),
-    y: height - padding - (point.value / max) * (height - padding * 2),
-  }))
-  const line = coordinates.map((point) => `${point.x},${point.y}`).join(' ')
-  const area = coordinates.length ? `${padding},${height - padding} ${line} ${coordinates.at(-1)?.x},${height - padding}` : ''
-
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full" role="img" aria-label="Leads nuevos por día">
-        <defs>
-          <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#00a884" stopOpacity=".28" />
-            <stop offset="1" stopColor="#00a884" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0, 0.25, 0.5, 0.75, 1].map((value) => (
-          <line
-            key={value}
-            x1={padding}
-            x2={width - padding}
-            y1={padding + (height - padding * 2) * value}
-            y2={padding + (height - padding * 2) * value}
-            stroke="currentColor"
-            className="text-wa-text-dark dark:text-gray-800"
-          />
-        ))}
-        {area && <polygon points={area} fill="url(#dashboardArea)" />}
-        <polyline points={line} fill="none" stroke="#008069" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-        {coordinates
-          .filter((_, index) => points.length <= 14 || index % Math.ceil(points.length / 14) === 0)
-          .map((point) => (
-            <circle key={point.date} cx={point.x} cy={point.y} r="3" fill="#008069">
-              <title>
-                {new Date(`${point.date}T00:00:00`).toLocaleDateString('es-PE')}: {point.value}
-              </title>
-            </circle>
-          ))}
-      </svg>
+      <div className="h-48 w-full" role="img" aria-label="Leads nuevos por día">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 4, left: 8 }} accessibilityLayer>
+            <defs>
+              <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#00a884" stopOpacity={0.28} />
+                <stop offset="1" stopColor="#00a884" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.08} />
+            <ChartTooltip
+              cursor={{ stroke: '#8696a0', strokeDasharray: '3 3' }}
+              labelFormatter={date => new Date(`${String(date)}T00:00:00`).toLocaleDateString('es-PE')}
+              formatter={value => [Number(value).toLocaleString('es-PE'), 'Leads']}
+              contentStyle={{ borderRadius: 10, borderColor: '#e9edef', boxShadow: '0 8px 24px rgb(0 0 0 / 0.12)', fontSize: 12 }}
+            />
+            <Area type="monotone" dataKey="value" stroke="#008069" strokeWidth={3} fill="url(#dashboardArea)" activeDot={{ r: 4, fill: '#008069' }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
       <div className="flex justify-between text-[10px] text-wa-muted">
         <span>{points[0] ? new Date(`${points[0].date}T00:00:00`).toLocaleDateString('es-PE') : ''}</span>
         <span>{points.at(-1) ? new Date(`${points.at(-1)?.date}T00:00:00`).toLocaleDateString('es-PE') : ''}</span>
@@ -236,7 +215,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
             </Button>
-            <select
+            <Select
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}
               className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
@@ -244,7 +223,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
               <option value={7}>Últimos 7 días</option>
               <option value={30}>Últimos 30 días</option>
               <option value={90}>Últimos 90 días</option>
-            </select>
+            </Select>
           </div>
         </div>
 

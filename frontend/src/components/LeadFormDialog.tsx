@@ -5,7 +5,7 @@ import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
-import { Button, fieldClass, labelClass } from './ui'
+import { Button, DialogPrimitive as Dialog, Select, dialogContentPositionClass, dialogOverlayClass, fieldClass, labelClass } from './ui'
 
 interface Props {
   title: string
@@ -79,14 +79,6 @@ export function LeadFormDialog({
   )
   const duplicateBlocks = !!duplicate && candidateDigits === debouncedDigits
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !isSubmitting) onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel, isSubmitting])
-
   // El prefijo visual +51 solo aparece cuando efectivamente se va a anteponer
   // (mismo criterio que normalizePhone) — con un número ya internacional
   // duplicaría el código en pantalla.
@@ -138,19 +130,20 @@ export function LeadFormDialog({
   const noWhatsappError = !!error && error.includes('no tiene WhatsApp')
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-      onClick={() => {
-        if (!isSubmitting) onCancel()
-      }}
-    >
-      <form
+    <Dialog.Root open onOpenChange={open => { if (!open && !isSubmitting) onCancel() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Content
+          asChild
+          onEscapeKeyDown={event => { if (isSubmitting) event.preventDefault() }}
+          onPointerDownOutside={event => { if (isSubmitting) event.preventDefault() }}
+        >
+        <form
         onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
+        className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
-          <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">{title}</p>
+          <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">{title}</Dialog.Title>
           <button
             type="button"
             onClick={onCancel}
@@ -257,7 +250,7 @@ export function LeadFormDialog({
 
           <div>
             <label className={LABEL_CLASS}>Vendedor</label>
-            <select
+            <Select
               value={vendedorId ?? ''}
               onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : null)}
               disabled={!canEditSeller}
@@ -267,7 +260,7 @@ export function LeadFormDialog({
               {visibleSellers.map((seller) => (
                 <option key={seller.id} value={seller.id}>{seller.name}</option>
               ))}
-            </select>
+            </Select>
             {!canEditSeller && <p className="mt-1 text-[11px] text-wa-muted">Solo un administrador puede reasignar este lead.</p>}
           </div>
 
@@ -306,7 +299,9 @@ export function LeadFormDialog({
             {isSubmitting && requirePhoneAndName ? 'Verificando WhatsApp…' : submitLabel}
           </Button>
         </div>
-      </form>
-    </div>
+        </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

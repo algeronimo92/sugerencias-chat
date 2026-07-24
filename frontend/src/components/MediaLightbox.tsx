@@ -1,11 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Video, X } from 'lucide-react'
+import { VideoPlayer } from './MediaPlayer'
+
+export interface MediaLightboxItem {
+  src: string
+  kind: 'image' | 'video'
+  alt: string
+}
 
 interface Props {
   src: string
   kind: 'image' | 'video'
   alt?: string
   onClose: () => void
+  items?: MediaLightboxItem[]
 }
 
 const MIN_SCALE = 1
@@ -13,7 +21,7 @@ const MAX_SCALE = 4
 const WHEEL_ZOOM_STEP = 0.4
 const CLICK_ZOOM_SCALE = 2.5
 
-export function MediaLightbox({ src, kind, alt, onClose }: Props) {
+export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -21,6 +29,29 @@ export function MediaLightbox({ src, kind, alt, onClose }: Props) {
   const movedRef = useRef(false)
   const lastPosRef = useRef({ x: 0, y: 0 })
   const imgRef = useRef<HTMLImageElement>(null)
+  const mediaItems = items?.length ? items : [{ src, kind, alt: alt || (kind === 'image' ? 'Imagen' : 'Video') }]
+  const initialIndex = Math.max(0, mediaItems.findIndex(item => item.src === src && item.kind === kind))
+  const [activeIndex, setActiveIndex] = useState(initialIndex)
+  const activeMedia = mediaItems[activeIndex] ?? mediaItems[0]
+  const hasGallery = mediaItems.length > 1
+
+  useEffect(() => {
+    setActiveIndex(initialIndex)
+    setScale(1)
+    setOffset({ x: 0, y: 0 })
+  }, [initialIndex, src, kind])
+
+  function selectMedia(index: number) {
+    setActiveIndex(index)
+    setScale(1)
+    setOffset({ x: 0, y: 0 })
+  }
+
+  const moveMedia = useCallback((direction: -1 | 1) => {
+    setActiveIndex(index => (index + direction + mediaItems.length) % mediaItems.length)
+    setScale(1)
+    setOffset({ x: 0, y: 0 })
+  }, [mediaItems.length])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -28,13 +59,21 @@ export function MediaLightbox({ src, kind, alt, onClose }: Props) {
         e.stopPropagation()
         onClose()
       }
+      if (hasGallery && e.key === 'ArrowLeft') {
+        e.preventDefault()
+        moveMedia(-1)
+      }
+      if (hasGallery && e.key === 'ArrowRight') {
+        e.preventDefault()
+        moveMedia(1)
+      }
     }
     // Captura para adelantarse al listener global de Escape (que cierra el
     // lead abierto): si el lightbox está abierto, Escape debe cerrarlo a él
     // primero, no el panel de atrás.
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [onClose])
+  }, [onClose, hasGallery, moveMedia])
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
@@ -42,7 +81,7 @@ export function MediaLightbox({ src, kind, alt, onClose }: Props) {
     return () => {
       document.body.style.overflow = prevOverflow
     }
-  }, [])
+  }, [activeMedia.kind])
 
   function resetZoom() {
     setScale(1)
@@ -123,11 +162,11 @@ export function MediaLightbox({ src, kind, alt, onClose }: Props) {
         <X className="w-5 h-5" />
       </button>
 
-      {kind === 'image' ? (
+      {activeMedia.kind === 'image' ? (
         <img
           ref={imgRef}
-          src={src}
-          alt={alt || 'Imagen'}
+          src={activeMedia.src}
+          alt={activeMedia.alt}
           onClick={handleImageClick}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -142,13 +181,31 @@ export function MediaLightbox({ src, kind, alt, onClose }: Props) {
           }}
         />
       ) : (
-        <video
-          src={src}
-          controls
-          autoPlay
-          onClick={(e) => e.stopPropagation()}
-          className="max-w-[92vw] max-h-[92vh]"
-        />
+        <VideoPlayer src={activeMedia.src} autoPlay className="h-[78vh] w-[92vw] max-w-6xl" ariaLabel={activeMedia.alt || 'Video ampliado'} />
+      )}
+
+      {hasGallery && (
+        <>
+          <button type="button" onClick={event => { event.stopPropagation(); moveMedia(-1) }} aria-label="Multimedia anterior" title="Anterior" className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/70 sm:left-6"><ChevronLeft className="h-6 w-6" /></button>
+          <button type="button" onClick={event => { event.stopPropagation(); moveMedia(1) }} aria-label="Siguiente multimedia" title="Siguiente" className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/70 sm:right-6"><ChevronRight className="h-6 w-6" /></button>
+          <div className="absolute bottom-4 left-1/2 flex max-w-[82vw] -translate-x-1/2 items-center gap-1.5 overflow-x-auto rounded-xl bg-black/45 p-1.5 backdrop-blur-sm">
+            {mediaItems.map((item, index) => (
+              <button
+                key={`${item.src}-${index}`}
+                type="button"
+                onClick={event => { event.stopPropagation(); selectMedia(index) }}
+                aria-label={`Ver ${item.kind === 'image' ? 'imagen' : 'video'} ${index + 1}`}
+                aria-current={index === activeIndex ? 'true' : undefined}
+                className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-md transition-all ${index === activeIndex ? 'ring-2 ring-wa-primary ring-offset-1 ring-offset-black' : 'opacity-65 hover:opacity-100'}`}
+              >
+                {item.kind === 'image'
+                  ? <img src={item.src} alt="" className="h-full w-full object-cover" />
+                  : <><video src={item.src} muted preload="metadata" className="h-full w-full bg-black object-cover" /><span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white"><Video className="h-4 w-4 fill-current" /></span></>}
+              </button>
+            ))}
+          </div>
+          <span className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white">{activeIndex + 1} de {mediaItems.length}</span>
+        </>
       )}
     </div>
   )

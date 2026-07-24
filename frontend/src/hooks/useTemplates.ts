@@ -104,9 +104,18 @@ export function useAddLibraryTemplateAttachment() {
 export function useDeleteTemplateAttachment() {
   return useMutation({
     mutationFn: async (id: number) => { await client.delete(`/api/templates/attachments/${id}`) },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
-      queryClient.invalidateQueries({ queryKey: ['media-library'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['templates'] }),
+        queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+      ])
     },
+  })
+}
+
+export function useDeleteTemplate() {
+  return useMutation({
+    mutationFn: async (id: number) => { await client.delete(`/api/templates/${id}`) },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }

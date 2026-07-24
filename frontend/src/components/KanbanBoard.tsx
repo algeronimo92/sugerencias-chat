@@ -14,6 +14,7 @@ import { useTags } from '../hooks/useLeadMeta'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { avatarInitial, displayName } from '../utils/chat'
 import { parseContent } from '../utils/message'
+import { Select } from './ui'
 
 interface KanbanCardProps {
   chat: Chat
@@ -128,7 +129,7 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
         <label className="sr-only" htmlFor={`stage-${chat.chat_id}`}>
           Etapa de {displayName(chat)}
         </label>
-        <select
+        <Select
           id={`stage-${chat.chat_id}`}
           value={chat.stage}
           disabled={isMoving}
@@ -143,7 +144,7 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
               Mover a {LEAD_STAGE_META[stage].label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     </article>
   )
@@ -377,7 +378,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
           </span>
 
-          <select
+          <Select
             value=""
             disabled={isBulkBusy}
             onChange={(event) => {
@@ -392,12 +393,12 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
                 {LEAD_STAGE_META[stage].label}
               </option>
             ))}
-          </select>
+          </Select>
 
           {tags.length > 0 && (
             <div className="flex items-center gap-1">
               <TagIcon className="h-3.5 w-3.5 text-wa-primary-strong dark:text-wa-primary" />
-              <select
+              <Select
                 value=""
                 disabled={isBulkBusy}
                 onChange={(event) => {
@@ -412,7 +413,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
                     {tag.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 

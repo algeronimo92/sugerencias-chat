@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { MapPreview } from './MapPreview'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
 
 interface Props {
   latitude: number
@@ -11,22 +11,17 @@ interface Props {
 }
 
 export function LocationConfirmDialog({ latitude, longitude, isSending, onConfirm, onCancel }: Props) {
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
-
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div
-        className="w-full max-w-xs bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog.Root open onOpenChange={open => { if (!open && !isSending) onCancel() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Content
+          onEscapeKeyDown={event => { if (isSending) event.preventDefault() }}
+          onPointerDownOutside={event => { if (isSending) event.preventDefault() }}
+          className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-xs overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+        >
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
-          <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar tu ubicación actual</p>
+          <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar tu ubicación actual</Dialog.Title>
           <button
             onClick={onCancel}
             aria-label="Cerrar"
@@ -54,7 +49,8 @@ export function LocationConfirmDialog({ latitude, longitude, isSending, onConfir
             Enviar ubicación
           </button>
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

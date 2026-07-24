@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { BadgeCheck, Clock3, FileText, History, Search, Star, UserRound } from 'lucide-react'
+import { BadgeCheck, Clock3, FileText, History, Loader2, Search, Star, UserRound } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Chat, MessageTemplate } from '../types'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
+import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 
 interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) => void; onSaveHistory: (text: string) => void; onSendMultimedia: (template: MessageTemplate) => void }
@@ -29,9 +31,27 @@ export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, on
     setOpen(false); setSearch('')
   }
   function row(template: MessageTemplate) {
+    const isTogglingFavorite = favorite.isPending && favorite.variables?.id === template.id
     return <div key={template.id} className="group flex items-center rounded-lg hover:bg-wa-hover dark:hover:bg-wa-active-dark">
       <button type="button" onClick={()=>choose(template)} className="min-w-0 flex-1 px-3 py-2 text-left"><p className="flex items-center gap-1.5 text-sm font-medium text-wa-text dark:text-white">{template.visibility==='personal'&&<UserRound className="h-3 w-3 text-violet-500"/>}{template.template_type==='official'&&<BadgeCheck className="h-3.5 w-3.5 text-blue-500"/>}{template.name}{template.template_type==='official'&&<span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-600 dark:bg-blue-950/40">Oficial</span>}{template.interactive_type!=='none'&&<span className="rounded bg-green-50 px-1.5 py-0.5 text-[9px] text-wa-primary-strong dark:bg-green-950/40">{template.interactive_type==='buttons'?'Botones':'Lista'}</span>}{template.attachments.length>0&&<span className="rounded bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-600 dark:bg-violet-950/40">{template.attachments.length} archivo{template.attachments.length===1?'':'s'}</span>}</p><p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{template.shortcut?`/${template.shortcut} · `:''}{template.content}</p></button>
-      <button type="button" title={template.is_favorite?'Quitar de favoritos':'Agregar a favoritos'} onClick={()=>favorite.mutate({id:template.id,isFavorite:!template.is_favorite})} className="mr-2 rounded p-1.5 hover:bg-wa-field dark:hover:bg-gray-600"><Star className={`h-4 w-4 ${template.is_favorite?'fill-amber-400 text-amber-400':'text-gray-300 dark:text-wa-muted-dark'}`}/></button>
+      <button
+        type="button"
+        disabled={favorite.isPending}
+        aria-busy={isTogglingFavorite}
+        aria-label={isTogglingFavorite ? 'Actualizando favorito' : template.is_favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+        title={isTogglingFavorite ? 'Actualizando…' : template.is_favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+        onClick={() => favorite.mutate(
+          { id: template.id, isFavorite: !template.is_favorite },
+          { onError: error => toast.error(extractErrorMessage(error)) }
+        )}
+        className="mr-2 rounded p-1.5 hover:bg-wa-field disabled:cursor-wait disabled:opacity-50 dark:hover:bg-gray-600"
+      >
+        {isTogglingFavorite
+          ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" />
+          : (
+            <Star className={`h-4 w-4 ${template.is_favorite?'fill-amber-400 text-amber-400':'text-gray-300 dark:text-wa-muted-dark'}`}/>
+          )}
+      </button>
     </div>
   }
   function section(title: string, icon: typeof Star, items: MessageTemplate[]) {

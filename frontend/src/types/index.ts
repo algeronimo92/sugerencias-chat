@@ -445,6 +445,7 @@ export interface AutomationExecution {
   id: number
   rule_id: number
   rule_name: string
+  rule_deleted: boolean
   lead_id: string | null
   lead_name: string | null
   trigger_type: AutomationTrigger

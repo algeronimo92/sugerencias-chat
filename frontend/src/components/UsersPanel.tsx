@@ -4,6 +4,7 @@ import type { AppUser, UserRole } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useCreateUser, useResetPassword, useUpdateUser, useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
+import { Select } from './ui'
 
 const FIELD_CLASS =
   'w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark'
@@ -64,10 +65,10 @@ function NewUserForm() {
           required
           className={FIELD_CLASS}
         />
-        <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={FIELD_CLASS}>
+        <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={FIELD_CLASS}>
           <option value="vendedor">Vendedor</option>
           <option value="admin">Admin</option>
-        </select>
+        </Select>
       </div>
       <button
         type="submit"
@@ -163,7 +164,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <select
+          <Select
             value={user.role}
             disabled={isPending || isSelf}
             onChange={(e) => updateUser({ id: user.id, role: e.target.value as UserRole })}
@@ -172,7 +173,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
           >
             <option value="vendedor">Vendedor</option>
             <option value="admin">Admin</option>
-          </select>
+          </Select>
           <button
             type="button"
             disabled={isPending || isSelf}

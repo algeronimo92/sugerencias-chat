@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
 import type { AutomationAction, AutomationConditions, AutomationExecution, AutomationFlowDefinition, AutomationRule, AutomationTrigger } from '../types'
+import type { AutomationExecutionStatusValue } from '../domain/automationCatalog'
 import { useChatSocketConnected } from './useChats'
 
 export interface AutomationRuleInput {
@@ -24,20 +25,28 @@ export function useAutomationRules() {
   })
 }
 
-export function useAutomationExecutions(ruleId?: number, status?: string) {
+interface AutomationExecutionFilters {
+  ruleId?: number
+  status?: AutomationExecutionStatusValue
+  excludeSkipped?: boolean
+}
+
+export function useAutomationExecutions({ ruleId, status, excludeSkipped = false }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automation-executions', ruleId ?? 'all', status ?? 'all'],
+    queryKey: ['automation-executions', ruleId ?? 'all', status ?? 'all', excludeSkipped],
     queryFn: async () => (await client.get<AutomationExecution[]>('/api/automations/executions', {
-      params: { rule_id: ruleId, status, limit: 200 },
+      params: { rule_id: ruleId, status, exclude_skipped: excludeSkipped, limit: 200 },
     })).data,
     refetchInterval: connected ? false : 60_000,
   })
 }
 
 function invalidateAutomations() {
-  void queryClient.invalidateQueries({ queryKey: ['automations'] })
-  void queryClient.invalidateQueries({ queryKey: ['automation-executions'] })
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['automations'] }),
+    queryClient.invalidateQueries({ queryKey: ['automation-executions'] }),
+  ])
 }
 
 export function useCreateAutomation() {
@@ -58,6 +67,13 @@ export function useUpdateAutomation() {
 export function useDuplicateAutomation() {
   return useMutation({
     mutationFn: async (id: number) => (await client.post<AutomationRule>(`/api/automations/${id}/duplicate`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
+export function useDeleteAutomation() {
+  return useMutation({
+    mutationFn: async (id: number) => { await client.delete(`/api/automations/${id}`) },
     onSuccess: invalidateAutomations,
   })
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import type { Chat, ChatFilters, LeadInput, LeadUpdateInput } from '../types'
+import type { Chat, ChatFilters, LeadInput, LeadUpdateInput, Message, MessageStatus } from '../types'
 import type { NotificationOptions } from './useNotifications'
 import { parseContent } from '../utils/message'
 import { NotificationType } from '../domain/automationCatalog'
@@ -10,6 +10,37 @@ import { NotificationType } from '../domain/automationCatalog'
 interface ChatsPage {
   items: Chat[]
   has_more: boolean
+}
+
+interface CachedMessagePage {
+  items: Message[]
+  has_more: boolean
+}
+
+interface MessageStatusUpdate {
+  id: number
+  status: MessageStatus
+}
+
+function applyMessageStatuses(
+  queryClient: QueryClient,
+  chatId: string,
+  updates: MessageStatusUpdate[],
+) {
+  if (!updates.length) return
+  const byId = new Map(updates.map(update => [update.id, update.status]))
+  queryClient.setQueryData<InfiniteData<CachedMessagePage>>(['messages', chatId], current => {
+    if (!current) return current
+    return {
+      ...current,
+      pages: current.pages.map(page => ({
+        ...page,
+        items: page.items.map(message => byId.has(message.id)
+          ? { ...message, status: byId.get(message.id) ?? message.status }
+          : message),
+      })),
+    }
+  })
 }
 
 /** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend).
@@ -199,10 +230,19 @@ export function useChatUpdates(
             const latest = payload.latest_message as LatestMessage | undefined
             const changedChatId = typeof payload.chat_id === 'string' ? payload.chat_id : latest?.chat_id
             const reason = typeof payload.reason === 'string' ? payload.reason : 'unknown'
+            const messageStatuses: MessageStatusUpdate[] = Array.isArray(payload.message_statuses)
+              ? payload.message_statuses.flatMap((item: unknown) => {
+                  if (!item || typeof item !== 'object') return []
+                  const candidate = item as { id?: unknown; status?: unknown }
+                  if (typeof candidate.id !== 'number' || typeof candidate.status !== 'string') return []
+                  return [{ id: candidate.id, status: candidate.status as MessageStatus }]
+                })
+              : []
 
             queryClient.invalidateQueries({ queryKey: ['chats'] })
             queryClient.invalidateQueries({ queryKey: ['unread-count'] })
             if (changedChatId) {
+              applyMessageStatuses(queryClient, changedChatId, messageStatuses)
               queryClient.invalidateQueries({ queryKey: ['chat', changedChatId] })
               if (reason !== 'message_status' && reason !== 'read') {
                 queryClient.invalidateQueries({ queryKey: ['lead-activity', changedChatId] })

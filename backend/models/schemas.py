@@ -419,6 +419,10 @@ class MediaAssetCreate(BaseModel):
     filename: str
 
 
+class MediaAssetUpdate(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+
+
 class MediaAssetItem(BaseModel):
     id: int
     media_url: str
@@ -495,6 +499,7 @@ class AutomationExecutionItem(BaseModel):
     id: int
     rule_id: int
     rule_name: str
+    rule_deleted: bool = False
     lead_id: str | None = None
     lead_name: str | None = None
     trigger_type: AutomationTrigger
