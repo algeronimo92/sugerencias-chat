@@ -3,7 +3,7 @@ import { Loader2, Mic, X } from 'lucide-react'
 import { useSendAudio } from '../hooks/useMessages'
 import { useGenerateSpeech } from '../hooks/useTts'
 import { extractErrorMessage } from '../utils/errors'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 import { AudioPlayer } from './MediaPlayer'
 
 interface Props {

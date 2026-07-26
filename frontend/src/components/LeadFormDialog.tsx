@@ -5,8 +5,9 @@ import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
-import { Button, DialogPrimitive as Dialog, Select, dialogContentPositionClass, dialogOverlayClass, fieldClass, labelClass } from './ui'
-
+import { Button } from './ui/Button'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
+import { Select, fieldClass, labelClass } from './ui/Input'
 interface Props {
   title: string
   submitLabel: string

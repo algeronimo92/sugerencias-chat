@@ -5,8 +5,8 @@ import type { ChatFilters, DashboardMetricItem, DashboardPoint } from '../types'
 import { isLeadStage } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../utils/errors'
-import { Button, Select } from './ui'
-
+import { Button } from './ui/Button'
+import { Select } from './ui/Input'
 const STAGE_LABELS: Record<string, string> = {
   nuevo: 'Nuevo',
   en_diagnostico: 'En diagnóstico',

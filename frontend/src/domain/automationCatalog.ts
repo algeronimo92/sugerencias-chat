@@ -178,10 +178,6 @@ export function isFlowConditionType(value: string): value is FlowConditionTypeVa
   return Object.values(FlowConditionType).some(item => item === value)
 }
 
-export function isFlowNodeType(value: string): value is FlowNodeTypeValue {
-  return Object.values(FlowNodeType).some(item => item === value)
-}
-
 export function isTaskType(value: string): value is TaskTypeCatalogValue {
   return Object.values(TaskTypeValue).some(item => item === value)
 }

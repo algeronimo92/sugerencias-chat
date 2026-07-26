@@ -5,8 +5,7 @@ import type { InternalNote } from '../types'
 import { useDeleteInternalNote, useUpdateInternalNote } from '../hooks/useInternalNotes'
 import { extractErrorMessage } from '../utils/errors'
 import { formatMessageTime } from '../utils/message'
-import { ConfirmDialog } from './ui'
-
+import { ConfirmDialog } from './ui/ConfirmDialog'
 interface Props {
   chatId: string
   note: InternalNote

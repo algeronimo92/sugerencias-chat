@@ -8,7 +8,19 @@ import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
-import { Button, EmptyState, Select, Skeleton } from './ui'
+import { Button } from './ui/Button'
+import { EmptyState } from './ui/EmptyState'
+import { Select } from './ui/Input'
+import { Skeleton } from './ui/Skeleton'
+
+// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
+// cada render, lo que además rompía la memoización de los hijos.
+const segmentClass = (active: boolean) =>
+  `flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+    active
+      ? 'bg-white text-wa-text shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
+      : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
+  }`
 
 interface Props {
   chats: Chat[]
@@ -256,12 +268,6 @@ export function ChatList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [virtualItems, chats.length, hasNextPage, isFetchingNextPage, hasNextPageError, onLoadMore])
 
-  const segmentClass = (active: boolean) =>
-    `flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-      active
-        ? 'bg-white text-wa-text shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
-        : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
-    }`
 
   return (
     <div className="flex h-full flex-col border-r border-wa-border bg-white dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">

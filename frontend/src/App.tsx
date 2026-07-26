@@ -15,8 +15,21 @@ import { useNotifications } from './hooks/useNotifications'
 import { useSuggestionStatus, useGenerateSuggestions } from './hooks/useSuggestions'
 import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
-import { AppToaster, Button, Spinner, Tooltip } from './components/ui'
+import { Button } from './components/ui/Button'
+import { Spinner } from './components/ui/Spinner'
+import { AppToaster } from './components/ui/Toaster'
+import { Tooltip } from './components/ui/Tooltip'
 import { queryClient } from './queryClient'
+
+// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
+// cada render, lo que además rompía la memoización de los hijos.
+const navTabClass = (active: boolean) =>
+  `flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+    active
+      ? 'bg-white/25 text-white shadow-sm dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
+      : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
+  }`
+
 
 const KanbanBoard = lazy(() =>
   import('./components/KanbanBoard').then(module => ({ default: module.KanbanBoard })),
@@ -218,12 +231,6 @@ function MainLayout() {
 
   // La barra global usa la superficie más profunda; los encabezados de cada
   // columna usan wa-head-dark para que ambos niveles se distingan sin chocar.
-  const navTabClass = (active: boolean) =>
-    `flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-      active
-        ? 'bg-white/25 text-white shadow-sm dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
-        : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
-    }`
 
   const headerIconButtonClass =
     'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark transition-colors'

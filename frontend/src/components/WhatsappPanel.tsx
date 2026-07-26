@@ -3,8 +3,8 @@ import { toast } from 'sonner'
 import { CheckCircle2, Loader2, LogOut, QrCode, RefreshCw, Smartphone } from 'lucide-react'
 import { useConnectWhatsapp, useLogoutWhatsapp, useWhatsappStatus, type WhatsappQr } from '../hooks/useWhatsapp'
 import { extractErrorMessage } from '../utils/errors'
-import { Button, ConfirmDialog } from './ui'
-
+import { Button } from './ui/Button'
+import { ConfirmDialog } from './ui/ConfirmDialog'
 interface Props {
   onGoToClaves: () => void
 }

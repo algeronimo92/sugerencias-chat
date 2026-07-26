@@ -1,7 +1,6 @@
 import { Loader2, X } from 'lucide-react'
 import { MapPreview } from './MapPreview'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
-
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 interface Props {
   latitude: number
   longitude: number

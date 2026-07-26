@@ -5,8 +5,7 @@ import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import { extractErrorMessage } from '../utils/errors'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
-
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 interface Props {
   onClose: () => void
   initialTab?: Tab

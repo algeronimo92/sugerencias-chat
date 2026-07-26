@@ -7,7 +7,16 @@ import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, 
 import { extractErrorMessage } from '../utils/errors'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
-import { ConfirmDialog, Select } from './ui'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { Select } from './ui/Input'
+
+// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
+// cada render, lo que además rompía la memoización de los hijos.
+function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+  event.dataTransfer.dropEffect = 'copy'
+}
 
 interface TemplateFormState {
   name: string
@@ -331,11 +340,6 @@ export function TemplatesPage() {
     if (event.dataTransfer.types.includes('Files')) setIsDraggingFiles(true)
   }
 
-  function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = 'copy'
-  }
 
   function handleDragLeave(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault()

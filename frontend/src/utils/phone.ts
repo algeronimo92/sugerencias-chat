@@ -66,7 +66,3 @@ export function formatPhonePreview(digits: string, cc: string): string {
   const groups = rest.match(/.{1,3}/g) ?? []
   return `+${[prefix, ...groups].filter(Boolean).join(' ')}`
 }
-
-export function digitsToJid(digits: string): string {
-  return `${digits}@s.whatsapp.net`
-}

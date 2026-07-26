@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
-import { Button } from './ui'
+import { Button } from './ui/Button'
 import { pillFieldClass } from './ui/Input'
 
 /** Tope alineado con el backend (SuggestionRequest.instruction). */

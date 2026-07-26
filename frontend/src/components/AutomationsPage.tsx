@@ -19,7 +19,9 @@ import { useTags } from '../hooks/useLeadMeta'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
-import { Checkbox, ConfirmDialog, Select } from './ui'
+import { Checkbox } from './ui/Checkbox'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { Select } from './ui/Input'
 import {
   AUTOMATION_ACTION_LABELS as ACTION_LABELS,
   AUTOMATION_TRIGGERS as TRIGGERS,

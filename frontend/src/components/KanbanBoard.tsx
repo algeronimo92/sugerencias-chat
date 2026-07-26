@@ -14,7 +14,14 @@ import { useTags } from '../hooks/useLeadMeta'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { avatarInitial, displayName } from '../utils/chat'
 import { parseContent } from '../utils/message'
-import { Select } from './ui'
+import { Select } from './ui/Input'
+
+// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
+// cada render, lo que además rompía la memoización de los hijos.
+function describeBulkFailure(action: string, failed: string[]) {
+  if (failed.length === 0) return null
+  return `${failed.length} lead${failed.length === 1 ? '' : 's'} no se pud${failed.length === 1 ? 'o' : 'ieron'} ${action}.`
+}
 
 interface KanbanCardProps {
   chat: Chat
@@ -319,10 +326,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     })
   }
 
-  function describeBulkFailure(action: string, failed: string[]) {
-    if (failed.length === 0) return null
-    return `${failed.length} lead${failed.length === 1 ? '' : 's'} no se pud${failed.length === 1 ? 'o' : 'ieron'} ${action}.`
-  }
 
   function handleBulkMove(stage: LeadStage) {
     setBulkError(null)

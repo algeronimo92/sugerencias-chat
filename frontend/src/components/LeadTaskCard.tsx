@@ -13,7 +13,14 @@ import {
   isTaskPriority,
   isTaskType,
 } from '../domain/automationCatalog'
-import { Select } from './ui'
+import { Select } from './ui/Input'
+
+// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
+// cada render, lo que además rompía la memoización de los hijos.
+const localInputValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 export function LeadTaskCard({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
@@ -27,10 +34,6 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
   const [priority, setPriority] = useState<TaskPriority>(TaskPriorityValue.Normal)
   const tomorrow = new Date(Date.now() + 86400000)
   tomorrow.setMinutes(0, 0, 0)
-  const localInputValue = (date: Date) => {
-    const pad = (value: number) => String(value).padStart(2, '0')
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  }
   const [dueAt, setDueAt] = useState(localInputValue(tomorrow))
   const [error, setError] = useState<string | null>(null)
 

@@ -9,8 +9,9 @@ import { LeadTagsPanel } from './LeadTagsPanel'
 import { LeadTaskCard } from './LeadTaskCard'
 import { ScheduledMessageCard } from './ScheduledMessageCard'
 import { formatDayLabel, formatMessageTime } from '../utils/message'
-import { Badge, Button, Card } from './ui'
-
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
 interface Props {
   chat: Chat
   /** Sugerencia guardada del lead (o null si todavía no se generó ninguna). */

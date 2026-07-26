@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { useCreatePersonalTemplate } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
-
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 export function SaveAsTemplateDialog({ content, onClose }: { content: string; onClose: () => void }) {
   const [name, setName] = useState(content.slice(0, 42))
   const [shortcut, setShortcut] = useState('')

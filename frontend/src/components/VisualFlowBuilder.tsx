@@ -43,8 +43,8 @@ import {
   isTaskPriority,
   isTaskType,
 } from '../domain/automationCatalog'
-import { Checkbox, Select } from './ui'
-
+import { Checkbox } from './ui/Checkbox'
+import { Select } from './ui/Input'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
 
 function defaultAction(type: AutomationActionType): AutomationAction {

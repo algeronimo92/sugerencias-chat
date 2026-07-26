@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
 import type { UserNotification } from '../types'
-import { Button } from './ui'
-
+import { Button } from './ui/Button'
 interface Props {
   browserPermission: NotificationPermissionState
   onRequestBrowserPermission: () => void

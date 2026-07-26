@@ -3,8 +3,7 @@ import { Check, FileText, Image, Loader2, Search, X } from 'lucide-react'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { resolveMediaUrl } from '../utils/message'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui'
-
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 interface Props {
   selectedIds: Set<number>
   disabledIds: Set<number>

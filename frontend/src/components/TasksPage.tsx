@@ -8,8 +8,7 @@ import { useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { TASK_PRIORITY_LABELS, TaskPriorityValue, TaskStatusValue } from '../domain/automationCatalog'
 import type { TaskPriority } from '../types'
-import { Select } from './ui'
-
+import { Select } from './ui/Input'
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
   [TaskPriorityValue.Low]: 'bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300',
   [TaskPriorityValue.Normal]: 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400',

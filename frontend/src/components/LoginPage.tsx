@@ -4,8 +4,8 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useLogin } from '../hooks/useAuth'
 import { extractErrorMessage } from '../utils/errors'
-import { Button, Input, labelClass } from './ui'
-
+import { Button } from './ui/Button'
+import { Input, labelClass } from './ui/Input'
 const loginSchema = z.object({
   email: z.string().trim().min(1, 'Ingresa tu email.').email('Ingresa un email válido.'),
   password: z.string().min(1, 'Ingresa tu contraseña.'),

@@ -4,8 +4,7 @@ import type { AppUser, UserRole } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useCreateUser, useResetPassword, useUpdateUser, useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
-import { Select } from './ui'
-
+import { Select } from './ui/Input'
 const FIELD_CLASS =
   'w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark'
 
