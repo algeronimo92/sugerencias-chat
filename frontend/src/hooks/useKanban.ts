@@ -47,10 +47,15 @@ export function useLoadKanbanStage() {
 interface MoveLeadStageInput {
   chatId: string
   stage: LeadStage
+  /** Solo se persiste al pasar a `perdido`; el backend la ignora si no. */
+  razonPerdido?: string | null
 }
 
-async function moveLeadStage({ chatId, stage }: MoveLeadStageInput): Promise<Chat> {
-  const { data } = await client.patch<Chat>(`/api/chats/${encodeURIComponent(chatId)}/stage`, { stage })
+async function moveLeadStage({ chatId, stage, razonPerdido }: MoveLeadStageInput): Promise<Chat> {
+  const { data } = await client.patch<Chat>(`/api/chats/${encodeURIComponent(chatId)}/stage`, {
+    stage,
+    razon_perdido: razonPerdido ?? null,
+  })
   return data
 }
 
@@ -87,13 +92,19 @@ async function runBulk(chatIds: string[], run: (chatId: string) => Promise<unkno
 interface BulkMoveStageInput {
   chatIds: string[]
   stage: LeadStage
+  razonPerdido?: string | null
 }
 
 export function useBulkMoveStage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ chatIds, stage }: BulkMoveStageInput) =>
-      runBulk(chatIds, (chatId) => client.patch(`/api/chats/${encodeURIComponent(chatId)}/stage`, { stage })),
+    mutationFn: ({ chatIds, stage, razonPerdido }: BulkMoveStageInput) =>
+      runBulk(chatIds, (chatId) =>
+        client.patch(`/api/chats/${encodeURIComponent(chatId)}/stage`, {
+          stage,
+          razon_perdido: razonPerdido ?? null,
+        })
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban'] })
       queryClient.invalidateQueries({ queryKey: ['chats'] })

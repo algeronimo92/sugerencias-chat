@@ -106,6 +106,14 @@ export interface Chat {
   notas: string | null
   stage: LeadStage
   con_especialista: boolean
+  razon_perdido: string | null
+  /** ISO date (YYYY-MM-DD), entra tal cual en un input type="date". */
+  fecha_recontacto: string | null
+  proxima_cita: string | null
+  /** Contadores que lleva el sistema: solo lectura en el CRM. */
+  contador_noshow: number | null
+  toques_seguimiento: number | null
+  fecha_ultimo_toque: string | null
   last_message: string | null
   last_message_sender: string | null
   timestamp: string | null
@@ -137,6 +145,10 @@ export interface LeadUpdateInput {
   vendedor_id?: number | null
   origen?: string | null
   notas?: string | null
+  con_especialista?: boolean
+  razon_perdido?: string | null
+  fecha_recontacto?: string | null
+  proxima_cita?: string | null
 }
 
 export type MessageStatus = 'PENDING' | 'FAILED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null

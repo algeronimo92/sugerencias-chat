@@ -5,9 +5,13 @@ import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
+import { toLocalInput } from '../utils/datetime'
 import { Button } from './ui/Button'
+import { Checkbox } from './ui/Checkbox'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 import { Select, fieldClass, labelClass } from './ui/Input'
+
+
 interface Props {
   title: string
   submitLabel: string
@@ -51,11 +55,22 @@ export function LeadFormDialog({
   const [vendedorId, setVendedorId] = useState<number | null>(initial?.vendedor_id ?? null)
   const [origen, setOrigen] = useState(initial?.origen ?? '')
   const [notas, setNotas] = useState(initial?.notas ?? '')
+  const [conEspecialista, setConEspecialista] = useState(initial?.con_especialista ?? false)
+  const [razonPerdido, setRazonPerdido] = useState(initial?.razon_perdido ?? '')
+  // El backend manda fecha_recontacto como ISO date (YYYY-MM-DD), que es
+  // exactamente lo que espera un <input type="date">.
+  const [fechaRecontacto, setFechaRecontacto] = useState(initial?.fecha_recontacto ?? '')
+  const [proximaCita, setProximaCita] = useState(
+    initial?.proxima_cita ? toLocalInput(new Date(initial.proxima_cita)) : '',
+  )
   const [debouncedDigits, setDebouncedDigits] = useState<string | null>(null)
   const { data: me } = useMe()
   const { data: sellers = [] } = useSellers()
   const { data: phoneConfig } = usePhoneConfig()
   const countryCode = phoneConfig?.default_country_code ?? FALLBACK_COUNTRY_CODE
+  // requirePhoneAndName solo lo manda el alta de leads: en ese modo el
+  // seguimiento (cita, recontacto, pérdida) todavía no tiene nada que decir.
+  const isCreating = !!requirePhoneAndName
   const canEditSeller = me?.role === 'admin' || !!requirePhoneAndName || initial?.vendedor_id == null
   const visibleSellers = me?.role === 'admin' || !canEditSeller
     ? sellers
@@ -125,6 +140,16 @@ export function LeadFormDialog({
       ...(canEditSeller && (requirePhoneAndName || sellerChanged) ? { vendedor_id: vendedorId } : {}),
       origen: emptyToNull(origen),
       notas: emptyToNull(notas),
+      // Solo al editar: el alta va contra POST /api/chats, que no los acepta.
+      ...(isCreating
+        ? {}
+        : {
+            con_especialista: conEspecialista,
+            razon_perdido: emptyToNull(razonPerdido),
+            fecha_recontacto: emptyToNull(fechaRecontacto),
+            // La hora local tipeada se manda en UTC (la columna es timestamptz).
+            proxima_cita: proximaCita.trim() ? new Date(proximaCita).toISOString() : null,
+          }),
     })
   }
 
@@ -279,6 +304,48 @@ export function LeadFormDialog({
               className={`${FIELD_CLASS} resize-none`}
             />
           </div>
+
+          {!isCreating && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LABEL_CLASS}>Próxima cita</label>
+                  <input
+                    type="datetime-local"
+                    value={proximaCita}
+                    onChange={(e) => setProximaCita(e.target.value)}
+                    className={FIELD_CLASS}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLASS}>Fecha de recontacto</label>
+                  <input
+                    type="date"
+                    value={fechaRecontacto}
+                    onChange={(e) => setFechaRecontacto(e.target.value)}
+                    className={FIELD_CLASS}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={LABEL_CLASS}>Razón de pérdida</label>
+                <input
+                  type="text"
+                  value={razonPerdido}
+                  onChange={(e) => setRazonPerdido(e.target.value)}
+                  maxLength={500}
+                  placeholder="Por qué se perdió el lead"
+                  className={FIELD_CLASS}
+                />
+              </div>
+
+              <label className="flex cursor-pointer items-center gap-2 pt-1">
+                <Checkbox checked={conEspecialista} onCheckedChange={setConEspecialista} />
+                <span className="text-sm text-wa-text dark:text-wa-text-dark">Derivado a un especialista</span>
+              </label>
+            </>
+          )}
         </div>
 
         <div className="flex border-t border-wa-border dark:border-wa-border-dark">

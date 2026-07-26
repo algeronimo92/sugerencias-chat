@@ -159,6 +159,10 @@ _LEAD_FIELD_TO_COLUMN = {
     "vendedor_id": "vendedor_id",
     "origen": "origen",
     "notas": "notas",
+    "con_especialista": "con_especialista",
+    "razon_perdido": "razon_perdido",
+    "fecha_recontacto": "fecha_recontacto",
+    "proxima_cita": "proxima_cita",
 }
 
 
@@ -245,7 +249,9 @@ async def get_kanban_stage(
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
     previous = await fetch_chat(chat_id)
-    lead = await update_lead_stage(chat_id, DbLeadStage(body.stage), "user", user.id)
+    lead = await update_lead_stage(
+        chat_id, DbLeadStage(body.stage), "user", user.id, razon_perdido=body.razon_perdido
+    )
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
@@ -324,6 +330,11 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     values = {
         _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
     }
+
+    # con_especialista es NOT NULL: un null explícito se ignora en vez de
+    # reventar contra la base.
+    if "con_especialista" in values and values["con_especialista"] is None:
+        del values["con_especialista"]
 
     # El teléfono es la identidad del chat (remote_jid): no se puede vaciar y
     # cambiarlo exige re-key. Un phone: null explícito se ignora.

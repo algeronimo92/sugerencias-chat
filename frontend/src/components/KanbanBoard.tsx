@@ -14,6 +14,7 @@ import { useTags } from '../hooks/useLeadMeta'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { avatarInitial, displayName } from '../utils/chat'
 import { parseContent } from '../utils/message'
+import { LostReasonDialog } from './LostReasonDialog'
 import { Select } from './ui/Input'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
@@ -288,6 +289,10 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkError, setBulkError] = useState<string | null>(null)
+  // Movimiento a `perdido` esperando que el asesor escriba (o saltee) la razón.
+  const [pendingLost, setPendingLost] = useState<
+    { kind: 'single'; chat: Chat } | { kind: 'bulk'; count: number } | null
+  >(null)
   const { data: snapshot, isLoading: snapshotLoading, isError: snapshotError } = useKanbanSnapshot(debouncedSearch)
   const { data: tags = [] } = useTags()
   const { mutate: moveLead } = useMoveLeadStage()
@@ -299,12 +304,19 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     return () => clearTimeout(timeout)
   }, [search])
 
-  function handleMove(chat: Chat, stage: LeadStage) {
+  function handleMove(chat: Chat, stage: LeadStage, razonPerdido?: string | null) {
     if (chat.stage === stage || movingIds.has(chat.chat_id)) return
+    // Antes de dar un lead por perdido se pide la razón (una sola vez: la
+    // segunda pasada llega desde el diálogo con razonPerdido ya definido).
+    if (stage === 'perdido' && razonPerdido === undefined) {
+      setDraggedChat(null)
+      setPendingLost({ kind: 'single', chat })
+      return
+    }
     setMovingIds((current) => new Set(current).add(chat.chat_id))
     setDraggedChat(null)
     moveLead(
-      { chatId: chat.chat_id, stage },
+      { chatId: chat.chat_id, stage, razonPerdido },
       {
         onSettled: () => {
           setMovingIds((current) => {
@@ -327,10 +339,14 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   }
 
 
-  function handleBulkMove(stage: LeadStage) {
+  function handleBulkMove(stage: LeadStage, razonPerdido?: string | null) {
+    if (stage === 'perdido' && razonPerdido === undefined) {
+      setPendingLost({ kind: 'bulk', count: selectedIds.size })
+      return
+    }
     setBulkError(null)
     bulkMoveStage(
-      { chatIds: Array.from(selectedIds), stage },
+      { chatIds: Array.from(selectedIds), stage, razonPerdido },
       {
         onSuccess: (result) => {
           setBulkError(describeBulkFailure('mover', result.failed))
@@ -457,6 +473,19 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
           />
         ))}
       </div>
+
+      {pendingLost && (
+        <LostReasonDialog
+          count={pendingLost.kind === 'bulk' ? pendingLost.count : 1}
+          onCancel={() => setPendingLost(null)}
+          onConfirm={(razon) => {
+            const pending = pendingLost
+            setPendingLost(null)
+            if (pending.kind === 'single') handleMove(pending.chat, 'perdido', razon)
+            else handleBulkMove('perdido', razon)
+          }}
+        />
+      )}
     </main>
   )
 }

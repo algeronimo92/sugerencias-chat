@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -42,6 +42,15 @@ class Chat(BaseModel):
     notas: str | None = None
     stage: LeadStage = "nuevo"
     con_especialista: bool = False
+    razon_perdido: str | None = None
+    # Fechas ya serializadas a ISO por _row_to_chat: fecha_recontacto es un
+    # DATE (YYYY-MM-DD), las otras dos timestamps con zona.
+    fecha_recontacto: str | None = None
+    proxima_cita: str | None = None
+    # Contadores que lleva el sistema, no editables desde el CRM.
+    contador_noshow: int | None = None
+    toques_seguimiento: int | None = None
+    fecha_ultimo_toque: str | None = None
     last_message: str | None = None
     last_message_sender: str | None = None
     timestamp: str | None = None
@@ -146,6 +155,8 @@ class KanbanSnapshot(BaseModel):
 
 class LeadStageUpdate(BaseModel):
     stage: LeadStage
+    # Solo se persiste al pasar a `perdido`; se ignora en cualquier otra etapa.
+    razon_perdido: str | None = Field(default=None, max_length=500)
 
 
 class Message(BaseModel):
@@ -238,6 +249,10 @@ class LeadUpdate(BaseModel):
     vendedor_id: int | None = None
     origen: str | None = None
     notas: str | None = None
+    con_especialista: bool | None = None
+    razon_perdido: str | None = Field(default=None, max_length=500)
+    fecha_recontacto: date | None = None
+    proxima_cita: datetime | None = None
 
 
 class SellerItem(BaseModel):

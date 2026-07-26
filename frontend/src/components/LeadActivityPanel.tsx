@@ -24,6 +24,10 @@ const FIELD_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
   origen: 'Origen',
   notas: 'Notas',
+  con_especialista: 'Con especialista',
+  razon_perdido: 'Razón de pérdida',
+  fecha_recontacto: 'Fecha de recontacto',
+  proxima_cita: 'Próxima cita',
   content: 'Nota',
   tag: 'Etiqueta',
 }
@@ -56,6 +60,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function valueLabel(value: unknown): string {
   if (value == null || value === '') return 'Sin definir'
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No'
   if (Array.isArray(value)) {
     return value.length > 0 ? value.map(valueLabel).join(', ') : 'Ninguno'
   }

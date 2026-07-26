@@ -1,6 +1,6 @@
 import asyncio
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
@@ -62,6 +62,16 @@ def _fmt_ts(value: datetime | None) -> str | None:
     return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') if value else None
 
 
+def _activity_safe(values: dict) -> dict:
+    """old_value/new_value son columnas JSONB: un date o un datetime crudo
+    rompe el json.dumps del driver. El UPDATE sigue recibiendo los objetos
+    originales — esto es solo para la auditoría."""
+    return {
+        key: value.isoformat() if isinstance(value, (date, datetime)) else value
+        for key, value in values.items()
+    }
+
+
 def _phone_to_jid(phone: str) -> str:
     digits = re.sub(r"\D", "", phone)
     return f"{digits}@s.whatsapp.net"
@@ -80,6 +90,12 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "notas": row["notas"],
         "stage": stage.value if isinstance(stage, LeadStage) else stage,
         "con_especialista": row["con_especialista"],
+        "razon_perdido": row["razon_perdido"],
+        "fecha_recontacto": row["fecha_recontacto"].isoformat() if row["fecha_recontacto"] else None,
+        "proxima_cita": _fmt_ts(row["proxima_cita"]),
+        "contador_noshow": row["contador_noshow"],
+        "toques_seguimiento": row["toques_seguimiento"],
+        "fecha_ultimo_toque": _fmt_ts(row["fecha_ultimo_toque"]),
         "last_message": row["last_message"],
         "last_message_sender": row["last_message_sender"],
         "timestamp": _fmt_ts(row["timestamp"]),
@@ -316,6 +332,12 @@ def _chat_columns(last_message):
         Lead.notas,
         Lead.estado.label("stage"),
         Lead.con_especialista,
+        Lead.razon_perdido,
+        Lead.fecha_recontacto,
+        Lead.proxima_cita,
+        Lead.contador_noshow,
+        Lead.toques_seguimiento,
+        Lead.fecha_ultimo_toque,
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
         last_message.c.sent_at.label("timestamp"),
@@ -654,6 +676,7 @@ async def update_lead_stage(
     actor_user_id: int | None = None,
     metadata: dict | None = None,
     include_chat: bool = True,
+    razon_perdido: str | None = None,
 ) -> dict | None:
     async with get_sessionmaker()() as session:
         old_stage = (
@@ -663,10 +686,22 @@ async def update_lead_stage(
             return None
         changed = old_stage != stage
         if changed:
+            # La razón de pérdida describe la situación actual del lead, no su
+            # historia: entra al pasar a `perdido` y se limpia al salir. Lo
+            # dicho queda igual en lead_activity (metadata.reason), que es lo
+            # que muestra el hilo del chat.
+            extra: dict = {}
+            razon = (razon_perdido or "").strip()
+            if stage == LeadStage.perdido:
+                if razon:
+                    extra["razon_perdido"] = razon
+                    metadata = {**(metadata or {}), "reason": razon}
+            elif old_stage == LeadStage.perdido:
+                extra["razon_perdido"] = None
             await session.execute(
                 update(Lead)
                 .where(Lead.remote_jid == chat_id)
-                .values(estado=stage, updated_at=datetime.now(timezone.utc))
+                .values(estado=stage, updated_at=datetime.now(timezone.utc), **extra)
             )
             # Se congela el último mensaje del cliente en la auditoría: el
             # chat sigue creciendo después del cambio, así que sin esta foto
@@ -873,8 +908,8 @@ async def update_lead(
                 "lead_updated",
                 actor_type,
                 actor_user_id,
-                {key: old_row[key] for key in changed},
-                changed,
+                _activity_safe({key: old_row[key] for key in changed}),
+                _activity_safe(changed),
             )
         await session.commit()
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CircleDot, Contact, Phone, Tag, User, MapPin, FileText, Pencil, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { useUpdateLead } from '../hooks/useChats'
@@ -20,6 +20,28 @@ interface LeadInfoField {
   valueClassName?: string
 }
 
+/** fecha_recontacto es un DATE puro: `new Date('2026-08-01')` lo interpreta
+ * como medianoche UTC y en zonas negativas muestra el día anterior. */
+function formatDate(value: string | null): string | null {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('es-AR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function formatDateTime(value: string | null): string | null {
+  if (!value) return null
+  return new Date(value).toLocaleString('es-AR', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function LeadInfo({ chat }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -27,6 +49,9 @@ export function LeadInfo({ chat }: Props) {
   const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
   const stageMeta = LEAD_STAGE_META[chat.stage]
 
+  // Ojo con el .filter(f => f.value) de abajo: descarta cualquier valor falsy,
+  // así que los números se formatean a string acá (un 0 tiene que verse) y los
+  // booleanos se resuelven a null cuando no hay nada que contar.
   const fields: LeadInfoField[] = [
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
@@ -35,6 +60,14 @@ export function LeadInfo({ chat }: Props) {
     { label: 'Vendedor', value: chat.vendedor, icon: User },
     { label: 'Origen', value: chat.origen, icon: MapPin },
     { label: 'Notas', value: chat.notas, icon: FileText },
+    { label: 'Próxima cita', value: formatDateTime(chat.proxima_cita), icon: CalendarClock },
+    { label: 'Recontacto', value: formatDate(chat.fecha_recontacto), icon: CalendarDays },
+    { label: 'Razón de pérdida', value: chat.razon_perdido, icon: XCircle },
+    { label: 'Especialista', value: chat.con_especialista ? 'Derivado' : null, icon: UserRound },
+    // Los lleva el sistema, no se editan desde el CRM.
+    { label: 'No-shows', value: chat.contador_noshow != null ? String(chat.contador_noshow) : null, icon: CalendarX },
+    { label: 'Toques de seguimiento', value: chat.toques_seguimiento != null ? String(chat.toques_seguimiento) : null, icon: Repeat },
+    { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque), icon: CalendarClock },
   ].filter((f) => f.value)
 
   function handleUpdate(values: LeadUpdateInput) {
@@ -96,6 +129,10 @@ export function LeadInfo({ chat }: Props) {
             vendedor_id: chat.vendedor_id,
             origen: chat.origen,
             notas: chat.notas,
+            con_especialista: chat.con_especialista,
+            razon_perdido: chat.razon_perdido,
+            fecha_recontacto: chat.fecha_recontacto,
+            proxima_cita: chat.proxima_cita,
           }}
           isSubmitting={isSaving}
           error={editError}
