@@ -32,7 +32,12 @@ async def close_n8n_client() -> None:
         _http_client = None
 
 
-async def call_n8n(chat_id: str, phone: str | None, refresh: bool = False) -> SuggestionResponse:
+async def call_n8n(
+    chat_id: str,
+    phone: str | None,
+    refresh: bool = False,
+    instruction: str | None = None,
+) -> SuggestionResponse:
     values = await get_effective_many(("n8n_webhook_url", "n8n_webhook_token"))
     webhook_url = values["n8n_webhook_url"]
     webhook_token = values["n8n_webhook_token"]
@@ -49,6 +54,13 @@ async def call_n8n(chat_id: str, phone: str | None, refresh: bool = False) -> Su
     params = {"chat_id": chat_id}
     if refresh:
         params["refresh"] = "true"
+    # Indicación del asesor ("dar precio", "no dar precio", contexto del
+    # cliente). El workflow la inyecta en el prompt como sección de alta
+    # prioridad — "Instrucción del asesor", por encima de las reglas
+    # generales — para que pese en el resultado. Llega saneada y acotada
+    # (ver SuggestionRequest.instruction).
+    if instruction:
+        params["instruction"] = instruction
 
     last_error: Exception = RuntimeError("call_n8n: sin intentos")
     for attempt in range(1, MAX_ATTEMPTS + 1):

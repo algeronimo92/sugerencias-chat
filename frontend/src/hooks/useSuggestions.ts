@@ -8,6 +8,9 @@ interface GenerateParams {
   phone: string | null
   // Ignora la sugerencia guardada y pide un juego nuevo ("Generá otras").
   force?: boolean
+  // Indicación opcional del asesor ("dar precio", "no dar precio"…). El
+  // backend la sanea y la pasa al prompt; si viene, siempre genera de nuevo.
+  instruction?: string
 }
 
 async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {

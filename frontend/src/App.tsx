@@ -401,11 +401,12 @@ function MainLayout() {
                   isLoading={isSuggestionsLoading}
                   isGenerating={isGeneratingForSelected}
                   error={suggestionsErrorMessage}
-                  onGenerate={(force = false) =>
+                  onGenerate={(force = false, instruction) =>
                     generateSuggestionsMutation.mutate({
                       chat_id: selectedChat.chat_id,
                       phone: selectedChat.phone,
                       force,
+                      instruction,
                     })
                   }
                 />

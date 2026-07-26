@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Sparkles, AlertTriangle, TrendingUp, MessageSquareDot } from 'lucide-react'
 import type { Chat, SuggestionResponse } from '../types'
 import { LeadInfo } from './LeadInfo'
 import { SuggestionCard } from './SuggestionCard'
+import { SuggestionInstructionBox } from './SuggestionInstructionBox'
 import { LeadActivityPanel } from './LeadActivityPanel'
 import { LeadTagsPanel } from './LeadTagsPanel'
 import { LeadTaskCard } from './LeadTaskCard'
@@ -22,8 +24,9 @@ interface Props {
   /** Generación con IA en curso — siempre iniciada por el vendedor. */
   isGenerating: boolean
   error: string | null
-  /** Genera sugerencias a demanda; `force` pide otras ignorando lo guardado. */
-  onGenerate: (force?: boolean) => void
+  /** Genera sugerencias a demanda; `force` pide otras ignorando lo guardado.
+   * `instruction` es la indicación opcional del asesor para orientar a la IA. */
+  onGenerate: (force?: boolean, instruction?: string) => void
 }
 
 export function SuggestionPanel({
@@ -36,6 +39,17 @@ export function SuggestionPanel({
   error,
   onGenerate,
 }: Props) {
+  // Indicación opcional del asesor para la IA. Vive acá porque los tres CTA
+  // de generación (vacío, stale, "Generá otras") deben compartirla. Persiste
+  // entre regeneraciones del mismo lead — el box abierto la muestra siempre —
+  // y se descarta al cambiar de chat.
+  const [instruction, setInstruction] = useState('')
+  useEffect(() => setInstruction(''), [chat.chat_id])
+
+  function handleGenerate(force: boolean) {
+    onGenerate(force, instruction.trim() || undefined)
+  }
+
   const generatedLabel = generatedAt
     ? `${formatDayLabel(generatedAt).toLowerCase()} a las ${formatMessageTime(generatedAt)}`
     : null
@@ -53,7 +67,7 @@ export function SuggestionPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onGenerate(true)}
+            onClick={() => handleGenerate(true)}
             disabled={isGenerating}
             title="Generar un juego nuevo de sugerencias"
             className="ml-auto"
@@ -90,7 +104,7 @@ export function SuggestionPanel({
         {error && !isGenerating && (
           <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl p-4 text-sm text-red-700 dark:text-red-400 space-y-3">
             <p>{error}</p>
-            <Button variant="secondary" size="sm" onClick={() => onGenerate(!!data && !isStale)}>
+            <Button variant="secondary" size="sm" onClick={() => handleGenerate(!!data && !isStale)}>
               Reintentar
             </Button>
           </div>
@@ -106,7 +120,14 @@ export function SuggestionPanel({
             <p className="text-sm text-wa-muted dark:text-wa-muted-dark max-w-60 leading-relaxed">
               Cuando lo necesites, la IA analiza la conversación y te propone respuestas para este lead.
             </p>
-            <Button className="mt-4" onClick={() => onGenerate(false)}>
+            {/* Indicación opcional antes del CTA (orden de formulario). Arranca
+              colapsada: el CTA sigue siendo el protagonista del estado vacío. */}
+            <SuggestionInstructionBox
+              value={instruction}
+              onChange={setInstruction}
+              className="w-full max-w-72 mt-4"
+            />
+            <Button className="mt-3" onClick={() => handleGenerate(false)}>
               <Sparkles className="w-4 h-4" aria-hidden="true" />
               Generá sugerencias
             </Button>
@@ -116,6 +137,10 @@ export function SuggestionPanel({
 
         {data && (
           <>
+            {/* Indicación opcional arriba de todo: queda cerca de "Generá otras"
+              (header) y de "Generá nuevas" (banner stale), los CTA que la usan. */}
+            <SuggestionInstructionBox value={instruction} onChange={setInstruction} disabled={isGenerating} />
+
             {/* Regeneración con datos en pantalla: aviso sutil, sin bloquear */}
             {isGenerating && (
               <div className="flex items-center gap-2 bg-wa-primary/5 dark:bg-wa-primary/10 border border-wa-primary/20 rounded-xl px-4 py-2.5 text-sm text-wa-primary-strong dark:text-wa-primary">
@@ -134,7 +159,7 @@ export function SuggestionPanel({
                     <span className="font-semibold">El cliente volvió a escribir.</span> Estas sugerencias no tienen en
                     cuenta sus últimos mensajes.
                   </p>
-                  <Button variant="secondary" size="sm" className="mt-2" onClick={() => onGenerate(false)}>
+                  <Button variant="secondary" size="sm" className="mt-2" onClick={() => handleGenerate(false)}>
                     <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                     Generá nuevas
                   </Button>
