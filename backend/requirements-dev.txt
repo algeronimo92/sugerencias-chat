@@ -1,0 +1,11 @@
+# Dependencias solo de desarrollo y CI. La imagen de producción instala
+# únicamente requirements.txt, así que nada de esto llega al contenedor.
+#
+# Se instalan encima de requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+
+pytest==9.1.1
+# pytest.ini usa asyncio_mode = auto: sin este plugin, los tests async se
+# saltan en silencio y la suite pasa sin haber ejecutado casi nada.
+pytest-asyncio==1.4.0
