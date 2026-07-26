@@ -1308,10 +1308,12 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
             dims = (0, 0)
         row["media_width"], row["media_height"] = dims
 
-    # Un solo viaje a la base en vez de un UPDATE por archivo.
+    # Usar la tabla (SQL Core) evita que SQLAlchemy interprete la lista de
+    # parámetros como ORM Bulk UPDATE by Primary Key. Ese modo exige que cada
+    # mapping contenga la propiedad ORM `id` y no admite este WHERE parametrizado.
     await session.execute(
-        update(WspMessage)
-        .where(WspMessage.id == bindparam("row_id"))
+        update(WspMessage.__table__)
+        .where(WspMessage.__table__.c.id == bindparam("row_id"))
         .values(media_width=bindparam("width"), media_height=bindparam("height")),
         [
             {"row_id": row["id"], "width": row["media_width"], "height": row["media_height"]}

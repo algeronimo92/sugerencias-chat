@@ -2,7 +2,12 @@
 incluyendo videos portrait que vienen rotados por matriz (teléfonos)."""
 
 import struct
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import pytest
+
+from services import db_service, media_storage
 from services.media_storage import _mp4_dimensions
 
 IDENTITY_MATRIX = struct.pack(
@@ -55,3 +60,30 @@ class TestMp4Dimensions:
     def test_datos_invalidos(self):
         assert _mp4_dimensions(b"") is None
         assert _mp4_dimensions(b"not a real mp4 file at all") is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
+    """El UPDATE por lotes debe evitar el modo Bulk UPDATE del ORM."""
+    monkeypatch.setattr(media_storage, "image_dimensions", lambda _url: (640, 480))
+    session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+    rows = [{
+        "id": 22267,
+        "content": "<image></image>",
+        "media_url": "https://storage.test/image.jpg",
+        "media_width": None,
+        "media_height": None,
+    }]
+
+    await db_service._fill_media_dimensions(session, rows)
+
+    assert rows[0]["media_width"] == 640
+    assert rows[0]["media_height"] == 480
+    statement = session.execute.await_args.args[0]
+    assert "parententity" not in statement.table._annotations
+    assert session.execute.await_args.args[1] == [{
+        "row_id": 22267,
+        "width": 640,
+        "height": 480,
+    }]
+    session.commit.assert_awaited_once()
