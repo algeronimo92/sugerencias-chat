@@ -28,6 +28,32 @@ MAX_ATTEMPTS = 3
 WORKER_CONCURRENCY = 4
 IDLE_POLL_SECONDS = 1.0
 
+# El worker dormía IDLE_POLL_SECONDS entre rondas, así que un mensaje recién
+# encolado esperaba hasta un segundo antes de salir hacia Evolution aunque el
+# worker estuviera ocioso. Este aviso lo despierta en cuanto hay trabajo.
+#
+# Es in-process: vale mientras la API corra en un solo proceso. Con varias
+# réplicas hace falta LISTEN/NOTIFY de PostgreSQL; el poll se conserva como
+# respaldo para que la corrección no dependa del aviso.
+_wakeup = asyncio.Event()
+
+
+def notify_new_work() -> None:
+    """Despierta al worker del outbox tras insertar trabajo nuevo."""
+    _wakeup.set()
+
+
+async def _wait_for_work() -> None:
+    try:
+        await asyncio.wait_for(_wakeup.wait(), timeout=IDLE_POLL_SECONDS)
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        # Se limpia después de esperar, no antes: si el aviso llegó mientras
+        # el worker procesaba la ronda anterior, perderlo devolvería el
+        # retardo de un segundo que este mecanismo viene a eliminar.
+        _wakeup.clear()
+
 
 def _format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -90,6 +116,7 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
             ))
             messages.append(message)
         await session.commit()
+    notify_new_work()
     return [_message_dict(message) for message in messages]
 
 
@@ -121,6 +148,7 @@ async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
         message.status = "PENDING"
         message.wa_message_id = None
         await session.commit()
+        notify_new_work()
         return _message_dict(message)
 
 
@@ -403,4 +431,4 @@ async def watch_message_outbox() -> None:
             raise
         except Exception:
             logger.exception("Error processing message outbox")
-        await asyncio.sleep(IDLE_POLL_SECONDS)
+        await _wait_for_work()

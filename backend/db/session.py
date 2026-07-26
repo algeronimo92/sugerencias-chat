@@ -28,7 +28,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         _engine = create_async_engine(
             _to_async_url(settings.database_url),
-            connect_args={"ssl": False, "timeout": 10},
+            connect_args={"ssl": settings.database_ssl, "timeout": 10},
             pool_pre_ping=settings.database_pool_pre_ping,
             pool_size=settings.database_pool_size,
             max_overflow=settings.database_max_overflow,

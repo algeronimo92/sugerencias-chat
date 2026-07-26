@@ -2,7 +2,7 @@ import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, delete, exists, false, func, insert, or_, select, true, update
+from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
@@ -26,6 +26,8 @@ from db.session import get_sessionmaker
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
 MESSAGES_PAGE_SIZE = 50
+# Cuántas dimensiones de multimedia se miden a la vez al abrir un historial.
+MEDIA_DIMENSION_CONCURRENCY = 6
 CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
 
 
@@ -1282,17 +1284,41 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
         if r["media_url"] and r["media_width"] is None
         and (r["content"] or "").startswith(("<image", "<video"))
     ]
-    for r in pending:
-        measure = image_dimensions if r["content"].startswith("<image") else video_dimensions
-        dims = await asyncio.to_thread(measure, r["media_url"])
-        r["media_width"], r["media_height"] = dims if dims else (0, 0)
-        await session.execute(
-            update(WspMessage)
-            .where(WspMessage.id == r["id"])
-            .values(media_width=r["media_width"], media_height=r["media_height"])
-        )
-    if pending:
-        await session.commit()
+    if not pending:
+        return
+
+    # Medir en serie hacía que cada archivo esperara al anterior: con el
+    # almacenamiento en otra región, una página con varias imágenes sumaba
+    # segundos al GET del historial. El límite evita saturar el pool de hilos
+    # y abrir demasiadas descargas simultáneas.
+    limiter = asyncio.Semaphore(MEDIA_DIMENSION_CONCURRENCY)
+
+    async def measure(row: dict) -> tuple[int, int] | None:
+        fn = image_dimensions if row["content"].startswith("<image") else video_dimensions
+        async with limiter:
+            return await asyncio.to_thread(fn, row["media_url"])
+
+    measured = await asyncio.gather(
+        *(measure(row) for row in pending), return_exceptions=True
+    )
+
+    for row, dims in zip(pending, measured):
+        if isinstance(dims, BaseException) or not dims:
+            # 0/0 marca "no medible" para no reintentarlo en cada apertura.
+            dims = (0, 0)
+        row["media_width"], row["media_height"] = dims
+
+    # Un solo viaje a la base en vez de un UPDATE por archivo.
+    await session.execute(
+        update(WspMessage)
+        .where(WspMessage.id == bindparam("row_id"))
+        .values(media_width=bindparam("width"), media_height=bindparam("height")),
+        [
+            {"row_id": row["id"], "width": row["media_width"], "height": row["media_height"]}
+            for row in pending
+        ],
+    )
+    await session.commit()
 
 
 async def list_tags(include_inactive: bool = False) -> list[dict]:

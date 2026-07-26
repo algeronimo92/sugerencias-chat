@@ -239,15 +239,27 @@ export function useChatUpdates(
                 })
               : []
 
-            queryClient.invalidateQueries({ queryKey: ['chats'] })
-            queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+            // Un cambio de estado de entrega (SERVER_ACK/DELIVERY_ACK/READ)
+            // solo afecta a la burbuja: `Chat` no lleva estado y ChatList no
+            // lo pinta. applyMessageStatuses ya parchea la caché de mensajes,
+            // así que refetchear lista + detalle + historial completo era
+            // tráfico puro. Cada acuse de WhatsApp disparaba tres GET, y un
+            // envío genera varios acuses seguidos.
+            const isStatusOnly = reason === 'message_status'
+
+            if (!isStatusOnly) {
+              queryClient.invalidateQueries({ queryKey: ['chats'] })
+              queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+            }
             if (changedChatId) {
               applyMessageStatuses(queryClient, changedChatId, messageStatuses)
-              queryClient.invalidateQueries({ queryKey: ['chat', changedChatId] })
+              if (!isStatusOnly) {
+                queryClient.invalidateQueries({ queryKey: ['chat', changedChatId] })
+              }
               if (reason !== 'message_status' && reason !== 'read') {
                 queryClient.invalidateQueries({ queryKey: ['lead-activity', changedChatId] })
               }
-              if (queryClient.isMutating({ mutationKey: ['send-message', changedChatId] }) === 0) {
+              if (!isStatusOnly && queryClient.isMutating({ mutationKey: ['send-message', changedChatId] }) === 0) {
                 queryClient.invalidateQueries({ queryKey: ['messages', changedChatId] })
               }
               if (reason === 'inbound_message') {

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from services.media_storage import (
     MediaNotFoundError,
     MediaStorageError,
-    iter_media,
+    iter_media_stat,
     save_media_bytes,
     stat_media,
 )
@@ -168,7 +168,9 @@ def get_media_file(filename: str, request: Request, range_header: str | None = H
     if request.method == "HEAD":
         return Response(status_code=status_code, headers=headers, media_type=info.content_type)
     return StreamingResponse(
-        iter_media(media_url, start, length),
+        # Se reutiliza el stat de arriba: iter_media volvía a pedirlo, así que
+        # servir una imagen costaba dos consultas a MinIO en vez de una.
+        iter_media_stat(info, media_url, start, length),
         status_code=status_code,
         headers=headers,
         media_type=info.content_type,

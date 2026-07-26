@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 MEDIA_DIR.mkdir(exist_ok=True)
 CHUNK_SIZE = 64 * 1024
+# Cabecera que se baja para medir una imagen. Sobra para JPEG/PNG/WebP/GIF
+# salvo con metadatos EXIF muy grandes, caso en el que se reintenta entera.
+IMAGE_HEADER_BYTES = 128 * 1024
 NOT_FOUND_CODES = {"NoSuchKey", "NoSuchObject", "NoSuchBucket", "XMinioInvalidObjectName"}
 
 
@@ -236,8 +239,15 @@ def _iter_minio(object_name: str, offset: int, length: int) -> Iterator[bytes]:
             response.release_conn()
 
 
-def iter_media(media_url: str, offset: int = 0, length: int | None = None) -> Iterator[bytes]:
-    info = stat_media(media_url)
+def iter_media_stat(
+    info: MediaObjectStat, media_url: str, offset: int = 0, length: int | None = None
+) -> Iterator[bytes]:
+    """Igual que ``iter_media`` pero reutilizando un stat ya obtenido.
+
+    Existe porque quien ya consultó el objeto no debería volver a preguntarle
+    a MinIO su tamaño: es un roundtrip completo. ``video_dimensions`` hacía
+    hasta 32 lecturas por rango y cada una repetía el stat.
+    """
     available = max(info.size - offset, 0)
     selected_length = available if length is None else min(max(length, 0), available)
     if info.source == "local":
@@ -247,9 +257,15 @@ def iter_media(media_url: str, offset: int = 0, length: int | None = None) -> It
     return _iter_minio(info.object_name, offset, selected_length)
 
 
+def iter_media(media_url: str, offset: int = 0, length: int | None = None) -> Iterator[bytes]:
+    return iter_media_stat(stat_media(media_url), media_url, offset, length)
+
+
 def read_media_bytes(media_url: str) -> bytes:
+    # Un solo stat: antes eran tres (este, el de iter_media y el de su
+    # llamada interna), cada uno con su propia conexión.
     info = stat_media(media_url)
-    return b"".join(iter_media(media_url, 0, info.size))
+    return b"".join(iter_media_stat(info, media_url, 0, info.size))
 
 
 def read_media_base64(media_url: str) -> str:
@@ -259,16 +275,30 @@ def read_media_base64(media_url: str) -> str:
 
 def image_dimensions(media_url: str) -> tuple[int, int] | None:
     """Ancho/alto de una imagen almacenada, o None si no se pudo medir.
-    PIL solo lee la cabecera del archivo para esto, no decodifica entera."""
-    from io import BytesIO
 
+    PIL necesita muy pocos bytes para esto, pero antes se le pasaba el archivo
+    entero: medir una foto de 4 MB descargaba los 4 MB. Ahora se intenta con
+    una cabecera por rango y solo se baja el resto si esa cabecera no alcanzó
+    (por ejemplo un JPEG con EXIF grande antes del marcador SOF).
+    """
     from PIL import Image
 
     try:
-        with Image.open(BytesIO(read_media_bytes(media_url))) as img:
-            return img.width, img.height
-    except Exception:
+        info = stat_media(media_url)
+    except (MediaNotFoundError, MediaStorageError):
         return None
+
+    attempts = [size for size in (IMAGE_HEADER_BYTES, info.size) if size < info.size]
+    attempts.append(info.size)
+
+    for length in attempts:
+        try:
+            data = b"".join(iter_media_stat(info, media_url, 0, length))
+            with Image.open(BytesIO(data)) as img:
+                return img.width, img.height
+        except Exception:
+            continue
+    return None
 
 
 def _mp4_boxes(data: bytes, start: int, end: int):
@@ -325,11 +355,18 @@ def video_dimensions(media_url: str) -> tuple[int, int] | None:
     No descarga el archivo entero: recorre los headers de los boxes de primer
     nivel con lecturas por rango (saltando mdat, que es el video en sí) y
     solo baja el box moov, que pesa unos pocos KB."""
+    try:
+        # Un único stat para todo el recorrido: antes cada read_range volvía a
+        # consultar el objeto, hasta 32 veces por archivo.
+        info = stat_media(media_url)
+    except (MediaNotFoundError, MediaStorageError):
+        return None
+
     def read_range(offset: int, length: int) -> bytes:
-        return b"".join(iter_media(media_url, offset, length))
+        return b"".join(iter_media_stat(info, media_url, offset, length))
 
     try:
-        size = media_size(media_url)
+        size = info.size
         pos = 0
         for _ in range(32):  # un MP4 tiene un puñado de boxes de primer nivel
             if pos + 8 > size:

@@ -3,6 +3,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
+    # Modo TLS de asyncpg hacia PostgreSQL. La base es externa, así que hoy
+    # las credenciales y el contenido de los mensajes cruzan Internet en claro.
+    #
+    # El default NO puede ser "require" todavía: el servidor actual rechaza el
+    # upgrade a SSL ("rejected SSL upgrade"), o sea que tiene ssl=off en su
+    # postgresql.conf. Exigirlo dejaría el backend sin arrancar. "prefer"
+    # intenta cifrar y cae a claro, así que empieza a cifrar solo en cuanto se
+    # habilite TLS en el servidor, sin tocar la aplicación.
+    #
+    # Cuando el servidor tenga TLS, subir esto a "require" (y a "verify-full"
+    # con la CA disponible). El arranque avisa por log si la conexión terminó
+    # sin cifrar — ver _log_database_encryption en main.py.
+    # Valores: disable | allow | prefer | require | verify-ca | verify-full
+    database_ssl: str = "prefer"
     # La DB puede estar a cientos de milisegundos. Hacer SELECT 1 antes de
     # cada checkout duplica el costo de todas las consultas; los despliegues
     # que prefieran esa comprobación pueden volver a activarla por env.
@@ -39,6 +53,12 @@ class Settings(BaseSettings):
     minio_secure: bool = True
     minio_verify_tls: bool = True
     minio_prefix: str = "dermicapro"
+
+    # Marca `Secure` de la cookie de sesión. None = deducirla del esquema real
+    # de la petición (incluyendo X-Forwarded-Proto de Traefik). Detrás del
+    # proxy, uvicorn ve http, así que sin este override la cookie salía sin
+    # `Secure` en producción. Poner COOKIE_SECURE=true la fuerza.
+    cookie_secure: bool | None = None
 
     # Firma de los JWT de sesión — cambiarla invalida todas las sesiones activas.
     secret_key: str

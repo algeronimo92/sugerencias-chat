@@ -98,6 +98,33 @@ async def _create_index_if_missing(
         await conn.execute(text(statement))
 
 
+async def _log_database_encryption() -> None:
+    """Deja constancia en el log de si la conexión a PostgreSQL va cifrada.
+
+    Con DATABASE_SSL="prefer" el cliente cae a texto plano sin avisar cuando
+    el servidor no acepta TLS, que es la situación actual. Preguntarle al
+    propio servidor evita que ese estado quede invisible.
+    """
+    try:
+        async with get_engine().connect() as connection:
+            row = (await connection.execute(text(
+                "SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+            ))).first()
+    except (OSError, SQLAlchemyError) as exc:
+        logger.warning("No se pudo verificar el cifrado de la conexión (%s)", type(exc).__name__)
+        return
+
+    if row is not None and row[0]:
+        logger.info("Conexión a PostgreSQL cifrada (%s)", row[1])
+    else:
+        logger.warning(
+            "Conexión a PostgreSQL SIN CIFRAR (DATABASE_SSL=%s). Las credenciales "
+            "y el contenido de los mensajes viajan en claro. Habilitar ssl=on en "
+            "el servidor y subir DATABASE_SSL a 'require'.",
+            settings.database_ssl,
+        )
+
+
 async def _setup_search_unaccent() -> None:
     """Migración 020 aplicada al arrancar: búsqueda insensible a acentos.
 
@@ -286,6 +313,7 @@ async def lifespan(app: FastAPI):
     else:
         await database_transaction.__aexit__(None, None, None)
 
+    await _log_database_encryption()
     await _setup_search_unaccent()
 
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
@@ -383,7 +411,10 @@ app.include_router(automations.router)
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(webhooks.router)
 app.include_router(media.router)
-app.include_router(media.files_router)
+# /media/<archivo> sí es contenido de clientes (fotos, audios, documentos) y
+# solo lo consume el navegador del vendedor. La cookie es SameSite=Lax y tanto
+# dev como producción son same-site, así que <img>/<audio>/<video> la envían.
+app.include_router(media.files_router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health", tags=["health"])

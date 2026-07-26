@@ -30,6 +30,22 @@ def _to_user_out(user: User) -> UserOut:
     return UserOut(id=user.id, email=user.email, name=user.name, role=user.role)
 
 
+def _cookie_is_secure(request: Request) -> bool:
+    """Decide la marca `Secure` de la cookie de sesión.
+
+    Traefik termina TLS y nginx proxea al backend en claro, así que
+    ``request.url.scheme`` vale "http" en producción y la cookie salía sin
+    `Secure`. Se respeta el override explícito y, si no lo hay, se mira el
+    `X-Forwarded-Proto` que pone Traefik antes de caer al esquema directo.
+    """
+    if settings.cookie_secure is not None:
+        return settings.cookie_secure
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        return forwarded_proto.split(",")[0].strip().lower() == "https"
+    return request.url.scheme == "https"
+
+
 @router.post("/login", response_model=UserOut)
 async def login(body: LoginRequest, response: Response, request: Request):
     user = await get_user_by_email(body.email.strip().lower())
@@ -42,7 +58,7 @@ async def login(body: LoginRequest, response: Response, request: Request):
         token,
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        secure=_cookie_is_secure(request),
         max_age=settings.access_token_expire_hours * 3600,
         path="/",
     )
@@ -50,8 +66,16 @@ async def login(body: LoginRequest, response: Response, request: Request):
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie(COOKIE_NAME, path="/")
+async def logout(response: Response, request: Request):
+    # Los atributos tienen que coincidir con los del set_cookie original o el
+    # navegador conserva la cookie y la sesión sigue viva tras cerrar sesión.
+    response.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_is_secure(request),
+    )
     return {"status": "ok"}
 
 

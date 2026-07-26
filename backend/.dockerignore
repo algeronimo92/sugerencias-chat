@@ -5,3 +5,17 @@ __pycache__
 *.pyc
 .env
 .git
+
+# Media de clientes: ~500 MB que se copiaban a cada imagen por el `COPY . .`
+# del Dockerfile. En producción vive en MinIO (ver MEDIA_STORAGE_BACKEND), no
+# en el contenedor. Dejarla entrar hacía builds lentos y horneaba fotos de
+# pacientes en cada capa de imagen.
+media/
+media-migration-report.json
+
+# Artefactos de test y herramientas: no aportan nada a la imagen de runtime.
+tests/
+.pytest_cache
+.ruff_cache
+htmlcov
+.coverage
