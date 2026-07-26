@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from domain_types import (
     AutomationBuilderMode,
@@ -246,12 +246,33 @@ class SellerItem(BaseModel):
     role: str
 
 
+# Tope de la indicación del asesor. Alineado con el maxLength del input del
+# frontend (SuggestionInstructionBox): lo que se puede tipear es lo que viaja.
+SUGGESTION_INSTRUCTION_MAX_LENGTH = 200
+
+
 class SuggestionRequest(BaseModel):
     chat_id: str
     phone: str | None = None
     # Ignora la sugerencia cacheada y vuelve a pedirle una nueva a n8n — el
     # vendedor pide otras opciones porque las actuales no le sirven.
     force: bool = False
+    # Indicación opcional del asesor para orientar la generación ("dar precio",
+    # "no dar precio", "está interesado en Hollywood peel"). Se sanea acá para
+    # que llegue limpia y acotada al prompt del workflow.
+    instruction: str | None = None
+
+    @field_validator("instruction")
+    @classmethod
+    def _clean_instruction(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        # Colapsa espacios y saltos de línea, descarta caracteres de control y
+        # recorta al tope: el texto viaja como query param hasta el workflow.
+        cleaned = " ".join(value.split())
+        cleaned = "".join(ch for ch in cleaned if ch.isprintable())
+        cleaned = cleaned[:SUGGESTION_INSTRUCTION_MAX_LENGTH].strip()
+        return cleaned or None
 
 
 class Sugerencia(BaseModel):

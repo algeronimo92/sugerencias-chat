@@ -31,13 +31,20 @@ async def read_suggestion_status(chat_id: str):
 
 @router.post("", response_model=SuggestionResponse)
 async def get_suggestions(body: SuggestionRequest):
-    if not body.force:
+    # Con indicación del asesor la sugerencia guardada no sirve: se generó sin
+    # tenerla en cuenta, así que siempre se pide una nueva al workflow.
+    if not body.force and body.instruction is None:
         cached = await get_cached_suggestion(body.chat_id)
         if cached is not None:
             return SuggestionResponse(**cached)
 
     try:
-        result = await call_n8n(body.chat_id, body.phone, refresh=body.force)
+        result = await call_n8n(
+            body.chat_id,
+            body.phone,
+            refresh=body.force,
+            instruction=body.instruction,
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Error llamando n8n: {str(e)}")
 
