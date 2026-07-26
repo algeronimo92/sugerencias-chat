@@ -42,7 +42,7 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
         </div>
         {sugerencia.texto && (
           <div className="flex items-center gap-1.5 shrink-0 ml-2">
-            <button
+            <button type="button"
               onClick={() => setIsAudioDialogOpen(true)}
               title="Editar texto y enviar como nota de voz"
               className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors bg-wa-field dark:bg-wa-field-dark text-wa-muted dark:text-wa-muted-dark hover:bg-wa-border dark:hover:bg-wa-active-dark hover:text-wa-text dark:hover:text-wa-text-dark"
@@ -50,7 +50,7 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
               <Mic className="w-3.5 h-3.5" />
               Audio
             </button>
-            <button
+            <button type="button"
               onClick={handleCopy}
               className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
                 copied
@@ -97,7 +97,7 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
         )}
 
         {/* Por qué — expandible */}
-        <button
+        <button type="button"
           onClick={() => setShowMotivo(!showMotivo)}
           className="text-xs text-wa-muted dark:text-wa-muted-dark hover:text-wa-text dark:hover:text-wa-text-dark flex items-center gap-1 transition-colors"
         >

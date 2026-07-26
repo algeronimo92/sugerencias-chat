@@ -109,19 +109,24 @@ export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
     const el = imgRef.current
     if (!el) return
 
+    // El zoom se calcula aquí, en el propio evento, y desde ahí se escriben
+    // los dos estados. Antes el reinicio del paneo vivía dentro del updater de
+    // setScale, que debe ser puro —React puede ejecutarlo más de una vez—, y
+    // moverlo a un efecto encadenado sobre `scale` costaba un render extra por
+    // cada muesca de la rueda. El efecto depende de `scale` para leer el valor
+    // vigente sin recurrir al updater.
     function onWheelNative(e: WheelEvent) {
       e.preventDefault()
       e.stopPropagation()
-      setScale((s) => {
-        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s - Math.sign(e.deltaY) * WHEEL_ZOOM_STEP))
-        if (next === MIN_SCALE) setOffset({ x: 0, y: 0 })
-        return next
-      })
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale - Math.sign(e.deltaY) * WHEEL_ZOOM_STEP))
+      setScale(next)
+      // En el zoom mínimo la imagen entra entera: no queda nada que desplazar.
+      if (next === MIN_SCALE) setOffset({ x: 0, y: 0 })
     }
 
     el.addEventListener('wheel', onWheelNative, { passive: false })
     return () => el.removeEventListener('wheel', onWheelNative)
-  }, [])
+  }, [scale])
 
   function handlePointerDown(e: React.PointerEvent<HTMLImageElement>) {
     if (scale <= 1) return
@@ -151,7 +156,7 @@ export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
       className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center overflow-hidden"
       onClick={onClose}
     >
-      <button
+      <button type="button"
         onClick={(e) => {
           e.stopPropagation()
           onClose()

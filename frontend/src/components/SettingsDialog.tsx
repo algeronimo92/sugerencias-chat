@@ -134,7 +134,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               </button>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             aria-label="Cerrar"
             className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -218,7 +218,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               </p>
             )}
             {!saveError && !savedAt && <span className="flex-1" />}
-            <button
+            <button type="button"
               onClick={handleSave}
               disabled={isSaving || isLoading}
               className="px-4 py-2 text-sm font-medium text-white bg-wa-primary hover:bg-wa-primary-strong disabled:opacity-50 rounded-lg transition-colors flex items-center gap-1.5"

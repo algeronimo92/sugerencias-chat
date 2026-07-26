@@ -52,7 +52,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
         <Dialog.Content className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
           <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviar como nota de voz</Dialog.Title>
-          <button
+          <button type="button"
             onClick={onClose}
             aria-label="Cerrar"
             className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -96,13 +96,13 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
         </div>
 
         <div className="flex border-t border-wa-border dark:border-wa-border-dark">
-          <button
+          <button type="button"
             onClick={onClose}
             className="flex-1 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-wa-hover dark:hover:bg-wa-head-dark transition-colors"
           >
             Cancelar
           </button>
-          <button
+          <button type="button"
             onClick={handleSend}
             disabled={!audio || isSending}
             className="flex-1 py-2.5 text-sm font-medium text-white bg-wa-primary hover:bg-wa-primary-strong disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 border-l border-wa-border dark:border-wa-border-dark"

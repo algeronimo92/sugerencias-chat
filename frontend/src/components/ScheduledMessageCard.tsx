@@ -177,7 +177,7 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
           <p className="text-[11px] leading-relaxed text-wa-muted">
             Se enviará automáticamente aunque cierres el navegador. A esa hora se verificará la ventana de atención de 24 horas de WhatsApp.
           </p>
-          <button
+          <button type="submit"
             disabled={create.isPending}
             className="flex w-full items-center justify-center gap-1.5 rounded-md bg-wa-primary py-1.5 text-xs font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
           >

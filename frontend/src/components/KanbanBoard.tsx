@@ -256,7 +256,7 @@ function KanbanColumn({
           />
         ))}
         {hasNextPage && (
-          <button
+          <button type="button"
             onClick={() => fetchNextPage()}
             disabled={loadNextPage.isPending}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-wa-border bg-white py-2 text-xs font-medium text-wa-muted hover:bg-wa-hover disabled:cursor-wait dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"

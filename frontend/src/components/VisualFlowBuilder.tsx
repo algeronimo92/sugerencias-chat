@@ -196,22 +196,24 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     setError(null)
   }, [])
 
+  // La comprobación del disparador se hace antes de actualizar, leyendo `flow`
+  // de las dependencias. Antes vivía dentro del updater de setFlow, que debe
+  // ser puro: React puede ejecutarlo más de una vez, y el setError anidado
+  // podía repetirse o disparar sobre un estado que nunca llegó a confirmarse.
   const removeNode = useCallback((nodeId: string) => {
+    const node = flow.nodes.find(item => item.id === nodeId)
+    if (node?.type === NodeType.Trigger) {
+      setError('El disparador no se puede eliminar; podés cambiar su tipo.')
+      return
+    }
     setError(null)
-    setFlow(current => {
-      const node = current.nodes.find(item => item.id === nodeId)
-      if (node?.type === NodeType.Trigger) {
-        setError('El disparador no se puede eliminar; podés cambiar su tipo.')
-        return current
-      }
-      return {
-        ...current,
-        nodes: current.nodes.filter(item => item.id !== nodeId),
-        edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
-      }
-    })
+    setFlow(current => ({
+      ...current,
+      nodes: current.nodes.filter(item => item.id !== nodeId),
+      edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
+    }))
     setSelectedId(previous => (previous === nodeId ? null : previous))
-  }, [])
+  }, [flow])
 
   const moveNode = useCallback((nodeId: string, position: { x: number; y: number }) => {
     setFlow(current => ({

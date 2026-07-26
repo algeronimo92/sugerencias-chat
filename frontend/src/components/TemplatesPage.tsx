@@ -723,7 +723,7 @@ export function TemplatesPage() {
               />
             )}
             <div className="flex gap-2">
-              <button
+              <button type="submit"
                 disabled={isSaving}
                 className="flex items-center justify-center gap-1.5 rounded-md bg-wa-primary px-4 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
               >

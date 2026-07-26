@@ -54,7 +54,7 @@ function LoadMoreRow({
       <div className="py-3 flex items-center justify-center gap-2 text-xs text-red-500 dark:text-red-400">
         <AlertCircle className="w-3.5 h-3.5" />
         <span>Error al cargar más leads.</span>
-        <button
+        <button type="button"
           onClick={onRetry}
           className="font-medium underline hover:no-underline text-red-600 dark:text-red-400"
         >
@@ -462,7 +462,7 @@ export function ChatList({
         <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">Sin conexión en tiempo real</span>
-          <button
+          <button type="button"
             onClick={handleRefresh}
             disabled={isManualRefreshing}
             className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 font-semibold transition-colors hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"

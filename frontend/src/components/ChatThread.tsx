@@ -722,7 +722,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
           <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Sin mensajes en este chat.</p>
         )}
         {!isLoading && !error && hasNextPage && (
-          <button
+          <button type="button"
             onClick={() => {
               const container = threadRef.current
               if (!container || isFetchingNextPage || loadingOlderRef.current) return

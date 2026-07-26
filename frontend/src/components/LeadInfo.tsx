@@ -56,7 +56,7 @@ export function LeadInfo({ chat }: Props) {
         <h3 className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide">
           Datos del lead
         </h3>
-        <button
+        <button type="button"
           onClick={() => {
             setEditError(null)
             setIsEditing(true)

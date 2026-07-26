@@ -61,7 +61,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   const isCustomerWindowOpen = customerWindowExpiresAt > Date.now()
 
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200 ${
         isSelected

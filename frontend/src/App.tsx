@@ -238,7 +238,7 @@ function MainLayout() {
         <span className="text-sm font-semibold text-white">DermicaPro</span>
         <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1">CRM</span>
         <nav className="ml-3 flex items-center rounded-lg bg-black/10 p-0.5 dark:border dark:border-white/[0.05] dark:bg-wa-app-dark/70" aria-label="Vista principal">
-          <button onClick={() => navigate('/')} className={`relative ${navTabClass(isChats)}`}>
+          <button type="button" onClick={() => navigate('/')} className={`relative ${navTabClass(isChats)}`}>
             <MessagesSquare className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Chats</span>
             {unreadCount > 0 && (
@@ -247,34 +247,34 @@ function MainLayout() {
               </span>
             )}
           </button>
-          <button onClick={() => navigate('/kanban')} className={navTabClass(isKanban)}>
+          <button type="button" onClick={() => navigate('/kanban')} className={navTabClass(isKanban)}>
             <Columns3 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Kanban</span>
           </button>
-          <button onClick={() => navigate('/tasks')} className={navTabClass(isTasks)}>
+          <button type="button" onClick={() => navigate('/tasks')} className={navTabClass(isTasks)}>
             <CalendarClock className="h-3.5 w-3.5" />
             <span className="hidden md:inline">Tareas</span>
           </button>
           {me?.role === 'admin' && (
-            <button onClick={() => navigate('/dashboard')} className={navTabClass(isDashboard)}>
+            <button type="button" onClick={() => navigate('/dashboard')} className={navTabClass(isDashboard)}>
               <BarChart3 className="h-3.5 w-3.5" />
               <span className="hidden lg:inline">Dashboard</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button onClick={() => navigate('/automations')} className={navTabClass(isAutomations)}>
+            <button type="button" onClick={() => navigate('/automations')} className={navTabClass(isAutomations)}>
               <Workflow className="h-3.5 w-3.5" />
               <span className="hidden xl:inline">Automatizaciones</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button onClick={() => navigate('/templates')} className={navTabClass(isTemplates)}>
+            <button type="button" onClick={() => navigate('/templates')} className={navTabClass(isTemplates)}>
               <FileText className="h-3.5 w-3.5" />
               <span className="hidden lg:inline">Plantillas</span>
             </button>
           )}
           {me?.role === 'admin' && (
-            <button onClick={() => navigate('/media-library')} className={navTabClass(isMediaLibrary)}>
+            <button type="button" onClick={() => navigate('/media-library')} className={navTabClass(isMediaLibrary)}>
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="hidden xl:inline">Archivos</span>
             </button>
@@ -288,7 +288,7 @@ function MainLayout() {
         )}
         {me?.role === 'admin' && (
           <Tooltip content="Configuración">
-            <button onClick={() => openSettings('claves')} aria-label="Configuración" className={headerIconButtonClass}>
+            <button type="button" onClick={() => openSettings('claves')} aria-label="Configuración" className={headerIconButtonClass}>
               <SettingsIcon className="w-4 h-4" />
             </button>
           </Tooltip>
@@ -299,12 +299,12 @@ function MainLayout() {
           onNewNotification={showInternalMention}
         />
         <Tooltip content={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}>
-          <button onClick={toggleTheme} aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} className={headerIconButtonClass}>
+          <button type="button" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} className={headerIconButtonClass}>
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </Tooltip>
         <Tooltip content="Cerrar sesión">
-          <button onClick={() => logout()} aria-label="Cerrar sesión" className={headerIconButtonClass}>
+          <button type="button" onClick={() => logout()} aria-label="Cerrar sesión" className={headerIconButtonClass}>
             <LogOut className="w-4 h-4" />
           </button>
         </Tooltip>

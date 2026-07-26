@@ -131,9 +131,17 @@ export function useChatUpdates(
   // cambia el chat abierto o el permiso de notificaciones).
   void activeChatId
   const notifyRef = useRef(notify)
-  notifyRef.current = notify
   const internalMentionRef = useRef(onInternalMention)
-  internalMentionRef.current = onInternalMention
+
+  // Las referencias se actualizan después del render, no durante. React puede
+  // repetir o descartar trabajo de render, así que escribir ahí filtra valores
+  // desde una UI que quizá nunca se confirmó. El handler del socket lee
+  // `.current` cuando llega un mensaje —siempre después del commit—, de modo
+  // que sigue viendo el callback vigente sin reconectar el socket.
+  useEffect(() => {
+    notifyRef.current = notify
+    internalMentionRef.current = onInternalMention
+  })
 
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -319,7 +327,15 @@ export function useChatUpdates(
       stopped = true
       setSocketConnected(false)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
-      socket?.close()
+      if (socket) {
+        // Se sueltan los handlers antes de cerrar. close() no es inmediato, y
+        // un onclose disparado ya desmontado volvería a tocar estado del hook
+        // —o a programar una reconexión— sobre un componente que ya no existe.
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onclose = null
+        socket.close()
+      }
     }
   }, [queryClient, navigate])
 }

@@ -131,7 +131,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
             required
             className="w-full rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
           />
-          <button
+          <button type="submit"
             disabled={isCreating}
             className="flex w-full items-center justify-center gap-1.5 rounded-md bg-wa-primary py-1.5 text-xs font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
           >
