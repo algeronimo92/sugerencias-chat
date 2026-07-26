@@ -2,14 +2,12 @@ import asyncio
 import contextlib
 import logging
 from time import perf_counter
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncConnection
 from config import settings
-from db.models import Base
 from db.session import close_engine, get_engine
 from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin
@@ -31,17 +29,22 @@ logger = logging.getLogger(__name__)
 DATABASE_RETRY_MAX_SECONDS = 30
 
 
-async def _begin_database_transaction_with_retry(
-) -> tuple[AbstractAsyncContextManager[AsyncConnection], AsyncConnection]:
+async def _wait_for_database() -> None:
+    """Espera a que PostgreSQL acepte conexiones, con backoff.
+
+    Sustituye a la transacción que antes abría el DDL de arranque. Se conserva
+    la espera porque el contenedor puede levantar antes que la base esté lista,
+    y sin ella el proceso moriría en bucle en vez de reintentar.
+    """
     attempt = 0
     while True:
         attempt += 1
-        transaction = get_engine().begin()
         try:
-            connection = await transaction.__aenter__()
+            async with get_engine().connect() as connection:
+                await connection.execute(text("SELECT 1"))
             if attempt > 1:
                 logger.info("Database connection recovered after %s attempts", attempt)
-            return transaction, connection
+            return
         except (OSError, SQLAlchemyError) as exc:
             await close_engine()
             delay = min(2 ** (attempt - 1), DATABASE_RETRY_MAX_SECONDS)
@@ -54,48 +57,48 @@ async def _begin_database_transaction_with_retry(
             await asyncio.sleep(delay)
 
 
-async def _column_exists(conn: AsyncConnection, table: str, column: str) -> bool:
-    result = await conn.execute(text(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-        "WHERE table_schema = current_schema() AND table_name = :table "
-        "AND column_name = :column)"
-    ), {"table": table, "column": column})
-    return bool(result.scalar())
+async def _verify_schema_is_current() -> None:
+    """Avisa si el esquema no está en la última revisión de Alembic.
+
+    Las migraciones las aplica ``scripts/migrate.py`` antes de arrancar, no la
+    aplicación. Si por lo que sea no corrieron, es mejor un mensaje explícito
+    en el log que descubrirlo por una consulta que falla a mitad de una
+    petición. No bloquea el arranque: dejar el servicio caído por un fallo de
+    esta comprobación sería peor que servir con un aviso.
+    """
+    try:
+        async with get_engine().connect() as connection:
+            current = (await connection.execute(text(
+                "SELECT version_num FROM alembic_version"
+            ))).scalar()
+    except (OSError, SQLAlchemyError):
+        logger.warning(
+            "No se pudo leer alembic_version. Si es una instalación nueva, "
+            "ejecutar: python -m scripts.migrate"
+        )
+        return
+
+    head = _alembic_head()
+    if head and current != head:
+        logger.error(
+            "El esquema está en la revisión %s pero el código espera %s. "
+            "Ejecutar: python -m scripts.migrate",
+            current, head,
+        )
 
 
-async def _index_exists(conn: AsyncConnection, index: str) -> bool:
-    result = await conn.execute(text(
-        "SELECT EXISTS (SELECT 1 FROM pg_indexes "
-        "WHERE schemaname = current_schema() AND indexname = :index)"
-    ), {"index": index})
-    return bool(result.scalar())
+def _alembic_head() -> str | None:
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        from pathlib import Path
 
-
-async def _constraint_exists(conn: AsyncConnection, constraint: str) -> bool:
-    result = await conn.execute(text(
-        "SELECT EXISTS (SELECT 1 FROM pg_constraint "
-        "WHERE conname = :constraint AND connamespace = current_schema()::regnamespace)"
-    ), {"constraint": constraint})
-    return bool(result.scalar())
-
-
-async def _add_column_if_missing(
-    conn: AsyncConnection,
-    table: str,
-    column: str,
-    definition: str,
-) -> None:
-    if not await _column_exists(conn, table, column):
-        await conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}'))
-
-
-async def _create_index_if_missing(
-    conn: AsyncConnection,
-    index: str,
-    statement: str,
-) -> None:
-    if not await _index_exists(conn, index):
-        await conn.execute(text(statement))
+        base = Path(__file__).resolve().parent
+        config = Config(str(base / "alembic.ini"))
+        config.set_main_option("script_location", str(base / "alembic"))
+        return ScriptDirectory.from_config(config).get_current_head()
+    except Exception:  # noqa: BLE001 - la comprobación nunca debe tumbar el arranque
+        return None
 
 
 async def _log_database_encryption() -> None:
@@ -125,196 +128,48 @@ async def _log_database_encryption() -> None:
         )
 
 
-async def _setup_search_unaccent() -> None:
-    """Migración 020 aplicada al arrancar: búsqueda insensible a acentos.
+async def _detect_search_capabilities() -> None:
+    """Comprueba si `f_unaccent` está disponible, sin crear nada.
 
-    En transacción propia: si el usuario de la base (externa) no puede crear
-    extensiones, la búsqueda degrada a ILIKE sin unaccent en vez de romper
-    el startup o dejar la transacción principal abortada.
+    La función y sus índices los instala ahora la migración base. Aquí sólo se
+    consulta, porque el resultado decide en caliente si las búsquedas usan
+    f_unaccent o degradan a ILIKE sensible a acentos: sin esta detección, una
+    base donde la extensión no pudo instalarse haría fallar cada búsqueda.
     """
     try:
-        async with get_engine().begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-            await conn.execute(text(
-                "CREATE OR REPLACE FUNCTION f_unaccent(text) RETURNS text AS "
-                "$$ SELECT public.unaccent('public.unaccent', $1) $$ "
-                "LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT"
-            ))
-            await _create_index_if_missing(
-                conn, "idx_wsp_messages_content_trgm",
-                "CREATE INDEX idx_wsp_messages_content_trgm "
-                "ON wsp_messages USING gin (f_unaccent(content) gin_trgm_ops)",
-            )
-            await _create_index_if_missing(
-                conn, "idx_leads_nombre_trgm",
-                "CREATE INDEX idx_leads_nombre_trgm "
-                "ON leads USING gin (f_unaccent(nombre) gin_trgm_ops)",
-            )
-        set_unaccent_enabled(True)
+        async with get_engine().connect() as connection:
+            available = bool((await connection.execute(text(
+                "SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'f_unaccent')"
+            ))).scalar())
     except (OSError, SQLAlchemyError) as exc:
-        set_unaccent_enabled(False)
         logger.warning(
-            "No se pudo habilitar unaccent (%s); la búsqueda seguirá siendo "
-            "sensible a acentos. Aplicar backend/migrations/020_search_unaccent.sql "
-            "con un usuario con permisos.",
-            type(exc).__name__,
+            "No se pudo comprobar f_unaccent (%s); la búsqueda asumirá que no "
+            "está disponible", type(exc).__name__,
+        )
+        available = False
+
+    set_unaccent_enabled(available)
+    if not available:
+        logger.warning(
+            "f_unaccent no está disponible: la búsqueda será sensible a "
+            "acentos. Aplicar backend/migrations/020_search_unaccent.sql con "
+            "un usuario con permisos para crear extensiones."
         )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # create_all no toca las tablas ya existentes (leads, wsp_messages, que
-    # vienen de la DB externa) — solo crea las que falten, como app_settings/users.
-    database_transaction, conn = await _begin_database_transaction_with_retry()
-    try:
-        await conn.run_sync(Base.metadata.create_all)
-        # create_all no altera tablas existentes. Esta migración idempotente
-        # permite actualizar instalaciones que ya tenían lead_tasks.
-        await _add_column_if_missing(conn, "lead_tasks", "reminder_sent_at", "TIMESTAMPTZ")
-        await _add_column_if_missing(conn, "leads", "vendedor_id", "INTEGER")
-        # wsp_messages es una tabla externa ya existente; create_all no puede
-        # agregar estas columnas, necesarias para relacionar MESSAGES_UPDATE.
-        await _add_column_if_missing(conn, "wsp_messages", "wa_message_id", "TEXT")
-        await _add_column_if_missing(conn, "wsp_messages", "status", "TEXT")
-        # Dimensiones de imágenes para que el chat reserve el espacio exacto;
-        # se rellenan de forma perezosa al servir cada página de mensajes.
-        await _add_column_if_missing(conn, "wsp_messages", "media_width", "INTEGER")
-        await _add_column_if_missing(conn, "wsp_messages", "media_height", "INTEGER")
-        await _add_column_if_missing(conn, "message_templates", "visibility", "TEXT NOT NULL DEFAULT 'global'")
-        await _add_column_if_missing(conn, "message_templates", "template_type", "TEXT NOT NULL DEFAULT 'internal'")
-        await _add_column_if_missing(conn, "message_templates", "official_name", "TEXT")
-        await _add_column_if_missing(conn, "message_templates", "official_language", "TEXT")
-        await _add_column_if_missing(conn, "message_templates", "official_category", "TEXT")
-        await _add_column_if_missing(conn, "message_templates", "official_status", "TEXT")
-        await _add_column_if_missing(conn, "message_templates", "official_parameter_values", "JSONB NOT NULL DEFAULT '[]'::jsonb")
-        await _add_column_if_missing(conn, "message_templates", "interactive_type", "TEXT NOT NULL DEFAULT 'none'")
-        await _add_column_if_missing(conn, "message_templates", "interactive_config", "JSONB NOT NULL DEFAULT '{}'::jsonb")
-        await _add_column_if_missing(conn, "automation_rules", "builder_mode", "TEXT NOT NULL DEFAULT 'simple'")
-        await _add_column_if_missing(conn, "automation_rules", "flow_definition", "JSONB NOT NULL DEFAULT '{}'::jsonb")
-        await _add_column_if_missing(conn, "automation_rules", "published_flow_definition", "JSONB")
-        await _add_column_if_missing(conn, "automation_rules", "flow_version", "INTEGER NOT NULL DEFAULT 0")
-        await _add_column_if_missing(conn, "automation_executions", "flow_state", "JSONB NOT NULL DEFAULT '{}'::jsonb")
-        await _add_column_if_missing(conn, "automation_executions", "attempts", "INTEGER NOT NULL DEFAULT 0")
-        await _add_column_if_missing(conn, "automation_rules", "max_executions_per_hour", "INTEGER")
-        # Borrado lógico: conserva ejecuciones y versiones para auditoría.
-        await _add_column_if_missing(conn, "automation_rules", "deleted_at", "TIMESTAMPTZ")
-        await _create_index_if_missing(
-            conn, "idx_automation_rules_builder_mode",
-            "CREATE INDEX idx_automation_rules_builder_mode ON automation_rules(builder_mode, is_active)",
-        )
-        # Las queries de discovery de automatizaciones filtran por rango de
-        # tiempo — sin estos índices son full scans cada ciclo del watcher.
-        await _create_index_if_missing(
-            conn, "idx_wsp_messages_sent_at",
-            "CREATE INDEX idx_wsp_messages_sent_at ON wsp_messages(sent_at)",
-        )
-        await _create_index_if_missing(
-            conn, "idx_wsp_messages_wa_message_id",
-            "CREATE INDEX idx_wsp_messages_wa_message_id "
-            "ON wsp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL",
-        )
-        await _create_index_if_missing(
-            conn, "idx_lead_tasks_due_pending",
-            "CREATE INDEX idx_lead_tasks_due_pending "
-            "ON lead_tasks(due_at) WHERE status = 'pending'",
-        )
-        await _create_index_if_missing(
-            conn, "idx_message_templates_type_status",
-            "CREATE INDEX idx_message_templates_type_status ON message_templates(template_type, official_status, is_active)",
-        )
-        await _create_index_if_missing(
-            conn, "idx_message_templates_interactive_type",
-            "CREATE INDEX idx_message_templates_interactive_type ON message_templates(interactive_type, is_active)",
-        )
-        if await _constraint_exists(conn, "message_templates_shortcut_key"):
-            await conn.execute(text("ALTER TABLE message_templates DROP CONSTRAINT message_templates_shortcut_key"))
-        if await _index_exists(conn, "uq_message_templates_shortcut_lower"):
-            await conn.execute(text("DROP INDEX uq_message_templates_shortcut_lower"))
-        await _create_index_if_missing(
-            conn, "uq_templates_global_shortcut_lower",
-            "CREATE UNIQUE INDEX uq_templates_global_shortcut_lower "
-            "ON message_templates(lower(shortcut)) WHERE visibility = 'global' AND shortcut IS NOT NULL",
-        )
-        await _create_index_if_missing(
-            conn, "uq_templates_personal_shortcut_owner",
-            "CREATE UNIQUE INDEX uq_templates_personal_shortcut_owner "
-            "ON message_templates(created_by_user_id, lower(shortcut)) "
-            "WHERE visibility = 'personal' AND shortcut IS NOT NULL",
-        )
-        await _create_index_if_missing(
-            conn, "idx_leads_vendedor_id",
-            "CREATE INDEX idx_leads_vendedor_id ON leads(vendedor_id)",
-        )
-        has_lead_seller_fk = (
-            await _constraint_exists(conn, "fk_leads_vendedor_id_users")
-            or await _constraint_exists(conn, "leads_vendedor_id_fkey")
-        )
-        if not has_lead_seller_fk:
-            await conn.execute(text(
-                "ALTER TABLE leads ADD CONSTRAINT fk_leads_vendedor_id_users "
-                "FOREIGN KEY (vendedor_id) REFERENCES users(id) ON DELETE SET NULL"
-            ))
-        # Vincula automáticamente textos históricos cuyo nombre coincide con
-        # un único usuario activo. Los no coincidentes permanecen visibles
-        # mediante el fallback a la columna vendedor.
-        await conn.execute(text(
-            "UPDATE leads l SET vendedor_id = matched.id FROM ("
-            "SELECT lower(trim(name)) AS normalized_name, min(id) AS id "
-            "FROM users WHERE is_active = true GROUP BY lower(trim(name)) HAVING count(*) = 1"
-            ") matched WHERE l.vendedor_id IS NULL AND l.vendedor IS NOT NULL "
-            "AND lower(trim(l.vendedor)) = matched.normalized_name"
-        ))
-        await _create_index_if_missing(
-            conn, "idx_lead_tasks_pending_reminder",
-            "CREATE INDEX idx_lead_tasks_pending_reminder "
-            "ON lead_tasks(remind_at) WHERE status = 'pending' AND reminder_sent_at IS NULL",
-        )
-        await _add_column_if_missing(conn, "template_attachments", "library_asset_id", "INTEGER")
-        if not await _constraint_exists(conn, "template_attachments_library_asset_id_fkey"):
-            await conn.execute(text(
-                "ALTER TABLE template_attachments ADD CONSTRAINT template_attachments_library_asset_id_fkey "
-                "FOREIGN KEY (library_asset_id) REFERENCES media_assets(id) ON DELETE RESTRICT"
-            ))
-        await _create_index_if_missing(
-            conn, "idx_template_attachments_library_asset",
-            "CREATE INDEX idx_template_attachments_library_asset ON template_attachments(library_asset_id)",
-        )
-        # Los adjuntos creados antes de la biblioteca también pasan a estar
-        # disponibles para reutilizarlos, sin duplicar el archivo físico.
-        await conn.execute(text(
-            "INSERT INTO media_assets "
-            "(media_url, content_type, filename, size_bytes, uploaded_by_user_id, created_at) "
-            "SELECT media_url, min(content_type), min(filename), 0, NULL, min(created_at) "
-            "FROM template_attachments GROUP BY media_url "
-            "ON CONFLICT (media_url) DO NOTHING"
-        ))
-        await conn.execute(text(
-            "UPDATE template_attachments ta SET library_asset_id = ma.id "
-            "FROM media_assets ma WHERE ta.library_asset_id IS NULL "
-            "AND ma.media_url = ta.media_url"
-        ))
-        await _add_column_if_missing(conn, "lead_note_mentions", "read_at", "TIMESTAMPTZ")
-        await conn.execute(text(
-            "INSERT INTO user_notifications "
-            "(user_id, notification_type, title, body, lead_id, source_id, metadata, read_at, created_at) "
-            "SELECT m.user_id, 'internal_note_mention', u.name || ' te mencionó en una nota', "
-            "n.content, n.lead_id, n.id::text, "
-            "jsonb_build_object('note_id', n.id, 'author_user_id', u.id, 'author_name', u.name), "
-            "m.read_at, m.created_at FROM lead_note_mentions m "
-            "JOIN lead_notes n ON n.id = m.note_id JOIN users u ON u.id = n.author_user_id "
-            "WHERE m.user_id <> n.author_user_id AND NOT EXISTS ("
-            "SELECT 1 FROM user_notifications un WHERE un.user_id = m.user_id "
-            "AND un.notification_type = 'internal_note_mention' AND un.source_id = n.id::text)"
-        ))
-    except BaseException as exc:
-        await database_transaction.__aexit__(type(exc), exc, exc.__traceback__)
-        raise
-    else:
-        await database_transaction.__aexit__(None, None, None)
-
+    # El esquema ya no se toca aquí. Antes este bloque ejecutaba create_all
+    # más una treintena de ALTER/CREATE INDEX y tres backfills de tabla
+    # completa, en cada arranque y dentro de una sola transacción. Con más de
+    # una instancia arrancando a la vez, dos procesos comprobaban "¿existe
+    # este índice?", ambos respondían que no, y el segundo CREATE INDEX
+    # reventaba. Ahora lo aplica scripts/migrate.py bajo un advisory lock,
+    # antes de que arranque la aplicación.
+    await _wait_for_database()
     await _log_database_encryption()
-    await _setup_search_unaccent()
+    await _verify_schema_is_current()
+    await _detect_search_capabilities()
 
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
     if encrypted_settings or decrypted_settings:

@@ -131,7 +131,17 @@ jobs:
               return 1
             }
 
-            if $COMPOSE up -d --build && wait_until_healthy; then
+            # Las migraciones van antes de arrancar y en un contenedor aparte:
+            # scripts/migrate.py toma un advisory lock, así que si algún día hay
+            # más de una instancia sólo una aplica el DDL y el resto espera.
+            # Si falla, no se arranca nada: mejor quedarse en la versión
+            # anterior que servir con el esquema a medias.
+            migrate() {
+              $COMPOSE build backend && \
+              $COMPOSE run --rm --no-deps backend python -m scripts.migrate
+            }
+
+            if migrate && $COMPOSE up -d --build && wait_until_healthy; then
               echo "Despliegue verificado"
               # Se conservan las imágenes de la última semana: son las que
               # permiten revertir sin reconstruir desde cero.
@@ -139,6 +149,10 @@ jobs:
             else
               echo "El despliegue no respondió sano. Revirtiendo a $PREVIOUS"
               git reset --hard "$PREVIOUS"
+              # No se revierte el esquema: las migraciones son aditivas y el
+              # código anterior convive con columnas de más. Un downgrade
+              # automático sí podría destruir datos, así que se deja para una
+              # decisión humana.
               $COMPOSE up -d --build
               if wait_until_healthy; then
                 echo "Reversión completada: producción quedó en $PREVIOUS"
