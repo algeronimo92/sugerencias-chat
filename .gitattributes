@@ -1,0 +1,13 @@
+# Los scripts de shell tienen que llegar al servidor con finales de línea LF.
+# Con CRLF, Linux falla al ejecutarlos con un error que no dice lo que pasa:
+#   /usr/bin/env: 'bash\r': No such file or directory
+# El repositorio se edita desde Windows, así que conviene forzarlo aquí en vez
+# de depender de la configuración de cada máquina.
+*.sh text eol=lf
+
+# Igual para lo que consume Docker o el propio Linux.
+Dockerfile text eol=lf
+*.conf text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.env.example text eol=lf

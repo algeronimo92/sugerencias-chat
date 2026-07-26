@@ -43,6 +43,33 @@ docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml up -d --
 
 La app queda expuesta en `https://chat.dermicapro.app` (ajustar el `Host` en `traefik/docker-compose.yml` si el dominio cambia).
 
+Las migraciones **no** las aplica la aplicación al arrancar. Se ejecutan antes, en un contenedor aparte:
+
+```bash
+docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml \
+  run --rm --no-deps backend python -m scripts.migrate
+```
+
+Toma un advisory lock de PostgreSQL, así que es seguro aunque se lance más de una vez a la vez. Sobre una base que ya tiene el esquema y no conoce Alembic, la marca (`stamp`) en la baseline en lugar de intentar recrearla. Con `--check` sólo informa, sin modificar nada.
+
+### 4. Despliegue blue-green (opcional)
+
+Alternativa a los pasos anteriores para desplegar **sin corte**. La versión nueva se levanta al lado de la que sirve, se migra y se comprueba mientras nadie la usa; sólo entonces se conmuta el tráfico reescribiendo `traefik/dynamic/active.yml`, que Traefik relee en caliente.
+
+No se combina con `traefik/docker-compose.yml`: aquel enruta por etiquetas de Docker y este por el archivo dinámico, y ambos reclamarían el mismo `Host`.
+
+```bash
+scripts/deploy-bluegreen.sh            # despliega el color inactivo y conmuta
+scripts/deploy-bluegreen.sh --status   # qué color está sirviendo
+scripts/deploy-bluegreen.sh --rollback # vuelve al color anterior
+```
+
+Cada color publica su nginx sólo en `127.0.0.1` (blue 8081, green 8082), de modo que únicamente Traefik llega a ellos y nadie puede saltarse el TLS entrando por el puerto de un color.
+
+**Requisito de las migraciones:** durante la ventana en que ambos colores están vivos, el esquema sirve a los dos. Las migraciones deben ser aditivas — expandir ahora, contraer en un despliegue posterior. Un `DROP COLUMN` en la misma versión que deja de usar esa columna rompe al color viejo mientras se apaga.
+
+Para revertir de urgencia sin el script: cambiar el puerto de la línea `url` en `traefik/dynamic/active.yml` por el del otro color. Traefik conmuta en menos de un segundo, sin reconstruir nada.
+
 ### Desarrollo local
 
 ```bash
