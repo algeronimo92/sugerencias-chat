@@ -91,8 +91,59 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -eu
             cd ${{ secrets.VPS_PROJECT_PATH }}
+
+            COMPOSE="docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml"
+
+            # Se guarda antes de mover nada: es el punto al que se vuelve si la
+            # versión nueva no llega a responder.
+            PREVIOUS=$(git rev-parse HEAD)
+            echo "Versión en curso: $PREVIOUS"
+
             git fetch origin main
             git reset --hard origin/main
-            docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml up -d --build
-            docker image prune -f
+            echo "Desplegando: $(git rev-parse HEAD)"
+
+            # El backend responde /health/ready sólo si alcanza PostgreSQL y el
+            # almacenamiento multimedia, así que sirve de comprobación real y no
+            # sólo de "el proceso arrancó". El start_period del healthcheck es de
+            # 60 s; se concede el doble antes de dar el despliegue por fallido.
+            wait_until_healthy() {
+              i=0
+              while [ $i -lt 40 ]; do
+                if $COMPOSE exec -T backend python -c \
+                     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)" \
+                     >/dev/null 2>&1; then
+                  # Y de paso el camino completo: traefik -> nginx -> SPA.
+                  # Va contra el 443 con --resolve, no contra el 80: traefik
+                  # redirige http a https, así que una petición al 80 devuelve
+                  # un 301 que curl da por bueno sin haber tocado nginx.
+                  if curl -fsSk -o /dev/null \
+                       --resolve chat.dermicapro.app:443:127.0.0.1 \
+                       https://chat.dermicapro.app/; then
+                    return 0
+                  fi
+                fi
+                i=$((i + 1))
+                sleep 5
+              done
+              return 1
+            }
+
+            if $COMPOSE up -d --build && wait_until_healthy; then
+              echo "Despliegue verificado"
+              # Se conservan las imágenes de la última semana: son las que
+              # permiten revertir sin reconstruir desde cero.
+              docker image prune -f --filter "until=168h"
+            else
+              echo "El despliegue no respondió sano. Revirtiendo a $PREVIOUS"
+              git reset --hard "$PREVIOUS"
+              $COMPOSE up -d --build
+              if wait_until_healthy; then
+                echo "Reversión completada: producción quedó en $PREVIOUS"
+              else
+                echo "ATENCIÓN: la reversión tampoco responde. Requiere intervención manual."
+              fi
+              exit 1
+            fi
