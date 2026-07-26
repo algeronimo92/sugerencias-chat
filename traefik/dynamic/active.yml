@@ -1,0 +1,36 @@
+# Color activo del despliegue. Este archivo es el interruptor: traefik lo
+# relee en caliente y el tráfico cambia de instancia sin recrear un solo
+# contenedor.
+#
+# No editar a mano salvo para revertir de urgencia. Lo reescribe
+# backend/scripts/deploy-bluegreen.sh, que antes comprueba que el color
+# nuevo responde sano.
+#
+# Para revertir al instante: cambiar el puerto de la línea `url` por el del
+# otro color (blue 8081, green 8082) y guardar. Traefik conmuta en menos de
+# un segundo, sin reconstruir nada.
+#
+# ACTIVE_COLOR: blue
+
+http:
+  routers:
+    sugerencias-chat:
+      rule: "Host(`chat.dermicapro.app`)"
+      entryPoints:
+        - websecure
+      service: sugerencias-chat
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    sugerencias-chat:
+      loadBalancer:
+        servers:
+          # blue = 8081, green = 8082. Cada color publica su nginx sólo en
+          # la interfaz de loopback, así que este puerto no es alcanzable
+          # desde Internet: únicamente traefik llega a él.
+          - url: "http://127.0.0.1:8081"
+        healthCheck:
+          path: /
+          interval: 10s
+          timeout: 3s

@@ -1,6 +1,9 @@
 services:
   traefik:
-    image: traefik:latest
+    # Fijado a propósito. Con "latest", un `up -d` cualquiera podía traer una
+    # versión mayor y cambiar el enrutado sin que nadie lo pidiera — algo que
+    # importa más ahora que el despliegue depende de que traefik conmute bien.
+    image: traefik:3.7.9
     restart: unless-stopped
     network_mode: host
     command:
@@ -9,6 +12,13 @@ services:
       - --log.level=INFO
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # Proveedor de archivo: es lo que hace posible el blue-green. Las
+      # etiquetas de Docker son inmutables, así que cambiar de color con
+      # etiquetas obligaría a recrear contenedores — justo lo que se quiere
+      # evitar. Traefik relee este directorio en caliente, de modo que
+      # conmutar el tráfico es reescribir un archivo.
+      - --providers.file.directory=/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
@@ -22,6 +32,9 @@ services:
     volumes:
       - traefik-letsencrypt:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # En sólo lectura: traefik nunca escribe aquí, sólo observa. Quien
+      # reescribe el archivo es scripts/deploy-bluegreen.sh, desde el host.
+      - ./dynamic:/dynamic:ro
 
 volumes:
   traefik-letsencrypt:

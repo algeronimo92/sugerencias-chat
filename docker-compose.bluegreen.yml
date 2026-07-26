@@ -1,0 +1,30 @@
+# Override para despliegue blue-green. Alternativa a traefik/docker-compose.yml
+# — no se usan los dos a la vez: uno enruta por etiquetas de Docker y el otro
+# por el archivo dinámico de traefik, y ambos reclamarían el mismo Host.
+#
+# Cada color se levanta como un proyecto de compose distinto:
+#
+#   COLOR_PORT=8081 docker compose -p sugerencias-chat-blue \
+#     -f docker-compose.prod.yml -f docker-compose.bluegreen.yml up -d
+#
+# Eso da a cada color su propia red, de modo que el `proxy_pass
+# http://backend:8000` de nginx resuelve dentro de su color y no se cruzan.
+#
+# Lo orquesta backend/scripts/deploy-bluegreen.sh; esto es sólo la topología.
+
+services:
+  backend:
+    # Sin publicar: sólo lo alcanza el nginx de su mismo color, por la red
+    # interna del proyecto. Es lo que evita que la API quede expuesta.
+    ports: !override []
+
+  frontend:
+    ports: !override
+      # Atado a loopback a propósito. Con "8081:80" quedaría abierto a
+      # Internet y cualquiera podría saltarse traefik —y su TLS— entrando
+      # por el puerto del color.
+      - "127.0.0.1:${COLOR_PORT:?define COLOR_PORT (8081 blue / 8082 green)}:80"
+    # Sin etiquetas de traefik: en este modo el enrutado lo decide
+    # traefik/dynamic/active.yml, no el descubrimiento por Docker.
+    labels:
+      traefik.enable: "false"
