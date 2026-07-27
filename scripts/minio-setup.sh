@@ -78,38 +78,47 @@ POLICY=$(cat <<JSON
 JSON
 )
 
+# La politica viaja por variable de entorno y no interpolada en el script: al
+# incrustar el JSON dentro de un `echo "..."`, sus comillas internas se
+# rompen y mc recibe `{ Version: ...` sin comillar, que rechaza con
+# "invalid character 'V' looking for beginning of object key string".
 docker run --rm -i \
   -e MC_HOST_target="$SCHEME://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@$ENDPOINT" \
-  --entrypoint sh minio/mc -s <<SCRIPT
+  -e POLICY_JSON="$POLICY" \
+  -e BUCKET="$BUCKET" \
+  -e APP_USER="$APP_USER" \
+  -e APP_SECRET="$APP_SECRET" \
+  --entrypoint sh minio/mc -s <<'SCRIPT'
 set -e
 
-echo "$POLICY" > /tmp/policy.json
+printf '%s' "$POLICY_JSON" > /tmp/policy.json
 
 echo "--- bucket ---"
-if mc ls target/$BUCKET >/dev/null 2>&1; then
-  objetos=\$(mc ls --recursive target/$BUCKET 2>/dev/null | wc -l)
-  echo "  ya existe, contiene \$objetos objetos"
+if mc ls "target/$BUCKET" >/dev/null 2>&1; then
+  objetos=$(mc ls --recursive "target/$BUCKET" 2>/dev/null | wc -l)
+  echo "  ya existe, contiene $objetos objetos"
 else
-  mc mb target/$BUCKET
+  mc mb "target/$BUCKET"
   echo "  creado"
 fi
 
 # Privado siempre: la aplicacion sirve los archivos por su propio endpoint
 # autenticado. Un bucket publico dejaria las fotos de pacientes accesibles a
 # cualquiera que adivine una URL.
-mc anonymous set none target/$BUCKET >/dev/null
+mc anonymous set none "target/$BUCKET" >/dev/null
 echo "  acceso anonimo: denegado"
 
 echo "--- politica ---"
-mc admin policy create target ${APP_USER}-policy /tmp/policy.json 2>/dev/null \
-  || mc admin policy remove target ${APP_USER}-policy >/dev/null 2>&1 \
-  && mc admin policy create target ${APP_USER}-policy /tmp/policy.json
+# Se borra siempre antes de crear, ignorando el fallo si no existia. Encadenar
+# create-o-si-no-borra-y-crea era fragil y ocultaba el error real.
+mc admin policy remove target "${APP_USER}-policy" >/dev/null 2>&1 || true
+mc admin policy create target "${APP_USER}-policy" /tmp/policy.json
 echo "  ${APP_USER}-policy: solo lectura/escritura/borrado dentro de $BUCKET"
 
 echo "--- usuario ---"
 mc admin user remove target "$APP_USER" >/dev/null 2>&1 || true
 mc admin user add target "$APP_USER" "$APP_SECRET"
-mc admin policy attach target ${APP_USER}-policy --user "$APP_USER"
+mc admin policy attach target "${APP_USER}-policy" --user "$APP_USER"
 echo "  creado y politica adjunta"
 SCRIPT
 
