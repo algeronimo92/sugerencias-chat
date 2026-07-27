@@ -20,7 +20,7 @@ async def test_audio_job_reads_durable_media_and_uses_ptt_endpoint(monkeypatch):
     assert response["key"]["id"] == "WA-AUDIO"
     assert content is None
     read_media.assert_called_once_with("/api/media/audio/test.ogg")
-    send_audio.assert_awaited_once_with("51999@s.whatsapp.net", "BASE64")
+    send_audio.assert_awaited_once_with("51999@s.whatsapp.net", "BASE64", quoted=None)
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,7 @@ async def test_media_job_preserves_type_and_filename(monkeypatch):
     })
 
     send_media.assert_awaited_once_with(
-        "51999@s.whatsapp.net", "BASE64", "document", filename="file.pdf"
+        "51999@s.whatsapp.net", "BASE64", "document", filename="file.pdf", quoted=None
     )
 
 
@@ -58,7 +58,7 @@ async def test_location_and_official_template_jobs_dispatch_without_route_wait(m
         "components": [{"type": "body", "parameters": []}],
     })
 
-    send_location.assert_awaited_once_with("51999@s.whatsapp.net", -12.1, -77.0)
+    send_location.assert_awaited_once_with("51999@s.whatsapp.net", -12.1, -77.0, quoted=None)
     send_template.assert_awaited_once_with(
         "51999@s.whatsapp.net", "appointment", "es_PE",
         [{"type": "body", "parameters": []}],

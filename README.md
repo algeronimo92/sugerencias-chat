@@ -276,6 +276,32 @@ mensaje; no marca como vistos mensajes posteriores. La migración manual para in
 `backend/migrations/016_message_delivery_status.sql`; el backend también la
 aplica de forma idempotente al arrancar.
 
+### Responder a un mensaje en específico
+
+En el chat, al pasar el mouse por una burbuja aparece un botón de responder;
+el mensaje elegido queda citado sobre el compositor (Esc lo cancela) y se
+manda con el texto, el audio, el adjunto o la ubicación que se envíe a
+continuación. La cita viaja a WhatsApp en el campo `quoted` de Evolution, así
+que el cliente la ve igual que si se hubiera respondido desde el teléfono.
+Tocar el recuadro citado salta al mensaje original, paginando hacia atrás si
+hace falta.
+
+Se guarda `wsp_messages.quoted_wa_message_id` — el `key.id` de WhatsApp del
+mensaje citado, no la clave primaria interna: es el único identificador que
+comparten la app, Evolution y n8n. Solo se pueden citar mensajes que ya
+existen en WhatsApp; en uno todavía en la outbox el botón no aparece y la API
+responde 409.
+
+**Para que las respuestas del cliente también se vean citadas**, el workflow
+de n8n tiene que rellenar esa columna al insertar el mensaje entrante, con
+`contextInfo.stanzaId` del evento de Evolution (viene en
+`data.message.extendedTextMessage.contextInfo.stanzaId`, y en el equivalente
+de cada tipo de adjunto). Sin ese cambio la función queda operativa solo en
+sentido saliente: las respuestas del vendedor se ven citadas en el teléfono
+del cliente, pero las del cliente llegan al CRM sin el recuadro. La migración
+manual es `backend/migrations/023_quoted_messages.sql`; el despliegue la
+aplica solo vía Alembic.
+
 ### Búsqueda estilo WhatsApp
 
 La búsqueda de la lista de leads y del Kanban ignora acentos ("jose" encuentra

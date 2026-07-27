@@ -112,6 +112,12 @@ class WspMessage(Base):
     # 0/0 significa "no se pudo medir, no reintentar"; NULL, "todavía no".
     media_width: Mapped[int | None] = mapped_column(Integer)
     media_height: Mapped[int | None] = mapped_column(Integer)
+    # Mensaje al que responde este (cita estilo WhatsApp). Se guarda el
+    # wa_message_id y no la clave primaria porque es el único identificador
+    # que comparten la app, Evolution y n8n: en las respuestas del cliente
+    # llega como contextInfo.stanzaId. La fila local se resuelve por
+    # (chat_id, wa_message_id) al servir el historial.
+    quoted_wa_message_id: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index(
@@ -120,6 +126,7 @@ class WspMessage(Base):
             sent_at.desc(),
             id.desc(),
         ),
+        Index("idx_wsp_messages_chat_wa_message", chat_id, wa_message_id),
     )
 
 

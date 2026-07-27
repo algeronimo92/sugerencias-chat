@@ -165,6 +165,11 @@ export interface Message {
    * antes de que cargue, para que la conversación no se mueva. */
   media_width?: number | null
   media_height?: number | null
+  /** Mensaje citado, ya resuelto por el backend. Viene en null cuando el
+   * mensaje no responde a nada o cuando el citado no está en nuestra base. */
+  quoted_message_id?: number | null
+  quoted_sender?: string | null
+  quoted_content?: string | null
 }
 
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
