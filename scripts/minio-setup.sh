@@ -48,30 +48,55 @@ APP_SECRET="${MINIO_APP_SECRET:-$(head -c 30 /dev/urandom | base64 | tr -d '/+='
 echo "Servidor : $URL"
 echo "Bucket   : $BUCKET"
 echo "Usuario  : $APP_USER"
-echo
 
-# La politica se genera aqui para que el nombre del bucket no quede duplicado
-# en un archivo aparte que alguien olvidaria actualizar.
+# La politica se genera aqui, y su alcance se deriva de MINIO_PREFIX, para que
+# no pueda quedar desincronizada con donde la aplicacion escribe de verdad.
 #
-# Los permisos salen de lo que la aplicacion usa de verdad (ver
-# services/media_storage.py):
+# Los permisos salen de lo que usa services/media_storage.py:
 #   bucket_exists -> ListBucket        put_object/fput_object -> PutObject
 #   get_object    -> GetObject         remove_object          -> DeleteObject
 #   stat_object   -> GetObject
-# No hace falta crear ni borrar buckets, ni listar los demas.
+#
+# Las acciones de multipart no son opcionales: el SDK de MinIO parte solo los
+# objetos grandes, y el limite de subida de la app son 25 MB. Sin ellas, las
+# imagenes pequenas subirian y los videos fallarian con AccessDenied — un
+# fallo intermitente y dificil de atribuir.
+#
+# El ambito son las claves bajo el prefijo, no todo el bucket: las claves son
+# {prefijo}/{categoria}/{archivo} (ver _object_name_candidates).
+PREFIX="${MINIO_PREFIX:-$(read_env MINIO_PREFIX)}"
+PREFIX="${PREFIX%/}"
+OBJECT_ARN="arn:aws:s3:::$BUCKET/*"
+[ -n "$PREFIX" ] && OBJECT_ARN="arn:aws:s3:::$BUCKET/$PREFIX/*"
+
+echo "Alcance  : $OBJECT_ARN"
+echo
+
 POLICY=$(cat <<JSON
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "BucketAccess",
       "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads"
+      ],
       "Resource": ["arn:aws:s3:::$BUCKET"]
     },
     {
+      "Sid": "MediaObjectAccess",
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": ["arn:aws:s3:::$BUCKET/*"]
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": ["$OBJECT_ARN"]
     }
   ]
 }
