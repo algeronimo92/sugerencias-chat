@@ -4,12 +4,17 @@
 # ssl=on (ver compose.db.yml) y los deja listos en db/tls/, que es justo donde
 # el compose los monta:
 #
-#   ./db/tls/server.crt -> /etc/postgres/server.crt
-#   ./db/tls/server.key -> /etc/postgres/server.key
+#   ./db/tls -> /etc/postgres/tls   (se monta el directorio entero)
 #
 # db/tls/ esta en .gitignore: la clave privada NO se versiona y cada servidor
-# genera la suya. Sin estos ficheros el contenedor de la base ni siquiera
-# levanta, aunque la app local conecte en claro por la red interna de Docker.
+# genera la suya.
+#
+# El TLS no tiene interruptor: compose.db.yml arranca con ssl=on siempre, asi
+# que sin estos ficheros la base NO levanta. Ejecutar este script es parte de
+# poner en marcha un servidor, no un paso opcional.
+#
+# Ademas, db/pg_hba.conf exige cifrado a toda conexion de red, incluida la de
+# la propia aplicacion: backend/.env necesita DATABASE_SSL=require.
 #
 # El certificado es auto-firmado. Los clientes que conectan por Internet (n8n)
 # lo usan con sslmode=require: cifran, pero no verifican la CA, asi que no hace
@@ -110,5 +115,7 @@ echo "Listo. Colocados en su sitio:"
 ls -l "$CRT" "$KEY"
 echo
 echo "El contenedor 'postgres' ya puede arrancar con ssl=on."
+echo "Comprueba tambien que backend/.env tenga DATABASE_SSL=require:"
+echo "pg_hba.conf exige cifrado tambien a la aplicacion."
 echo "Si la base ya estaba en marcha, recarga el certificado con:"
 echo "  docker compose -f compose.db.yml --env-file db/.env restart postgres"

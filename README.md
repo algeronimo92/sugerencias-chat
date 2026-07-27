@@ -53,11 +53,11 @@ docker network connect dermicapro-data <contenedor-de-n8n>
 En `backend/.env`, la conexión de la app es siempre interna y **en claro**:
 
 ```
-DATABASE_URL=postgresql+asyncpg://dermicapro:<password>@postgres:5432/dermicapro
-DATABASE_SSL=disable
+DATABASE_URL=postgresql+asyncpg://dermicapro:<password>@postgres:5432/dermicapro_db
+DATABASE_SSL=require
 ```
 
-`disable` es correcto aquí: el tráfico de la app no sale de la red de Docker, y `db/pg_hba.conf` deja la red interna (`172.16.0.0/12`) sin exigir cifrado. **La app no usa ningún certificado.**
+`require` y no `disable`: `db/pg_hba.conf` exige cifrado a **toda** conexión de red, también a la de la app. Eximir a la red interna por su rango parece razonable, pero según cómo Docker publique el puerto una conexión externa llega con la dirección de la puerta de enlace de esa misma red y entraría sin cifrar por esa exención — comprobado. El certificado es autofirmado, así que `require` (cifra sin validar la CA) es lo que corresponde.
 
 #### Acceso externo con TLS (n8n en otra VPS)
 
@@ -135,7 +135,11 @@ Si además quieres verificar la identidad del servidor (no solo cifrar), cópiat
 
 ⚠️ Conectado a producción tocas **datos reales**: cualquier `UPDATE`/`DELETE` es inmediato y sin red de seguridad. Para experimentos, usa la base de desarrollo o restaura un backup en local (`scripts/db-backup.sh`).
 
-**C) Desde el propio servidor.** La app en Docker no usa nada de esto: llega por `postgres:5432` en claro por la red interna. Para probar el TLS desde el servidor mismo, usa el comando de (B) con `host=127.0.0.1` y `--network host` (con `127.0.0.1`, no `localhost`: el puerto se publica solo en IPv4 y `localhost` intenta antes `::1`, que da *connection refused*).
+**C) Desde el propio servidor.** La app en Docker llega por `postgres:5432`, también cifrada. Para probar el TLS desde el servidor mismo, usa el comando de (B) con `host=127.0.0.1` y `--network host` (con `127.0.0.1`, no `localhost`: el puerto se publica solo en IPv4 y `localhost` intenta antes `::1`, que da *connection refused*).
+
+#### Acceso desde n8n (otra VPS)
+
+n8n corre en un servidor distinto y Hostinger no ofrece red privada entre VPS. La base se alcanza por un túnel WireGuard, que cifra el tráfico y permite que PostgreSQL escuche sólo en la interfaz del túnel — sin exposición pública. Ver [docs/red-privada-wireguard.md](docs/red-privada-wireguard.md).
 
 #### Copias de seguridad
 
@@ -199,7 +203,7 @@ Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (fronten
 
 **A qué base apunta el backend** se elige en `backend/.env` — las tres opciones están comentadas en `backend/.env.example`, listas para des/comentar:
 
-1. Producción en el servidor (red interna, `postgres:5432`, sin TLS) — la del despliegue.
+1. Producción en el servidor (red interna, `postgres:5432`, `require`) — la del despliegue.
 2. Base local de `compose.yml` — la normal en desarrollo.
 3. **La base de producción desde tu laptop** — cambia `DATABASE_URL` a la IP pública y `DATABASE_SSL=require` (el servidor rechaza conexiones sin TLS). Tras editar `backend/.env`, reinicia el backend (`docker compose restart backend`). ⚠ Datos reales: sin red de seguridad ante un `UPDATE`/`DELETE`.
 

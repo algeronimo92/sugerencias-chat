@@ -103,6 +103,34 @@ jobs:
             PREVIOUS=$(git rev-parse HEAD)
             echo "Versión en curso: $PREVIOUS"
 
+            # Comprobaciones previas. Van ANTES del git reset a propósito: lo
+            # que miran no viene del repositorio sino del servidor, así que ya
+            # se puede saber. Si falta algo, producción se queda intacta y con
+            # el repositorio todavía en $PREVIOUS, no a medio camino.
+            #
+            # PostgreSQL arranca con ssl=on sin interruptor, así que sin
+            # certificado entra en bucle de reinicio con "could not load server
+            # certificate file: no start line" — un mensaje que no dice qué
+            # hacer. db/tls/ está en .gitignore: lo genera cada servidor.
+            if [ ! -s db/tls/server.crt ] || [ ! -s db/tls/server.key ]; then
+              echo "ERROR: faltan los certificados TLS de PostgreSQL." >&2
+              echo "La base no arranca sin ellos. Generarlos en el servidor con:" >&2
+              echo "    scripts/gen-db-tls.sh" >&2
+              exit 1
+            fi
+
+            # db/pg_hba.conf rechaza toda conexión de red sin cifrar, incluida
+            # la del propio backend. Si backend/.env se quedó en
+            # DATABASE_SSL=disable, el backend pierde la base en cuanto se
+            # recrea PostgreSQL — y revertir no lo arregla, porque devuelve el
+            # código pero no el pg_hba que la base ya cargó.
+            if ! grep -qE '^[[:space:]]*DATABASE_SSL[[:space:]]*=[[:space:]]*require[[:space:]]*$' backend/.env; then
+              echo "ERROR: backend/.env no tiene DATABASE_SSL=require." >&2
+              echo "pg_hba.conf exige TLS a toda conexión de red; sin esto el" >&2
+              echo "backend no puede conectar. Corregirlo en el servidor." >&2
+              exit 1
+            fi
+
             git fetch origin main
             git reset --hard origin/main
             echo "Desplegando: $(git rev-parse HEAD)"
@@ -157,6 +185,12 @@ jobs:
             else
               echo "El despliegue no respondió sano. Revirtiendo a $PREVIOUS"
               git reset --hard "$PREVIOUS"
+              # La base también, no sólo la aplicación: migrate() ya recreó el
+              # contenedor con el compose.db.yml y el pg_hba de la versión
+              # nueva. Sin volver a aplicarlos, PostgreSQL se queda con la
+              # configuración de la versión que acaba de fallar mientras el
+              # código vuelve a la anterior — y esa pareja puede no hablarse.
+              $COMPOSE_DB up -d
               # No se revierte el esquema: las migraciones son aditivas y el
               # código anterior convive con columnas de más. Un downgrade
               # automático sí podría destruir datos, así que se deja para una
