@@ -54,22 +54,42 @@ class LeadStageWebhookBody(BaseModel):
     razonamiento: str | None = None
 
 
+async def _broadcast_lead_updated(chat_id: str) -> None:
+    """Avisa a los paneles abiertos de que el lead cambió por fuera de la app.
+
+    El agente analista de n8n escribe nombre, teléfono, notas y
+    servicio_interes con un UPDATE directo a PostgreSQL, y llama a este webhook
+    inmediatamente después. Sin este aviso el CRM se queda con los datos viejos
+    hasta que otra cosa provoque un refresco: mientras el WebSocket está
+    conectado el frontend no hace polling (ver useChats.ts, refetchInterval).
+    """
+    await manager.broadcast(
+        {"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"}
+    )
+
+
 @router.post("/lead-stage")
 async def lead_stage_webhook(
     body: LeadStageWebhookBody,
     x_webhook_token: str | None = Header(default=None),
 ):
-    """Llamado por n8n cuando el agente analista decide la etapa del lead.
+    """Llamado por n8n cuando el agente analista termina de analizar el lead.
 
     Reemplaza el UPDATE directo a ``leads.estado`` que hacía el workflow: al
     pasar por acá el cambio queda auditado en ``lead_activity`` (con el
     razonamiento del agente y la foto del último mensaje del cliente), se
     notifica a los paneles abiertos y se disparan las automatizaciones de
     cambio de etapa.
+
+    Se avisa a los paneles incluso cuando la etapa no se mueve: el agente
+    también reescribe el resto de los campos del lead, y mantener la etapa es
+    su respuesta más frecuente. Sin ese aviso, un nombre recién deducido de la
+    conversación no aparecía en pantalla hasta el siguiente mensaje.
     """
     await _check_token(x_webhook_token)
 
     if body.estado is None:
+        await _broadcast_lead_updated(body.chat_id)
         return {"status": "ok", "changed": False, "stage": None}
 
     try:
@@ -100,6 +120,9 @@ async def lead_stage_webhook(
             await trigger_stage_changed(body.chat_id)
         except Exception:
             logger.exception("No se pudo programar la automatización de cambio de etapa del webhook")
+    else:
+        # La etapa no se movió, pero el analista sí tocó el resto del lead.
+        await _broadcast_lead_updated(body.chat_id)
 
     return {"status": "ok", "changed": result["changed"], "stage": stage.value}
 
