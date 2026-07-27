@@ -31,7 +31,7 @@ async def test_text_send_returns_queued_message_without_waiting_for_evolution(mo
 
     assert result == queued
     require_lead.assert_awaited_once_with("51999999999@s.whatsapp.net")
-    enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", "Hola")
+    enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", "Hola", None)
     broadcast.assert_awaited_once_with({
         "type": "chats_updated",
         "chat_id": "51999999999@s.whatsapp.net",
@@ -64,6 +64,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
         "content": "<audio></audio>",
         "media_url": "/api/media/audio/voice.ogg",
         "payload": {"type": "audio", "media_url": "/api/media/audio/voice.ogg"},
+        "reply_to": None,
     }])
     broadcast.assert_awaited_once()
 

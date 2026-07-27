@@ -202,23 +202,36 @@ async def send_whatsapp_list(
     return await _post(url, api_key, payload, timeout=30.0)
 
 
-async def send_whatsapp_text(chat_id: str, text: str) -> dict:
+def _with_quoted(payload: dict, quoted: dict | None) -> dict:
+    """Agrega el contexto de cita al payload si lo hay.
+
+    Evolution acepta `quoted` como opción de nivel superior en todos los
+    endpoints de envío y se lo pasa a Baileys, que es quien arma el
+    contextInfo. Va condicionado porque mandar `quoted: null` hace que
+    Evolution rechace el envío con 400 en vez de ignorarlo.
+    """
+    return {**payload, "quoted": quoted} if quoted else payload
+
+
+async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None) -> dict:
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/message/sendText/{instance}"
     # chat_id ya es el remoteJid completo (ej. 5491112345678@s.whatsapp.net);
     # Evolution API v2 acepta ese formato directo en "number".
-    payload = {"number": chat_id, "text": text}
+    payload = _with_quoted({"number": chat_id, "text": text}, quoted)
     return await _post(url, api_key, payload, timeout=30.0)
 
 
-async def send_whatsapp_audio(chat_id: str, audio_base64: str) -> dict:
+async def send_whatsapp_audio(
+    chat_id: str, audio_base64: str, quoted: dict | None = None
+) -> dict:
     """Manda una nota de voz (PTT) — endpoint específico de Evolution API,
     distinto de mandar un audio como adjunto genérico."""
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/message/sendWhatsAppAudio/{instance}"
-    payload = {"number": chat_id, "audio": audio_base64}
+    payload = _with_quoted({"number": chat_id, "audio": audio_base64}, quoted)
     return await _post(url, api_key, payload, timeout=60.0)
 
 
@@ -228,6 +241,7 @@ async def send_whatsapp_location(
     longitude: float,
     name: str | None = None,
     address: str | None = None,
+    quoted: dict | None = None,
 ) -> dict:
     """name/address están documentados como opcionales en Evolution API,
     pero en la práctica el servidor los exige igual (400 "instance requires
@@ -237,18 +251,22 @@ async def send_whatsapp_location(
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/message/sendLocation/{instance}"
-    payload = {
+    payload = _with_quoted({
         "number": chat_id,
         "latitude": latitude,
         "longitude": longitude,
         "name": name or "",
         "address": address or "",
-    }
+    }, quoted)
     return await _post(url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_media(
-    chat_id: str, media_base64: str, mediatype: str, filename: str | None = None
+    chat_id: str,
+    media_base64: str,
+    mediatype: str,
+    filename: str | None = None,
+    quoted: dict | None = None,
 ) -> dict:
     """Manda un adjunto genérico (imagen, video, audio como archivo, o
     documento). mediatype le dice a Evolution API cómo procesarlo —
@@ -261,7 +279,7 @@ async def send_whatsapp_media(
     payload = {"number": chat_id, "mediatype": mediatype, "media": media_base64}
     if filename:
         payload["fileName"] = filename
-    return await _post(url, api_key, payload, timeout=60.0)
+    return await _post(url, api_key, _with_quoted(payload, quoted), timeout=60.0)
 
 
 async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict:

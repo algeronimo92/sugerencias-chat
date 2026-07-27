@@ -1269,6 +1269,7 @@ async def fetch_messages(
                 WspMessage.status,
                 WspMessage.media_width,
                 WspMessage.media_height,
+                WspMessage.quoted_wa_message_id,
             )
             .where(WspMessage.chat_id == chat_id)
             .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
@@ -1288,6 +1289,7 @@ async def fetch_messages(
         has_more = len(rows) > limit
         page = [dict(r) for r in reversed(rows[:limit])]
         await _fill_media_dimensions(session, page)
+        quoted = await _resolve_quoted_messages(session, chat_id, page)
 
     items = [
         {
@@ -1301,10 +1303,64 @@ async def fetch_messages(
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
+            **quoted.get(r["quoted_wa_message_id"], {}),
         }
         for r in page
     ]
     return {"items": items, "has_more": has_more}
+
+
+async def _resolve_quoted_messages(session, chat_id: str, rows: list[dict]) -> dict[str, dict]:
+    """Mapea wa_message_id citado -> datos del mensaje original.
+
+    Una sola consulta para toda la página. Los citados que no estén en la
+    base (histórico anterior a la integración, o mensajes enviados desde el
+    teléfono) sencillamente no aparecen en el mapa: el frontend no dibuja la
+    cita en vez de mostrar un bloque vacío.
+    """
+    wanted = {r["quoted_wa_message_id"] for r in rows if r["quoted_wa_message_id"]}
+    if not wanted:
+        return {}
+
+    quoted_rows = (await session.execute(
+        select(
+            WspMessage.id,
+            WspMessage.sender,
+            WspMessage.content,
+            WspMessage.wa_message_id,
+        ).where(
+            WspMessage.chat_id == chat_id,
+            WspMessage.wa_message_id.in_(wanted),
+        )
+    )).mappings().all()
+
+    return {
+        r["wa_message_id"]: {
+            "quoted_message_id": r["id"],
+            "quoted_sender": r["sender"],
+            "quoted_content": r["content"],
+        }
+        for r in quoted_rows
+    }
+
+
+async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
+    """Mensaje al que se quiere responder, o None si no existe en el chat.
+
+    Devuelve `wa_message_id` sin filtrar por él a propósito: un mensaje del
+    vendedor todavía en la outbox existe pero aún no tiene id de WhatsApp, y
+    el llamador necesita distinguir "no existe" de "todavía no se puede
+    citar" para dar el error correcto.
+    """
+    stmt = select(
+        WspMessage.id,
+        WspMessage.sender,
+        WspMessage.content,
+        WspMessage.wa_message_id,
+    ).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+    return dict(row) if row is not None else None
 
 
 async def _fill_media_dimensions(session, rows: list[dict]) -> None:

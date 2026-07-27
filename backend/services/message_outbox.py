@@ -64,14 +64,38 @@ def _wa_message_id(response: dict) -> str | None:
     return key.get("id") or response.get("messageId") or response.get("id")
 
 
-async def enqueue_text_message(chat_id: str, text: str) -> dict:
+async def enqueue_text_message(chat_id: str, text: str, reply_to: dict | None = None) -> dict:
     return (await enqueue_messages(chat_id, [{
         "content": text,
         "payload": {"type": "text", "text": text},
+        "reply_to": reply_to,
     }]))[0]
 
 
-def _message_dict(message: WspMessage) -> dict:
+# Tope del texto que se manda como vista previa de la cita. WhatsApp recorta
+# igual del lado del cliente; el límite es solo para no inflar el payload.
+QUOTED_PREVIEW_MAX = 300
+
+
+def quoted_context(chat_id: str, target: dict) -> dict:
+    """Contexto que Evolution necesita para que la cita se vea en WhatsApp.
+
+    Es la forma de un mensaje de Baileys recortada al mínimo: la ``key``
+    identifica el mensaje citado (``fromMe`` importa — sin él WhatsApp no
+    encuentra el original) y ``message`` da el texto que se muestra dentro
+    del recuadro de la cita.
+    """
+    return {
+        "key": {
+            "remoteJid": chat_id,
+            "fromMe": target["sender"] == "vendedor",
+            "id": target["wa_message_id"],
+        },
+        "message": {"conversation": (target.get("content") or "")[:QUOTED_PREVIEW_MAX]},
+    }
+
+
+def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
     return {
         "id": message.id,
         "sender": message.sender,
@@ -80,6 +104,12 @@ def _message_dict(message: WspMessage) -> dict:
         "media_url": message.media_url,
         "wa_message_id": message.wa_message_id,
         "status": message.status,
+        # La respuesta del POST ya trae la cita resuelta: la burbuja optimista
+        # del frontend se reemplaza por esta sin perder el recuadro citado ni
+        # esperar al siguiente refetch del historial.
+        "quoted_message_id": reply_to["id"] if reply_to else None,
+        "quoted_sender": reply_to["sender"] if reply_to else None,
+        "quoted_content": reply_to.get("content") if reply_to else None,
     }
 
 
@@ -88,13 +118,20 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
 
     El payload contiene únicamente metadatos pequeños. Los archivos ya deben
     estar en el almacenamiento multimedia y se referencian por ``media_url``.
+
+    ``reply_to`` (opcional) es el mensaje citado ya resuelto por el llamador
+    —ver ``db_service.fetch_reply_target``—; debe traer ``wa_message_id``.
     """
     if not items:
         return []
     now = datetime.now(timezone.utc)
-    messages: list[WspMessage] = []
+    queued: list[tuple[WspMessage, dict | None]] = []
     async with get_sessionmaker()() as session:
         for position, item in enumerate(items):
+            reply_to = item.get("reply_to")
+            payload = item["payload"]
+            if reply_to:
+                payload = {**payload, "quoted": quoted_context(chat_id, reply_to)}
             message = WspMessage(
                 chat_id=chat_id,
                 sender="vendedor",
@@ -104,20 +141,21 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
                 sent_at=now + timedelta(microseconds=position),
                 media_url=item.get("media_url"),
                 status="PENDING",
+                quoted_wa_message_id=reply_to["wa_message_id"] if reply_to else None,
             )
             session.add(message)
             await session.flush()
             session.add(MessageOutbox(
                 message_id=message.id,
                 chat_id=chat_id,
-                payload=item["payload"],
+                payload=payload,
                 status="pending",
                 next_attempt_at=now,
             ))
-            messages.append(message)
+            queued.append((message, reply_to))
         await session.commit()
     notify_new_work()
-    return [_message_dict(message) for message in messages]
+    return [_message_dict(message, reply_to) for message, reply_to in queued]
 
 
 async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
@@ -147,9 +185,25 @@ async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
         job.updated_at = now
         message.status = "PENDING"
         message.wa_message_id = None
+        # La cita se relee antes del commit para que la respuesta del reintento
+        # traiga el mismo recuadro citado que traía el envío original; el
+        # payload de la outbox ya la conserva intacta.
+        reply_to = await _quoted_message(session, chat_id, message.quoted_wa_message_id)
         await session.commit()
         notify_new_work()
-        return _message_dict(message)
+        return _message_dict(message, reply_to)
+
+
+async def _quoted_message(session, chat_id: str, wa_message_id: str | None) -> dict | None:
+    if not wa_message_id:
+        return None
+    row = (await session.execute(
+        select(WspMessage.id, WspMessage.sender, WspMessage.content).where(
+            WspMessage.chat_id == chat_id,
+            WspMessage.wa_message_id == wa_message_id,
+        )
+    )).mappings().first()
+    return dict(row) if row is not None else None
 
 
 async def _recover_stale_jobs() -> None:
@@ -339,19 +393,24 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
     """Envía un payload de outbox y devuelve la respuesta y, si cambió por
     un fallback compatible, el contenido realmente entregado."""
     kind = payload.get("type")
+    # Solo lo llevan los envíos que responden a un mensaje concreto. Las
+    # plantillas oficiales e interactivas usan endpoints de Evolution que no
+    # aceptan cita, así que ahí ni se guarda.
+    quoted = payload.get("quoted")
     if kind == "text":
-        return await send_whatsapp_text(chat_id, payload["text"]), None
+        return await send_whatsapp_text(chat_id, payload["text"], quoted=quoted), None
     if kind == "audio":
         encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
-        return await send_whatsapp_audio(chat_id, encoded), None
+        return await send_whatsapp_audio(chat_id, encoded, quoted=quoted), None
     if kind == "media":
         encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
         return await send_whatsapp_media(
-            chat_id, encoded, payload["mediatype"], filename=payload.get("filename")
+            chat_id, encoded, payload["mediatype"],
+            filename=payload.get("filename"), quoted=quoted,
         ), None
     if kind == "location":
         return await send_whatsapp_location(
-            chat_id, payload["latitude"], payload["longitude"]
+            chat_id, payload["latitude"], payload["longitude"], quoted=quoted
         ), None
     if kind == "official_template":
         return await send_whatsapp_template(

@@ -55,9 +55,18 @@ let nextOptimisticMessageId = -1
 let lastOptimisticTimestamp = 0
 const requestTails = new Map<string, Promise<void>>()
 
+/** Mensaje al que se está respondiendo. El backend solo necesita el id; el
+ * resto viaja para poder pintar la cita antes de que conteste. */
+export interface ReplyTarget {
+  id: number
+  sender: string
+  content: string | null
+}
+
 export interface OptimisticMessageDraft {
   content: string | null
   media_url?: string | null
+  reply_to?: ReplyTarget | null
 }
 
 interface OptimisticContext {
@@ -89,6 +98,9 @@ function optimisticMessage(draft: OptimisticMessageDraft): Message {
     media_url: draft.media_url ?? null,
     wa_message_id: null,
     status: 'PENDING',
+    quoted_message_id: draft.reply_to?.id ?? null,
+    quoted_sender: draft.reply_to?.sender ?? null,
+    quoted_content: draft.reply_to?.content ?? null,
   }
 }
 
@@ -166,21 +178,29 @@ function refetchAfterLastSend(queryClient: ReturnType<typeof useQueryClient>, ch
   }, 0)
 }
 
+export interface TextPayload {
+  text: string
+  replyTo?: ReplyTarget | null
+}
+
 export function useSendMessage(chatId: string) {
   const queryClient = useQueryClient()
-  const mutation = useMutation<Message, Error, string, OptimisticContext>({
+  const mutation = useMutation<Message, Error, TextPayload, OptimisticContext>({
     mutationKey: ['send-message', chatId],
-    mutationFn: text => orderedRequest(chatId, async () => (
-      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { text })
+    mutationFn: ({ text, replyTo }) => orderedRequest(chatId, async () => (
+      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
+        text,
+        reply_to_message_id: replyTo?.id ?? null,
+      })
     ).data),
-    onMutate: async (text) => {
+    onMutate: async ({ text, replyTo }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
-      return appendOptimisticMessages(queryClient, chatId, [{ content: text }])
+      return appendOptimisticMessages(queryClient, chatId, [{ content: text, reply_to: replyTo }])
     },
-    onSuccess: (message, _text, context) => {
+    onSuccess: (message, _payload, context) => {
       reconcileOptimisticMessages(queryClient, chatId, context, [message])
     },
-    onError: (_error, _text, context) => {
+    onError: (_error, _payload, context) => {
       removeOptimisticMessages(queryClient, chatId, context)
     },
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
@@ -219,12 +239,14 @@ export function useSendMessage(chatId: string) {
 interface AudioPayload {
   contentType: string
   dataBase64: string
+  replyTo?: ReplyTarget | null
 }
 
-async function sendAudio(chatId: string, { contentType, dataBase64 }: AudioPayload): Promise<Message> {
+async function sendAudio(chatId: string, { contentType, dataBase64, replyTo }: AudioPayload): Promise<Message> {
   const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/audio`, {
     content_type: contentType,
     data_base64: dataBase64,
+    reply_to_message_id: replyTo?.id ?? null,
   })
   return data
 }
@@ -239,6 +261,7 @@ export function useSendAudio(chatId: string) {
       return appendOptimisticMessages(queryClient, chatId, [{
         content: '<audio></audio>',
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
+        reply_to: payload.replyTo,
       }])
     },
     onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
@@ -251,13 +274,15 @@ interface MediaPayload {
   contentType: string
   dataBase64: string
   filename?: string
+  replyTo?: ReplyTarget | null
 }
 
-async function sendMedia(chatId: string, { contentType, dataBase64, filename }: MediaPayload): Promise<Message> {
+async function sendMedia(chatId: string, { contentType, dataBase64, filename, replyTo }: MediaPayload): Promise<Message> {
   const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
     content_type: contentType,
     data_base64: dataBase64,
     filename,
+    reply_to_message_id: replyTo?.id ?? null,
   })
   return data
 }
@@ -276,6 +301,7 @@ export function useSendMedia(chatId: string) {
       return appendOptimisticMessages(queryClient, chatId, [{
         content,
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
+        reply_to: payload.replyTo,
       }])
     },
     onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
@@ -313,10 +339,15 @@ export function useSendTemplate(chatId: string) {
 interface LocationPayload {
   latitude: number
   longitude: number
+  replyTo?: ReplyTarget | null
 }
 
-async function sendLocation(chatId: string, payload: LocationPayload): Promise<Message> {
-  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/location`, payload)
+async function sendLocation(chatId: string, { latitude, longitude, replyTo }: LocationPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/location`, {
+    latitude,
+    longitude,
+    reply_to_message_id: replyTo?.id ?? null,
+  })
   return data
 }
 
@@ -329,6 +360,7 @@ export function useSendLocation(chatId: string) {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: `<location>${payload.latitude},${payload.longitude}</location>`,
+        reply_to: payload.replyTo,
       }])
     },
     onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),

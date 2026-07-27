@@ -41,6 +41,7 @@ from services.db_service import (
     fetch_kanban_snapshot,
     fetch_kanban_stage,
     fetch_messages,
+    fetch_reply_target,
     list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
@@ -169,6 +170,29 @@ _LEAD_FIELD_TO_COLUMN = {
 async def _require_existing_lead(chat_id: str) -> None:
     if not await lead_exists(chat_id):
         raise HTTPException(404, "Lead no encontrado")
+
+
+async def _resolve_reply_to(chat_id: str, message_id: int | None) -> dict | None:
+    """Mensaje citado listo para la outbox, o None si no se pidió responder.
+
+    Un mensaje propio que todavía está en la outbox existe en nuestra base
+    pero aún no tiene id de WhatsApp, y sin ese id la cita no se puede armar.
+    Se rechaza con un mensaje concreto en vez de mandarlo sin cita: quien
+    respondió esperaba ver el recuadro, y perderlo en silencio cambia el
+    sentido de lo que se envía.
+    """
+    if message_id is None:
+        return None
+    target = await fetch_reply_target(chat_id, message_id)
+    if target is None:
+        raise HTTPException(404, "El mensaje al que querés responder no existe en este chat")
+    if not target["wa_message_id"]:
+        raise HTTPException(
+            409,
+            "Ese mensaje todavía no se terminó de enviar a WhatsApp. "
+            "Esperá a que salga para poder responderlo.",
+        )
+    return target
 
 
 @router.get("", response_model=ChatPage)
@@ -447,7 +471,8 @@ async def send_message(chat_id: str, body: SendMessageRequest):
     if not text:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
     await _require_existing_lead(chat_id)
-    message = await enqueue_text_message(chat_id, text)
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
+    message = await enqueue_text_message(chat_id, text, reply_to)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
@@ -456,6 +481,7 @@ async def send_message(chat_id: str, body: SendMessageRequest):
 async def send_audio(chat_id: str, body: SendMediaRequest):
     """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     try:
         media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:
@@ -468,6 +494,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
         "content": "<audio></audio>",
         "media_url": media_url,
         "payload": {"type": "audio", "media_url": media_url},
+        "reply_to": reply_to,
     }]))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
@@ -480,6 +507,7 @@ async def send_media(chat_id: str, body: SendMediaRequest):
     mediatype = _mediatype_from_content_type(body.content_type)
     if mediatype not in ("image", "video", "audio", "document"):
         raise HTTPException(status_code=400, detail="Tipo de archivo no soportado")
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
 
     try:
         media_url = await asyncio.to_thread(
@@ -507,6 +535,7 @@ async def send_media(chat_id: str, body: SendMediaRequest):
             "mediatype": mediatype,
             "filename": body.filename,
         },
+        "reply_to": reply_to,
     }]))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
@@ -608,6 +637,7 @@ async def send_template(
 @router.post("/{chat_id}/location", response_model=Message)
 async def send_location(chat_id: str, body: SendLocationRequest):
     await _require_existing_lead(chat_id)
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     content = f"<location>{body.latitude},{body.longitude}</location>"
     message = (await enqueue_messages(chat_id, [{
         "content": content,
@@ -616,6 +646,7 @@ async def send_location(chat_id: str, body: SendLocationRequest):
             "latitude": body.latitude,
             "longitude": body.longitude,
         },
+        "reply_to": reply_to,
     }]))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message

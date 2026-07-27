@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BookmarkPlus, Check, CheckCheck, ChevronDown, FileText, Loader2, MessageSquareLock, RefreshCw, Send } from 'lucide-react'
+import { BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, FileText, Loader2, MessageSquareLock, RefreshCw, Send, X } from 'lucide-react'
 import type { Chat, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
-import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage } from '../hooks/useMessages'
+import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel, formatMessageTime, parseContent, parseRichText, resolveMediaUrl } from '../utils/message'
+import { formatDayLabel, formatMessageTime, parseContent, parseRichText, quotePreview, resolveMediaUrl } from '../utils/message'
 import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
@@ -153,6 +153,49 @@ function MessageStatusTicks({ status, isAudio = false, onRetry }: { status: Mess
   return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
 }
 
+/** Recuadro del mensaje citado, como el que WhatsApp pone arriba de una
+ * respuesta: barra de color, autor y una línea de vista previa. El color
+ * distingue de quién era el mensaje original, no quién responde. */
+function QuotedMessage({
+  sender,
+  content,
+  contactName,
+  onJump,
+  className = '',
+}: {
+  sender: string
+  content: string | null
+  contactName: string
+  onJump?: () => void
+  className?: string
+}) {
+  const { icon: Icon, label, text } = quotePreview(content)
+  const isMine = sender === 'vendedor'
+  const accent = isMine
+    ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'
+    : 'border-sky-500 text-sky-600 dark:text-sky-400'
+  return (
+    <button
+      type="button"
+      onClick={onJump}
+      disabled={!onJump}
+      title={onJump ? 'Ir al mensaje original' : undefined}
+      className={`flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 bg-black/5 px-2 py-1 text-left dark:bg-white/10 ${accent} ${
+        onJump ? 'hover:bg-black/10 dark:hover:bg-white/15' : 'cursor-default'
+      } ${className}`}
+    >
+      <span className="text-[11px] font-semibold leading-tight">
+        {isMine ? 'Vos' : contactName}
+      </span>
+      <span className="flex w-full min-w-0 items-center gap-1 text-xs leading-tight text-wa-muted dark:text-wa-text-dark/70">
+        {Icon && <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />}
+        {label && !text && <span>{label}</span>}
+        {text && <span className="truncate">{text}</span>}
+      </span>
+    </button>
+  )
+}
+
 export function ChatThread({ chat, highlightMessageId = null }: Props) {
   const {
     data: messagePages,
@@ -258,6 +301,12 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
   const [isNoteMode, setIsNoteMode] = useState(false)
 
   const [draft, setDraft] = useState('')
+  // Mensaje que se está respondiendo (cita estilo WhatsApp). Vale para todo
+  // lo que salga del compositor: texto, audio, adjuntos y ubicación.
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
+  // Cada salto a un mensaje citado incrementa esto para reactivar el efecto
+  // que pagina hacia atrás hasta encontrarlo.
+  const [jumpNonce, setJumpNonce] = useState(0)
   const [slashIndex, setSlashIndex] = useState(0)
   const [slashDismissed, setSlashDismissed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -511,12 +560,46 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
       void fetchNextPage()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, pageCount, hasNextPage, isFetchingNextPage, highlightMessageId])
+  }, [isLoading, pageCount, hasNextPage, isFetchingNextPage, highlightMessageId, jumpNonce])
+
+  /** Ir al mensaje citado al tocar el recuadro de la respuesta. Si todavía no
+   * está cargado, se delega en el efecto de arriba, que pagina hacia atrás
+   * hasta encontrarlo igual que al abrir desde un resultado de búsqueda. */
+  function goToQuotedMessage(messageId: number) {
+    const container = threadRef.current
+    if (container && jumpToMessage(container, messageId)) return
+    pendingJumpRef.current = messageId
+    jumpAttemptsRef.current = 0
+    setJumpNonce((nonce) => nonce + 1)
+  }
+
+  function startReply(message: Message) {
+    setReplyTo({ id: message.id, sender: message.sender, content: message.content })
+    setIsNoteMode(false)
+    textareaRef.current?.focus()
+  }
+
+  /** Aparece al pasar el mouse por la burbuja, del lado de afuera, para no
+   * tapar el contenido. Queda visible al enfocarlo con el teclado. */
+  function replyButton(message: Message) {
+    return (
+      <button
+        type="button"
+        onClick={() => startReply(message)}
+        aria-label="Responder a este mensaje"
+        title="Responder"
+        className="shrink-0 rounded-full p-1.5 text-wa-muted opacity-0 transition-opacity hover:bg-black/5 hover:text-wa-text focus-visible:opacity-100 group-hover:opacity-100 dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
+      >
+        <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+    )
+  }
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
   useEffect(() => {
     setDraft('')
+    setReplyTo(null)
     setAudioError(null)
     setMediaError(null)
     setLocationError(null)
@@ -531,7 +614,8 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
     const text = draft.trim()
     if (!text) return
     setDraft('')
-    sendMessage(text)
+    setReplyTo(null)
+    sendMessage({ text, replyTo })
   }
 
   function handleRetryMessage(message: Message) {
@@ -541,9 +625,13 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
 
   async function handleAudioRecorded(blob: Blob) {
     setAudioError(null)
+    // La cita se captura antes del await: durante la codificación el usuario
+    // puede haber cancelado la respuesta o cambiado a otra.
+    const target = replyTo
+    setReplyTo(null)
     const dataBase64 = await blobToBase64(blob)
     sendAudio(
-      { contentType: blob.type || 'audio/webm', dataBase64 },
+      { contentType: blob.type || 'audio/webm', dataBase64, replyTo: target },
       { onError: (err) => setAudioError(extractErrorMessage(err)) }
     )
   }
@@ -568,9 +656,11 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
     }
 
     setMediaError(null)
+    const target = replyTo
+    setReplyTo(null)
     const dataBase64 = await blobToBase64(file)
     sendMedia(
-      { contentType: file.type, dataBase64, filename: file.name },
+      { contentType: file.type, dataBase64, filename: file.name, replyTo: target },
       { onError: (err) => setMediaError(extractErrorMessage(err)) }
     )
   }
@@ -601,7 +691,8 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
     if (!pendingLocation) return
     const location = pendingLocation
     setPendingLocation(null)
-    sendLocation(location, {
+    setReplyTo(null)
+    sendLocation({ ...location, replyTo }, {
       onError: (err) => {
         setLocationError(extractErrorMessage(err))
       },
@@ -630,6 +721,11 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
         selectSlashTemplate(slashSuggestions[activeSlashIndex])
         return
       }
+    }
+    if (e.key === 'Escape' && replyTo) {
+      e.preventDefault()
+      setReplyTo(null)
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -811,9 +907,14 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                 </div>
               )}
               <div
-                className={`flex ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
+                className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
                 data-message-id={m.id}
               >
+              {/* Solo se puede citar un mensaje que ya existe en WhatsApp: sin
+                  wa_message_id (envío en curso, fallido, o histórico previo a
+                  la integración) el botón no aparece en vez de fallar al
+                  enviar. */}
+              {isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
               <div
                 className={`max-w-[75%] rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
                   isVendedor
@@ -821,6 +922,15 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                     : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
                 } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
               >
+                {m.quoted_message_id != null && (
+                  <QuotedMessage
+                    sender={m.quoted_sender ?? 'cliente'}
+                    content={m.quoted_content ?? null}
+                    contactName={displayName(chat)}
+                    onJump={() => goToQuotedMessage(m.quoted_message_id as number)}
+                    className="mb-1"
+                  />
+                )}
                 {!mediaSrc && kind !== 'text' && kind !== 'location' && Icon && (
                   <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
                     <Icon className="w-3 h-3" />
@@ -978,6 +1088,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                   {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
                 </div>}
               </div>
+              {!isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
             </div>
             </Fragment>
           )
@@ -1036,6 +1147,27 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
         {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
         {mediaError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{mediaError}</p>}
         {locationError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{locationError}</p>}
+        {replyTo && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-wa-field-dark">
+            <div className="min-w-0 flex-1">
+              <QuotedMessage
+                sender={replyTo.sender}
+                content={replyTo.content}
+                contactName={displayName(chat)}
+                onJump={() => goToQuotedMessage(replyTo.id)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyTo(null)}
+              aria-label="Cancelar respuesta"
+              title="Cancelar respuesta (Esc)"
+              className="shrink-0 rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
+            >
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
 

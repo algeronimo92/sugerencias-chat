@@ -29,6 +29,21 @@ export function parseContent(content: string | null): ParsedContent {
   return { kind, ...KIND_META[kind], text: inner.trim() }
 }
 
+export interface QuotePreview {
+  icon: LucideIcon | null
+  /** Tipo del adjunto ("Imagen", "Audio"…); vacío en mensajes de texto. */
+  label: string
+  /** Texto del mensaje, su epígrafe, o el nombre del archivo adjunto. */
+  text: string
+}
+
+/** Resumen de una línea de un mensaje citado, como el recuadro de respuesta
+ * de WhatsApp: el texto tal cual cuando lo hay, y si no el tipo de adjunto. */
+export function quotePreview(content: string | null): QuotePreview {
+  const { kind, icon, label, text } = parseContent(content)
+  return { icon, label: kind === 'text' ? '' : label, text }
+}
+
 function foldText(value: string): string {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }

@@ -171,6 +171,12 @@ class Message(BaseModel):
     # antes de que cargue, para que la conversación no se mueva.
     media_width: int | None = None
     media_height: int | None = None
+    # Mensaje citado, ya resuelto a la fila local. Viene en None cuando el
+    # mensaje no responde a nada, o cuando el citado no está en nuestra base
+    # (histórico anterior a la integración, o enviado desde el teléfono).
+    quoted_message_id: int | None = None
+    quoted_sender: str | None = None
+    quoted_content: str | None = None
 
 
 class MessagePage(BaseModel):
@@ -211,17 +217,21 @@ class MessageStatusUpdate(BaseModel):
 
 class SendMessageRequest(BaseModel):
     text: str
+    # Id local del mensaje al que se responde (cita estilo WhatsApp).
+    reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
 class SendMediaRequest(BaseModel):
     content_type: str
     data_base64: str
     filename: str | None = None
+    reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
 class SendLocationRequest(BaseModel):
     latitude: float
     longitude: float
+    reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
 class TtsRequest(BaseModel):
