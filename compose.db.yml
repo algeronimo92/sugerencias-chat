@@ -33,12 +33,28 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
       # UTF8 explícito: el CRM guarda nombres con acentos y mensajes con emoji.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    # TLS obligatorio para las conexiones que llegan de Internet (n8n en otra
+    # VPS). Se activa SSL y se usa un pg_hba propio que exige `hostssl` desde
+    # fuera y deja la red interna de Docker sin cifrar.
+    command:
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgres/server.crt
+      - -c
+      - ssl_key_file=/etc/postgres/server.key
+      - -c
+      - hba_file=/etc/postgres/pg_hba.conf
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Copias de seguridad accesibles desde el host, para poder llevárselas
       # fuera del servidor. Un backup que sólo vive en la misma máquina no
       # protege del caso que ya ocurrió.
       - ./db/backups:/backups
+      # Certificado, clave y reglas de acceso para TLS (solo lectura).
+      - ./db/tls/server.crt:/etc/postgres/server.crt:ro
+      - ./db/tls/server.key:/etc/postgres/server.key:ro
+      - ./db/pg_hba.conf:/etc/postgres/pg_hba.conf:ro
     healthcheck:
       # `pg_isready` sin más responde antes de que la base acepte consultas
       # reales; se pregunta por la base concreta.

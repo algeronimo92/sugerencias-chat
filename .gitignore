@@ -3,3 +3,6 @@ backend/.env
 db/.env
 db/backups/*
 !db/backups/.gitkeep
+# Certificado y clave TLS de Postgres: se generan por servidor, no se versionan
+# (la clave privada JAMÁS debe subirse al repo).
+db/tls/
