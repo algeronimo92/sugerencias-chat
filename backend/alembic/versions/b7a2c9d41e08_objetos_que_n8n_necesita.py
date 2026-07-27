@@ -43,6 +43,16 @@ def upgrade() -> None:
     # n8n rellena este otro al insertar.
     op.execute("ALTER TABLE wsp_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()")
 
+    # leads.created_at y updated_at son NOT NULL y models.py no les pone
+    # server_default, porque la aplicacion los rellena desde Python. n8n, en
+    # cambio, inserta por SQL directo: si su INSERT no los incluye, la fila se
+    # rechaza y ese contacto nunca aparece en el CRM. Son columnas de
+    # bookkeeping que n8n no tiene por que conocer, asi que se les da un valor
+    # por defecto en la base. La aplicacion no cambia: sigue enviandolos
+    # explicitamente y el default nunca llega a usarse.
+    op.execute("ALTER TABLE leads ALTER COLUMN created_at SET DEFAULT now()")
+    op.execute("ALTER TABLE leads ALTER COLUMN updated_at SET DEFAULT now()")
+
     # Memoria de conversacion del agente de n8n. Es el esquema que crea su
     # nodo de Postgres Chat Memory.
     op.execute(
