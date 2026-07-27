@@ -1,2 +1,5 @@
 traefik/.env
 backend/.env
+db/.env
+db/backups/*
+!db/backups/.gitkeep

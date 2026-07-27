@@ -5,6 +5,11 @@ services:
     env_file:
       - ./backend/.env
     restart: unless-stopped
+    # La base vive en docker-compose.db.yml, en su propio proyecto, y se
+    # alcanza por esta red compartida. Ver ese archivo para el porqué.
+    networks:
+      - default
+      - data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
       interval: 15s
@@ -25,3 +30,11 @@ services:
       - "80:80"
     depends_on:
       - backend
+
+networks:
+  # La crea docker-compose.db.yml. `external` obliga a que la base esté
+  # levantada antes que la aplicación, en vez de crear una red vacía en la que
+  # el backend no encontraría a nadie.
+  data:
+    name: dermicapro-data
+    external: true

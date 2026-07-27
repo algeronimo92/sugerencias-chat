@@ -1,0 +1,65 @@
+# Desarrollo local. Aquí la base sí va en el mismo archivo —no hay blue-green
+# que la duplique— y sí publica su puerto, para poder conectarse con un cliente
+# de SQL desde el escritorio.
+
+services:
+  postgres:
+    image: postgres:16.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dermicapro}
+      POSTGRES_USER: ${POSTGRES_USER:-dermicapro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    ports:
+      # 5433 y no 5432: deja libre el puerto por si ya hay un PostgreSQL
+      # instalado en la máquina.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:3000"]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # No basta con que el contenedor exista: uvicorn arranca y consulta la
+        # base de inmediato.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    ports:
+      - "5174:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata-dev:
