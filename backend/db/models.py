@@ -13,6 +13,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -95,7 +96,9 @@ class WspMessage(Base):
     __tablename__ = "wsp_messages"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    chat_id: Mapped[str] = mapped_column(Text)
+    chat_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("leads.remote_jid", ondelete="CASCADE")
+    )
     sender: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -116,7 +119,8 @@ class WspMessage(Base):
     # wa_message_id y no la clave primaria porque es el único identificador
     # que comparten la app, Evolution y n8n: en las respuestas del cliente
     # llega como contextInfo.stanzaId. La fila local se resuelve por
-    # (chat_id, wa_message_id) al servir el historial.
+    # (chat_id, wa_message_id) al servir el historial, apoyándose en el índice
+    # único de wa_message_id declarado más abajo.
     quoted_wa_message_id: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
@@ -126,7 +130,21 @@ class WspMessage(Base):
             sent_at.desc(),
             id.desc(),
         ),
-        Index("idx_wsp_messages_chat_wa_message", chat_id, wa_message_id),
+        # UNIQUE, no sólo índice: Evolution API reenvía el mismo webhook cuando
+        # no recibe confirmación, y sin la restricción el reintento inserta el
+        # mensaje una segunda vez. Parcial porque los mensajes que envía el CRM
+        # se guardan antes de conocer su id de WhatsApp, y varios NULL a la vez
+        # son legítimos.
+        #
+        # Es también el índice que resuelve el mensaje citado al servir el
+        # historial: al ser único, buscar por wa_message_id devuelve como mucho
+        # una fila y el chat_id se comprueba sobre ella.
+        Index(
+            "idx_wsp_messages_wa_message_id",
+            wa_message_id,
+            unique=True,
+            postgresql_where=text("wa_message_id IS NOT NULL"),
+        ),
     )
 
 

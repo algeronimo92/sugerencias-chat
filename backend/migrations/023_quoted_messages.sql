@@ -8,8 +8,8 @@
 -- Para que las respuestas del CLIENTE también se vean citadas, el workflow de
 -- n8n tiene que rellenar esta columna con `contextInfo.stanzaId` del evento de
 -- Evolution al insertar el mensaje entrante.
+--
+-- No lleva índice propio: la búsqueda del mensaje citado va por wa_message_id,
+-- que ya tiene el índice único parcial `idx_wsp_messages_wa_message_id`.
 
 ALTER TABLE wsp_messages ADD COLUMN IF NOT EXISTS quoted_wa_message_id TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_wsp_messages_chat_wa_message
-    ON wsp_messages(chat_id, wa_message_id);
