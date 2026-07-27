@@ -57,14 +57,20 @@ async def _wait_for_database() -> None:
             await asyncio.sleep(delay)
 
 
-async def _verify_schema_is_current() -> None:
-    """Avisa si el esquema no está en la última revisión de Alembic.
+class SchemaNotMigratedError(RuntimeError):
+    """El esquema no está en la revisión que espera este código."""
 
-    Las migraciones las aplica ``scripts/migrate.py`` antes de arrancar, no la
-    aplicación. Si por lo que sea no corrieron, es mejor un mensaje explícito
-    en el log que descubrirlo por una consulta que falla a mitad de una
-    petición. No bloquea el arranque: dejar el servicio caído por un fallo de
-    esta comprobación sería peor que servir con un aviso.
+
+async def _verify_schema_is_current() -> None:
+    """Detiene el arranque si las migraciones no se han aplicado.
+
+    Las aplica ``scripts/migrate.py`` antes de arrancar, no la aplicación.
+
+    Antes esto sólo avisaba, para no arriesgar un bucle de arranque. Fue un
+    error: sin el esquema, el arranque se cae igual unos pasos mas adelante al
+    consultar `app_settings`, con un `UndefinedTableError` que no dice qué
+    hacer y que ademas sepulta el aviso bajo su traza. Si va a morir de todas
+    formas, que muera diciendo por qué, en la última línea del log.
     """
     try:
         async with get_engine().connect() as connection:
@@ -72,18 +78,18 @@ async def _verify_schema_is_current() -> None:
                 "SELECT version_num FROM alembic_version"
             ))).scalar()
     except (OSError, SQLAlchemyError):
-        logger.warning(
-            "No se pudo leer alembic_version. Si es una instalación nueva, "
-            "ejecutar: python -m scripts.migrate"
-        )
-        return
+        raise SchemaNotMigratedError(
+            "La base no tiene tabla alembic_version: falta aplicar las "
+            "migraciones. Ejecutar:\n"
+            "    docker compose exec -T backend python -m scripts.migrate"
+        ) from None
 
     head = _alembic_head()
     if head and current != head:
-        logger.error(
-            "El esquema está en la revisión %s pero el código espera %s. "
-            "Ejecutar: python -m scripts.migrate",
-            current, head,
+        raise SchemaNotMigratedError(
+            f"El esquema está en la revisión {current} y este código espera "
+            f"{head}. Ejecutar:\n"
+            "    docker compose exec -T backend python -m scripts.migrate"
         )
 
 
