@@ -12,7 +12,7 @@ piso de latencia de la aplicación, y ninguna optimización de frontend,
 
 Uso, desde el VPS y contra el contenedor de producción:
 
-    docker compose -f docker-compose.prod.yml exec -T backend python < backend/scripts/db_latency.py
+    docker compose -f compose.prod.yml exec -T backend python < backend/scripts/db_latency.py
 
 Se pasa por stdin para no pelear con el escapado de comillas. No escribe
 nada: solo SELECT 1 y lecturas de catálogo. No imprime credenciales.

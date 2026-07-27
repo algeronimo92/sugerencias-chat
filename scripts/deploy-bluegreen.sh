@@ -34,7 +34,7 @@ declare -A PORT=([blue]=8081 [green]=8082)
 
 compose_for() {
   local color="$1"
-  echo "docker compose -p sugerencias-chat-$color -f $ROOT/docker-compose.prod.yml -f $ROOT/docker-compose.bluegreen.yml"
+  echo "docker compose -p sugerencias-chat-$color -f $ROOT/compose.prod.yml -f $ROOT/compose.bluegreen.yml"
 }
 
 active_color() {

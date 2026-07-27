@@ -1,7 +1,7 @@
 # PostgreSQL propio del proyecto.
 #
 # Va en su propio archivo y en su propio proyecto de compose, no dentro de
-# docker-compose.prod.yml, por dos razones:
+# compose.prod.yml, por dos razones:
 #
 # 1. El despliegue blue-green levanta la aplicación como dos proyectos
 #    distintos (sugerencias-chat-blue y -green). Si la base viviera ahí dentro,
@@ -12,7 +12,7 @@
 #
 # Se levanta una sola vez por servidor:
 #
-#   docker compose -f docker-compose.db.yml --env-file db/.env up -d
+#   docker compose -f compose.db.yml --env-file db/.env up -d
 #
 # Y NO se expone ningún puerto al host: se llega por la red `dermicapro-data`,
 # a la que se suman la aplicación y n8n. Publicar 5432 fue exactamente lo que

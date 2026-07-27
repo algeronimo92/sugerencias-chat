@@ -39,10 +39,10 @@ PostgreSQL vive en el propio proyecto, en su propio archivo de compose y con su 
 
 ```bash
 cp db/.env.example db/.env      # poner POSTGRES_PASSWORD: openssl rand -base64 32
-docker compose -f docker-compose.db.yml --env-file db/.env up -d
+docker compose -f compose.db.yml --env-file db/.env up -d
 ```
 
-Va aparte de `docker-compose.prod.yml` por dos motivos. El despliegue blue-green levanta la aplicación como dos proyectos distintos: si la base estuviera dentro, cada color arrancaría la suya y el tráfico saltaría entre dos conjuntos de datos. Y separando el ciclo de vida, ningún `down` de la aplicación puede tocar los datos.
+Va aparte de `compose.prod.yml` por dos motivos. El despliegue blue-green levanta la aplicación como dos proyectos distintos: si la base estuviera dentro, cada color arrancaría la suya y el tráfico saltaría entre dos conjuntos de datos. Y separando el ciclo de vida, ningún `down` de la aplicación puede tocar los datos.
 
 **No publica ningún puerto.** Se llega por la red `dermicapro-data`, a la que se suman la aplicación y n8n:
 
@@ -76,10 +76,10 @@ Los backups se escriben en `db/backups/` del host, no dentro del volumen. **Cóp
 
 ### 4. Aplicación
 
-`docker-compose.prod.yml` no se modifica: las labels de Traefik y la eliminación del bind directo al puerto 80 se aplican como override desde `traefik/docker-compose.yml`.
+`compose.prod.yml` no se modifica: las labels de Traefik y la eliminación del bind directo al puerto 80 se aplican como override desde `traefik/docker-compose.yml`.
 
 ```bash
-docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml up -d --build
+docker compose -f compose.prod.yml -f traefik/docker-compose.yml up -d --build
 ```
 
 La app queda expuesta en `https://chat.dermicapro.app` (ajustar el `Host` en `traefik/docker-compose.yml` si el dominio cambia).
@@ -87,7 +87,7 @@ La app queda expuesta en `https://chat.dermicapro.app` (ajustar el `Host` en `tr
 Las migraciones **no** las aplica la aplicación al arrancar. Se ejecutan antes, en un contenedor aparte:
 
 ```bash
-docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml \
+docker compose -f compose.prod.yml -f traefik/docker-compose.yml \
   run --rm --no-deps backend python -m scripts.migrate
 ```
 
@@ -117,7 +117,7 @@ Para revertir de urgencia sin el script: cambiar el puerto de la línea `url` en
 docker compose up -d --build
 ```
 
-Usa `docker-compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`).
+Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`).
 
 ### Mensajes leídos de WhatsApp (n8n + Evolution API)
 

@@ -95,7 +95,7 @@ jobs:
             set -eu
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            COMPOSE="docker compose -f docker-compose.prod.yml -f traefik/docker-compose.yml"
+            COMPOSE="docker compose -f compose.prod.yml -f traefik/docker-compose.yml"
 
             # Se guarda antes de mover nada: es el punto al que se vuelve si la
             # versión nueva no llega a responder.

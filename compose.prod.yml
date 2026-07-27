@@ -5,7 +5,7 @@ services:
     env_file:
       - ./backend/.env
     restart: unless-stopped
-    # La base vive en docker-compose.db.yml, en su propio proyecto, y se
+    # La base vive en compose.db.yml, en su propio proyecto, y se
     # alcanza por esta red compartida. Ver ese archivo para el porqué.
     networks:
       - default
@@ -32,7 +32,7 @@ services:
       - backend
 
 networks:
-  # La crea docker-compose.db.yml. `external` obliga a que la base esté
+  # La crea compose.db.yml. `external` obliga a que la base esté
   # levantada antes que la aplicación, en vez de crear una red vacía en la que
   # el backend no encontraría a nadie.
   data:

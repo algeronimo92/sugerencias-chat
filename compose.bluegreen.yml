@@ -5,7 +5,7 @@
 # Cada color se levanta como un proyecto de compose distinto:
 #
 #   COLOR_PORT=8081 docker compose -p sugerencias-chat-blue \
-#     -f docker-compose.prod.yml -f docker-compose.bluegreen.yml up -d
+#     -f compose.prod.yml -f compose.bluegreen.yml up -d
 #
 # Eso da a cada color su propia red, de modo que el `proxy_pass
 # http://backend:8000` de nginx resuelve dentro de su color y no se cruzan.

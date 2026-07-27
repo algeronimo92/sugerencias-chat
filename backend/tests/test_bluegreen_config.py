@@ -30,8 +30,8 @@ def _compose_config(color_port: int) -> dict:
     result = subprocess.run(
         ["docker", "compose",
          "-p", "test-bluegreen",
-         "-f", str(ROOT / "docker-compose.prod.yml"),
-         "-f", str(ROOT / "docker-compose.bluegreen.yml"),
+         "-f", str(ROOT / "compose.prod.yml"),
+         "-f", str(ROOT / "compose.bluegreen.yml"),
          "config", "--format", "json"],
         capture_output=True, text=True, env=env,
     )
