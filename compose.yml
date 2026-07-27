@@ -6,10 +6,12 @@ services:
   postgres:
     image: postgres:16.10-alpine
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-dermicapro}
-      POSTGRES_USER: ${POSTGRES_USER:-dermicapro}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+    # Mismas credenciales que en producción: db/.env es la única fuente, para
+    # que desarrollo y servidor no puedan divergir. Tener dos sitios donde
+    # definirlas termina en un "password authentication failed" que cuesta
+    # rastrear, porque el error no dice cuál de los dos está mal.
+    env_file:
+      - db/.env
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
     ports:
