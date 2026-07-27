@@ -1,5 +1,6 @@
-import { Loader2, MessagesSquare } from 'lucide-react'
+import { Eye, EyeOff, Loader2, MessagesSquare } from 'lucide-react'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useLogin } from '../hooks/useAuth'
@@ -15,6 +16,7 @@ type LoginValues = z.infer<typeof loginSchema>
 
 export function LoginPage() {
   const { mutate: login, isPending, error } = useLogin()
+  const [showPassword, setShowPassword] = useState(false)
   const { register, handleSubmit, formState: { errors } } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
@@ -56,13 +58,29 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="login-password" className={labelClass}>Contraseña</label>
-            <Input
-              id="login-password"
-              type="password"
-              {...register('password')}
-              autoComplete="current-password"
-              aria-invalid={!!errors.password}
-            />
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                {...register('password')}
+                autoComplete="current-password"
+                aria-invalid={!!errors.password}
+                className="pr-10"
+              />
+              {/* type="button": dentro de un <form> el default es submit, y el
+                  ojo enviaría el login en vez de mostrar la contraseña. */}
+              <button
+                type="button"
+                onClick={() => setShowPassword(visible => !visible)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg text-wa-muted dark:text-wa-muted-dark hover:text-wa-text dark:hover:text-wa-text-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 transition-colors"
+              >
+                {showPassword
+                  ? <EyeOff className="w-4 h-4" aria-hidden="true" />
+                  : <Eye className="w-4 h-4" aria-hidden="true" />}
+              </button>
+            </div>
             {errors.password && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{errors.password.message}</p>}
           </div>
         </div>
