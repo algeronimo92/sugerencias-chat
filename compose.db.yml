@@ -47,6 +47,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    # Por defecto no se publica nada: solo llegan los contenedores de la red
+    # `dermicapro-data`, en esta misma maquina.
+    #
+    # n8n corre en otra VPS, asi que necesita un camino. POSTGRES_BIND_IP debe
+    # ser la IP PRIVADA de este host (la de la red interna entre tus VPS), no
+    # 0.0.0.0: atado a todas las interfaces, el puerto queda expuesto a
+    # Internet, que es exactamente como acabo la base anterior.
+    #
+    #   POSTGRES_BIND_IP=10.0.0.5   -> escucha solo en la red privada
+    #   sin definir                 -> no escucha fuera de Docker
+    #
+    # Si no hay red privada disponible y hay que salir por la publica, hay que
+    # habilitar TLS en PostgreSQL y subir DATABASE_SSL a "require": si no, las
+    # credenciales y el contenido de los mensajes viajan en claro.
+    ports:
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PUBLISH_PORT:-5432}:5432"
     networks:
       data:
         aliases:
