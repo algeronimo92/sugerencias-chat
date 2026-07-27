@@ -13,6 +13,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -95,7 +96,9 @@ class WspMessage(Base):
     __tablename__ = "wsp_messages"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    chat_id: Mapped[str] = mapped_column(Text)
+    chat_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("leads.remote_jid", ondelete="CASCADE")
+    )
     sender: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -119,6 +122,17 @@ class WspMessage(Base):
             chat_id,
             sent_at.desc(),
             id.desc(),
+        ),
+        # UNIQUE, no sólo índice: Evolution API reenvía el mismo webhook cuando
+        # no recibe confirmación, y sin la restricción el reintento inserta el
+        # mensaje una segunda vez. Parcial porque los mensajes que envía el CRM
+        # se guardan antes de conocer su id de WhatsApp, y varios NULL a la vez
+        # son legítimos.
+        Index(
+            "idx_wsp_messages_wa_message_id",
+            wa_message_id,
+            unique=True,
+            postgresql_where=text("wa_message_id IS NOT NULL"),
         ),
     )
 
