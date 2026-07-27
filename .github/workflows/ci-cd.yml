@@ -96,6 +96,7 @@ jobs:
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
             COMPOSE="docker compose -f compose.prod.yml -f traefik/docker-compose.yml"
+            COMPOSE_DB="docker compose -f compose.db.yml --env-file db/.env"
 
             # Se guarda antes de mover nada: es el punto al que se vuelve si la
             # versión nueva no llega a responder.
@@ -138,6 +139,12 @@ jobs:
             # Si falla, no se arranca nada: mejor quedarse en la versión
             # anterior que servir con el esquema a medias.
             migrate() {
+              # La base primero: crea la red `dermicapro-data`, que
+              # compose.prod.yml declara como external. Sin ella, levantar la
+              # aplicación falla con "network declared as external, but could
+              # not be found" — un mensaje que no apunta a la causa. Es
+              # idempotente: si ya está arriba, no hace nada.
+              $COMPOSE_DB up -d && \
               $COMPOSE build backend && \
               $COMPOSE run --rm --no-deps backend python -m scripts.migrate
             }
