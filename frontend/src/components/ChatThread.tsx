@@ -1,26 +1,22 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
+import { Fragment, useEffect, useState } from 'react'
+import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
-import { useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { RichText } from './RichText'
-import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel, formatMessageTime, parseContent, quotePreview, resolveMediaUrl } from '../utils/message'
-import { renderTemplate } from '../utils/templates'
-import { AttachMenu } from './AttachMenu'
-import { LocationConfirmDialog } from './LocationConfirmDialog'
+import { formatDayLabel, formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
 import { MapPreview } from './MapPreview'
 import { MediaLightbox } from './MediaLightbox'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
-import { VoiceRecorder } from './VoiceRecorder'
-import { TemplatePicker } from './TemplatePicker'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
 import { TemplateMessageButtons, TemplateMessagePreview } from './TemplateMessageCard'
+import { ChatComposer } from './ChatComposer'
+import { QuotedMessage } from './QuotedMessage'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useChatTimeline } from '../hooks/useChatTimeline'
@@ -29,10 +25,6 @@ import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
-
-const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const MEDIA_ACCEPT = 'image/*,video/*'
-const AUDIO_ACCEPT = 'audio/*'
 
 const DOCUMENT_COLORS: Record<string, string> = {
   pdf: 'bg-red-500',
@@ -63,34 +55,6 @@ function documentColor(filename: string): string {
 // directa es lo correcto.
 function isPdfFilename(filename: string): boolean {
   return filename.toLowerCase().endsWith('.pdf')
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1] ?? '')
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
-}
-
-/** GeolocationPositionError trae códigos fijos (1/2/3); cada uno tiene una
- * causa y solución distinta, igual que hicimos con los errores de micrófono. */
-function describeGeolocationError(err: GeolocationPositionError): string {
-  if (err.code === err.PERMISSION_DENIED) {
-    return (
-      'El navegador tiene bloqueado el acceso a la ubicación para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y volvé a cargar la página.'
-    )
-  }
-  if (err.code === err.POSITION_UNAVAILABLE) {
-    return 'No se pudo determinar tu ubicación actual.'
-  }
-  if (err.code === err.TIMEOUT) {
-    return 'Se agotó el tiempo esperando la ubicación. Intentá de nuevo.'
-  }
-  return 'No se pudo obtener la ubicación.'
 }
 
 interface Props {
@@ -143,49 +107,6 @@ function MessageStatusTicks({ status, isAudio = false, onRetry }: { status: Mess
     return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
   }
   return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
-}
-
-/** Recuadro del mensaje citado, como el que WhatsApp pone arriba de una
- * respuesta: barra de color, autor y una línea de vista previa. El color
- * distingue de quién era el mensaje original, no quién responde. */
-function QuotedMessage({
-  sender,
-  content,
-  contactName,
-  onJump,
-  className = '',
-}: {
-  sender: string
-  content: string | null
-  contactName: string
-  onJump?: () => void
-  className?: string
-}) {
-  const { icon: Icon, label, text } = quotePreview(content)
-  const isMine = sender === 'vendedor'
-  const accent = isMine
-    ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'
-    : 'border-sky-500 text-sky-600 dark:text-sky-400'
-  return (
-    <button
-      type="button"
-      onClick={onJump}
-      disabled={!onJump}
-      title={onJump ? 'Ir al mensaje original' : undefined}
-      className={`flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 bg-black/5 px-2 py-1 text-left dark:bg-white/10 ${accent} ${
-        onJump ? 'hover:bg-black/10 dark:hover:bg-white/15' : 'cursor-default'
-      } ${className}`}
-    >
-      <span className="text-[11px] font-semibold leading-tight">
-        {isMine ? 'Vos' : contactName}
-      </span>
-      <span className="flex w-full min-w-0 items-center gap-1 text-xs leading-tight text-wa-muted dark:text-wa-text-dark/70">
-        {Icon && <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />}
-        {label && !text && <span>{label}</span>}
-        {text && <span className="truncate">{text}</span>}
-      </span>
-    </button>
-  )
 }
 
 /** Chip centrado con el día ("Hoy", "Ayer", la fecha), como WhatsApp: queda
@@ -282,55 +203,12 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
   const [isNoteMode, setIsNoteMode] = useState(false)
 
-  const [draft, setDraft] = useState('')
   // Mensaje que se está respondiendo (cita estilo WhatsApp). Vale para todo
   // lo que salga del compositor: texto, audio, adjuntos y ubicación.
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
-  const [slashIndex, setSlashIndex] = useState(0)
-  const [slashDismissed, setSlashDismissed] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
-  const [audioError, setAudioError] = useState<string | null>(null)
-  const [mediaError, setMediaError] = useState<string | null>(null)
-  const [locationError, setLocationError] = useState<string | null>(null)
-  const [isLocating, setIsLocating] = useState(false)
-  const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
-  const { mutate: sendAudio } = useSendAudio(chat.chat_id)
-  const { mutate: sendMedia } = useSendMedia(chat.chat_id)
-  const { mutate: sendLocation } = useSendLocation(chat.chat_id)
-  const { data: templates = [] } = useTemplates()
-  const recordTemplateUse = useRecordTemplateUse()
 
-  // Mientras el draft es exactamente "/" + texto sin espacios, se interpreta
-  // como un atajo de plantilla en progreso (como en Slack/WhatsApp Business).
-  // Un espacio o texto adicional lo convierte en mensaje normal.
-  const slashQuery = useMemo(() => {
-    if (slashDismissed) return null
-    const match = /^\/(\S*)$/.exec(draft)
-    return match ? match[1] : null
-  }, [draft, slashDismissed])
-
-  const slashSuggestions = useMemo(() => {
-    if (slashQuery === null) return []
-    const query = slashQuery.toLowerCase()
-    return templates
-      .filter((t) => t.template_type === 'internal' && t.shortcut?.toLowerCase().startsWith(query))
-      .sort((a, b) => Number(b.stage === chat.stage) - Number(a.stage === chat.stage))
-      .slice(0, 6)
-  }, [templates, slashQuery, chat.stage])
-
-  const activeSlashIndex = Math.min(slashIndex, Math.max(slashSuggestions.length - 1, 0))
-
-  function selectSlashTemplate(template: (typeof slashSuggestions)[number]) {
-    if (template.interactive_type !== 'none' || template.attachments.length) setMultimediaTemplate(template)
-    else { setDraft(renderTemplate(template, chat)); recordTemplateUse.mutate(template.id) }
-    setSlashIndex(0)
-    setSlashDismissed(true)
-    textareaRef.current?.focus()
-  }
 
   /** Caja exacta de render de una imagen/video: proporción original escalada
    * al tope de alto (320px) y al ancho útil de la burbuja (75% del hilo menos
@@ -353,10 +231,11 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     return { width, height, style: { width, height } }
   }
 
+  // El foco del cursor lo pone el compositor al ver la cita nueva: el
+  // textarea es suyo, no de acá.
   function startReply(message: Message) {
     setReplyTo({ id: message.id, sender: message.sender, content: message.content })
     setIsNoteMode(false)
-    textareaRef.current?.focus()
   }
 
   /** Aparece al pasar el mouse por la burbuja, del lado de afuera, para no
@@ -377,140 +256,16 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
+  // La cita y el modo nota son del hilo, no del compositor: los inicia una
+  // burbuja. Al cambiar de lead no deben quedar pegados.
   useEffect(() => {
-    setDraft('')
     setReplyTo(null)
-    setAudioError(null)
-    setMediaError(null)
-    setLocationError(null)
-    setPendingLocation(null)
-    setSlashIndex(0)
-    setSlashDismissed(false)
     setIsNoteMode(false)
   }, [chat.chat_id])
-
-  function handleSend(e: React.FormEvent) {
-    e.preventDefault()
-    const text = draft.trim()
-    if (!text) return
-    setDraft('')
-    setReplyTo(null)
-    sendMessage({ text, replyTo })
-  }
 
   function handleRetryMessage(message: Message) {
     if (!message.content?.trim()) return
     retryMessage(message)
-  }
-
-  async function handleAudioRecorded(blob: Blob) {
-    setAudioError(null)
-    // La cita se captura antes del await: durante la codificación el usuario
-    // puede haber cancelado la respuesta o cambiado a otra.
-    const target = replyTo
-    setReplyTo(null)
-    const dataBase64 = await blobToBase64(blob)
-    sendAudio(
-      { contentType: blob.type || 'audio/webm', dataBase64, replyTo: target },
-      { onError: (err) => setAudioError(extractErrorMessage(err)) }
-    )
-  }
-
-  function openFilePicker(accept: string) {
-    const input = fileInputRef.current
-    if (!input) return
-    input.accept = accept
-    input.click()
-  }
-
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // permite volver a elegir el mismo archivo después
-    if (!file) return
-
-    // El backend valida el tipo real permitido; acá solo evitamos un
-    // roundtrip para el caso obvio de un archivo sin tipo reconocible.
-    if (!file.type) {
-      setMediaError('No se pudo determinar el tipo de archivo')
-      return
-    }
-
-    setMediaError(null)
-    const target = replyTo
-    setReplyTo(null)
-    const dataBase64 = await blobToBase64(file)
-    sendMedia(
-      { contentType: file.type, dataBase64, filename: file.name, replyTo: target },
-      { onError: (err) => setMediaError(extractErrorMessage(err)) }
-    )
-  }
-
-  function handleSendLocation() {
-    setLocationError(null)
-    if (!navigator.geolocation) {
-      setLocationError('Tu navegador no soporta geolocalización')
-      return
-    }
-    setIsLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setIsLocating(false)
-        // Igual que WhatsApp: primero mostramos dónde nos ubicó el GPS y
-        // pedimos confirmación, en vez de mandarla directo.
-        setPendingLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-      },
-      (err) => {
-        setIsLocating(false)
-        setLocationError(describeGeolocationError(err))
-      },
-      { enableHighAccuracy: true, timeout: 10_000 }
-    )
-  }
-
-  function handleConfirmLocation() {
-    if (!pendingLocation) return
-    const location = pendingLocation
-    setPendingLocation(null)
-    setReplyTo(null)
-    sendLocation({ ...location, replyTo }, {
-      onError: (err) => {
-        setLocationError(extractErrorMessage(err))
-      },
-    })
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (slashSuggestions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSlashIndex((i) => (i + 1) % slashSuggestions.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSlashIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length)
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setSlashDismissed(true)
-        return
-      }
-      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
-        e.preventDefault()
-        selectSlashTemplate(slashSuggestions[activeSlashIndex])
-        return
-      }
-    }
-    if (e.key === 'Escape' && replyTo) {
-      e.preventDefault()
-      setReplyTo(null)
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend(e)
-    }
   }
 
   return (
@@ -904,129 +659,18 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           onCreated={() => setIsNoteMode(false)}
         />
       ) : (
-        <form
-          onSubmit={handleSend}
-          className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
-        >
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
-          <button
-            type="button"
-            onClick={() => setIsNoteMode(true)}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-          >
-            <MessageSquareLock className="h-3.5 w-3.5" /> Cambiar a nota interna
-          </button>
-        </div>
-        {sendError && (
-          <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
-        )}
-        {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
-        {mediaError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{mediaError}</p>}
-        {locationError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{locationError}</p>}
-        {replyTo && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-wa-field-dark">
-            <div className="min-w-0 flex-1">
-              <QuotedMessage
-                sender={replyTo.sender}
-                content={replyTo.content}
-                contactName={displayName(chat)}
-                onJump={() => goToQuotedMessage(replyTo.id)}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setReplyTo(null)}
-              aria-label="Cancelar respuesta"
-              title="Cancelar respuesta (Esc)"
-              className="shrink-0 rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
-            >
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
-
-          {!isRecordingAudio && (
-            <AttachMenu
-              disabled={isLocating}
-              isSending={isLocating}
-              onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
-              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
-              onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
-              onSelectLocation={handleSendLocation}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <TemplatePicker
-              chat={chat}
-              sentMessages={sentMessageHistory}
-              onSaveHistory={setTemplateContentToSave}
-              onSendMultimedia={setMultimediaTemplate}
-              onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <div className="relative flex-1">
-              {slashSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
-                  {slashSuggestions.map((template, i) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectSlashTemplate(template)}
-                      onMouseEnter={() => setSlashIndex(i)}
-                      className={`block w-full rounded-lg px-3 py-2 text-left ${
-                        i === activeSlashIndex ? 'bg-wa-active dark:bg-wa-active-dark' : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
-                      }`}
-                    >
-                      <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">/{template.shortcut}</p>
-                      <p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{renderTemplate(template, chat)}</p>
-                    </button>
-                  ))}
-                  <p className="border-t border-wa-border px-3 pt-1.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
-                    ↑↓ para navegar · Enter para insertar · Esc para cerrar
-                  </p>
-                </div>
-              )}
-              <textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value)
-                  setSlashIndex(0)
-                  setSlashDismissed(false)
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Escribí un mensaje... (/ para usar una plantilla)"
-                rows={1}
-                className="w-full resize-none text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow max-h-32"
-              />
-            </div>
-          )}
-
-          {draft.trim() && !isRecordingAudio ? (
-            <button
-              type="submit"
-              aria-label="Enviar mensaje"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-wa-primary text-white hover:bg-wa-primary-strong active:bg-wa-primary-deep transition-colors shadow-sm"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          ) : (
-            <VoiceRecorder
-              disabled={isLocating}
-              onRecorded={handleAudioRecorded}
-              onError={setAudioError}
-              onRecordingChange={setIsRecordingAudio}
-            />
-          )}
-        </div>
-        </form>
+        <ChatComposer
+          chat={chat}
+          sentMessageHistory={sentMessageHistory}
+          replyTo={replyTo}
+          onReplyChange={setReplyTo}
+          onQuotedJump={goToQuotedMessage}
+          onSwitchToNote={() => setIsNoteMode(true)}
+          onSaveTemplate={setTemplateContentToSave}
+          onSendMultimediaTemplate={setMultimediaTemplate}
+          sendMessage={sendMessage}
+          sendError={sendError}
+        />
       )}
 
       {openMedia && (
@@ -1039,15 +683,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         />
       )}
 
-      {pendingLocation && (
-        <LocationConfirmDialog
-          latitude={pendingLocation.latitude}
-          longitude={pendingLocation.longitude}
-          isSending={false}
-          onConfirm={handleConfirmLocation}
-          onCancel={() => setPendingLocation(null)}
-        />
-      )}
 
       {templateContentToSave && (
         <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
