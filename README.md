@@ -91,26 +91,11 @@ docker compose -f compose.db.yml --env-file db/.env restart postgres
 
 Nota: `restart` corta las conexiones un instante. Si solo cambiaste el certificado, basta recargar sin reiniciar: `docker exec <contenedor-postgres> psql -U <user> -d <db> -c 'select pg_reload_conf()'`.
 
-#### Conectarse a la base: local o producción
+#### Conectarse a la base de producción
 
-Las credenciales (`usuario`, `contraseña`, `nombre de la base`) salen siempre de `db/.env` — es la única fuente, tanto en desarrollo como en producción. Los ejemplos usan un contenedor cliente `psql` para no depender de tener el binario instalado; con un `psql` local o una GUI (DBeaver, TablePlus…) los parámetros son los mismos.
+Las credenciales (`usuario`, `contraseña`, `nombre de la base`) salen siempre de `db/.env` — es la única fuente. Los ejemplos usan un contenedor cliente `psql` para no depender de tener el binario instalado; con un `psql` local o una GUI (DBeaver, TablePlus…) los parámetros son los mismos.
 
-**A) Base de desarrollo local** (`compose.yml`, en tu máquina). Publica el `5433` y **no usa TLS**: es la de jugar, en tu propio equipo.
-
-```bash
-docker compose up -d postgres     # si no está ya levantada
-docker run --rm -it --network host -e PGPASSWORD=<password> postgres:16-alpine \
-  psql "host=127.0.0.1 port=5433 dbname=<db> user=<user>"
-```
-
-Para correr el backend fuera de Docker apuntando a ella, en `backend/.env`:
-
-```
-DATABASE_URL=postgresql+asyncpg://<user>:<password>@localhost:5433/<db>
-DATABASE_SSL=disable
-```
-
-**B) Base de producción, desde tu máquina.** Va por Internet, así que `db/pg_hba.conf` **exige TLS** (`hostssl`; una conexión sin cifrar se rechaza). Basta con `sslmode=require`:
+**A) Base de producción, desde tu máquina.** Va por Internet, así que `db/pg_hba.conf` **exige TLS** (`hostssl`; una conexión sin cifrar se rechaza). Basta con `sslmode=require`:
 
 ```bash
 docker run --rm -it -e PGPASSWORD=<password> postgres:16-alpine \
@@ -133,9 +118,9 @@ select ssl, version, cipher from pg_stat_ssl where pid = pg_backend_pid();
 
 Si además quieres verificar la identidad del servidor (no solo cifrar), cópiate `db/tls/server.crt` del servidor y usa `sslmode=verify-full sslrootcert=/ruta/server.crt`; el `host` debe coincidir con el CN/SAN del certificado (la IP pública, y también valen `localhost`/`127.0.0.1` desde el propio servidor). En una GUI: modo SSL `require`, o `verify-full` cargando ese `.crt` como CA raíz.
 
-⚠️ Conectado a producción tocas **datos reales**: cualquier `UPDATE`/`DELETE` es inmediato y sin red de seguridad. Para experimentos, usa la base de desarrollo o restaura un backup en local (`scripts/db-backup.sh`).
+⚠️ Conectado a producción tocas **datos reales**: cualquier `UPDATE`/`DELETE` es inmediato y sin red de seguridad. Para experimentos, restaura un backup en local (`scripts/db-backup.sh`).
 
-**C) Desde el propio servidor.** La app en Docker llega por `postgres:5432`, también cifrada. Para probar el TLS desde el servidor mismo, usa el comando de (B) con `host=127.0.0.1` y `--network host` (con `127.0.0.1`, no `localhost`: el puerto se publica solo en IPv4 y `localhost` intenta antes `::1`, que da *connection refused*).
+**B) Desde el propio servidor.** La app en Docker llega por `postgres:5432`, también cifrada. Para probar el TLS desde el servidor mismo, usa el comando de (A) con `host=127.0.0.1` y `--network host` (con `127.0.0.1`, no `localhost`: el puerto se publica solo en IPv4 y `localhost` intenta antes `::1`, que da *connection refused*).
 
 #### Acceso desde n8n (otra VPS)
 
@@ -199,13 +184,12 @@ Para revertir de urgencia sin el script: cambiar el puerto de la línea `url` en
 docker compose up -d --build
 ```
 
-Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`).
+Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`). Solo levanta backend y frontend; la base es siempre la de producción, según `backend/.env`.
 
-**A qué base apunta el backend** se elige en `backend/.env` — las tres opciones están comentadas en `backend/.env.example`, listas para des/comentar:
+**A qué base apunta el backend** se elige en `backend/.env` — las dos opciones están comentadas en `backend/.env.example`, listas para des/comentar:
 
 1. Producción en el servidor (red interna, `postgres:5432`, `require`) — la del despliegue.
-2. Base local de `compose.yml` — la normal en desarrollo.
-3. **La base de producción desde tu laptop** — cambia `DATABASE_URL` a la IP pública y `DATABASE_SSL=require` (el servidor rechaza conexiones sin TLS). Tras editar `backend/.env`, reinicia el backend (`docker compose restart backend`). ⚠ Datos reales: sin red de seguridad ante un `UPDATE`/`DELETE`.
+2. **La base de producción desde tu laptop** — cambia `DATABASE_URL` a la IP pública y `DATABASE_SSL=require` (el servidor rechaza conexiones sin TLS). Tras editar `backend/.env`, reinicia el backend (`docker compose restart backend`). ⚠ Datos reales: sin red de seguridad ante un `UPDATE`/`DELETE`.
 
 ### Mensajes leídos de WhatsApp (n8n + Evolution API)
 

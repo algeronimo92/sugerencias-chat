@@ -10,6 +10,7 @@ from models.schemas import (
     Chat,
     ChatPage,
     CustomerServiceWindow,
+    HistoryPage,
     KanbanPage,
     KanbanSnapshot,
     LeadCreate,
@@ -58,9 +59,11 @@ from services.auth_service import get_current_user
 from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
+    is_configured,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
 )
+from services.whatsapp_history import fetch_whatsapp_history
 from services.phone_utils import (
     PhoneValidationError,
     digits_to_jid,
@@ -455,6 +458,26 @@ async def get_messages(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history/availability")
+async def get_history_availability():
+    """Si se puede ofrecer el historial de WhatsApp. Solo mira la configuración:
+    el botón no debe costar una llamada a Evolution cada vez que se abre un chat."""
+    return {"available": await is_configured()}
+
+
+@router.get("/{chat_id}/history", response_model=HistoryPage)
+async def get_whatsapp_history(
+    chat_id: str,
+    page: int | None = Query(default=None, ge=1),
+    before_ts: datetime | None = None,
+):
+    """Historial anterior al registro propio, leído de WhatsApp y sin guardar."""
+    try:
+        return await fetch_whatsapp_history(chat_id, page, before_ts)
+    except EvolutionApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.get("/{chat_id}/service-window", response_model=CustomerServiceWindow)

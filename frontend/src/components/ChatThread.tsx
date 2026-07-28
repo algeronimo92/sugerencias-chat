@@ -1,12 +1,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, FileText, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
-import type { Chat, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
+import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
+import type { Chat, HistoryMessage, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useEvolutionHistory, useEvolutionHistoryAvailability } from '../hooks/useEvolutionHistory'
+import { HistoryMessageBubble } from './HistoryMessageBubble'
+import { RichText } from './RichText'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel, formatMessageTime, parseContent, parseRichText, quotePreview, resolveMediaUrl } from '../utils/message'
+import { formatDayLabel, formatMessageTime, groupByDay, parseContent, quotePreview, resolveMediaUrl } from '../utils/message'
 import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
@@ -113,6 +116,9 @@ type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
   | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
+  // Traído de WhatsApp al vuelo, sin registro en la base: siempre anterior a
+  // cualquier mensaje propio, así que el orden por fecha lo deja arriba.
+  | { kind: 'history'; key: string; sentAt: string; history: HistoryMessage }
 
 // Duración del resaltado al saltar a un mensaje desde la búsqueda.
 const MESSAGE_FLASH_MS = 2000
@@ -202,6 +208,38 @@ function QuotedMessage({
   )
 }
 
+/** Chip centrado con el día ("Hoy", "Ayer", la fecha), como WhatsApp: queda
+ * fijado contra el borde superior mientras se navega ese día, y el chip del
+ * día siguiente lo empuja hacia afuera al llegar. Ese empujón sale de que el
+ * `sticky` está acotado por la caja de la sección del día, así que este
+ * componente solo funciona como primer hijo de su sección.
+ *
+ * `pointer-events-none` deja pasar el mouse a las burbujas que pasan por
+ * debajo: si no, el chip se comería el hover del botón de responder. */
+function DaySeparator({ sentAt }: { sentAt: string }) {
+  return (
+    <div className="pointer-events-none sticky top-0 z-10 flex justify-center py-2">
+      <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
+        {formatDayLabel(sentAt)}
+      </span>
+    </div>
+  )
+}
+
+/** Marca dónde arranca lo que el sistema tiene guardado. Todo lo de arriba se
+ * leyó de WhatsApp al vuelo y no está en la base: no se puede buscar, ni
+ * citar, ni consultar sin conexión a la instancia. */
+function DbRecordSeparator() {
+  return (
+    <div className="flex justify-center py-3">
+      <span className="flex items-center gap-1.5 rounded-bubble border border-dashed border-wa-primary/50 bg-white px-3 py-1 text-[11px] font-medium text-wa-primary-strong shadow-sm dark:bg-wa-head-dark dark:text-wa-primary">
+        <Database aria-hidden="true" className="h-3 w-3" />
+        Desde acá hay registro en el sistema
+      </span>
+    </div>
+  )
+}
+
 export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSuggestions }: Props) {
   const {
     data: messagePages,
@@ -218,11 +256,37 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     () => [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items),
     [messagePages],
   )
+  // Historial de WhatsApp anterior al registro propio: se pide a mano, recién
+  // cuando el usuario agotó los mensajes de la base y quiere ver más atrás.
+  const [historyRequested, setHistoryRequested] = useState(false)
+  const { data: historyAvailability } = useEvolutionHistoryAvailability()
+  const oldestDbSentAt = messages.find(m => m.sent_at)?.sent_at ?? null
+  const {
+    data: historyPages,
+    error: historyError,
+    fetchNextPage: fetchNextHistoryPage,
+    hasNextPage: hasMoreHistory,
+    isFetching: isFetchingHistory,
+    refetch: refetchHistory,
+  } = useEvolutionHistory(chat.chat_id, oldestDbSentAt, historyRequested && !hasNextPage)
+  const historyMessages = useMemo(() => {
+    const registered = new Set(messages.map(m => m.wa_message_id).filter(Boolean))
+    return [...(historyPages?.pages ?? [])]
+      .reverse()
+      .flatMap(page => page.items)
+      .filter(item => !registered.has(item.wa_message_id))
+  }, [historyPages, messages])
   const { data: notes = [] } = useInternalNotes(chat.chat_id)
   const { data: leadActivity = [] } = useLeadActivity(chat.chat_id)
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
   const timeline = useMemo<TimelineItem[]>(() => [
+    ...historyMessages.map(history => ({
+      kind: 'history' as const,
+      key: `history-${history.wa_message_id}`,
+      sentAt: history.sent_at,
+      history,
+    })),
     ...messages.map(message => ({
       kind: 'message' as const,
       key: `message-${message.id}`,
@@ -257,25 +321,12 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       return a.message.id - b.message.id
     }
     return a.key.localeCompare(b.key)
-  }), [messages, notes, leadActivity])
-  // Algunos mensajes (ej. audios recién enviados) todavía no tienen sent_at
-  // confirmado. Si se comparara solo contra el vecino inmediato, un mensaje
-  // sin fecha "cortaría" el grupo del día y el siguiente mensaje dispararía
-  // un separador de fecha espurio aunque siga siendo el mismo día; por eso
-  // se compara contra el último día CON fecha confirmada, no contra el
-  // mensaje anterior a secas.
-  const dateSeparators = useMemo(() => {
-    const separators = new Map<string, boolean>()
-    let lastDay: string | null = null
-    for (const item of timeline) {
-      if (!item.sentAt) continue
-      const day = new Date(item.sentAt).toDateString()
-      separators.set(item.key, day !== lastDay)
-      lastDay = day
-    }
-    return separators
-  }, [timeline])
+  }), [messages, historyMessages, notes, leadActivity])
+  // Una sección por día: es lo que permite fijar el chip de fecha arriba
+  // mientras se navega ese día y que el del día siguiente lo empuje al llegar.
+  const daySections = useMemo(() => groupByDay(timeline), [timeline])
   const pageCount = messagePages?.pages.length ?? 0
+  const historyPageCount = historyPages?.pages.length ?? 0
   const lastTimelineKey = timeline.at(-1)?.key ?? null
   const threadRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -551,7 +602,16 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         setHasNewWhileAway(true)
       }
     }
-  }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount])
+    // historyPageCount entra acá para que una página de historial vacía —el
+    // tramo que todavía se solapa con lo registrado— también consuma el
+    // snapshot, en vez de dejarlo colgado para el próximo render.
+  }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount, historyPageCount])
+
+  // Un pedido de historial fallido no agrega nada arriba: el snapshot que se
+  // tomó antes de pedirlo tiene que descartarse o la vista salta después.
+  useEffect(() => {
+    if (historyError) prependSnapshotRef.current = null
+  }, [historyError])
 
   // Si el chat ya estaba cacheado sin el mensaje buscado (la primera página
   // agrandada solo aplica con cache vacía), se pagina hacia atrás hasta
@@ -613,6 +673,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     setSlashIndex(0)
     setSlashDismissed(false)
     setIsNoteMode(false)
+    // El historial de WhatsApp se vuelve a pedir a mano en cada chat: es caro
+    // y casi siempre alcanza con lo que está registrado.
+    setHistoryRequested(false)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
@@ -739,6 +802,29 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     }
   }
 
+  /** Carga contenido más viejo dejando la vista donde está: se guarda el alto
+   * antes de pedirlo y el efecto de restauración compensa lo que se agregó
+   * arriba. Si el pedido falla se descarta el snapshot para no mover nada. */
+  function loadOlder(request: () => Promise<{ isError: boolean }>) {
+    const container = threadRef.current
+    if (!container || loadingOlderRef.current) return
+    loadingOlderRef.current = true
+    // Al paginar hacia atrás manda la restauración del snapshot, nunca el
+    // fondo pegajoso de la apertura.
+    stickToBottomUntilRef.current = 0
+    prependSnapshotRef.current = {
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+    }
+    void request()
+      .then((result) => {
+        if (result.isError) prependSnapshotRef.current = null
+      })
+      .finally(() => {
+        loadingOlderRef.current = false
+      })
+  }
+
   function handleThreadScroll() {
     const container = threadRef.current
     if (!container) return
@@ -760,21 +846,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       return
     }
 
-    loadingOlderRef.current = true
-    // Al paginar hacia atrás manda la restauración del snapshot, nunca el
-    // fondo pegajoso de la apertura.
-    stickToBottomUntilRef.current = 0
-    prependSnapshotRef.current = {
-      scrollHeight: container.scrollHeight,
-      scrollTop: container.scrollTop,
-    }
-    void fetchNextPage()
-      .then((result) => {
-        if (result.isError) prependSnapshotRef.current = null
-      })
-      .finally(() => {
-        loadingOlderRef.current = false
-      })
+    loadOlder(fetchNextPage)
   }
 
   function scrollToBottom() {
@@ -845,23 +917,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         )}
         {!isLoading && !error && hasNextPage && (
           <button type="button"
-            onClick={() => {
-              const container = threadRef.current
-              if (!container || isFetchingNextPage || loadingOlderRef.current) return
-              loadingOlderRef.current = true
-              stickToBottomUntilRef.current = 0
-              prependSnapshotRef.current = {
-                scrollHeight: container.scrollHeight,
-                scrollTop: container.scrollTop,
-              }
-              void fetchNextPage()
-                .then((result) => {
-                  if (result.isError) prependSnapshotRef.current = null
-                })
-                .finally(() => {
-                  loadingOlderRef.current = false
-                })
-            }}
+            onClick={() => { if (!isFetchingNextPage) loadOlder(fetchNextPage) }}
             disabled={isFetchingNextPage}
             className="mx-auto my-2 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover disabled:cursor-wait dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
           >
@@ -869,278 +925,294 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             {isFetchingNextPage ? 'Cargando anteriores...' : 'Cargar mensajes anteriores'}
           </button>
         )}
-        {timeline.map((item, index) => {
-          const showDateSeparator = dateSeparators.get(item.key) ?? false
-          if (item.kind === 'activity') {
-            return (
-              <Fragment key={item.key}>
-                {showDateSeparator && (
-                  <div className="flex justify-center py-2">
-                    <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
-                      {formatDayLabel(item.sentAt)}
-                    </span>
-                  </div>
-                )}
-                <StageChangeCard activity={item.activity} />
-              </Fragment>
-            )
-          }
-          if (item.kind === 'note') {
-            return (
-              <Fragment key={item.key}>
-                {showDateSeparator && (
-                  <div className="flex justify-center py-2">
-                    <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
-                      {formatDayLabel(item.sentAt)}
-                    </span>
-                  </div>
-                )}
-                <div className="my-2">
-                  <InternalNoteCard
-                    chatId={chat.chat_id}
-                    note={item.note}
-                    canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
-                  />
-                </div>
-              </Fragment>
-            )
-          }
-          const m = item.message
-          const isVendedor = m.sender === 'vendedor'
-          // Agrupación estilo WhatsApp: mensajes consecutivos del mismo autor
-          // se pegan entre sí y solo el primero lleva la "colita".
-          const prevItem = index > 0 ? timeline[index - 1] : null
-          const isFirstOfGroup =
-            showDateSeparator ||
-            !prevItem ||
-            prevItem.kind !== 'message' ||
-            prevItem.message.sender !== m.sender
-          const { kind, icon: Icon, label, text, template } = parseContent(m.content)
-          // Si el archivo falló al cargar (ej. no existe en este entorno),
-          // lo tratamos como si no hubiera media: el navegador muestra su
-          // propio ícono roto + el alt completo pegado, duplicando el texto
-          // con nuestro caption de abajo.
-          const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
-          const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
-          const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video')
-          return (
-            <Fragment key={item.key}>
-              {showDateSeparator && (
-                <div className="flex justify-center py-2">
-                  <span className="rounded-bubble bg-white px-3 py-1 text-[11px] font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
-                    {formatDayLabel(m.sent_at as string)}
-                  </span>
-                </div>
-              )}
-              <div
-                className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
-                data-message-id={m.id}
+        {/* Con la base agotada, lo anterior solo existe en WhatsApp. Se ofrece
+            traerlo a mano: cada pedido cuesta varias llamadas a Evolution y no
+            es lo que se necesita en la mayoría de los chats. */}
+        {!isLoading && !error && !hasNextPage && historyAvailability?.available && (
+          <div className="my-2 flex flex-col items-center gap-1.5">
+            {historyError && (
+              <p className="text-center text-xs text-red-500 dark:text-red-400">
+                No se pudo traer el historial de WhatsApp. {extractErrorMessage(historyError)}
+              </p>
+            )}
+            {isFetchingHistory ? (
+              <span className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Buscando historial de WhatsApp...
+              </span>
+            ) : !historyRequested ? (
+              <button type="button"
+                onClick={() => loadOlder(async () => {
+                  setHistoryRequested(true)
+                  return { isError: false }
+                })}
+                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
               >
-              {/* Solo se puede citar un mensaje que ya existe en WhatsApp: sin
-                  wa_message_id (envío en curso, fallido, o histórico previo a
-                  la integración) el botón no aparece en vez de fallar al
-                  enviar. */}
-              {isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
-              {/* Columna: la burbuja y, debajo, los botones de la plantilla.
-                  Al estirarse los dos al ancho de la columna, los botones
-                  quedan tan anchos como la burbuja (y al revés), igual que en
-                  WhatsApp. */}
-              {/* 85% en móvil, como WhatsApp: al 75% de una pantalla de 360px
-                  los mensajes se parten en demasiadas líneas. */}
-              <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
-              <div
-                className={`rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
-                  isVendedor
-                    ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
-                    : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
-                } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
+                <History className="h-3.5 w-3.5" />
+                Ver historial anterior de WhatsApp
+              </button>
+            ) : historyError ? (
+              <button type="button"
+                onClick={() => loadOlder(refetchHistory)}
+                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
               >
-                {m.quoted_message_id != null && (
-                  <QuotedMessage
-                    sender={m.quoted_sender ?? 'cliente'}
-                    content={m.quoted_content ?? null}
-                    contactName={displayName(chat)}
-                    onJump={() => goToQuotedMessage(m.quoted_message_id as number)}
-                    className="mb-1"
+                <RefreshCw className="h-3.5 w-3.5" />
+                Reintentar
+              </button>
+            ) : hasMoreHistory ? (
+              <button type="button"
+                onClick={() => loadOlder(fetchNextHistoryPage)}
+                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
+              >
+                <History className="h-3.5 w-3.5" />
+                Cargar más historial de WhatsApp
+              </button>
+            ) : (
+              <span className="text-center text-xs text-wa-muted dark:text-wa-muted-dark">
+                {historyMessages.length > 0
+                  ? 'Inicio del historial de WhatsApp'
+                  : 'No hay historial anterior en WhatsApp'}
+              </span>
+            )}
+          </div>
+        )}
+        {/* Sin historial cargado, el chat empieza donde empieza el registro:
+            la marca va arriba de todo. Con historial cargado la dibuja el
+            propio hilo, en el límite entre lo traído y lo guardado. */}
+        {!isLoading && !error && !hasNextPage && messages.length > 0 && historyMessages.length === 0 && (
+          <DbRecordSeparator />
+        )}
+        {daySections.map((section) => (
+          // La sección acota el sticky del chip: sin este contenedor todos los
+          // chips se apilarían pegados arriba en vez de reemplazarse.
+          <div key={section.key} className="flex flex-col">
+            {section.sentAt && <DaySeparator sentAt={section.sentAt} />}
+            {section.items.map(({ item, globalIndex }, indexInSection) => {
+              const isFirstOfSection = indexInSection === 0
+              const prevItem = globalIndex > 0 ? timeline[globalIndex - 1] : null
+              // El primer ítem registrado después del historial de WhatsApp es
+              // justo donde arranca lo que guarda el sistema.
+              const showDbBoundary = item.kind !== 'history' && prevItem?.kind === 'history'
+              if (item.kind === 'history') {
+                return (
+                  <HistoryMessageBubble
+                    key={item.key}
+                    message={item.history}
+                    isFirstOfGroup={
+                      isFirstOfSection ||
+                      prevItem?.kind !== 'history' ||
+                      prevItem.history.sender !== item.history.sender
+                    }
                   />
-                )}
-                {/* En el hilo la plantilla se pinta entera (preview + botones),
-                    así que el chip de tipo solo estorba; en la lista de chats y
-                    en las citas sí se usa para resumirla. */}
-                {!mediaSrc && kind !== 'text' && kind !== 'location' && kind !== 'template' && Icon && (
-                  <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
-                    <Icon className="w-3 h-3" />
-                    <span>{label}</span>
-                  </div>
-                )}
-                {mediaSrc && kind === 'image' && (
-                  <img
-                    src={mediaSrc}
-                    alt={text || 'Imagen'}
-                    {...mediaBoxDimensions(m)}
-                    onClick={() => setOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
-                    onError={markMediaFailed}
-                    className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
-                  />
-                )}
-                {mediaSrc && kind === 'video' && (
-                  (() => {
-                    const { style } = mediaBoxDimensions(m)
-                    return (
-                      <ChatVideoMessage
-                        src={mediaSrc}
-                        alt={text || 'Video'}
-                        onError={markMediaFailed}
-                        style={style}
-                        className={`max-w-full ${style ? '' : 'h-56 w-[min(100%,360px)]'}`}
-                        onOpenGallery={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
-                        footer={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}</>}
+                )
+              }
+              if (item.kind === 'activity') {
+                return (
+                  <Fragment key={item.key}>
+                    {showDbBoundary && <DbRecordSeparator />}
+                    <StageChangeCard activity={item.activity} />
+                  </Fragment>
+                )
+              }
+              if (item.kind === 'note') {
+                return (
+                  <Fragment key={item.key}>
+                    {showDbBoundary && <DbRecordSeparator />}
+                    <div className="my-2">
+                      <InternalNoteCard
+                        chatId={chat.chat_id}
+                        note={item.note}
+                        canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
                       />
-                    )
-                  })()
-                )}
-                {mediaSrc && kind === 'audio' && (
-                  <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
-                )}
-                {mediaSrc && kind === 'other' && (
-                  <a
-                    href={mediaSrc}
-                    {...(isPdfFilename(text || '')
-                      ? { target: '_blank', rel: 'noopener noreferrer' }
-                      : { download: text || true })}
-                    className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                  >
-                    <span
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(text || '')}`}
-                    >
-                      <FileText className="w-4 h-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">
-                        {text || 'Documento'}
-                      </p>
-                      <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
-                        {documentExtension(text || '')}
-                      </p>
                     </div>
-                  </a>
-                )}
-                {kind === 'template' && template && (
-                  <TemplateMessagePreview template={template} hasQuote={m.quoted_message_id != null} />
-                )}
-                {kind === 'location' && (() => {
-                  const [lat, lon] = text.split(',').map(Number)
-                  const hasCoords = Number.isFinite(lat) && Number.isFinite(lon)
-                  if (!hasCoords) return null
-                  return (
-                    <a
-                      href={`https://www.google.com/maps?q=${lat},${lon}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
-                    >
-                      <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
-                    </a>
-                  )
-                })()}
-                {kind !== 'other' && kind !== 'location' && (
-                  // El cuerpo de una plantilla es texto real del anuncio, no un
-                  // marcador de adjunto: se pinta como un mensaje normal.
-                  <p className={`whitespace-pre-wrap ${kind === 'text' || template ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
-                    {text ? (
-                      parseRichText(text).map((segment, i) => {
-                        switch (segment.type) {
-                          case 'link':
-                            return (
-                              <a
-                                key={i}
-                                href={segment.text}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline text-sky-600 dark:text-wa-accent hover:text-sky-800 dark:hover:text-sky-300 break-all not-italic"
-                              >
-                                {segment.text}
-                              </a>
-                            )
-                          case 'bold':
-                            return (
-                              <strong key={i} className="font-semibold">
-                                {segment.text}
-                              </strong>
-                            )
-                          case 'italic':
-                            return (
-                              <em key={i} className="italic">
-                                {segment.text}
-                              </em>
-                            )
-                          case 'strike':
-                            return (
-                              <span key={i} className="line-through">
-                                {segment.text}
-                              </span>
-                            )
-                          case 'code':
-                            return (
-                              <code
-                                key={i}
-                                className="font-mono text-[0.85em] bg-black/10 dark:bg-white/15 rounded px-1 py-0.5 not-italic"
-                              >
-                                {segment.text}
-                              </code>
-                            )
-                          default:
-                            return <span key={i}>{segment.text}</span>
-                        }
-                      })
-                    ) : ""}
-                  </p>
-                )}
-                {kind === 'template' && template?.footer && (
-                  <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
-                )}
-                {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
-                  {isVendedor && kind === 'text' && text.trim() && (
-                    <button
-                      type="button"
-                      title="Guardar como plantilla personal"
-                      onClick={() => setTemplateContentToSave(text.trim())}
-                      className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-wa-primary-strong dark:hover:text-wa-primary hover:opacity-100"
-                    >
-                      <BookmarkPlus className="h-3 w-3" />
-                    </button>
-                  )}
-                  {isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
-                    <span
-                      className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
-                        m.status === 'PLAYED'
-                          ? 'text-wa-accent'
-                          : 'text-wa-muted dark:text-wa-text-dark/60'
-                      }`}
-                      title={m.status === 'PLAYED'
-                        ? 'WhatsApp confirmó que el cliente reprodujo este audio'
-                        : 'WhatsApp todavía no confirmó la reproducción de este audio'}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`h-1.5 w-1.5 rounded-full ${m.status === 'PLAYED' ? 'bg-wa-accent' : 'bg-current opacity-60'}`}
+                  </Fragment>
+                )
+              }
+              const m = item.message
+              const isVendedor = m.sender === 'vendedor'
+              // Agrupación estilo WhatsApp: mensajes consecutivos del mismo autor
+              // se pegan entre sí y solo el primero lleva la "colita".
+              const isFirstOfGroup =
+                isFirstOfSection ||
+                !prevItem ||
+                prevItem.kind !== 'message' ||
+                prevItem.message.sender !== m.sender
+              const { kind, icon: Icon, label, text, template } = parseContent(m.content)
+              // Si el archivo falló al cargar (ej. no existe en este entorno),
+              // lo tratamos como si no hubiera media: el navegador muestra su
+              // propio ícono roto + el alt completo pegado, duplicando el texto
+              // con nuestro caption de abajo.
+              const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
+              const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
+              const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video')
+              return (
+                <Fragment key={item.key}>
+                  {showDbBoundary && <DbRecordSeparator />}
+                  <div
+                    className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
+                    data-message-id={m.id}
+                  >
+                  {/* Solo se puede citar un mensaje que ya existe en WhatsApp: sin
+                      wa_message_id (envío en curso, fallido, o histórico previo a
+                      la integración) el botón no aparece en vez de fallar al
+                      enviar. */}
+                  {isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
+                  {/* Columna: la burbuja y, debajo, los botones de la plantilla.
+                      Al estirarse los dos al ancho de la columna, los botones
+                      quedan tan anchos como la burbuja (y al revés), igual que
+                      en WhatsApp.
+                      85% en móvil, como WhatsApp: al 75% de una pantalla de
+                      360px los mensajes se parten en demasiadas líneas. */}
+                  <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
+                  <div
+                    className={`rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
+                      isVendedor
+                        ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
+                        : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
+                    } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
+                  >
+                    {m.quoted_message_id != null && (
+                      <QuotedMessage
+                        sender={m.quoted_sender ?? 'cliente'}
+                        content={m.quoted_content ?? null}
+                        contactName={displayName(chat)}
+                        onJump={() => goToQuotedMessage(m.quoted_message_id as number)}
+                        className="mb-1"
                       />
-                      {m.status === 'PLAYED' ? 'Escuchado' : 'No escuchado'}
-                    </span>
+                    )}
+                    {kind === 'template' && template && (
+                      <TemplateMessagePreview template={template} hasQuote={m.quoted_message_id != null} />
+                    )}
+                    {/* En el hilo la plantilla se pinta entera (preview + botones),
+                        así que el chip de tipo solo estorba; en la lista de chats
+                        y en las citas sí se usa para resumirla. */}
+                    {!mediaSrc && kind !== 'text' && kind !== 'location' && kind !== 'template' && Icon && (
+                      <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
+                        <Icon className="w-3 h-3" />
+                        <span>{label}</span>
+                      </div>
+                    )}
+                    {mediaSrc && kind === 'image' && (
+                      <img
+                        src={mediaSrc}
+                        alt={text || 'Imagen'}
+                        {...mediaBoxDimensions(m)}
+                        onClick={() => setOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
+                        onError={markMediaFailed}
+                        className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
+                      />
+                    )}
+                    {mediaSrc && kind === 'video' && (
+                      (() => {
+                        const { style } = mediaBoxDimensions(m)
+                        return (
+                          <ChatVideoMessage
+                            src={mediaSrc}
+                            alt={text || 'Video'}
+                            onError={markMediaFailed}
+                            style={style}
+                            className={`max-w-full ${style ? '' : 'h-56 w-[min(100%,360px)]'}`}
+                            onOpenGallery={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
+                            footer={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}</>}
+                          />
+                        )
+                      })()
+                    )}
+                    {mediaSrc && kind === 'audio' && (
+                      <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
+                    )}
+                    {mediaSrc && kind === 'other' && (
+                      <a
+                        href={mediaSrc}
+                        {...(isPdfFilename(text || '')
+                          ? { target: '_blank', rel: 'noopener noreferrer' }
+                          : { download: text || true })}
+                        className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                      >
+                        <span
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(text || '')}`}
+                        >
+                          <FileText className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">
+                            {text || 'Documento'}
+                          </p>
+                          <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
+                            {documentExtension(text || '')}
+                          </p>
+                        </div>
+                      </a>
+                    )}
+                    {kind === 'location' && (() => {
+                      const [lat, lon] = text.split(',').map(Number)
+                      const hasCoords = Number.isFinite(lat) && Number.isFinite(lon)
+                      if (!hasCoords) return null
+                      return (
+                        <a
+                          href={`https://www.google.com/maps?q=${lat},${lon}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
+                        >
+                          <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
+                        </a>
+                      )
+                    })()}
+                    {kind !== 'other' && kind !== 'location' && (
+                      // El cuerpo de una plantilla es texto real del anuncio, no
+                      // un marcador de adjunto: se pinta como un mensaje normal.
+                      <p className={`whitespace-pre-wrap ${kind === 'text' || template ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
+                        {text ? <RichText text={text} /> : ""}
+                      </p>
+                    )}
+                    {kind === 'template' && template?.footer && (
+                      <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
+                    )}
+                    {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
+                      {isVendedor && kind === 'text' && text.trim() && (
+                        <button
+                          type="button"
+                          title="Guardar como plantilla personal"
+                          onClick={() => setTemplateContentToSave(text.trim())}
+                          className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-wa-primary-strong dark:hover:text-wa-primary hover:opacity-100"
+                        >
+                          <BookmarkPlus className="h-3 w-3" />
+                        </button>
+                      )}
+                      {isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
+                        <span
+                          className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
+                            m.status === 'PLAYED'
+                              ? 'text-wa-accent'
+                              : 'text-wa-muted dark:text-wa-text-dark/60'
+                          }`}
+                          title={m.status === 'PLAYED'
+                            ? 'WhatsApp confirmó que el cliente reprodujo este audio'
+                            : 'WhatsApp todavía no confirmó la reproducción de este audio'}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 rounded-full ${m.status === 'PLAYED' ? 'bg-wa-accent' : 'bg-current opacity-60'}`}
+                          />
+                          {m.status === 'PLAYED' ? 'Escuchado' : 'No escuchado'}
+                        </span>
+                      )}
+                      <span>{formatMessageTime(m.sent_at)}</span>
+                      {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
+                    </div>}
+                  </div>
+                  {kind === 'template' && template && (
+                    <TemplateMessageButtons template={template} isVendedor={isVendedor} />
                   )}
-                  <span>{formatMessageTime(m.sent_at)}</span>
-                  {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
-                </div>}
-              </div>
-              {kind === 'template' && template && (
-                <TemplateMessageButtons template={template} isVendedor={isVendedor} />
-              )}
-              </div>
-              {!isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
-            </div>
-            </Fragment>
-          )
-        })}
+                  </div>
+                  {!isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
+                </div>
+                </Fragment>
+              )
+            })}
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
       </div>
@@ -1177,8 +1249,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       ) : (
         <form
           onSubmit={handleSend}
-          // pb-safe-3: con un chat abierto en móvil el composer es lo último
-          // de la pantalla y quedaba debajo de la barra de gestos.
           className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
         >
         <div className="mb-2 flex items-center justify-between gap-3">

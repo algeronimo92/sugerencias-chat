@@ -184,6 +184,26 @@ class MessagePage(BaseModel):
     has_more: bool
 
 
+class HistoryMessage(BaseModel):
+    """Mensaje leído de WhatsApp que no está registrado en la base.
+
+    No tiene `id` local ni estado de entrega, y de los adjuntos solo se
+    conserva el tipo y el epígrafe: el archivo nunca se descarga.
+    """
+    wa_message_id: str
+    sender: Literal["cliente", "vendedor"]
+    content: str | None = None
+    sent_at: str
+    message_type: str | None = None
+
+
+class HistoryPage(BaseModel):
+    items: list[HistoryMessage]
+    has_more: bool
+    # Cursor opaco de Evolution: el frontend lo devuelve tal cual.
+    next_page: int | None = None
+
+
 class ScheduledMessageCreate(BaseModel):
     text: str = Field(min_length=1, max_length=4096)
     scheduled_at: datetime

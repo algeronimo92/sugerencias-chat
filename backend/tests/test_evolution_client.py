@@ -58,6 +58,30 @@ async def test_check_whatsapp_numbers_tolerates_non_list_response(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_find_chat_messages_consulta_el_historial_del_chat(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test/", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value={"messages": {"records": []}})
+    monkeypatch.setattr(evolution_service, "_post", post)
+
+    await evolution_service.find_chat_messages("51906471403@s.whatsapp.net", 3)
+
+    post.assert_awaited_once_with(
+        "https://evolution.test/chat/findMessages/dermica",
+        "secret",
+        {
+            "where": {"key": {"remoteJid": "51906471403@s.whatsapp.net"}},
+            "page": 3,
+            "offset": 50,
+        },
+        timeout=30.0,
+    )
+
+
+@pytest.mark.asyncio
 async def test_http_client_is_reused_and_closed(monkeypatch):
     client = AsyncMock()
     client.is_closed = False
