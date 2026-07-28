@@ -1182,27 +1182,18 @@ async def fetch_chat_signature() -> str:
     return f"{count}:{last_sent.isoformat() if last_sent else ''}"
 
 
-async def fetch_latest_message() -> dict | None:
-    """Último mensaje de cualquier chat, con el nombre del lead — se usa para
-    armar la notificación cuando el webhook de n8n avisa de un mensaje nuevo."""
-    stmt = (
-        select(
-            WspMessage.id,
-            WspMessage.wa_message_id,
-            WspMessage.chat_id,
-            WspMessage.sender,
-            WspMessage.content,
-            Lead.nombre,
-        )
-        .outerjoin(Lead, Lead.remote_jid == WspMessage.chat_id)
-        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
-        .limit(1)
-    )
-    async with get_sessionmaker()() as session:
-        row = (await session.execute(stmt)).mappings().first()
+def _message_notification_stmt():
+    return select(
+        WspMessage.id,
+        WspMessage.wa_message_id,
+        WspMessage.chat_id,
+        WspMessage.sender,
+        WspMessage.content,
+        Lead.nombre,
+    ).outerjoin(Lead, Lead.remote_jid == WspMessage.chat_id)
 
-    if row is None:
-        return None
+
+def _message_notification_payload(row) -> dict:
     return {
         # Se serializa como texto para que IDs bigint no pierdan precisión en JS.
         "message_id": row["wa_message_id"] or str(row["id"]),
@@ -1211,6 +1202,42 @@ async def fetch_latest_message() -> dict | None:
         "content": row["content"],
         "name": row["nombre"],
     }
+
+
+async def fetch_latest_message() -> dict | None:
+    """Último mensaje de cualquier chat, con el nombre del lead — se usa para
+    armar la notificación cuando el webhook de n8n avisa de un mensaje nuevo."""
+    stmt = _message_notification_stmt().order_by(
+        WspMessage.sent_at.desc(), WspMessage.id.desc()
+    ).limit(1)
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+
+    if row is None:
+        return None
+    return _message_notification_payload(row)
+
+
+async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
+    """Mismo payload que ``fetch_latest_message`` pero para un mensaje concreto.
+
+    El webhook de n8n manda el ``wa_message_id`` que acaba de insertar, así dos
+    mensajes que entran casi a la vez no se pisan (buscar "el último" podía
+    devolver el del otro chat)."""
+    stmt = (
+        _message_notification_stmt()
+        .where(WspMessage.wa_message_id == wa_message_id)
+        # Evolution puede reenviar el mismo wa_message_id; nos quedamos con la
+        # fila más nueva.
+        .order_by(WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+
+    if row is None:
+        return None
+    return _message_notification_payload(row)
 
 
 async def existing_wa_message_ids(chat_id: str, wa_ids: list[str]) -> set[str]:

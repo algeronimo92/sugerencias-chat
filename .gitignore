@@ -6,3 +6,6 @@ db/backups/*
 # Certificado y clave TLS de Postgres: se generan por servidor, no se versionan
 # (la clave privada JAMÁS debe subirse al repo).
 db/tls/
+
+# Config local de Claude Code: permisos y ajustes propios de cada maquina.
+.claude/

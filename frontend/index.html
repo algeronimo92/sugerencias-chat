@@ -5,8 +5,14 @@
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: en la PWA instalada la app se dibuja debajo de la
+         barra de estado y de la barra de gestos; el margen real lo ponen las
+         utilidades pt-safe / pb-safe con env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-title" content="DermicaPro" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- Se funde con el header de la app: verde wa-primary-strong en claro, wa-head-dark en oscuro.
          El tema es un toggle manual (localStorage), así que el script de abajo y useTheme
          mantienen este meta sincronizado; el valor inicial es solo fallback sin JS.

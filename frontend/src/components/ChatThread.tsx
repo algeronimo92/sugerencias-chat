@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, X } from 'lucide-react'
+import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
 import type { Chat, HistoryMessage, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
 import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
@@ -21,6 +21,7 @@ import { VoiceRecorder } from './VoiceRecorder'
 import { TemplatePicker } from './TemplatePicker'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
+import { TemplateMessageButtons, TemplateMessagePreview } from './TemplateMessageCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useInternalNotes } from '../hooks/useInternalNotes'
@@ -98,6 +99,11 @@ interface Props {
   /** Mensaje al que saltar y resaltar al abrir (desde un resultado de
    * búsqueda que matcheó por un mensaje del historial). */
   highlightMessageId?: number | null
+  /** Solo en móvil, donde la lista y la conversación no conviven en pantalla. */
+  onBack?: () => void
+  /** En móvil y tablet las sugerencias no tienen columna propia: se abren
+   * desde el header. Ausente en escritorio, donde el panel siempre está. */
+  onOpenSuggestions?: () => void
 }
 
 interface OpenMedia {
@@ -234,7 +240,7 @@ function DbRecordSeparator() {
   )
 }
 
-export function ChatThread({ chat, highlightMessageId = null }: Props) {
+export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSuggestions }: Props) {
   const {
     data: messagePages,
     isLoading,
@@ -853,8 +859,18 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
   return (
     <div className="flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
       {/* Header — gris claro / #202C33, como el header de conversación de WhatsApp */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-wa-border bg-wa-head px-4 py-2.5 dark:border-wa-border-dark dark:bg-wa-head-dark">
-        <div className="flex items-center gap-3">
+      <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-wa-border bg-wa-head px-2 py-2.5 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Volver a la lista de chats"
+              className="-ml-1 flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
           </div>
@@ -863,6 +879,16 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
             <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
           </div>
         </div>
+        {onOpenSuggestions && (
+          <button
+            type="button"
+            onClick={onOpenSuggestions}
+            aria-label="Ver sugerencias del lead"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+          >
+            <Sparkles className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Thread — el wrapper relativo permite flotar el botón "ir al final"
@@ -875,7 +901,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
         onLoadedMetadataCapture={handleMediaSettled}
         onWheelCapture={releaseAnchor}
         onTouchMoveCapture={releaseAnchor}
-        className="h-full overflow-y-auto px-6 py-4"
+        className="h-full overflow-y-auto px-3 py-4 sm:px-6"
       >
       {/* El observer mide este div (no el scroller): su alto es el del
           contenido real, que es lo que cambia cuando la media asienta. */}
@@ -1011,7 +1037,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                 !prevItem ||
                 prevItem.kind !== 'message' ||
                 prevItem.message.sender !== m.sender
-              const { kind, icon: Icon, label, text } = parseContent(m.content)
+              const { kind, icon: Icon, label, text, template } = parseContent(m.content)
               // Si el archivo falló al cargar (ej. no existe en este entorno),
               // lo tratamos como si no hubiera media: el navegador muestra su
               // propio ícono roto + el alt completo pegado, duplicando el texto
@@ -1031,8 +1057,15 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                       la integración) el botón no aparece en vez de fallar al
                       enviar. */}
                   {isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
+                  {/* Columna: la burbuja y, debajo, los botones de la plantilla.
+                      Al estirarse los dos al ancho de la columna, los botones
+                      quedan tan anchos como la burbuja (y al revés), igual que
+                      en WhatsApp.
+                      85% en móvil, como WhatsApp: al 75% de una pantalla de
+                      360px los mensajes se parten en demasiadas líneas. */}
+                  <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
                   <div
-                    className={`max-w-[75%] rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
+                    className={`rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
                       isVendedor
                         ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
                         : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
@@ -1047,7 +1080,13 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                         className="mb-1"
                       />
                     )}
-                    {!mediaSrc && kind !== 'text' && kind !== 'location' && Icon && (
+                    {kind === 'template' && template && (
+                      <TemplateMessagePreview template={template} hasQuote={m.quoted_message_id != null} />
+                    )}
+                    {/* En el hilo la plantilla se pinta entera (preview + botones),
+                        así que el chip de tipo solo estorba; en la lista de chats
+                        y en las citas sí se usa para resumirla. */}
+                    {!mediaSrc && kind !== 'text' && kind !== 'location' && kind !== 'template' && Icon && (
                       <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
                         <Icon className="w-3 h-3" />
                         <span>{label}</span>
@@ -1080,7 +1119,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                       })()
                     )}
                     {mediaSrc && kind === 'audio' && (
-                      <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-64 max-w-full" />
+                      <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
                     )}
                     {mediaSrc && kind === 'other' && (
                       <a
@@ -1121,9 +1160,14 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                       )
                     })()}
                     {kind !== 'other' && kind !== 'location' && (
-                      <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-wa-muted dark:text-wa-text-dark/70' : ''}`}>
+                      // El cuerpo de una plantilla es texto real del anuncio, no
+                      // un marcador de adjunto: se pinta como un mensaje normal.
+                      <p className={`whitespace-pre-wrap ${kind === 'text' || template ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
                         {text ? <RichText text={text} /> : ""}
                       </p>
+                    )}
+                    {kind === 'template' && template?.footer && (
+                      <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
                     )}
                     {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
                       {isVendedor && kind === 'text' && text.trim() && (
@@ -1157,6 +1201,10 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
                       <span>{formatMessageTime(m.sent_at)}</span>
                       {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
                     </div>}
+                  </div>
+                  {kind === 'template' && template && (
+                    <TemplateMessageButtons template={template} isVendedor={isVendedor} />
+                  )}
                   </div>
                   {!isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
                 </div>
@@ -1201,7 +1249,7 @@ export function ChatThread({ chat, highlightMessageId = null }: Props) {
       ) : (
         <form
           onSubmit={handleSend}
-          className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark p-3"
+          className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
         >
         <div className="mb-2 flex items-center justify-between gap-3">
           <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>

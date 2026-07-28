@@ -49,7 +49,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-wa-app p-6 dark:bg-wa-app-dark">
+    <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><Clock className="h-5 w-5 text-wa-primary-strong" />

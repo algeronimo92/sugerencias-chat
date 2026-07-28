@@ -2,12 +2,16 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { AlertTriangle, BarChart3, CalendarClock, Columns3, FileText, FolderOpen, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, Workflow, X } from 'lucide-react'
+import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, X } from 'lucide-react'
 import type { Chat, ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { LoginPage } from './components/LoginPage'
+import { MobileNavBar } from './components/MobileNavBar'
 import { NotificationCenter } from './components/NotificationCenter'
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt'
+import { isNavItemActive, visibleNavItems } from './domain/navigation'
+import { useLayout } from './hooks/useBreakpoint'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
 import type { InternalMentionAlert } from './hooks/useChats'
@@ -29,6 +33,15 @@ const navTabClass = (active: boolean) =>
       ? 'bg-white/25 text-white shadow-sm dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
       : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
   }`
+
+// Las clases de Tailwind tienen que existir literales en el código para que el
+// compilador las detecte; de ahí el mapa en vez de armar el string a mano.
+const NAV_LABEL_VISIBILITY = {
+  sm: 'hidden sm:inline',
+  md: 'hidden md:inline',
+  lg: 'hidden lg:inline',
+  xl: 'hidden xl:inline',
+} as const
 
 
 const KanbanBoard = lazy(() =>
@@ -89,7 +102,14 @@ function MainLayout() {
   const isMediaLibrary = location.pathname === '/media-library'
   const isDashboard = location.pathname === '/dashboard'
   const isAutomations = location.pathname === '/automations'
-  const isChats = location.pathname === '/' || location.pathname.startsWith('/chat/')
+
+  // 'mobile' = una vista a la vez + navegación inferior; 'tablet' = lista y
+  // conversación, con las sugerencias en un panel deslizable; 'desktop' = las
+  // tres columnas de siempre.
+  const layout = useLayout()
+  const isMobile = layout === 'mobile'
+  const isDesktop = layout === 'desktop'
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false)
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -217,17 +237,54 @@ function MainLayout() {
     navigate('/')
   }
 
+  // Fuera de escritorio las sugerencias son un panel superpuesto: al saltar a
+  // otro lead tiene que cerrarse, o quedaría mostrando el anterior.
+  useEffect(() => {
+    setIsSuggestionsOpen(false)
+  }, [chatId])
+
+  // El panel de sugerencias, compartido por la columna de escritorio y el
+  // panel deslizable de móvil/tablet.
+  function renderSuggestionPanel(chat: Chat) {
+    return (
+      <SuggestionPanel
+        chat={chat}
+        data={suggestionStatus?.suggestion ?? null}
+        generatedAt={suggestionStatus?.generated_at ?? null}
+        isStale={suggestionStatus?.stale ?? false}
+        isLoading={isSuggestionsLoading}
+        isGenerating={isGeneratingForSelected}
+        error={suggestionsErrorMessage}
+        onGenerate={(force = false, instruction) =>
+          generateSuggestionsMutation.mutate({
+            chat_id: chat.chat_id,
+            phone: chat.phone,
+            force,
+            instruction,
+          })
+        }
+      />
+    )
+  }
+
   // Escape cierra el lead abierto, igual que WhatsApp
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && selectedChat) {
+      if (e.key !== 'Escape') return
+      // El panel de sugerencias está por encima del chat: se cierra primero,
+      // si no un Escape cerraría las dos cosas de un saque.
+      if (isSuggestionsOpen) {
+        setIsSuggestionsOpen(false)
+        return
+      }
+      if (selectedChat) {
         handleCloseChat()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChat?.chat_id])
+  }, [selectedChat?.chat_id, isSuggestionsOpen])
 
   // La barra global usa la superficie más profunda; los encabezados de cada
   // columna usan wa-head-dark para que ambos niveles se distingan sin chocar.
@@ -236,60 +293,44 @@ function MainLayout() {
     'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark transition-colors'
 
   return (
-    <div className="flex h-screen w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
+    <div className="flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
       {/* Barra superior — nivel global, más profundo que los headers locales. */}
-      <div className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-primary-deep bg-wa-primary-strong px-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <div className="w-6 h-6 rounded-md bg-white/20 dark:bg-wa-primary flex items-center justify-center">
+      {/* min-h-12 y no h-12: con pt-safe la barra crece lo que mida el notch
+          para que su verde llegue hasta el borde de la pantalla. */}
+      <div className="flex min-h-12 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-primary-deep bg-wa-primary-strong px-3 pt-safe shadow-sm sm:px-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <div className="w-6 h-6 rounded-md bg-white/20 dark:bg-wa-primary flex items-center justify-center shrink-0">
           <MessagesSquare className="w-3.5 h-3.5 text-white" />
         </div>
         <span className="text-sm font-semibold text-white">DermicaPro</span>
-        <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1">CRM</span>
-        <nav className="ml-3 flex items-center rounded-lg bg-black/10 p-0.5 dark:border dark:border-white/[0.05] dark:bg-wa-app-dark/70" aria-label="Vista principal">
-          <button type="button" onClick={() => navigate('/')} className={`relative ${navTabClass(isChats)}`}>
-            <MessagesSquare className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Chats</span>
-            {unreadCount > 0 && (
-              <span className="flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-wa-primary-strong dark:bg-wa-primary dark:text-white">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
-          <button type="button" onClick={() => navigate('/kanban')} className={navTabClass(isKanban)}>
-            <Columns3 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Kanban</span>
-          </button>
-          <button type="button" onClick={() => navigate('/tasks')} className={navTabClass(isTasks)}>
-            <CalendarClock className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Tareas</span>
-          </button>
-          {me?.role === 'admin' && (
-            <button type="button" onClick={() => navigate('/dashboard')} className={navTabClass(isDashboard)}>
-              <BarChart3 className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">Dashboard</span>
-            </button>
-          )}
-          {me?.role === 'admin' && (
-            <button type="button" onClick={() => navigate('/automations')} className={navTabClass(isAutomations)}>
-              <Workflow className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">Automatizaciones</span>
-            </button>
-          )}
-          {me?.role === 'admin' && (
-            <button type="button" onClick={() => navigate('/templates')} className={navTabClass(isTemplates)}>
-              <FileText className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">Plantillas</span>
-            </button>
-          )}
-          {me?.role === 'admin' && (
-            <button type="button" onClick={() => navigate('/media-library')} className={navTabClass(isMediaLibrary)}>
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">Archivos</span>
-            </button>
-          )}
+        <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1 hidden sm:inline">CRM</span>
+        {/* En móvil estas pestañas se mudan a la barra inferior: siete vistas
+            no entran arriba, y a esa altura no son alcanzables con el pulgar. */}
+        <nav className="ml-3 hidden items-center rounded-lg bg-black/10 p-0.5 md:flex dark:border dark:border-white/[0.05] dark:bg-wa-app-dark/70" aria-label="Vista principal">
+          {visibleNavItems(me?.role === 'admin').map((item) => {
+            const Icon = item.icon
+            const active = isNavItemActive(item, location.pathname)
+            const showBadge = item.path === '/' && unreadCount > 0
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigate(item.path)}
+                className={`${showBadge ? 'relative ' : ''}${navTabClass(active)}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className={NAV_LABEL_VISIBILITY[item.labelFrom]}>{item.label}</span>
+                {showBadge && (
+                  <span className="flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-wa-primary-strong dark:bg-wa-primary dark:text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </nav>
         <span className="flex-1" />
         {me && (
-          <span className="text-xs text-white/70 dark:text-wa-muted-dark hidden sm:inline">
+          <span className="text-xs text-white/70 dark:text-wa-muted-dark hidden lg:inline">
             {me.name} <span className="opacity-70">({me.role === 'admin' ? 'admin' : 'vendedor'})</span>
           </span>
         )}
@@ -365,9 +406,11 @@ function MainLayout() {
         ) : isKanban ? (
           <KanbanBoard onOpenChat={handleSelectChat} />
         ) : (
-          <div className="flex flex-1 overflow-hidden">
-            {/* Panel izquierdo — Lista de chats */}
-            <div className="w-80 shrink-0 h-full overflow-hidden">
+          <div className="flex min-w-0 flex-1 overflow-hidden">
+            {/* Panel izquierdo — Lista de chats.
+                En móvil ocupa la pantalla entera y se retira al abrir un chat:
+                no hay lugar para las dos cosas a la vez. */}
+            <div className={`h-full overflow-hidden ${isMobile ? (chatId ? 'hidden' : 'w-full') : 'w-72 shrink-0 xl:w-80'}`}>
               <ChatList
                 chats={chats}
                 isLoading={isLoading}
@@ -392,50 +435,101 @@ function MainLayout() {
             </div>
 
             {/* Panel central — Conversación */}
-            <div className="flex-1 h-full overflow-hidden">
-              {selectedChat ? (
-                <ChatThread
-                  chat={selectedChat}
-                  highlightMessageId={(location.state as { highlightMessageId?: number } | null)?.highlightMessageId ?? null}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-3 border-b-[6px] border-wa-primary bg-wa-app text-wa-muted/50 dark:border-wa-primary/60 dark:bg-wa-panel-dark dark:text-wa-muted-dark/50">
-                  <MessagesSquare className="w-12 h-12" strokeWidth={1.25} />
-                  <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Selecciona un lead para ver la conversación</p>
-                </div>
-              )}
-            </div>
+            {(!isMobile || chatId) && (
+              <div className="h-full min-w-0 flex-1 overflow-hidden">
+                {selectedChat ? (
+                  <ChatThread
+                    chat={selectedChat}
+                    highlightMessageId={(location.state as { highlightMessageId?: number } | null)?.highlightMessageId ?? null}
+                    onBack={isMobile ? handleCloseChat : undefined}
+                    onOpenSuggestions={isDesktop ? undefined : () => setIsSuggestionsOpen(true)}
+                  />
+                ) : chatId ? (
+                  /* El lead todavía no llegó (entrada directa por URL o
+                     recarga). En móvil la lista está oculta, así que sin esta
+                     rama la pantalla quedaría sin salida. */
+                  <div className="flex h-full flex-col items-center justify-center gap-4 bg-wa-app dark:bg-wa-panel-dark">
+                    <Spinner label="Abriendo la conversación…" />
+                    {isMobile && (
+                      <Button variant="ghost" size="sm" onClick={handleCloseChat}>
+                        Volver a la lista
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 border-b-[6px] border-wa-primary bg-wa-app px-6 text-center text-wa-muted/50 dark:border-wa-primary/60 dark:bg-wa-panel-dark dark:text-wa-muted-dark/50">
+                    <MessagesSquare className="w-12 h-12" strokeWidth={1.25} />
+                    <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Selecciona un lead para ver la conversación</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* Panel derecho — Sugerencias */}
-            <div className="h-full w-96 shrink-0 overflow-hidden border-l border-wa-border bg-wa-app dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
-              {selectedChat ? (
-                <SuggestionPanel
-                  chat={selectedChat}
-                  data={suggestionStatus?.suggestion ?? null}
-                  generatedAt={suggestionStatus?.generated_at ?? null}
-                  isStale={suggestionStatus?.stale ?? false}
-                  isLoading={isSuggestionsLoading}
-                  isGenerating={isGeneratingForSelected}
-                  error={suggestionsErrorMessage}
-                  onGenerate={(force = false, instruction) =>
-                    generateSuggestionsMutation.mutate({
-                      chat_id: selectedChat.chat_id,
-                      phone: selectedChat.phone,
-                      force,
-                      instruction,
-                    })
-                  }
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-wa-muted/50 dark:text-wa-muted-dark/50">
-                  <Sparkles className="w-12 h-12" strokeWidth={1.25} />
-                  <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center px-6">Selecciona un lead para ver las sugerencias</p>
-                </div>
-              )}
-            </div>
+            {/* Panel derecho — Sugerencias. Solo en escritorio: por debajo de
+                1280px las tres columnas dejarían la conversación inusable, así
+                que las sugerencias pasan a un panel deslizable. */}
+            {isDesktop && (
+              <div className="h-full w-96 shrink-0 overflow-hidden border-l border-wa-border bg-wa-app dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
+                {selectedChat ? (
+                  renderSuggestionPanel(selectedChat)
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-wa-muted/50 dark:text-wa-muted-dark/50">
+                    <Sparkles className="w-12 h-12" strokeWidth={1.25} />
+                    <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center px-6">Selecciona un lead para ver las sugerencias</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Suspense>
+
+      {/* Sugerencias como panel deslizable en móvil y tablet. */}
+      <AnimatePresence>
+        {!isDesktop && isSuggestionsOpen && selectedChat && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={() => setIsSuggestionsOpen(false)}
+              /* aria-hidden y sin handler de teclado a propósito: un fondo de
+                 modal no debe ser un punto de tabulación más. Quien navega con
+                 teclado cierra con Escape (ver el handler de arriba). */
+              aria-hidden="true"
+              className="fixed inset-0 z-75 bg-black/40"
+            />
+            <motion.aside
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+              aria-label="Sugerencias del lead"
+              className="fixed inset-y-0 right-0 z-76 flex w-full max-w-md flex-col overflow-hidden border-l border-wa-border bg-wa-app pt-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
+            >
+              <div className="flex h-12 shrink-0 items-center justify-between border-b border-wa-border px-3 dark:border-wa-border-dark">
+                <span className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Sugerencias</span>
+                <button
+                  type="button"
+                  onClick={() => setIsSuggestionsOpen(false)}
+                  aria-label="Cerrar sugerencias"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <Suspense fallback={<PageLoader />}>{renderSuggestionPanel(selectedChat)}</Suspense>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
+          ahí el espacio es para el composer y se vuelve con la flecha. */}
+      {isMobile && !chatId && <MobileNavBar isAdmin={me?.role === 'admin'} unreadCount={unreadCount} />}
     </div>
   )
 }
@@ -449,7 +543,7 @@ function AuthGate() {
       : 'No se pudo establecer conexión con el servidor.'
 
     return (
-      <div className="flex h-screen items-center justify-center bg-wa-app p-4 dark:bg-wa-app-dark">
+      <div className="flex h-full items-center justify-center bg-wa-app p-4 dark:bg-wa-app-dark">
         <div role="alert" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-wa-panel-dark">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" />
@@ -476,7 +570,7 @@ function AuthGate() {
 
   if (isLoading || me === undefined) {
     return (
-      <div className="flex items-center justify-center h-screen bg-wa-app dark:bg-wa-app-dark">
+      <div className="flex items-center justify-center h-full bg-wa-app dark:bg-wa-app-dark">
         <Loader2 className="w-6 h-6 animate-spin text-wa-muted dark:text-wa-muted-dark" />
       </div>
     )
@@ -508,6 +602,9 @@ export default function App() {
       <MotionConfig reducedMotion="user">
         <AuthGate />
         <AppToaster />
+        {/* Fuera del AuthGate: el service worker se registra aunque la sesión
+            todavía no esté resuelta o el backend esté caído. */}
+        <PwaUpdatePrompt />
       </MotionConfig>
     </QueryClientProvider>
   )

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from db.models import LeadStage
 from services.db_service import (
     fetch_latest_message,
+    fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
     update_lead_stage,
     update_message_status,
@@ -27,18 +28,40 @@ async def _check_token(x_webhook_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+class NewMessageWebhookBody(BaseModel):
+    # n8n manda el id del mensaje que acaba de insertar. Es opcional para no
+    # romper si el workflow todavía llama al webhook sin body: en ese caso se
+    # cae al último mensaje de la tabla.
+    wa_message_id: str | None = None
+
+
 @router.post("/messages")
-async def new_message_webhook(x_webhook_token: str | None = Header(default=None)):
+async def new_message_webhook(
+    body: NewMessageWebhookBody | None = None,
+    x_webhook_token: str | None = Header(default=None),
+):
     """Llamado por n8n justo después de guardar un mensaje nuevo en la DB."""
     await _check_token(x_webhook_token)
 
     payload = {"type": "chats_updated", "reason": "inbound_message"}
-    latest = await fetch_latest_message()
-    if latest is not None:
-        payload["latest_message"] = latest
-        payload["chat_id"] = latest["chat_id"]
+    wa_message_id = body.wa_message_id if body else None
+    message = None
+    if wa_message_id:
+        message = await fetch_message_by_wa_id(wa_message_id)
+        if message is None:
+            # No debería pasar (n8n avisa después del INSERT), pero si el id no
+            # está todavía visible preferimos notificar de más que no notificar.
+            logger.warning(
+                "Webhook de mensaje con wa_message_id desconocido: %s", wa_message_id
+            )
+    if message is None:
+        message = await fetch_latest_message()
+
+    if message is not None:
+        payload["latest_message"] = message
+        payload["chat_id"] = message["chat_id"]
         try:
-            await trigger_inbound_message(latest)
+            await trigger_inbound_message(message)
         except Exception:
             logger.exception("No se pudo programar la automatización del mensaje entrante")
 
@@ -54,22 +77,42 @@ class LeadStageWebhookBody(BaseModel):
     razonamiento: str | None = None
 
 
+async def _broadcast_lead_updated(chat_id: str) -> None:
+    """Avisa a los paneles abiertos de que el lead cambió por fuera de la app.
+
+    El agente analista de n8n escribe nombre, teléfono, notas y
+    servicio_interes con un UPDATE directo a PostgreSQL, y llama a este webhook
+    inmediatamente después. Sin este aviso el CRM se queda con los datos viejos
+    hasta que otra cosa provoque un refresco: mientras el WebSocket está
+    conectado el frontend no hace polling (ver useChats.ts, refetchInterval).
+    """
+    await manager.broadcast(
+        {"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"}
+    )
+
+
 @router.post("/lead-stage")
 async def lead_stage_webhook(
     body: LeadStageWebhookBody,
     x_webhook_token: str | None = Header(default=None),
 ):
-    """Llamado por n8n cuando el agente analista decide la etapa del lead.
+    """Llamado por n8n cuando el agente analista termina de analizar el lead.
 
     Reemplaza el UPDATE directo a ``leads.estado`` que hacía el workflow: al
     pasar por acá el cambio queda auditado en ``lead_activity`` (con el
     razonamiento del agente y la foto del último mensaje del cliente), se
     notifica a los paneles abiertos y se disparan las automatizaciones de
     cambio de etapa.
+
+    Se avisa a los paneles incluso cuando la etapa no se mueve: el agente
+    también reescribe el resto de los campos del lead, y mantener la etapa es
+    su respuesta más frecuente. Sin ese aviso, un nombre recién deducido de la
+    conversación no aparecía en pantalla hasta el siguiente mensaje.
     """
     await _check_token(x_webhook_token)
 
     if body.estado is None:
+        await _broadcast_lead_updated(body.chat_id)
         return {"status": "ok", "changed": False, "stage": None}
 
     try:
@@ -100,6 +143,9 @@ async def lead_stage_webhook(
             await trigger_stage_changed(body.chat_id)
         except Exception:
             logger.exception("No se pudo programar la automatización de cambio de etapa del webhook")
+    else:
+        # La etapa no se movió, pero el analista sí tocó el resto del lead.
+        await _broadcast_lead_updated(body.chat_id)
 
     return {"status": "ok", "changed": result["changed"], "stage": stage.value}
 
