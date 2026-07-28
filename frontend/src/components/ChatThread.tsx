@@ -1,20 +1,19 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
-import type { Chat, HistoryMessage, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
+import type { Chat, Message, MessageStatus } from '../types'
 import type { MessageTemplate } from '../types'
-import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
-import { useEvolutionHistory, useEvolutionHistoryAvailability } from '../hooks/useEvolutionHistory'
+import { useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { RichText } from './RichText'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel, formatMessageTime, groupByDay, parseContent, quotePreview, resolveMediaUrl } from '../utils/message'
+import { formatDayLabel, formatMessageTime, parseContent, quotePreview, resolveMediaUrl } from '../utils/message'
 import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { MapPreview } from './MapPreview'
-import { MediaLightbox, type MediaLightboxItem } from './MediaLightbox'
+import { MediaLightbox } from './MediaLightbox'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { VoiceRecorder } from './VoiceRecorder'
@@ -24,9 +23,8 @@ import { TemplateSendDialog } from './TemplateSendDialog'
 import { TemplateMessageButtons, TemplateMessagePreview } from './TemplateMessageCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
-import { useInternalNotes } from '../hooks/useInternalNotes'
+import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useThreadScroll } from '../hooks/useThreadScroll'
-import { useLeadActivity } from '../hooks/useLeadMeta'
 import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
@@ -112,14 +110,6 @@ interface OpenMedia {
   kind: 'image' | 'video'
   alt: string
 }
-
-type TimelineItem =
-  | { kind: 'message'; key: string; sentAt: string | null; message: Message }
-  | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
-  | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
-  // Traído de WhatsApp al vuelo, sin registro en la base: siempre anterior a
-  // cualquier mensaje propio, así que el orden por fecha lo deja arriba.
-  | { kind: 'history'; key: string; sentAt: string; history: HistoryMessage }
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320
@@ -232,92 +222,32 @@ function DbRecordSeparator() {
 
 export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSuggestions }: Props) {
   const {
-    data: messagePages,
+    messages,
+    historyMessages,
+    timeline,
+    daySections,
+    sentMessageHistory,
+    chatMediaItems,
     isLoading,
     error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useMessages(chat.chat_id, highlightMessageId)
-  // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
-  // orden de páginas, pero se conserva el orden ascendente dentro de cada
-  // página, para renderizar el historial de viejo a nuevo.
-  const messages = useMemo(
-    () => [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items),
-    [messagePages],
-  )
-  // Historial de WhatsApp anterior al registro propio: se pide a mano, recién
-  // cuando el usuario agotó los mensajes de la base y quiere ver más atrás.
-  const [historyRequested, setHistoryRequested] = useState(false)
-  const { data: historyAvailability } = useEvolutionHistoryAvailability()
-  const oldestDbSentAt = messages.find(m => m.sent_at)?.sent_at ?? null
-  const {
-    data: historyPages,
-    error: historyError,
-    fetchNextPage: fetchNextHistoryPage,
-    hasNextPage: hasMoreHistory,
-    isFetching: isFetchingHistory,
-    refetch: refetchHistory,
-  } = useEvolutionHistory(chat.chat_id, oldestDbSentAt, historyRequested && !hasNextPage)
-  const historyMessages = useMemo(() => {
-    const registered = new Set(messages.map(m => m.wa_message_id).filter(Boolean))
-    return [...(historyPages?.pages ?? [])]
-      .reverse()
-      .flatMap(page => page.items)
-      .filter(item => !registered.has(item.wa_message_id))
-  }, [historyPages, messages])
-  const { data: notes = [] } = useInternalNotes(chat.chat_id)
-  const { data: leadActivity = [] } = useLeadActivity(chat.chat_id)
+    pageCount,
+    lastTimelineKey,
+    historyAvailability,
+    historyError,
+    fetchNextHistoryPage,
+    hasMoreHistory,
+    isFetchingHistory,
+    refetchHistory,
+    historyRequested,
+    setHistoryRequested,
+    historyPageCount,
+  } = useChatTimeline(chat.chat_id, highlightMessageId)
+
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
-  const timeline = useMemo<TimelineItem[]>(() => [
-    ...historyMessages.map(history => ({
-      kind: 'history' as const,
-      key: `history-${history.wa_message_id}`,
-      sentAt: history.sent_at,
-      history,
-    })),
-    ...messages.map(message => ({
-      kind: 'message' as const,
-      key: `message-${message.id}`,
-      sentAt: message.sent_at,
-      message,
-    })),
-    ...notes.map(note => ({
-      kind: 'note' as const,
-      key: `note-${note.id}`,
-      sentAt: note.created_at,
-      note,
-    })),
-    // Cambios de estado del lead como eventos del hilo, en la posición
-    // cronológica en que ocurrieron: los mensajes de arriba son el contexto
-    // de por qué se movió.
-    ...leadActivity
-      .filter(item => item.event_type === 'stage_changed')
-      .map(item => ({
-        kind: 'activity' as const,
-        key: `activity-${item.id}`,
-        sentAt: item.created_at,
-        activity: item,
-      })),
-  ].sort((a, b) => {
-    const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
-    const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
-    if (aTime !== bTime) return aTime - bTime
-    // Los lotes de plantillas pueden compartir milisegundo. Sus IDs de DB
-    // preservan el orden de la outbox mejor que una comparación textual
-    // ("message-10" quedaría antes de "message-9").
-    if (a.kind === 'message' && b.kind === 'message' && a.message.id > 0 && b.message.id > 0) {
-      return a.message.id - b.message.id
-    }
-    return a.key.localeCompare(b.key)
-  }), [messages, historyMessages, notes, leadActivity])
-  // Una sección por día: es lo que permite fijar el chip de fecha arriba
-  // mientras se navega ese día y que el del día siguiente lo empuje al llegar.
-  const daySections = useMemo(() => groupByDay(timeline), [timeline])
-  const pageCount = messagePages?.pages.length ?? 0
-  const historyPageCount = historyPages?.pages.length ?? 0
-  const lastTimelineKey = timeline.at(-1)?.key ?? null
 
   const {
     threadRef,
@@ -373,31 +303,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const { mutate: sendLocation } = useSendLocation(chat.chat_id)
   const { data: templates = [] } = useTemplates()
   const recordTemplateUse = useRecordTemplateUse()
-  const sentMessageHistory = useMemo(() => {
-    const seen = new Set<string>()
-    const result: string[] = []
-    for (const message of [...messages].reverse()) {
-      if (message.sender !== 'vendedor') continue
-      const parsed = parseContent(message.content)
-      if (parsed.kind !== 'text' || !parsed.text.trim() || seen.has(parsed.text.trim())) continue
-      seen.add(parsed.text.trim()); result.push(parsed.text.trim())
-      if (result.length === 10) break
-    }
-    return result
-  }, [messages])
-  // Galería disponible para el hilo ya cargado. Conserva el orden real de
-  // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
-  const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
-    const parsed = parseContent(message.content)
-    if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
-    const src = resolveMediaUrl(message.media_url)
-    if (!src) return []
-    return [{
-      src,
-      kind: parsed.kind,
-      alt: parsed.text || (parsed.kind === 'image' ? 'Imagen' : 'Video'),
-    }]
-  }), [messages])
 
   // Mientras el draft es exactamente "/" + texto sin espacios, se interpreta
   // como un atajo de plantilla en progreso (como en Slack/WhatsApp Business).
@@ -482,9 +387,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     setSlashIndex(0)
     setSlashDismissed(false)
     setIsNoteMode(false)
-    // El historial de WhatsApp se vuelve a pedir a mano en cada chat: es caro
-    // y casi siempre alcanza con lo que está registrado.
-    setHistoryRequested(false)
   }, [chat.chat_id])
 
   function handleSend(e: React.FormEvent) {
