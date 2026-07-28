@@ -224,7 +224,9 @@ function KanbanColumn({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragOver(false)
       }}
       onDrop={handleDrop}
-      className={`flex h-full w-[19rem] shrink-0 flex-col overflow-hidden rounded-2xl border bg-wa-field/80 transition-colors dark:bg-wa-panel-dark/70 ${
+      /* En móvil la columna ocupa casi todo el ancho y engancha al hacer
+         scroll, para que se lea una etapa por vez en vez de tres cortadas. */
+      className={`flex h-full w-[85vw] max-w-76 shrink-0 snap-start flex-col overflow-hidden rounded-2xl border bg-wa-field/80 transition-colors sm:w-76 dark:bg-wa-panel-dark/70 ${
         isDragOver ? 'border-wa-primary bg-green-50/80 ring-2 ring-wa-primary/20 dark:bg-green-950/20' : 'border-wa-border dark:border-wa-border-dark'
       }`}
     >
@@ -375,7 +377,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
 
   return (
     <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
-      <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-3 border-b border-wa-border bg-white px-5 py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-3 border-b border-wa-border bg-white px-3 py-3 sm:px-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
         <div>
           <h1 className="text-base font-bold text-wa-text dark:text-wa-text-dark">Embudo comercial</h1>
           <p className="text-xs text-wa-muted dark:text-wa-muted-dark">Arrastra cada lead o cambia su etapa desde la tarjeta.</p>
@@ -392,7 +394,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-green-200 bg-green-50 px-5 py-2.5 dark:border-green-900 dark:bg-green-950/30">
+        <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-green-200 bg-green-50 px-3 py-2.5 sm:px-5 dark:border-green-900 dark:bg-green-950/30">
           <span className="text-xs font-semibold text-green-800 dark:text-wa-primary">
             {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
           </span>
@@ -452,7 +454,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-4">
+      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-2 sm:snap-none sm:p-4">
         {LEAD_STAGES.map((stage) => (
           <KanbanColumn
             key={stage}

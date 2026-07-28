@@ -33,6 +33,125 @@ describe('parseContent', () => {
   })
 })
 
+// JSON real de un anuncio de TikTok recibido por WhatsApp, recortado.
+const TEMPLATE_JSON = JSON.stringify({
+  header: { title: '' },
+  body: { text: '¡Hola, DermicaPro Trujillo! Tienes 10 mensajes sin leer.' },
+  nativeFlowMessage: {
+    buttons: [
+      {
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({
+          display_text: 'Abrir TikTok',
+          url: 'https://www.tiktok.com/?redirect_url=sslocal://notification',
+        }),
+      },
+    ],
+    messageParamsJson: JSON.stringify({
+      tap_target_configuration: {
+        title: 'TikTok - Make Your Day',
+        domain: 'www.tiktok.com',
+        description: 'TikTok - trends start here.',
+      },
+    }),
+  },
+})
+
+describe('plantillas de WhatsApp', () => {
+  it('muestra el cuerpo del anuncio, no el JSON crudo', () => {
+    const parsed = parseContent(`<templateMessage>\n${TEMPLATE_JSON}\n</templateMessage>`)
+    expect(parsed.kind).toBe('template')
+    expect(parsed.text).toBe('¡Hola, DermicaPro Trujillo! Tienes 10 mensajes sin leer.')
+    expect(parsed.text).not.toContain('{')
+  })
+
+  it('desarma el preview del enlace y los botones', () => {
+    const { template } = parseContent(`<templateMessage>${TEMPLATE_JSON}</templateMessage>`)
+    expect(template).toMatchObject({
+      title: 'TikTok - Make Your Day',
+      domain: 'www.tiktok.com',
+      description: 'TikTok - trends start here.',
+    })
+    expect(template!.buttons).toEqual([
+      { text: 'Abrir TikTok', url: 'https://www.tiktok.com/?redirect_url=sslocal://notification' },
+    ])
+  })
+
+  it('descarta las URLs que no son http(s) para no meterlas en un href', () => {
+    const raw = JSON.stringify({
+      body: { text: 'hola' },
+      nativeFlowMessage: {
+        buttons: [{ buttonParamsJson: JSON.stringify({ display_text: 'Tocá acá', url: 'javascript:alert(1)' }) }],
+      },
+    })
+    const { template } = parseContent(`<templateMessage>${raw}</templateMessage>`)
+    expect(template!.buttons).toEqual([{ text: 'Tocá acá', url: null }])
+  })
+
+  it('no revienta ni filtra el JSON cuando la plantilla viene rota', () => {
+    const parsed = parseContent('<templateMessage>{roto</templateMessage>')
+    expect(parsed).toMatchObject({ kind: 'template', template: null, text: 'Mensaje de plantilla' })
+  })
+
+  it('desarma los buttonsMessage, que traen otra forma de JSON', () => {
+    // Mensaje real del vendedor: contentText + buttons[].buttonText.displayText.
+    const raw = JSON.stringify({
+      buttons: [
+        { buttonId: 'c2c5', buttonText: { displayText: 'Si, evalueme' }, type: 1 },
+        { buttonId: 'b746', buttonText: { displayText: 'No, tengo otras duda' }, type: 1 },
+      ],
+      contentText: '📸Eso es todo? 😊',
+      headerType: 1,
+    })
+    const parsed = parseContent(`<buttonsMessage>\n${raw}\n</buttonsMessage>`)
+    expect(parsed).toMatchObject({ kind: 'template', label: 'Botones', text: '📸Eso es todo? 😊' })
+    expect(parsed.template!.buttons).toEqual([
+      { text: 'Si, evalueme', url: null },
+      { text: 'No, tengo otras duda', url: null },
+    ])
+  })
+
+  it('muestra la respuesta del cliente con la pregunta que contestó', () => {
+    // Lo que llega cuando el cliente toca un botón: el texto elegido y, dentro
+    // del contextInfo, el mensaje original.
+    const raw = JSON.stringify({
+      selectedButtonId: 'c2c5',
+      selectedDisplayText: 'Si, evalueme',
+      contextInfo: {
+        stanzaId: 'CE70D087C517F6D4870D',
+        quotedMessage: {
+          buttonsMessage: {
+            buttons: [{ buttonId: 'c2c5', buttonText: { displayText: 'Si, evalueme' }, type: 1 }],
+            contentText: '📸Eso es todo? 😊',
+          },
+        },
+      },
+      type: 1,
+    })
+    const parsed = parseContent(`<buttonsResponseMessage>\n${raw}\n</buttonsResponseMessage>`)
+    expect(parsed).toMatchObject({ kind: 'template', label: 'Respuesta', text: 'Si, evalueme' })
+    expect(parsed.template).toMatchObject({
+      body: 'Si, evalueme',
+      answeredQuestion: '📸Eso es todo? 😊',
+    })
+    // Los botones del mensaje citado no se repiten en la respuesta.
+    expect(parsed.template!.buttons).toEqual([])
+  })
+
+  it('toma las respuestas rápidas sin enlace', () => {
+    const raw = JSON.stringify({
+      body: { text: '¿Confirmás tu cita?' },
+      footer: { text: 'DermicaPro' },
+      nativeFlowMessage: {
+        buttons: [{ buttonParamsJson: JSON.stringify({ display_text: 'Sí', id: '1' }) }],
+      },
+    })
+    const { template } = parseContent(`<templateMessage>${raw}</templateMessage>`)
+    expect(template).toMatchObject({ body: '¿Confirmás tu cita?', footer: 'DermicaPro' })
+    expect(template!.buttons).toEqual([{ text: 'Sí', url: null }])
+  })
+})
+
 describe('resolveMediaUrl', () => {
   it('deja pasar intactas las URLs que ya son absolutas o locales', () => {
     // Los mensajes optimistas usan data:/blob: hasta que el backend responde.

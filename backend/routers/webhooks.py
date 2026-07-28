@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from db.models import LeadStage
 from services.db_service import (
     fetch_latest_message,
+    fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
     update_lead_stage,
     update_message_status,
@@ -27,18 +28,40 @@ async def _check_token(x_webhook_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+class NewMessageWebhookBody(BaseModel):
+    # n8n manda el id del mensaje que acaba de insertar. Es opcional para no
+    # romper si el workflow todavía llama al webhook sin body: en ese caso se
+    # cae al último mensaje de la tabla.
+    wa_message_id: str | None = None
+
+
 @router.post("/messages")
-async def new_message_webhook(x_webhook_token: str | None = Header(default=None)):
+async def new_message_webhook(
+    body: NewMessageWebhookBody | None = None,
+    x_webhook_token: str | None = Header(default=None),
+):
     """Llamado por n8n justo después de guardar un mensaje nuevo en la DB."""
     await _check_token(x_webhook_token)
 
     payload = {"type": "chats_updated", "reason": "inbound_message"}
-    latest = await fetch_latest_message()
-    if latest is not None:
-        payload["latest_message"] = latest
-        payload["chat_id"] = latest["chat_id"]
+    wa_message_id = body.wa_message_id if body else None
+    message = None
+    if wa_message_id:
+        message = await fetch_message_by_wa_id(wa_message_id)
+        if message is None:
+            # No debería pasar (n8n avisa después del INSERT), pero si el id no
+            # está todavía visible preferimos notificar de más que no notificar.
+            logger.warning(
+                "Webhook de mensaje con wa_message_id desconocido: %s", wa_message_id
+            )
+    if message is None:
+        message = await fetch_latest_message()
+
+    if message is not None:
+        payload["latest_message"] = message
+        payload["chat_id"] = message["chat_id"]
         try:
-            await trigger_inbound_message(latest)
+            await trigger_inbound_message(message)
         except Exception:
             logger.exception("No se pudo programar la automatización del mensaje entrante")
 

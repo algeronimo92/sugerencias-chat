@@ -23,7 +23,7 @@ export function LoginPage() {
   })
 
   return (
-    <div className="flex items-center justify-center h-screen bg-wa-app dark:bg-wa-app-dark px-4">
+    <div className="flex items-center justify-center h-full bg-wa-app dark:bg-wa-app-dark px-4">
       <form
         onSubmit={handleSubmit(values => login(values))}
         className="w-full max-w-sm bg-white dark:bg-wa-panel-dark rounded-xl shadow-xl border border-wa-border dark:border-wa-border-dark overflow-hidden"

@@ -76,7 +76,7 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+    <form onSubmit={handleSubmit} className="border-t border-amber-200 bg-amber-50 px-3 pt-3 pb-safe-3 dark:border-amber-900 dark:bg-amber-950/30">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
           <AtSign className="h-3.5 w-3.5" /> Nota interna · Solo equipo
@@ -100,7 +100,7 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
       <div className="flex items-end gap-2">
         <div className="relative flex-1">
           {suggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
+            <div className="absolute bottom-full left-0 z-40 mb-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
               {suggestions.map((user, index) => (
                 <button
                   key={user.id}

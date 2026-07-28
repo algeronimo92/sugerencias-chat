@@ -1,6 +1,6 @@
-import { Mic, Image, Video, MapPin, Paperclip, type LucideIcon } from 'lucide-react'
+import { CornerUpLeft, Mic, Image, Video, MapPin, MousePointerClick, Paperclip, Megaphone, type LucideIcon } from 'lucide-react'
 
-export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'location' | 'other'
+export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'location' | 'template' | 'other'
 
 const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }> = {
   text: { icon: null, label: '' },
@@ -8,7 +8,42 @@ const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }>
   image: { icon: Image, label: 'Imagen' },
   video: { icon: Video, label: 'Video' },
   location: { icon: MapPin, label: 'Ubicación' },
+  template: { icon: Megaphone, label: 'Plantilla' },
   other: { icon: Paperclip, label: 'Adjunto' },
+}
+
+export interface TemplateButton {
+  text: string
+  /** null en botones que no abren nada (respuestas rápidas, llamadas). */
+  url: string | null
+}
+
+/** Etiquetas que n8n usa para los mensajes con botones. Comparten el kind
+ * 'template' porque se pintan igual, pero cada una tiene su forma de JSON y su
+ * propio ícono en los previews. */
+const TEMPLATE_TAGS: Record<string, { icon: LucideIcon; label: string }> = {
+  // Anuncios y plantillas de empresa (TikTok, Meta): traen preview de enlace.
+  templateMessage: { icon: Megaphone, label: 'Plantilla' },
+  // Mensajes con botones de respuesta rápida, los que manda el propio negocio.
+  buttonsMessage: { icon: MousePointerClick, label: 'Botones' },
+  // El cliente tocó uno de esos botones.
+  buttonsResponseMessage: { icon: CornerUpLeft, label: 'Respuesta' },
+  templateButtonReplyMessage: { icon: CornerUpLeft, label: 'Respuesta' },
+}
+
+/** Un mensaje con botones de WhatsApp (un anuncio de plantilla o un mensaje
+ * con respuestas rápidas) ya desarmado para pintarlo. */
+export interface TemplateMessage {
+  /** Título del preview del enlace ("TikTok - Make Your Day"). */
+  title: string
+  description: string
+  domain: string
+  body: string
+  footer: string
+  buttons: TemplateButton[]
+  /** Cuando el mensaje es la respuesta del cliente, el texto del mensaje al
+   * que le tocó el botón. Vacío en el resto. */
+  answeredQuestion: string
 }
 
 export interface ParsedContent {
@@ -16,17 +51,125 @@ export interface ParsedContent {
   icon: LucideIcon | null
   label: string
   text: string
+  /** Solo en kind === 'template'; null si el JSON vino roto. */
+  template: TemplateMessage | null
+}
+
+/** Texto que se muestra cuando la plantilla no trae cuerpo (o no se pudo leer). */
+export const TEMPLATE_FALLBACK_TEXT = 'Mensaje de plantilla'
+
+function safeUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null
+  // Solo http(s): el JSON viene de afuera y termina en un href.
+  return /^https?:\/\//i.test(value) ? value : null
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+/** Los campos anidados de WhatsApp vienen como JSON dentro de un string. */
+function parseJson(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Lee el JSON crudo que n8n guarda dentro de `<templateMessage>` o
+ * `<buttonsMessage>`. Son dos formas distintas del mismo mensaje con botones:
+ *
+ * - plantilla: `interactiveMessageTemplate`, con el preview del enlace y los
+ *   botones en JSON serializado adentro de otro JSON;
+ * - botones: `contentText` suelto y los botones con su `displayText`;
+ * - respuesta: `selectedDisplayText`, con el mensaje original adentro del
+ *   `contextInfo`.
+ */
+export function parseTemplateMessage(raw: string): TemplateMessage | null {
+  const root = parseJson(raw)
+  if (!root) return null
+  // Según de dónde salga el payload el contenido viene en la raíz o anidado.
+  const data = root.interactiveMessageTemplate
+    ? asObject(root.interactiveMessageTemplate)
+    : root.hydratedTemplate
+      ? asObject(root.hydratedTemplate)
+      : root
+
+  const header = asObject(data.header)
+  const body = asObject(data.body)
+  const footer = asObject(data.footer)
+  const nativeFlow = asObject(data.nativeFlowMessage)
+
+  const target = asObject(parseJson(nativeFlow.messageParamsJson)?.tap_target_configuration)
+
+  const buttons: TemplateButton[] = []
+  for (const button of Array.isArray(nativeFlow.buttons) ? nativeFlow.buttons : []) {
+    const params = parseJson(asObject(button).buttonParamsJson)
+    if (!params) continue
+    const text = asString(params.display_text)
+    if (!text) continue
+    buttons.push({ text, url: safeUrl(params.url) })
+  }
+  // Botones de respuesta rápida: no abren nada, los toca el cliente.
+  for (const button of Array.isArray(data.buttons) ? data.buttons : []) {
+    const text = asString(asObject(asObject(button).buttonText).displayText)
+    if (!text) continue
+    buttons.push({ text, url: null })
+  }
+
+  // Respuesta a un botón: el texto elegido es el mensaje, y el original viene
+  // citado adentro del contextInfo (WhatsApp lo muestra arriba de la respuesta).
+  const quoted = asObject(asObject(data.contextInfo).quotedMessage)
+  const answeredQuestion =
+    asString(asObject(quoted.buttonsMessage).contentText) ||
+    asString(quoted.conversation) ||
+    asString(asObject(quoted.extendedTextMessage).text)
+
+  const parsed: TemplateMessage = {
+    title: asString(header.title) || asString(target.title),
+    description: asString(target.description),
+    domain: asString(target.domain) || asString(target.canonical_url),
+    body: asString(body.text) || asString(data.contentText) || asString(data.selectedDisplayText),
+    footer: asString(footer.text) || asString(data.footerText),
+    buttons,
+    answeredQuestion,
+  }
+
+  // Si no se reconoció nada útil es que el JSON no era una plantilla.
+  if (!parsed.title && !parsed.body && !parsed.buttons.length) return null
+  return parsed
 }
 
 export function parseContent(content: string | null): ParsedContent {
-  if (!content) return { kind: 'text', ...KIND_META.text, text: '' }
+  if (!content) return { kind: 'text', ...KIND_META.text, text: '', template: null }
 
   const match = content.match(/^<(\w+)>([\s\S]*)<\/\1>$/)
-  if (!match) return { kind: 'text', ...KIND_META.text, text: content.trim() }
+  if (!match) return { kind: 'text', ...KIND_META.text, text: content.trim(), template: null }
 
   const [, tag, inner] = match
+  const templateMeta = TEMPLATE_TAGS[tag]
+  if (templateMeta) {
+    const template = parseTemplateMessage(inner)
+    return {
+      kind: 'template',
+      ...templateMeta,
+      // Nunca el JSON crudo: este texto es el que sale en la lista de chats,
+      // en las citas y en el Kanban.
+      text: template?.body || template?.title || TEMPLATE_FALLBACK_TEXT,
+      template,
+    }
+  }
+
   const kind: MessageKind = tag in KIND_META ? (tag as MessageKind) : 'other'
-  return { kind, ...KIND_META[kind], text: inner.trim() }
+  return { kind, ...KIND_META[kind], text: inner.trim(), template: null }
 }
 
 export interface QuotePreview {

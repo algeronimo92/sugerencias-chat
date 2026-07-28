@@ -54,6 +54,28 @@
   --radius-bubble: 7.5px;
 }
 
+/* ============================================================
+   Áreas seguras (notch, barra de gestos)
+   Con viewport-fit=cover la PWA instalada ocupa toda la pantalla,
+   así que el margen lo tiene que poner la UI. Se aplica a la barra
+   superior y a la navegación inferior, que son las que tocan los
+   bordes físicos.
+   ============================================================ */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Variante para elementos que ya traen su propio padding inferior (el
+   composer del chat). max() y no una suma: en un equipo sin notch env() vale
+   0 y el padding base tiene que sobrevivir igual. */
+@utility pb-safe-3 {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -64,6 +86,13 @@
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
+  /* Sin esto, en móvil el gesto de arrastrar hacia abajo dispara el
+     pull-to-refresh del navegador y recarga el CRM en medio de un chat. */
+  overscroll-behavior: none;
+  /* Elimina el retardo de 300ms y el zoom por doble toque; los inputs siguen
+     siendo ampliables con pellizco. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   /* Safari 26+ (Liquid Glass) ignora <meta theme-color> y tiñe su barra con
      el background-color del <body> (el <html> no cuenta). Se pinta del color
      del header para que la barra se funda con la app; el fondo gris real de
@@ -96,13 +125,28 @@ html.dark {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  /* 100vh en móvil incluye la barra de URL retraíble: el composer del chat
+     quedaba tapado bajo ella. dvh sigue la altura visible real; el 100vh de
+     arriba es el fallback para navegadores viejos. */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: #f0f2f5;
 }
 
 .dark #root {
   background: #0c1317;
+}
+
+/* iOS Safari hace zoom automático al enfocar un campo con fuente menor a
+   16px y deja el layout corrido y sin forma de volver. Se fuerza 16px solo
+   en pantallas chicas: en escritorio las clases text-sm siguen mandando. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 /* Scrollbars finos, en los grises de la paleta WhatsApp */

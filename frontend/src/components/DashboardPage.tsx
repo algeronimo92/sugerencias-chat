@@ -192,7 +192,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
   const { data, isLoading, isFetching, error, refetch } = useDashboard(days)
 
   return (
-    <div className="h-full overflow-y-auto bg-wa-app p-6 dark:bg-wa-app-dark">
+    <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
