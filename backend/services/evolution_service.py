@@ -142,6 +142,22 @@ async def check_whatsapp_numbers(numbers: list[str]) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+HISTORY_PAGE_SIZE = 50
+
+
+async def find_chat_messages(chat_id: str, page: int, limit: int = HISTORY_PAGE_SIZE) -> Any:
+    """Historial crudo de un chat tal como lo guarda WhatsApp.
+
+    Evolution devuelve los mensajes del más nuevo al más viejo. La forma de la
+    respuesta cambió entre versiones (lista plana vs. objeto paginado), así que
+    acá se devuelve sin tocar y la normalización queda en `whatsapp_history`.
+    """
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/chat/findMessages/{instance}"
+    payload = {"where": {"key": {"remoteJid": chat_id}}, "page": page, "offset": limit}
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
 async def send_whatsapp_template(
     chat_id: str,
     name: str,

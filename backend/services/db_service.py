@@ -1213,6 +1213,30 @@ async def fetch_latest_message() -> dict | None:
     }
 
 
+async def existing_wa_message_ids(chat_id: str, wa_ids: list[str]) -> set[str]:
+    """Cuáles de esos IDs de WhatsApp ya están registrados en el chat.
+
+    Lo usa el historial traído de Evolution para no repetir en el hilo un
+    mensaje que la base ya tiene.
+    """
+    if not wa_ids:
+        return set()
+    stmt = select(WspMessage.wa_message_id).where(
+        WspMessage.chat_id == chat_id,
+        WspMessage.wa_message_id.in_(wa_ids),
+    )
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).scalars().all()
+    return {r for r in rows if r}
+
+
+async def count_wa_messages(chat_id: str) -> int:
+    """Cuántos mensajes del chat hay registrados en la base."""
+    stmt = select(func.count()).where(WspMessage.chat_id == chat_id)
+    async with get_sessionmaker()() as session:
+        return await session.scalar(stmt) or 0
+
+
 # Techo del salto a un mensaje de búsqueda: evita cargar una conversación
 # gigante entera si el match está muy atrás en el historial.
 JUMP_TO_MESSAGE_MAX = 1000
