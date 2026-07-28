@@ -494,6 +494,10 @@ function MainLayout() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               onClick={() => setIsSuggestionsOpen(false)}
+              /* aria-hidden y sin handler de teclado a propósito: un fondo de
+                 modal no debe ser un punto de tabulación más. Quien navega con
+                 teclado cierra con Escape (ver el handler de arriba). */
+              aria-hidden="true"
               className="fixed inset-0 z-75 bg-black/40"
             />
             <motion.aside

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { MoreHorizontal } from 'lucide-react'
@@ -26,6 +26,17 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
   const location = useLocation()
   const [isMoreOpen, setIsMoreOpen] = useState(false)
 
+  // El panel "Más" se superpone a toda la app: sin esto quedaba sin forma de
+  // cerrarlo con teclado.
+  useEffect(() => {
+    if (!isMoreOpen) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsMoreOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isMoreOpen])
+
   const items = visibleNavItems(isAdmin)
   const primaryItems = items.filter((item) => item.primary)
   const secondaryItems = items.filter((item) => !item.primary)
@@ -48,7 +59,11 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               onClick={() => setIsMoreOpen(false)}
-              className="fixed inset-0 z-[85] bg-black/40"
+              /* aria-hidden y sin handler de teclado a propósito: un fondo de
+                 modal no debe ser un punto de tabulación más. Con teclado se
+                 cierra con Escape. */
+              aria-hidden="true"
+              className="fixed inset-0 z-85 bg-black/40"
             />
             <motion.div
               initial={{ y: '100%' }}
@@ -57,7 +72,7 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
               role="dialog"
               aria-label="Más vistas"
-              className="fixed inset-x-0 bottom-0 z-[86] rounded-t-2xl border-t border-wa-border bg-white pb-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
+              className="fixed inset-x-0 bottom-0 z-86 rounded-t-2xl border-t border-wa-border bg-white pb-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
             >
               <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-wa-border dark:bg-wa-border-dark" />
               <div className="grid grid-cols-2 gap-1 p-3">
