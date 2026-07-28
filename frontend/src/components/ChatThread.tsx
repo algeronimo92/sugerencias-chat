@@ -1,98 +1,25 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookmarkPlus, Check, CheckCheck, ChevronDown, CornerUpLeft, Database, FileText, History, Loader2, MessageSquareLock, RefreshCw, Send, Sparkles, X } from 'lucide-react'
-import type { Chat, HistoryMessage, InternalNote, LeadActivity, Message, MessageStatus } from '../types'
+import { Fragment, useEffect, useState } from 'react'
+import { ArrowLeft, ChevronDown, Database, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
-import { useMessages, useSendAudio, useSendLocation, useSendMedia, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
-import { useEvolutionHistory, useEvolutionHistoryAvailability } from '../hooks/useEvolutionHistory'
+import { useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
-import { RichText } from './RichText'
-import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel, formatMessageTime, groupByDay, parseContent, quotePreview, resolveMediaUrl } from '../utils/message'
-import { renderTemplate } from '../utils/templates'
-import { AttachMenu } from './AttachMenu'
-import { LocationConfirmDialog } from './LocationConfirmDialog'
-import { MapPreview } from './MapPreview'
-import { MediaLightbox, type MediaLightboxItem } from './MediaLightbox'
-import { AudioPlayer } from './MediaPlayer'
-import { ChatVideoMessage } from './ChatVideoMessage'
-import { VoiceRecorder } from './VoiceRecorder'
-import { TemplatePicker } from './TemplatePicker'
+import { formatDayLabel } from '../utils/message'
+import { MediaLightbox } from './MediaLightbox'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
-import { TemplateMessageButtons, TemplateMessagePreview } from './TemplateMessageCard'
+import { ChatComposer } from './ChatComposer'
+import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
-import { useInternalNotes } from '../hooks/useInternalNotes'
-import { useLeadActivity } from '../hooks/useLeadMeta'
+import { useChatTimeline } from '../hooks/useChatTimeline'
+import { useThreadScroll } from '../hooks/useThreadScroll'
 import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
-
-const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const MEDIA_ACCEPT = 'image/*,video/*'
-const AUDIO_ACCEPT = 'audio/*'
-
-const DOCUMENT_COLORS: Record<string, string> = {
-  pdf: 'bg-red-500',
-  doc: 'bg-blue-500',
-  docx: 'bg-blue-500',
-  xls: 'bg-wa-primary',
-  xlsx: 'bg-wa-primary',
-  ppt: 'bg-orange-500',
-  pptx: 'bg-orange-500',
-  txt: 'bg-gray-500',
-  zip: 'bg-yellow-600',
-}
-
-function documentExtension(filename: string): string {
-  const ext = filename.includes('.') ? filename.split('.').pop() : undefined
-  return ext ? ext.toUpperCase() : 'ARCHIVO'
-}
-
-function documentColor(filename: string): string {
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
-  return (ext && DOCUMENT_COLORS[ext]) || 'bg-gray-500'
-}
-
-// Los navegadores solo saben previsualizar PDF de forma nativa; Word/Excel/etc.
-// no tienen visor propio y si se abren con target="_blank" el navegador no
-// sabe qué hacer con el archivo (peor, .docx/.xlsx son un ZIP por dentro, así
-// que a veces terminan "abriéndose" como zip). Para esos, forzar la descarga
-// directa es lo correcto.
-function isPdfFilename(filename: string): boolean {
-  return filename.toLowerCase().endsWith('.pdf')
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1] ?? '')
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
-}
-
-/** GeolocationPositionError trae códigos fijos (1/2/3); cada uno tiene una
- * causa y solución distinta, igual que hicimos con los errores de micrófono. */
-function describeGeolocationError(err: GeolocationPositionError): string {
-  if (err.code === err.PERMISSION_DENIED) {
-    return (
-      'El navegador tiene bloqueado el acceso a la ubicación para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y volvé a cargar la página.'
-    )
-  }
-  if (err.code === err.POSITION_UNAVAILABLE) {
-    return 'No se pudo determinar tu ubicación actual.'
-  }
-  if (err.code === err.TIMEOUT) {
-    return 'Se agotó el tiempo esperando la ubicación. Intentá de nuevo.'
-  }
-  return 'No se pudo obtener la ubicación.'
-}
 
 interface Props {
   chat: Chat
@@ -104,108 +31,6 @@ interface Props {
   /** En móvil y tablet las sugerencias no tienen columna propia: se abren
    * desde el header. Ausente en escritorio, donde el panel siempre está. */
   onOpenSuggestions?: () => void
-}
-
-interface OpenMedia {
-  src: string
-  kind: 'image' | 'video'
-  alt: string
-}
-
-type TimelineItem =
-  | { kind: 'message'; key: string; sentAt: string | null; message: Message }
-  | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
-  | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
-  // Traído de WhatsApp al vuelo, sin registro en la base: siempre anterior a
-  // cualquier mensaje propio, así que el orden por fecha lo deja arriba.
-  | { kind: 'history'; key: string; sentAt: string; history: HistoryMessage }
-
-// Duración del resaltado al saltar a un mensaje desde la búsqueda.
-const MESSAGE_FLASH_MS = 2000
-// Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
-const IMAGE_MAX_HEIGHT_PX = 320
-// Padding horizontal (px-3.5 x2) de la burbuja (sin bordes, como WhatsApp):
-// lo que se descuenta del ancho máximo de la burbuja (75% del hilo) para el
-// contenido.
-const BUBBLE_CHROME_PX = 28
-// Ventana durante la cual las imágenes que van cargando re-anclan el scroll
-// al mensaje saltado — o, en una apertura normal, re-pegan la vista al fondo
-// (no guardamos dimensiones de toda la media, así que no se puede reservar el
-// espacio exacto por adelantado).
-const MEDIA_SETTLE_MS = 4000
-// Distancia al fondo a partir de la cual se ofrece el botón "ir al último
-// mensaje" (mayor que el umbral de auto-scroll para que no parpadee cerca
-// del borde).
-const SCROLL_TO_BOTTOM_THRESHOLD_PX = 300
-
-/** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
- * cliente. En audios, PLAYED agrega además una confirmación visible de que
- * el destinatario reprodujo la nota de voz. */
-function MessageStatusTicks({ status, isAudio = false, onRetry }: { status: MessageStatus; isAudio?: boolean; onRetry?: () => void }) {
-  if (status === 'PENDING') {
-    return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
-  }
-  if (status === 'FAILED') {
-    return (
-      <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label="No se pudo confirmar el envío. Reintentar" title="Reintentar envío">
-        <RefreshCw aria-hidden="true" className="h-3 w-3" /> No enviado · Reintentar
-      </button>
-    )
-  }
-  if (status === 'PLAYED') {
-    const label = isAudio ? 'Audio escuchado' : 'Leído'
-    return <span aria-label={label} title={label}><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-accent shrink-0" /></span>
-  }
-  if (status === 'READ') {
-    return <span aria-label="Leído" title="Leído"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-accent shrink-0" /></span>
-  }
-  if (status === 'DELIVERY_ACK') {
-    return <span aria-label="Entregado" title="Entregado"><CheckCheck aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
-  }
-  return <span aria-label="Enviado" title="Enviado"><Check aria-hidden="true" className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0" /></span>
-}
-
-/** Recuadro del mensaje citado, como el que WhatsApp pone arriba de una
- * respuesta: barra de color, autor y una línea de vista previa. El color
- * distingue de quién era el mensaje original, no quién responde. */
-function QuotedMessage({
-  sender,
-  content,
-  contactName,
-  onJump,
-  className = '',
-}: {
-  sender: string
-  content: string | null
-  contactName: string
-  onJump?: () => void
-  className?: string
-}) {
-  const { icon: Icon, label, text } = quotePreview(content)
-  const isMine = sender === 'vendedor'
-  const accent = isMine
-    ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'
-    : 'border-sky-500 text-sky-600 dark:text-sky-400'
-  return (
-    <button
-      type="button"
-      onClick={onJump}
-      disabled={!onJump}
-      title={onJump ? 'Ir al mensaje original' : undefined}
-      className={`flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-md border-l-4 bg-black/5 px-2 py-1 text-left dark:bg-white/10 ${accent} ${
-        onJump ? 'hover:bg-black/10 dark:hover:bg-white/15' : 'cursor-default'
-      } ${className}`}
-    >
-      <span className="text-[11px] font-semibold leading-tight">
-        {isMine ? 'Vos' : contactName}
-      </span>
-      <span className="flex w-full min-w-0 items-center gap-1 text-xs leading-tight text-wa-muted dark:text-wa-text-dark/70">
-        {Icon && <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />}
-        {label && !text && <span>{label}</span>}
-        {text && <span className="truncate">{text}</span>}
-      </span>
-    </button>
-  )
 }
 
 /** Chip centrado con el día ("Hoy", "Ayer", la fecha), como WhatsApp: queda
@@ -242,618 +67,92 @@ function DbRecordSeparator() {
 
 export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSuggestions }: Props) {
   const {
-    data: messagePages,
+    messages,
+    historyMessages,
+    timeline,
+    daySections,
+    sentMessageHistory,
+    chatMediaItems,
     isLoading,
     error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useMessages(chat.chat_id, highlightMessageId)
-  // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
-  // orden de páginas, pero se conserva el orden ascendente dentro de cada
-  // página, para renderizar el historial de viejo a nuevo.
-  const messages = useMemo(
-    () => [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items),
-    [messagePages],
-  )
-  // Historial de WhatsApp anterior al registro propio: se pide a mano, recién
-  // cuando el usuario agotó los mensajes de la base y quiere ver más atrás.
-  const [historyRequested, setHistoryRequested] = useState(false)
-  const { data: historyAvailability } = useEvolutionHistoryAvailability()
-  const oldestDbSentAt = messages.find(m => m.sent_at)?.sent_at ?? null
-  const {
-    data: historyPages,
-    error: historyError,
-    fetchNextPage: fetchNextHistoryPage,
-    hasNextPage: hasMoreHistory,
-    isFetching: isFetchingHistory,
-    refetch: refetchHistory,
-  } = useEvolutionHistory(chat.chat_id, oldestDbSentAt, historyRequested && !hasNextPage)
-  const historyMessages = useMemo(() => {
-    const registered = new Set(messages.map(m => m.wa_message_id).filter(Boolean))
-    return [...(historyPages?.pages ?? [])]
-      .reverse()
-      .flatMap(page => page.items)
-      .filter(item => !registered.has(item.wa_message_id))
-  }, [historyPages, messages])
-  const { data: notes = [] } = useInternalNotes(chat.chat_id)
-  const { data: leadActivity = [] } = useLeadActivity(chat.chat_id)
+    pageCount,
+    lastTimelineKey,
+    historyAvailability,
+    historyError,
+    fetchNextHistoryPage,
+    hasMoreHistory,
+    isFetchingHistory,
+    refetchHistory,
+    historyRequested,
+    setHistoryRequested,
+    historyPageCount,
+  } = useChatTimeline(chat.chat_id, highlightMessageId)
+
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
-  const timeline = useMemo<TimelineItem[]>(() => [
-    ...historyMessages.map(history => ({
-      kind: 'history' as const,
-      key: `history-${history.wa_message_id}`,
-      sentAt: history.sent_at,
-      history,
-    })),
-    ...messages.map(message => ({
-      kind: 'message' as const,
-      key: `message-${message.id}`,
-      sentAt: message.sent_at,
-      message,
-    })),
-    ...notes.map(note => ({
-      kind: 'note' as const,
-      key: `note-${note.id}`,
-      sentAt: note.created_at,
-      note,
-    })),
-    // Cambios de estado del lead como eventos del hilo, en la posición
-    // cronológica en que ocurrieron: los mensajes de arriba son el contexto
-    // de por qué se movió.
-    ...leadActivity
-      .filter(item => item.event_type === 'stage_changed')
-      .map(item => ({
-        kind: 'activity' as const,
-        key: `activity-${item.id}`,
-        sentAt: item.created_at,
-        activity: item,
-      })),
-  ].sort((a, b) => {
-    const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
-    const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
-    if (aTime !== bTime) return aTime - bTime
-    // Los lotes de plantillas pueden compartir milisegundo. Sus IDs de DB
-    // preservan el orden de la outbox mejor que una comparación textual
-    // ("message-10" quedaría antes de "message-9").
-    if (a.kind === 'message' && b.kind === 'message' && a.message.id > 0 && b.message.id > 0) {
-      return a.message.id - b.message.id
-    }
-    return a.key.localeCompare(b.key)
-  }), [messages, historyMessages, notes, leadActivity])
-  // Una sección por día: es lo que permite fijar el chip de fecha arriba
-  // mientras se navega ese día y que el del día siguiente lo empuje al llegar.
-  const daySections = useMemo(() => groupByDay(timeline), [timeline])
-  const pageCount = messagePages?.pages.length ?? 0
-  const historyPageCount = historyPages?.pages.length ?? 0
-  const lastTimelineKey = timeline.at(-1)?.key ?? null
-  const threadRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const initialScrollDoneRef = useRef(false)
-  const isNearBottomRef = useRef(true)
-  const loadingOlderRef = useRef(false)
-  const latestTimelineKeyRef = useRef<string | null>(null)
-  const prependSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
-  // Salto al mensaje matcheado por la búsqueda: pendiente hasta que el
-  // mensaje esté cargado; el flash se apaga solo y la clase con transición
-  // hace que el resaltado se desvanezca.
-  const pendingJumpRef = useRef<number | null>(null)
-  const jumpAttemptsRef = useRef(0)
-  // Ancla activa tras el salto: cada media que carga vuelve a centrar el
-  // mensaje hasta que expira o el usuario scrollea a mano.
-  const anchorRef = useRef<{ messageId: number; until: number } | null>(null)
-  // Fondo "pegajoso" tras abrir el chat: mientras la ventana esté viva, cada
-  // crecimiento del contenido (media sin caja reservada, fuentes, re-medición
-  // del ancho) vuelve a pegar la vista al último mensaje. Igual que el ancla
-  // del salto: expira sola o la suelta el scroll manual.
-  const stickToBottomUntilRef = useRef(0)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
-  const [hasNewWhileAway, setHasNewWhileAway] = useState(false)
-  const [flashMessageId, setFlashMessageId] = useState<number | null>(null)
+
+  const {
+    threadRef,
+    bottomRef,
+    contentRef,
+    threadWidth,
+    flashMessageId,
+    showScrollToBottom,
+    hasNewWhileAway,
+    handleMediaSettled,
+    releaseAnchor,
+    handleThreadScroll,
+    scrollToBottom,
+    goToQuotedMessage,
+    loadOlder,
+  } = useThreadScroll({
+    chatId: chat.chat_id,
+    highlightMessageId,
+    isLoading,
+    lastTimelineKey,
+    timelineLength: timeline.length,
+    pageCount,
+    historyPageCount,
+    hasNextPage: !!hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    historyError,
+  })
+
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
   const [isNoteMode, setIsNoteMode] = useState(false)
 
-  const [draft, setDraft] = useState('')
   // Mensaje que se está respondiendo (cita estilo WhatsApp). Vale para todo
   // lo que salga del compositor: texto, audio, adjuntos y ubicación.
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
-  // Cada salto a un mensaje citado incrementa esto para reactivar el efecto
-  // que pagina hacia atrás hasta encontrarlo.
-  const [jumpNonce, setJumpNonce] = useState(0)
-  const [slashIndex, setSlashIndex] = useState(0)
-  const [slashDismissed, setSlashDismissed] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
-  const [audioError, setAudioError] = useState<string | null>(null)
-  const [mediaError, setMediaError] = useState<string | null>(null)
-  const [locationError, setLocationError] = useState<string | null>(null)
-  const [isLocating, setIsLocating] = useState(false)
-  const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
-  const { mutate: sendAudio } = useSendAudio(chat.chat_id)
-  const { mutate: sendMedia } = useSendMedia(chat.chat_id)
-  const { mutate: sendLocation } = useSendLocation(chat.chat_id)
-  const { data: templates = [] } = useTemplates()
-  const recordTemplateUse = useRecordTemplateUse()
-  const sentMessageHistory = useMemo(() => {
-    const seen = new Set<string>()
-    const result: string[] = []
-    for (const message of [...messages].reverse()) {
-      if (message.sender !== 'vendedor') continue
-      const parsed = parseContent(message.content)
-      if (parsed.kind !== 'text' || !parsed.text.trim() || seen.has(parsed.text.trim())) continue
-      seen.add(parsed.text.trim()); result.push(parsed.text.trim())
-      if (result.length === 10) break
-    }
-    return result
-  }, [messages])
-  // Galería disponible para el hilo ya cargado. Conserva el orden real de
-  // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
-  const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
-    const parsed = parseContent(message.content)
-    if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
-    const src = resolveMediaUrl(message.media_url)
-    if (!src) return []
-    return [{
-      src,
-      kind: parsed.kind,
-      alt: parsed.text || (parsed.kind === 'image' ? 'Imagen' : 'Video'),
-    }]
-  }), [messages])
 
-  // Mientras el draft es exactamente "/" + texto sin espacios, se interpreta
-  // como un atajo de plantilla en progreso (como en Slack/WhatsApp Business).
-  // Un espacio o texto adicional lo convierte en mensaje normal.
-  const slashQuery = useMemo(() => {
-    if (slashDismissed) return null
-    const match = /^\/(\S*)$/.exec(draft)
-    return match ? match[1] : null
-  }, [draft, slashDismissed])
 
-  const slashSuggestions = useMemo(() => {
-    if (slashQuery === null) return []
-    const query = slashQuery.toLowerCase()
-    return templates
-      .filter((t) => t.template_type === 'internal' && t.shortcut?.toLowerCase().startsWith(query))
-      .sort((a, b) => Number(b.stage === chat.stage) - Number(a.stage === chat.stage))
-      .slice(0, 6)
-  }, [templates, slashQuery, chat.stage])
-
-  const activeSlashIndex = Math.min(slashIndex, Math.max(slashSuggestions.length - 1, 0))
-
-  function selectSlashTemplate(template: (typeof slashSuggestions)[number]) {
-    if (template.interactive_type !== 'none' || template.attachments.length) setMultimediaTemplate(template)
-    else { setDraft(renderTemplate(template, chat)); recordTemplateUse.mutate(template.id) }
-    setSlashIndex(0)
-    setSlashDismissed(true)
-    textareaRef.current?.focus()
-  }
-
-  // Cada chat empieza mostrando sus mensajes más recientes.
-  useEffect(() => {
-    initialScrollDoneRef.current = false
-    isNearBottomRef.current = true
-    loadingOlderRef.current = false
-    latestTimelineKeyRef.current = null
-    prependSnapshotRef.current = null
-    stickToBottomUntilRef.current = 0
-    setShowScrollToBottom(false)
-    setHasNewWhileAway(false)
-  }, [chat.chat_id])
-
-  useEffect(() => {
-    pendingJumpRef.current = highlightMessageId
-    jumpAttemptsRef.current = 0
-    anchorRef.current = null
-    setFlashMessageId(null)
-  }, [chat.chat_id, highlightMessageId])
-
-  function jumpToMessage(container: HTMLElement, messageId: number): boolean {
-    const el = container.querySelector(`[data-message-id="${messageId}"]`)
-    if (!el) return false
-    pendingJumpRef.current = null
-    isNearBottomRef.current = false
-    anchorRef.current = { messageId, until: Date.now() + MEDIA_SETTLE_MS }
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: 'center' })
-      setFlashMessageId(messageId)
-      window.setTimeout(() => setFlashMessageId(null), MESSAGE_FLASH_MS)
-    })
-    return true
-  }
-
-  // Las imágenes/videos no reservan altura antes de cargar, así que cada
-  // carga empuja el layout. Este handler (capture: load no burbujea) vuelve
-  // a centrar el mensaje saltado mientras el ancla siga viva, o mantiene la
-  // vista pegada al fondo en una apertura normal.
-  function handleMediaSettled() {
-    const container = threadRef.current
-    if (!container || !initialScrollDoneRef.current) return
-    const anchor = anchorRef.current
-    if (anchor && Date.now() < anchor.until) {
-      container
-        .querySelector(`[data-message-id="${anchor.messageId}"]`)
-        ?.scrollIntoView({ block: 'center' })
-      return
-    }
-    if (isNearBottomRef.current) {
-      container.scrollTop = container.scrollHeight
-    }
-  }
-
-  // El scroll manual del usuario suelta el ancla y el fondo pegajoso
-  // (wheel/touch no se disparan con scrollIntoView, así que no interfiere
-  // con el re-anclado).
-  function releaseAnchor() {
-    anchorRef.current = null
-    stickToBottomUntilRef.current = 0
-  }
-
-  // Ancho del hilo, para calcular el tamaño exacto al que va a renderizar
-  // cada imagen/video y reservar esa caja antes de que cargue.
-  const [threadWidth, setThreadWidth] = useState(0)
-  useEffect(() => {
-    const el = threadRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      setThreadWidth(entries[0].contentRect.width)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // Los eventos load no cubren todos los reflows (la re-medición del ancho
-  // del hilo re-escala las cajas de media sin disparar load, y fuentes/audio
-  // players también empujan el layout). Observar el alto real del contenido
-  // cubre cualquier causa: mientras haya un ancla viva se re-centra el
-  // mensaje saltado; mientras el fondo pegajoso siga activo (o el usuario ya
-  // esté leyendo el final) se re-pega al último mensaje.
-  useEffect(() => {
-    const content = contentRef.current
-    if (!content) return
-    const observer = new ResizeObserver(() => {
-      const container = threadRef.current
-      if (!container) return
-      const anchor = anchorRef.current
-      if (anchor && Date.now() < anchor.until) {
-        container
-          .querySelector(`[data-message-id="${anchor.messageId}"]`)
-          ?.scrollIntoView({ block: 'center' })
-        return
-      }
-      if (pendingJumpRef.current) return
-      if (
-        Date.now() < stickToBottomUntilRef.current ||
-        (initialScrollDoneRef.current && isNearBottomRef.current)
-      ) {
-        container.scrollTop = container.scrollHeight
-      }
-    })
-    observer.observe(content)
-    return () => observer.disconnect()
-  }, [])
-
-  /** Caja exacta de render de una imagen/video: proporción original escalada
-   * al tope de alto (320px) y al ancho útil de la burbuja (75% del hilo menos
-   * padding). Reservarla por adelantado evita que el chat se mueva al cargar. */
-  function mediaBoxDimensions(m: Message): { width?: number; height?: number; style?: { width: number; height: number } } {
-    if (!m.media_width || !m.media_height) return {}
-    let width = m.media_width
-    let height = m.media_height
-    if (height > IMAGE_MAX_HEIGHT_PX) {
-      width = Math.round((width * IMAGE_MAX_HEIGHT_PX) / height)
-      height = IMAGE_MAX_HEIGHT_PX
-    }
-    if (threadWidth > 0) {
-      const maxContentWidth = Math.floor(threadWidth * 0.75) - BUBBLE_CHROME_PX
-      if (maxContentWidth > 0 && width > maxContentWidth) {
-        height = Math.round((height * maxContentWidth) / width)
-        width = maxContentWidth
-      }
-    }
-    return { width, height, style: { width, height } }
-  }
-
-  useEffect(() => {
-    const container = threadRef.current
-    if (!container || isLoading) return
-
-    if (!initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true
-      latestTimelineKeyRef.current = lastTimelineKey
-      if (pendingJumpRef.current) {
-        if (jumpToMessage(container, pendingJumpRef.current)) return
-      } else {
-        // La ventana arranca acá y no dentro del rAF: cualquier reflow entre
-        // este efecto y el primer frame ya tiene que re-pegar al fondo.
-        stickToBottomUntilRef.current = Date.now() + MEDIA_SETTLE_MS
-      }
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight
-        isNearBottomRef.current = true
-      })
-      return
-    }
-
-    const snapshot = prependSnapshotRef.current
-    if (snapshot) {
-      prependSnapshotRef.current = null
-      requestAnimationFrame(() => {
-        // Compensa exactamente la altura agregada arriba; el mensaje que el
-        // usuario estaba leyendo queda en el mismo lugar de la pantalla.
-        container.scrollTop = snapshot.scrollTop + (container.scrollHeight - snapshot.scrollHeight)
-      })
-      return
-    }
-
-    if (lastTimelineKey !== latestTimelineKeyRef.current) {
-      latestTimelineKeyRef.current = lastTimelineKey
-      if (isNearBottomRef.current) {
-        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }))
-      } else {
-        // Está leyendo historial: no se lo mueve, pero el botón de bajar
-        // avisa que llegó algo nuevo.
-        setHasNewWhileAway(true)
-      }
-    }
-    // historyPageCount entra acá para que una página de historial vacía —el
-    // tramo que todavía se solapa con lo registrado— también consuma el
-    // snapshot, en vez de dejarlo colgado para el próximo render.
-  }, [chat.chat_id, isLoading, lastTimelineKey, timeline.length, pageCount, historyPageCount])
-
-  // Un pedido de historial fallido no agrega nada arriba: el snapshot que se
-  // tomó antes de pedirlo tiene que descartarse o la vista salta después.
-  useEffect(() => {
-    if (historyError) prependSnapshotRef.current = null
-  }, [historyError])
-
-  // Si el chat ya estaba cacheado sin el mensaje buscado (la primera página
-  // agrandada solo aplica con cache vacía), se pagina hacia atrás hasta
-  // encontrarlo, con tope para no recorrer historiales enormes.
-  useEffect(() => {
-    const container = threadRef.current
-    const target = pendingJumpRef.current
-    if (!container || !target || isLoading || !initialScrollDoneRef.current) return
-    if (jumpToMessage(container, target)) return
-    if (hasNextPage && !isFetchingNextPage && jumpAttemptsRef.current < 20) {
-      jumpAttemptsRef.current += 1
-      void fetchNextPage()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, pageCount, hasNextPage, isFetchingNextPage, highlightMessageId, jumpNonce])
-
-  /** Ir al mensaje citado al tocar el recuadro de la respuesta. Si todavía no
-   * está cargado, se delega en el efecto de arriba, que pagina hacia atrás
-   * hasta encontrarlo igual que al abrir desde un resultado de búsqueda. */
-  function goToQuotedMessage(messageId: number) {
-    const container = threadRef.current
-    if (container && jumpToMessage(container, messageId)) return
-    pendingJumpRef.current = messageId
-    jumpAttemptsRef.current = 0
-    setJumpNonce((nonce) => nonce + 1)
-  }
-
+  // El foco del cursor lo pone el compositor al ver la cita nueva: el
+  // textarea es suyo, no de acá.
   function startReply(message: Message) {
     setReplyTo({ id: message.id, sender: message.sender, content: message.content })
     setIsNoteMode(false)
-    textareaRef.current?.focus()
-  }
-
-  /** Aparece al pasar el mouse por la burbuja, del lado de afuera, para no
-   * tapar el contenido. Queda visible al enfocarlo con el teclado. */
-  function replyButton(message: Message) {
-    return (
-      <button
-        type="button"
-        onClick={() => startReply(message)}
-        aria-label="Responder a este mensaje"
-        title="Responder"
-        className="shrink-0 rounded-full p-1.5 text-wa-muted opacity-0 transition-opacity hover:bg-black/5 hover:text-wa-text focus-visible:opacity-100 group-hover:opacity-100 dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
-      >
-        <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
-      </button>
-    )
   }
 
   // El draft y los errores de envío son por chat: al cambiar de lead no debe
   // quedar pegado el texto ni el error del chat anterior.
+  // La cita y el modo nota son del hilo, no del compositor: los inicia una
+  // burbuja. Al cambiar de lead no deben quedar pegados.
   useEffect(() => {
-    setDraft('')
     setReplyTo(null)
-    setAudioError(null)
-    setMediaError(null)
-    setLocationError(null)
-    setPendingLocation(null)
-    setSlashIndex(0)
-    setSlashDismissed(false)
     setIsNoteMode(false)
-    // El historial de WhatsApp se vuelve a pedir a mano en cada chat: es caro
-    // y casi siempre alcanza con lo que está registrado.
-    setHistoryRequested(false)
   }, [chat.chat_id])
-
-  function handleSend(e: React.FormEvent) {
-    e.preventDefault()
-    const text = draft.trim()
-    if (!text) return
-    setDraft('')
-    setReplyTo(null)
-    sendMessage({ text, replyTo })
-  }
 
   function handleRetryMessage(message: Message) {
     if (!message.content?.trim()) return
     retryMessage(message)
-  }
-
-  async function handleAudioRecorded(blob: Blob) {
-    setAudioError(null)
-    // La cita se captura antes del await: durante la codificación el usuario
-    // puede haber cancelado la respuesta o cambiado a otra.
-    const target = replyTo
-    setReplyTo(null)
-    const dataBase64 = await blobToBase64(blob)
-    sendAudio(
-      { contentType: blob.type || 'audio/webm', dataBase64, replyTo: target },
-      { onError: (err) => setAudioError(extractErrorMessage(err)) }
-    )
-  }
-
-  function openFilePicker(accept: string) {
-    const input = fileInputRef.current
-    if (!input) return
-    input.accept = accept
-    input.click()
-  }
-
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // permite volver a elegir el mismo archivo después
-    if (!file) return
-
-    // El backend valida el tipo real permitido; acá solo evitamos un
-    // roundtrip para el caso obvio de un archivo sin tipo reconocible.
-    if (!file.type) {
-      setMediaError('No se pudo determinar el tipo de archivo')
-      return
-    }
-
-    setMediaError(null)
-    const target = replyTo
-    setReplyTo(null)
-    const dataBase64 = await blobToBase64(file)
-    sendMedia(
-      { contentType: file.type, dataBase64, filename: file.name, replyTo: target },
-      { onError: (err) => setMediaError(extractErrorMessage(err)) }
-    )
-  }
-
-  function handleSendLocation() {
-    setLocationError(null)
-    if (!navigator.geolocation) {
-      setLocationError('Tu navegador no soporta geolocalización')
-      return
-    }
-    setIsLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setIsLocating(false)
-        // Igual que WhatsApp: primero mostramos dónde nos ubicó el GPS y
-        // pedimos confirmación, en vez de mandarla directo.
-        setPendingLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-      },
-      (err) => {
-        setIsLocating(false)
-        setLocationError(describeGeolocationError(err))
-      },
-      { enableHighAccuracy: true, timeout: 10_000 }
-    )
-  }
-
-  function handleConfirmLocation() {
-    if (!pendingLocation) return
-    const location = pendingLocation
-    setPendingLocation(null)
-    setReplyTo(null)
-    sendLocation({ ...location, replyTo }, {
-      onError: (err) => {
-        setLocationError(extractErrorMessage(err))
-      },
-    })
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (slashSuggestions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSlashIndex((i) => (i + 1) % slashSuggestions.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSlashIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length)
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setSlashDismissed(true)
-        return
-      }
-      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
-        e.preventDefault()
-        selectSlashTemplate(slashSuggestions[activeSlashIndex])
-        return
-      }
-    }
-    if (e.key === 'Escape' && replyTo) {
-      e.preventDefault()
-      setReplyTo(null)
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend(e)
-    }
-  }
-
-  /** Carga contenido más viejo dejando la vista donde está: se guarda el alto
-   * antes de pedirlo y el efecto de restauración compensa lo que se agregó
-   * arriba. Si el pedido falla se descarta el snapshot para no mover nada. */
-  function loadOlder(request: () => Promise<{ isError: boolean }>) {
-    const container = threadRef.current
-    if (!container || loadingOlderRef.current) return
-    loadingOlderRef.current = true
-    // Al paginar hacia atrás manda la restauración del snapshot, nunca el
-    // fondo pegajoso de la apertura.
-    stickToBottomUntilRef.current = 0
-    prependSnapshotRef.current = {
-      scrollHeight: container.scrollHeight,
-      scrollTop: container.scrollTop,
-    }
-    void request()
-      .then((result) => {
-        if (result.isError) prependSnapshotRef.current = null
-      })
-      .finally(() => {
-        loadingOlderRef.current = false
-      })
-  }
-
-  function handleThreadScroll() {
-    const container = threadRef.current
-    if (!container) return
-
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight
-    isNearBottomRef.current = distanceFromBottom < 120
-    if (isNearBottomRef.current) setHasNewWhileAway(false)
-    // React ignora el set cuando el valor no cambia: esto no re-renderiza en
-    // cada tick de scroll.
-    setShowScrollToBottom(distanceFromBottom > SCROLL_TO_BOTTOM_THRESHOLD_PX)
-
-    if (
-      container.scrollTop > 80 ||
-      !hasNextPage ||
-      isFetchingNextPage ||
-      loadingOlderRef.current
-    ) {
-      return
-    }
-
-    loadOlder(fetchNextPage)
-  }
-
-  function scrollToBottom() {
-    releaseAnchor()
-    isNearBottomRef.current = true
-    setHasNewWhileAway(false)
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }
 
   return (
@@ -1028,186 +327,28 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   </Fragment>
                 )
               }
-              const m = item.message
-              const isVendedor = m.sender === 'vendedor'
-              // Agrupación estilo WhatsApp: mensajes consecutivos del mismo autor
-              // se pegan entre sí y solo el primero lleva la "colita".
-              const isFirstOfGroup =
-                isFirstOfSection ||
-                !prevItem ||
-                prevItem.kind !== 'message' ||
-                prevItem.message.sender !== m.sender
-              const { kind, icon: Icon, label, text, template } = parseContent(m.content)
-              // Si el archivo falló al cargar (ej. no existe en este entorno),
-              // lo tratamos como si no hubiera media: el navegador muestra su
-              // propio ícono roto + el alt completo pegado, duplicando el texto
-              // con nuestro caption de abajo.
-              const mediaSrc = failedMediaIds.has(m.id) ? null : resolveMediaUrl(m.media_url)
-              const markMediaFailed = () => setFailedMediaIds((prev) => new Set(prev).add(m.id))
-              const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video')
               return (
                 <Fragment key={item.key}>
                   {showDbBoundary && <DbRecordSeparator />}
-                  <div
-                    className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
-                    data-message-id={m.id}
-                  >
-                  {/* Solo se puede citar un mensaje que ya existe en WhatsApp: sin
-                      wa_message_id (envío en curso, fallido, o histórico previo a
-                      la integración) el botón no aparece en vez de fallar al
-                      enviar. */}
-                  {isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
-                  {/* Columna: la burbuja y, debajo, los botones de la plantilla.
-                      Al estirarse los dos al ancho de la columna, los botones
-                      quedan tan anchos como la burbuja (y al revés), igual que
-                      en WhatsApp.
-                      85% en móvil, como WhatsApp: al 75% de una pantalla de
-                      360px los mensajes se parten en demasiadas líneas. */}
-                  <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
-                  <div
-                    className={`rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
-                      isVendedor
-                        ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
-                        : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
-                    } ${flashMessageId === m.id ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
-                  >
-                    {m.quoted_message_id != null && (
-                      <QuotedMessage
-                        sender={m.quoted_sender ?? 'cliente'}
-                        content={m.quoted_content ?? null}
-                        contactName={displayName(chat)}
-                        onJump={() => goToQuotedMessage(m.quoted_message_id as number)}
-                        className="mb-1"
-                      />
-                    )}
-                    {kind === 'template' && template && (
-                      <TemplateMessagePreview template={template} hasQuote={m.quoted_message_id != null} />
-                    )}
-                    {/* En el hilo la plantilla se pinta entera (preview + botones),
-                        así que el chip de tipo solo estorba; en la lista de chats
-                        y en las citas sí se usa para resumirla. */}
-                    {!mediaSrc && kind !== 'text' && kind !== 'location' && kind !== 'template' && Icon && (
-                      <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
-                        <Icon className="w-3 h-3" />
-                        <span>{label}</span>
-                      </div>
-                    )}
-                    {mediaSrc && kind === 'image' && (
-                      <img
-                        src={mediaSrc}
-                        alt={text || 'Imagen'}
-                        {...mediaBoxDimensions(m)}
-                        onClick={() => setOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
-                        onError={markMediaFailed}
-                        className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
-                      />
-                    )}
-                    {mediaSrc && kind === 'video' && (
-                      (() => {
-                        const { style } = mediaBoxDimensions(m)
-                        return (
-                          <ChatVideoMessage
-                            src={mediaSrc}
-                            alt={text || 'Video'}
-                            onError={markMediaFailed}
-                            style={style}
-                            className={`max-w-full ${style ? '' : 'h-56 w-[min(100%,360px)]'}`}
-                            onOpenGallery={() => setOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
-                            footer={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={() => handleRetryMessage(m)} />}</>}
-                          />
-                        )
-                      })()
-                    )}
-                    {mediaSrc && kind === 'audio' && (
-                      <AudioPlayer src={mediaSrc} onError={markMediaFailed} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
-                    )}
-                    {mediaSrc && kind === 'other' && (
-                      <a
-                        href={mediaSrc}
-                        {...(isPdfFilename(text || '')
-                          ? { target: '_blank', rel: 'noopener noreferrer' }
-                          : { download: text || true })}
-                        className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                      >
-                        <span
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(text || '')}`}
-                        >
-                          <FileText className="w-4 h-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">
-                            {text || 'Documento'}
-                          </p>
-                          <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
-                            {documentExtension(text || '')}
-                          </p>
-                        </div>
-                      </a>
-                    )}
-                    {kind === 'location' && (() => {
-                      const [lat, lon] = text.split(',').map(Number)
-                      const hasCoords = Number.isFinite(lat) && Number.isFinite(lon)
-                      if (!hasCoords) return null
-                      return (
-                        <a
-                          href={`https://www.google.com/maps?q=${lat},${lon}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
-                        >
-                          <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
-                        </a>
-                      )
-                    })()}
-                    {kind !== 'other' && kind !== 'location' && (
-                      // El cuerpo de una plantilla es texto real del anuncio, no
-                      // un marcador de adjunto: se pinta como un mensaje normal.
-                      <p className={`whitespace-pre-wrap ${kind === 'text' || template ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
-                        {text ? <RichText text={text} /> : ""}
-                      </p>
-                    )}
-                    {kind === 'template' && template?.footer && (
-                      <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
-                    )}
-                    {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
-                      {isVendedor && kind === 'text' && text.trim() && (
-                        <button
-                          type="button"
-                          title="Guardar como plantilla personal"
-                          onClick={() => setTemplateContentToSave(text.trim())}
-                          className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-wa-primary-strong dark:hover:text-wa-primary hover:opacity-100"
-                        >
-                          <BookmarkPlus className="h-3 w-3" />
-                        </button>
-                      )}
-                      {isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
-                        <span
-                          className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
-                            m.status === 'PLAYED'
-                              ? 'text-wa-accent'
-                              : 'text-wa-muted dark:text-wa-text-dark/60'
-                          }`}
-                          title={m.status === 'PLAYED'
-                            ? 'WhatsApp confirmó que el cliente reprodujo este audio'
-                            : 'WhatsApp todavía no confirmó la reproducción de este audio'}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={`h-1.5 w-1.5 rounded-full ${m.status === 'PLAYED' ? 'bg-wa-accent' : 'bg-current opacity-60'}`}
-                          />
-                          {m.status === 'PLAYED' ? 'Escuchado' : 'No escuchado'}
-                        </span>
-                      )}
-                      <span>{formatMessageTime(m.sent_at)}</span>
-                      {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={() => handleRetryMessage(m)} />}
-                    </div>}
-                  </div>
-                  {kind === 'template' && template && (
-                    <TemplateMessageButtons template={template} isVendedor={isVendedor} />
-                  )}
-                  </div>
-                  {!isVendedor && m.id > 0 && m.wa_message_id && replyButton(m)}
-                </div>
+                  <MessageBubble
+                    chat={chat}
+                    message={item.message}
+                    isFirstOfGroup={
+                      isFirstOfSection ||
+                      !prevItem ||
+                      prevItem.kind !== 'message' ||
+                      prevItem.message.sender !== item.message.sender
+                    }
+                    isFlashing={flashMessageId === item.message.id}
+                    threadWidth={threadWidth}
+                    hasFailedMedia={failedMediaIds.has(item.message.id)}
+                    onMediaFailed={() => setFailedMediaIds((prev) => new Set(prev).add(item.message.id))}
+                    onOpenMedia={setOpenMedia}
+                    onQuotedJump={goToQuotedMessage}
+                    onRetry={() => handleRetryMessage(item.message)}
+                    onStartReply={() => startReply(item.message)}
+                    onSaveTemplate={setTemplateContentToSave}
+                  />
                 </Fragment>
               )
             })}
@@ -1247,129 +388,18 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           onCreated={() => setIsNoteMode(false)}
         />
       ) : (
-        <form
-          onSubmit={handleSend}
-          className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
-        >
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
-          <button
-            type="button"
-            onClick={() => setIsNoteMode(true)}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-          >
-            <MessageSquareLock className="h-3.5 w-3.5" /> Cambiar a nota interna
-          </button>
-        </div>
-        {sendError && (
-          <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
-        )}
-        {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
-        {mediaError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{mediaError}</p>}
-        {locationError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{locationError}</p>}
-        {replyTo && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-wa-field-dark">
-            <div className="min-w-0 flex-1">
-              <QuotedMessage
-                sender={replyTo.sender}
-                content={replyTo.content}
-                contactName={displayName(chat)}
-                onJump={() => goToQuotedMessage(replyTo.id)}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setReplyTo(null)}
-              aria-label="Cancelar respuesta"
-              title="Cancelar respuesta (Esc)"
-              className="shrink-0 rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
-            >
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
-
-          {!isRecordingAudio && (
-            <AttachMenu
-              disabled={isLocating}
-              isSending={isLocating}
-              onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
-              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
-              onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
-              onSelectLocation={handleSendLocation}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <TemplatePicker
-              chat={chat}
-              sentMessages={sentMessageHistory}
-              onSaveHistory={setTemplateContentToSave}
-              onSendMultimedia={setMultimediaTemplate}
-              onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <div className="relative flex-1">
-              {slashSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
-                  {slashSuggestions.map((template, i) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectSlashTemplate(template)}
-                      onMouseEnter={() => setSlashIndex(i)}
-                      className={`block w-full rounded-lg px-3 py-2 text-left ${
-                        i === activeSlashIndex ? 'bg-wa-active dark:bg-wa-active-dark' : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
-                      }`}
-                    >
-                      <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">/{template.shortcut}</p>
-                      <p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{renderTemplate(template, chat)}</p>
-                    </button>
-                  ))}
-                  <p className="border-t border-wa-border px-3 pt-1.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
-                    ↑↓ para navegar · Enter para insertar · Esc para cerrar
-                  </p>
-                </div>
-              )}
-              <textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value)
-                  setSlashIndex(0)
-                  setSlashDismissed(false)
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Escribí un mensaje... (/ para usar una plantilla)"
-                rows={1}
-                className="w-full resize-none text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow max-h-32"
-              />
-            </div>
-          )}
-
-          {draft.trim() && !isRecordingAudio ? (
-            <button
-              type="submit"
-              aria-label="Enviar mensaje"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-wa-primary text-white hover:bg-wa-primary-strong active:bg-wa-primary-deep transition-colors shadow-sm"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          ) : (
-            <VoiceRecorder
-              disabled={isLocating}
-              onRecorded={handleAudioRecorded}
-              onError={setAudioError}
-              onRecordingChange={setIsRecordingAudio}
-            />
-          )}
-        </div>
-        </form>
+        <ChatComposer
+          chat={chat}
+          sentMessageHistory={sentMessageHistory}
+          replyTo={replyTo}
+          onReplyChange={setReplyTo}
+          onQuotedJump={goToQuotedMessage}
+          onSwitchToNote={() => setIsNoteMode(true)}
+          onSaveTemplate={setTemplateContentToSave}
+          onSendMultimediaTemplate={setMultimediaTemplate}
+          sendMessage={sendMessage}
+          sendError={sendError}
+        />
       )}
 
       {openMedia && (
@@ -1382,15 +412,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         />
       )}
 
-      {pendingLocation && (
-        <LocationConfirmDialog
-          latitude={pendingLocation.latitude}
-          longitude={pendingLocation.longitude}
-          isSending={false}
-          onConfirm={handleConfirmLocation}
-          onCancel={() => setPendingLocation(null)}
-        />
-      )}
 
       {templateContentToSave && (
         <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
