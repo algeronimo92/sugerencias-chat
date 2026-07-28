@@ -172,6 +172,25 @@ export interface Message {
   quoted_content?: string | null
 }
 
+/** Mensaje leído de WhatsApp que no está registrado en la base: es anterior
+ * a que el sistema empezara a guardar el chat. Solo lectura — no tiene id
+ * local, ni estado de entrega, y de los adjuntos solo llega el tipo y el
+ * epígrafe (el archivo nunca se descarga). */
+export interface HistoryMessage {
+  wa_message_id: string
+  sender: 'cliente' | 'vendedor'
+  content: string | null
+  sent_at: string
+  message_type?: string | null
+}
+
+export interface HistoryPage {
+  items: HistoryMessage[]
+  has_more: boolean
+  /** Cursor opaco de Evolution: se devuelve tal cual en el pedido siguiente. */
+  next_page: number | null
+}
+
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
 
 export interface ScheduledMessage {

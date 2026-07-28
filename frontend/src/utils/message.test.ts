@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDayLabel, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
+import { formatDayLabel, groupByDay, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
 
 describe('parseContent', () => {
   it('trata el texto suelto como texto', () => {
@@ -103,5 +103,54 @@ describe('formatDayLabel', () => {
     expect(label).not.toBe('Hoy')
     expect(label).not.toBe('Ayer')
     expect(label).toContain('2020')
+  })
+})
+
+describe('groupByDay', () => {
+  const item = (key: string, sentAt: string | null) => ({ key, sentAt })
+
+  it('abre una sección por cada día', () => {
+    const sections = groupByDay([
+      item('a', '2024-05-01T10:00:00.000Z'),
+      item('b', '2024-05-01T18:00:00.000Z'),
+      item('c', '2024-05-02T09:00:00.000Z'),
+    ])
+
+    expect(sections.map(s => s.items.map(i => i.item.key))).toEqual([['a', 'b'], ['c']])
+    expect(sections.map(s => s.key)).toEqual(['a', 'c'])
+  })
+
+  it('conserva la posición global de cada ítem a través de las secciones', () => {
+    const sections = groupByDay([
+      item('a', '2024-05-01T10:00:00.000Z'),
+      item('b', '2024-05-02T09:00:00.000Z'),
+      item('c', '2024-05-02T10:00:00.000Z'),
+    ])
+
+    expect(sections.flatMap(s => s.items.map(i => i.globalIndex))).toEqual([0, 1, 2])
+  })
+
+  it('un mensaje sin fecha confirmada no parte el día ni repite el chip', () => {
+    // Un audio recién enviado llega sin sent_at: si cerrara la sección, el
+    // mensaje siguiente abriría otra con el chip repetido del mismo día.
+    const sections = groupByDay([
+      item('a', '2024-05-01T10:00:00.000Z'),
+      item('audio-optimista', null),
+      item('b', '2024-05-01T11:00:00.000Z'),
+    ])
+
+    expect(sections).toHaveLength(1)
+    expect(sections[0].items.map(i => i.item.key)).toEqual(['a', 'audio-optimista', 'b'])
+  })
+
+  it('no le pone chip a una sección que arranca sin fecha', () => {
+    const sections = groupByDay([item('sin-fecha', null), item('a', '2024-05-01T10:00:00.000Z')])
+
+    expect(sections[0].sentAt).toBeNull()
+    expect(sections[1].sentAt).toBe('2024-05-01T10:00:00.000Z')
+  })
+
+  it('sin ítems no arma ninguna sección', () => {
+    expect(groupByDay([])).toEqual([])
   })
 })

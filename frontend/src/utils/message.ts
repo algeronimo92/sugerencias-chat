@@ -89,6 +89,44 @@ export function formatDayLabel(sentAt: string): string {
   })
 }
 
+/** Un día del hilo con todo lo que pasó ese día, en orden. */
+export interface DaySection<T> {
+  /** Clave estable de React: la del primer ítem de la sección. */
+  key: string
+  /** Fecha del día, o null si la sección arranca con ítems sin fecha
+   * confirmada (nunca lleva chip). */
+  sentAt: string | null
+  items: { item: T; globalIndex: number }[]
+}
+
+/**
+ * Parte una lista cronológica en una sección por día. El chip de fecha se fija
+ * arriba con `position: sticky`, que solo empuja al chip anterior si cada uno
+ * está acotado por la caja de su propio día — de ahí que haga falta agrupar y
+ * no alcance con intercalar separadores en una lista plana.
+ *
+ * Los ítems sin fecha confirmada (ej. un audio recién enviado, todavía sin
+ * `sent_at`) siguen en la sección abierta en vez de cerrarla: si no, el
+ * mensaje siguiente abriría una sección espuria con el chip repetido del mismo
+ * día. Por eso la comparación es contra el último día CON fecha, no contra el
+ * ítem anterior a secas.
+ */
+export function groupByDay<T extends { key: string; sentAt: string | null }>(
+  items: T[],
+): DaySection<T>[] {
+  const sections: (DaySection<T> & { day: string | null })[] = []
+  items.forEach((item, globalIndex) => {
+    const day = item.sentAt ? new Date(item.sentAt).toDateString() : null
+    const current = sections.at(-1)
+    if (!current || (day !== null && day !== current.day)) {
+      sections.push({ key: item.key, day, sentAt: item.sentAt, items: [{ item, globalIndex }] })
+    } else {
+      current.items.push({ item, globalIndex })
+    }
+  })
+  return sections
+}
+
 export function resolveMediaUrl(mediaUrl: string | null): string | null {
   if (!mediaUrl) return null
   // Los mensajes optimistas usan data:/blob: locales hasta que el backend
