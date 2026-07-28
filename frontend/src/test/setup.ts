@@ -30,3 +30,36 @@ if (!window.matchMedia) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
+
+// Ni ResizeObserver, del que depende el hilo para re-anclar el scroll cuando
+// la media termina de cargar. El doble guarda sus instancias para que los
+// tests puedan disparar el callback a mano (jsdom no hace layout, así que
+// nunca se dispararía solo).
+class ResizeObserverMock implements ResizeObserver {
+  static instances: ResizeObserverMock[] = []
+  callback: ResizeObserverCallback
+  targets = new Set<Element>()
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    ResizeObserverMock.instances.push(this)
+  }
+
+  observe(target: Element) {
+    this.targets.add(target)
+  }
+
+  unobserve(target: Element) {
+    this.targets.delete(target)
+  }
+
+  disconnect() {
+    this.targets.clear()
+    const index = ResizeObserverMock.instances.indexOf(this)
+    if (index >= 0) ResizeObserverMock.instances.splice(index, 1)
+  }
+}
+
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
+}
