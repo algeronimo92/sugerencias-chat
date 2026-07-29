@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import type { Chat, MessageTemplate } from '../types'
 import { useSendAudio, useSendLocation, useSendMedia, type ReplyTarget } from '../hooks/useMessages'
@@ -7,6 +7,7 @@ import { displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
+import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplatePicker } from './TemplatePicker'
@@ -90,6 +91,29 @@ export function ChatComposer({
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Última posición del cursor en el textarea: la fija el propio textarea (onSelect)
+  // y la usa la inserción de emojis. Cuando queda no-null tras insertar, el efecto
+  // de abajo restaura el cursor una vez que React comiteó el nuevo draft (el
+  // textarea es controlado, así que no se puede mover el caret en el mismo tick).
+  const caretRef = useRef<number | null>(null)
+
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current
+    const start = el ? el.selectionStart : caretRef.current ?? draft.length
+    const end = el ? el.selectionEnd : start
+    caretRef.current = start + emoji.length
+    setDraft((current) => current.slice(0, start) + emoji + current.slice(end))
+  }
+
+  useLayoutEffect(() => {
+    if (caretRef.current == null) return
+    const el = textareaRef.current
+    if (el) {
+      el.focus()
+      el.setSelectionRange(caretRef.current, caretRef.current)
+    }
+    caretRef.current = null
+  }, [draft])
 
   const { mutate: sendAudio } = useSendAudio(chat.chat_id)
   const { mutate: sendMedia } = useSendMedia(chat.chat_id)
@@ -308,6 +332,8 @@ export function ChatComposer({
         )}
         <div className="flex items-end gap-2">
           <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
+
+          {!isRecordingAudio && <EmojiStickerPanel onInsertEmoji={insertEmoji} />}
 
           {!isRecordingAudio && (
             <AttachMenu

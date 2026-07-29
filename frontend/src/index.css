@@ -239,6 +239,35 @@ html.dark {
 .ui-select-content[data-state="open"] { animation: ui-popover-in 140ms ease-out; }
 .ui-select-content[data-state="closed"] { animation: ui-popover-out 100ms ease-in; }
 
+/* Picker de emojis (emoji-picker-react) fundido con la paleta WhatsApp: el
+   borde/sombra/radio los pone el wrapper (.rounded-xl), acá solo se mapean las
+   CSS vars internas del picker a los tokens wa-*. */
+.wa-emoji .EmojiPickerReact {
+  border: none;
+  --epr-bg-color: var(--color-wa-in);
+  --epr-category-label-bg-color: var(--color-wa-in);
+  --epr-text-color: var(--color-wa-text);
+  --epr-hover-bg-color: var(--color-wa-hover);
+  --epr-focus-bg-color: var(--color-wa-active);
+  --epr-search-input-bg-color: var(--color-wa-field);
+  --epr-search-input-text-color: var(--color-wa-text);
+  --epr-search-input-placeholder-color: var(--color-wa-muted);
+  --epr-search-border-color: var(--color-wa-primary);
+  --epr-picker-border-color: transparent;
+  --epr-highlight-color: var(--color-wa-primary);
+  --epr-category-icon-active-color: var(--color-wa-primary);
+}
+.dark .wa-emoji .EmojiPickerReact {
+  --epr-bg-color: var(--color-wa-in-dark);
+  --epr-category-label-bg-color: var(--color-wa-in-dark);
+  --epr-text-color: var(--color-wa-text-dark);
+  --epr-hover-bg-color: var(--color-wa-active-dark);
+  --epr-focus-bg-color: var(--color-wa-active-dark);
+  --epr-search-input-bg-color: var(--color-wa-field-dark);
+  --epr-search-input-text-color: var(--color-wa-text-dark);
+  --epr-search-input-placeholder-color: var(--color-wa-muted-dark);
+}
+
 /* Accesibilidad: sin animaciones para quien las desactivó en el sistema */
 @media (prefers-reduced-motion: reduce) {
   *,
