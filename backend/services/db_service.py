@@ -1596,6 +1596,57 @@ async def attach_outgoing_analysis(
     return {"matched": False, "message_id": inserted["id"]}
 
 
+OUTGOING_RECONCILE_WINDOW = timedelta(minutes=5)
+
+
+async def reconcile_outgoing_message(
+    chat_id: str,
+    message_type: str,
+    content: str | None,
+    *,
+    wa_message_id: str | None = None,
+    media_url: str | None = None,
+    payload: dict | None = None,
+) -> dict:
+    """Guarda un mensaje SALIENTE (fromMe) que llega por el eco de Evolution,
+    salvo que sea un duplicado de algo que ya mandó nuestra app.
+
+    El eco de nuestros propios envíos ya está guardado (lo guarda la app al
+    enviar); insertarlo de nuevo lo duplicaría. Pero los salientes que NO mandó
+    la app —el auto-reply de una herramienta externa (Kommo), o un mensaje
+    escrito desde el teléfono— solo llegan por este eco y hay que conservarlos.
+
+    Dedup: si ya existe un mensaje del vendedor en el chat con el mismo tipo y
+    contenido dentro de la ventana, se asume que es el gemelo (nuestro envío o un
+    eco repetido) y se descarta. Si no, es externo y se inserta. No se puede
+    casar por wa_message_id porque el del envío y el del eco no coinciden."""
+    async with get_sessionmaker()() as session:
+        window_start = datetime.now(timezone.utc) - OUTGOING_RECONCILE_WINDOW
+        existing = (await session.execute(
+            select(WspMessage.id).where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.sender == "vendedor",
+                WspMessage.message_type == message_type,
+                WspMessage.content.is_not_distinct_from(content),
+                WspMessage.sent_at >= window_start,
+            ).limit(1)
+        )).first()
+        if existing is not None:
+            return {"matched": True}
+
+    inserted = await insert_message(
+        chat_id=chat_id,
+        sender="vendedor",
+        content=content,
+        media_url=media_url,
+        wa_message_id=wa_message_id,
+        status="SERVER_ACK",
+        message_type=message_type,
+        payload=payload,
+    )
+    return {"matched": False, "message_id": inserted["id"]}
+
+
 async def _fill_media_dimensions(session, rows: list[dict]) -> None:
     """Completa y persiste media_width/height de imágenes y videos que aún no
     lo tienen, para que el frontend reserve el espacio exacto antes de que

@@ -8,6 +8,7 @@ from services.db_service import (
     fetch_latest_message,
     fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
+    reconcile_outgoing_message,
     set_message_reaction,
     update_lead_stage,
     update_message_status,
@@ -143,6 +144,44 @@ async def outgoing_analysis_webhook(
     await manager.broadcast(
         {"type": "chats_updated", "chat_id": body.chat_id, "reason": "analysis"}
     )
+    return {"status": "ok", **result}
+
+
+class OutgoingWebhookBody(BaseModel):
+    chat_id: str
+    message_type: str = "text"
+    content: str | None = None
+    wa_message_id: str | None = None
+    media_url: str | None = None
+    payload: dict | None = None
+
+
+@router.post("/outgoing")
+async def outgoing_webhook(
+    body: OutgoingWebhookBody,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Llamado por n8n con un mensaje SALIENTE (fromMe) que no lleva análisis.
+
+    Reconcilia: descarta el eco de nuestros propios envíos (ya guardados por la
+    app) pero conserva los salientes externos —auto-reply de Kommo, mensajes
+    escritos desde el teléfono— que solo llegan por acá."""
+    await _check_token(x_webhook_token)
+
+    result = await reconcile_outgoing_message(
+        body.chat_id,
+        body.message_type,
+        body.content,
+        wa_message_id=body.wa_message_id,
+        media_url=body.media_url,
+        payload=body.payload,
+    )
+    # Solo avisamos cuando se insertó algo nuevo (un saliente externo); el eco de
+    # nuestros propios envíos ya está en pantalla.
+    if not result["matched"]:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "outbound_message"}
+        )
     return {"status": "ok", **result}
 
 
