@@ -41,9 +41,15 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   // Como WhatsApp: si el chat entró al resultado de búsqueda solo por un
   // mensaje del historial, el preview muestra ese mensaje y no el último.
   const isMessageMatch = chat.search_rank === 0 && !!chat.matched_message
-  const preview = parseContent(isMessageMatch ? chat.matched_message! : chat.last_message)
+  const preview = parseContent(
+    isMessageMatch
+      ? chat.matched_message!
+      : { content: chat.last_message, message_type: chat.last_message_type },
+  )
   const Icon = preview.icon
-  const rawPreviewText = preview.kind === 'location' ? preview.label : preview.text || '—'
+  // El texto humano si lo hay; si no, la etiqueta del tipo ("Imagen",
+  // "Ubicación"…) para que un adjunto sin caption no quede en "—".
+  const rawPreviewText = preview.text || (preview.kind !== 'text' ? preview.label : '—')
   // El término puede estar en el medio de un mensaje largo: el snippet lo
   // deja visible al inicio del preview y el split lo resalta en negrita.
   const previewText = isMessageMatch ? searchSnippet(rawPreviewText, search) : rawPreviewText

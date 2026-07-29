@@ -61,7 +61,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
 
     assert result == queued
     enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", [{
-        "content": "<audio></audio>",
+        "content": None,
         "media_url": "/api/media/audio/voice.ogg",
         "payload": {"type": "audio", "media_url": "/api/media/audio/voice.ogg"},
         "reply_to": None,

@@ -115,13 +115,15 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return None
 
 
-def _content_from_message(message: dict) -> tuple[str | None, str] | None:
-    """Traduce el mensaje de WhatsApp al formato de `wsp_messages.content`.
+def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] | None:
+    """Traduce el mensaje de WhatsApp al modelo normalizado del hilo.
 
-    Se reutilizan los pseudo-tags que ya escribe n8n (`<image>epígrafe</image>`
-    y compañía) para que el frontend renderice el historial con el mismo
-    parser que los mensajes propios. Devuelve None si el mensaje no se debe
-    mostrar.
+    Devuelve ``(content, message_type, payload)`` con la misma taxonomía que
+    ``wsp_messages`` (ver models/schemas.py:MessageType), para que el frontend
+    renderice el historial con la misma lógica que los mensajes propios:
+    ``content`` es solo texto humano (caption/cuerpo, o None), ``message_type``
+    el discriminador, y ``payload`` los datos estructurados del tipo. Devuelve
+    None si el mensaje no se debe mostrar.
     """
     if not isinstance(message, dict):
         return None
@@ -134,54 +136,112 @@ def _content_from_message(message: dict) -> tuple[str | None, str] | None:
 
     conversation = message.get("conversation")
     if isinstance(conversation, str) and conversation:
-        return conversation, "conversation"
+        return conversation, "text", None
 
     extended = message.get("extendedTextMessage")
     if isinstance(extended, dict):
         text = extended.get("text")
         if isinstance(text, str) and text:
-            return text, "extendedTextMessage"
+            return text, "text", None
 
     image = message.get("imageMessage")
     if isinstance(image, dict):
-        return f"<image>{_caption(image)}</image>", "imageMessage"
+        return _caption(image) or None, "image", None
 
     video = message.get("videoMessage")
     if isinstance(video, dict):
-        return f"<video>{_caption(video)}</video>", "videoMessage"
+        return _caption(video) or None, "video", None
 
     audio = message.get("audioMessage")
     if isinstance(audio, dict):
-        return "<audio></audio>", "audioMessage"
+        return None, "audio", None
 
     document = message.get("documentMessage")
     if isinstance(document, dict):
         name = document.get("fileName") or document.get("title") or "Documento"
-        return f"<other>{name}</other>", "documentMessage"
+        return None, "document", {"filename": name}
 
     location = message.get("locationMessage")
     if isinstance(location, dict):
         lat = location.get("degreesLatitude")
         lon = location.get("degreesLongitude")
         if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
-            return f"<location>{lat},{lon}</location>", "locationMessage"
-        return "<other>Ubicación</other>", "locationMessage"
+            return None, "location", {"latitude": lat, "longitude": lon}
+        return None, "location", None
 
     if isinstance(message.get("stickerMessage"), dict):
-        return "<other>Sticker</other>", "stickerMessage"
+        return None, "sticker", None
 
     contact = message.get("contactMessage")
     if isinstance(contact, dict):
         name = contact.get("displayName") or "sin nombre"
-        return f"<other>Contacto: {name}</other>", "contactMessage"
+        return None, "contact", {"contacts": [{"fullName": name}]}
 
-    if isinstance(message.get("contactsArrayMessage"), dict):
-        return "<other>Contactos</other>", "contactsArrayMessage"
+    contacts_array = message.get("contactsArrayMessage")
+    if isinstance(contacts_array, dict):
+        entries = contacts_array.get("contacts")
+        contacts = [
+            {"fullName": c.get("displayName") or "sin nombre"}
+            for c in entries
+            if isinstance(c, dict)
+        ] if isinstance(entries, list) else []
+        return None, "contact", {"contacts": contacts} if contacts else None
+
+    poll = message.get("pollCreationMessage") or message.get("pollCreationMessageV3")
+    if isinstance(poll, dict):
+        options = poll.get("options")
+        values = [
+            o.get("optionName")
+            for o in options
+            if isinstance(o, dict) and isinstance(o.get("optionName"), str)
+        ] if isinstance(options, list) else []
+        question = poll.get("name") if isinstance(poll.get("name"), str) else None
+        return question, "poll", {"values": values} if values else None
+
+    interactive = _interactive_content(message)
+    if interactive is not None:
+        return interactive
+
+    if isinstance(message.get("templateMessage"), dict):
+        return None, "template", None
 
     if not message:
         return None
 
-    return "<other>Mensaje no soportado</other>", next(iter(message), "unknown")
+    return None, "unsupported", {"original_type": next(iter(message), "unknown")}
+
+
+def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] | None:
+    """Texto legible de un mensaje interactivo (lista/botón), priorizando la
+    respuesta que eligió el cliente."""
+    response = message.get("buttonsResponseMessage") or message.get("templateButtonReplyMessage")
+    if isinstance(response, dict):
+        text = response.get("selectedDisplayText")
+        selected_id = response.get("selectedButtonId") or response.get("selectedId")
+        return (
+            text if isinstance(text, str) else None,
+            "interactive",
+            {"selected_id": selected_id, "selected_text": text} if selected_id or text else None,
+        )
+
+    list_response = message.get("listResponseMessage")
+    if isinstance(list_response, dict):
+        text = list_response.get("title")
+        reply = list_response.get("singleSelectReply")
+        selected_id = reply.get("selectedRowId") if isinstance(reply, dict) else None
+        return (
+            text if isinstance(text, str) else None,
+            "interactive",
+            {"selected_id": selected_id, "selected_text": text} if selected_id or text else None,
+        )
+
+    for key in ("buttonsMessage", "listMessage", "interactiveMessage"):
+        node = message.get(key)
+        if isinstance(node, dict):
+            title = node.get("title") or node.get("contentText")
+            return title if isinstance(title, str) else None, "interactive", None
+
+    return None
 
 
 def _caption(media: dict) -> str:
@@ -210,14 +270,17 @@ def _normalize_record(record: dict) -> dict | None:
     parsed = _content_from_message(record.get("message") or {})
     if parsed is None:
         return None
-    content, message_type = parsed
+    content, message_type, payload = parsed
 
     return {
         "wa_message_id": str(wa_message_id),
         "sender": "vendedor" if from_me else "cliente",
         "content": content,
         "sent_at": sent_at,
-        "message_type": record.get("messageType") or message_type,
+        # Taxonomía propia (no el messageType crudo de Evolution): es lo que el
+        # frontend usa para elegir ícono/render, igual que en los mensajes propios.
+        "message_type": message_type,
+        "payload": payload,
     }
 
 
@@ -326,6 +389,7 @@ async def fetch_whatsapp_history(
                 "content": n["content"],
                 "sent_at": n["sent_at"].strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
                 "message_type": n["message_type"],
+                "payload": n["payload"],
             }
             for n in unique
         ],

@@ -98,6 +98,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "fecha_ultimo_toque": _fmt_ts(row["fecha_ultimo_toque"]),
         "last_message": row["last_message"],
         "last_message_sender": row["last_message_sender"],
+        "last_message_type": row["last_message_type"] if "last_message_type" in row else None,
         "timestamp": _fmt_ts(row["timestamp"]),
         "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
@@ -143,7 +144,12 @@ def _last_message_subquery():
     Incluye sender: el frontend lo usa para saber si el chat quedó
     "esperando respuesta" (último mensaje del cliente) o no (vendedor)."""
     return (
-        select(WspMessage.content, WspMessage.sent_at, WspMessage.sender)
+        select(
+            WspMessage.content,
+            WspMessage.sent_at,
+            WspMessage.sender,
+            WspMessage.message_type,
+        )
         .where(WspMessage.chat_id == Lead.remote_jid)
         .order_by(WspMessage.sent_at.desc())
         .limit(1)
@@ -271,15 +277,28 @@ def _lead_field_conditions(search: str) -> list:
     return _identity_conditions(search) + _crm_field_conditions(search)
 
 
+def _message_text_match(search: str):
+    """Un mensaje matchea si el término aparece en su texto humano o en el
+    resumen del análisis IA del adjunto. Lo segundo es lo que hace que buscar
+    "yape" encuentre el comprobante cuya descripción generó la IA, aunque el
+    cliente no haya escrito nada. El índice trigram sobre
+    f_unaccent(analysis->>'summary') (idx_wsp_messages_analysis_trgm) evita el
+    recorrido completo."""
+    pattern = f"%{_escape_like(search)}%"
+    return or_(
+        _unaccent_ilike(WspMessage.content, pattern),
+        _unaccent_ilike(WspMessage.analysis["summary"].astext, pattern),
+    )
+
+
 def _message_match_condition(search: str):
     """Historial completo del chat, no solo el último mensaje: en WhatsApp
     un chat aparece aunque el término esté en un mensaje viejo."""
-    pattern = f"%{_escape_like(search)}%"
     return exists(
         select(WspMessage.id)
         .where(
             WspMessage.chat_id == Lead.remote_jid,
-            _unaccent_ilike(WspMessage.content, pattern),
+            _message_text_match(search),
         )
         .correlate(Lead)
     )
@@ -305,12 +324,21 @@ def _matched_message_subquery(search: str, column=None):
     """Mensaje más reciente que contiene el término: su contenido se muestra
     en el preview del resultado (como WhatsApp) y su id permite saltar hasta
     él al abrir la conversación."""
-    pattern = f"%{_escape_like(search)}%"
+    if column is None:
+        # Preview del resultado: se muestra el campo que realmente contiene el
+        # término, para que el resaltado lo encuentre. Si el match fue en el
+        # análisis IA (p. ej. audios, donde `content` es NULL), se muestra ese
+        # resumen en lugar de un preview vacío.
+        pattern = f"%{_escape_like(search)}%"
+        column = case(
+            (_unaccent_ilike(WspMessage.content, pattern), WspMessage.content),
+            else_=WspMessage.analysis["summary"].astext,
+        )
     return (
-        select(column if column is not None else WspMessage.content)
+        select(column)
         .where(
             WspMessage.chat_id == Lead.remote_jid,
-            _unaccent_ilike(WspMessage.content, pattern),
+            _message_text_match(search),
         )
         .order_by(WspMessage.sent_at.desc())
         .limit(1)
@@ -340,6 +368,7 @@ def _chat_columns(last_message):
         Lead.fecha_ultimo_toque,
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
+        last_message.c.message_type.label("last_message_type"),
         last_message.c.sent_at.label("timestamp"),
         _last_customer_message_at_subquery().label("last_customer_message_at"),
         _unread_count_subquery().label("unread_count"),
@@ -1005,10 +1034,13 @@ async def rekey_lead_phone(
 async def insert_message(
     chat_id: str,
     sender: str,
-    content: str,
+    content: str | None,
     media_url: str | None = None,
     wa_message_id: str | None = None,
     status: str | None = None,
+    message_type: str | None = None,
+    analysis: dict | None = None,
+    payload: dict | None = None,
 ) -> dict:
     stmt = (
         insert(WspMessage)
@@ -1020,6 +1052,9 @@ async def insert_message(
             sent_at=datetime.now(timezone.utc),
             wa_message_id=wa_message_id,
             status=status,
+            message_type=message_type,
+            analysis=analysis,
+            payload=payload,
         )
         .returning(
             WspMessage.id,
@@ -1029,6 +1064,9 @@ async def insert_message(
             WspMessage.media_url,
             WspMessage.wa_message_id,
             WspMessage.status,
+            WspMessage.message_type,
+            WspMessage.analysis,
+            WspMessage.payload,
         )
     )
     async with get_sessionmaker()() as session:
@@ -1043,6 +1081,9 @@ async def insert_message(
         "media_url": row["media_url"],
         "wa_message_id": row["wa_message_id"],
         "status": row["status"],
+        "message_type": row["message_type"],
+        "analysis": row["analysis"],
+        "payload": row["payload"],
     }
 
 
@@ -1189,6 +1230,7 @@ def _message_notification_stmt():
         WspMessage.chat_id,
         WspMessage.sender,
         WspMessage.content,
+        WspMessage.message_type,
         Lead.nombre,
     ).outerjoin(Lead, Lead.remote_jid == WspMessage.chat_id)
 
@@ -1200,6 +1242,7 @@ def _message_notification_payload(row) -> dict:
         "chat_id": row["chat_id"],
         "sender": row["sender"],
         "content": row["content"],
+        "message_type": row["message_type"],
         "name": row["nombre"],
     }
 
@@ -1321,6 +1364,9 @@ async def fetch_messages(
                 WspMessage.media_width,
                 WspMessage.media_height,
                 WspMessage.quoted_wa_message_id,
+                WspMessage.message_type,
+                WspMessage.analysis,
+                WspMessage.payload,
             )
             .where(WspMessage.chat_id == chat_id)
             .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
@@ -1351,6 +1397,9 @@ async def fetch_messages(
             "media_url": r["media_url"],
             "wa_message_id": r["wa_message_id"],
             "status": r["status"],
+            "message_type": r["message_type"],
+            "analysis": r["analysis"],
+            "payload": r["payload"],
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
@@ -1379,6 +1428,7 @@ async def _resolve_quoted_messages(session, chat_id: str, rows: list[dict]) -> d
             WspMessage.sender,
             WspMessage.content,
             WspMessage.wa_message_id,
+            WspMessage.message_type,
         ).where(
             WspMessage.chat_id == chat_id,
             WspMessage.wa_message_id.in_(wanted),
@@ -1390,6 +1440,9 @@ async def _resolve_quoted_messages(session, chat_id: str, rows: list[dict]) -> d
             "quoted_message_id": r["id"],
             "quoted_sender": r["sender"],
             "quoted_content": r["content"],
+            # El tipo permite que la cita muestre "📷 Imagen" aunque `content`
+            # venga vacío (los adjuntos ya no llevan el tipo embebido en content).
+            "quoted_message_type": r["message_type"],
         }
         for r in quoted_rows
     }
@@ -1424,7 +1477,7 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
     pending = [
         r for r in rows
         if r["media_url"] and r["media_width"] is None
-        and (r["content"] or "").startswith(("<image", "<video"))
+        and r["message_type"] in ("image", "video")
     ]
     if not pending:
         return
@@ -1436,7 +1489,7 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
     limiter = asyncio.Semaphore(MEDIA_DIMENSION_CONCURRENCY)
 
     async def measure(row: dict) -> tuple[int, int] | None:
-        fn = image_dimensions if row["content"].startswith("<image") else video_dimensions
+        fn = image_dimensions if row["message_type"] == "image" else video_dimensions
         async with limiter:
             return await asyncio.to_thread(fn, row["media_url"])
 

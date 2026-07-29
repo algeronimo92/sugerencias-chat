@@ -126,7 +126,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
     const result: string[] = []
     for (const message of [...messages].reverse()) {
       if (message.sender !== 'vendedor') continue
-      const parsed = parseContent(message.content)
+      const parsed = parseContent(message)
       if (parsed.kind !== 'text' || !parsed.text.trim() || seen.has(parsed.text.trim())) continue
       seen.add(parsed.text.trim()); result.push(parsed.text.trim())
       if (result.length === SENT_HISTORY_LIMIT) break
@@ -137,7 +137,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
   // Galería disponible para el hilo ya cargado. Conserva el orden real de
   // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
   const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
-    const parsed = parseContent(message.content)
+    const parsed = parseContent(message)
     if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
     const src = resolveMediaUrl(message.media_url)
     if (!src) return []

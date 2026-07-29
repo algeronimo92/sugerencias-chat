@@ -51,6 +51,7 @@ from services.db_service import (
 )
 from services.evolution_service import (
     EvolutionApiError,
+    media_message_fields,
     mediatype_from_content_type,
     send_whatsapp_media,
     send_whatsapp_text,
@@ -1301,6 +1302,7 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
         sent.append(await deps.insert_message(
             chat["chat_id"], MessageSender.SELLER, text,
             wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+            message_type="text",
         ))
     for attachment in attachments:
         try:
@@ -1309,11 +1311,13 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
             raise ValueError(f"No se encontró el adjunto {attachment.filename}")
         mediatype = mediatype_from_content_type(attachment.content_type)
         response = await deps.send_media(chat["chat_id"], encoded, mediatype, filename=attachment.filename)
-        tag = mediatype if mediatype in ("image", "video", "audio") else "other"
-        media_content = f"<{tag}>{attachment.filename if tag == 'other' else ''}</{tag}>"
+        # El adjunto no lleva caption; el tipo y el nombre (solo documentos) van
+        # a message_type/payload, no embebidos en content.
+        message_type, payload = media_message_fields(mediatype, attachment.filename)
         sent.append(await deps.insert_message(
-            chat["chat_id"], MessageSender.SELLER, media_content, media_url=attachment.media_url,
+            chat["chat_id"], MessageSender.SELLER, None, media_url=attachment.media_url,
             wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+            message_type=message_type, payload=payload,
         ))
     await deps.record_template_use(template.id, rule.created_by_user_id)
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})

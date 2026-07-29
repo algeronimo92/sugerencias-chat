@@ -1,3 +1,4 @@
+import type { MessageType } from '../types'
 import { quotePreview } from '../utils/message'
 
 /** Recuadro del mensaje citado, como el que WhatsApp pone arriba de una
@@ -12,14 +13,18 @@ export function QuotedMessage({
   contactName,
   onJump,
   className = '',
+  messageType,
 }: {
   sender: string
   content: string | null
   contactName: string
   onJump?: () => void
   className?: string
+  /** Tipo del citado: deja mostrar "📷 Imagen" aunque su content venga vacío
+   * (los adjuntos ya no llevan el tipo embebido en content). */
+  messageType?: MessageType | null
 }) {
-  const { icon: Icon, label, text } = quotePreview(content)
+  const { icon: Icon, label, text } = quotePreview({ content, message_type: messageType })
   const isMine = sender === 'vendedor'
   const accent = isMine
     ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'

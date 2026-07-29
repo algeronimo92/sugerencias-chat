@@ -44,6 +44,19 @@ def mediatype_from_content_type(content_type: str) -> str:
     return "document"
 
 
+def media_message_fields(mediatype: str, filename: str | None) -> tuple[str, dict | None]:
+    """Deriva (message_type, payload) para un adjunto saliente.
+
+    El mediatype (image/video/audio/document) ya es un message_type válido; solo
+    document necesita conservar el nombre en payload, porque WhatsApp no le da
+    caption y ese nombre es lo único que lo identifica del lado del receptor.
+    Fuente única de este mapeo para los dos caminos de envío (el encolado del
+    outbox y el envío síncrono de las automatizaciones)."""
+    if mediatype == "document" and filename:
+        return "document", {"filename": filename}
+    return mediatype, None
+
+
 async def _config() -> tuple[str, str, str]:
     values = await get_effective_many((
         "evolution_api_url",

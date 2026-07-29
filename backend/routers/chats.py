@@ -514,7 +514,7 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
         raise HTTPException(status_code=503, detail=str(e))
 
     message = (await enqueue_messages(chat_id, [{
-        "content": "<audio></audio>",
+        "content": None,
         "media_url": media_url,
         "payload": {"type": "audio", "media_url": media_url},
         "reply_to": reply_to,
@@ -542,15 +542,12 @@ async def send_media(chat_id: str, body: SendMediaRequest):
     except MediaStorageError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    # El frontend solo reconoce las etiquetas image/video/audio; cualquier
-    # otra cosa (documentos) se muestra como adjunto genérico. Para
-    # documentos se guarda el nombre real adentro del tag —a diferencia de
-    # audio/imagen/video, WhatsApp no tiene "caption" para documentos, así
-    # que ese lugar queda libre para el nombre del archivo.
-    tag = mediatype if mediatype in ("image", "video", "audio") else "other"
-    content = f"<{tag}>{body.filename}</{tag}>" if tag == "other" and body.filename else f"<{tag}></{tag}>"
+    # El tipo y el nombre del archivo los deriva enqueue_messages a partir del
+    # payload de despacho (message_type = mediatype; el filename de un documento
+    # va a la columna payload). El adjunto que se manda desde la app no lleva
+    # caption, así que el content queda vacío.
     message = (await enqueue_messages(chat_id, [{
-        "content": content,
+        "content": None,
         "media_url": media_url,
         "payload": {
             "type": "media",
@@ -639,10 +636,8 @@ async def send_template(
         items.append({"content": text, "payload": {"type": "text", "text": text}})
     for attachment in template["attachments"]:
         mediatype = _mediatype_from_content_type(attachment["content_type"])
-        tag = mediatype if mediatype in ("image", "video", "audio") else "other"
-        content = f"<{tag}>{attachment['filename'] if tag == 'other' else ''}</{tag}>"
         items.append({
-            "content": content,
+            "content": None,
             "media_url": attachment["media_url"],
             "payload": {
                 "type": "media",
@@ -661,9 +656,10 @@ async def send_template(
 async def send_location(chat_id: str, body: SendLocationRequest):
     await _require_existing_lead(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
-    content = f"<location>{body.latitude},{body.longitude}</location>"
+    # lat/lon van a la columna payload (los deriva enqueue_messages del payload
+    # de despacho); el content queda vacío.
     message = (await enqueue_messages(chat_id, [{
-        "content": content,
+        "content": None,
         "payload": {
             "type": "location",
             "latitude": body.latitude,

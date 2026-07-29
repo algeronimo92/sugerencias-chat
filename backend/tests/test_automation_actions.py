@@ -170,9 +170,14 @@ class TestSendTemplate:
             ("51999@s.whatsapp.net", "image", "foto.jpg"),
             ("51999@s.whatsapp.net", "document", "guia.pdf"),
         ]
-        # El documento guarda el nombre real dentro del tag; la imagen no.
-        assert recorder.messages[1]["content"] == "<image></image>"
-        assert recorder.messages[2]["content"] == "<other>guia.pdf</other>"
+        # El tipo va en message_type y el nombre del documento en payload;
+        # el content queda limpio (los adjuntos no llevan caption).
+        assert recorder.messages[1]["content"] is None
+        assert recorder.messages[1]["message_type"] == "image"
+        assert recorder.messages[1]["payload"] is None
+        assert recorder.messages[2]["content"] is None
+        assert recorder.messages[2]["message_type"] == "document"
+        assert recorder.messages[2]["payload"] == {"filename": "guia.pdf"}
 
     async def test_attachment_only_template_needs_no_text(self, deps, whatsapp):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}

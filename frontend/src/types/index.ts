@@ -116,6 +116,9 @@ export interface Chat {
   fecha_ultimo_toque: string | null
   last_message: string | null
   last_message_sender: string | null
+  /** Tipo del último mensaje: deja mostrar "📷 Imagen" en el preview de la
+   * lista aunque `last_message` venga vacío (adjuntos sin caption). */
+  last_message_type?: MessageType | null
   timestamp: string | null
   last_customer_message_at: string | null
   unread_count: number
@@ -153,6 +156,36 @@ export interface LeadUpdateInput {
 
 export type MessageStatus = 'PENDING' | 'FAILED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null
 
+/** Taxonomía de tipos de mensaje, en concordancia con el backend
+ * (models/schemas.py:MessageType) y con las estructuras de WhatsApp/Evolution
+ * documentadas en docs/evolution-api-2.3-mensajes/. */
+export type MessageType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'ptv'
+  | 'audio'
+  | 'document'
+  | 'location'
+  | 'sticker'
+  | 'contact'
+  | 'poll'
+  | 'reaction'
+  | 'interactive'
+  | 'template'
+  | 'unsupported'
+
+/** Enriquecimiento generado con IA para un adjunto: descripción de imagen/video,
+ * transcripción de audio, OCR de documento. Se muestra bajo demanda, no dentro
+ * de la burbuja. */
+export interface MessageAnalysis {
+  summary: string
+  kind?: 'descripcion' | 'transcripcion' | 'ocr'
+  model?: string
+  generated_at?: string
+  version?: number
+}
+
 export interface Message {
   id: number
   sender: string
@@ -161,6 +194,13 @@ export interface Message {
   media_url: string | null
   wa_message_id: string | null
   status: MessageStatus
+  /** Tipo del mensaje. null solo en filas legadas sin backfillear: en ese caso
+   * el frontend cae al parseo de pseudo-tags de `content`. */
+  message_type?: MessageType | null
+  /** Enriquecimiento IA del adjunto, servido aparte de `content`. */
+  analysis?: MessageAnalysis | null
+  /** Datos estructurados propios del tipo (lat/lon, filename, opciones…). */
+  payload?: Record<string, unknown> | null
   /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
    * antes de que cargue, para que la conversación no se mueva. */
   media_width?: number | null
@@ -170,6 +210,9 @@ export interface Message {
   quoted_message_id?: number | null
   quoted_sender?: string | null
   quoted_content?: string | null
+  /** Tipo del citado: deja mostrar "📷 Imagen" en la cita aunque su content
+   * venga vacío (los adjuntos ya no llevan el tipo embebido en content). */
+  quoted_message_type?: MessageType | null
 }
 
 /** Mensaje leído de WhatsApp que no está registrado en la base: es anterior
@@ -181,7 +224,8 @@ export interface HistoryMessage {
   sender: 'cliente' | 'vendedor'
   content: string | null
   sent_at: string
-  message_type?: string | null
+  message_type?: MessageType | null
+  payload?: Record<string, unknown> | null
 }
 
 export interface HistoryPage {

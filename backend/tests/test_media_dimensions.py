@@ -69,7 +69,7 @@ async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
     session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
     rows = [{
         "id": 22267,
-        "content": "<image></image>",
+        "message_type": "image",
         "media_url": "https://storage.test/image.jpg",
         "media_width": None,
         "media_height": None,

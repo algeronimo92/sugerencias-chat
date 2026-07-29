@@ -196,6 +196,7 @@ async def _dispatch(scheduled_id: int) -> None:
                 content=scheduled.text,
                 sent_at=now,
                 status="PENDING",
+                message_type="text",
             )
             session.add(message)
             await session.flush()

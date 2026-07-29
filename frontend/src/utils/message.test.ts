@@ -7,18 +7,63 @@ describe('parseContent', () => {
     expect(parseContent('hola')).toMatchObject({ kind: 'text', text: 'hola', icon: null })
   })
 
-  it('reconoce los sobres de multimedia que escribe el backend', () => {
+  it('clasifica por message_type cuando el backend lo manda', () => {
+    expect(parseContent({ content: 'foto.jpg', message_type: 'image' }).kind).toBe('image')
+    expect(parseContent({ content: null, message_type: 'audio' }).kind).toBe('audio')
+    expect(parseContent({ content: null, message_type: 'document', payload: { filename: 'x.pdf' } }))
+      .toMatchObject({ kind: 'document', label: 'Documento' })
+    expect(parseContent({ content: null, message_type: 'sticker' }).kind).toBe('sticker')
+    expect(parseContent({ content: 'pregunta', message_type: 'poll' })).toMatchObject({ kind: 'poll', text: 'pregunta' })
+  })
+
+  it('separa el análisis IA del caption y no lo mezcla en el texto', () => {
+    const parsed = parseContent({
+      content: 'Mirá esta promo',
+      message_type: 'image',
+      analysis: { summary: 'La imagen muestra un anuncio de HIFU.' },
+    })
+    expect(parsed.text).toBe('Mirá esta promo')
+    expect(parsed.analysis).toBe('La imagen muestra un anuncio de HIFU.')
+  })
+
+  it('un tipo desconocido cae en "unsupported" en vez de perderse', () => {
+    expect(parseContent({ content: null, message_type: 'jibberish' as never }))
+      .toMatchObject({ kind: 'unsupported', label: 'No soportado' })
+  })
+
+  it('respaldo legado: reconoce los pseudo-tags que escribía n8n', () => {
     expect(parseContent('<image></image>').kind).toBe('image')
     expect(parseContent('<audio></audio>').kind).toBe('audio')
     expect(parseContent('<video></video>').kind).toBe('video')
+    expect(parseContent('<other>archivo.pdf</other>')).toMatchObject({ kind: 'document', text: 'archivo.pdf' })
     expect(parseContent('<location>-12.04,-77.04</location>')).toMatchObject({
       kind: 'location',
       text: '-12.04,-77.04',
     })
   })
 
-  it('clasifica una etiqueta desconocida como adjunto en vez de perderla', () => {
-    expect(parseContent('<sticker></sticker>')).toMatchObject({ kind: 'other', label: 'Adjunto' })
+  it('respaldo legado: extrae el bloque Analisis embebido en el content viejo', () => {
+    const parsed = parseContent('<image>caption real\n\nAnalisis: descripción de la IA</image>')
+    expect(parsed.text).toBe('caption real')
+    expect(parsed.analysis).toBe('descripción de la IA')
+  })
+
+  it('respaldo legado: separa el análisis aunque el adjunto no tenga caption', () => {
+    // El bloque Analisis arranca al principio (imagen sin epígrafe): no debe
+    // quedar como caption.
+    const parsed = parseContent('<image>\n\nAnalisis: comprobante de pago Yape</image>')
+    expect(parsed.text).toBe('')
+    expect(parsed.analysis).toBe('comprobante de pago Yape')
+  })
+
+  it('respaldo legado: el interior de un audio viejo es transcripción, no caption', () => {
+    const parsed = parseContent('<audio>hola qué tal</audio>')
+    expect(parsed.text).toBe('')
+    expect(parsed.analysis).toBe('hola qué tal')
+  })
+
+  it('respaldo legado: una etiqueta desconocida cae en "unsupported"', () => {
+    expect(parseContent('<sticker></sticker>')).toMatchObject({ kind: 'unsupported', label: 'No soportado' })
   })
 
   it('no confunde una etiqueta a medias con multimedia', () => {

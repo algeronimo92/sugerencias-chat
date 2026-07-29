@@ -122,6 +122,24 @@ class WspMessage(Base):
     # (chat_id, wa_message_id) al servir el historial, apoyándose en el índice
     # único de wa_message_id declarado más abajo.
     quoted_wa_message_id: Mapped[str | None] = mapped_column(Text)
+    # Discriminador de tipo (taxonomía completa de WhatsApp/Evolution). Reemplaza
+    # a los pseudo-tags que antes vivían embebidos en `content`. El CHECK de la
+    # base lo restringe a MESSAGE_TYPES; el frontend elige ícono/render por acá.
+    # NULL sólo en filas legadas todavía sin backfillear.
+    message_type: Mapped[str | None] = mapped_column(Text)
+    # Enriquecimiento generado con IA para adjuntos (descripción de imagen/video,
+    # transcripción de audio, OCR de documento). Estructura:
+    # {summary, kind: "descripcion"|"transcripcion", model, generated_at, version}.
+    # Va aparte de `content` para no mostrárselo al vendedor dentro de la burbuja
+    # y poder regenerarlo sin pisar el caption. NULL si no hay análisis.
+    # none_as_null: sin él, un None de Python se guarda como el literal JSON
+    # `null` (no SQL NULL), y las consultas `IS NULL`/`->>'summary'` fallan.
+    analysis: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    # Datos estructurados propios de cada tipo que antes se metían a la fuerza en
+    # `content` o se perdían: lat/lon de ubicación, filename de documento,
+    # opciones de encuesta, contactos, config de listas/botones, etc. NULL si el
+    # tipo no lo necesita (texto, sticker).
+    payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
 
     __table_args__ = (
         Index(

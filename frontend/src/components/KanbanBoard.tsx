@@ -36,7 +36,7 @@ interface KanbanCardProps {
 }
 
 function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDragStart, onDragEnd, onMove }: KanbanCardProps) {
-  const preview = parseContent(chat.last_message)
+  const preview = parseContent({ content: chat.last_message, message_type: chat.last_message_type })
   const PreviewIcon = preview.icon
   const previewText = preview.kind === 'location' ? preview.label : preview.text || preview.label || 'Sin mensajes'
 

@@ -1,15 +1,28 @@
-import { CornerUpLeft, Mic, Image, Video, MapPin, MousePointerClick, Paperclip, Megaphone, type LucideIcon } from 'lucide-react'
+import {
+  BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
+  Paperclip, SmilePlus, Sticker, User, Video, FileText, type LucideIcon,
+} from 'lucide-react'
+import type { MessageType, MessageAnalysis } from '../types'
 
-export type MessageKind = 'text' | 'audio' | 'image' | 'video' | 'location' | 'template' | 'other'
+/** Clase de render de un mensaje: coincide con la taxonomía del backend
+ * (MessageType). El frontend elige ícono/burbuja por acá. */
+export type MessageKind = MessageType
 
 const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }> = {
   text: { icon: null, label: '' },
-  audio: { icon: Mic, label: 'Audio' },
   image: { icon: Image, label: 'Imagen' },
   video: { icon: Video, label: 'Video' },
+  ptv: { icon: Video, label: 'Video' },
+  audio: { icon: Mic, label: 'Audio' },
+  document: { icon: FileText, label: 'Documento' },
   location: { icon: MapPin, label: 'Ubicación' },
+  sticker: { icon: Sticker, label: 'Sticker' },
+  contact: { icon: User, label: 'Contacto' },
+  poll: { icon: BarChart3, label: 'Encuesta' },
+  reaction: { icon: SmilePlus, label: 'Reacción' },
+  interactive: { icon: List, label: 'Interactivo' },
   template: { icon: Megaphone, label: 'Plantilla' },
-  other: { icon: Paperclip, label: 'Adjunto' },
+  unsupported: { icon: Paperclip, label: 'No soportado' },
 }
 
 export interface TemplateButton {
@@ -18,9 +31,9 @@ export interface TemplateButton {
   url: string | null
 }
 
-/** Etiquetas que n8n usa para los mensajes con botones. Comparten el kind
- * 'template' porque se pintan igual, pero cada una tiene su forma de JSON y su
- * propio ícono en los previews. */
+/** Etiquetas legadas que n8n usaba para los mensajes con botones. Comparten el
+ * kind 'template' porque se pintan igual, pero cada una tiene su forma de JSON
+ * y su propio ícono en los previews. */
 const TEMPLATE_TAGS: Record<string, { icon: LucideIcon; label: string }> = {
   // Anuncios y plantillas de empresa (TikTok, Meta): traen preview de enlace.
   templateMessage: { icon: Megaphone, label: 'Plantilla' },
@@ -46,12 +59,41 @@ export interface TemplateMessage {
   answeredQuestion: string
 }
 
+/** Pseudo-tags simples que escribía n8n en `content` antes de la normalización.
+ * Solo respaldo para filas legadas sin backfillear; los tags de plantilla van
+ * aparte (TEMPLATE_TAGS) porque llevan JSON adentro. */
+const LEGACY_TAG_KIND: Record<string, MessageKind> = {
+  text: 'text',
+  image: 'image',
+  video: 'video',
+  audio: 'audio',
+  location: 'location',
+  other: 'document',
+}
+
+/** Entrada de `parseContent`: el objeto mensaje (camino nuevo, por
+ * `message_type`) o solo su `content` string (previews que aún no llevan el
+ * tipo, y respaldo legado). */
+export interface ParsableMessage {
+  content: string | null
+  message_type?: MessageType | null
+  analysis?: MessageAnalysis | null
+  payload?: Record<string, unknown> | null
+}
+type ParseInput = string | null | ParsableMessage
+
 export interface ParsedContent {
   kind: MessageKind
   icon: LucideIcon | null
   label: string
+  /** Texto humano del mensaje (caption/cuerpo), sin el análisis IA ni JSON. */
   text: string
-  /** Solo en kind === 'template'; null si el JSON vino roto. */
+  /** Resumen del análisis generado con IA, para mostrar bajo demanda. null si
+   * el mensaje no tiene análisis. */
+  analysis: string | null
+  /** Datos estructurados del tipo (lat/lon, filename, opciones…). */
+  payload: Record<string, unknown> | null
+  /** Solo en template/interactive; null si el JSON vino roto o no aplica. */
   template: TemplateMessage | null
 }
 
@@ -84,17 +126,19 @@ function parseJson(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Lee el JSON crudo que n8n guarda dentro de `<templateMessage>` o
- * `<buttonsMessage>`. Son dos formas distintas del mismo mensaje con botones:
+ * Desarma el objeto de un mensaje con botones. Son formas distintas del mismo
+ * mensaje:
  *
  * - plantilla: `interactiveMessageTemplate`, con el preview del enlace y los
  *   botones en JSON serializado adentro de otro JSON;
  * - botones: `contentText` suelto y los botones con su `displayText`;
  * - respuesta: `selectedDisplayText`, con el mensaje original adentro del
  *   `contextInfo`.
+ *
+ * Recibe el objeto ya parseado: sirve tanto para el JSON crudo embebido en los
+ * tags legados como para la columna `payload` del modelo normalizado.
  */
-export function parseTemplateMessage(raw: string): TemplateMessage | null {
-  const root = parseJson(raw)
+export function parseTemplateData(root: Record<string, unknown> | null): TemplateMessage | null {
   if (!root) return null
   // Según de dónde salga el payload el contenido viene en la raíz o anidado.
   const data = root.interactiveMessageTemplate
@@ -148,11 +192,55 @@ export function parseTemplateMessage(raw: string): TemplateMessage | null {
   return parsed
 }
 
-export function parseContent(content: string | null): ParsedContent {
-  if (!content) return { kind: 'text', ...KIND_META.text, text: '', template: null }
+/** Variante para el JSON crudo que n8n guardaba dentro de los tags legados. */
+export function parseTemplateMessage(raw: string): TemplateMessage | null {
+  return parseTemplateData(parseJson(raw))
+}
+
+export function parseContent(input: ParseInput): ParsedContent {
+  const obj: ParsableMessage | null =
+    typeof input === 'string' || input == null ? null : input
+  // Cuando `obj` es null el input ya es string | null (por la condición de
+  // arriba); el cast solo se lo confirma a TypeScript.
+  const content: string | null = obj ? obj.content : (input as string | null)
+
+  // Camino nuevo: el backend ya clasificó el mensaje y separó el análisis.
+  if (obj && obj.message_type) {
+    const kind: MessageKind = obj.message_type in KIND_META ? obj.message_type : 'unsupported'
+    const payload = obj.payload ?? null
+    const template =
+      kind === 'template' || kind === 'interactive' ? parseTemplateData(payload) : null
+    const text =
+      (content ?? '').trim() ||
+      (template ? template.body || template.title : '') ||
+      (kind === 'template' ? TEMPLATE_FALLBACK_TEXT : '')
+    return {
+      kind,
+      ...KIND_META[kind],
+      text,
+      analysis: obj.analysis?.summary?.trim() || null,
+      payload,
+      template,
+    }
+  }
+
+  // Camino legado: clasificar por los pseudo-tags embebidos en `content`.
+  return parseLegacyContent(content, obj?.analysis?.summary ?? null, obj?.payload ?? null)
+}
+
+function parseLegacyContent(
+  content: string | null,
+  analysisFromColumn: string | null,
+  payload: Record<string, unknown> | null,
+): ParsedContent {
+  if (!content) {
+    return { kind: 'text', ...KIND_META.text, text: '', analysis: analysisFromColumn, payload, template: null }
+  }
 
   const match = content.match(/^<(\w+)>([\s\S]*)<\/\1>$/)
-  if (!match) return { kind: 'text', ...KIND_META.text, text: content.trim(), template: null }
+  if (!match) {
+    return { kind: 'text', ...KIND_META.text, text: content.trim(), analysis: analysisFromColumn, payload, template: null }
+  }
 
   const [, tag, inner] = match
   const templateMeta = TEMPLATE_TAGS[tag]
@@ -164,12 +252,33 @@ export function parseContent(content: string | null): ParsedContent {
       // Nunca el JSON crudo: este texto es el que sale en la lista de chats,
       // en las citas y en el Kanban.
       text: template?.body || template?.title || TEMPLATE_FALLBACK_TEXT,
+      analysis: analysisFromColumn,
+      payload,
       template,
     }
   }
 
-  const kind: MessageKind = tag in KIND_META ? (tag as MessageKind) : 'other'
-  return { kind, ...KIND_META[kind], text: inner.trim(), template: null }
+  const kind: MessageKind = LEGACY_TAG_KIND[tag] ?? 'unsupported'
+  const { text, analysis } = splitLegacyInner(kind, inner)
+  return { kind, ...KIND_META[kind], text, analysis: analysisFromColumn ?? analysis, payload, template: null }
+}
+
+/** Separa el caption del bloque `Analisis:` que n8n embebía dentro de los tags
+ * de imagen/video, y trata el interior de `<audio>` como transcripción. Así el
+ * análisis no se muestra dentro de la burbuja ni siquiera en filas legadas. */
+function splitLegacyInner(kind: MessageKind, inner: string): { text: string; analysis: string | null } {
+  const trimmed = inner.trim()
+  if (kind === 'audio') return { text: '', analysis: trimmed || null }
+  if (kind === 'image' || kind === 'video') {
+    // El bloque va tras el caption o directamente al principio si no hay caption.
+    const match = trimmed.match(/(^|\n)\s*Analisis:\s*/i)
+    if (match) {
+      const marker = match.index ?? 0
+      const rest = trimmed.slice(marker + match[0].length)
+      return { text: trimmed.slice(0, marker).trim(), analysis: rest.trim() || null }
+    }
+  }
+  return { text: trimmed, analysis: null }
 }
 
 export interface QuotePreview {
@@ -182,8 +291,8 @@ export interface QuotePreview {
 
 /** Resumen de una línea de un mensaje citado, como el recuadro de respuesta
  * de WhatsApp: el texto tal cual cuando lo hay, y si no el tipo de adjunto. */
-export function quotePreview(content: string | null): QuotePreview {
-  const { kind, icon, label, text } = parseContent(content)
+export function quotePreview(input: ParseInput): QuotePreview {
+  const { kind, icon, label, text } = parseContent(input)
   return { icon, label: kind === 'text' ? '' : label, text }
 }
 
@@ -268,6 +377,20 @@ export function groupByDay<T extends { key: string; sentAt: string | null }>(
     }
   })
   return sections
+}
+
+/** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
+ * "lat,lon" que vivía en content (respaldo legado). null si no hay. */
+export function messageCoords(
+  payload: Record<string, unknown> | null,
+  legacyText: string,
+): [number, number] | null {
+  const lat = Number(payload?.latitude)
+  const lon = Number(payload?.longitude)
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon]
+  const [legacyLat, legacyLon] = legacyText.split(',').map(Number)
+  if (Number.isFinite(legacyLat) && Number.isFinite(legacyLon)) return [legacyLat, legacyLon]
+  return null
 }
 
 export function resolveMediaUrl(mediaUrl: string | null): string | null {

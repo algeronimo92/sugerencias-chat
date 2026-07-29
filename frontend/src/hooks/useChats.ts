@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import type { Chat, ChatFilters, LeadInput, LeadUpdateInput, Message, MessageStatus } from '../types'
+import type { Chat, ChatFilters, LeadInput, LeadUpdateInput, Message, MessageStatus, MessageType } from '../types'
 import type { NotificationOptions } from './useNotifications'
 import { parseContent } from '../utils/message'
 import { NotificationType } from '../domain/automationCatalog'
@@ -103,6 +103,7 @@ interface LatestMessage {
   chat_id: string
   sender: string
   content: string | null
+  message_type?: MessageType | null
   name: string | null
 }
 
@@ -302,7 +303,7 @@ export function useChatUpdates(
               // El webhook de n8n y el watcher de respaldo pueden anunciar el
               // mismo insert. Se deduplica para no incrementar dos veces el badge.
               lastNotifiedMessageIdRef.current = latest.message_id
-              const preview = parseContent(latest.content)
+              const preview = parseContent({ content: latest.content, message_type: latest.message_type })
               notifyRef.current(latest.name || 'Nuevo mensaje', preview.text || preview.label || 'Mensaje nuevo', () => {
                 navigate(`/chat/${latest.chat_id}`)
               })

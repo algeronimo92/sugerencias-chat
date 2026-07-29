@@ -53,6 +53,7 @@ class Chat(BaseModel):
     fecha_ultimo_toque: str | None = None
     last_message: str | None = None
     last_message_sender: str | None = None
+    last_message_type: str | None = None
     timestamp: str | None = None
     last_customer_message_at: str | None = None
     unread_count: int = 0
@@ -159,6 +160,24 @@ class LeadStageUpdate(BaseModel):
     razon_perdido: str | None = Field(default=None, max_length=500)
 
 
+MessageType = Literal[
+    "text",
+    "image",
+    "video",
+    "ptv",
+    "audio",
+    "document",
+    "location",
+    "sticker",
+    "contact",
+    "poll",
+    "reaction",
+    "interactive",
+    "template",
+    "unsupported",
+]
+
+
 class Message(BaseModel):
     id: int
     sender: str
@@ -167,6 +186,14 @@ class Message(BaseModel):
     media_url: str | None = None
     wa_message_id: str | None = None
     status: str | None = None
+    # Tipo del mensaje. NULL sólo en filas legadas sin backfillear: el frontend
+    # cae entonces al parseo de pseudo-tags de `content`.
+    message_type: MessageType | None = None
+    # Enriquecimiento IA del adjunto (descripción/transcripción/OCR). Se sirve
+    # aparte para mostrarlo bajo demanda, no dentro de la burbuja.
+    analysis: dict | None = None
+    # Datos estructurados propios del tipo (lat/lon, filename, opciones…).
+    payload: dict | None = None
     # Dimensiones de la imagen adjunta: el frontend reserva el espacio exacto
     # antes de que cargue, para que la conversación no se mueva.
     media_width: int | None = None
@@ -194,7 +221,8 @@ class HistoryMessage(BaseModel):
     sender: Literal["cliente", "vendedor"]
     content: str | None = None
     sent_at: str
-    message_type: str | None = None
+    message_type: MessageType | None = None
+    payload: dict | None = None
 
 
 class HistoryPage(BaseModel):

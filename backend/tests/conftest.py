@@ -115,11 +115,15 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
     """Deps con la ventana de WhatsApp abierta por defecto; cada test la cierra
     o cambia lo que necesite con dataclasses.replace."""
 
-    async def insert_message(chat_id, sender, content, media_url=None, wa_message_id=None, status=None):
+    async def insert_message(
+        chat_id, sender, content, media_url=None, wa_message_id=None, status=None,
+        message_type=None, analysis=None, payload=None,
+    ):
         message = {
             "id": len(recorder.messages) + 1, "chat_id": chat_id, "sender": sender,
             "content": content, "media_url": media_url,
             "wa_message_id": wa_message_id, "status": status,
+            "message_type": message_type, "analysis": analysis, "payload": payload,
         }
         recorder.messages.append(message)
         return message

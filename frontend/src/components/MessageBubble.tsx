@@ -1,13 +1,10 @@
-import { BookmarkPlus, Check, CheckCheck, CornerUpLeft, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { BookmarkPlus, Check, CheckCheck, CornerUpLeft, Loader2, RefreshCw } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
-import { MapPreview } from './MapPreview'
-import { AudioPlayer } from './MediaPlayer'
-import { ChatVideoMessage } from './ChatVideoMessage'
+import { MessageAnalysis, MessageBody } from './messageBody'
 import { QuotedMessage } from './QuotedMessage'
-import { RichText } from './RichText'
-import { TemplateMessageButtons, TemplateMessagePreview } from './TemplateMessageCard'
+import { TemplateMessageButtons } from './TemplateMessageCard'
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320
@@ -15,37 +12,6 @@ const IMAGE_MAX_HEIGHT_PX = 320
 // lo que se descuenta del ancho máximo de la burbuja (75% del hilo) para el
 // contenido.
 const BUBBLE_CHROME_PX = 28
-
-const DOCUMENT_COLORS: Record<string, string> = {
-  pdf: 'bg-red-500',
-  doc: 'bg-blue-500',
-  docx: 'bg-blue-500',
-  xls: 'bg-wa-primary',
-  xlsx: 'bg-wa-primary',
-  ppt: 'bg-orange-500',
-  pptx: 'bg-orange-500',
-  txt: 'bg-gray-500',
-  zip: 'bg-yellow-600',
-}
-
-function documentExtension(filename: string): string {
-  const ext = filename.includes('.') ? filename.split('.').pop() : undefined
-  return ext ? ext.toUpperCase() : 'ARCHIVO'
-}
-
-function documentColor(filename: string): string {
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
-  return (ext && DOCUMENT_COLORS[ext]) || 'bg-gray-500'
-}
-
-// Los navegadores solo saben previsualizar PDF de forma nativa; Word/Excel/etc.
-// no tienen visor propio y si se abren con target="_blank" el navegador no
-// sabe qué hacer con el archivo (peor, .docx/.xlsx son un ZIP por dentro, así
-// que a veces terminan "abriéndose" como zip). Para esos, forzar la descarga
-// directa es lo correcto.
-function isPdfFilename(filename: string): boolean {
-  return filename.toLowerCase().endsWith('.pdf')
-}
 
 export interface OpenMedia {
   src: string
@@ -100,7 +66,8 @@ interface Props {
 }
 
 /** Una burbuja del hilo: texto, media, ubicación, documento o plantilla, con
- *  su cita, su hora y sus tiques de entrega. */
+ *  su cita, su hora y sus tiques de entrega. El cuerpo lo elige el registro
+ *  de renderers por tipo (messageBody). */
 export function MessageBubble({
   chat,
   message: m,
@@ -116,13 +83,14 @@ export function MessageBubble({
   onSaveTemplate,
 }: Props) {
   const isVendedor = m.sender === 'vendedor'
-  const { kind, icon: Icon, label, text, template } = parseContent(m.content)
+  const parsed = parseContent(m)
+  const { kind, text, analysis, template } = parsed
   // Si el archivo falló al cargar (ej. no existe en este entorno),
   // lo tratamos como si no hubiera media: el navegador muestra su
   // propio ícono roto + el alt completo pegado, duplicando el texto
   // con nuestro caption de abajo.
   const mediaSrc = hasFailedMedia ? null : resolveMediaUrl(m.media_url)
-  const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video')
+  const isVisualMedia = mediaSrc != null && (kind === 'image' || kind === 'video' || kind === 'sticker')
 
   /** Caja exacta de render de una imagen/video: proporción original escalada
    * al tope de alto (320px) y al ancho útil de la burbuja (75% del hilo menos
@@ -188,100 +156,24 @@ export function MessageBubble({
             <QuotedMessage
               sender={m.quoted_sender ?? 'cliente'}
               content={m.quoted_content ?? null}
+              messageType={m.quoted_message_type}
               contactName={displayName(chat)}
               onJump={() => onQuotedJump(m.quoted_message_id as number)}
               className="mb-1"
             />
           )}
-          {kind === 'template' && template && (
-            <TemplateMessagePreview template={template} hasQuote={m.quoted_message_id != null} />
-          )}
-          {/* En el hilo la plantilla se pinta entera (preview + botones),
-              así que el chip de tipo solo estorba; en la lista de chats
-              y en las citas sí se usa para resumirla. */}
-          {!mediaSrc && kind !== 'text' && kind !== 'location' && kind !== 'template' && Icon && (
-            <div className="inline-flex items-center gap-1 bg-black/5 dark:bg-white/10 rounded px-1.5 py-0.5 mb-1 text-[11px] font-medium text-wa-muted dark:text-wa-text-dark/70 uppercase tracking-wide">
-              <Icon className="w-3 h-3" />
-              <span>{label}</span>
-            </div>
-          )}
-          {mediaSrc && kind === 'image' && (
-            <img
-              src={mediaSrc}
-              alt={text || 'Imagen'}
-              {...mediaBoxDimensions()}
-              onClick={() => onOpenMedia({ src: mediaSrc, kind: 'image', alt: text || 'Imagen' })}
-              onError={onMediaFailed}
-              className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
-            />
-          )}
-          {mediaSrc && kind === 'video' && (
-            (() => {
-              const { style } = mediaBoxDimensions()
-              return (
-                <ChatVideoMessage
-                  src={mediaSrc}
-                  alt={text || 'Video'}
-                  onError={onMediaFailed}
-                  style={style}
-                  className={`max-w-full ${style ? '' : 'h-56 w-[min(100%,360px)]'}`}
-                  onOpenGallery={() => onOpenMedia({ src: mediaSrc, kind: 'video', alt: text || 'Video' })}
-                  footer={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
-                />
-              )
-            })()
-          )}
-          {mediaSrc && kind === 'audio' && (
-            <AudioPlayer src={mediaSrc} onError={onMediaFailed} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
-          )}
-          {mediaSrc && kind === 'other' && (
-            <a
-              href={mediaSrc}
-              {...(isPdfFilename(text || '')
-                ? { target: '_blank', rel: 'noopener noreferrer' }
-                : { download: text || true })}
-              className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-            >
-              <span
-                className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(text || '')}`}
-              >
-                <FileText className="w-4 h-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">
-                  {text || 'Documento'}
-                </p>
-                <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
-                  {documentExtension(text || '')}
-                </p>
-              </div>
-            </a>
-          )}
-          {kind === 'location' && (() => {
-            const [lat, lon] = text.split(',').map(Number)
-            const hasCoords = Number.isFinite(lat) && Number.isFinite(lon)
-            if (!hasCoords) return null
-            return (
-              <a
-                href={`https://www.google.com/maps?q=${lat},${lon}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
-              >
-                <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
-              </a>
-            )
-          })()}
-          {kind !== 'other' && kind !== 'location' && (
-            // El cuerpo de una plantilla es texto real del anuncio, no
-            // un marcador de adjunto: se pinta como un mensaje normal.
-            <p className={`whitespace-pre-wrap ${kind === 'text' || template ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
-              {text ? <RichText text={text} /> : ""}
-            </p>
-          )}
-          {kind === 'template' && template?.footer && (
-            <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
-          )}
+          <MessageBody
+            message={m}
+            parsed={parsed}
+            mediaSrc={mediaSrc}
+            isVendedor={isVendedor}
+            mediaBox={mediaBoxDimensions()}
+            onMediaError={onMediaFailed}
+            onOpenMedia={onOpenMedia}
+            videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
+            hasQuote={m.quoted_message_id != null}
+          />
+          {analysis && <MessageAnalysis summary={analysis} />}
           {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
             {isVendedor && kind === 'text' && text.trim() && (
               <button
@@ -315,7 +207,7 @@ export function MessageBubble({
             {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} />}
           </div>}
         </div>
-        {kind === 'template' && template && (
+        {(kind === 'template' || kind === 'interactive') && template && (
           <TemplateMessageButtons template={template} isVendedor={isVendedor} />
         )}
       </div>

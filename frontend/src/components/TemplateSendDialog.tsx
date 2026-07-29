@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, BadgeCheck, CheckCircle2, FileAudio, FileText, Image, Loader2, Maximize2, MessageSquareText, Send, Video, X } from 'lucide-react'
-import type { Chat, MessageTemplate, TemplateAttachment } from '../types'
-import { useSendTemplate } from '../hooks/useMessages'
+import type { Chat, MessageTemplate, MessageType, TemplateAttachment } from '../types'
+import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { parseRichText, resolveMediaUrl } from '../utils/message'
@@ -35,11 +35,11 @@ function attachmentIcon(attachment: TemplateAttachment) {
   return FileText
 }
 
-function attachmentMessageContent(attachment: TemplateAttachment) {
-  if (attachment.content_type.startsWith('image/')) return '<image></image>'
-  if (attachment.content_type.startsWith('video/')) return '<video></video>'
-  if (attachment.content_type.startsWith('audio/')) return '<audio></audio>'
-  return `<other>${attachment.filename}</other>`
+function attachmentMessageType(attachment: TemplateAttachment): MessageType {
+  if (attachment.content_type.startsWith('image/')) return 'image'
+  if (attachment.content_type.startsWith('video/')) return 'video'
+  if (attachment.content_type.startsWith('audio/')) return 'audio'
+  return 'document'
 }
 
 function RichMessage({ text }: { text: string }) {
@@ -170,14 +170,19 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     const interactiveContent = usesSafeInteractiveFallback
       ? safeInteractivePreview
       : `${interactiveConfig.title ?? ''}\n${text}`.trim()
-    const optimisticMessages = isOfficial || isInteractive
-      ? [{ content: isInteractive ? interactiveContent : text }]
+    const optimisticMessages: OptimisticMessageDraft[] = isOfficial || isInteractive
+      ? [{ content: isInteractive ? interactiveContent : text, message_type: isInteractive ? 'interactive' : 'template' }]
       : [
-          ...(text.trim() ? [{ content: text }] : []),
-          ...attachments.map(attachment => ({
-            content: attachmentMessageContent(attachment),
-            media_url: attachment.media_url,
-          })),
+          ...(text.trim() ? [{ content: text, message_type: 'text' as const }] : []),
+          ...attachments.map(attachment => {
+            const messageType = attachmentMessageType(attachment)
+            return {
+              content: null,
+              message_type: messageType,
+              payload: messageType === 'document' ? { filename: attachment.filename } : null,
+              media_url: attachment.media_url,
+            }
+          }),
         ]
     send.mutate({
       templateId: template.id,

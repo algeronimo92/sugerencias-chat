@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
-import type { Message } from '../types'
+import type { Message, MessageType } from '../types'
 
 interface MessagePage {
   items: Message[]
@@ -67,6 +67,8 @@ export interface OptimisticMessageDraft {
   content: string | null
   media_url?: string | null
   reply_to?: ReplyTarget | null
+  message_type?: MessageType | null
+  payload?: Record<string, unknown> | null
 }
 
 interface OptimisticContext {
@@ -98,6 +100,9 @@ function optimisticMessage(draft: OptimisticMessageDraft): Message {
     media_url: draft.media_url ?? null,
     wa_message_id: null,
     status: 'PENDING',
+    message_type: draft.message_type ?? null,
+    analysis: null,
+    payload: draft.payload ?? null,
     quoted_message_id: draft.reply_to?.id ?? null,
     quoted_sender: draft.reply_to?.sender ?? null,
     quoted_content: draft.reply_to?.content ?? null,
@@ -259,7 +264,8 @@ export function useSendAudio(chatId: string) {
     onMutate: async payload => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, [{
-        content: '<audio></audio>',
+        content: null,
+        message_type: 'audio',
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
         reply_to: payload.replyTo,
       }])
@@ -294,12 +300,13 @@ export function useSendMedia(chatId: string) {
     mutationFn: payload => orderedRequest(chatId, () => sendMedia(chatId, payload)),
     onMutate: async payload => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
-      const kind = payload.contentType.startsWith('image/') ? 'image'
+      const messageType: MessageType = payload.contentType.startsWith('image/') ? 'image'
         : payload.contentType.startsWith('video/') ? 'video'
-          : payload.contentType.startsWith('audio/') ? 'audio' : 'other'
-      const content = kind === 'other' ? `<other>${payload.filename ?? 'Archivo'}</other>` : `<${kind}></${kind}>`
+          : payload.contentType.startsWith('audio/') ? 'audio' : 'document'
       return appendOptimisticMessages(queryClient, chatId, [{
-        content,
+        content: null,
+        message_type: messageType,
+        payload: messageType === 'document' ? { filename: payload.filename ?? 'Archivo' } : null,
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
         reply_to: payload.replyTo,
       }])
@@ -359,7 +366,9 @@ export function useSendLocation(chatId: string) {
     onMutate: async payload => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, [{
-        content: `<location>${payload.latitude},${payload.longitude}</location>`,
+        content: null,
+        message_type: 'location',
+        payload: { latitude: payload.latitude, longitude: payload.longitude },
         reply_to: payload.replyTo,
       }])
     },

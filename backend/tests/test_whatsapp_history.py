@@ -65,26 +65,37 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
 
 
 @pytest.mark.parametrize(
-    "message,expected",
+    "message,content,message_type,payload",
     [
-        ({"conversation": "hola"}, "hola"),
-        ({"extendedTextMessage": {"text": "hola citado"}}, "hola citado"),
-        ({"imageMessage": {"caption": "mirá esto"}}, "<image>mirá esto</image>"),
-        ({"imageMessage": {}}, "<image></image>"),
-        ({"videoMessage": {"caption": "v"}}, "<video>v</video>"),
-        ({"audioMessage": {"seconds": 3}}, "<audio></audio>"),
-        ({"documentMessage": {"fileName": "factura.pdf"}}, "<other>factura.pdf</other>"),
+        ({"conversation": "hola"}, "hola", "text", None),
+        ({"extendedTextMessage": {"text": "hola citado"}}, "hola citado", "text", None),
+        ({"imageMessage": {"caption": "mirá esto"}}, "mirá esto", "image", None),
+        ({"imageMessage": {}}, None, "image", None),
+        ({"videoMessage": {"caption": "v"}}, "v", "video", None),
+        ({"audioMessage": {"seconds": 3}}, None, "audio", None),
+        ({"documentMessage": {"fileName": "factura.pdf"}}, None, "document", {"filename": "factura.pdf"}),
         (
             {"locationMessage": {"degreesLatitude": -34.6, "degreesLongitude": -58.4}},
-            "<location>-34.6,-58.4</location>",
+            None,
+            "location",
+            {"latitude": -34.6, "longitude": -58.4},
         ),
-        ({"stickerMessage": {"url": "x"}}, "<other>Sticker</other>"),
-        ({"contactMessage": {"displayName": "Ana"}}, "<other>Contacto: Ana</other>"),
-        ({"algoNuevo": {}}, "<other>Mensaje no soportado</other>"),
+        ({"stickerMessage": {"url": "x"}}, None, "sticker", None),
+        ({"contactMessage": {"displayName": "Ana"}}, None, "contact", {"contacts": [{"fullName": "Ana"}]}),
+        (
+            {"pollCreationMessage": {"name": "¿Horario?", "options": [{"optionName": "AM"}, {"optionName": "PM"}]}},
+            "¿Horario?",
+            "poll",
+            {"values": ["AM", "PM"]},
+        ),
+        ({"algoNuevo": {}}, None, "unsupported", {"original_type": "algoNuevo"}),
     ],
 )
-def test_normalize_uses_the_pseudo_tags_del_frontend(message, expected):
-    assert _normalize_record(_record("A1", 1_700_000_000, message=message))["content"] == expected
+def test_normalize_maps_evolution_types_to_taxonomy(message, content, message_type, payload):
+    row = _normalize_record(_record("A1", 1_700_000_000, message=message))
+    assert row["content"] == content
+    assert row["message_type"] == message_type
+    assert row["payload"] == payload
 
 
 def test_normalize_unwraps_ephemeral_messages():

@@ -1,6 +1,6 @@
 import { History } from 'lucide-react'
 import type { HistoryMessage } from '../types'
-import { formatMessageTime, parseContent } from '../utils/message'
+import { formatMessageTime, messageCoords, parseContent } from '../utils/message'
 import { MapPreview } from './MapPreview'
 import { RichText } from './RichText'
 
@@ -18,12 +18,14 @@ interface Props {
  *
  * De los adjuntos solo llega el tipo y el epígrafe (el archivo no se
  * descarga), así que se muestran con el mismo chip que un mensaje propio cuyo
- * archivo no está disponible. La ubicación es la excepción: las coordenadas
- * viajan en el texto y alcanzan para dibujar el mapa.
+ * archivo no está disponible. La ubicación es la excepción: sus coordenadas
+ * viajan en el payload y alcanzan para dibujar el mapa.
  */
 export function HistoryMessageBubble({ message, isFirstOfGroup }: Props) {
   const isVendedor = message.sender === 'vendedor'
-  const { kind, icon: Icon, label, text } = parseContent(message.content)
+  const { kind, icon: Icon, label, text, payload } = parseContent(message)
+  const coords = kind === 'location' ? messageCoords(payload, text) : null
+  const displayText = text || (kind === 'document' ? String(payload?.filename ?? '') : '')
 
   return (
     <div className={`flex ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}>
@@ -48,29 +50,21 @@ export function HistoryMessageBubble({ message, isFirstOfGroup }: Props) {
           </div>
         )}
 
-        {kind === 'location' && (() => {
-          const [lat, lon] = text.split(',').map(Number)
-          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
-          return (
-            <a
-              href={`https://www.google.com/maps?q=${lat},${lon}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-56 overflow-hidden rounded-lg transition-opacity hover:opacity-90"
-            >
-              <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
-            </a>
-          )
-        })()}
-
-        {kind !== 'other' && kind !== 'location' && (
-          <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-wa-muted dark:text-wa-text-dark/70' : ''}`}>
-            {text ? <RichText text={text} /> : label}
-          </p>
+        {coords && (
+          <a
+            href={`https://www.google.com/maps?q=${coords[0]},${coords[1]}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-56 overflow-hidden rounded-lg transition-opacity hover:opacity-90"
+          >
+            <MapPreview latitude={coords[0]} longitude={coords[1]} className="rounded-lg" />
+          </a>
         )}
 
-        {kind === 'other' && (
-          <p className="whitespace-pre-wrap italic text-wa-muted dark:text-wa-text-dark/70">{text || label}</p>
+        {kind !== 'location' && displayText && (
+          <p className={`whitespace-pre-wrap ${kind !== 'text' ? 'italic text-wa-muted dark:text-wa-text-dark/70' : ''}`}>
+            <RichText text={displayText} />
+          </p>
         )}
 
         <div className="mt-0.5 text-right text-[10px] text-wa-muted dark:text-wa-muted-dark">

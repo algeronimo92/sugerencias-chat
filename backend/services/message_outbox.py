@@ -11,6 +11,7 @@ from db.session import get_sessionmaker
 from services.evolution_service import (
     EvolutionApiError,
     get_template_capabilities,
+    media_message_fields,
     send_whatsapp_audio,
     send_whatsapp_buttons,
     send_whatsapp_list,
@@ -95,6 +96,29 @@ def quoted_context(chat_id: str, target: dict) -> dict:
     }
 
 
+def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
+    """Deriva (message_type, payload de wsp_messages) del payload de despacho.
+
+    El payload de despacho (``MessageOutbox.payload``) es la instrucción de envío
+    a Evolution; la columna ``payload`` de ``wsp_messages`` guarda solo lo que el
+    frontend necesita para renderizar (lat/lon, filename…). Esto reemplaza a los
+    pseudo-tags que antes se armaban en ``content`` en cada call site."""
+    kind = payload.get("type")
+    if kind == "media":
+        return media_message_fields(payload["mediatype"], payload.get("filename"))
+    if kind == "location":
+        return "location", {"latitude": payload["latitude"], "longitude": payload["longitude"]}
+    if kind == "official_template":
+        return "template", {"name": payload.get("name"), "language": payload.get("language")}
+    if kind == "interactive":
+        return "interactive", {"interactive_type": payload.get("interactive_type")}
+    if kind == "audio":
+        return "audio", None
+    if kind == "text":
+        return "text", None
+    return "unsupported", None
+
+
 def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
     return {
         "id": message.id,
@@ -104,6 +128,9 @@ def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
         "media_url": message.media_url,
         "wa_message_id": message.wa_message_id,
         "status": message.status,
+        "message_type": message.message_type,
+        "analysis": message.analysis,
+        "payload": message.payload,
         # La respuesta del POST ya trae la cita resuelta: la burbuja optimista
         # del frontend se reemplaza por esta sin perder el recuadro citado ni
         # esperar al siguiente refetch del historial.
@@ -130,6 +157,7 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
         for position, item in enumerate(items):
             reply_to = item.get("reply_to")
             payload = item["payload"]
+            message_type, db_payload = _outbound_message_fields(payload)
             if reply_to:
                 payload = {**payload, "quoted": quoted_context(chat_id, reply_to)}
             message = WspMessage(
@@ -142,6 +170,8 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
                 media_url=item.get("media_url"),
                 status="PENDING",
                 quoted_wa_message_id=reply_to["wa_message_id"] if reply_to else None,
+                message_type=message_type,
+                payload=db_payload,
             )
             session.add(message)
             await session.flush()
