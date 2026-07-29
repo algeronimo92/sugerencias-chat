@@ -60,6 +60,7 @@ interface Props {
   hasFailedMedia: boolean
   onMediaFailed: () => void
   onOpenMedia: (media: OpenMedia) => void
+  onPreviewSticker: (item: { src: string; mediaUrl: string }) => void
   onQuotedJump: (messageId: number) => void
   onRetry: () => void
   onStartReply: () => void
@@ -79,6 +80,7 @@ export function MessageBubble({
   hasFailedMedia,
   onMediaFailed,
   onOpenMedia,
+  onPreviewSticker,
   onQuotedJump,
   onRetry,
   onStartReply,
@@ -181,6 +183,7 @@ export function MessageBubble({
             mediaBox={mediaBoxDimensions()}
             onMediaError={onMediaFailed}
             onOpenMedia={onOpenMedia}
+            onPreviewSticker={onPreviewSticker}
             videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
             hasQuote={m.quoted_message_id != null}
           />

@@ -8,6 +8,7 @@ import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { formatDayLabel } from '../utils/message'
 import { MediaLightbox } from './MediaLightbox'
+import { StickerPreviewDialog } from './StickerPreviewDialog'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
 import { ChatComposer } from './ChatComposer'
@@ -123,6 +124,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   })
 
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
+  const [previewSticker, setPreviewSticker] = useState<{ src: string; mediaUrl: string } | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
   const [isNoteMode, setIsNoteMode] = useState(false)
@@ -345,6 +347,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     hasFailedMedia={failedMediaIds.has(item.message.id)}
                     onMediaFailed={() => setFailedMediaIds((prev) => new Set(prev).add(item.message.id))}
                     onOpenMedia={setOpenMedia}
+                    onPreviewSticker={setPreviewSticker}
                     onQuotedJump={goToQuotedMessage}
                     onRetry={() => handleRetryMessage(item.message)}
                     onStartReply={() => startReply(item.message)}
@@ -411,6 +414,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           alt={openMedia.alt}
           items={chatMediaItems}
           onClose={() => setOpenMedia(null)}
+        />
+      )}
+
+      {previewSticker && (
+        <StickerPreviewDialog
+          mediaSrc={previewSticker.src}
+          mediaUrl={previewSticker.mediaUrl}
+          onClose={() => setPreviewSticker(null)}
         />
       )}
 

@@ -29,6 +29,17 @@ export function useUploadMediaAsset() {
   })
 }
 
+/** Guarda un sticker que aparece en un chat en la librería (para reenviarlo),
+ * como el "agregar a favoritos" de WhatsApp. */
+export function useSaveStickerToLibrary() {
+  return useMutation({
+    mutationFn: async (mediaUrl: string) => (await client.post<MediaAsset>('/api/media-library/from-sticker', {
+      media_url: mediaUrl,
+    })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+  })
+}
+
 export function useRenameMediaAsset() {
   return useMutation({
     mutationFn: async ({ id, filename }: { id: number; filename: string }) =>

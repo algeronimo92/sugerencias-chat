@@ -1,14 +1,17 @@
 import asyncio
+import base64
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from db.models import User
 from models.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from routers.media import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user, require_admin
 from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets, rename_media_asset
-from services.media_storage import MediaStorageError, delete_media, media_size
+from services.media_storage import MediaNotFoundError, MediaStorageError, delete_media, media_size, read_media_bytes
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/media-library", tags=["media-library"])
@@ -50,6 +53,52 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
         except MediaStorageError:
             pass
         raise HTTPException(503, str(exc))
+    except Exception:
+        try:
+            await asyncio.to_thread(delete_media, media_url)
+        except MediaStorageError:
+            pass
+        raise
+    await manager.broadcast({"type": "media_library_updated"})
+    return item
+
+
+class ImportStickerBody(BaseModel):
+    # media_url de un sticker que aparece en un chat.
+    media_url: str
+
+
+@router.post("/from-sticker", response_model=MediaAssetItem, status_code=201)
+async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(require_admin)):
+    """Guarda en la librería un sticker que apareció en un chat, para poder
+    reenviarlo — el equivalente a 'agregar a favoritos' de WhatsApp. Copia el
+    archivo del sticker a uno nuevo y crea el asset."""
+    try:
+        data = await asyncio.to_thread(read_media_bytes, body.media_url)
+    except MediaNotFoundError:
+        raise HTTPException(404, "El archivo del sticker no está disponible")
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
+
+    content_type = "image/webp"
+    filename = f"sticker-{int(datetime.now(timezone.utc).timestamp())}.webp"
+    data_base64 = base64.b64encode(data).decode("ascii")
+    try:
+        media_url = await asyncio.to_thread(save_media_file, content_type, data_base64, filename)
+    except ValueError as exc:
+        raise HTTPException(413 if "grande" in str(exc) else 400, str(exc))
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
+
+    try:
+        size_bytes = await asyncio.to_thread(media_size, media_url)
+        item = await create_media_asset(
+            media_url=media_url,
+            content_type=content_type,
+            filename=filename,
+            size_bytes=size_bytes,
+            uploaded_by_user_id=admin.id,
+        )
     except Exception:
         try:
             await asyncio.to_thread(delete_media, media_url)

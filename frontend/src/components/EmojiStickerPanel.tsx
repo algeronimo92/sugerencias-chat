@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Search, Smile, Sticker } from 'lucide-react'
+import { Loader2, Plus, Search, Smile, Sticker } from 'lucide-react'
 import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
 import type { MediaAsset } from '../types'
-import { useMediaLibrary } from '../hooks/useMediaLibrary'
+import { useMe } from '../hooks/useAuth'
+import { useMediaLibrary, useUploadMediaAsset } from '../hooks/useMediaLibrary'
 import { resolveMediaUrl } from '../utils/message'
 
 // El picker es pesado: se carga al vuelo recién al abrir el panel.
@@ -130,14 +131,32 @@ export function EmojiStickerPanel({
 }
 
 /** Grilla de stickers desde la librería de medios (imágenes). Al enviarlas el
- * backend las convierte a WEBP 512×512. Se monta solo cuando la pestaña está
- * activa, así la consulta no corre hasta que hace falta. */
+ * backend las convierte a WEBP 512×512. Los admins pueden subir uno nuevo desde
+ * acá (la librería es admin-only). Se monta solo cuando la pestaña está activa,
+ * así la consulta no corre hasta que hace falta. */
 function StickerGrid({ onSelect }: { onSelect: (asset: MediaAsset) => void }) {
   const [search, setSearch] = useState('')
   const { data: assets = [], isLoading } = useMediaLibrary(search, 'image')
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'admin'
+  const upload = useUploadMediaAsset()
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const base64 = (reader.result as string).split(',')[1] ?? ''
+      upload.mutate({ contentType: file.type, dataBase64: base64, filename: file.name })
+    }
+    reader.readAsDataURL(file)
+  }
 
   return (
     <div className="flex flex-col" style={{ width: PANEL_WIDTH, maxWidth: '100%' }}>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
       <div className="p-2">
         <div className="flex items-center gap-2 rounded-lg bg-wa-field px-2 dark:bg-wa-field-dark">
           <Search className="h-4 w-4 shrink-0 text-wa-muted" />
@@ -162,14 +181,42 @@ function StickerGrid({ onSelect }: { onSelect: (asset: MediaAsset) => void }) {
             <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">
               {search ? 'Sin resultados' : 'Todavía no hay stickers'}
             </p>
-            {!search && (
+            {!search && isAdmin && (
+              <>
+                <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
+                  Subí una imagen y quedará lista para mandar como sticker.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={upload.isPending}
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-wa-primary-strong disabled:opacity-60"
+                >
+                  {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Subir sticker
+                </button>
+              </>
+            )}
+            {!search && !isAdmin && (
               <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-                Subí imágenes en la Librería de medios y las mandás como sticker desde acá.
+                Pedile a un administrador que cargue los stickers de la clínica.
               </p>
             )}
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-1">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={upload.isPending}
+                aria-label="Subir sticker"
+                title="Subir sticker"
+                className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-wa-border text-wa-muted transition-colors hover:bg-wa-hover disabled:opacity-60 dark:border-wa-border-dark dark:hover:bg-wa-active-dark"
+              >
+                {upload.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
+              </button>
+            )}
             {assets.map((asset) => (
               <button
                 key={asset.id}

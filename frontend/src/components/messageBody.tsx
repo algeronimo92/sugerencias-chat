@@ -47,6 +47,8 @@ export interface MessageBodyContext {
   mediaBox: { width?: number; height?: number; style?: { width: number; height: number } }
   onMediaError: () => void
   onOpenMedia: (item: { src: string; kind: 'image' | 'video'; alt: string }) => void
+  /** Abre la previsualización del sticker (para verlo grande y agregarlo). */
+  onPreviewSticker: (item: { src: string; mediaUrl: string }) => void
   /** Pie del video (hora + estado), que va embebido dentro del reproductor. */
   videoFooter: ReactNode
   /** El mensaje lleva un recuadro de cita arriba (ajusta el preview de plantilla). */
@@ -135,9 +137,18 @@ function AudioBody(ctx: MessageBodyContext) {
 }
 
 function StickerBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, onMediaError } = ctx
+  const { parsed, mediaSrc, message, onMediaError, onPreviewSticker } = ctx
   if (!mediaSrc) return <AttachmentChip parsed={parsed} />
-  return <img src={mediaSrc} alt="Sticker" onError={onMediaError} className="max-h-32 max-w-[8rem] object-contain" />
+  return (
+    <button
+      type="button"
+      onClick={() => message.media_url && onPreviewSticker({ src: mediaSrc, mediaUrl: message.media_url })}
+      className="block cursor-pointer transition-transform active:scale-95"
+      title="Ver sticker"
+    >
+      <img src={mediaSrc} alt="Sticker" onError={onMediaError} className="max-h-32 max-w-[8rem] object-contain" />
+    </button>
+  )
 }
 
 function DocumentBody(ctx: MessageBodyContext) {
