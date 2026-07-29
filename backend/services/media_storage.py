@@ -273,6 +273,65 @@ def read_media_base64(media_url: str) -> str:
     return base64.b64encode(read_media_bytes(media_url)).decode("ascii")
 
 
+class VideoCompressionError(RuntimeError):
+    pass
+
+
+def compress_video(data: bytes) -> bytes:
+    """Recomprime un video con ffmpeg para que entre en el límite de tamaño,
+    como hace WhatsApp: H.264, lado máximo 1280px, CRF 28, audio AAC 128k y
+    faststart (MP4). Devuelve los bytes del MP4.
+
+    Lanza VideoCompressionError si ffmpeg no está disponible o falla; el llamador
+    decide qué hacer (típicamente, dejar que el archivo original caiga en el
+    límite de tamaño)."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("ffmpeg") is None:
+        raise VideoCompressionError("ffmpeg no está disponible")
+
+    in_path = out_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".src", delete=False) as fin:
+            fin.write(data)
+            in_path = fin.name
+        out_path = in_path + ".mp4"
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", in_path,
+                    # Encaja el video en un cuadro de 1280px conservando la
+                    # proporción (sirve horizontal y vertical) y fuerza dimensiones
+                    # pares (libx264 las exige).
+                    "-vf",
+                    "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,"
+                    "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    out_path,
+                ],
+                capture_output=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            raise VideoCompressionError("ffmpeg tardó demasiado")
+        if result.returncode != 0 or not os.path.exists(out_path):
+            raise VideoCompressionError(result.stderr.decode("utf-8", "replace")[-500:])
+        with open(out_path, "rb") as handle:
+            return handle.read()
+    finally:
+        for path in (in_path, out_path):
+            if path:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
 def image_to_sticker_webp(data: bytes, size: int = 512) -> str:
     """Convierte una imagen a un sticker de WhatsApp: WEBP cuadrado de 512×512
     con fondo transparente, la imagen centrada conservando su proporción.

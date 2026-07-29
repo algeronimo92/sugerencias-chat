@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from services.media_storage import (
     MediaNotFoundError,
     MediaStorageError,
+    VideoCompressionError,
+    compress_video,
     iter_media_stat,
     save_media_bytes,
     stat_media,
@@ -105,6 +107,18 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
 
     if not raw:
         raise ValueError("El archivo está vacío")
+
+    # Video que no entra en el límite: recomprimir con ffmpeg (como WhatsApp).
+    # Queda MP4. Si ffmpeg no está o falla, sigue el archivo original y lo
+    # rechaza el check de tamaño de abajo.
+    if content_type.startswith("video/") and len(raw) > MAX_BYTES:
+        try:
+            raw = compress_video(raw)
+            content_type = "video/mp4"
+            filename = None  # fuerza la extensión .mp4 del resultado
+        except VideoCompressionError:
+            pass
+
     if len(raw) > MAX_BYTES:
         raise ValueError("Archivo demasiado grande")
 
