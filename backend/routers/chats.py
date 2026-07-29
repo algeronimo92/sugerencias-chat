@@ -21,6 +21,7 @@ from models.schemas import (
     MessagePage,
     LeadActivityItem,
     ReactionRequest,
+    StickerRequest,
     SendLocationRequest,
     SendMediaRequest,
     SendMessageRequest,
@@ -28,7 +29,13 @@ from models.schemas import (
     SellerItem,
 )
 from routers.media import save_media_file
-from services.media_storage import MediaStorageError
+from services.media_storage import (
+    MediaNotFoundError,
+    MediaStorageError,
+    image_to_sticker_webp,
+    read_media_bytes,
+)
+from services.media_library_service import get_media_asset
 from services.db_service import (
     CHATS_PAGE_SIZE,
     KANBAN_PAGE_SIZE,
@@ -44,6 +51,7 @@ from services.db_service import (
     fetch_kanban_stage,
     fetch_messages,
     fetch_reply_target,
+    insert_message,
     set_message_reaction,
     list_lead_activity,
     fetch_total_unread_chat_count,
@@ -65,6 +73,7 @@ from services.evolution_service import (
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_reaction,
+    send_whatsapp_sticker,
 )
 from services.whatsapp_history import fetch_whatsapp_history
 from services.phone_utils import (
@@ -561,6 +570,42 @@ async def send_media(chat_id: str, body: SendMediaRequest):
         "reply_to": reply_to,
     }]))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
+@router.post("/{chat_id}/sticker", response_model=Message)
+async def send_sticker(chat_id: str, body: StickerRequest):
+    """Manda una imagen de la librería de medios como sticker: la convierte a
+    WEBP 512×512 y la envía por sendSticker. Envío directo (no outbox): un
+    sticker es liviano y de bajo riesgo."""
+    await _require_existing_lead(chat_id)
+
+    asset = await get_media_asset(body.asset_id)
+    if asset is None:
+        raise HTTPException(404, "El sticker no existe en la librería")
+    try:
+        data = await asyncio.to_thread(read_media_bytes, asset["media_url"])
+        sticker_b64 = await asyncio.to_thread(image_to_sticker_webp, data)
+    except MediaNotFoundError:
+        raise HTTPException(404, "El archivo del sticker ya no está disponible")
+    except (MediaStorageError, OSError, ValueError):
+        raise HTTPException(400, "No se pudo preparar el sticker (¿es una imagen válida?)")
+
+    try:
+        response = await send_whatsapp_sticker(chat_id, sticker_b64)
+    except (EvolutionApiError, httpx.HTTPError) as exc:
+        raise HTTPException(502, f"No se pudo enviar el sticker a WhatsApp: {exc}")
+
+    message = await insert_message(
+        chat_id=chat_id,
+        sender="vendedor",
+        content=None,
+        media_url=asset["media_url"],
+        wa_message_id=(response.get("key") or {}).get("id"),
+        status="SERVER_ACK",
+        message_type="sticker",
+    )
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
     return message
 
 

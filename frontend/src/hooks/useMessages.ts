@@ -386,6 +386,38 @@ export function useReactToMessage(chatId: string) {
   })
 }
 
+interface StickerPayload {
+  assetId: number
+  /** URL del asset, para pintar la burbuja optimista antes de la respuesta. */
+  mediaUrl: string
+}
+
+async function sendSticker(chatId: string, { assetId }: StickerPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/sticker`, {
+    asset_id: assetId,
+  })
+  return data
+}
+
+export function useSendSticker(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, StickerPayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: payload => orderedRequest(chatId, () => sendSticker(chatId, payload)),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content: null,
+        message_type: 'sticker',
+        media_url: payload.mediaUrl,
+      }])
+    },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
+  })
+}
+
 interface LocationPayload {
   latitude: number
   longitude: number

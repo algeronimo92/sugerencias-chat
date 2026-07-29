@@ -273,6 +273,22 @@ def read_media_base64(media_url: str) -> str:
     return base64.b64encode(read_media_bytes(media_url)).decode("ascii")
 
 
+def image_to_sticker_webp(data: bytes, size: int = 512) -> str:
+    """Convierte una imagen a un sticker de WhatsApp: WEBP cuadrado de 512×512
+    con fondo transparente, la imagen centrada conservando su proporción.
+    Devuelve el base64 listo para el endpoint sendSticker de Evolution."""
+    from PIL import Image
+
+    with Image.open(BytesIO(data)) as img:
+        img = img.convert("RGBA")
+        img.thumbnail((size, size))
+        canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        canvas.paste(img, ((size - img.width) // 2, (size - img.height) // 2), img)
+        buffer = BytesIO()
+        canvas.save(buffer, format="WEBP")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def image_dimensions(media_url: str) -> tuple[int, int] | None:
     """Ancho/alto de una imagen almacenada, o None si no se pudo medir.
 

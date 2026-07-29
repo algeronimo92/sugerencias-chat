@@ -311,6 +311,16 @@ async def send_whatsapp_media(
     return await _post(url, api_key, _with_quoted(payload, quoted), timeout=60.0)
 
 
+async def send_whatsapp_sticker(chat_id: str, sticker_base64: str) -> dict:
+    """Manda un sticker. `sticker_base64` debe ser un WEBP (512×512, transparente)
+    — la conversión la hace media_storage.image_to_sticker_webp antes de llamar."""
+    api_url, api_key, instance = await _config()
+
+    url = f"{api_url.rstrip('/')}/message/sendSticker/{instance}"
+    payload = {"number": chat_id, "sticker": sticker_base64}
+    return await _post(url, api_key, payload, timeout=60.0)
+
+
 async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict:
     """Le avisa a WhatsApp que ya se vieron estos mensajes del cliente —
     hace que le aparezcan los tiques azules de "leído" de su lado.

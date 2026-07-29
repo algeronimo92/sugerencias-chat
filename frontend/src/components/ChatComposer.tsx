@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import type { Chat, MessageTemplate } from '../types'
-import { useSendAudio, useSendLocation, useSendMedia, type ReplyTarget } from '../hooks/useMessages'
+import { useSendAudio, useSendLocation, useSendMedia, useSendSticker, type ReplyTarget } from '../hooks/useMessages'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -118,6 +118,7 @@ export function ChatComposer({
   const { mutate: sendAudio } = useSendAudio(chat.chat_id)
   const { mutate: sendMedia } = useSendMedia(chat.chat_id)
   const { mutate: sendLocation } = useSendLocation(chat.chat_id)
+  const { mutate: sendSticker } = useSendSticker(chat.chat_id)
   const { data: templates = [] } = useTemplates()
   const recordTemplateUse = useRecordTemplateUse()
 
@@ -333,7 +334,12 @@ export function ChatComposer({
         <div className="flex items-end gap-2">
           <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
 
-          {!isRecordingAudio && <EmojiStickerPanel onInsertEmoji={insertEmoji} />}
+          {!isRecordingAudio && (
+            <EmojiStickerPanel
+              onInsertEmoji={insertEmoji}
+              onSelectSticker={(asset) => sendSticker({ assetId: asset.id, mediaUrl: asset.media_url })}
+            />
+          )}
 
           {!isRecordingAudio && (
             <AttachMenu

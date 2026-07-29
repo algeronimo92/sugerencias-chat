@@ -290,6 +290,11 @@ class ReactionRequest(BaseModel):
     emoji: str = ""
 
 
+class StickerRequest(BaseModel):
+    # Id del asset de la librería de medios que se manda como sticker.
+    asset_id: int = Field(ge=1)
+
+
 class TtsRequest(BaseModel):
     text: str
 
