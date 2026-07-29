@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import logging
 from time import perf_counter
 from contextlib import asynccontextmanager
@@ -310,7 +311,14 @@ async def chats_websocket(websocket: WebSocket):
     try:
         await websocket.send_json({"type": "notifications_updated"})
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            # Heartbeat del cliente: se responde el ping con un pong para que su
+            # watchdog confirme que la conexión sigue viva aunque no haya novedades.
+            try:
+                if json.loads(raw).get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except (ValueError, AttributeError):
+                pass
     except WebSocketDisconnect:
         pass
     finally:

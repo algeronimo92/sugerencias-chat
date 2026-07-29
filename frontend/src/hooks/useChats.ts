@@ -76,6 +76,12 @@ function chatsSocketUrl(): string {
 }
 
 const RECONNECT_DELAY_MS = 3_000
+// Heartbeat: se manda un ping cada PING_INTERVAL_MS y, si no llega NINGÚN dato
+// (ni el pong del server) en ACTIVITY_TIMEOUT_MS, el watchdog fuerza reconectar.
+// Detecta las conexiones half-open que no disparan onclose.
+const PING_INTERVAL_MS = 25_000
+const WATCHDOG_INTERVAL_MS = 10_000
+const ACTIVITY_TIMEOUT_MS = 40_000
 const socketListeners = new Set<() => void>()
 let socketConnected = false
 
@@ -147,13 +153,47 @@ export function useChatUpdates(
   useEffect(() => {
     let socket: WebSocket | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let pingInterval: ReturnType<typeof setInterval> | null = null
+    let watchdogInterval: ReturnType<typeof setInterval> | null = null
+    let lastActivityAt = Date.now()
     let stopped = false
+
+    function clearHeartbeat() {
+      if (pingInterval) { clearInterval(pingInterval); pingInterval = null }
+      if (watchdogInterval) { clearInterval(watchdogInterval); watchdogInterval = null }
+    }
+
+    // Al (re)conectar se resincroniza todo lo que depende del tiempo real: los
+    // broadcasts ocurridos mientras el socket estuvo caído se perdieron (se
+    // enviaron a un socket muerto), así que hay que refetchear para no quedar
+    // desactualizado hasta el próximo broadcast o un F5.
+    function resync() {
+      for (const key of [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat']]) {
+        queryClient.invalidateQueries({ queryKey: key })
+      }
+    }
 
     function connect() {
       socket = new WebSocket(chatsSocketUrl())
-      socket.onopen = () => setSocketConnected(true)
+
+      socket.onopen = () => {
+        setSocketConnected(true)
+        lastActivityAt = Date.now()
+        resync()
+        // Sin heartbeat, una conexión half-open (tras dormir la laptop, cambiar
+        // de red o un timeout de proxy) queda "abierta" para el navegador pero
+        // muerta —onclose nunca dispara— y la pantalla se congela. El ping le da
+        // señal de vida; el watchdog fuerza reconectar si dejó de llegar data.
+        pingInterval = setInterval(() => {
+          try { socket?.send(JSON.stringify({ type: 'ping' })) } catch { /* lo cierra el watchdog */ }
+        }, PING_INTERVAL_MS)
+        watchdogInterval = setInterval(() => {
+          if (Date.now() - lastActivityAt > ACTIVITY_TIMEOUT_MS) socket?.close()
+        }, WATCHDOG_INTERVAL_MS)
+      }
 
       socket.onmessage = (event) => {
+        lastActivityAt = Date.now()
         try {
           const payload = JSON.parse(event.data)
           if (payload.type === 'tasks_updated') {
@@ -316,6 +356,7 @@ export function useChatUpdates(
 
       socket.onclose = () => {
         setSocketConnected(false)
+        clearHeartbeat()
         if (!stopped) {
           reconnectTimeout = setTimeout(connect, RECONNECT_DELAY_MS)
         }
@@ -328,6 +369,7 @@ export function useChatUpdates(
       stopped = true
       setSocketConnected(false)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      clearHeartbeat()
       if (socket) {
         // Se sueltan los handlers antes de cerrar. close() no es inmediato, y
         // un onclose disparado ya desmontado volvería a tocar estado del hook

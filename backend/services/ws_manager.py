@@ -33,6 +33,14 @@ class ConnectionManager:
             async with self._lock:
                 for websocket in dead:
                     self._connections.pop(websocket, None)
+            # Cerrar la conexión, no solo sacarla del registro: si queda abierta,
+            # el cliente sigue creyéndose conectado (no dispara onclose) y no
+            # recibe nada ni pollea. Al cerrarla, reconecta y resincroniza.
+            for websocket in dead:
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
 
     async def send_to_user(self, user_id: int, message: dict) -> bool:
         async with self._lock:
