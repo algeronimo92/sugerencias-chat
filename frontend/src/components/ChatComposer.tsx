@@ -6,6 +6,7 @@ import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
 import { displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
+import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
@@ -223,9 +224,12 @@ export function ChatComposer({
   async function sendMediaFile(file: File, caption: string) {
     const target = replyTo
     onReplyChange(null)
-    const dataBase64 = await blobToBase64(file)
+    // Las imágenes grandes se comprimen en el navegador (como WhatsApp) para no
+    // chocar con el límite de tamaño. El video no se puede recomprimir acá.
+    const toSend = await compressImage(file)
+    const dataBase64 = await blobToBase64(toSend)
     sendMedia(
-      { contentType: file.type, dataBase64, filename: file.name, caption, replyTo: target },
+      { contentType: toSend.type, dataBase64, filename: toSend.name, caption, replyTo: target },
       { onError: (err) => setMediaError(extractErrorMessage(err)) }
     )
   }
