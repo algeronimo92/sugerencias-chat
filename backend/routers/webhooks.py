@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Header, HTTPException
 from pydantic import BaseModel
 from db.models import LeadStage
 from services.db_service import (
+    attach_outgoing_analysis,
     fetch_latest_message,
     fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
@@ -103,6 +104,46 @@ async def reaction_webhook(
             {"type": "chats_updated", "chat_id": body.chat_id, "reason": "reaction"}
         )
     return {"status": "ok", "matched": matched}
+
+
+class OutgoingAnalysisWebhookBody(BaseModel):
+    chat_id: str
+    # image | video | audio (la media saliente que se analiza).
+    message_type: str
+    # Enriquecimiento IA ya armado por n8n: {summary, kind, model, generated_at, version}.
+    analysis: dict
+    # wa_message_id del eco (no matchea con el que guardó la app; se intenta igual).
+    wa_message_id: str | None = None
+    # Solo se usan si hay que insertar (media enviada desde el teléfono, no la app).
+    content: str | None = None
+    media_url: str | None = None
+
+
+@router.post("/analysis")
+async def outgoing_analysis_webhook(
+    body: OutgoingAnalysisWebhookBody,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Llamado por n8n con el análisis IA de una media SALIENTE del vendedor.
+
+    La app guarda la media que el vendedor manda pero no la analiza; n8n corre
+    el análisis sobre el eco y lo manda acá para fusionarlo en esa misma fila
+    (en vez de duplicar el mensaje). Si no encuentra la fila —media mandada
+    desde el teléfono— la inserta."""
+    await _check_token(x_webhook_token)
+
+    result = await attach_outgoing_analysis(
+        body.chat_id,
+        body.message_type,
+        body.analysis,
+        wa_message_id=body.wa_message_id,
+        content=body.content,
+        media_url=body.media_url,
+    )
+    await manager.broadcast(
+        {"type": "chats_updated", "chat_id": body.chat_id, "reason": "analysis"}
+    )
+    return {"status": "ok", **result}
 
 
 class LeadStageWebhookBody(BaseModel):

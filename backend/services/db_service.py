@@ -1525,6 +1525,77 @@ async def set_message_reaction(
         return _message_payload(row)
 
 
+# Ventana para casar el eco de Evolution (análisis IA de la media saliente) con
+# la fila que ya guardó la app. Generosa porque el análisis de un video puede
+# tardar; acotada para no pegarle a un envío viejo del mismo tipo.
+OUTGOING_ANALYSIS_WINDOW = timedelta(minutes=15)
+
+
+async def attach_outgoing_analysis(
+    chat_id: str,
+    message_type: str,
+    analysis: dict,
+    *,
+    wa_message_id: str | None = None,
+    content: str | None = None,
+    media_url: str | None = None,
+) -> dict:
+    """Adjunta el análisis IA de una media SALIENTE del vendedor a su fila, o
+    inserta una fila nueva si no la encuentra.
+
+    El vendedor manda una imagen/video/audio desde la app: la app guarda la fila
+    con el archivo pero sin análisis. Evolution reenvía ese mensaje por webhook y
+    n8n le corre el análisis IA; este helper lo mergea en la fila de la app en
+    vez de crear un duplicado.
+
+    Match: por wa_message_id si aparece; si no, el mensaje más reciente del
+    vendedor de ese tipo, en el chat, sin análisis, dentro de la ventana. Los
+    wa_message_id del envío (respuesta de Evolution) y del eco (webhook) no
+    coinciden, así que la recencia es el camino real. Si no hay match (media
+    enviada desde el teléfono, no la app) se inserta la fila, para no perderla.
+    """
+    async with get_sessionmaker()() as session:
+        row = None
+        if wa_message_id:
+            row = (await session.execute(
+                select(WspMessage).where(
+                    WspMessage.chat_id == chat_id,
+                    WspMessage.wa_message_id == wa_message_id,
+                )
+            )).scalar_one_or_none()
+
+        if row is None:
+            window_start = datetime.now(timezone.utc) - OUTGOING_ANALYSIS_WINDOW
+            row = (await session.execute(
+                select(WspMessage)
+                .where(
+                    WspMessage.chat_id == chat_id,
+                    WspMessage.sender == "vendedor",
+                    WspMessage.message_type == message_type,
+                    WspMessage.analysis.is_(None),
+                    WspMessage.sent_at >= window_start,
+                )
+                .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+
+        if row is not None:
+            row.analysis = analysis
+            await session.commit()
+            return {"matched": True, "message_id": row.id}
+
+    inserted = await insert_message(
+        chat_id=chat_id,
+        sender="vendedor",
+        content=content,
+        media_url=media_url,
+        wa_message_id=wa_message_id,
+        message_type=message_type,
+        analysis=analysis,
+    )
+    return {"matched": False, "message_id": inserted["id"]}
+
+
 async def _fill_media_dimensions(session, rows: list[dict]) -> None:
     """Completa y persiste media_width/height de imágenes y videos que aún no
     lo tienen, para que el frontend reserve el espacio exacto antes de que
