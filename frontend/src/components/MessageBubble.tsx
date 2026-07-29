@@ -1,7 +1,8 @@
 import { BookmarkPlus, Check, CheckCheck, CornerUpLeft, Loader2, RefreshCw } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
-import { formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
+import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
+import { AdReferralCard } from './AdReferralCard'
 import { MessageAnalysis, MessageBody } from './messageBody'
 import { QuotedMessage } from './QuotedMessage'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
@@ -91,6 +92,7 @@ export function MessageBubble({
   const parsed = parseContent(m)
   const { kind, text, analysis, template } = parsed
   const reactions = m.reactions ?? []
+  const adReferral = messageAdReferral(parsed.payload)
   // Si el archivo falló al cargar (ej. no existe en este entorno),
   // lo tratamos como si no hubiera media: el navegador muestra su
   // propio ícono roto + el alt completo pegado, duplicando el texto
@@ -165,6 +167,7 @@ export function MessageBubble({
               : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
           } ${isFlashing ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
         >
+          {adReferral && <AdReferralCard ad={adReferral} />}
           {m.quoted_message_id != null && (
             <QuotedMessage
               sender={m.quoted_sender ?? 'cliente'}

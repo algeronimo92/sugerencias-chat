@@ -379,6 +379,32 @@ export function groupByDay<T extends { key: string; sentAt: string | null }>(
   return sections
 }
 
+/** Anuncio del que vino el lead (Click-to-WhatsApp de Meta): el primer mensaje
+ * trae este contexto en `payload.ad_referral`. */
+export interface AdReferral {
+  title: string
+  body: string
+  sourceUrl: string | null
+  thumbnailUrl: string | null
+}
+
+/** Lee el anuncio (Click-to-WhatsApp) del payload de un mensaje, o null si el
+ * mensaje no vino de un anuncio. */
+export function messageAdReferral(payload: Record<string, unknown> | null): AdReferral | null {
+  const ad = payload?.ad_referral
+  if (!ad || typeof ad !== 'object') return null
+  const raw = ad as Record<string, unknown>
+  const title = asString(raw.title)
+  const body = asString(raw.body)
+  if (!title && !body) return null
+  return {
+    title,
+    body,
+    sourceUrl: safeUrl(raw.source_url),
+    thumbnailUrl: safeUrl(raw.thumbnail_url),
+  }
+}
+
 /** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
  * "lat,lon" que vivía en content (respaldo legado). null si no hay. */
 export function messageCoords(
