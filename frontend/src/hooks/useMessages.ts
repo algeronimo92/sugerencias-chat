@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
-import type { Message, MessageType } from '../types'
+import type { Message, MessageReaction, MessageType } from '../types'
 
 interface MessagePage {
   items: Message[]
@@ -340,6 +340,49 @@ export function useSendTemplate(chatId: string) {
     },
     onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
+  })
+}
+
+/** Reemplaza la reacción propia (from_me) por `emoji`; un emoji vacío la quita.
+ * Espeja la lógica de merge del backend (set_message_reaction) para que el
+ * badge optimista quede igual a lo que va a devolver el servidor. */
+function applyOwnReaction(reactions: MessageReaction[] | null, emoji: string): MessageReaction[] | null {
+  const others = (reactions ?? []).filter(r => !r.from_me)
+  const next = emoji ? [...others, { emoji, from_me: true }] : others
+  return next.length ? next : null
+}
+
+interface ReactionPayload {
+  messageId: number
+  emoji: string
+}
+
+export function useReactToMessage(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, ReactionPayload, { previous: MessageReaction[] | null }>({
+    mutationFn: async ({ messageId, emoji }) =>
+      (await client.post<Message>(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/reaction`,
+        { emoji },
+      )).data,
+    onMutate: async ({ messageId, emoji }) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      let previous: MessageReaction[] | null = null
+      mutateMessageCache(queryClient, chatId, message => {
+        if (message.id !== messageId) return message
+        previous = message.reactions ?? null
+        return { ...message, reactions: applyOwnReaction(message.reactions ?? null, emoji) }
+      })
+      return { previous }
+    },
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+    },
+    onError: (_error, { messageId }, context) => {
+      mutateMessageCache(queryClient, chatId, current => current.id === messageId
+        ? { ...current, reactions: context?.previous ?? null }
+        : current)
+    },
   })
 }
 

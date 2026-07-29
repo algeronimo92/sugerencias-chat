@@ -328,6 +328,19 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
     return await _post(url, api_key, payload, timeout=30.0)
 
 
+async def send_whatsapp_reaction(key: dict, emoji: str) -> dict:
+    """Reacciona a un mensaje con un emoji (o lo quita si `emoji` es "").
+
+    `key` identifica el mensaje reaccionado tal como lo espera WhatsApp:
+    {remoteJid, fromMe, id}. fromMe distingue si el mensaje era del vendedor o
+    del cliente — sin eso la reacción no matchea con el mensaje correcto."""
+    api_url, api_key, instance = await _config()
+
+    url = f"{api_url.rstrip('/')}/message/sendReaction/{instance}"
+    payload = {"key": key, "reaction": emoji}
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
 # --- Vinculación de la instancia por QR ---------------------------------------
 # Estos endpoints administran el enlace de la instancia con un teléfono
 # WhatsApp (escanear el QR desde Configuración). La API key nunca sale al

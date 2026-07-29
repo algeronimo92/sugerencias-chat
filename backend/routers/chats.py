@@ -20,6 +20,7 @@ from models.schemas import (
     Message,
     MessagePage,
     LeadActivityItem,
+    ReactionRequest,
     SendLocationRequest,
     SendMediaRequest,
     SendMessageRequest,
@@ -43,6 +44,7 @@ from services.db_service import (
     fetch_kanban_stage,
     fetch_messages,
     fetch_reply_target,
+    set_message_reaction,
     list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
@@ -62,6 +64,7 @@ from services.evolution_service import (
     is_configured,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
+    send_whatsapp_reaction,
 )
 from services.whatsapp_history import fetch_whatsapp_history
 from services.phone_utils import (
@@ -677,6 +680,36 @@ async def retry_message(chat_id: str, message_id: int):
     if message is None:
         raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
+@router.post("/{chat_id}/messages/{message_id}/reaction", response_model=Message)
+async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest):
+    """Reacciona (o quita la reacción) del vendedor sobre un mensaje del chat.
+
+    Manda primero a WhatsApp y recién si eso funciona persiste el badge: una
+    reacción que solo se viera de nuestro lado engañaría al vendedor haciéndole
+    creer que el cliente la vio."""
+    target = await fetch_reply_target(chat_id, message_id)
+    if target is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    if not target["wa_message_id"]:
+        # Un mensaje del vendedor todavía en la outbox no tiene id de WhatsApp:
+        # no se le puede reaccionar hasta que se confirme el envío.
+        raise HTTPException(409, "El mensaje todavía no está confirmado en WhatsApp")
+
+    key = {
+        "remoteJid": chat_id,
+        "fromMe": target["sender"] == "vendedor",
+        "id": target["wa_message_id"],
+    }
+    try:
+        await send_whatsapp_reaction(key, body.emoji)
+    except (EvolutionApiError, httpx.HTTPError) as exc:
+        raise HTTPException(502, f"No se pudo enviar la reacción a WhatsApp: {exc}")
+
+    message = await set_message_reaction(chat_id, target["wa_message_id"], body.emoji, from_me=True)
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "reaction"})
     return message
 
 

@@ -186,6 +186,12 @@ export interface MessageAnalysis {
   version?: number
 }
 
+export interface MessageReaction {
+  emoji: string
+  /** true = la puso el vendedor desde la app (o un dispositivo vinculado);
+   * false = la puso el cliente. */
+  from_me: boolean
+}
 export interface Message {
   id: number
   sender: string
@@ -201,6 +207,9 @@ export interface Message {
   analysis?: MessageAnalysis | null
   /** Datos estructurados propios del tipo (lat/lon, filename, opciones…). */
   payload?: Record<string, unknown> | null
+  /** Reacciones sobre este mensaje (badge estilo WhatsApp, no una burbuja
+   * aparte): a lo sumo una por lado en un chat 1:1. null si nadie reaccionó. */
+  reactions?: MessageReaction[] | null
   /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
    * antes de que cargue, para que la conversación no se mueva. */
   media_width?: number | null

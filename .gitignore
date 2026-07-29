@@ -9,3 +9,9 @@ db/tls/
 
 # Config local de Claude Code: permisos y ajustes propios de cada maquina.
 .claude/
+
+# Export del workflow de n8n: trae la API key de Evolution y los tokens de
+# webhook embebidos (JAMÁS deben subirse al repo). Se guardan localmente solo
+# como referencia para regenerarlos.
+docs/rag.json
+docs/rag-v2.json

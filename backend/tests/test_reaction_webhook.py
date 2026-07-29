@@ -1,0 +1,51 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from routers import webhooks
+from routers.webhooks import ReactionWebhookBody
+
+
+@pytest.mark.asyncio
+async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
+    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
+    set_reaction = AsyncMock(return_value={"id": 42, "reactions": [{"emoji": "❤️", "from_me": False}]})
+    monkeypatch.setattr(webhooks, "set_message_reaction", set_reaction)
+    broadcast = AsyncMock()
+    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+
+    result = await webhooks.reaction_webhook(
+        ReactionWebhookBody(
+            chat_id="51999@s.whatsapp.net",
+            target_wa_message_id="WA-TARGET",
+            emoji="❤️",
+            from_me=False,
+        )
+    )
+
+    set_reaction.assert_awaited_once_with("51999@s.whatsapp.net", "WA-TARGET", "❤️", False)
+    broadcast.assert_awaited_once_with(
+        {"type": "chats_updated", "chat_id": "51999@s.whatsapp.net", "reason": "reaction"}
+    )
+    assert result == {"status": "ok", "matched": True}
+
+
+@pytest.mark.asyncio
+async def test_reaction_on_unknown_target_is_ignored_without_broadcast(monkeypatch):
+    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
+    # El mensaje reaccionado no está en la base (histórico previo): no hay dónde
+    # colgar el badge, así que no se avisa a los paneles.
+    monkeypatch.setattr(webhooks, "set_message_reaction", AsyncMock(return_value=None))
+    broadcast = AsyncMock()
+    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+
+    result = await webhooks.reaction_webhook(
+        ReactionWebhookBody(
+            chat_id="51999@s.whatsapp.net",
+            target_wa_message_id="WA-UNKNOWN",
+            emoji="👍",
+        )
+    )
+
+    broadcast.assert_not_awaited()
+    assert result == {"status": "ok", "matched": False}

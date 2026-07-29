@@ -194,6 +194,9 @@ class Message(BaseModel):
     analysis: dict | None = None
     # Datos estructurados propios del tipo (lat/lon, filename, opciones…).
     payload: dict | None = None
+    # Reacciones sobre este mensaje (badge estilo WhatsApp): lista de
+    # {emoji, from_me}. None cuando nadie reaccionó.
+    reactions: list[dict] | None = None
     # Dimensiones de la imagen adjunta: el frontend reserva el espacio exacto
     # antes de que cargue, para que la conversación no se mueva.
     media_width: int | None = None
@@ -280,6 +283,11 @@ class SendLocationRequest(BaseModel):
     latitude: float
     longitude: float
     reply_to_message_id: int | None = Field(default=None, ge=1)
+
+
+class ReactionRequest(BaseModel):
+    # Emoji de la reacción. Vacío quita la reacción propia (como en WhatsApp).
+    emoji: str = ""
 
 
 class TtsRequest(BaseModel):

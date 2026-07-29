@@ -4,6 +4,7 @@ import { displayName } from '../utils/chat'
 import { formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
 import { MessageAnalysis, MessageBody } from './messageBody'
 import { QuotedMessage } from './QuotedMessage'
+import { ReactionBadge, ReactionMenu } from './MessageReactions'
 import { TemplateMessageButtons } from './TemplateMessageCard'
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
@@ -62,6 +63,7 @@ interface Props {
   onQuotedJump: (messageId: number) => void
   onRetry: () => void
   onStartReply: () => void
+  onReact: (emoji: string) => void
   onSaveTemplate: (content: string) => void
 }
 
@@ -80,11 +82,13 @@ export function MessageBubble({
   onQuotedJump,
   onRetry,
   onStartReply,
+  onReact,
   onSaveTemplate,
 }: Props) {
   const isVendedor = m.sender === 'vendedor'
   const parsed = parseContent(m)
   const { kind, text, analysis, template } = parsed
+  const reactions = m.reactions ?? []
   // Si el archivo falló al cargar (ej. no existe en este entorno),
   // lo tratamos como si no hubiera media: el navegador muestra su
   // propio ícono roto + el alt completo pegado, duplicando el texto
@@ -120,24 +124,31 @@ export function MessageBubble({
    * wa_message_id (envío en curso, fallido, o histórico previo a la
    * integración) el botón no aparece en vez de fallar al enviar. */
   const canReply = m.id > 0 && !!m.wa_message_id
-  const replyButton = (
-    <button
-      type="button"
-      onClick={onStartReply}
-      aria-label="Responder a este mensaje"
-      title="Responder"
-      className="shrink-0 rounded-full p-1.5 text-wa-muted opacity-0 transition-opacity hover:bg-black/5 hover:text-wa-text focus-visible:opacity-100 group-hover:opacity-100 dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
-    >
-      <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
-    </button>
+  const messageActions = canReply && (
+    <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      <button
+        type="button"
+        onClick={onStartReply}
+        aria-label="Responder a este mensaje"
+        title="Responder"
+        className="rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
+      >
+        <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <ReactionMenu
+        ownEmoji={reactions.find((r) => r.from_me)?.emoji ?? null}
+        onReact={onReact}
+        side={isVendedor ? 'left' : 'right'}
+      />
+    </div>
   )
 
   return (
     <div
-      className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'}`}
+      className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'} ${reactions.length > 0 ? 'mb-2.5' : ''}`}
       data-message-id={m.id}
     >
-      {isVendedor && canReply && replyButton}
+      {isVendedor && messageActions}
       {/* Columna: la burbuja y, debajo, los botones de la plantilla.
           Al estirarse los dos al ancho de la columna, los botones
           quedan tan anchos como la burbuja (y al revés), igual que
@@ -146,7 +157,7 @@ export function MessageBubble({
           360px los mensajes se parten en demasiadas líneas. */}
       <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
         <div
-          className={`rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
+          className={`relative rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? 'p-1.5' : 'px-3.5 py-2'} ${
             isVendedor
               ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
               : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
@@ -206,12 +217,13 @@ export function MessageBubble({
             <span>{formatMessageTime(m.sent_at)}</span>
             {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} />}
           </div>}
+          <ReactionBadge reactions={reactions} isVendedor={isVendedor} />
         </div>
         {(kind === 'template' || kind === 'interactive') && template && (
           <TemplateMessageButtons template={template} isVendedor={isVendedor} />
         )}
       </div>
-      {!isVendedor && canReply && replyButton}
+      {!isVendedor && messageActions}
     </div>
   )
 }

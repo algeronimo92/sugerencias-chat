@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft, ChevronDown, Database, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
-import { useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -132,6 +132,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
+  const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
 
 
   // El foco del cursor lo pone el compositor al ver la cita nueva: el
@@ -347,6 +348,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onQuotedJump={goToQuotedMessage}
                     onRetry={() => handleRetryMessage(item.message)}
                     onStartReply={() => startReply(item.message)}
+                    onReact={(emoji) => reactToMessage({ messageId: item.message.id, emoji })}
                     onSaveTemplate={setTemplateContentToSave}
                   />
                 </Fragment>

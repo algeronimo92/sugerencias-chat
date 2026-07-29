@@ -140,6 +140,11 @@ class WspMessage(Base):
     # opciones de encuesta, contactos, config de listas/botones, etc. NULL si el
     # tipo no lo necesita (texto, sticker).
     payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    # Reacciones sobre ESTE mensaje (badge estilo WhatsApp, no una fila aparte):
+    # lista de {emoji, from_me}, a lo sumo una entrada por lado en un chat 1:1.
+    # Las escribe set_message_reaction, tanto desde el webhook entrante como
+    # desde el envío del vendedor. NULL cuando nadie reaccionó.
+    reactions: Mapped[list | None] = mapped_column(JSONB(none_as_null=True))
 
     __table_args__ = (
         Index(

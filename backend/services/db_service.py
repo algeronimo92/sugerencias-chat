@@ -1367,8 +1367,14 @@ async def fetch_messages(
                 WspMessage.message_type,
                 WspMessage.analysis,
                 WspMessage.payload,
+                WspMessage.reactions,
             )
             .where(WspMessage.chat_id == chat_id)
+            # Las reacciones no son burbujas: viven como badge sobre el mensaje
+            # objetivo (columna reactions). Las filas legadas de tipo reaction
+            # quedan fuera del hilo. is_distinct_from trata bien el NULL de las
+            # filas todavía sin backfillear (message_type NULL sigue entrando).
+            .where(WspMessage.message_type.is_distinct_from("reaction"))
             .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
             .limit(limit + 1)
         )
@@ -1400,6 +1406,7 @@ async def fetch_messages(
             "message_type": r["message_type"],
             "analysis": r["analysis"],
             "payload": r["payload"],
+            "reactions": r["reactions"],
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
@@ -1465,6 +1472,57 @@ async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row is not None else None
+
+
+def _message_payload(row: WspMessage) -> dict:
+    """Un mensaje en la forma que espera el schema Message (misma que arma
+    fetch_messages), a partir de una fila ORM ya cargada."""
+    return {
+        "id": row.id,
+        "sender": row.sender,
+        "content": row.content,
+        "sent_at": _fmt_ts(row.sent_at),
+        "media_url": row.media_url,
+        "wa_message_id": row.wa_message_id,
+        "status": row.status,
+        "message_type": row.message_type,
+        "analysis": row.analysis,
+        "payload": row.payload,
+        "reactions": row.reactions,
+        "media_width": row.media_width or None,
+        "media_height": row.media_height or None,
+    }
+
+
+async def set_message_reaction(
+    chat_id: str, target_wa_message_id: str, emoji: str, from_me: bool
+) -> dict | None:
+    """Aplica una reacción sobre el mensaje objetivo y devuelve ese mensaje ya
+    actualizado, o None si el objetivo no está en la base (p. ej. una reacción
+    a un mensaje histórico anterior a la integración).
+
+    El objetivo se resuelve por (chat_id, wa_message_id), igual que los citados,
+    apoyándose en el índice único de wa_message_id. Una reacción por lado:
+    reemplaza la entrada del mismo `from_me`; un emoji vacío la quita (así WhatsApp
+    modela quitar la reacción). Es el único lugar con la lógica de merge — lo
+    usan tanto el webhook entrante como el envío del vendedor.
+    """
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(
+            select(WspMessage).where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.wa_message_id == target_wa_message_id,
+            )
+        )).scalar_one_or_none()
+        if row is None:
+            return None
+
+        reactions = [r for r in (row.reactions or []) if r.get("from_me") != from_me]
+        if emoji:
+            reactions.append({"emoji": emoji, "from_me": from_me})
+        row.reactions = reactions or None
+        await session.commit()
+        return _message_payload(row)
 
 
 async def _fill_media_dimensions(session, rows: list[dict]) -> None:

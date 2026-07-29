@@ -7,6 +7,7 @@ from services.db_service import (
     fetch_latest_message,
     fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
+    set_message_reaction,
     update_lead_stage,
     update_message_status,
 )
@@ -67,6 +68,41 @@ async def new_message_webhook(
 
     await manager.broadcast(payload)
     return {"status": "ok"}
+
+
+class ReactionWebhookBody(BaseModel):
+    chat_id: str
+    # wa_message_id del mensaje reaccionado (key.id del reaccionado, que en el
+    # evento de reacción viaja aparte del id de la reacción en sí).
+    target_wa_message_id: str
+    # Emoji de la reacción. Vacío = el cliente quitó la reacción.
+    emoji: str = ""
+    # Quién reaccionó: el cliente (False) o nosotros desde un dispositivo
+    # vinculado (True). Es key.fromMe del evento de reacción.
+    from_me: bool = False
+
+
+@router.post("/reaction")
+async def reaction_webhook(
+    body: ReactionWebhookBody,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Llamado por n8n cuando entra una reacción. En vez de guardarla como un
+    mensaje, la mergea sobre el mensaje objetivo (badge estilo WhatsApp) y avisa
+    a los paneles para que repinten el hilo."""
+    await _check_token(x_webhook_token)
+
+    message = await set_message_reaction(
+        body.chat_id, body.target_wa_message_id, body.emoji, body.from_me
+    )
+    # message es None cuando el reaccionado no está en nuestra base (histórico
+    # anterior a la integración): no hay burbuja donde colgar el badge, se ignora.
+    matched = message is not None
+    if matched:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "reaction"}
+        )
+    return {"status": "ok", "matched": matched}
 
 
 class LeadStageWebhookBody(BaseModel):
