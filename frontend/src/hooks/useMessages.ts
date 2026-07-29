@@ -280,14 +280,17 @@ interface MediaPayload {
   contentType: string
   dataBase64: string
   filename?: string
+  /** Epígrafe opcional (el texto debajo de la imagen/video), como en WhatsApp. */
+  caption?: string
   replyTo?: ReplyTarget | null
 }
 
-async function sendMedia(chatId: string, { contentType, dataBase64, filename, replyTo }: MediaPayload): Promise<Message> {
+async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo }: MediaPayload): Promise<Message> {
   const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
     content_type: contentType,
     data_base64: dataBase64,
     filename,
+    caption: caption || null,
     reply_to_message_id: replyTo?.id ?? null,
   })
   return data
@@ -304,7 +307,7 @@ export function useSendMedia(chatId: string) {
         : payload.contentType.startsWith('video/') ? 'video'
           : payload.contentType.startsWith('audio/') ? 'audio' : 'document'
       return appendOptimisticMessages(queryClient, chatId, [{
-        content: null,
+        content: payload.caption || null,
         message_type: messageType,
         payload: messageType === 'document' ? { filename: payload.filename ?? 'Archivo' } : null,
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,

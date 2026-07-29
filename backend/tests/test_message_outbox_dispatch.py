@@ -37,7 +37,7 @@ async def test_media_job_preserves_type_and_filename(monkeypatch):
     })
 
     send_media.assert_awaited_once_with(
-        "51999@s.whatsapp.net", "BASE64", "document", filename="file.pdf", quoted=None
+        "51999@s.whatsapp.net", "BASE64", "document", filename="file.pdf", caption=None, quoted=None
     )
 
 

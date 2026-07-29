@@ -276,6 +276,8 @@ class SendMediaRequest(BaseModel):
     content_type: str
     data_base64: str
     filename: str | None = None
+    # Epígrafe (el texto que va debajo de la imagen/video), como en WhatsApp.
+    caption: str | None = None
     reply_to_message_id: int | None = Field(default=None, ge=1)
 
 

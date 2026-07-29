@@ -295,19 +295,23 @@ async def send_whatsapp_media(
     media_base64: str,
     mediatype: str,
     filename: str | None = None,
+    caption: str | None = None,
     quoted: dict | None = None,
 ) -> dict:
     """Manda un adjunto genérico (imagen, video, audio como archivo, o
     documento). mediatype le dice a Evolution API cómo procesarlo —
     distinto de sendWhatsAppAudio, que siempre es nota de voz (PTT).
     filename es el nombre original elegido por el usuario: importa sobre
-    todo para documentos, para que el destinatario vea el nombre real."""
+    todo para documentos, para que el destinatario vea el nombre real.
+    caption es el epígrafe (el texto que va debajo de la imagen/video)."""
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/message/sendMedia/{instance}"
     payload = {"number": chat_id, "mediatype": mediatype, "media": media_base64}
     if filename:
         payload["fileName"] = filename
+    if caption:
+        payload["caption"] = caption
     return await _post(url, api_key, _with_quoted(payload, quoted), timeout=60.0)
 
 

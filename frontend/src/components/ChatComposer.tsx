@@ -9,6 +9,7 @@ import { renderTemplate } from '../utils/templates'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
+import { MediaPreviewDialog } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplatePicker } from './TemplatePicker'
 import { VoiceRecorder } from './VoiceRecorder'
@@ -88,6 +89,10 @@ export function ChatComposer({
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
+  // Imagen/video elegido o pegado, a la espera de confirmar el envío con epígrafe
+  // (la pantalla de preview de WhatsApp).
+  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' } | null>(null)
+  const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -198,6 +203,40 @@ export function ChatComposer({
     input.click()
   }
 
+  function openMediaPreview(file: File) {
+    setMediaError(null)
+    setPendingMedia({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind: file.type.startsWith('video/') ? 'video' : 'image',
+    })
+  }
+
+  function closeMediaPreview() {
+    setPendingMedia((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl)
+      return null
+    })
+    setIsSendingMedia(false)
+  }
+
+  async function sendMediaFile(file: File, caption: string) {
+    const target = replyTo
+    onReplyChange(null)
+    const dataBase64 = await blobToBase64(file)
+    sendMedia(
+      { contentType: file.type, dataBase64, filename: file.name, caption, replyTo: target },
+      { onError: (err) => setMediaError(extractErrorMessage(err)) }
+    )
+  }
+
+  async function confirmPendingMedia(caption: string) {
+    if (!pendingMedia) return
+    setIsSendingMedia(true)
+    await sendMediaFile(pendingMedia.file, caption)
+    closeMediaPreview()
+  }
+
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = '' // permite volver a elegir el mismo archivo después
@@ -210,14 +249,29 @@ export function ChatComposer({
       return
     }
 
+    // Imagen y video: pantalla de preview con epígrafe, como WhatsApp. El resto
+    // (documentos, audio) se manda directo, sin preview visual.
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      openMediaPreview(file)
+      return
+    }
+
     setMediaError(null)
-    const target = replyTo
-    onReplyChange(null)
-    const dataBase64 = await blobToBase64(file)
-    sendMedia(
-      { contentType: file.type, dataBase64, filename: file.name, replyTo: target },
-      { onError: (err) => setMediaError(extractErrorMessage(err)) }
-    )
+    await sendMediaFile(file, '')
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const isMedia = (type: string) => type.startsWith('image/') || type.startsWith('video/')
+    // Captura de pantalla o archivo copiado (clipboardData.files) e imagen
+    // copiada desde una web (clipboardData.items -> getAsFile).
+    let file = Array.from(e.clipboardData.files).find((f) => isMedia(f.type)) ?? null
+    if (!file) {
+      const item = Array.from(e.clipboardData.items).find((i) => i.kind === 'file' && isMedia(i.type))
+      file = item?.getAsFile() ?? null
+    }
+    if (!file) return
+    e.preventDefault()
+    openMediaPreview(file)
   }
 
   function handleSendLocation() {
@@ -395,6 +449,7 @@ export function ChatComposer({
                   setSlashDismissed(false)
                 }}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Escribí un mensaje... (/ para usar una plantilla)"
                 rows={1}
                 className="w-full resize-none text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow max-h-32"
@@ -428,6 +483,17 @@ export function ChatComposer({
           isSending={false}
           onConfirm={handleConfirmLocation}
           onCancel={() => setPendingLocation(null)}
+        />
+      )}
+
+      {pendingMedia && (
+        <MediaPreviewDialog
+          previewUrl={pendingMedia.previewUrl}
+          kind={pendingMedia.kind}
+          filename={pendingMedia.file.name}
+          isSending={isSendingMedia}
+          onSend={confirmPendingMedia}
+          onClose={closeMediaPreview}
         />
       )}
     </>

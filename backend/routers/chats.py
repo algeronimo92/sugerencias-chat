@@ -556,16 +556,18 @@ async def send_media(chat_id: str, body: SendMediaRequest):
 
     # El tipo y el nombre del archivo los deriva enqueue_messages a partir del
     # payload de despacho (message_type = mediatype; el filename de un documento
-    # va a la columna payload). El adjunto que se manda desde la app no lleva
-    # caption, así que el content queda vacío.
+    # va a la columna payload). El caption (epígrafe) va como content del mensaje
+    # y en el payload de despacho para que Evolution lo mande bajo la imagen.
+    caption = (body.caption or "").strip() or None
     message = (await enqueue_messages(chat_id, [{
-        "content": None,
+        "content": caption,
         "media_url": media_url,
         "payload": {
             "type": "media",
             "media_url": media_url,
             "mediatype": mediatype,
             "filename": body.filename,
+            "caption": caption,
         },
         "reply_to": reply_to,
     }]))[0]

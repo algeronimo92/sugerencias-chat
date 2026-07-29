@@ -436,7 +436,7 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
         encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
         return await send_whatsapp_media(
             chat_id, encoded, payload["mediatype"],
-            filename=payload.get("filename"), quoted=quoted,
+            filename=payload.get("filename"), caption=payload.get("caption"), quoted=quoted,
         ), None
     if kind == "location":
         return await send_whatsapp_location(
