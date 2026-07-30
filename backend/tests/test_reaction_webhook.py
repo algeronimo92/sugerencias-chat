@@ -8,7 +8,6 @@ from routers.webhooks import ReactionWebhookBody
 
 @pytest.mark.asyncio
 async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     set_reaction = AsyncMock(return_value={"id": 42, "reactions": [{"emoji": "❤️", "from_me": False}]})
     monkeypatch.setattr(webhooks, "set_message_reaction", set_reaction)
     broadcast = AsyncMock()
@@ -32,7 +31,6 @@ async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reaction_on_unknown_target_is_ignored_without_broadcast(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     # El mensaje reaccionado no está en la base (histórico previo): no hay dónde
     # colgar el badge, así que no se avisa a los paneles.
     monkeypatch.setattr(webhooks, "set_message_reaction", AsyncMock(return_value=None))

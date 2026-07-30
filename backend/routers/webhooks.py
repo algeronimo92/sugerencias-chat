@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 from db.models import LeadStage
 from services.db_service import (
@@ -14,7 +14,6 @@ from services.db_service import (
     update_message_status,
 )
 from services.message_status_service import parse_message_status_events
-from services.settings_service import get_effective
 from services.ws_manager import manager
 from services.automation_service import trigger_inbound_message, trigger_stage_changed
 
@@ -23,12 +22,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
-
-
-async def _check_token(x_webhook_token: str | None) -> None:
-    expected_token = await get_effective("inbound_webhook_token")
-    if expected_token and x_webhook_token != expected_token:
-        raise HTTPException(status_code=401, detail="Token inválido")
 
 
 class NewMessageWebhookBody(BaseModel):
@@ -41,11 +34,8 @@ class NewMessageWebhookBody(BaseModel):
 @router.post("/messages")
 async def new_message_webhook(
     body: NewMessageWebhookBody | None = None,
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Llamado por n8n justo después de guardar un mensaje nuevo en la DB."""
-    await _check_token(x_webhook_token)
-
     payload = {"type": "chats_updated", "reason": "inbound_message"}
     wa_message_id = body.wa_message_id if body else None
     message = None
@@ -87,13 +77,10 @@ class ReactionWebhookBody(BaseModel):
 @router.post("/reaction")
 async def reaction_webhook(
     body: ReactionWebhookBody,
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Llamado por n8n cuando entra una reacción. En vez de guardarla como un
     mensaje, la mergea sobre el mensaje objetivo (badge estilo WhatsApp) y avisa
     a los paneles para que repinten el hilo."""
-    await _check_token(x_webhook_token)
-
     message = await set_message_reaction(
         body.chat_id, body.target_wa_message_id, body.emoji, body.from_me
     )
@@ -123,7 +110,6 @@ class OutgoingAnalysisWebhookBody(BaseModel):
 @router.post("/analysis")
 async def outgoing_analysis_webhook(
     body: OutgoingAnalysisWebhookBody,
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Llamado por n8n con el análisis IA de una media SALIENTE del vendedor.
 
@@ -131,8 +117,6 @@ async def outgoing_analysis_webhook(
     el análisis sobre el eco y lo manda acá para fusionarlo en esa misma fila
     (en vez de duplicar el mensaje). Si no encuentra la fila —media mandada
     desde el teléfono— la inserta."""
-    await _check_token(x_webhook_token)
-
     result = await attach_outgoing_analysis(
         body.chat_id,
         body.message_type,
@@ -159,15 +143,12 @@ class OutgoingWebhookBody(BaseModel):
 @router.post("/outgoing")
 async def outgoing_webhook(
     body: OutgoingWebhookBody,
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Llamado por n8n con un mensaje SALIENTE (fromMe) que no lleva análisis.
 
     Reconcilia: descarta el eco de nuestros propios envíos (ya guardados por la
     app) pero conserva los salientes externos —auto-reply de Kommo, mensajes
     escritos desde el teléfono— que solo llegan por acá."""
-    await _check_token(x_webhook_token)
-
     result = await reconcile_outgoing_message(
         body.chat_id,
         body.message_type,
@@ -210,7 +191,6 @@ async def _broadcast_lead_updated(chat_id: str) -> None:
 @router.post("/lead-stage")
 async def lead_stage_webhook(
     body: LeadStageWebhookBody,
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Llamado por n8n cuando el agente analista termina de analizar el lead.
 
@@ -225,8 +205,6 @@ async def lead_stage_webhook(
     su respuesta más frecuente. Sin ese aviso, un nombre recién deducido de la
     conversación no aparecía en pantalla hasta el siguiente mensaje.
     """
-    await _check_token(x_webhook_token)
-
     if body.estado is None:
         await _broadcast_lead_updated(body.chat_id)
         return {"status": "ok", "changed": False, "stage": None}
@@ -269,7 +247,6 @@ async def lead_stage_webhook(
 @router.post("/message-status")
 async def message_status_webhook(
     body: dict[str, Any] | list[dict[str, Any]] = Body(...),
-    x_webhook_token: str | None = Header(default=None),
 ):
     """Recibe un cambio de estado desde n8n o directamente desde Evolution.
 
@@ -278,8 +255,6 @@ async def message_status_webhook(
     mensaje del cliente llega como READ/PLAYED con ``from_me=false``, también
     sincroniza el contador interno de no leídos con WhatsApp Web.
     """
-    await _check_token(x_webhook_token)
-
     events = parse_message_status_events(body)
     if not events:
         raise HTTPException(status_code=422, detail="No se encontró un ID y estado de mensaje válidos")

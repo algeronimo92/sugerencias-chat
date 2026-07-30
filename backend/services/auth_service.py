@@ -4,7 +4,7 @@ from time import monotonic
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from config import settings
 from db.models import User
@@ -93,3 +93,26 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Requiere permisos de administrador")
     return user
+
+
+def _extract_bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return token.strip() or None
+
+
+async def verify_webhook_token(
+    authorization: str | None = Header(default=None),
+    x_webhook_token: str | None = Header(default=None),
+) -> None:
+    from services.settings_service import get_effective
+
+    expected = await get_effective("inbound_webhook_token")
+    if not expected:
+        return
+    provided = _extract_bearer(authorization) or x_webhook_token
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Token inválido")

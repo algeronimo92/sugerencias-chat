@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from config import settings
 from db.session import close_engine, get_engine
 from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
-from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin
+from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
 from services.ws_manager import manager
@@ -271,8 +271,8 @@ app.include_router(dashboard.router)
 app.include_router(automations.router)
 # webhooks y media.upload los llama n8n directamente (autenticados con su
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
-app.include_router(webhooks.router)
-app.include_router(media.router)
+app.include_router(webhooks.router, dependencies=[Depends(verify_webhook_token)])
+app.include_router(media.router, dependencies=[Depends(verify_webhook_token)])
 # /media/<archivo> sí es contenido de clientes (fotos, audios, documentos) y
 # solo lo consume el navegador del vendedor. La cookie es SameSite=Lax y tanto
 # dev como producción son same-site, así que <img>/<audio>/<video> la envían.

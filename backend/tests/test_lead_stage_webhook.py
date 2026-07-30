@@ -18,7 +18,6 @@ def _body(**overrides):
 
 @pytest.mark.asyncio
 async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     update_stage = AsyncMock(return_value={
         "chat_id": "51999999999@s.whatsapp.net",
         "stage": "en_seguimiento",
@@ -51,7 +50,6 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
     reescribió nombre, teléfono y notas con un UPDATE directo. Sin el aviso, el
     CRM se queda con los datos viejos: con el WebSocket conectado no hay
     polling que lo salve."""
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     monkeypatch.setattr(webhooks, "update_lead_stage", AsyncMock(return_value={
         "chat_id": "51999999999@s.whatsapp.net",
         "stage": "en_seguimiento",
@@ -80,7 +78,6 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
 async def test_null_stage_only_notifies_panels(monkeypatch):
     """n8n puede llamar siempre sin un nodo IF adelante: sin etapa no se toca
     `leads.estado`, pero el resto del lead sí pudo cambiar."""
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     update_stage = AsyncMock()
     monkeypatch.setattr(webhooks, "update_lead_stage", update_stage)
     broadcast = AsyncMock()
@@ -96,7 +93,6 @@ async def test_null_stage_only_notifies_panels(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_invalid_stage_returns_422_with_valid_options(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
 
     with pytest.raises(HTTPException) as exc:
         await webhooks.lead_stage_webhook(_body(estado="cierre"))
@@ -107,7 +103,6 @@ async def test_invalid_stage_returns_422_with_valid_options(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_missing_lead_returns_404(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     monkeypatch.setattr(webhooks, "update_lead_stage", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as exc:

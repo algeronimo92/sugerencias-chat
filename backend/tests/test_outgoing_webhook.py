@@ -8,7 +8,6 @@ from routers.webhooks import OutgoingWebhookBody
 
 @pytest.mark.asyncio
 async def test_external_outgoing_is_inserted_and_broadcast(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     # No hay gemelo de la app: es externo (Kommo/teléfono) -> se inserta.
     reconcile = AsyncMock(return_value={"matched": False, "message_id": 42})
     monkeypatch.setattr(webhooks, "reconcile_outgoing_message", reconcile)
@@ -34,7 +33,6 @@ async def test_external_outgoing_is_inserted_and_broadcast(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_own_echo_is_skipped_without_broadcast(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     # Ya existe el gemelo de la app: es eco de nuestro envío -> se descarta.
     monkeypatch.setattr(webhooks, "reconcile_outgoing_message", AsyncMock(return_value={"matched": True}))
     broadcast = AsyncMock()

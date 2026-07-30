@@ -10,7 +10,6 @@ ANALYSIS = {"summary": "una imagen de una crema", "kind": "descripcion", "versio
 
 @pytest.mark.asyncio
 async def test_merges_analysis_into_app_message(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     attach = AsyncMock(return_value={"matched": True, "message_id": 1253})
     monkeypatch.setattr(webhooks, "attach_outgoing_analysis", attach)
     broadcast = AsyncMock()
@@ -38,7 +37,6 @@ async def test_merges_analysis_into_app_message(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_inserts_when_no_app_message_matches(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     # Media enviada desde el teléfono: no hay fila de la app, se inserta.
     monkeypatch.setattr(
         webhooks, "attach_outgoing_analysis",

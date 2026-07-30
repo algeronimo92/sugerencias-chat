@@ -7,7 +7,6 @@ from routers import webhooks
 
 @pytest.mark.asyncio
 async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     monkeypatch.setattr(webhooks, "update_message_status", AsyncMock(return_value=None))
     mark_read = AsyncMock(return_value={
         "chat_id": "51999999999@s.whatsapp.net",
@@ -36,7 +35,6 @@ async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypa
 
 @pytest.mark.asyncio
 async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     monkeypatch.setattr(
         webhooks,
         "update_message_status",
@@ -70,7 +68,6 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delivery_receipt_does_not_mark_incoming_chat_read(monkeypatch):
-    monkeypatch.setattr(webhooks, "_check_token", AsyncMock())
     monkeypatch.setattr(webhooks, "update_message_status", AsyncMock(return_value=None))
     mark_read = AsyncMock()
     monkeypatch.setattr(webhooks, "mark_chat_read_from_whatsapp_receipt", mark_read)

@@ -17,7 +17,6 @@ from services.media_storage import (
     save_media_bytes,
     stat_media,
 )
-from services.settings_service import get_effective
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 files_router = APIRouter(tags=["media-files"])
@@ -192,14 +191,8 @@ def get_media_file(filename: str, request: Request, range_header: str | None = H
 
 
 @router.post("/upload")
-async def upload_media(
-    body: MediaUpload, x_webhook_token: str | None = Header(default=None)
-):
+async def upload_media(body: MediaUpload):
     """Llamado por n8n con el base64 del archivo (imagen/video/audio) justo después de descargarlo de Evolution API."""
-    expected_token = await get_effective("inbound_webhook_token")
-    if expected_token and x_webhook_token != expected_token:
-        raise HTTPException(status_code=401, detail="Token inválido")
-
     try:
         media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:

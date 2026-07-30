@@ -246,7 +246,7 @@ n8n puede reenviar el JSON original, sin transformarlo, a:
 
 ```text
 POST https://chat.dermicapro.app/api/webhooks/message-status
-X-Webhook-Token: <mismo valor de INBOUND_WEBHOOK_TOKEN>
+Authorization: Bearer <mismo valor de INBOUND_WEBHOOK_TOKEN>
 Content-Type: application/json
 ```
 
