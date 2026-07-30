@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from time import monotonic
+from uuid import uuid4
 
 import httpx
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from domain_types import (
@@ -20,10 +22,12 @@ from domain_types import (
     MessageSender,
     MessageStatus,
     NotificationType,
+    QuestionHandle,
     TaskPriority,
     TaskStatus,
     TaskType,
     TemplateType,
+    WaitAnyConditionKind,
 )
 from db.models import (
     AutomationExecution,
@@ -34,6 +38,7 @@ from db.models import (
     LeadStage,
     LeadTag,
     LeadTask,
+    MediaAsset,
     MessageTemplate,
     TemplateAttachment,
     User,
@@ -51,11 +56,13 @@ from services.db_service import (
 )
 from services.evolution_service import (
     EvolutionApiError,
+    get_template_capabilities,
     media_message_fields,
     mediatype_from_content_type,
     send_whatsapp_media,
     send_whatsapp_text,
 )
+from services.message_outbox import _buttons_text_fallback
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.automation_rules import (
     business_timezone,
@@ -121,6 +128,17 @@ def _wa_message_id(response: dict) -> str | None:
     return key.get("id") if isinstance(key, dict) else None
 
 
+def _wait_seconds(data: dict) -> int:
+    """Segundos de espera de un nodo Wait. Con compatibilidad hacia atrás:
+    los flujos publicados antes de dividir la espera en horas/minutos/
+    segundos solo tienen "minutes" en su `flow_definition` guardada, y esa
+    definición vieja no se reescribe sola — solo al volver a publicar."""
+    seconds = data.get("seconds")
+    if seconds is not None:
+        return int(seconds)
+    return int(data.get("minutes") or 0) * 60
+
+
 def _rule_dict(row) -> dict:
     return {
         "id": row["id"],
@@ -136,6 +154,7 @@ def _rule_dict(row) -> dict:
         "delay_minutes": row["delay_minutes"],
         "max_executions_per_hour": row["max_executions_per_hour"],
         "is_active": row["is_active"],
+        "visible_to_sellers": bool(row["visible_to_sellers"]),
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
         "execution_count": int(row["execution_count"] or 0),
@@ -163,6 +182,8 @@ def _execution_dict(row) -> dict:
         "flow_state": row["flow_state"] or {},
         "error": row["error"],
         "created_at": _ts(row["created_at"]),
+        "start_source": row["start_source"] or "system",
+        "started_by_user_id": row["started_by_user_id"],
     }
 
 
@@ -203,6 +224,7 @@ async def list_automation_rules() -> list[dict]:
         AutomationRule.delay_minutes,
         AutomationRule.max_executions_per_hour,
         AutomationRule.is_active,
+        AutomationRule.visible_to_sellers,
         AutomationRule.created_by_user_id,
         User.name.label("created_by_name"),
         execution_count.label("execution_count"),
@@ -255,8 +277,11 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
             delay_minutes=0 if is_visual else current["delay_minutes"],
             max_executions_per_hour=current["max_executions_per_hour"],
             # Siempre arranca inactiva: evita tener dos reglas idénticas
-            # corriendo a la vez sin que el usuario lo haya decidido.
+            # corriendo a la vez sin que el usuario lo haya decidido. Por la
+            # misma razón, nunca copia visible_to_sellers=True: el admin debe
+            # decidir a propósito que la copia quede visible para vendedores.
             is_active=False,
+            visible_to_sellers=False,
             builder_mode=current["builder_mode"],
             flow_definition=current["flow_definition"] if is_visual else {},
             published_flow_definition=None,
@@ -338,6 +363,8 @@ async def list_automation_executions(
     limit: int = 100,
     execution_id: int | None = None,
     exclude_skipped: bool = False,
+    lead_id: str | None = None,
+    start_source: str | None = None,
 ) -> list[dict]:
     stmt = select(
         AutomationExecution.id,
@@ -355,6 +382,8 @@ async def list_automation_executions(
         AutomationExecution.flow_state,
         AutomationExecution.error,
         AutomationExecution.created_at,
+        AutomationExecution.start_source,
+        AutomationExecution.started_by_user_id,
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
         Lead, Lead.remote_jid == AutomationExecution.lead_id
     )
@@ -366,6 +395,10 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.status != AutomationExecutionStatus.SKIPPED)
     if execution_id is not None:
         stmt = stmt.where(AutomationExecution.id == execution_id)
+    if lead_id is not None:
+        stmt = stmt.where(AutomationExecution.lead_id == lead_id)
+    if start_source is not None:
+        stmt = stmt.where(AutomationExecution.start_source == start_source)
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
@@ -455,6 +488,7 @@ async def validate_automation_rule(values: dict) -> dict:
     referenced_users: set[int] = set()
     referenced_tags: set[int] = set()
     referenced_templates: set[int] = set()
+    referenced_media_assets: set[int] = set()
     for position, raw in enumerate(actions, start=1):
         if not isinstance(raw, dict) or raw.get("type") not in ACTION_TYPES:
             raise ValueError(f"Acción {position}: tipo no soportado")
@@ -520,12 +554,31 @@ async def validate_automation_rule(values: dict) -> dict:
                 "type": action_type, "recipient": recipient, "user_id": user_id,
                 "title": title, "body": body,
             })
-        else:
+        elif action_type == AutomationActionType.SEND_TEMPLATE:
             template_id = int(raw.get("template_id") or 0)
             if not template_id:
                 raise ValueError(f"Acción {position}: selecciona una plantilla")
             referenced_templates.add(template_id)
             normalized_actions.append({"type": action_type, "template_id": template_id})
+        elif action_type == AutomationActionType.SEND_MESSAGE:
+            text = str(raw.get("text") or "").strip()
+            if not text:
+                raise ValueError(f"Acción {position}: escribe el mensaje a enviar")
+            if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
+                raise ValueError(f"Acción {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
+            normalized_actions.append({"type": action_type, "text": text})
+        elif action_type == AutomationActionType.CHANGE_SERVICE:
+            # Vacío es válido — significa quitar el servicio de interés
+            # actual, no un error de formulario.
+            service = str(raw.get("service") or "").strip()[:160] or None
+            normalized_actions.append({"type": action_type, "service": service})
+        else:
+            # SEND_AUDIO, SEND_ATTACHMENT
+            media_asset_id = int(raw.get("media_asset_id") or 0)
+            if not media_asset_id:
+                raise ValueError(f"Acción {position}: selecciona un archivo de la librería de medios")
+            referenced_media_assets.add(media_asset_id)
+            normalized_actions.append({"type": action_type, "media_asset_id": media_asset_id})
 
     for position, action in enumerate(normalized_actions, start=1):
         unknown = set().union(*(
@@ -566,6 +619,12 @@ async def validate_automation_rule(values: dict) -> dict:
             }
             if valid_ids != referenced_templates:
                 raise ValueError("El envío automático solo admite plantillas internas activas (sin botones/listas)")
+        if referenced_media_assets:
+            found = set((await session.execute(
+                select(MediaAsset.id).where(MediaAsset.id.in_(referenced_media_assets))
+            )).scalars().all())
+            if found != referenced_media_assets:
+                raise ValueError("Algún archivo de la librería de medios ya no existe")
 
     max_per_hour = values.get("max_executions_per_hour")
     if max_per_hour is not None and not 1 <= int(max_per_hour) <= 1000:
@@ -580,10 +639,76 @@ async def validate_automation_rule(values: dict) -> dict:
         "delay_minutes": int(values.get("delay_minutes") or 0),
         "max_executions_per_hour": int(max_per_hour) if max_per_hour else None,
         "is_active": bool(values.get("is_active", True)),
+        "visible_to_sellers": bool(values.get("visible_to_sellers", False)),
     }
 
 
 _normalize_flow_position = normalize_flow_position
+
+
+def _normalize_wait_any_conditions(data: dict, position: int) -> dict:
+    """Condiciones de un bloque Pausa (`wait_any`): cada una es una salida
+    propia del nodo. El `id` de cada condición es directamente su `kind`
+    ("timer"/"message") porque el diseño admite a lo sumo una de cada — no
+    hace falta que el usuario invente identificadores.
+
+    `timer` es obligatorio (nunca puede quedar esperando para siempre);
+    `message` es opcional.
+    """
+    raw_conditions = data.get("conditions")
+    if not isinstance(raw_conditions, list) or not raw_conditions:
+        raise ValueError(f"Pausa {position}: configura al menos una condición")
+    kinds_seen: set[str] = set()
+    conditions: list[dict] = []
+    for raw in raw_conditions:
+        kind = raw.get("kind") if isinstance(raw, dict) else None
+        if kind not in set(WaitAnyConditionKind):
+            raise ValueError(f"Pausa {position}: condición inválida")
+        if kind in kinds_seen:
+            raise ValueError(f"Pausa {position}: no repitas el mismo tipo de condición")
+        kinds_seen.add(kind)
+        if kind == WaitAnyConditionKind.TIMER:
+            seconds = int(raw.get("seconds") or 0)
+            if not 1 <= seconds <= 604800:
+                raise ValueError(f"Pausa {position}: el temporizador debe estar entre 1 segundo y 7 días")
+            conditions.append({"id": kind, "kind": kind, "seconds": seconds})
+        else:
+            conditions.append({"id": kind, "kind": kind})
+    if WaitAnyConditionKind.TIMER not in kinds_seen:
+        raise ValueError(
+            f"Pausa {position}: agrega un temporizador — es obligatorio, para que la "
+            "ejecución nunca quede esperando para siempre"
+        )
+    return {"conditions": conditions}
+
+
+MAX_QUESTION_BUTTONS = 3
+
+
+def _normalize_question(data: dict, position: int) -> dict:
+    """Bloque Pregunta (`question`): manda un mensaje con hasta 3 botones y
+    ramifica según cuál tocó el cliente. `id` de cada botón es `btn_1..btn_n`
+    (mismo esquema que ya usaba la acción `send_buttons` que este nodo
+    reemplaza) — son, junto con `other` (otra respuesta) y `timeout` (no
+    contestó a tiempo), los handles de salida del nodo."""
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise ValueError(f"Pregunta {position}: escribe el mensaje")
+    if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
+        raise ValueError(f"Pregunta {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
+    raw_buttons = data.get("buttons")
+    labels = [
+        str(label).strip()[:20]
+        for label in (raw_buttons if isinstance(raw_buttons, list) else [])
+        if isinstance(label, str) and str(label).strip()
+    ]
+    if not 1 <= len(labels) <= MAX_QUESTION_BUTTONS:
+        raise ValueError(f"Pregunta {position}: configura entre 1 y {MAX_QUESTION_BUTTONS} botones")
+    timeout_seconds = int(data.get("timeout_seconds") or 0)
+    if not 1 <= timeout_seconds <= 604800:
+        raise ValueError(f"Pregunta {position}: el tiempo de espera debe estar entre 1 segundo y 7 días")
+    buttons = [{"id": f"btn_{index}", "label": label} for index, label in enumerate(labels, start=1)]
+    return {"text": text, "buttons": buttons, "timeout_seconds": timeout_seconds}
 
 
 def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
@@ -649,7 +774,27 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
             "position": _normalize_flow_position(raw_node.get("position")),
             "data": raw_node.get("data") if isinstance(raw_node.get("data"), dict) else {},
         })
-    edges = normalize_edges(raw_edges, ids, allow_duplicate_handles=False)
+    # Los bloques Pausa (wait_any) usan como handle el "kind" de cada
+    # condición ("timer"/"message"/...) y Pregunta (question) usa
+    # "btn_1".."btn_n" + "other" + "timeout" — ninguno está en el enum fijo
+    # FlowHandle. Se admiten acá para que el borrador se pueda guardar
+    # mientras se arma (autosave), sin bloquear por una conexión que la
+    # validación estricta de validate_graph_topology recién exige al publicar.
+    dynamic_handles = {
+        condition["kind"]
+        for node in nodes if node["type"] == FlowNodeType.WAIT_ANY
+        for condition in (node["data"].get("conditions") or [])
+        if isinstance(condition, dict) and isinstance(condition.get("kind"), str)
+    }
+    dynamic_handles |= {
+        button["id"]
+        for node in nodes if node["type"] == FlowNodeType.QUESTION
+        for button in (node["data"].get("buttons") or [])
+        if isinstance(button, dict) and isinstance(button.get("id"), str)
+    }
+    if any(node["type"] == FlowNodeType.QUESTION for node in nodes):
+        dynamic_handles |= {QuestionHandle.OTHER, QuestionHandle.TIMEOUT}
+    edges = normalize_edges(raw_edges, ids, allow_duplicate_handles=False, extra_handles=dynamic_handles)
     trigger = next((node for node in nodes if node["type"] == FlowNodeType.TRIGGER), None)
     trigger_data = trigger["data"] if trigger else {}
     trigger_type = (
@@ -736,10 +881,14 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             normalized_data = {"action": action}
             action_nodes.append((len(normalized_nodes), action))
         elif node_type == FlowNodeType.WAIT:
-            minutes = int(data.get("minutes") or 0)
-            if not 1 <= minutes <= 10080:
-                raise ValueError(f"Espera {position}: configura entre 1 minuto y 7 días")
-            normalized_data = {"minutes": minutes}
+            seconds = _wait_seconds(data)
+            if not 1 <= seconds <= 604800:
+                raise ValueError(f"Espera {position}: configura entre 1 segundo y 7 días")
+            normalized_data = {"seconds": seconds}
+        elif node_type == FlowNodeType.WAIT_ANY:
+            normalized_data = _normalize_wait_any_conditions(data, position)
+        elif node_type == FlowNodeType.QUESTION:
+            normalized_data = _normalize_question(data, position)
         else:
             end_count += 1
             normalized_data = {"label": str(data.get("label") or "Fin").strip()[:80] or "Fin"}
@@ -909,6 +1058,8 @@ async def schedule_automation_event(
     event_key: str,
     payload: dict | None = None,
     rule_id: int | None = None,
+    started_by_user_id: int | None = None,
+    start_source: str = "system",
 ) -> int:
     if trigger_type not in TRIGGER_TYPES:
         return 0
@@ -948,6 +1099,8 @@ async def schedule_automation_event(
                     if rule["builder_mode"] == AutomationBuilderMode.VISUAL
                     else {},
                     created_at=now,
+                    start_source=start_source,
+                    started_by_user_id=started_by_user_id,
                 ).on_conflict_do_nothing(
                     index_elements=[AutomationExecution.rule_id, AutomationExecution.event_key]
                 )
@@ -957,6 +1110,69 @@ async def schedule_automation_event(
     if created:
         await manager.broadcast({"type": "automations_updated"})
     return created
+
+
+async def list_manual_flows(is_admin: bool) -> list[dict]:
+    """Flujos visuales con trigger manual que puede disparar un vendedor desde
+    el chat de un lead. El admin además ve los que todavía no marcó visibles
+    (para poder probarlos) o que siguen sin publicar/activar."""
+    rules = await list_automation_rules()
+    return [
+        rule for rule in rules
+        if rule["builder_mode"] == AutomationBuilderMode.VISUAL
+        and rule["trigger_type"] == AutomationTrigger.MANUAL
+        and (is_admin or (rule["visible_to_sellers"] and rule["is_active"]))
+    ]
+
+
+async def start_manual_flow_execution(
+    rule_id: int, lead_id: str, started_by_user_id: int, is_admin: bool,
+) -> dict:
+    """Arranca, con un click del vendedor, una ejecución de un flujo visual de
+    trigger manual sobre un lead puntual.
+
+    A diferencia de los triggers de sistema (que dedupan por event_key fijo:
+    un lead solo entra una vez por lead_created, stage_changed, etc.), acá el
+    vendedor debe poder repetir el mismo flujo sobre el mismo lead cuantas
+    veces quiera — por eso la event_key lleva un uuid único por click en vez
+    de derivarse del lead o del evento, y nunca choca con el índice único
+    (rule_id, event_key).
+    """
+    rule = await get_automation_rule(rule_id)
+    if rule is None:
+        raise ValueError("Flujo no encontrado")
+    if rule["builder_mode"] != AutomationBuilderMode.VISUAL or rule["trigger_type"] != AutomationTrigger.MANUAL:
+        raise ValueError("La regla no es un flujo de inicio manual")
+    if not rule["is_active"]:
+        raise ValueError("Publica y activa el flujo antes de iniciarlo")
+    if not is_admin and not rule["visible_to_sellers"]:
+        raise ValueError("Este flujo no está disponible para vendedores")
+
+    event_key = f"manual:{uuid4()}"
+    created = await schedule_automation_event(
+        AutomationTrigger.MANUAL,
+        lead_id,
+        event_key=event_key,
+        payload={"started_by_user_id": started_by_user_id},
+        rule_id=rule_id,
+        started_by_user_id=started_by_user_id,
+        start_source="manual",
+    )
+    if not created:
+        raise ValueError("No se pudo iniciar el flujo: verifica que el lead exista")
+    _wake.set()
+
+    async with get_sessionmaker()() as session:
+        execution_id = await session.scalar(
+            select(AutomationExecution.id).where(
+                AutomationExecution.rule_id == rule_id,
+                AutomationExecution.event_key == event_key,
+            )
+        )
+    execution = await get_automation_execution(execution_id) if execution_id else None
+    if execution is None:
+        raise ValueError("No se pudo recuperar la ejecución iniciada")
+    return execution
 
 
 async def trigger_lead_created(lead_id: str) -> None:
@@ -1157,9 +1373,31 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
                 "node_id": current_id,
                 "type": FlowNodeType.WAIT,
                 "status": "would_wait",
-                "minutes": node["data"]["minutes"],
+                "seconds": _wait_seconds(node["data"]),
             })
             current_id = edges[(current_id, FlowHandle.NEXT)]
+        elif node["type"] == FlowNodeType.WAIT_ANY:
+            # No hay forma de simular cuál condición se cumpliría primero en
+            # la vida real — se muestra el bloque y se sigue por la rama del
+            # temporizador (siempre presente) para completar el preview.
+            path.append({
+                "node_id": current_id,
+                "type": FlowNodeType.WAIT_ANY,
+                "status": "would_wait",
+                "conditions": node["data"].get("conditions", []),
+            })
+            current_id = edges[(current_id, WaitAnyConditionKind.TIMER)]
+        elif node["type"] == FlowNodeType.QUESTION:
+            # Igual que wait_any: no hay forma de simular qué contesta el
+            # cliente — se muestra el bloque y se sigue por "timeout".
+            path.append({
+                "node_id": current_id,
+                "type": FlowNodeType.QUESTION,
+                "status": "would_wait",
+                "text": node["data"].get("text"),
+                "buttons": node["data"].get("buttons", []),
+            })
+            current_id = edges[(current_id, QuestionHandle.TIMEOUT)]
         else:
             path.append({
                 "node_id": current_id,
@@ -1212,6 +1450,17 @@ async def _action_create_task(action, chat, execution, rule, deps) -> dict:
     }, rule.created_by_user_id)
     await deps.broadcast({"type": "tasks_updated"})
     return {"status": AutomationExecutionStatus.COMPLETED, "task_id": task["id"]}
+
+
+async def _action_change_service(action, chat, execution, rule, deps) -> dict:
+    updated = await deps.update_lead(
+        chat["chat_id"], {"servicio_interes": action["service"]}, "system", rule.created_by_user_id
+    )
+    if not updated:
+        raise ValueError("Lead no encontrado")
+    chat.update(updated)
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "lead_updated"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "service": action["service"]}
 
 
 async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
@@ -1328,16 +1577,139 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
     }
 
 
+async def _action_send_message(action, chat, execution, rule, deps) -> dict:
+    """Envía texto libre sin pasar por una plantilla — para un mensaje de un
+    solo uso dentro de un flujo puntual, cuando no vale la pena guardarlo
+    como plantilla reutilizable."""
+    window = await deps.get_customer_service_window(chat["chat_id"])
+    if not window or not window["is_open"]:
+        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    text = _render(action["text"], chat).strip()
+    if not text:
+        raise ValueError("El mensaje no tiene contenido para enviar")
+    if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
+        raise ValueError("El contenido renderizado del mensaje no es válido")
+    response = await deps.send_text(chat["chat_id"], text)
+    message = await deps.insert_message(
+        chat["chat_id"], MessageSender.SELLER, text,
+        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        message_type="text",
+    )
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+
+
+async def _fetch_media_asset(action, deps: AutomationDeps) -> MediaAsset:
+    async with deps.session() as session:
+        asset = await session.get(MediaAsset, action["media_asset_id"])
+    if not asset:
+        raise ValueError("El archivo elegido ya no existe en la librería de medios")
+    return asset
+
+
+async def _last_outbound_media_message_id(chat_id: str, deps: AutomationDeps) -> str | None:
+    """Para la condición `media_played` de una Pausa: el mensaje de imagen/
+    video/audio más reciente que el vendedor le mandó a este lead antes de
+    entrar a la espera — es lo que se vigila para saber cuándo lo reproduce.
+    None si todavía no se le mandó nada de eso (la condición simplemente
+    nunca se cumple, no es un error)."""
+    async with deps.session() as session:
+        return await session.scalar(
+            select(WspMessage.wa_message_id).where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.sender == "vendedor",
+                WspMessage.message_type.in_(["image", "video", "audio"]),
+                WspMessage.wa_message_id.isnot(None),
+            ).order_by(WspMessage.sent_at.desc(), WspMessage.id.desc()).limit(1)
+        )
+
+
+async def _action_send_audio(action, chat, execution, rule, deps) -> dict:
+    """Manda una nota de voz (PTT) desde un archivo ya subido a la librería
+    de medios — no crea una plantilla para un envío de un solo uso."""
+    asset = await _fetch_media_asset(action, deps)
+    if not asset.content_type.startswith("audio/"):
+        raise ValueError("El archivo elegido ya no es un audio")
+    window = await deps.get_customer_service_window(chat["chat_id"])
+    if not window or not window["is_open"]:
+        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    try:
+        encoded = deps.read_media_base64(asset.media_url)
+    except FileNotFoundError:
+        raise ValueError(f"No se encontró el archivo {asset.filename}")
+    response = await deps.send_audio(chat["chat_id"], encoded)
+    message = await deps.insert_message(
+        chat["chat_id"], MessageSender.SELLER, None, media_url=asset.media_url,
+        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        message_type="audio",
+    )
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+
+
+async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
+    """Manda un adjunto (imagen/video/documento) de la librería de medios sin
+    texto ni plantilla — mismo camino que ya usan los adjuntos de
+    `_action_send_template`, apuntando a un `MediaAsset` en vez de un
+    `TemplateAttachment`."""
+    asset = await _fetch_media_asset(action, deps)
+    window = await deps.get_customer_service_window(chat["chat_id"])
+    if not window or not window["is_open"]:
+        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    try:
+        encoded = deps.read_media_base64(asset.media_url)
+    except FileNotFoundError:
+        raise ValueError(f"No se encontró el archivo {asset.filename}")
+    mediatype = mediatype_from_content_type(asset.content_type)
+    response = await deps.send_media(chat["chat_id"], encoded, mediatype, filename=asset.filename)
+    message_type, payload = media_message_fields(mediatype, asset.filename)
+    message = await deps.insert_message(
+        chat["chat_id"], MessageSender.SELLER, None, media_url=asset.media_url,
+        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        message_type=message_type, payload=payload,
+    )
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+
+
+async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
+    """Manda un mensaje con botones nativos si la integración es WhatsApp
+    Business; si no, cae al fallback de texto numerado (mismo que usa el
+    envío manual de plantillas interactivas). Devuelve el mensaje insertado.
+    Compartido por el nodo `question` (única forma de mandar botones desde
+    un flujo: la acción `send_buttons` se reemplazó por ese nodo, que sí
+    puede ramificar según la respuesta)."""
+    capabilities = await get_template_capabilities()
+    if capabilities.get("integration") != "WHATSAPP-BUSINESS":
+        fallback = _buttons_text_fallback(text, "", "", buttons)
+        response = await deps.send_text(chat["chat_id"], fallback)
+        return await deps.insert_message(
+            chat["chat_id"], MessageSender.SELLER, fallback,
+            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+            message_type="text",
+        )
+    response = await deps.send_buttons(chat["chat_id"], text, "", "", buttons)
+    return await deps.insert_message(
+        chat["chat_id"], MessageSender.SELLER, text,
+        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
+        message_type="text",
+    )
+
+
 # Un handler por tipo de acción: agregar una acción nueva es sumar una entrada
 # acá y su validación, sin tocar el despachador ni las acciones existentes.
 ACTION_HANDLERS = {
     AutomationActionType.CREATE_TASK: _action_create_task,
     AutomationActionType.ASSIGN_SELLER: _action_assign_seller,
+    AutomationActionType.CHANGE_SERVICE: _action_change_service,
     AutomationActionType.ADD_TAG: _action_add_tag,
     AutomationActionType.REMOVE_TAG: _action_remove_tag,
     AutomationActionType.CHANGE_STAGE: _action_change_stage,
     AutomationActionType.NOTIFY: _action_notify,
     AutomationActionType.SEND_TEMPLATE: _action_send_template,
+    AutomationActionType.SEND_MESSAGE: _action_send_message,
+    AutomationActionType.SEND_AUDIO: _action_send_audio,
+    AutomationActionType.SEND_ATTACHMENT: _action_send_attachment,
 }
 
 
@@ -1364,6 +1736,7 @@ async def _persist_visual_execution(
     flow_version: int,
     error: str | None = None,
     scheduled_for: datetime | None = None,
+    wait_any_state: dict | None = None,
     deps: AutomationDeps = DEFAULT_DEPS,
 ) -> None:
     values = {
@@ -1373,6 +1746,9 @@ async def _persist_visual_execution(
             "flow_version": flow_version,
             "current_node_id": current_node_id,
             "path": path,
+            # Solo lo llevan los bloques Pausa (wait_any) mientras están
+            # esperando — omitirlo acá los limpia al avanzar a otro bloque.
+            **(wait_any_state or {}),
         },
         "error": error,
     }
@@ -1538,12 +1914,12 @@ async def _run_visual_execution(
                 )
                 continue
             if node["type"] == FlowNodeType.WAIT:
-                minutes = node["data"]["minutes"]
+                seconds = _wait_seconds(node["data"])
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
                     "type": FlowNodeType.WAIT,
                     "status": AutomationExecutionStatus.SCHEDULED,
-                    "minutes": minutes,
+                    "seconds": seconds,
                 })
                 current_id = edges[(current_id, FlowHandle.NEXT)]
                 await _persist_visual_execution(
@@ -1553,10 +1929,145 @@ async def _run_visual_execution(
                     current_id,
                     path,
                     flow_version,
-                    scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=minutes),
+                    scheduled_for=datetime.now(timezone.utc) + timedelta(seconds=seconds),
                 deps=deps,
                 )
                 return
+            if node["type"] == FlowNodeType.WAIT_ANY:
+                conditions = node["data"]["conditions"]
+                if state.get("waiting_at_node") != current_id:
+                    # Primera llegada: no se sabe todavía qué rama seguir, así
+                    # que a diferencia de Wait acá NO se avanza — se pausa en
+                    # este mismo bloque hasta que pase algo (el temporizador
+                    # cumple, llega un mensaje o se reproduce lo último que
+                    # se le mandó, según qué condiciones estén configuradas).
+                    timer = next(c for c in conditions if c["kind"] == WaitAnyConditionKind.TIMER)
+                    has_message = any(c["kind"] == WaitAnyConditionKind.MESSAGE for c in conditions)
+                    has_media_played = any(c["kind"] == WaitAnyConditionKind.MEDIA_PLAYED for c in conditions)
+                    watching_message_id = (
+                        await _last_outbound_media_message_id(chat["chat_id"], deps) if has_media_played else None
+                    )
+                    results.append({
+                        "position": len(results) + 1, "node_id": node["id"],
+                        "type": FlowNodeType.WAIT_ANY,
+                        "status": AutomationExecutionStatus.SCHEDULED,
+                        "conditions": conditions,
+                    })
+                    await _persist_visual_execution(
+                        execution.id,
+                        AutomationExecutionStatus.SCHEDULED,
+                        results,
+                        current_id,
+                        path,
+                        flow_version,
+                        scheduled_for=datetime.now(timezone.utc) + timedelta(seconds=timer["seconds"]),
+                        wait_any_state={
+                            "waiting_at_node": current_id,
+                            # ISO plano (no _ts/Z) porque esto es bookkeeping
+                            # interno que _discover_wait_any_replies vuelve a
+                            # parsear con datetime.fromisoformat, no un campo
+                            # que sirva la API al frontend.
+                            "waiting_since": datetime.now(timezone.utc).isoformat(),
+                            "awaiting_message": has_message,
+                            "watching_message_id": watching_message_id,
+                        },
+                    deps=deps,
+                    )
+                    return
+                # Reanudación: resume_reason lo puso el descubrimiento de
+                # mensajes/reproducciones (_discover_wait_any_replies) si algo
+                # pasó antes que el temporizador; si no está seteado, es
+                # porque scheduled_for se cumplió por el camino normal (timer).
+                # "Excepto horas laborales" tiene prioridad sobre cualquier
+                # otra rama: si está configurada y no es horario laboral en
+                # el momento de resolver, la ejecución sigue por ahí en vez
+                # de por lo que haya pasado.
+                branch = state.get("resume_reason") or WaitAnyConditionKind.TIMER
+                has_business_hours = any(c["kind"] == WaitAnyConditionKind.BUSINESS_HOURS for c in conditions)
+                if has_business_hours and not is_business_hours(datetime.now(business_timezone())):
+                    branch = WaitAnyConditionKind.BUSINESS_HOURS
+                results.append({
+                    "position": len(results) + 1, "node_id": node["id"],
+                    "type": FlowNodeType.WAIT_ANY,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                    "branch": branch,
+                })
+                current_id = edges[(current_id, branch)]
+                await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                deps=deps,
+                )
+                continue
+            if node["type"] == FlowNodeType.QUESTION:
+                if state.get("waiting_at_node") != current_id:
+                    # Primera llegada: manda el mensaje con botones y pausa —
+                    # mismo mecanismo que wait_any, pero acá siempre se espera
+                    # una respuesta (no hay condiciones opcionales) y además
+                    # se guarda `question_buttons` para poder matchear la
+                    # respuesta del cliente contra un botón concreto.
+                    text = _render(node["data"]["text"], chat).strip()
+                    buttons_data = node["data"]["buttons"]
+                    if not text:
+                        raise ValueError("La pregunta no tiene contenido para enviar")
+                    window = await deps.get_customer_service_window(chat["chat_id"])
+                    if not window or not window["is_open"]:
+                        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+                    buttons = [
+                        {"type": "reply", "displayText": button["label"], "id": button["id"]}
+                        for button in buttons_data
+                    ]
+                    message = await _send_buttons_message(chat, text, buttons, deps)
+                    results.append({
+                        "position": len(results) + 1, "node_id": node["id"],
+                        "type": FlowNodeType.QUESTION,
+                        "status": AutomationExecutionStatus.SCHEDULED,
+                        "message_ids": [message["id"]],
+                    })
+                    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+                    await _persist_visual_execution(
+                        execution.id,
+                        AutomationExecutionStatus.SCHEDULED,
+                        results,
+                        current_id,
+                        path,
+                        flow_version,
+                        scheduled_for=datetime.now(timezone.utc) + timedelta(seconds=node["data"]["timeout_seconds"]),
+                        wait_any_state={
+                            "waiting_at_node": current_id,
+                            "waiting_since": datetime.now(timezone.utc).isoformat(),
+                            "awaiting_message": True,
+                            "question_buttons": buttons_data,
+                        },
+                    deps=deps,
+                    )
+                    return
+                # Reanudación: resume_reason es un id de botón (matcheado por
+                # _discover_wait_any_replies), "other" (respondió algo que no
+                # matchea ningún botón) o, si no está seteado, "timeout" (no
+                # contestó a tiempo).
+                branch = state.get("resume_reason") or QuestionHandle.TIMEOUT
+                results.append({
+                    "position": len(results) + 1, "node_id": node["id"],
+                    "type": FlowNodeType.QUESTION,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                    "branch": branch,
+                })
+                current_id = edges[(current_id, branch)]
+                await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                deps=deps,
+                )
+                continue
             results.append({
                 "position": len(results) + 1, "node_id": node["id"],
                 "type": FlowNodeType.END,
@@ -1786,6 +2297,99 @@ async def _discover_recent_inbound_messages() -> None:
         )
 
 
+def _normalize_reply_text(value: str) -> str:
+    """trim + minúsculas + sin acentos, para matchear la respuesta libre del
+    cliente contra el label de un botón sin depender de mayúsculas/tildes."""
+    decomposed = unicodedata.normalize("NFKD", value.strip().lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _match_question_button(buttons: list[dict], message_type: str | None, content: str | None, payload: dict | None) -> str:
+    """Resuelve a qué botón corresponde la respuesta del cliente: por
+    `selected_id` si tocó un botón nativo, si no por número de posición o por
+    el texto del botón (el fallback de texto numerado usa exactamente ese
+    esquema); si no matchea nada, "otra respuesta"."""
+    if message_type == "interactive" and isinstance(payload, dict):
+        selected_id = payload.get("selected_id")
+        if selected_id and any(button["id"] == selected_id for button in buttons):
+            return selected_id
+    normalized = _normalize_reply_text(content or "")
+    if normalized.isdigit():
+        index = int(normalized) - 1
+        if 0 <= index < len(buttons):
+            return buttons[index]["id"]
+    for button in buttons:
+        if _normalize_reply_text(button["label"]) == normalized:
+            return button["id"]
+    return QuestionHandle.OTHER
+
+
+async def _discover_wait_any_replies() -> None:
+    """Reanuda ejecuciones pausadas en un bloque Pausa (wait_any, condición
+    "hasta recibir mensaje" o "hasta que se reproduce lo enviado") o Pregunta
+    (question): si el lead escribió después de entrar a la espera, o si el
+    mensaje que se vigila ya quedó en READ/PLAYED, adelanta `scheduled_for` a
+    ahora y marca `resume_reason` para que `_run_visual_execution` siga por
+    esa rama en vez de la del timer. Análoga a
+    `_discover_recent_inbound_messages`, pero para ejecuciones que ya están
+    corriendo (no dispara ejecuciones nuevas)."""
+    async with get_sessionmaker()() as session:
+        waiting = (await session.execute(
+            select(AutomationExecution.id, AutomationExecution.lead_id, AutomationExecution.flow_state)
+            .where(
+                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+                or_(
+                    AutomationExecution.flow_state["awaiting_message"].astext == "true",
+                    AutomationExecution.flow_state["watching_message_id"].astext.isnot(None),
+                ),
+            )
+            .limit(200)
+        )).all()
+    resumed = False
+    for execution_id, lead_id, flow_state in waiting:
+        waiting_since = flow_state.get("waiting_since") if flow_state else None
+        if not lead_id or not waiting_since:
+            continue
+        since = datetime.fromisoformat(waiting_since)
+        resume_reason = None
+        async with get_sessionmaker()() as session:
+            if flow_state.get("awaiting_message"):
+                reply = (await session.execute(
+                    select(WspMessage.message_type, WspMessage.content, WspMessage.payload).where(
+                        WspMessage.chat_id == lead_id,
+                        WspMessage.sender == "cliente",
+                        WspMessage.sent_at > since,
+                    ).order_by(WspMessage.sent_at.asc(), WspMessage.id.asc()).limit(1)
+                )).mappings().first()
+                if reply:
+                    question_buttons = flow_state.get("question_buttons")
+                    resume_reason = (
+                        _match_question_button(question_buttons, reply["message_type"], reply["content"], reply["payload"])
+                        if question_buttons
+                        else WaitAnyConditionKind.MESSAGE
+                    )
+            watching_message_id = flow_state.get("watching_message_id")
+            if resume_reason is None and watching_message_id:
+                status = await session.scalar(
+                    select(WspMessage.status).where(WspMessage.wa_message_id == watching_message_id)
+                )
+                if status in ("READ", "PLAYED"):
+                    resume_reason = WaitAnyConditionKind.MEDIA_PLAYED
+            if resume_reason is None:
+                continue
+            await session.execute(update(AutomationExecution).where(
+                AutomationExecution.id == execution_id,
+                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+            ).values(
+                scheduled_for=datetime.now(timezone.utc),
+                flow_state={**flow_state, "resume_reason": resume_reason},
+            ))
+            await session.commit()
+            resumed = True
+    if resumed:
+        _wake.set()
+
+
 async def _discover_timed_events() -> None:
     async with get_sessionmaker()() as session:
         rules = (await session.execute(select(AutomationRule).where(
@@ -1981,6 +2585,7 @@ async def watch_automations() -> None:
                 await _release_stale_executions()
                 await _discover_recent_inbound_messages()
                 await _discover_timed_events()
+                await _discover_wait_any_replies()
                 next_housekeeping_at = now_mono + 60.0
             await process_due_automation_executions()
         except asyncio.CancelledError:

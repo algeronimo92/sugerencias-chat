@@ -17,8 +17,10 @@ import {
 import { useUsers } from '../hooks/useUsers'
 import { useTags } from '../hooks/useLeadMeta'
 import { useTemplates } from '../hooks/useTemplates'
+import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
+import { MediaAssetField } from './MediaAssetField'
 import { Checkbox } from './ui/Checkbox'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { Select } from './ui/Input'
@@ -57,6 +59,14 @@ function defaultAction(type: AutomationActionType): AutomationAction {
       return { type, recipient: AutomationRecipient.Seller, user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
     case ActionType.SendTemplate:
       return { type, template_id: null }
+    case ActionType.SendMessage:
+      return { type, text: '' }
+    case ActionType.ChangeService:
+      return { type, service: null }
+    case ActionType.SendAudio:
+      return { type, media_asset_id: null }
+    case ActionType.SendAttachment:
+      return { type, media_asset_id: null }
     default:
       return assertNever(type)
   }
@@ -128,6 +138,8 @@ function validateForm(form: RuleForm) {
     if ((action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && !action.tag_id) errors.push(`${prefix}: selecciona una etiqueta.`)
     if (action.type === ActionType.Notify && (!action.title.trim() || !action.body.trim() || (action.recipient === AutomationRecipient.Specific && !action.user_id))) errors.push(`${prefix}: completa destinatario, título y contenido.`)
     if (action.type === ActionType.SendTemplate && !action.template_id) errors.push(`${prefix}: selecciona una plantilla.`)
+    if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje a enviar.`)
+    if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
   })
   return errors
 }
@@ -146,6 +158,7 @@ export function AutomationsPage() {
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
   const { data: templates = [] } = useTemplates(true)
+  const { data: mediaAssets = [] } = useMediaLibrary()
   const create = useCreateAutomation()
   const update = useUpdateAutomation()
   const duplicate = useDuplicateAutomation()
@@ -228,6 +241,9 @@ export function AutomationsPage() {
       delay_minutes: Number(form.delayMinutes) || 0,
       max_executions_per_hour: form.maxExecutionsPerHour || null,
       is_active: form.isActive,
+      // Solo los flujos visuales de trigger manual usan visible_to_sellers
+      // (se edita desde VisualFlowBuilder); una regla "simple" nunca aplica.
+      visible_to_sellers: false,
     }
     const successMessage = editingId == null ? 'Automatización creada' : 'Automatización actualizada'
     const options = {
@@ -390,6 +406,10 @@ export function AutomationsPage() {
             {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => { const value = event.target.value; if (isLeadStage(value)) setAction(index, { ...action, stage: value }) }} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark">{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
             {action.type === ActionType.Notify && <div className="grid gap-2 md:grid-cols-2"><Select value={action.recipient} onChange={event => setAction(index, { ...action, recipient: event.target.value === AutomationRecipient.Specific ? AutomationRecipient.Specific : AutomationRecipient.Seller, user_id: null })} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value={AutomationRecipient.Seller}>Vendedor del lead</option><option value={AutomationRecipient.Specific}>Usuario específico</option></Select>{action.recipient === AutomationRecipient.Specific && <Select required value={action.user_id ?? ''} onChange={event => setAction(index, { ...action, user_id: Number(event.target.value) || null })} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona usuario</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}<input required maxLength={160} value={action.title} onChange={event => setAction(index, { ...action, title: event.target.value })} placeholder="Título" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark md:col-span-2" /><textarea required maxLength={1000} rows={2} value={action.body} onChange={event => setAction(index, { ...action, body: event.target.value })} placeholder="Contenido de la notificación" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark md:col-span-2" /></div>}
             {action.type === ActionType.SendTemplate && <div><Select required value={action.template_id ?? ''} onChange={event => setAction(index, { ...action, template_id: Number(event.target.value) || null })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona plantilla de texto</option>{automaticTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</Select><p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">Solo se envía con la ventana de 24 horas abierta. Se admiten adjuntos (imagen, video, audio, documento); no se admiten plantillas con botones o listas.</p></div>}
+            {action.type === ActionType.SendMessage && <textarea required rows={3} value={action.text} onChange={event => setAction(index, { ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />}
+            {action.type === ActionType.ChangeService && <div><input value={action.service ?? ''} onChange={event => setAction(index, { ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><p className="mt-1 text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></div>}
+            {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
+            {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
           </div>)}</div></section>
 
           <div className="rounded-xl bg-wa-hover px-3 py-2.5 text-[11px] text-wa-muted dark:bg-wa-head-dark/60">Variables disponibles: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}. Las acciones se detienen si una falla y el motivo queda en el historial.</div>

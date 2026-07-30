@@ -568,6 +568,7 @@ class AutomationRuleCreate(BaseModel):
     delay_minutes: int = Field(default=0, ge=0, le=10080)
     max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool = True
+    visible_to_sellers: bool = False
 
 
 class AutomationRuleUpdate(BaseModel):
@@ -579,6 +580,7 @@ class AutomationRuleUpdate(BaseModel):
     delay_minutes: int | None = Field(default=None, ge=0, le=10080)
     max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool | None = None
+    visible_to_sellers: bool | None = None
 
 
 class AutomationRuleItem(BaseModel):
@@ -595,6 +597,7 @@ class AutomationRuleItem(BaseModel):
     delay_minutes: int
     max_executions_per_hour: int | None = None
     is_active: bool
+    visible_to_sellers: bool = False
     created_by_user_id: int
     created_by_name: str
     execution_count: int
@@ -620,6 +623,8 @@ class AutomationExecutionItem(BaseModel):
     flow_state: dict = Field(default_factory=dict)
     error: str | None = None
     created_at: str
+    start_source: str = "system"
+    started_by_user_id: int | None = None
 
 
 class AutomationFlowCreate(BaseModel):
@@ -634,6 +639,10 @@ class AutomationFlowUpdate(BaseModel):
 
 class AutomationFlowSimulationRequest(BaseModel):
     lead_id: str
+
+
+class ManualFlowStartRequest(BaseModel):
+    chat_id: str
 
 
 class AutomationFlowVersionItem(BaseModel):

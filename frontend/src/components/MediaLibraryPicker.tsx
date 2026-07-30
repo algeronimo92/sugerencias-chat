@@ -3,13 +3,14 @@ import { Check, FileText, Image, Loader2, Search, X } from 'lucide-react'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { resolveMediaUrl } from '../utils/message'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClassElevated, dialogOverlayClassElevated } from './ui/Dialog'
 interface Props {
   selectedIds: Set<number>
   disabledIds: Set<number>
   canSelect: boolean
   onSelect: (asset: MediaAsset) => void
   onClose: () => void
+  defaultKind?: MediaAssetKind
 }
 
 const FILTERS: { value: MediaAssetKind | ''; label: string }[] = [
@@ -20,17 +21,17 @@ const FILTERS: { value: MediaAssetKind | ''; label: string }[] = [
   { value: 'document', label: 'Documentos' },
 ]
 
-export function MediaLibraryPicker({ selectedIds, disabledIds, canSelect, onSelect, onClose }: Props) {
+export function MediaLibraryPicker({ selectedIds, disabledIds, canSelect, onSelect, onClose, defaultKind }: Props) {
   const [search, setSearch] = useState('')
-  const [kind, setKind] = useState<MediaAssetKind | ''>('')
+  const [kind, setKind] = useState<MediaAssetKind | ''>(defaultKind ?? '')
   const deferredSearch = useDeferredValue(search.trim())
   const { data = [], isLoading } = useMediaLibrary(deferredSearch, kind)
 
   return (
     <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className={dialogOverlayClass} />
-        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-4xl flex-col rounded-xl bg-white shadow-2xl dark:bg-wa-panel-dark`}>
+        <Dialog.Overlay className={dialogOverlayClassElevated} />
+        <Dialog.Content className={`${dialogContentPositionClassElevated} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-4xl flex-col rounded-xl bg-white shadow-2xl dark:bg-wa-panel-dark`}>
         <div className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark">
           <div className="flex items-center gap-2">
             <Image className="h-5 w-5 text-wa-primary-strong" />

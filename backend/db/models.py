@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -513,6 +514,10 @@ class AutomationRule(Base):
     # el número de WhatsApp por spam. None = sin límite.
     max_executions_per_hour: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Solo aplica a flujos visuales con trigger_type=manual: si está en True,
+    # el flujo aparece en el selector "Iniciar flujo" del vendedor dentro del
+    # chat. El admin siempre puede dispararlo aunque esté en False.
+    visible_to_sellers: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -565,10 +570,21 @@ class AutomationExecution(Base):
     flow_state: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Quién y cómo arrancó esta ejecución: 'system' para todos los triggers
+    # automáticos de siempre, 'manual' cuando la inicia un vendedor con el
+    # botón "Iniciar flujo" del chat. started_by_user_id solo se llena en el
+    # caso manual — permite mostrar "Iniciado por Ana" y limitar la
+    # cancelación a quien lo lanzó.
+    start_source: Mapped[str] = mapped_column(Text, default="system", server_default="system")
+    started_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (
         Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),
         Index("idx_automation_executions_due", status, scheduled_for),
         Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),
         Index("idx_automation_executions_lead_created", lead_id, created_at.desc()),
+        CheckConstraint(
+            "start_source IN ('system', 'manual')",
+            name="ck_automation_executions_start_source",
+        ),
     )

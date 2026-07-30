@@ -27,7 +27,12 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import send_whatsapp_media, send_whatsapp_text
+from services.evolution_service import (
+    send_whatsapp_audio,
+    send_whatsapp_buttons,
+    send_whatsapp_media,
+    send_whatsapp_text,
+)
 from services.media_storage import read_media_base64
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
@@ -65,6 +70,8 @@ class AutomationDeps:
 
     send_text: Callable[[str, str], Awaitable[dict]] = send_whatsapp_text
     send_media: Callable[..., Awaitable[dict]] = send_whatsapp_media
+    send_audio: Callable[..., Awaitable[dict]] = send_whatsapp_audio
+    send_buttons: Callable[..., Awaitable[dict]] = send_whatsapp_buttons
     read_media_base64: Callable[[str], str] = read_media_base64
 
     broadcast: Callable[[dict], Awaitable[None]] = _broadcast

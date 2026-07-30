@@ -9,6 +9,7 @@ import { renderTemplate } from '../utils/templates'
 import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
+import { FlowPicker } from './FlowPicker'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { MediaPreviewDialog } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
@@ -419,6 +420,8 @@ export function ChatComposer({
               onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
             />
           )}
+
+          {!isRecordingAudio && <FlowPicker chatId={chat.chat_id} />}
 
           {!isRecordingAudio && (
             <div className="relative flex-1">

@@ -7,6 +7,7 @@ export const AutomationTrigger = {
   SellerResponseOverdue: 'seller_response_overdue',
   CustomerResponseOverdue: 'customer_response_overdue',
   TaskDue: 'task_due',
+  Manual: 'manual',
 } as const
 export type AutomationTriggerValue = ValueOf<typeof AutomationTrigger>
 
@@ -17,6 +18,7 @@ export const AUTOMATION_TRIGGERS = [
   { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
   { value: AutomationTrigger.CustomerResponseOverdue, label: 'Cliente sin responder', description: 'El último mensaje es del vendedor y vence el tiempo configurado.' },
   { value: AutomationTrigger.TaskDue, label: 'Tarea vencida', description: 'Cuando una tarea pendiente llega a su fecha límite.' },
+  { value: AutomationTrigger.Manual, label: 'Inicio manual (vendedor)', description: 'El vendedor lo dispara con el botón "Iniciar flujo" dentro del chat de un lead.' },
 ] as const satisfies ReadonlyArray<{
   value: AutomationTriggerValue
   label: string
@@ -36,6 +38,10 @@ export const AutomationActionType = {
   ChangeStage: 'change_stage',
   Notify: 'notify',
   SendTemplate: 'send_template',
+  SendMessage: 'send_message',
+  ChangeService: 'change_service',
+  SendAudio: 'send_audio',
+  SendAttachment: 'send_attachment',
 } as const
 export type AutomationActionTypeValue = ValueOf<typeof AutomationActionType>
 
@@ -47,6 +53,10 @@ export const AUTOMATION_ACTION_LABELS = {
   [AutomationActionType.ChangeStage]: 'Cambiar etapa',
   [AutomationActionType.Notify]: 'Notificar internamente',
   [AutomationActionType.SendTemplate]: 'Enviar plantilla WhatsApp',
+  [AutomationActionType.SendMessage]: 'Enviar mensaje directo',
+  [AutomationActionType.ChangeService]: 'Cambiar/quitar servicio de interés',
+  [AutomationActionType.SendAudio]: 'Enviar audio',
+  [AutomationActionType.SendAttachment]: 'Enviar solo adjunto',
 } satisfies Record<AutomationActionTypeValue, string>
 
 export const FlowNodeType = {
@@ -54,6 +64,8 @@ export const FlowNodeType = {
   Condition: 'condition',
   Action: 'action',
   Wait: 'wait',
+  WaitAny: 'wait_any',
+  Question: 'question',
   End: 'end',
 } as const
 export type FlowNodeTypeValue = ValueOf<typeof FlowNodeType>
@@ -62,9 +74,41 @@ export const FLOW_NODE_LABELS = {
   [FlowNodeType.Trigger]: 'Disparador',
   [FlowNodeType.Condition]: 'Condición',
   [FlowNodeType.Action]: 'Acción',
-  [FlowNodeType.Wait]: 'Espera',
+  // `wait` se conserva únicamente para leer flujos antiguos. En el editor,
+  // ambos formatos se presentan como un único bloque Pausa (`wait_any`).
+  [FlowNodeType.Wait]: 'Pausa',
+  [FlowNodeType.WaitAny]: 'Pausa',
+  [FlowNodeType.Question]: 'Pregunta (botones)',
   [FlowNodeType.End]: 'Fin',
 } satisfies Record<FlowNodeTypeValue, string>
+
+export const WaitAnyConditionKind = {
+  Timer: 'timer',
+  Message: 'message',
+  BusinessHours: 'business_hours',
+  MediaPlayed: 'media_played',
+} as const
+export type WaitAnyConditionKindValue = ValueOf<typeof WaitAnyConditionKind>
+
+export const WAIT_ANY_CONDITION_LABELS = {
+  [WaitAnyConditionKind.Timer]: 'Temporizador',
+  [WaitAnyConditionKind.Message]: 'Hasta recibir mensaje',
+  [WaitAnyConditionKind.BusinessHours]: 'Excepto horas laborales',
+  [WaitAnyConditionKind.MediaPlayed]: 'Hasta que se reproduce lo enviado',
+} satisfies Record<WaitAnyConditionKindValue, string>
+
+/** Handles fijos del nodo Pregunta que no dependen de los botones
+ *  configurados (a diferencia de btn_1..btn_n, que sí). */
+export const QuestionHandle = {
+  Other: 'other',
+  Timeout: 'timeout',
+} as const
+export type QuestionHandleValue = ValueOf<typeof QuestionHandle>
+
+export const QUESTION_HANDLE_LABELS = {
+  [QuestionHandle.Other]: 'Otra respuesta',
+  [QuestionHandle.Timeout]: 'Sin respuesta',
+} satisfies Record<QuestionHandleValue, string>
 
 export const FlowConditionType = {
   StageEquals: 'stage_equals',
@@ -165,6 +209,18 @@ export const TASK_PRIORITY_LABELS = {
   [TaskPriorityValue.Normal]: 'Normal',
   [TaskPriorityValue.High]: 'Alta',
 } satisfies Record<TaskPriorityCatalogValue, string>
+
+/** "2h 5min", "30s", "1h" — nunca vacío, para el título del nodo Esperar. */
+export function formatWaitDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const parts: string[] = []
+  if (hours) parts.push(`${hours}h`)
+  if (minutes) parts.push(`${minutes}min`)
+  if (seconds || parts.length === 0) parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
 
 export function isAutomationTrigger(value: string): value is AutomationTriggerValue {
   return Object.values(AutomationTrigger).some(item => item === value)

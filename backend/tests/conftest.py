@@ -19,6 +19,8 @@ class FakeWhatsApp:
 
     texts: list[tuple[str, str]] = field(default_factory=list)
     media: list[tuple[str, str, str]] = field(default_factory=list)
+    audio: list[str] = field(default_factory=list)
+    buttons: list[tuple[str, str, list]] = field(default_factory=list)
     fail_with: Exception | None = None
 
     async def send_text(self, chat_id: str, text: str) -> dict:
@@ -32,6 +34,18 @@ class FakeWhatsApp:
             raise self.fail_with
         self.media.append((chat_id, mediatype, filename or ""))
         return {"key": {"id": f"WAM{len(self.media)}"}}
+
+    async def send_audio(self, chat_id: str, encoded: str) -> dict:
+        if self.fail_with:
+            raise self.fail_with
+        self.audio.append(chat_id)
+        return {"key": {"id": f"WAA{len(self.audio)}"}}
+
+    async def send_buttons(self, chat_id: str, title: str, description: str, footer: str, buttons: list) -> dict:
+        if self.fail_with:
+            raise self.fail_with
+        self.buttons.append((chat_id, title, buttons))
+        return {"key": {"id": f"WAB{len(self.buttons)}"}}
 
 
 @dataclass
@@ -188,5 +202,7 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
         get_customer_service_window=open_window,
         send_text=whatsapp.send_text,
         send_media=whatsapp.send_media,
+        send_audio=whatsapp.send_audio,
+        send_buttons=whatsapp.send_buttons,
         read_media_base64=lambda media_url: "ZmFrZS1iYXNlNjQ=",
     )

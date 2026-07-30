@@ -8,6 +8,7 @@ class AutomationTrigger(StrEnum):
     SELLER_RESPONSE_OVERDUE = "seller_response_overdue"
     CUSTOMER_RESPONSE_OVERDUE = "customer_response_overdue"
     TASK_DUE = "task_due"
+    MANUAL = "manual"
 
 
 class AutomationActionType(StrEnum):
@@ -18,6 +19,10 @@ class AutomationActionType(StrEnum):
     CHANGE_STAGE = "change_stage"
     NOTIFY = "notify"
     SEND_TEMPLATE = "send_template"
+    SEND_MESSAGE = "send_message"
+    CHANGE_SERVICE = "change_service"
+    SEND_AUDIO = "send_audio"
+    SEND_ATTACHMENT = "send_attachment"
 
 
 class FlowNodeType(StrEnum):
@@ -25,7 +30,21 @@ class FlowNodeType(StrEnum):
     CONDITION = "condition"
     ACTION = "action"
     WAIT = "wait"
+    WAIT_ANY = "wait_any"
+    QUESTION = "question"
     END = "end"
+
+
+class WaitAnyConditionKind(StrEnum):
+    TIMER = "timer"
+    MESSAGE = "message"
+    BUSINESS_HOURS = "business_hours"
+    MEDIA_PLAYED = "media_played"
+
+
+class QuestionHandle(StrEnum):
+    OTHER = "other"
+    TIMEOUT = "timeout"
 
 
 class FlowConditionType(StrEnum):
