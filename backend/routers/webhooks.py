@@ -13,6 +13,7 @@ from services.db_service import (
     update_lead_stage,
     update_message_status,
 )
+from services.ad_referral_service import rehost_ad_thumbnail
 from services.message_status_service import parse_message_status_events
 from services.ws_manager import manager
 from services.automation_service import trigger_inbound_message, trigger_stage_changed
@@ -49,6 +50,10 @@ async def new_message_webhook(
             )
     if message is None:
         message = await fetch_latest_message()
+
+    if wa_message_id:
+        # Antes del broadcast: al recargar el hilo el payload ya trae la URL estable.
+        await rehost_ad_thumbnail(wa_message_id)
 
     if message is not None:
         payload["latest_message"] = message

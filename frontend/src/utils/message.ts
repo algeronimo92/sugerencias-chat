@@ -386,6 +386,7 @@ export interface AdReferral {
   body: string
   sourceUrl: string | null
   thumbnailUrl: string | null
+  ctwaClid: string | null
 }
 
 /** Lee el anuncio (Click-to-WhatsApp) del payload de un mensaje, o null si el
@@ -397,11 +398,13 @@ export function messageAdReferral(payload: Record<string, unknown> | null): AdRe
   const title = asString(raw.title)
   const body = asString(raw.body)
   if (!title && !body) return null
+  const thumb = asString(raw.thumbnail_url)
   return {
     title,
     body,
     sourceUrl: safeUrl(raw.source_url),
-    thumbnailUrl: safeUrl(raw.thumbnail_url),
+    thumbnailUrl: thumb.startsWith('/media/') || safeUrl(thumb) ? resolveMediaUrl(thumb) : null,
+    ctwaClid: asString(raw.ctwa_clid) || null,
   }
 }
 

@@ -1283,6 +1283,30 @@ async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
     return _message_notification_payload(row)
 
 
+async def fetch_message_ad_payload(wa_message_id: str) -> dict | None:
+    """`id` y `payload` de un mensaje, para rehospedar la miniatura del anuncio
+    después de que n8n lo inserta. None si el `wa_message_id` no existe."""
+    stmt = (
+        select(WspMessage.id, WspMessage.payload)
+        .where(WspMessage.wa_message_id == wa_message_id)
+        .order_by(WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+    if row is None:
+        return None
+    return {"id": row["id"], "payload": row["payload"]}
+
+
+async def update_message_payload(message_id: int, payload: dict) -> None:
+    """Reemplaza el JSONB `payload` de un mensaje."""
+    stmt = update(WspMessage).where(WspMessage.id == message_id).values(payload=payload)
+    async with get_sessionmaker()() as session:
+        await session.execute(stmt)
+        await session.commit()
+
+
 async def existing_wa_message_ids(chat_id: str, wa_ids: list[str]) -> set[str]:
     """Cuáles de esos IDs de WhatsApp ya están registrados en el chat.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDayLabel, groupByDay, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
+import { formatDayLabel, groupByDay, messageAdReferral, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
 
 describe('parseContent', () => {
   it('trata el texto suelto como texto', () => {
@@ -214,6 +214,38 @@ describe('resolveMediaUrl', () => {
     // es lo que hace que el navegador mande la cookie de sesión a /media/.
     const resolved = resolveMediaUrl('/media/foto.jpg')
     expect(resolved).toMatch(/\/media\/foto\.jpg$/)
+  })
+})
+
+describe('messageAdReferral', () => {
+  it('devuelve null si el mensaje no vino de un anuncio', () => {
+    expect(messageAdReferral(null)).toBeNull()
+    expect(messageAdReferral({ latitude: 1 })).toBeNull()
+    expect(messageAdReferral({ ad_referral: { source_url: 'https://x/y' } })).toBeNull()
+  })
+
+  it('lee título, cuerpo, link y ctwa_clid del anuncio', () => {
+    const ad = messageAdReferral({
+      ad_referral: {
+        title: 'DermicaPro',
+        body: 'HIFU',
+        source_url: 'https://instagram.com/p/abc',
+        ctwa_clid: 'AfiYDh',
+      },
+    })
+    expect(ad).toMatchObject({ title: 'DermicaPro', body: 'HIFU', sourceUrl: 'https://instagram.com/p/abc', ctwaClid: 'AfiYDh' })
+  })
+
+  it('resuelve la miniatura rehospedada en /media y deja pasar las externas', () => {
+    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: '/media/ad-1.jpg' } })?.thumbnailUrl)
+      .toMatch(/\/media\/ad-1\.jpg$/)
+    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: 'https://cdn/x.jpg' } })?.thumbnailUrl)
+      .toBe('https://cdn/x.jpg')
+  })
+
+  it('descarta miniaturas con esquemas que no sean http ni /media', () => {
+    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: 'javascript:alert(1)' } })?.thumbnailUrl)
+      .toBeNull()
   })
 })
 
