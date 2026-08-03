@@ -424,7 +424,6 @@ export function toCanvasEdges(
       selected: edge.id === selectedEdgeId,
       type: 'smoothstep',
       interactionWidth: 32,
-      zIndex: highlighted ? 20 : 0,
       style: {
         stroke: color,
         strokeWidth: highlighted ? 4 : 2,
@@ -487,6 +486,7 @@ function Canvas({
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const nodeLeaveTimer = useRef<number | null>(null)
 
   const highlightedEdgeIds = useMemo(() => {
     const activeEdgeId = hoveredEdgeId ?? selectedEdgeId
@@ -532,11 +532,9 @@ function Canvas({
         previewTemplate,
         previewAsset,
         onDelete: onDeleteNode,
-        connectionRole: connectionRoles.get(node.id),
-        connectionDimmed: highlightedEdgeIds.size > 0 && !connectionRoles.has(node.id),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNode, connectionRoles, highlightedEdgeIds])
+  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNode])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -547,6 +545,19 @@ function Canvas({
   const [nodes, setNodes] = useState<CanvasNode[]>(derivedNodes)
   useEffect(() => { setNodes(derivedNodes) }, [derivedNodes])
 
+  // El estado de hover se aplica solo a la vista que recibe React Flow; no se
+  // reinyecta en `nodes`. Resincronizar el estado base en cada mouseenter podía
+  // reemplazar el elemento bajo el cursor y disparar mouseleave/mouseenter en
+  // bucle, produciendo el parpadeo continuo.
+  const displayNodes = useMemo<CanvasNode[]>(() => nodes.map(node => ({
+    ...node,
+    data: {
+      ...node.data,
+      connectionRole: connectionRoles.get(node.id),
+      connectionDimmed: highlightedEdgeIds.size > 0 && !connectionRoles.has(node.id),
+    },
+  })), [nodes, connectionRoles, highlightedEdgeIds])
+
   const edges = useMemo(
     () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId),
     [flow.edges, highlightedEdgeIds, selectedEdgeId],
@@ -556,6 +567,28 @@ function Canvas({
     if (selectedEdgeId && !flow.edges.some(edge => edge.id === selectedEdgeId)) setSelectedEdgeId(null)
     if (hoveredEdgeId && !flow.edges.some(edge => edge.id === hoveredEdgeId)) setHoveredEdgeId(null)
   }, [flow.edges, selectedEdgeId, hoveredEdgeId])
+
+  useEffect(() => () => {
+    if (nodeLeaveTimer.current !== null) window.clearTimeout(nodeLeaveTimer.current)
+  }, [])
+
+  const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    if (nodeLeaveTimer.current !== null) {
+      window.clearTimeout(nodeLeaveTimer.current)
+      nodeLeaveTimer.current = null
+    }
+    setHoveredNodeId(node.id)
+  }, [])
+
+  const handleNodeMouseLeave = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    if (nodeLeaveTimer.current !== null) window.clearTimeout(nodeLeaveTimer.current)
+    // Un margen mínimo absorbe los leave/enter sintéticos que React Flow puede
+    // emitir al actualizar estilos, sin volver pegajoso el resaltado real.
+    nodeLeaveTimer.current = window.setTimeout(() => {
+      setHoveredNodeId(current => current === node.id ? null : current)
+      nodeLeaveTimer.current = null
+    }, 80)
+  }, [])
 
   const handleNodesChange = useCallback<OnNodesChange<CanvasNode>>(changes => {
     setNodes(current => applyNodeChanges(changes, current))
@@ -600,7 +633,7 @@ function Canvas({
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
         className="bg-wa-field dark:bg-[#0d2230]"
-        nodes={nodes}
+        nodes={displayNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
         onNodesChange={handleNodesChange}
@@ -610,8 +643,8 @@ function Canvas({
         })}
         onConnect={handleConnect}
         isValidConnection={isValidConnection}
-        onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
-        onNodeMouseLeave={(_, node) => setHoveredNodeId(current => current === node.id ? null : current)}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
         onEdgeMouseLeave={(_, edge) => setHoveredEdgeId(current => current === edge.id ? null : current)}
         onEdgeClick={(event, edge) => {
