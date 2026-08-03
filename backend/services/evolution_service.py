@@ -6,6 +6,7 @@ import httpx
 from time import monotonic, perf_counter
 from services.performance import record_external_duration
 from services.settings_service import get_effective_many
+from services.whatsapp_identity_service import resolve_whatsapp_destination
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,41 @@ async def check_whatsapp_numbers(numbers: list[str]) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+async def find_phone_jid_for_lid(lid_jid: str) -> str | None:
+    """Intenta resolver un LID usando los contactos sincronizados por Evolution.
+
+    Es una ayuda best-effort: algunas versiones conservan contactos incompletos
+    o desactualizados. Solo se acepta ``number`` como teléfono; nunca se usan
+    los dígitos del propio LID.
+    """
+    if not lid_jid.endswith("@lid"):
+        return None
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/chat/findContacts/{instance}"
+    result = await _post(url, api_key, {"where": {"id": lid_jid}, "take": 5}, timeout=10.0)
+    if isinstance(result, dict):
+        rows = result.get("records") or result.get("data") or result.get("contacts") or []
+    else:
+        rows = result
+    if not isinstance(rows, list):
+        return None
+
+    lid_digits = lid_jid.removesuffix("@lid")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        number = str(row.get("number") or "").strip().lower()
+        if number.endswith("@lid"):
+            continue
+        if number.endswith("@s.whatsapp.net"):
+            digits = number.removesuffix("@s.whatsapp.net")
+        else:
+            digits = "".join(character for character in number if character.isdigit())
+        if 8 <= len(digits) <= 15 and digits != lid_digits:
+            return f"{digits}@s.whatsapp.net"
+    return None
+
+
 HISTORY_PAGE_SIZE = 50
 
 
@@ -181,9 +217,10 @@ async def send_whatsapp_template(
     if not capabilities["official_sending_supported"]:
         raise EvolutionApiError(capabilities["reason"] or "La instancia no admite plantillas oficiales")
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
     url = f"{api_url.rstrip('/')}/message/sendTemplate/{instance}"
     payload = {
-        "number": chat_id,
+        "number": destination,
         "name": name,
         "language": language,
         "components": components,
@@ -199,9 +236,10 @@ async def send_whatsapp_buttons(
     buttons: list[dict],
 ) -> dict:
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
     url = f"{api_url.rstrip('/')}/message/sendButtons/{instance}"
     payload = {
-        "number": chat_id,
+        "number": destination,
         "title": title,
         "description": description,
         "buttons": buttons,
@@ -219,9 +257,10 @@ async def send_whatsapp_list(
     sections: list[dict],
 ) -> dict:
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
     url = f"{api_url.rstrip('/')}/message/sendList/{instance}"
     payload = {
-        "number": chat_id,
+        "number": destination,
         "title": title,
         "description": description,
         "footerText": footer_text.strip() or "DermicaPro",
@@ -244,11 +283,12 @@ def _with_quoted(payload: dict, quoted: dict | None) -> dict:
 
 async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None) -> dict:
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendText/{instance}"
-    # chat_id ya es el remoteJid completo (ej. 5491112345678@s.whatsapp.net);
-    # Evolution API v2 acepta ese formato directo en "number".
-    payload = _with_quoted({"number": chat_id, "text": text}, quoted)
+    # Un lead provisional puede conservar un @lid como chat_id; para enviar se
+    # prefiere su alias telefónico cuando ya fue descubierto.
+    payload = _with_quoted({"number": destination, "text": text}, quoted)
     return await _post(url, api_key, payload, timeout=30.0)
 
 
@@ -258,9 +298,10 @@ async def send_whatsapp_audio(
     """Manda una nota de voz (PTT) — endpoint específico de Evolution API,
     distinto de mandar un audio como adjunto genérico."""
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendWhatsAppAudio/{instance}"
-    payload = _with_quoted({"number": chat_id, "audio": audio_base64}, quoted)
+    payload = _with_quoted({"number": destination, "audio": audio_base64}, quoted)
     return await _post(url, api_key, payload, timeout=60.0)
 
 
@@ -278,10 +319,11 @@ async def send_whatsapp_location(
     No mostramos lat/lon crudas ahí: el pin de ubicación de WhatsApp ya
     funciona como link a Maps, así que la dirección solo sería ruido."""
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendLocation/{instance}"
     payload = _with_quoted({
-        "number": chat_id,
+        "number": destination,
         "latitude": latitude,
         "longitude": longitude,
         "name": name or "",
@@ -305,9 +347,10 @@ async def send_whatsapp_media(
     todo para documentos, para que el destinatario vea el nombre real.
     caption es el epígrafe (el texto que va debajo de la imagen/video)."""
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendMedia/{instance}"
-    payload = {"number": chat_id, "mediatype": mediatype, "media": media_base64}
+    payload = {"number": destination, "mediatype": mediatype, "media": media_base64}
     if filename:
         payload["fileName"] = filename
     if caption:
@@ -319,9 +362,10 @@ async def send_whatsapp_sticker(chat_id: str, sticker_base64: str) -> dict:
     """Manda un sticker. `sticker_base64` debe ser un WEBP (512×512, transparente)
     — la conversión la hace media_storage.image_to_sticker_webp antes de llamar."""
     api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendSticker/{instance}"
-    payload = {"number": chat_id, "sticker": sticker_base64}
+    payload = {"number": destination, "sticker": sticker_base64}
     return await _post(url, api_key, payload, timeout=60.0)
 
 

@@ -93,6 +93,40 @@ class Lead(Base):
     __table_args__ = (Index("idx_leads_vendedor_id", vendedor_id),)
 
 
+class WhatsAppIdentity(Base):
+    """Alias de WhatsApp que apunta al lead canónico del CRM.
+
+    WhatsApp puede representar a la misma persona mediante un JID telefónico
+    (``@s.whatsapp.net``) o mediante un LID privado (``@lid``). El lead conserva
+    su ``remote_jid`` histórico como PK por compatibilidad; esta tabla permite
+    resolver cualquiera de los dos identificadores sin crear otro lead.
+    """
+
+    __tablename__ = "whatsapp_identities"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    instance: Mapped[str] = mapped_column(Text, nullable=False)
+    jid: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    lead_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("leads.remote_jid", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('phone', 'lid')", name="whatsapp_identities_kind_check"),
+        Index("uq_whatsapp_identities_instance_jid", instance, jid, unique=True),
+        Index("idx_whatsapp_identities_lead", lead_id),
+    )
+
+
 class WspMessage(Base):
     __tablename__ = "wsp_messages"
 

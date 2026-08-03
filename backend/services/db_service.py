@@ -19,6 +19,7 @@ from db.models import (
     ScheduledMessage,
     User,
     UserNotification,
+    WhatsAppIdentity,
     WspMessage,
 )
 from db.session import get_sessionmaker
@@ -959,6 +960,7 @@ _REKEY_CHILDREN: list[tuple[type, str]] = [
     (UserNotification, "lead_id"),
     (LeadTask, "lead_id"),
     (AutomationExecution, "lead_id"),
+    (WhatsAppIdentity, "lead_id"),
 ]
 
 
