@@ -299,6 +299,7 @@ export interface SettingItem {
   group: string
   group_label: string
   secret: boolean
+  boolean: boolean
   configured: boolean
   value: string | null
 }

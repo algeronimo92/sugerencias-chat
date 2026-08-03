@@ -12,6 +12,7 @@ class SettingItem(BaseModel):
     group: str
     group_label: str
     secret: bool
+    boolean: bool = False
     configured: bool
     value: str | None = None
 
