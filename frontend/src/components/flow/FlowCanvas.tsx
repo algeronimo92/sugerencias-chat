@@ -418,11 +418,13 @@ export function toCanvasEdges(
   edges: AutomationFlowEdge[],
   highlightedEdgeIds: ReadonlySet<string> = new Set(),
   selectedEdgeId: string | null = null,
+  hoveredEdgeId: string | null = null,
 ): Edge[] {
   const hasHighlight = highlightedEdgeIds.size > 0
   return edges.map(edge => {
     const color = EDGE_COLORS[edge.source_handle] ?? '#94a3b8'
     const highlighted = highlightedEdgeIds.has(edge.id)
+    const hovered = edge.id === hoveredEdgeId
     return {
       id: edge.id,
       source: edge.source,
@@ -435,9 +437,13 @@ export function toCanvasEdges(
       interactionWidth: 32,
       style: {
         stroke: color,
-        strokeWidth: highlighted ? 4 : 2,
+        strokeWidth: highlighted ? 4 : hovered ? 3 : 2,
         opacity: hasHighlight && !highlighted ? 0.16 : 1,
-        filter: highlighted ? `drop-shadow(0 0 5px ${color})` : undefined,
+        filter: highlighted
+          ? `drop-shadow(0 0 5px ${color})`
+          : hovered
+            ? `drop-shadow(0 0 2px ${color})`
+            : undefined,
         transition: 'stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease',
       },
       labelStyle: {
@@ -452,8 +458,8 @@ export function toCanvasEdges(
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color,
-        width: highlighted ? 24 : 18,
-        height: highlighted ? 24 : 18,
+        width: highlighted ? 24 : hovered ? 20 : 18,
+        height: highlighted ? 24 : hovered ? 20 : 18,
       },
     }
   })
@@ -580,8 +586,8 @@ function Canvas({
   })), [nodes, connectionRoles, highlightedEdgeIds])
 
   const edges = useMemo(
-    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId),
-    [flow.edges, highlightedEdgeIds, selectedEdgeId],
+    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId),
+    [flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId],
   )
 
   useEffect(() => {
@@ -689,7 +695,7 @@ function Canvas({
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
-        onEdgeMouseEnter={(_, edge) => { if (connectionHighlightEnabled) setHoveredEdgeId(edge.id) }}
+        onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
         onEdgeMouseLeave={(_, edge) => setHoveredEdgeId(current => current === edge.id ? null : current)}
         onEdgeClick={(event, edge) => {
           event.stopPropagation()

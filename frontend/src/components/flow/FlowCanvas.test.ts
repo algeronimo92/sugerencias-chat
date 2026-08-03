@@ -28,4 +28,13 @@ describe('toCanvasEdges', () => {
     expect(edges.every(edge => edge.animated)).toBe(true)
     expect(edges.every(edge => edge.style?.opacity === 1)).toBe(true)
   })
+
+  it('aplica un resaltado leve al hover sin atenuar las otras conexiones', () => {
+    const [hovered, other] = toCanvasEdges(FLOW_EDGES, new Set(), null, 'edge-a-b')
+
+    expect(hovered.style).toMatchObject({ strokeWidth: 3, opacity: 1 })
+    expect(String(hovered.style?.filter)).toContain('drop-shadow(0 0 2px')
+    expect(hovered.label).toBeUndefined()
+    expect(other.style).toMatchObject({ strokeWidth: 2, opacity: 1 })
+  })
 })

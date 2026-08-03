@@ -510,7 +510,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
           <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
           <p><strong>Cómo seleccionar varios:</strong> arrastra un rectángulo con el botón izquierdo; solo contará los bloques cubiertos por completo. Usa Ctrl/Cmd + clic para sumar o quitar bloques.</p>
-          <p><strong>Cómo seguir una conexión:</strong> activa el botón del ojo y pasa sobre una línea o bloque. Haz clic en la línea para dejar marcados su origen y destino.</p>
+          <p><strong>Cómo seguir una conexión:</strong> las líneas se resaltan levemente al pasar sobre ellas. Activa el botón del ojo para marcar además su origen, destino y recorrido completo.</p>
           <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</p>
         </div>
       </aside>
