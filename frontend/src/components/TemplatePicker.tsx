@@ -3,6 +3,7 @@ import { BadgeCheck, Clock3, FileText, History, Loader2, Search, Star, UserRound
 import { toast } from 'sonner'
 import type { Chat, MessageTemplate } from '../types'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 
@@ -11,6 +12,7 @@ interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) =
 export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, onSendMultimedia }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => { setOpen(false); setSearch('') })
   const { data = [] } = useTemplates()
   const favorite = useToggleTemplateFavorite()
   const recordUse = useRecordTemplateUse()
@@ -58,7 +60,7 @@ export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, on
     if (!items.length) return null; const Icon=icon
     return <section><div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-wa-muted"><Icon className="h-3 w-3"/>{title}</div>{items.map(row)}</section>
   }
-  return <div className="relative"><button type="button" title="Respuestas rápidas y plantillas oficiales" onClick={()=>setOpen(!open)} className="flex h-9 w-9 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"><FileText className="h-4 w-4"/></button>
+  return <div ref={containerRef} className="relative"><button type="button" title="Respuestas rápidas y plantillas oficiales" onClick={()=>setOpen(!open)} className="flex h-9 w-9 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"><FileText className="h-4 w-4"/></button>
     {open&&<div className="absolute bottom-11 left-0 z-30 w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 rounded-lg bg-wa-field px-2 dark:bg-wa-panel-dark"><Search className="h-4 w-4 text-wa-muted"/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar respuesta o /atajo" className="w-full bg-transparent py-2 text-sm text-gray-800 outline-none dark:text-wa-text-dark"/></div>
       <div className="mt-1 max-h-80 overflow-auto">{section('Favoritas',Star,favorites)}{!search&&section('Usadas recientemente',Clock3,recent)}{section(search?'Resultados':'Todas las plantillas',FileText,remaining)}
         {!search&&sentMessages.length>0&&<section><div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-wa-muted"><History className="h-3 w-3"/>Mensajes enviados recientemente</div>{sentMessages.map((message,index)=><div key={`${message}-${index}`} className="group flex items-center rounded-lg hover:bg-wa-hover dark:hover:bg-wa-active-dark"><button type="button" onClick={()=>{onSelect(message);setOpen(false)}} className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300"><p className="line-clamp-2">{message}</p></button><button type="button" title="Guardar como plantilla" onClick={()=>{onSaveHistory(message);setOpen(false)}} className="mr-2 rounded p-1.5 text-wa-muted hover:text-wa-primary-strong"><FileText className="h-4 w-4"/></button></div>)}</section>}

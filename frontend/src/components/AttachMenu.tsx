@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { FileText, Headphones, Image, Loader2, MapPin, Paperclip } from 'lucide-react'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 
 interface Props {
   disabled?: boolean
@@ -26,25 +27,7 @@ export function AttachMenu({
   onSelectLocation,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!isOpen) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
-      }
-    }
-    function onEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setIsOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    document.addEventListener('keydown', onEscape)
-    return () => {
-      document.removeEventListener('mousedown', onClickOutside)
-      document.removeEventListener('keydown', onEscape)
-    }
-  }, [isOpen])
+  const containerRef = useDismissiblePopover<HTMLDivElement>(isOpen, () => setIsOpen(false))
 
   function handleSelect(key: (typeof ITEMS)[number]['key']) {
     setIsOpen(false)

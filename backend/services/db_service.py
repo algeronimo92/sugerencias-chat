@@ -19,6 +19,7 @@ from db.models import (
     ScheduledMessage,
     User,
     UserNotification,
+    WhatsAppIdentity,
     WspMessage,
 )
 from db.session import get_sessionmaker
@@ -959,6 +960,7 @@ _REKEY_CHILDREN: list[tuple[type, str]] = [
     (UserNotification, "lead_id"),
     (LeadTask, "lead_id"),
     (AutomationExecution, "lead_id"),
+    (WhatsAppIdentity, "lead_id"),
 ]
 
 
@@ -1493,6 +1495,29 @@ async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
         WspMessage.content,
         WspMessage.wa_message_id,
     ).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+    return dict(row) if row is not None else None
+
+
+async def fetch_latest_customer_message_target(chat_id: str) -> dict | None:
+    """Último mensaje real del cliente al que WhatsApp permite reaccionar.
+
+    Se filtra por remitente y por ``wa_message_id``: el objetivo no debe
+    cambiar si después respondió un vendedor, y una fila aún no confirmada en
+    WhatsApp no sirve para construir la key de Evolution API.
+    """
+    stmt = (
+        select(WspMessage.id, WspMessage.wa_message_id)
+        .where(
+            WspMessage.chat_id == chat_id,
+            WspMessage.sender == "cliente",
+            WspMessage.wa_message_id.isnot(None),
+            WspMessage.wa_message_id != "",
+        )
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+        .limit(1)
+    )
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row is not None else None

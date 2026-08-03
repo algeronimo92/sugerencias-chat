@@ -14,7 +14,7 @@ from datetime import datetime, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from domain_types import FlowHandle, FlowNodeType
+from domain_types import FlowHandle, FlowNodeType, QuestionHandle
 from db.models import LeadStage
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
@@ -93,17 +93,43 @@ def matches_static_conditions(conditions: dict, chat: dict) -> tuple[bool, str |
     return True, None
 
 
+FLOW_COORDINATE_LIMIT = 1_000_000
+
+
+def _normalize_flow_coordinate(value: object) -> int:
+    try:
+        coordinate = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        coordinate = 0
+    return max(-FLOW_COORDINATE_LIMIT, min(FLOW_COORDINATE_LIMIT, coordinate))
+
+
 def normalize_flow_position(value: object) -> dict:
+    """Conserva la posición del lienzo en un rango prácticamente infinito.
+
+    El límite evita valores no representables o coordenadas absurdas que
+    degraden el navegador, pero permite más de dos millones de unidades en
+    cada eje y trabajar también a la izquierda/arriba del origen.
+    """
     position = value if isinstance(value, dict) else {}
     return {
-        "x": max(0, min(4000, int(position.get("x") or 0))),
-        "y": max(0, min(4000, int(position.get("y") or 0))),
+        "x": _normalize_flow_coordinate(position.get("x")),
+        "y": _normalize_flow_coordinate(position.get("y")),
     }
 
 
-def normalize_edges(raw_edges: list, node_ids: set[str], allow_duplicate_handles: bool = True) -> list[dict]:
+def normalize_edges(
+    raw_edges: list, node_ids: set[str], allow_duplicate_handles: bool = True,
+    extra_handles: set[str] | None = None,
+) -> list[dict]:
     """Valida forma y referencias de las conexiones. No mira la topología:
-    de eso se encarga validate_graph_topology."""
+    de eso se encarga validate_graph_topology.
+
+    `extra_handles` admite los handles dinámicos de los bloques Pausa
+    (wait_any) — el "kind" de cada condición ("timer"/"message") — que no
+    forman parte del enum fijo FlowHandle.
+    """
+    valid_handles = set(FlowHandle) | (extra_handles or set())
     edges: list[dict] = []
     edge_ids: set[str] = set()
     for position, raw_edge in enumerate(raw_edges, start=1):
@@ -115,7 +141,7 @@ def normalize_edges(raw_edges: list, node_ids: set[str], allow_duplicate_handles
         edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
         if source not in node_ids or target not in node_ids or source == target:
             raise ValueError(f"Conexión {position}: origen o destino inválido")
-        if handle not in set(FlowHandle) and not allow_duplicate_handles:
+        if handle not in valid_handles and not allow_duplicate_handles:
             raise ValueError(f"Conexión {position}: salida o identificador inválido")
         if edge_id in edge_ids:
             raise ValueError(f"Conexión {position}: identificador duplicado")
@@ -147,6 +173,18 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             handles = sorted(edge["source_handle"] for edge in node_edges)
             if handles != sorted([FlowHandle.NO, FlowHandle.YES]):
                 raise ValueError("Cada condición debe tener exactamente una salida Sí y una salida No")
+        elif node["type"] == FlowNodeType.WAIT_ANY:
+            expected = {condition["id"] for condition in node["data"].get("conditions", [])}
+            handles = [edge["source_handle"] for edge in node_edges]
+            if len(handles) != len(expected) or set(handles) != expected:
+                raise ValueError("Cada condición de la pausa debe tener exactamente una salida propia")
+        elif node["type"] == FlowNodeType.QUESTION:
+            expected = {button["id"] for button in node["data"].get("buttons", [])} | {
+                QuestionHandle.OTHER, QuestionHandle.TIMEOUT,
+            }
+            handles = [edge["source_handle"] for edge in node_edges]
+            if len(handles) != len(expected) or set(handles) != expected:
+                raise ValueError("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida")
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
             raise ValueError("Cada disparador, acción o espera debe tener exactamente una salida")
         if node["id"] != trigger_id and not incoming[node["id"]]:

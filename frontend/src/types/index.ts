@@ -1,10 +1,10 @@
 import type {
   AutomationActionTypeValue, AutomationBuilderModeValue, AutomationExecutionStatusValue,
   AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue,
-  FlowHandleValue, FlowNodeTypeValue, NotificationTypeValue, TaskPriorityCatalogValue,
-  TaskStatusCatalogValue, TaskTypeCatalogValue,
+  FlowHandleValue, FlowNodeTypeValue, NotificationTypeValue, QuestionHandleValue,
+  TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue, WaitAnyConditionKindValue,
 } from '../domain/automationCatalog'
-import { AutomationActionType, FlowNodeType } from '../domain/automationCatalog'
+import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from '../domain/automationCatalog'
 
 export const LEAD_STAGES = [
   // Flujo principal
@@ -469,6 +469,31 @@ export interface SendTemplateAutomationAction {
   template_id: number | null
 }
 
+export interface SendMessageAutomationAction {
+  type: typeof AutomationActionType.SendMessage
+  text: string
+}
+
+export interface ChangeServiceAutomationAction {
+  type: typeof AutomationActionType.ChangeService
+  service: string | null
+}
+
+export interface SendAudioAutomationAction {
+  type: typeof AutomationActionType.SendAudio
+  media_asset_id: number | null
+}
+
+export interface SendAttachmentAutomationAction {
+  type: typeof AutomationActionType.SendAttachment
+  media_asset_id: number | null
+}
+
+export interface ReactToLastCustomerMessageAutomationAction {
+  type: typeof AutomationActionType.ReactToLastCustomerMessage
+  emoji: string
+}
+
 export type AutomationAction =
   | CreateTaskAutomationAction
   | AssignSellerAutomationAction
@@ -476,9 +501,46 @@ export type AutomationAction =
   | ChangeStageAutomationAction
   | NotifyAutomationAction
   | SendTemplateAutomationAction
+  | SendMessageAutomationAction
+  | ChangeServiceAutomationAction
+  | SendAudioAutomationAction
+  | SendAttachmentAutomationAction
+  | ReactToLastCustomerMessageAutomationAction
 
 export type AutomationFlowNodeType = FlowNodeTypeValue
 export type AutomationFlowConditionType = FlowConditionTypeValue
+
+export interface WaitAnyTimerCondition {
+  id: typeof WaitAnyConditionKind.Timer
+  kind: typeof WaitAnyConditionKind.Timer
+  seconds: number
+}
+
+export interface WaitAnyMessageCondition {
+  id: typeof WaitAnyConditionKind.Message
+  kind: typeof WaitAnyConditionKind.Message
+}
+
+export interface WaitAnyBusinessHoursCondition {
+  id: typeof WaitAnyConditionKind.BusinessHours
+  kind: typeof WaitAnyConditionKind.BusinessHours
+}
+
+export interface WaitAnyMediaPlayedCondition {
+  id: typeof WaitAnyConditionKind.MediaPlayed
+  kind: typeof WaitAnyConditionKind.MediaPlayed
+}
+
+export type WaitAnyCondition =
+  | WaitAnyTimerCondition
+  | WaitAnyMessageCondition
+  | WaitAnyBusinessHoursCondition
+  | WaitAnyMediaPlayedCondition
+
+export interface QuestionButton {
+  id: string
+  label: string
+}
 
 interface BaseAutomationFlowNode<TType extends AutomationFlowNodeType, TData> {
   id: string
@@ -491,14 +553,20 @@ export type AutomationFlowNode =
   | BaseAutomationFlowNode<typeof FlowNodeType.Trigger, { trigger_type: AutomationTrigger; minutes?: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Condition, { condition_type: AutomationFlowConditionType; value: string | number | boolean | null }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Action, { action: AutomationAction }>
-  | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { minutes: number }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { seconds: number }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.WaitAny, { conditions: WaitAnyCondition[] }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Question, { text: string; buttons: QuestionButton[]; timeout_seconds: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.End, { label: string }>
 
 export interface AutomationFlowEdge {
   id: string
   source: string
   target: string
-  source_handle: FlowHandleValue
+  // Los bloques Pausa (wait_any) y Pregunta (question) agregan handles
+  // dinámicos ("timer"/"message"/"business_hours"/"media_played", el "kind"
+  // de cada condición; "btn_1".."btn_n", "other", "timeout") fuera del enum
+  // fijo FlowHandle.
+  source_handle: FlowHandleValue | WaitAnyConditionKindValue | QuestionHandleValue | string
 }
 
 export interface AutomationFlowDefinition {
@@ -521,6 +589,10 @@ export interface AutomationRule {
   delay_minutes: number
   max_executions_per_hour: number | null
   is_active: boolean
+  /** Solo aplica a flujos visuales con trigger_type='manual': si está en
+   *  true, aparece en el selector "Iniciar flujo" del vendedor dentro del
+   *  chat. El admin siempre puede dispararlo aunque esté en false. */
+  visible_to_sellers: boolean
   created_by_user_id: number
   created_by_name: string
   execution_count: number
@@ -529,6 +601,8 @@ export interface AutomationRule {
   created_at: string
   updated_at: string
 }
+
+export type AutomationExecutionStartSource = 'system' | 'manual'
 
 export interface AutomationExecution {
   id: number
@@ -551,6 +625,10 @@ export interface AutomationExecution {
   }
   error: string | null
   created_at: string
+  /** 'system' para los triggers automáticos de siempre, 'manual' cuando la
+   *  inició un vendedor con el botón "Iniciar flujo" del chat. */
+  start_source: AutomationExecutionStartSource
+  started_by_user_id: number | null
 }
 
 export type MediaAssetKind = 'image' | 'video' | 'audio' | 'document'

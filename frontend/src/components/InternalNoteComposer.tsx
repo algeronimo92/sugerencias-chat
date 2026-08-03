@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { AtSign, Loader2, Send, X } from 'lucide-react'
 import type { SellerOption } from '../types'
 import { useCreateInternalNote } from '../hooks/useInternalNotes'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 
@@ -39,6 +40,10 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
       .filter(user => user.name.toLowerCase().includes(mentionQuery.query))
       .slice(0, 6)
   }, [mentionQuery, mentionedUsers, users])
+  const mentionPopoverRef = useDismissiblePopover<HTMLDivElement>(
+    suggestions.length > 0,
+    () => setMentionQuery(null),
+  )
 
   function updateMentionQuery(value: string, cursor: number) {
     setMentionQuery(findMentionQuery(value, cursor))
@@ -98,7 +103,7 @@ export function InternalNoteComposer({ chatId, onCancel, onCreated }: Props) {
       {createNote.error && <p className="mb-2 text-xs text-red-600 dark:text-red-400">{extractErrorMessage(createNote.error)}</p>}
 
       <div className="flex items-end gap-2">
-        <div className="relative flex-1">
+        <div ref={mentionPopoverRef} className="relative flex-1">
           {suggestions.length > 0 && (
             <div className="absolute bottom-full left-0 z-40 mb-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
               {suggestions.map((user, index) => (

@@ -21,13 +21,21 @@ from db.session import get_sessionmaker
 from services.db_service import (
     assign_tag,
     fetch_chat,
+    fetch_latest_customer_message_target,
     get_customer_service_window,
     insert_message,
     remove_tag,
+    set_message_reaction,
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import send_whatsapp_media, send_whatsapp_text
+from services.evolution_service import (
+    send_whatsapp_audio,
+    send_whatsapp_buttons,
+    send_whatsapp_media,
+    send_whatsapp_reaction,
+    send_whatsapp_text,
+)
 from services.media_storage import read_media_base64
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
@@ -52,11 +60,13 @@ class AutomationDeps:
     now: Callable[[], datetime] = _utc_now
 
     fetch_chat: Callable[[str], Awaitable[dict | None]] = fetch_chat
+    fetch_latest_customer_message_target: Callable[[str], Awaitable[dict | None]] = fetch_latest_customer_message_target
     update_lead: Callable[..., Awaitable[dict | None]] = update_lead
     update_lead_stage: Callable[..., Awaitable[dict | None]] = update_lead_stage
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
     insert_message: Callable[..., Awaitable[dict]] = insert_message
+    set_message_reaction: Callable[..., Awaitable[dict | None]] = set_message_reaction
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
 
     create_task: Callable[..., Awaitable[dict]] = create_task
@@ -65,6 +75,9 @@ class AutomationDeps:
 
     send_text: Callable[[str, str], Awaitable[dict]] = send_whatsapp_text
     send_media: Callable[..., Awaitable[dict]] = send_whatsapp_media
+    send_audio: Callable[..., Awaitable[dict]] = send_whatsapp_audio
+    send_buttons: Callable[..., Awaitable[dict]] = send_whatsapp_buttons
+    send_reaction: Callable[[dict, str], Awaitable[dict]] = send_whatsapp_reaction
     read_media_base64: Callable[[str], str] = read_media_base64
 
     broadcast: Callable[[dict], Awaitable[None]] = _broadcast

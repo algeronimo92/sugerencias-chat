@@ -19,6 +19,9 @@ class FakeWhatsApp:
 
     texts: list[tuple[str, str]] = field(default_factory=list)
     media: list[tuple[str, str, str]] = field(default_factory=list)
+    audio: list[str] = field(default_factory=list)
+    buttons: list[tuple[str, str, list]] = field(default_factory=list)
+    reactions: list[tuple[dict, str]] = field(default_factory=list)
     fail_with: Exception | None = None
 
     async def send_text(self, chat_id: str, text: str) -> dict:
@@ -32,6 +35,24 @@ class FakeWhatsApp:
             raise self.fail_with
         self.media.append((chat_id, mediatype, filename or ""))
         return {"key": {"id": f"WAM{len(self.media)}"}}
+
+    async def send_audio(self, chat_id: str, encoded: str) -> dict:
+        if self.fail_with:
+            raise self.fail_with
+        self.audio.append(chat_id)
+        return {"key": {"id": f"WAA{len(self.audio)}"}}
+
+    async def send_buttons(self, chat_id: str, title: str, description: str, footer: str, buttons: list) -> dict:
+        if self.fail_with:
+            raise self.fail_with
+        self.buttons.append((chat_id, title, buttons))
+        return {"key": {"id": f"WAB{len(self.buttons)}"}}
+
+    async def send_reaction(self, key: dict, emoji: str) -> dict:
+        if self.fail_with:
+            raise self.fail_with
+        self.reactions.append((key, emoji))
+        return {"key": key}
 
 
 @dataclass
@@ -48,6 +69,7 @@ class Recorder:
     stage_changes: list[tuple[str, str]] = field(default_factory=list)
     lead_updates: list[tuple[str, dict]] = field(default_factory=list)
     template_uses: list[int] = field(default_factory=list)
+    reactions: list[tuple[str, str, str, bool]] = field(default_factory=list)
 
 
 def make_rule(**overrides):
@@ -173,6 +195,13 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
     async def open_window(chat_id):
         return {"is_open": True, "seconds_remaining": 3600}
 
+    async def latest_customer_message(chat_id):
+        return {"id": 42, "wa_message_id": "CLIENT-WA-42"}
+
+    async def set_message_reaction(chat_id, wa_message_id, emoji, from_me):
+        recorder.reactions.append((chat_id, wa_message_id, emoji, from_me))
+        return {"id": 42, "wa_message_id": wa_message_id}
+
     return AutomationDeps(
         now=lambda: frozen_now,
         insert_message=insert_message,
@@ -186,7 +215,12 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
         broadcast=broadcast,
         send_to_user=send_to_user,
         get_customer_service_window=open_window,
+        fetch_latest_customer_message_target=latest_customer_message,
+        set_message_reaction=set_message_reaction,
         send_text=whatsapp.send_text,
         send_media=whatsapp.send_media,
+        send_audio=whatsapp.send_audio,
+        send_buttons=whatsapp.send_buttons,
+        send_reaction=whatsapp.send_reaction,
         read_media_base64=lambda media_url: "ZmFrZS1iYXNlNjQ=",
     )

@@ -31,6 +31,31 @@ def attachment(**overrides):
     return SimpleNamespace(**{**defaults, **overrides})
 
 
+def media_asset(**overrides):
+    defaults = {
+        "id": 9, "media_url": "/media/audio.ogg", "content_type": "audio/ogg",
+        "filename": "audio.ogg",
+    }
+    return SimpleNamespace(**{**defaults, **overrides})
+
+
+def deps_with_media_asset(deps, asset):
+    """Sustituye la sesión de base por una que devuelve el asset indicado
+    (o None, para simular que ya no existe en la librería de medios)."""
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, model, pk):
+            return asset
+
+    return dataclasses.replace(deps, session_factory=lambda: FakeSession)
+
+
 def deps_with_template(deps, tpl, attachments=()):
     """Sustituye la sesión de base por una que devuelve la plantilla indicada."""
 
@@ -111,6 +136,29 @@ class TestTagsAndStage:
         # El chat en memoria se actualiza para que una acción posterior de la
         # misma ejecución vea la etapa nueva.
         assert chat["stage"] == "oferta_presentada"
+
+    async def test_change_service_sets_the_new_value(self, deps, recorder):
+        chat = make_chat(servicio_interes="Botox")
+        action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Hollywood Peel"}
+        await _execute_action(action, chat, make_execution(), make_rule(), deps)
+        assert recorder.lead_updates == [("51999@s.whatsapp.net", {"servicio_interes": "Hollywood Peel"})]
+        assert chat["servicio_interes"] == "Hollywood Peel"
+
+    async def test_change_service_with_none_clears_it(self, deps, recorder):
+        action = {"type": AutomationActionType.CHANGE_SERVICE, "service": None}
+        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        assert recorder.lead_updates == [("51999@s.whatsapp.net", {"servicio_interes": None})]
+
+    async def test_change_service_fails_when_lead_is_gone(self, deps):
+        async def not_found(chat_id, values, actor_type="system", actor_user_id=None):
+            return None
+
+        action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Botox"}
+        with pytest.raises(ValueError, match="Lead no encontrado"):
+            await _execute_action(
+                action, make_chat(), make_execution(), make_rule(),
+                dataclasses.replace(deps, update_lead=not_found),
+            )
 
 
 class TestNotify:
@@ -214,6 +262,147 @@ class TestSendTemplate:
         huge = deps_with_template(deps, template(content="x" * 5000))
         with pytest.raises(ValueError, match="no es válido"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), huge)
+
+
+class TestSendMessage:
+    """Enviar texto libre sin plantilla — mismo circuito que SendTemplate
+    pero sin buscar plantilla ni adjuntos."""
+
+    async def test_sends_rendered_text_and_records_message(self, deps, recorder, whatsapp):
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola {{nombre}}, ¿seguimos?"}
+        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        assert whatsapp.texts == [("51999@s.whatsapp.net", "Hola Ana, ¿seguimos?")]
+        assert recorder.messages[0]["sender"] == "vendedor"
+        assert result["message_ids"] == [1]
+
+    async def test_refuses_to_send_when_window_is_closed(self, deps, whatsapp):
+        async def closed_window(chat_id):
+            return {"is_open": False, "seconds_remaining": 0}
+
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
+        closed = dataclasses.replace(deps, get_customer_service_window=closed_window)
+        with pytest.raises(ValueError, match="ventana de 24 horas"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
+        assert whatsapp.texts == []
+
+    async def test_rejects_text_that_renders_empty(self, deps):
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "   "}
+        with pytest.raises(ValueError, match="no tiene contenido"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+
+    async def test_rejects_text_over_whatsapp_limit(self, deps):
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "x" * 5000}
+        with pytest.raises(ValueError, match="no es válido"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+
+
+class TestReactToLastCustomerMessage:
+    async def test_reacts_to_latest_customer_message_and_updates_chat(self, deps, recorder, whatsapp):
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "❤️",
+        }
+
+        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+
+        assert whatsapp.reactions == [({
+            "remoteJid": "51999@s.whatsapp.net",
+            "fromMe": False,
+            "id": "CLIENT-WA-42",
+        }, "❤️")]
+        assert recorder.reactions == [(
+            "51999@s.whatsapp.net", "CLIENT-WA-42", "❤️", True,
+        )]
+        assert result["message_id"] == 42
+        assert result["emoji"] == "❤️"
+        assert recorder.broadcasts[-1]["reason"] == "reaction"
+
+    async def test_fails_clearly_when_customer_has_no_confirmed_message(self, deps, whatsapp):
+        async def no_target(chat_id):
+            return None
+
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "👍",
+        }
+        without_target = dataclasses.replace(
+            deps, fetch_latest_customer_message_target=no_target,
+        )
+
+        with pytest.raises(ValueError, match="No hay un mensaje confirmado del cliente"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), without_target)
+        assert whatsapp.reactions == []
+
+    async def test_does_not_persist_if_whatsapp_rejects_reaction(self, deps, recorder, whatsapp):
+        whatsapp.fail_with = RuntimeError("Evolution no disponible")
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "😂",
+        }
+
+        with pytest.raises(RuntimeError, match="Evolution no disponible"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        assert recorder.reactions == []
+
+
+class TestSendAudio:
+    async def test_sends_audio_from_media_library(self, deps, recorder, whatsapp):
+        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
+        result = await _execute_action(
+            action, make_chat(), make_execution(), make_rule(),
+            deps_with_media_asset(deps, media_asset()),
+        )
+        assert whatsapp.audio == ["51999@s.whatsapp.net"]
+        assert recorder.messages[0]["message_type"] == "audio"
+        assert result["message_ids"] == [1]
+
+    async def test_rejects_when_asset_is_not_audio(self, deps):
+        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
+        not_audio = deps_with_media_asset(deps, media_asset(content_type="image/png"))
+        with pytest.raises(ValueError, match="ya no es un audio"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), not_audio)
+
+    async def test_refuses_to_send_when_window_is_closed(self, deps):
+        async def closed_window(chat_id):
+            return {"is_open": False, "seconds_remaining": 0}
+
+        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
+        closed = dataclasses.replace(deps_with_media_asset(deps, media_asset()), get_customer_service_window=closed_window)
+        with pytest.raises(ValueError, match="ventana de 24 horas"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
+
+    async def test_missing_file_aborts_with_clear_message(self, deps):
+        def missing(media_url):
+            raise FileNotFoundError(media_url)
+
+        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
+        broken = dataclasses.replace(deps_with_media_asset(deps, media_asset()), read_media_base64=missing)
+        with pytest.raises(ValueError, match="No se encontró el archivo"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), broken)
+
+    async def test_fails_when_asset_no_longer_exists(self, deps):
+        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
+        gone = deps_with_media_asset(deps, None)
+        with pytest.raises(ValueError, match="ya no existe"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), gone)
+
+
+class TestSendAttachment:
+    async def test_sends_image_attachment_without_text(self, deps, recorder, whatsapp):
+        action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
+        asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
+        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
+        assert whatsapp.texts == []
+        assert whatsapp.media == [("51999@s.whatsapp.net", "image", "foto.jpg")]
+        assert recorder.messages[0]["content"] is None
+        assert recorder.messages[0]["message_type"] == "image"
+
+    async def test_sends_document_with_filename_in_payload(self, deps, recorder, whatsapp):
+        action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
+        asset = media_asset(content_type="application/pdf", filename="guia.pdf")
+        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
+        assert recorder.messages[0]["message_type"] == "document"
+        assert recorder.messages[0]["payload"] == {"filename": "guia.pdf"}
 
 
 class TestDispatch:

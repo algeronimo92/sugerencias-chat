@@ -21,6 +21,7 @@ import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
+import { FlowRunStatus } from './FlowRunStatus'
 
 interface Props {
   chat: Chat
@@ -385,6 +386,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       </div>
 
       {/* Compose */}
+      <FlowRunStatus chatId={chat.chat_id} />
       {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
       {isNoteMode ? (
         <InternalNoteComposer

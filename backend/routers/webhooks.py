@@ -15,6 +15,14 @@ from services.db_service import (
 )
 from services.ad_referral_service import rehost_ad_thumbnail
 from services.message_status_service import parse_message_status_events
+from services.evolution_service import EvolutionApiError, find_phone_jid_for_lid
+from services.whatsapp_identity_service import (
+    InvalidWhatsAppIdentityError,
+    WhatsAppIdentityConflictError,
+    add_phone_jid,
+    parse_evolution_identity,
+    resolve_whatsapp_identity,
+)
 from services.ws_manager import manager
 from services.automation_service import trigger_inbound_message, trigger_stage_changed
 
@@ -23,6 +31,50 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+
+
+@router.post("/resolve-whatsapp-identity")
+async def resolve_whatsapp_identity_webhook(
+    body: dict[str, Any] = Body(...),
+):
+    """Devuelve el ``chat_id`` canónico antes de que n8n escriba el mensaje.
+
+    Acepta tanto ``$json.body`` (webhook nativo de Evolution) como el item
+    completo de n8n. Si solo llega un LID, intenta enriquecerlo mediante los
+    contactos sincronizados; si no puede, crea/reutiliza un lead provisional
+    con teléfono NULL y conserva el LID como alias estable.
+    """
+    try:
+        identity = parse_evolution_identity(body)
+    except InvalidWhatsAppIdentityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if identity.lid_jid and not identity.phone_jid:
+        try:
+            phone_jid = await find_phone_jid_for_lid(identity.lid_jid)
+        except EvolutionApiError:
+            logger.warning(
+                "No se pudo resolver el LID %s mediante findContacts; se conserva provisional",
+                identity.lid_jid,
+                exc_info=True,
+            )
+        else:
+            identity = add_phone_jid(identity, phone_jid)
+
+    try:
+        result = await resolve_whatsapp_identity(identity)
+    except WhatsAppIdentityConflictError as exc:
+        # No se mezclan historiales silenciosamente. Un 409 detiene el flujo de
+        # n8n y deja trazabilidad para resolver el duplicado existente.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Los alias ya están asociados a leads distintos",
+                "lead_ids": exc.lead_ids,
+            },
+        ) from exc
+
+    return {"status": "ok", **result.to_dict()}
 
 
 class NewMessageWebhookBody(BaseModel):

@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { Loader2, Plus, Search, Smile, Sticker } from 'lucide-react'
 import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
 import type { MediaAsset } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useMediaLibrary, useUploadMediaAsset } from '../hooks/useMediaLibrary'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveMediaUrl } from '../utils/message'
 
 // El picker es pesado: se carga al vuelo recién al abrir el panel.
@@ -28,23 +29,7 @@ export function EmojiStickerPanel({
 }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('emoji')
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    function onEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    document.addEventListener('keydown', onEscape)
-    return () => {
-      document.removeEventListener('mousedown', onClickOutside)
-      document.removeEventListener('keydown', onEscape)
-    }
-  }, [open])
+  const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
 
   function toggle() {
     setOpen((prev) => {

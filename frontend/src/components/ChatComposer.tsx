@@ -3,12 +3,14 @@ import { MessageSquareLock, Send, X } from 'lucide-react'
 import type { Chat, MessageTemplate } from '../types'
 import { useSendAudio, useSendLocation, useSendMedia, useSendSticker, type ReplyTarget } from '../hooks/useMessages'
 import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
+import { FlowPicker } from './FlowPicker'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
 import { MediaPreviewDialog } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
@@ -145,6 +147,10 @@ export function ChatComposer({
       .sort((a, b) => Number(b.stage === chat.stage) - Number(a.stage === chat.stage))
       .slice(0, 6)
   }, [templates, slashQuery, chat.stage])
+  const slashPopoverRef = useDismissiblePopover<HTMLDivElement>(
+    slashSuggestions.length > 0,
+    () => setSlashDismissed(true),
+  )
 
   const activeSlashIndex = Math.min(slashIndex, Math.max(slashSuggestions.length - 1, 0))
 
@@ -420,8 +426,10 @@ export function ChatComposer({
             />
           )}
 
+          {!isRecordingAudio && <FlowPicker chatId={chat.chat_id} />}
+
           {!isRecordingAudio && (
-            <div className="relative flex-1">
+            <div ref={slashPopoverRef} className="relative flex-1">
               {slashSuggestions.length > 0 && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
                   {slashSuggestions.map((template, i) => (

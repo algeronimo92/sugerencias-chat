@@ -14,6 +14,7 @@ export interface AutomationRuleInput {
   delay_minutes: number
   max_executions_per_hour: number | null
   is_active: boolean
+  visible_to_sellers: boolean
 }
 
 export function useAutomationRules() {
@@ -27,18 +28,60 @@ export function useAutomationRules() {
 
 interface AutomationExecutionFilters {
   ruleId?: number
+  /** Acota el historial a un chat puntual. Es obligatorio para vendedores
+   *  (el backend rechaza la consulta sin admin + sin chatId): es lo que usa
+   *  el pill "Flujo en curso" dentro del chat. */
+  chatId?: string
   status?: AutomationExecutionStatusValue
   excludeSkipped?: boolean
 }
 
-export function useAutomationExecutions({ ruleId, status, excludeSkipped = false }: AutomationExecutionFilters = {}) {
+// No hay evento de WebSocket dedicado a cambios de automation_executions: con
+// un chat abierto se hace poll corto mientras haya una ejecución manual en
+// vuelo, para que el pill "Flujo en curso" y su botón de cancelar reflejen el
+// avance sin que el vendedor tenga que recargar.
+const ACTIVE_EXECUTION_POLL_MS = 12_000
+
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automation-executions', ruleId ?? 'all', status ?? 'all', excludeSkipped],
+    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped],
     queryFn: async () => (await client.get<AutomationExecution[]>('/api/automations/executions', {
-      params: { rule_id: ruleId, status, exclude_skipped: excludeSkipped, limit: 200 },
+      params: { rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, limit: 200 },
     })).data,
-    refetchInterval: connected ? false : 60_000,
+    refetchInterval: (query) => {
+      if (chatId) {
+        const hasActiveExecution = query.state.data?.some(
+          (execution) => execution.status === 'scheduled' || execution.status === 'running'
+        )
+        if (hasActiveExecution) return ACTIVE_EXECUTION_POLL_MS
+        return false
+      }
+      return connected ? false : 60_000
+    },
+  })
+}
+
+/** Flujos visuales de trigger manual que el vendedor puede iniciar desde el
+ *  chat de un lead puntual (el admin ve además los que aún no marcó visibles
+ *  o publicó, para poder probarlos). chatId hoy no filtra la lista en el
+ *  backend — se manda por si una futura iteración lo necesita (p. ej. ocultar
+ *  un flujo ya en curso para ese chat). */
+export function useManualFlows(chatId: string) {
+  return useQuery({
+    queryKey: ['automation-manual-flows', chatId],
+    queryFn: async () => (await client.get<AutomationRule[]>('/api/automations/manual', {
+      params: { chat_id: chatId },
+    })).data,
+    enabled: !!chatId,
+  })
+}
+
+export function useStartManualFlow() {
+  return useMutation({
+    mutationFn: async ({ ruleId, chatId }: { ruleId: number; chatId: string }) =>
+      (await client.post<AutomationExecution>(`/api/automations/${ruleId}/start`, { chat_id: chatId })).data,
+    onSuccess: invalidateAutomations,
   })
 }
 

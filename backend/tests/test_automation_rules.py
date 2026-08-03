@@ -7,10 +7,12 @@ import pytest
 
 from domain_types import FlowHandle, FlowNodeType
 from services.automation_rules import (
+    FLOW_COORDINATE_LIMIT,
     is_business_hours,
     matches_static_conditions,
     normalize_conditions,
     normalize_edges,
+    normalize_flow_position,
     render_variables,
     unknown_variables,
     validate_graph_topology,
@@ -90,6 +92,27 @@ class TestNormalizeConditions:
         assert normalize_conditions(None)["stage"] is None
 
 
+class TestNormalizeFlowPosition:
+    def test_preserves_coordinates_beyond_the_old_canvas_limit(self):
+        assert normalize_flow_position({"x": 25_000, "y": 80_000}) == {
+            "x": 25_000, "y": 80_000,
+        }
+
+    def test_allows_negative_coordinates(self):
+        assert normalize_flow_position({"x": -12_500, "y": -750}) == {
+            "x": -12_500, "y": -750,
+        }
+
+    def test_clamps_only_extreme_coordinates(self):
+        assert normalize_flow_position({
+            "x": FLOW_COORDINATE_LIMIT + 1,
+            "y": -FLOW_COORDINATE_LIMIT - 1,
+        }) == {"x": FLOW_COORDINATE_LIMIT, "y": -FLOW_COORDINATE_LIMIT}
+
+    def test_invalid_coordinates_fall_back_to_origin(self):
+        assert normalize_flow_position({"x": "no-numero", "y": None}) == {"x": 0, "y": 0}
+
+
 class TestMatchesStaticConditions:
     def test_empty_conditions_match_everything(self):
         assert matches_static_conditions({}, {"stage": "nuevo"}) == (True, None)
@@ -127,6 +150,18 @@ class TestNormalizeEdges:
         duplicated = [edge("t", "a"), edge("t", "a")]
         with pytest.raises(ValueError, match="duplicado"):
             normalize_edges(duplicated, {"t", "a"})
+
+    def test_rejects_handle_outside_flowhandle_when_strict(self):
+        with pytest.raises(ValueError, match="salida o identificador"):
+            normalize_edges([edge("w", "e", "timer")], {"w", "e"}, allow_duplicate_handles=False)
+
+    def test_accepts_extra_handles_when_provided(self):
+        # Los handles dinámicos de un bloque wait_any ("timer"/"message") no
+        # están en el enum fijo FlowHandle — extra_handles los admite.
+        normalize_edges(
+            [edge("w", "e", "timer")], {"w", "e"},
+            allow_duplicate_handles=False, extra_handles={"timer"},
+        )
 
 
 class TestValidateGraphTopology:
@@ -188,3 +223,69 @@ class TestValidateGraphTopology:
         edges.append(edge("a", "e", FlowHandle.YES))
         with pytest.raises(ValueError, match="exactamente una salida"):
             validate_graph_topology(nodes, edges, "t")
+
+    def test_wait_any_requires_one_edge_per_condition(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "w", "type": FlowNodeType.WAIT_ANY, "data": {"conditions": [
+                {"id": "timer", "kind": "timer", "seconds": 10},
+                {"id": "message", "kind": "message"},
+            ]}},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+        ]
+        edges = [edge("t", "w"), edge("w", "e1", "timer")]
+        with pytest.raises(ValueError, match="salida propia"):
+            validate_graph_topology(nodes, edges, "t")
+        edges.append(edge("w", "e2", "message"))
+        validate_graph_topology(nodes, edges, "t")
+
+    def test_wait_any_rejects_unknown_or_duplicate_handles(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "w", "type": FlowNodeType.WAIT_ANY, "data": {"conditions": [
+                {"id": "timer", "kind": "timer", "seconds": 10},
+            ]}},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+        ]
+        # Dos salidas para una sola condición: no matchea el set esperado.
+        edges = [edge("t", "w"), edge("w", "e1", "timer"), edge("w", "e2", "timer")]
+        with pytest.raises(ValueError, match="salida propia"):
+            validate_graph_topology(nodes, edges, "t")
+
+    def test_wait_any_accepts_business_hours_and_media_played(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "w", "type": FlowNodeType.WAIT_ANY, "data": {"conditions": [
+                {"id": "timer", "kind": "timer", "seconds": 10},
+                {"id": "business_hours", "kind": "business_hours"},
+                {"id": "media_played", "kind": "media_played"},
+            ]}},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+            node("e3", FlowNodeType.END),
+        ]
+        edges = [
+            edge("t", "w"), edge("w", "e1", "timer"),
+            edge("w", "e2", "business_hours"), edge("w", "e3", "media_played"),
+        ]
+        validate_graph_topology(nodes, edges, "t")
+
+    def test_question_requires_one_edge_per_button_plus_other_and_timeout(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "q", "type": FlowNodeType.QUESTION, "data": {
+                "text": "¿Todo bien?", "timeout_seconds": 60,
+                "buttons": [{"id": "btn_1", "label": "Sí"}, {"id": "btn_2", "label": "No"}],
+            }},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+            node("e3", FlowNodeType.END),
+            node("e4", FlowNodeType.END),
+        ]
+        edges = [edge("t", "q"), edge("q", "e1", "btn_1"), edge("q", "e2", "btn_2")]
+        with pytest.raises(ValueError, match="propia salida"):
+            validate_graph_topology(nodes, edges, "t")
+        edges += [edge("q", "e3", "other"), edge("q", "e4", "timeout")]
+        validate_graph_topology(nodes, edges, "t")

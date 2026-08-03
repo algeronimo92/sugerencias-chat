@@ -58,6 +58,49 @@ async def test_check_whatsapp_numbers_tolerates_non_list_response(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_find_phone_jid_for_lid_uses_contact_number(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test/", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value=[{
+        "id": "267692862898397@lid",
+        "number": "51943663225",
+    }])
+    monkeypatch.setattr(evolution_service, "_post", post)
+
+    result = await evolution_service.find_phone_jid_for_lid("267692862898397@lid")
+
+    assert result == "51943663225@s.whatsapp.net"
+    post.assert_awaited_once_with(
+        "https://evolution.test/chat/findContacts/dermica",
+        "secret",
+        {"where": {"id": "267692862898397@lid"}, "take": 5},
+        timeout=10.0,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("number", ["267692862898397", "267692862898397@lid"])
+async def test_find_phone_jid_for_lid_never_treats_lid_digits_as_phone(
+    monkeypatch, number,
+):
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(
+        evolution_service,
+        "_post",
+        AsyncMock(return_value=[{"id": "267692862898397@lid", "number": number}]),
+    )
+
+    assert await evolution_service.find_phone_jid_for_lid("267692862898397@lid") is None
+
+
+@pytest.mark.asyncio
 async def test_find_chat_messages_consulta_el_historial_del_chat(monkeypatch):
     monkeypatch.setattr(
         evolution_service,
