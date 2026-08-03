@@ -18,7 +18,7 @@ import type { Chat, Message } from '../types'
 import { ChatThread } from './ChatThread'
 
 const CHAT: Chat = {
-  chat_id: '51958334533@s.whatsapp.net',
+  chat_id: '7b08f4d9-855f-4718-b95f-9c021da52f77',
   phone: '51958334533',
   name: 'Ana Torres',
   stage: 'nuevo',

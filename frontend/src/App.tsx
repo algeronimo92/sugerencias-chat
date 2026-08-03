@@ -93,7 +93,8 @@ function PageLoader() {
 function MainLayout() {
   const { data: me } = useMe()
   const { mutate: logout } = useLogout()
-  const { chatId } = useParams<{ chatId: string }>()
+  const { chatId: chatIdParam } = useParams<{ chatId: string }>()
+  const chatId = chatIdParam ?? null
   const navigate = useNavigate()
   const location = useLocation()
   const isKanban = location.pathname === '/kanban'

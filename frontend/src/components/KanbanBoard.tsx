@@ -45,7 +45,7 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
       draggable={!isMoving}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData('text/plain', chat.chat_id)
+        event.dataTransfer.setData('text/plain', String(chat.chat_id))
         onDragStart(chat)
       }}
       onDragEnd={onDragEnd}

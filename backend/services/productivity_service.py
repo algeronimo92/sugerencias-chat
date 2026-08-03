@@ -44,7 +44,7 @@ def _task_query():
         LeadTask.description, LeadTask.task_type, LeadTask.status, LeadTask.priority,
         LeadTask.due_at, LeadTask.remind_at, LeadTask.assigned_user_id,
         User.name.label("assigned_user_name"), LeadTask.created_at,
-    ).join(Lead, Lead.remote_jid == LeadTask.lead_id).join(User, User.id == LeadTask.assigned_user_id)
+    ).join(Lead, Lead.id == LeadTask.lead_id).join(User, User.id == LeadTask.assigned_user_id)
 
 
 async def list_tasks(
@@ -120,7 +120,7 @@ async def claim_due_reminders() -> list[dict]:
     now = datetime.now(timezone.utc)
     stmt = (
         select(LeadTask, Lead.nombre.label("lead_name"))
-        .outerjoin(Lead, Lead.remote_jid == LeadTask.lead_id)
+        .outerjoin(Lead, Lead.id == LeadTask.lead_id)
         .where(
             LeadTask.status == TaskStatus.PENDING,
             LeadTask.remind_at.is_not(None),

@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useThreadScroll } from './useThreadScroll'
 
-const CHAT_ID = '51958334533@s.whatsapp.net'
+const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
+const OTHER_CHAT_ID = 'cd6d8427-852b-432f-a066-9a6471a7acc0'
 
 type Params = Parameters<typeof useThreadScroll>[0]
 
@@ -246,7 +247,7 @@ describe('useThreadScroll', () => {
     act(() => { latest.handleThreadScroll() })
     expect(latest.showScrollToBottom).toBe(true)
 
-    rerender(<Harness params={{ ...params, chatId: 'otro@s.whatsapp.net' }} />)
+    rerender(<Harness params={{ ...params, chatId: OTHER_CHAT_ID }} />)
 
     expect(latest.showScrollToBottom).toBe(false)
     expect(latest.hasNewWhileAway).toBe(false)

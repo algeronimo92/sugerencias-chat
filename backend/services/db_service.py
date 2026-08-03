@@ -36,13 +36,6 @@ class LeadAlreadyExistsError(Exception):
     pass
 
 
-class LeadHasMessagesError(Exception):
-    """El teléfono de un lead con conversación no se puede cambiar: el JID es
-    la identidad del chat en WhatsApp y re-apuntarlo mezclaría historiales."""
-
-    pass
-
-
 class EmailAlreadyExistsError(Exception):
     pass
 
@@ -151,7 +144,7 @@ def _last_message_subquery():
             WspMessage.sender,
             WspMessage.message_type,
         )
-        .where(WspMessage.chat_id == Lead.remote_jid)
+        .where(WspMessage.chat_id == Lead.id)
         .order_by(WspMessage.sent_at.desc())
         .limit(1)
         .lateral()
@@ -164,7 +157,7 @@ def _unread_count_subquery():
     return (
         select(func.count(WspMessage.id))
         .where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
         )
@@ -178,7 +171,7 @@ def _has_unread_messages_condition():
     return exists(
         select(WspMessage.id)
         .where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
         )
@@ -189,7 +182,7 @@ def _has_unread_messages_condition():
 def _last_customer_message_at_subquery():
     return (
         select(func.max(WspMessage.sent_at))
-        .where(WspMessage.chat_id == Lead.remote_jid, WspMessage.sender == "cliente")
+        .where(WspMessage.chat_id == Lead.id, WspMessage.sender == "cliente")
         .correlate(Lead)
         .scalar_subquery()
     )
@@ -200,7 +193,7 @@ def _has_tag_condition(tag_id: int):
         select(LeadTagAssignment.tag_id)
         .join(LeadTag, LeadTag.id == LeadTagAssignment.tag_id)
         .where(
-            LeadTagAssignment.lead_id == Lead.remote_jid,
+            LeadTagAssignment.lead_id == Lead.id,
             LeadTagAssignment.tag_id == tag_id,
             LeadTag.is_active == true(),
         )
@@ -237,7 +230,10 @@ def _identity_conditions(search: str) -> list:
     las veces, y lo que WhatsApp muestra primero."""
     pattern = f"%{_escape_like(search)}%"
     conditions = [
-        Lead.remote_jid.ilike(pattern, escape="\\"),
+        exists(select(WhatsAppIdentity.id).where(
+            WhatsAppIdentity.lead_id == Lead.id,
+            WhatsAppIdentity.jid.ilike(pattern, escape="\\"),
+        )),
         Lead.telefono.ilike(pattern, escape="\\"),
         _unaccent_ilike(Lead.nombre, pattern),
     ]
@@ -250,9 +246,10 @@ def _identity_conditions(search: str) -> list:
         conditions.append(
             func.regexp_replace(Lead.telefono, r"\D", "", "g").like(digits_pattern)
         )
-        conditions.append(
-            func.regexp_replace(Lead.remote_jid, r"\D", "", "g").like(digits_pattern)
-        )
+        conditions.append(exists(select(WhatsAppIdentity.id).where(
+            WhatsAppIdentity.lead_id == Lead.id,
+            func.regexp_replace(WhatsAppIdentity.jid, r"\D", "", "g").like(digits_pattern),
+        )))
     return conditions
 
 
@@ -298,7 +295,7 @@ def _message_match_condition(search: str):
     return exists(
         select(WspMessage.id)
         .where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             _message_text_match(search),
         )
         .correlate(Lead)
@@ -338,7 +335,7 @@ def _matched_message_subquery(search: str, column=None):
     return (
         select(column)
         .where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             _message_text_match(search),
         )
         .order_by(WspMessage.sent_at.desc())
@@ -351,7 +348,7 @@ def _matched_message_subquery(search: str, column=None):
 def _chat_columns(last_message):
     seller_name = select(User.name).where(User.id == Lead.vendedor_id).scalar_subquery()
     return (
-        Lead.remote_jid.label("chat_id"),
+        Lead.id.label("chat_id"),
         Lead.telefono.label("phone"),
         Lead.nombre.label("name"),
         Lead.servicio_interes,
@@ -378,7 +375,7 @@ def _chat_columns(last_message):
 
 def _cursor_condition(last_message, cursor_ts: str | None, cursor_id: str):
     """Condición de paginación por keyset sobre el mismo orden de la consulta
-    (last_message.sent_at DESC NULLS LAST, remote_jid DESC).
+    (last_message.sent_at DESC NULLS LAST, leads.id DESC).
 
     cursor_ts/cursor_id identifican la última fila de la página anterior;
     se piden las filas que la siguen en ese orden. A diferencia de OFFSET,
@@ -389,12 +386,12 @@ def _cursor_condition(last_message, cursor_ts: str | None, cursor_id: str):
         parsed_ts = _parse_ts(cursor_ts)
         return or_(
             last_message.c.sent_at < parsed_ts,
-            and_(last_message.c.sent_at == parsed_ts, Lead.remote_jid < cursor_id),
+            and_(last_message.c.sent_at == parsed_ts, Lead.id < cursor_id),
             last_message.c.sent_at.is_(None),
         )
     # La fila cursor ya estaba en la cola de timestamp nulo: solo quedan
-    # otras filas sin mensajes, desempatadas por remote_jid.
-    return and_(last_message.c.sent_at.is_(None), Lead.remote_jid < cursor_id)
+    # otras filas sin mensajes, desempatadas por el id interno.
+    return and_(last_message.c.sent_at.is_(None), Lead.id < cursor_id)
 
 
 async def fetch_chats(
@@ -478,7 +475,7 @@ async def fetch_chats(
 
     # Se pide una fila de más para saber si hay página siguiente sin un
     # COUNT(*) aparte; se descarta antes de devolver los resultados.
-    order_keys = [last_message.c.sent_at.desc().nulls_last(), Lead.remote_jid.desc()]
+    order_keys = [last_message.c.sent_at.desc().nulls_last(), Lead.id.desc()]
     if search:
         # Como WhatsApp: primero los chats cuyo nombre/datos matchean, después
         # los que solo matchean por un mensaje del historial.
@@ -502,7 +499,7 @@ async def fetch_chat(chat_id: str) -> dict | None:
     stmt = (
         select(*_chat_columns(last_message))
         .join(last_message, true(), isouter=True)
-        .where(Lead.remote_jid == chat_id)
+        .where(Lead.id == chat_id)
     )
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().first()
@@ -515,7 +512,7 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
     last_customer_message = (
         select(func.max(WspMessage.sent_at))
         .where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
         )
         .correlate(Lead)
@@ -523,8 +520,8 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
     )
     async with get_sessionmaker()() as session:
         row = (await session.execute(
-            select(Lead.remote_jid, last_customer_message.label("last_customer_message_at"))
-            .where(Lead.remote_jid == chat_id)
+            select(Lead.id, last_customer_message.label("last_customer_message_at"))
+            .where(Lead.id == chat_id)
         )).mappings().one_or_none()
     if row is None:
         return None
@@ -543,7 +540,7 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
 
 async def lead_exists(chat_id: str) -> bool:
     """Validación ligera para operaciones que no necesitan la ventana de servicio."""
-    stmt = select(exists().where(Lead.remote_jid == chat_id))
+    stmt = select(exists().where(Lead.id == chat_id))
     async with get_sessionmaker()() as session:
         return bool(await session.scalar(stmt))
 
@@ -553,7 +550,7 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
     tarjetas, incluido el último mensaje, para que los encabezados coincidan."""
     last_message = _last_message_subquery()
     stmt = (
-        select(Lead.estado, func.count(Lead.remote_jid))
+        select(Lead.estado, func.count(Lead.id))
         .join(last_message, true(), isouter=True)
         .group_by(Lead.estado)
     )
@@ -583,7 +580,7 @@ async def fetch_kanban_snapshot(
     rank_order = [
         last_message.c.sent_at.desc().nulls_last(),
         Lead.updated_at.desc(),
-        Lead.remote_jid.desc(),
+        Lead.id.desc(),
     ]
     if search:
         columns.append(_search_rank_expression(search).label("search_rank"))
@@ -646,7 +643,7 @@ async def fetch_kanban_stage(
     order_keys = [
         last_message.c.sent_at.desc().nulls_last(),
         Lead.updated_at.desc(),
-        Lead.remote_jid.desc(),
+        Lead.id.desc(),
     ]
     if search:
         columns.append(_search_rank_expression(search).label("search_rank"))
@@ -710,7 +707,7 @@ async def update_lead_stage(
 ) -> dict | None:
     async with get_sessionmaker()() as session:
         old_stage = (
-            await session.execute(select(Lead.estado).where(Lead.remote_jid == chat_id).with_for_update())
+            await session.execute(select(Lead.estado).where(Lead.id == chat_id).with_for_update())
         ).scalar_one_or_none()
         if old_stage is None:
             return None
@@ -730,7 +727,7 @@ async def update_lead_stage(
                 extra["razon_perdido"] = None
             await session.execute(
                 update(Lead)
-                .where(Lead.remote_jid == chat_id)
+                .where(Lead.id == chat_id)
                 .values(estado=stage, updated_at=datetime.now(timezone.utc), **extra)
             )
             # Se congela el último mensaje del cliente en la auditoría: el
@@ -780,7 +777,7 @@ async def get_cached_suggestion(chat_id: str) -> dict | None:
     invalida — la sugerencia sigue siendo válida para lo que dijo el cliente)."""
     has_newer_message = exists(
         select(WspMessage.id).where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             WspMessage.sent_at > Lead.cached_suggestion_at,
         )
@@ -789,7 +786,7 @@ async def get_cached_suggestion(chat_id: str) -> dict | None:
         Lead.cached_suggestion,
         Lead.cached_suggestion_at,
         has_newer_message.label("has_newer_message"),
-    ).where(Lead.remote_jid == chat_id)
+    ).where(Lead.id == chat_id)
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().one_or_none()
 
@@ -812,7 +809,7 @@ async def get_suggestion_status(chat_id: str) -> dict | None:
     Devuelve None si el lead no existe."""
     has_newer_message = exists(
         select(WspMessage.id).where(
-            WspMessage.chat_id == Lead.remote_jid,
+            WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             WspMessage.sent_at > Lead.cached_suggestion_at,
         )
@@ -821,7 +818,7 @@ async def get_suggestion_status(chat_id: str) -> dict | None:
         Lead.cached_suggestion,
         Lead.cached_suggestion_at,
         has_newer_message.label("has_newer_message"),
-    ).where(Lead.remote_jid == chat_id)
+    ).where(Lead.id == chat_id)
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().one_or_none()
 
@@ -839,7 +836,7 @@ async def get_suggestion_status(chat_id: str) -> dict | None:
 async def cache_suggestion(chat_id: str, suggestion: dict) -> bool:
     stmt = (
         update(Lead)
-        .where(Lead.remote_jid == chat_id)
+        .where(Lead.id == chat_id)
         .values(cached_suggestion=suggestion, cached_suggestion_at=datetime.now(timezone.utc))
     )
     async with get_sessionmaker()() as session:
@@ -861,8 +858,8 @@ async def create_lead(
     # phone llega ya normalizado (solo dígitos E.164). Si Evolution devolvió el
     # JID canónico se usa ese — puede diferir del tipeado (p. ej. México/AR) y
     # entonces telefono se deriva del JID, que es la identidad real del chat.
-    chat_id = remote_jid or _phone_to_jid(phone)
-    digits = re.sub(r"\D", "", chat_id.split("@", 1)[0]) or re.sub(r"\D", "", phone)
+    external_jid = remote_jid or _phone_to_jid(phone)
+    digits = re.sub(r"\D", "", external_jid.split("@", 1)[0]) or re.sub(r"\D", "", phone)
     seller_name = None
     if vendedor_id is not None:
         async with get_sessionmaker()() as lookup_session:
@@ -871,7 +868,7 @@ async def create_lead(
                 raise ValueError("Vendedor no encontrado o inactivo")
             seller_name = seller.name
     stmt = insert(Lead).values(
-        remote_jid=chat_id,
+        legacy_remote_jid=external_jid,
         telefono=f"+{digits}",
         nombre=name,
         servicio_interes=servicio_interes,
@@ -879,13 +876,16 @@ async def create_lead(
         vendedor=seller_name,
         origen=origen,
         notas=notas,
-    )
+    ).returning(Lead.id)
     async with get_sessionmaker()() as session:
         try:
-            await session.execute(stmt)
+            lead_id = (await session.execute(stmt)).scalar_one()
+            await session.execute(insert(WhatsAppIdentity).values(
+                instance="*", jid=external_jid, kind="phone", lead_id=lead_id,
+            ))
             await _record_activity(
                 session,
-                chat_id,
+                lead_id,
                 AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
@@ -894,9 +894,9 @@ async def create_lead(
             await session.commit()
         except IntegrityError:
             await session.rollback()
-            raise LeadAlreadyExistsError(chat_id)
+            raise LeadAlreadyExistsError(external_jid)
 
-    return await fetch_chat(chat_id)
+    return await fetch_chat(lead_id)
 
 
 async def update_lead(
@@ -921,7 +921,7 @@ async def update_lead(
                 values["vendedor"] = seller.name
         columns = [getattr(Lead, key) for key in values]
         old_row = (
-            await session.execute(select(*columns).where(Lead.remote_jid == chat_id).with_for_update())
+            await session.execute(select(*columns).where(Lead.id == chat_id).with_for_update())
         ).mappings().first()
         if old_row is None:
             return None
@@ -929,7 +929,7 @@ async def update_lead(
         if changed:
             await session.execute(
                 update(Lead)
-                .where(Lead.remote_jid == chat_id)
+                .where(Lead.id == chat_id)
                 .values(**changed, updated_at=datetime.now(timezone.utc))
             )
             await _record_activity(
@@ -946,91 +946,58 @@ async def update_lead(
     return await fetch_chat(chat_id)
 
 
-# Tablas que apuntan a leads.remote_jid y deben migrarse en un re-key.
-# wsp_messages no tiene FK (va defensivo: la precondición exige que esté
-# vacía); el resto tiene FK sin ON UPDATE CASCADE, por eso el re-key es
-# INSERT nuevo → UPDATE hijas → DELETE viejo y no un UPDATE de la PK.
-_REKEY_CHILDREN: list[tuple[type, str]] = [
-    (WspMessage, "chat_id"),
-    (MessageOutbox, "chat_id"),
-    (ScheduledMessage, "lead_id"),
-    (LeadTagAssignment, "lead_id"),
-    (LeadActivity, "lead_id"),
-    (LeadNote, "lead_id"),
-    (UserNotification, "lead_id"),
-    (LeadTask, "lead_id"),
-    (AutomationExecution, "lead_id"),
-    (WhatsAppIdentity, "lead_id"),
-]
-
-
 async def rekey_lead_phone(
-    old_jid: str,
+    lead_id: str,
     new_digits: str,
     new_jid: str | None = None,
     actor_user_id: int | None = None,
 ) -> dict | None:
-    """Cambia el número de un lead sin conversación, migrando sus datos al
-    nuevo JID en una sola transacción. Devuelve el chat nuevo, o None si el
-    lead no existe. Levanta LeadHasMessagesError si ya tiene mensajes y
-    LeadAlreadyExistsError si el número nuevo ya está cargado."""
+    """Cambia el teléfono/alias sin cambiar la identidad interna del lead."""
     target_jid = new_jid or _phone_to_jid(new_digits)
     # Igual que en create_lead: si el JID canónico difiere de lo tipeado,
     # telefono se deriva del JID, que es la identidad real del chat.
     new_digits = re.sub(r"\D", "", target_jid.split("@", 1)[0]) or new_digits
     async with get_sessionmaker()() as session:
-        old_row = (
-            await session.execute(
-                select(Lead.__table__).where(Lead.remote_jid == old_jid).with_for_update()
-            )
-        ).mappings().first()
-        if old_row is None:
+        lead = await session.get(Lead, lead_id, with_for_update=True)
+        if lead is None:
             return None
 
-        has_messages = (
-            await session.execute(
-                select(exists().where(WspMessage.chat_id == old_jid))
-            )
-        ).scalar()
-        if has_messages:
-            raise LeadHasMessagesError(old_jid)
-
-        collision = (
-            await session.execute(
-                select(exists().where(Lead.remote_jid == target_jid))
-            )
-        ).scalar()
+        collision = await session.scalar(select(exists().where(
+            WhatsAppIdentity.jid == target_jid,
+            WhatsAppIdentity.lead_id != lead_id,
+        )))
         if collision:
             raise LeadAlreadyExistsError(target_jid)
 
-        new_values = dict(old_row)
-        new_values["remote_jid"] = target_jid
-        new_values["telefono"] = f"+{new_digits}"
-        new_values["updated_at"] = datetime.now(timezone.utc)
-        await session.execute(insert(Lead).values(**new_values))
-
-        for model, column in _REKEY_CHILDREN:
-            col = getattr(model, column)
-            await session.execute(
-                update(model).where(col == old_jid).values(**{column: target_jid})
-            )
-
-        # Recién después de migrar las hijas: borrarlo antes las arrastraría
-        # por el ON DELETE CASCADE.
-        await session.execute(delete(Lead).where(Lead.remote_jid == old_jid))
+        old_phone = lead.telefono
+        phone_aliases = (await session.execute(select(WhatsAppIdentity).where(
+            WhatsAppIdentity.lead_id == lead_id,
+            WhatsAppIdentity.kind == "phone",
+        ).with_for_update())).scalars().all()
+        if phone_aliases:
+            for alias in phone_aliases:
+                alias.jid = target_jid
+                alias.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(WhatsAppIdentity(
+                instance="*", jid=target_jid, kind="phone", lead_id=lead_id,
+            ))
+        lead.legacy_remote_jid = target_jid
+        lead.telefono = f"+{new_digits}"
+        lead.updated_at = datetime.now(timezone.utc)
 
         await _record_activity(
             session,
-            target_jid,
+            lead_id,
             "lead_updated",
             "user" if actor_user_id is not None else "system",
             actor_user_id,
-            {"phone": old_row["telefono"]},
+            {"phone": old_phone},
             {"phone": f"+{new_digits}"},
         )
         await session.commit()
 
-    return await fetch_chat(target_jid)
+    return await fetch_chat(lead_id)
 
 
 async def insert_message(
@@ -1132,7 +1099,7 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
 
 
 async def mark_chat_read(chat_id: str) -> None:
-    stmt = update(Lead).where(Lead.remote_jid == chat_id).values(last_read_at=datetime.now(timezone.utc))
+    stmt = update(Lead).where(Lead.id == chat_id).values(last_read_at=datetime.now(timezone.utc))
     async with get_sessionmaker()() as session:
         await session.execute(stmt)
         await session.commit()
@@ -1163,14 +1130,14 @@ async def mark_chat_read_from_whatsapp_receipt(wa_message_id: str) -> dict | Non
         update_stmt = (
             update(Lead)
             .where(
-                Lead.remote_jid == message["chat_id"],
+                Lead.id == message["chat_id"],
                 or_(
                     Lead.last_read_at.is_(None),
                     Lead.last_read_at < message["sent_at"],
                 ),
             )
             .values(last_read_at=message["sent_at"])
-            .returning(Lead.remote_jid)
+            .returning(Lead.id)
         )
         chat_id = (await session.execute(update_stmt)).scalar_one_or_none()
         if chat_id is None:
@@ -1190,7 +1157,7 @@ async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
     last_read_at, estos mensajes dejan de contar como "sin ver"."""
     stmt = (
         select(WspMessage.wa_message_id)
-        .join(Lead, Lead.remote_jid == WspMessage.chat_id)
+        .join(Lead, Lead.id == WspMessage.chat_id)
         .where(
             WspMessage.chat_id == chat_id,
             WspMessage.sender == "cliente",
@@ -1207,7 +1174,7 @@ async def fetch_total_unread_chat_count() -> int:
     """Total de chats con al menos un mensaje de cliente aún no visto."""
     stmt = (
         select(func.count(func.distinct(WspMessage.chat_id)))
-        .join(Lead, Lead.remote_jid == WspMessage.chat_id)
+        .join(Lead, Lead.id == WspMessage.chat_id)
         .where(
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
@@ -1234,7 +1201,7 @@ def _message_notification_stmt():
         WspMessage.content,
         WspMessage.message_type,
         Lead.nombre,
-    ).outerjoin(Lead, Lead.remote_jid == WspMessage.chat_id)
+    ).outerjoin(Lead, Lead.id == WspMessage.chat_id)
 
 
 def _message_notification_payload(row) -> dict:
@@ -1802,7 +1769,7 @@ async def update_tag(tag_id: int, values: dict) -> dict | None:
 
 async def assign_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
     async with get_sessionmaker()() as session:
-        lead_exists = (await session.execute(select(Lead.remote_jid).where(Lead.remote_jid == chat_id))).first()
+        lead_exists = (await session.execute(select(Lead.id).where(Lead.id == chat_id))).first()
         tag = (
             await session.execute(
                 select(LeadTag.id, LeadTag.name, LeadTag.color).where(

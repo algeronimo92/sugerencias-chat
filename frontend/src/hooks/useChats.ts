@@ -62,7 +62,7 @@ async function fetchChatsPage(search: string, pageParam: PageParam, filters?: Ch
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
   if (filters?.waitingTime) params.waiting_time = filters.waitingTime
   if (pageParam) {
-    params.cursor_id = pageParam.cursorId
+    params.cursor_id = String(pageParam.cursorId)
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
     if (search) params.cursor_rank = String(pageParam.cursorRank ?? 2)
   }
@@ -445,7 +445,7 @@ export function useDuplicateLead(digits: string | null) {
     queryKey: ['duplicate-lead', digits],
     queryFn: async () => {
       const { data } = await client.get<ChatsPage>('/api/chats', { params: { search: digits } })
-      return data.items.find((chat) => chat.chat_id === `${digits}@s.whatsapp.net`) ?? null
+      return data.items.find((chat) => (chat.phone ?? '').replace(/\D/g, '').endsWith(digits ?? '')) ?? null
     },
     enabled: !!digits && digits.length >= 8,
     staleTime: 15_000,
@@ -477,13 +477,7 @@ export function useUpdateLead(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
-    onSuccess: (data) => {
-      if (data.chat_id !== chatId) {
-        // Cambió el número (re-key del JID): el lead ahora vive bajo otro id
-        // y cualquier cache del viejo (mensajes, ventana, notas…) quedó huérfana.
-        queryClient.invalidateQueries()
-        return
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
     },

@@ -203,7 +203,8 @@ async def find_chat_messages(chat_id: str, page: int, limit: int = HISTORY_PAGE_
     """
     api_url, api_key, instance = await _config()
     url = f"{api_url.rstrip('/')}/chat/findMessages/{instance}"
-    payload = {"where": {"key": {"remoteJid": chat_id}}, "page": page, "offset": limit}
+    destination = await resolve_whatsapp_destination(chat_id)
+    payload = {"where": {"key": {"remoteJid": destination}}, "page": page, "offset": limit}
     return await _post(url, api_key, payload, timeout=30.0)
 
 
@@ -270,7 +271,7 @@ async def send_whatsapp_list(
     return await _post(url, api_key, payload, timeout=30.0)
 
 
-def _with_quoted(payload: dict, quoted: dict | None) -> dict:
+def _with_quoted(payload: dict, quoted: dict | None, destination: str) -> dict:
     """Agrega el contexto de cita al payload si lo hay.
 
     Evolution acepta `quoted` como opción de nivel superior en todos los
@@ -278,7 +279,14 @@ def _with_quoted(payload: dict, quoted: dict | None) -> dict:
     contextInfo. Va condicionado porque mandar `quoted: null` hace que
     Evolution rechace el envío con 400 en vez de ignorarlo.
     """
-    return {**payload, "quoted": quoted} if quoted else payload
+    if not quoted:
+        return payload
+    key = quoted.get("key") if isinstance(quoted, dict) else None
+    if isinstance(key, dict):
+        # quoted_context usa el lead.id interno; Evolution solo entiende JID.
+        # Reemplazarlo siempre también tolera payloads legados que ya traían JID.
+        quoted = {**quoted, "key": {**key, "remoteJid": destination}}
+    return {**payload, "quoted": quoted}
 
 
 async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None) -> dict:
@@ -286,9 +294,8 @@ async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None
     destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendText/{instance}"
-    # Un lead provisional puede conservar un @lid como chat_id; para enviar se
-    # prefiere su alias telefónico cuando ya fue descubierto.
-    payload = _with_quoted({"number": destination, "text": text}, quoted)
+    # El CRM opera con lead.id; Evolution recibe el mejor JID externo asociado.
+    payload = _with_quoted({"number": destination, "text": text}, quoted, destination)
     return await _post(url, api_key, payload, timeout=30.0)
 
 
@@ -301,7 +308,7 @@ async def send_whatsapp_audio(
     destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendWhatsAppAudio/{instance}"
-    payload = _with_quoted({"number": destination, "audio": audio_base64}, quoted)
+    payload = _with_quoted({"number": destination, "audio": audio_base64}, quoted, destination)
     return await _post(url, api_key, payload, timeout=60.0)
 
 
@@ -328,7 +335,7 @@ async def send_whatsapp_location(
         "longitude": longitude,
         "name": name or "",
         "address": address or "",
-    }, quoted)
+    }, quoted, destination)
     return await _post(url, api_key, payload, timeout=30.0)
 
 
@@ -355,7 +362,7 @@ async def send_whatsapp_media(
         payload["fileName"] = filename
     if caption:
         payload["caption"] = caption
-    return await _post(url, api_key, _with_quoted(payload, quoted), timeout=60.0)
+    return await _post(url, api_key, _with_quoted(payload, quoted, destination), timeout=60.0)
 
 
 async def send_whatsapp_sticker(chat_id: str, sticker_base64: str) -> dict:
@@ -378,9 +385,10 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/chat/markMessageAsRead/{instance}"
+    destination = await resolve_whatsapp_destination(chat_id)
     payload = {
         "readMessages": [
-            {"remoteJid": chat_id, "fromMe": False, "id": wa_message_id} for wa_message_id in wa_message_ids
+            {"remoteJid": destination, "fromMe": False, "id": wa_message_id} for wa_message_id in wa_message_ids
         ]
     }
     return await _post(url, api_key, payload, timeout=30.0)
@@ -395,6 +403,12 @@ async def send_whatsapp_reaction(key: dict, emoji: str) -> dict:
     api_url, api_key, instance = await _config()
 
     url = f"{api_url.rstrip('/')}/message/sendReaction/{instance}"
+    remote_jid = key.get("remoteJid")
+    if not isinstance(remote_jid, str) or "@" not in remote_jid:
+        key = {
+            **key,
+            "remoteJid": await resolve_whatsapp_destination(str(remote_jid or "")),
+        }
     payload = {"key": key, "reaction": emoji}
     return await _post(url, api_key, payload, timeout=30.0)
 

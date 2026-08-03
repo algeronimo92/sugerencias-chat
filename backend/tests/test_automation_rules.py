@@ -235,9 +235,23 @@ class TestValidateGraphTopology:
             node("e2", FlowNodeType.END),
         ]
         edges = [edge("t", "w"), edge("w", "e1", "timer")]
-        with pytest.raises(ValueError, match="salida propia"):
+        with pytest.raises(ValueError, match="propia salida"):
             validate_graph_topology(nodes, edges, "t")
         edges.append(edge("w", "e2", "message"))
+        validate_graph_topology(nodes, edges, "t")
+
+    def test_wait_any_timer_output_is_optional(self):
+        # A diferencia de las demás condiciones, el temporizador puede
+        # quedar sin conectar: el flujo simplemente termina ahí al cumplirse.
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "w", "type": FlowNodeType.WAIT_ANY, "data": {"conditions": [
+                {"id": "timer", "kind": "timer", "seconds": 10},
+                {"id": "message", "kind": "message"},
+            ]}},
+            node("e1", FlowNodeType.END),
+        ]
+        edges = [edge("t", "w"), edge("w", "e1", "message")]
         validate_graph_topology(nodes, edges, "t")
 
     def test_wait_any_rejects_unknown_or_duplicate_handles(self):
@@ -251,7 +265,7 @@ class TestValidateGraphTopology:
         ]
         # Dos salidas para una sola condición: no matchea el set esperado.
         edges = [edge("t", "w"), edge("w", "e1", "timer"), edge("w", "e2", "timer")]
-        with pytest.raises(ValueError, match="salida propia"):
+        with pytest.raises(ValueError, match="propia salida"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_wait_any_accepts_business_hours_and_media_played(self):

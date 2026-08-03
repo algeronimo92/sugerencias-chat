@@ -85,7 +85,7 @@ async def create_scheduled_message(
         raise ValueError("Elige una hora futura para programar el mensaje")
 
     async with get_sessionmaker()() as session:
-        if not await session.scalar(select(Lead.remote_jid).where(Lead.remote_jid == lead_id)):
+        if not await session.scalar(select(Lead.id).where(Lead.id == lead_id)):
             return None
         scheduled = ScheduledMessage(
             lead_id=lead_id,

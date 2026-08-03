@@ -332,6 +332,16 @@ class TestNormalizeQuestion:
         result = _normalize_question({"text": "Hola", "buttons": ["Si", "  ", "No"], "timeout_seconds": 60}, 1)
         assert [b["label"] for b in result["buttons"]] == ["Si", "No"]
 
+    def test_accepts_object_buttons_from_the_visual_editor(self):
+        # El editor visual manda {id, label} en vez de strings simples,
+        # para poder asignarle un id estable al handle del grafo.
+        result = _normalize_question({
+            "text": "Hola",
+            "buttons": [{"id": "btn_1", "label": "Si"}, {"id": "btn_2", "label": "No"}],
+            "timeout_seconds": 60,
+        }, 1)
+        assert [b["label"] for b in result["buttons"]] == ["Si", "No"]
+
     @pytest.mark.parametrize("seconds", [0, -1, 604801])
     def test_rejects_timeout_out_of_range(self, seconds):
         with pytest.raises(ValueError, match="1 segundo y 7 días"):
