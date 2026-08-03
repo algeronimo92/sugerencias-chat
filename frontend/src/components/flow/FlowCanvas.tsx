@@ -29,6 +29,8 @@ type CanvasNodeData = Record<string, unknown> & {
   isSelected?: boolean
   previewTemplate?: MessageTemplate
   previewAsset?: MediaAsset
+  connectionRole?: 'source' | 'target' | 'both'
+  connectionDimmed?: boolean
 }
 
 type CanvasNode = Node<CanvasNodeData>
@@ -107,12 +109,31 @@ interface ShellProps {
 
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
   const Icon = ICONS[type]
+  const connectionClass = data.connectionRole === 'source'
+    ? 'ring-2 ring-cyan-400 ring-offset-2 shadow-[0_0_24px_rgba(34,211,238,0.45)] dark:ring-offset-gray-950'
+    : data.connectionRole === 'target'
+      ? 'ring-2 ring-violet-500 ring-offset-2 shadow-[0_0_24px_rgba(139,92,246,0.5)] dark:ring-offset-gray-950'
+      : data.connectionRole === 'both'
+        ? 'ring-2 ring-fuchsia-500 ring-offset-2 shadow-[0_0_24px_rgba(217,70,239,0.45)] dark:ring-offset-gray-950'
+        : selected
+          ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950'
+          : ''
+  const connectionLabel = data.connectionRole === 'source'
+    ? 'Origen'
+    : data.connectionRole === 'target'
+      ? 'Destino'
+      : data.connectionRole === 'both'
+        ? 'Conectado'
+        : null
   return (
     <div
-      className={`w-72 rounded-xl border-2 px-3 py-2.5 shadow-sm transition-shadow ${TONES[type]} ${
-        selected ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950' : ''
+      className={`relative w-72 rounded-xl border-2 px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 ${TONES[type]} ${connectionClass} ${
+        data.connectionDimmed ? 'opacity-40 saturate-50' : ''
       }`}
     >
+      {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
+        data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
+      }`}>{connectionLabel}</span>}
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-600 dark:text-gray-300" />
         <div className="min-w-0 flex-1">
@@ -384,18 +405,50 @@ const EDGE_LABELS: Record<string, string> = {
   [QuestionHandle.Timeout]: 'Sin respuesta',
 }
 
-export function toCanvasEdges(edges: AutomationFlowEdge[]): Edge[] {
-  return edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.source_handle,
-    label: EDGE_LABELS[edge.source_handle],
-    animated: true,
-    type: 'smoothstep',
-    style: { stroke: EDGE_COLORS[edge.source_handle] ?? '#94a3b8', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLORS[edge.source_handle] ?? '#94a3b8' },
-  }))
+export function toCanvasEdges(
+  edges: AutomationFlowEdge[],
+  highlightedEdgeIds: ReadonlySet<string> = new Set(),
+  selectedEdgeId: string | null = null,
+): Edge[] {
+  const hasHighlight = highlightedEdgeIds.size > 0
+  return edges.map(edge => {
+    const color = EDGE_COLORS[edge.source_handle] ?? '#94a3b8'
+    const highlighted = highlightedEdgeIds.has(edge.id)
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.source_handle,
+      label: highlighted ? (EDGE_LABELS[edge.source_handle] ?? 'Siguiente') : EDGE_LABELS[edge.source_handle],
+      animated: hasHighlight ? highlighted : true,
+      selected: edge.id === selectedEdgeId,
+      type: 'smoothstep',
+      interactionWidth: 32,
+      zIndex: highlighted ? 20 : 0,
+      style: {
+        stroke: color,
+        strokeWidth: highlighted ? 4 : 2,
+        opacity: hasHighlight && !highlighted ? 0.16 : 1,
+        filter: highlighted ? `drop-shadow(0 0 5px ${color})` : undefined,
+        transition: 'stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease',
+      },
+      labelStyle: {
+        fill: highlighted ? color : '#64748b',
+        fontSize: highlighted ? 11 : 9,
+        fontWeight: highlighted ? 700 : 600,
+      },
+      labelShowBg: true,
+      labelBgStyle: { fill: '#ffffff', fillOpacity: highlighted ? 0.96 : 0.78 },
+      labelBgPadding: highlighted ? [6, 4] as [number, number] : [4, 2] as [number, number],
+      labelBgBorderRadius: 6,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color,
+        width: highlighted ? 24 : 18,
+        height: highlighted ? 24 : 18,
+      },
+    }
+  })
 }
 
 export function fromCanvasEdge(edge: Edge | Connection, id: string): AutomationFlowEdge {
@@ -431,6 +484,34 @@ function Canvas({
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  const highlightedEdgeIds = useMemo(() => {
+    const activeEdgeId = hoveredEdgeId ?? selectedEdgeId
+    if (activeEdgeId) return new Set([activeEdgeId])
+    if (!hoveredNodeId) return new Set<string>()
+    return new Set(
+      flow.edges
+        .filter(edge => edge.source === hoveredNodeId || edge.target === hoveredNodeId)
+        .map(edge => edge.id),
+    )
+  }, [flow.edges, hoveredEdgeId, selectedEdgeId, hoveredNodeId])
+
+  const connectionRoles = useMemo(() => {
+    const roles = new Map<string, 'source' | 'target' | 'both'>()
+    const addRole = (nodeId: string, role: 'source' | 'target') => {
+      const current = roles.get(nodeId)
+      roles.set(nodeId, current && current !== role ? 'both' : role)
+    }
+    for (const edge of flow.edges) {
+      if (!highlightedEdgeIds.has(edge.id)) continue
+      addRole(edge.source, 'source')
+      addRole(edge.target, 'target')
+    }
+    return roles
+  }, [flow.edges, highlightedEdgeIds])
 
   const derivedNodes = useMemo<CanvasNode[]>(() => flow.nodes.map(node => {
     const nodeData = node.data as Record<string, unknown>
@@ -446,9 +527,16 @@ function Canvas({
       type: node.type,
       position: node.position,
       selected: node.id === selectedId,
-      data: { ...nodeData, previewTemplate, previewAsset, onDelete: onDeleteNode },
+      data: {
+        ...nodeData,
+        previewTemplate,
+        previewAsset,
+        onDelete: onDeleteNode,
+        connectionRole: connectionRoles.get(node.id),
+        connectionDimmed: highlightedEdgeIds.size > 0 && !connectionRoles.has(node.id),
+      },
     }
-  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNode])
+  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNode, connectionRoles, highlightedEdgeIds])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -459,7 +547,15 @@ function Canvas({
   const [nodes, setNodes] = useState<CanvasNode[]>(derivedNodes)
   useEffect(() => { setNodes(derivedNodes) }, [derivedNodes])
 
-  const edges = useMemo(() => toCanvasEdges(flow.edges), [flow.edges])
+  const edges = useMemo(
+    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId),
+    [flow.edges, highlightedEdgeIds, selectedEdgeId],
+  )
+
+  useEffect(() => {
+    if (selectedEdgeId && !flow.edges.some(edge => edge.id === selectedEdgeId)) setSelectedEdgeId(null)
+    if (hoveredEdgeId && !flow.edges.some(edge => edge.id === hoveredEdgeId)) setHoveredEdgeId(null)
+  }, [flow.edges, selectedEdgeId, hoveredEdgeId])
 
   const handleNodesChange = useCallback<OnNodesChange<CanvasNode>>(changes => {
     setNodes(current => applyNodeChanges(changes, current))
@@ -510,11 +606,21 @@ function Canvas({
         onNodesChange={handleNodesChange}
         onEdgesChange={changes => changes.forEach(change => {
           if (change.type === 'remove') onDeleteEdge(change.id)
+          if (change.type === 'select') setSelectedEdgeId(change.selected ? change.id : null)
         })}
         onConnect={handleConnect}
         isValidConnection={isValidConnection}
-        onNodeClick={(_, node) => onSelect(node.id)}
-        onPaneClick={() => onSelect(null)}
+        onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+        onNodeMouseLeave={(_, node) => setHoveredNodeId(current => current === node.id ? null : current)}
+        onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+        onEdgeMouseLeave={(_, edge) => setHoveredEdgeId(current => current === edge.id ? null : current)}
+        onEdgeClick={(event, edge) => {
+          event.stopPropagation()
+          setSelectedEdgeId(current => current === edge.id ? null : edge.id)
+          onSelect(null)
+        }}
+        onNodeClick={(_, node) => { setSelectedEdgeId(null); onSelect(node.id) }}
+        onPaneClick={() => { setSelectedEdgeId(null); onSelect(null) }}
         onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
         onDrop={handleDrop}
         colorMode="system"
