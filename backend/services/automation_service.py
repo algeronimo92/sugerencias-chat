@@ -109,6 +109,7 @@ TASK_PRIORITIES = frozenset(TaskPriority)
 MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
 MAX_WHATSAPP_TEXT_LENGTH = 4096
+MAX_REACTION_LENGTH = 16
 
 # Los triggers de los routers lo activan para que watch_automations procese la
 # cola de inmediato sin bloquear la request HTTP del usuario (una acción
@@ -567,6 +568,11 @@ async def validate_automation_rule(values: dict) -> dict:
             if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
                 raise ValueError(f"Acción {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
             normalized_actions.append({"type": action_type, "text": text})
+        elif action_type == AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE:
+            emoji = str(raw.get("emoji") or "").strip()
+            if not emoji or len(emoji) > MAX_REACTION_LENGTH:
+                raise ValueError(f"Acción {position}: selecciona una reacción válida")
+            normalized_actions.append({"type": action_type, "emoji": emoji})
         elif action_type == AutomationActionType.CHANGE_SERVICE:
             # Vacío es válido — significa quitar el servicio de interés
             # actual, no un error de formulario.
@@ -1599,6 +1605,36 @@ async def _action_send_message(action, chat, execution, rule, deps) -> dict:
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
 
 
+async def _action_react_to_last_customer_message(action, chat, execution, rule, deps) -> dict:
+    """Reacciona al mensaje entrante más reciente, aunque el vendedor haya
+    enviado otros mensajes después. WhatsApp solo admite una reacción propia
+    por mensaje; una ejecución posterior reemplaza la anterior.
+    """
+    target = await deps.fetch_latest_customer_message_target(chat["chat_id"])
+    if not target:
+        raise ValueError("No hay un mensaje confirmado del cliente al que reaccionar")
+
+    emoji = action["emoji"]
+    key = {
+        "remoteJid": chat["chat_id"],
+        "fromMe": False,
+        "id": target["wa_message_id"],
+    }
+    # Igual que la reacción manual: primero WhatsApp y luego el badge local,
+    # para no mostrar como enviada una reacción que el cliente nunca recibió.
+    await deps.send_reaction(key, emoji)
+    message = await deps.set_message_reaction(
+        chat["chat_id"], target["wa_message_id"], emoji, from_me=True,
+    )
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "reaction"})
+    return {
+        "status": AutomationExecutionStatus.COMPLETED,
+        "message_id": message["id"] if message else target["id"],
+        "wa_message_id": target["wa_message_id"],
+        "emoji": emoji,
+    }
+
+
 async def _fetch_media_asset(action, deps: AutomationDeps) -> MediaAsset:
     async with deps.session() as session:
         asset = await session.get(MediaAsset, action["media_asset_id"])
@@ -1710,6 +1746,7 @@ ACTION_HANDLERS = {
     AutomationActionType.SEND_MESSAGE: _action_send_message,
     AutomationActionType.SEND_AUDIO: _action_send_audio,
     AutomationActionType.SEND_ATTACHMENT: _action_send_attachment,
+    AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE: _action_react_to_last_customer_message,
 }
 
 

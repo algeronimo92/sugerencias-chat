@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, ReactFlowProvider,
+  Background, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
   type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
@@ -9,7 +9,7 @@ import '@xyflow/react/dist/style.css'
 import {
   Activity, Bell, CheckCircle2, ChevronRight, CirclePlay, FileText,
   Image as ImageIcon, MessageCircleQuestion, MessageSquareText, Paperclip,
-  Split, Tag, Timer, Trash2, UserRound, Video, Zap,
+  SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
@@ -68,6 +68,7 @@ function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): stri
   if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
   const action = data.action as AutomationAction | undefined
+  if (action?.type === AutomationActionType.ReactToLastCustomerMessage) return 'Reacción'
   return action?.type === AutomationActionType.SendMessage
     || action?.type === AutomationActionType.SendTemplate
     || action?.type === AutomationActionType.SendAudio
@@ -178,6 +179,16 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
     return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30">
       <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><Bell className="h-3 w-3 text-violet-600" />{action.title || 'Notificación'}</p>
       <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[9px] leading-relaxed text-gray-600 dark:text-gray-300">{action.body || 'Sin contenido'}</p>
+    </div>
+  }
+
+  if (action.type === AutomationActionType.ReactToLastCustomerMessage) {
+    return <div className="mt-2 flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg dark:bg-violet-950">{action.emoji || '🙂'}</span>
+      <div className="min-w-0">
+        <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><SmilePlus className="h-3 w-3 text-violet-600" />Último mensaje del cliente</p>
+        <p className="truncate text-[9px] text-gray-500 dark:text-gray-400">Enviar reacción {action.emoji || 'sin seleccionar'}</p>
+      </div>
     </div>
   }
 
@@ -511,6 +522,12 @@ function Canvas({
         proOptions={{ hideAttribution: false }}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
+        panOnScroll
+        panOnScrollMode={PanOnScrollMode.Free}
+        zoomOnScroll={false}
+        zoomOnPinch
+        zoomActivationKeyCode="Control"
+        zoomOnDoubleClick={false}
         minZoom={0.2}
       >
         <Background gap={22} size={1} className="opacity-60" />

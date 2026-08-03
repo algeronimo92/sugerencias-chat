@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity, ArrowRight, Beaker, Check, CheckCircle2, History, LayoutGrid,
-  ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Save, Split, Timer, UserRound, X, Zap,
+  ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Save, Split, Timer, Undo2, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { CreateTemplateDialog } from './CreateTemplateDialog'
 import { AttachmentPreview, MediaAssetField } from './MediaAssetField'
+import { AutomationReactionPicker } from './AutomationReactionPicker'
 import client from '../api/client'
 import type {
   AppUser, AutomationAction, AutomationActionType, AutomationConditions,
@@ -15,6 +16,7 @@ import type {
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
+import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
   useCreateVisualFlow, useFlowVersions, usePublishVisualFlow, useRestoreFlowVersion,
   useSaveVisualFlow, useSimulateVisualFlow, useUpdateAutomation,
@@ -78,6 +80,8 @@ function defaultAction(type: AutomationActionType): AutomationAction {
       return { type, media_asset_id: null }
     case ActionType.SendAttachment:
       return { type, media_asset_id: null }
+    case ActionType.ReactToLastCustomerMessage:
+      return { type, emoji: '❤️' }
     default:
       return assertNever(type)
   }
@@ -176,6 +180,11 @@ interface VisualFlowBuilderProps {
   onClose: () => void
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && !!target.closest('input, textarea, select, [contenteditable="true"]')
+}
+
 export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const createFlow = useCreateVisualFlow()
   const saveFlow = useSaveVisualFlow()
@@ -190,7 +199,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const [name, setName] = useState(rule?.name ?? 'Nuevo flujo visual')
   const [maxPerHour, setMaxPerHour] = useState<number | null>(rule?.max_executions_per_hour ?? null)
   const [visibleToSellers, setVisibleToSellers] = useState<boolean>(rule?.visible_to_sellers ?? false)
-  const [flow, setFlow] = useState<AutomationFlowDefinition>(() => {
+  const {
+    value: flow,
+    commit: setFlow,
+    sync: syncFlow,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useFlowHistory<AutomationFlowDefinition>(() => {
     const definition = rule?.flow_definition
     return isFlowDefinition(definition) && definition.nodes.length
       ? withDefaultConditions(definition)
@@ -221,11 +238,29 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     typeof value === 'boolean' ? value : value !== null && value !== undefined && value !== ''
   )).length
 
+  useEffect(() => {
+    function handleHistoryShortcut(event: KeyboardEvent) {
+      if ((!event.ctrlKey && !event.metaKey) || event.altKey || isEditableTarget(event.target)) return
+      const key = event.key.toLowerCase()
+      const wantsUndo = key === 'z' && !event.shiftKey
+      const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey)
+      if (wantsUndo && canUndo) {
+        event.preventDefault()
+        undo()
+      } else if (wantsRedo && canRedo) {
+        event.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', handleHistoryShortcut)
+    return () => window.removeEventListener('keydown', handleHistoryShortcut)
+  }, [canRedo, canUndo, redo, undo])
+
   function replaceNode(nextNode: AutomationFlowNode) {
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(node => node.id === nextNode.id ? nextNode : node),
-    }))
+    }), `node:${nextNode.id}`)
   }
 
   function replaceSelectedAction(nextAction: AutomationAction) {
@@ -243,7 +278,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { conditions } } : item),
       edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
-    }))
+    }), `node:${node.id}`)
   }
 
   /** Mismo saneo que replaceWaitAnyConditions, para cuando se quita un botón
@@ -254,11 +289,11 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { ...node.data, buttons } } : item),
       edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
-    }))
+    }), `node:${node.id}`)
   }
 
   function updateEntryConditions(conditions: AutomationConditions) {
-    setFlow(current => ({ ...current, conditions }))
+    setFlow(current => ({ ...current, conditions }), 'entry-conditions')
   }
 
   const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }) => {
@@ -270,7 +305,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     setFlow(current => ({ ...current, nodes: [...current.nodes, createFlowNode(type, id, position.x, position.y)] }))
     setSelectedId(id)
     setError(null)
-  }, [])
+  }, [setFlow])
 
   // La comprobación del disparador se hace antes de actualizar, leyendo `flow`
   // de las dependencias. Antes vivía dentro del updater de setFlow, que debe
@@ -289,14 +324,14 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
     }))
     setSelectedId(previous => (previous === nodeId ? null : previous))
-  }, [flow])
+  }, [flow, setFlow])
 
   const moveNode = useCallback((nodeId: string, position: { x: number; y: number }) => {
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(node => (node.id === nodeId ? { ...node, position } : node)),
     }))
-  }, [])
+  }, [setFlow])
 
   const connectNodes = useCallback((edge: AutomationFlowEdge) => {
     setError(null)
@@ -311,11 +346,11 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         edge,
       ],
     }))
-  }, [])
+  }, [setFlow])
 
   const removeEdge = useCallback((edgeId: string) => {
     setFlow(current => ({ ...current, edges: current.edges.filter(edge => edge.id !== edgeId) }))
-  }, [])
+  }, [setFlow])
 
   function autoLayout() {
     const trigger = flow.nodes.find(node => node.type === NodeType.Trigger)
@@ -352,7 +387,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         ? await createFlow.mutateAsync({ name, flow_definition: flow })
         : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flow })
       setRuleId(saved.id)
-      if (isFlowDefinition(saved.flow_definition)) setFlow(withDefaultConditions(saved.flow_definition))
+      if (isFlowDefinition(saved.flow_definition)) syncFlow(withDefaultConditions(saved.flow_definition))
       setNotice('Borrador guardado.')
       return saved
     } catch (reason) {
@@ -418,6 +453,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
       <button type="button" onClick={onClose} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-5 w-5" /></button>
       <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => setName(event.target.value)} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
+      <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-wa-border-dark" role="group" aria-label="Historial de cambios">
+        <button type="button" disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer" className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Undo2 className="h-4 w-4" /></button>
+        <button type="button" disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y o Ctrl+Shift+Z)" aria-label="Rehacer" className="p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-300 dark:hover:bg-wa-head-dark"><Redo2 className="h-4 w-4" /></button>
+      </div>
       <button type="button" onClick={() => setShowEntryConditions(current => !current)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary-strong bg-green-50 text-wa-primary-strong dark:bg-green-950/30 dark:text-green-300' : 'border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
       <label title={ruleId == null ? 'Guarda el borrador primero' : 'Freno de seguridad: pasado el tope, el resto se reintenta más tarde'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300">Máx/hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => setMaxPerHour(event.target.value ? Number(event.target.value) : null)} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-head-dark" /></label>
       {isManualTrigger && (
@@ -453,7 +492,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           [NodeType.Question, FLOW_NODE_LABELS[NodeType.Question], MessageCircleQuestion, 'Botones con una rama por respuesta'],
           [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-wa-primary-strong" />{label}</div><p className="mt-1 text-[10px] text-wa-muted">{description}</p></div>)}
-        <div className="mt-4 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</div>
+        <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+          <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
+          <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</p>
+        </div>
       </aside>
 
       <main className="min-w-0 flex-1 bg-wa-field dark:bg-wa-app-dark">
@@ -707,6 +749,7 @@ function ActionEditor({ action, updateAction, users, tags, templates, mediaAsset
     {action.type === ActionType.ChangeService && <><input value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className={fieldClass} /><p className="text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></>}
     {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => updateAction({ ...action, media_asset_id: id })} />}
     {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => updateAction({ ...action, media_asset_id: id })} />}
+    {action.type === ActionType.ReactToLastCustomerMessage && <AutomationReactionPicker emoji={action.emoji} onChange={emoji => updateAction({ ...action, emoji })} />}
     {action.type === ActionType.Notify && <><Select value={action.recipient} onChange={event => updateAction({ ...action, recipient: event.target.value === AutomationRecipient.Specific ? AutomationRecipient.Specific : AutomationRecipient.Seller, user_id: null })} className={fieldClass}><option value={AutomationRecipient.Seller}>Vendedor del lead</option><option value={AutomationRecipient.Specific}>Usuario específico</option></Select>{action.recipient === AutomationRecipient.Specific && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona usuario</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} placeholder="Título" className={fieldClass} /><textarea rows={3} value={action.body} onChange={event => updateAction({ ...action, body: event.target.value })} placeholder="Contenido" className={fieldClass} /></>}
     {action.type === ActionType.SendMessage && <textarea rows={4} value={action.text} onChange={event => updateAction({ ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className={fieldClass} />}
     {action.type === ActionType.SendTemplate && <>

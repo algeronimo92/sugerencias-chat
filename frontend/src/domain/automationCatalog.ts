@@ -42,6 +42,7 @@ export const AutomationActionType = {
   ChangeService: 'change_service',
   SendAudio: 'send_audio',
   SendAttachment: 'send_attachment',
+  ReactToLastCustomerMessage: 'react_to_last_customer_message',
 } as const
 export type AutomationActionTypeValue = ValueOf<typeof AutomationActionType>
 
@@ -57,7 +58,10 @@ export const AUTOMATION_ACTION_LABELS = {
   [AutomationActionType.ChangeService]: 'Cambiar/quitar servicio de interés',
   [AutomationActionType.SendAudio]: 'Enviar audio',
   [AutomationActionType.SendAttachment]: 'Enviar solo adjunto',
+  [AutomationActionType.ReactToLastCustomerMessage]: 'Reaccionar al último mensaje del cliente',
 } satisfies Record<AutomationActionTypeValue, string>
+
+export const AUTOMATION_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const
 
 export const FlowNodeType = {
   Trigger: 'trigger',

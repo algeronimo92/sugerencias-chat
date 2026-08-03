@@ -489,6 +489,11 @@ export interface SendAttachmentAutomationAction {
   media_asset_id: number | null
 }
 
+export interface ReactToLastCustomerMessageAutomationAction {
+  type: typeof AutomationActionType.ReactToLastCustomerMessage
+  emoji: string
+}
+
 export type AutomationAction =
   | CreateTaskAutomationAction
   | AssignSellerAutomationAction
@@ -500,6 +505,7 @@ export type AutomationAction =
   | ChangeServiceAutomationAction
   | SendAudioAutomationAction
   | SendAttachmentAutomationAction
+  | ReactToLastCustomerMessageAutomationAction
 
 export type AutomationFlowNodeType = FlowNodeTypeValue
 export type AutomationFlowConditionType = FlowConditionTypeValue

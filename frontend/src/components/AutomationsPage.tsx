@@ -21,6 +21,7 @@ import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
 import { MediaAssetField } from './MediaAssetField'
+import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { Checkbox } from './ui/Checkbox'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { Select } from './ui/Input'
@@ -67,6 +68,8 @@ function defaultAction(type: AutomationActionType): AutomationAction {
       return { type, media_asset_id: null }
     case ActionType.SendAttachment:
       return { type, media_asset_id: null }
+    case ActionType.ReactToLastCustomerMessage:
+      return { type, emoji: '❤️' }
     default:
       return assertNever(type)
   }
@@ -139,6 +142,7 @@ function validateForm(form: RuleForm) {
     if (action.type === ActionType.Notify && (!action.title.trim() || !action.body.trim() || (action.recipient === AutomationRecipient.Specific && !action.user_id))) errors.push(`${prefix}: completa destinatario, título y contenido.`)
     if (action.type === ActionType.SendTemplate && !action.template_id) errors.push(`${prefix}: selecciona una plantilla.`)
     if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje a enviar.`)
+    if (action.type === ActionType.ReactToLastCustomerMessage && (!action.emoji.trim() || action.emoji.length > 16)) errors.push(`${prefix}: selecciona una reacción válida.`)
     if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
   })
   return errors
@@ -410,6 +414,7 @@ export function AutomationsPage() {
             {action.type === ActionType.ChangeService && <div><input value={action.service ?? ''} onChange={event => setAction(index, { ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><p className="mt-1 text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></div>}
             {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
             {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
+            {action.type === ActionType.ReactToLastCustomerMessage && <AutomationReactionPicker emoji={action.emoji} onChange={emoji => setAction(index, { ...action, emoji })} />}
           </div>)}</div></section>
 
           <div className="rounded-xl bg-wa-hover px-3 py-2.5 text-[11px] text-wa-muted dark:bg-wa-head-dark/60">Variables disponibles: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}. Las acciones se detienen si una falla y el motivo queda en el historial.</div>

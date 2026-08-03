@@ -296,6 +296,55 @@ class TestSendMessage:
             await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
 
+class TestReactToLastCustomerMessage:
+    async def test_reacts_to_latest_customer_message_and_updates_chat(self, deps, recorder, whatsapp):
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "❤️",
+        }
+
+        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+
+        assert whatsapp.reactions == [({
+            "remoteJid": "51999@s.whatsapp.net",
+            "fromMe": False,
+            "id": "CLIENT-WA-42",
+        }, "❤️")]
+        assert recorder.reactions == [(
+            "51999@s.whatsapp.net", "CLIENT-WA-42", "❤️", True,
+        )]
+        assert result["message_id"] == 42
+        assert result["emoji"] == "❤️"
+        assert recorder.broadcasts[-1]["reason"] == "reaction"
+
+    async def test_fails_clearly_when_customer_has_no_confirmed_message(self, deps, whatsapp):
+        async def no_target(chat_id):
+            return None
+
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "👍",
+        }
+        without_target = dataclasses.replace(
+            deps, fetch_latest_customer_message_target=no_target,
+        )
+
+        with pytest.raises(ValueError, match="No hay un mensaje confirmado del cliente"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), without_target)
+        assert whatsapp.reactions == []
+
+    async def test_does_not_persist_if_whatsapp_rejects_reaction(self, deps, recorder, whatsapp):
+        whatsapp.fail_with = RuntimeError("Evolution no disponible")
+        action = {
+            "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
+            "emoji": "😂",
+        }
+
+        with pytest.raises(RuntimeError, match="Evolution no disponible"):
+            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        assert recorder.reactions == []
+
+
 class TestSendAudio:
     async def test_sends_audio_from_media_library(self, deps, recorder, whatsapp):
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}

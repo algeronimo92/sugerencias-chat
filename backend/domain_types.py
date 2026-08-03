@@ -23,6 +23,7 @@ class AutomationActionType(StrEnum):
     CHANGE_SERVICE = "change_service"
     SEND_AUDIO = "send_audio"
     SEND_ATTACHMENT = "send_attachment"
+    REACT_TO_LAST_CUSTOMER_MESSAGE = "react_to_last_customer_message"
 
 
 class FlowNodeType(StrEnum):

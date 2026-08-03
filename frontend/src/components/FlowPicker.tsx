@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2, Workflow } from 'lucide-react'
 import { toast } from 'sonner'
 import { useManualFlows, useStartManualFlow } from '../hooks/useAutomations'
+import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../utils/errors'
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
  */
 export function FlowPicker({ chatId }: Props) {
   const [open, setOpen] = useState(false)
+  const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
   const { data: flows = [], isLoading } = useManualFlows(chatId)
   const startFlow = useStartManualFlow()
 
@@ -30,7 +32,7 @@ export function FlowPicker({ chatId }: Props) {
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         title="Iniciar un flujo automático para este lead"
