@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, ControlButton, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider,
+  Background, ControlButton, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
   type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
@@ -480,15 +480,15 @@ interface FlowCanvasProps {
   mediaAssets?: MediaAsset[]
   selectedId: string | null
   onSelect: (id: string | null) => void
-  onMoveNode: (id: string, position: { x: number; y: number }) => void
-  onDeleteNode: (id: string) => void
+  onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
+  onDeleteNodes: (ids: string[]) => void
   onConnect: (edge: AutomationFlowEdge) => void
   onDeleteEdge: (id: string) => void
   onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
 }
 
 function Canvas({
-  flow, templates = [], mediaAssets = [], selectedId, onSelect, onMoveNode, onDeleteNode, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = [], mediaAssets = [], selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
@@ -542,19 +542,29 @@ function Canvas({
         ...nodeData,
         previewTemplate,
         previewAsset,
-        onDelete: onDeleteNode,
+        onDelete: id => onDeleteNodes([id]),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNode])
+  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNodes])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
   // ReactFlow dependiera directo de `derivedNodes` el nodo no se movería
   // hasta ese momento. Se resincroniza cada vez que cambia lo que viene del
   // padre (agregar/borrar bloque, publicar, etc.) — eso nunca pasa a mitad
-  // de un arrastre porque durante el arrastre no se llama a onMoveNode.
+  // de un arrastre porque durante el arrastre no se llama a onMoveNodes.
   const [nodes, setNodes] = useState<CanvasNode[]>(derivedNodes)
-  useEffect(() => { setNodes(derivedNodes) }, [derivedNodes])
+  useEffect(() => {
+    setNodes(current => {
+      const selectedById = new Map(current.map(node => [node.id, node.selected]))
+      return derivedNodes.map(node => ({
+        ...node,
+        // Mover el grupo actualiza `flow` en el padre; conservar esta marca
+        // evita perder la selección múltiple al sincronizar las posiciones.
+        selected: selectedById.get(node.id) ?? node.selected,
+      }))
+    })
+  }, [derivedNodes])
 
   // El estado de hover se aplica solo a la vista que recibe React Flow; no se
   // reinyecta en `nodes`. Resincronizar el estado base en cada mouseenter podía
@@ -615,19 +625,29 @@ function Canvas({
   }, [])
 
   const handleNodesChange = useCallback<OnNodesChange<CanvasNode>>(changes => {
-    setNodes(current => applyNodeChanges(changes, current))
+    // Las eliminaciones se reflejan cuando el padre actualiza `flow`. No se
+    // aplican antes localmente porque el disparador puede formar parte del
+    // rectángulo y debe conservarse aunque se pulse Supr.
+    setNodes(current => applyNodeChanges(changes.filter(change => change.type !== 'remove'), current))
+    const moves: Array<{ id: string; position: { x: number; y: number } }> = []
+    const removedIds: string[] = []
     for (const change of changes) {
       if (change.type === 'position' && change.position && !change.dragging) {
         // Solo al soltar: persistir en cada frame del arrastre dispararía un
         // render del builder entero por cada píxel movido.
-        onMoveNode(change.id, {
-          x: Math.round(change.position.x),
-          y: Math.round(change.position.y),
+        moves.push({
+          id: change.id,
+          position: {
+            x: Math.round(change.position.x),
+            y: Math.round(change.position.y),
+          },
         })
       }
-      if (change.type === 'remove') onDeleteNode(change.id)
+      if (change.type === 'remove') removedIds.push(change.id)
     }
-  }, [onMoveNode, onDeleteNode])
+    if (moves.length) onMoveNodes(moves)
+    if (removedIds.length) onDeleteNodes(removedIds)
+  }, [onMoveNodes, onDeleteNodes])
 
   const handleConnect = useCallback<OnConnect>(connection => {
     const handle = connection.sourceHandle ?? FlowHandle.Next
@@ -678,6 +698,7 @@ function Canvas({
         }}
         onNodeClick={(_, node) => { setSelectedEdgeId(null); onSelect(node.id) }}
         onPaneClick={() => { setSelectedEdgeId(null); onSelect(null) }}
+        onSelectionStart={() => { setSelectedEdgeId(null); onSelect(null) }}
         onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
         onDrop={handleDrop}
         colorMode="system"
@@ -685,6 +706,10 @@ function Canvas({
         proOptions={{ hideAttribution: false }}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
+        selectionOnDrag
+        selectionMode={SelectionMode.Partial}
+        multiSelectionKeyCode={['Control', 'Meta']}
+        panOnDrag={[1, 2]}
         panOnScroll
         panOnScrollMode={PanOnScrollMode.Free}
         zoomOnScroll={false}

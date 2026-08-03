@@ -311,25 +311,40 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   // de las dependencias. Antes vivía dentro del updater de setFlow, que debe
   // ser puro: React puede ejecutarlo más de una vez, y el setError anidado
   // podía repetirse o disparar sobre un estado que nunca llegó a confirmarse.
-  const removeNode = useCallback((nodeId: string) => {
-    const node = flow.nodes.find(item => item.id === nodeId)
-    if (node?.type === NodeType.Trigger) {
-      setError('El disparador no se puede eliminar; podés cambiar su tipo.')
+  const removeNodes = useCallback((nodeIds: string[]) => {
+    const requested = new Set(nodeIds)
+    const removable = new Set(
+      flow.nodes
+        .filter(node => requested.has(node.id) && node.type !== NodeType.Trigger)
+        .map(node => node.id),
+    )
+    if (removable.size === 0) {
+      if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
+        setError('El disparador no se puede eliminar; podés cambiar su tipo.')
+      }
       return
     }
-    setError(null)
+    if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
+      setError('El disparador se conservó; se eliminaron los demás bloques seleccionados.')
+    } else {
+      setError(null)
+    }
     setFlow(current => ({
       ...current,
-      nodes: current.nodes.filter(item => item.id !== nodeId),
-      edges: current.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId),
+      nodes: current.nodes.filter(item => !removable.has(item.id)),
+      edges: current.edges.filter(edge => !removable.has(edge.source) && !removable.has(edge.target)),
     }))
-    setSelectedId(previous => (previous === nodeId ? null : previous))
+    setSelectedId(previous => (previous && removable.has(previous) ? null : previous))
   }, [flow, setFlow])
 
-  const moveNode = useCallback((nodeId: string, position: { x: number; y: number }) => {
+  const moveNodes = useCallback((moves: Array<{ id: string; position: { x: number; y: number } }>) => {
+    const positions = new Map(moves.map(move => [move.id, move.position]))
     setFlow(current => ({
       ...current,
-      nodes: current.nodes.map(node => (node.id === nodeId ? { ...node, position } : node)),
+      nodes: current.nodes.map(node => {
+        const position = positions.get(node.id)
+        return position ? { ...node, position } : node
+      }),
     }))
   }, [setFlow])
 
@@ -494,6 +509,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-wa-primary-strong" />{label}</div><p className="mt-1 text-[10px] text-wa-muted">{description}</p></div>)}
         <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
           <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
+          <p><strong>Cómo seleccionar varios:</strong> arrastra un rectángulo con el botón izquierdo sobre un espacio vacío. Usa Ctrl/Cmd + clic para sumar o quitar bloques de la selección.</p>
           <p><strong>Cómo seguir una conexión:</strong> activa el botón del ojo y pasa sobre una línea o bloque. Haz clic en la línea para dejar marcados su origen y destino.</p>
           <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</p>
         </div>
@@ -506,8 +522,8 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           mediaAssets={mediaAssets}
           selectedId={selectedId}
           onSelect={id => { setSelectedId(id); if (id) setShowEntryConditions(false) }}
-          onMoveNode={moveNode}
-          onDeleteNode={removeNode}
+          onMoveNodes={moveNodes}
+          onDeleteNodes={removeNodes}
           onConnect={connectNodes}
           onDeleteEdge={removeEdge}
           onDropNewNode={addNode}
