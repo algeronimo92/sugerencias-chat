@@ -707,7 +707,7 @@ function Canvas({
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
         selectionOnDrag
-        selectionMode={SelectionMode.Partial}
+        selectionMode={SelectionMode.Full}
         multiSelectionKeyCode={['Control', 'Meta']}
         panOnDrag={[1, 2]}
         panOnScroll
