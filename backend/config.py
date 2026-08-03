@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Código de país (sin +) que se antepone a teléfonos tipeados en formato
     # local al crear/editar leads. Editable desde Configuración (app_settings).
     default_country_code: str = "51"
+    # Reparte por turnos (round robin) los leads nuevos que llegan por WhatsApp
+    # entre los vendedores activos. Editable desde Configuración.
+    auto_assign_leads_enabled: str = "false"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Almacenamiento multimedia. "local" conserva el comportamiento anterior;

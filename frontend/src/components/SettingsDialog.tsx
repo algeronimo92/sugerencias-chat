@@ -3,6 +3,7 @@ import { Check, Loader2, Trash2, X } from 'lucide-react'
 import type { SettingItem } from '../types'
 import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import { extractErrorMessage } from '../utils/errors'
+import { Checkbox } from './ui/Checkbox'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
@@ -163,45 +164,55 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               </h3>
               <div className="space-y-2.5">
                 {g.items.map((item) => (
-                  <div key={item.key}>
-                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 mb-1">
-                      {item.label}
-                      {item.secret && (
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                            item.configured
-                              ? 'bg-green-100 dark:bg-green-950/50 text-wa-primary-strong dark:text-wa-primary'
-                              : 'bg-wa-field dark:bg-wa-head-dark text-wa-muted dark:text-wa-muted-dark'
-                          }`}
-                        >
-                          {item.configured ? 'Configurada' : 'No configurada'}
-                        </span>
-                      )}
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type={item.secret ? 'password' : 'text'}
-                        value={draft[item.key] ?? ''}
-                        onChange={(e) => setField(item.key, e.target.value)}
-                        placeholder={item.secret ? (item.configured ? '•••• sin cambios' : 'Sin configurar') : ''}
-                        autoComplete="off"
-                        className="flex-1 text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark"
+                  item.boolean ? (
+                    <label key={item.key} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                      <Checkbox
+                        checked={(draft[item.key] ?? '') === 'true'}
+                        onCheckedChange={(checked) => setField(item.key, checked ? 'true' : 'false')}
                       />
-                      {item.secret && item.configured && (
-                        <button
-                          type="button"
-                          onClick={() => handleClearSecret(item.key)}
-                          disabled={isSaving}
-                          aria-label={clearingSecretKey === item.key ? `Borrando ${item.label}` : `Borrar ${item.label}`}
-                          aria-busy={clearingSecretKey === item.key}
-                          title={clearingSecretKey === item.key ? 'Borrando valor…' : 'Borrar valor guardado'}
-                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-wa-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:cursor-wait disabled:opacity-60 transition-colors"
-                        >
-                          {clearingSecretKey === item.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      )}
+                      {item.label}
+                    </label>
+                  ) : (
+                    <div key={item.key}>
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        {item.label}
+                        {item.secret && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                              item.configured
+                                ? 'bg-green-100 dark:bg-green-950/50 text-wa-primary-strong dark:text-wa-primary'
+                                : 'bg-wa-field dark:bg-wa-head-dark text-wa-muted dark:text-wa-muted-dark'
+                            }`}
+                          >
+                            {item.configured ? 'Configurada' : 'No configurada'}
+                          </span>
+                        )}
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type={item.secret ? 'password' : 'text'}
+                          value={draft[item.key] ?? ''}
+                          onChange={(e) => setField(item.key, e.target.value)}
+                          placeholder={item.secret ? (item.configured ? '•••• sin cambios' : 'Sin configurar') : ''}
+                          autoComplete="off"
+                          className="flex-1 text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark"
+                        />
+                        {item.secret && item.configured && (
+                          <button
+                            type="button"
+                            onClick={() => handleClearSecret(item.key)}
+                            disabled={isSaving}
+                            aria-label={clearingSecretKey === item.key ? `Borrando ${item.label}` : `Borrar ${item.label}`}
+                            aria-busy={clearingSecretKey === item.key}
+                            title={clearingSecretKey === item.key ? 'Borrando valor…' : 'Borrar valor guardado'}
+                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-wa-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:cursor-wait disabled:opacity-60 transition-colors"
+                          >
+                            {clearingSecretKey === item.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )
                 ))}
               </div>
             </div>
