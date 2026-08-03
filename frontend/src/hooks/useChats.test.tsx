@@ -112,10 +112,15 @@ describe('useChatUpdates con un evento message_status', () => {
 
   it('no invalida ninguna query', () => {
     renderHook(() => useChatUpdates(), { wrapper })
+    // onopen resincroniza deliberadamente las queries para recuperar eventos
+    // que pudieron perderse mientras el socket estuvo desconectado. Eso no
+    // forma parte del procesamiento del message_status que mide este test.
+    act(() => {
+      FakeWebSocket.last.onopen?.()
+    })
     const invalidate = vi.spyOn(currentClient, 'invalidateQueries')
 
     act(() => {
-      FakeWebSocket.last.onopen?.()
       FakeWebSocket.last.emit(statusEvent())
     })
 
