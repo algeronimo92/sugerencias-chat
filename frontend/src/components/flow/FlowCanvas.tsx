@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider,
+  Background, ControlButton, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
   type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
@@ -9,7 +9,7 @@ import '@xyflow/react/dist/style.css'
 import {
   Activity, Bell, CheckCircle2, ChevronRight, CirclePlay, FileText,
   Image as ImageIcon, MessageCircleQuestion, MessageSquareText, Paperclip,
-  SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
+  Eye, EyeOff, SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
@@ -36,6 +36,15 @@ type CanvasNodeData = Record<string, unknown> & {
 type CanvasNode = Node<CanvasNodeData>
 
 const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
+const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
+
+function storedConnectionHighlightPreference(): boolean {
+  try {
+    return window.localStorage.getItem(CONNECTION_HIGHLIGHT_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
   if (type === FlowNodeType.Trigger) {
@@ -486,9 +495,11 @@ function Canvas({
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [connectionHighlightEnabled, setConnectionHighlightEnabled] = useState(storedConnectionHighlightPreference)
   const nodeLeaveTimer = useRef<number | null>(null)
 
   const highlightedEdgeIds = useMemo(() => {
+    if (!connectionHighlightEnabled) return new Set<string>()
     const activeEdgeId = hoveredEdgeId ?? selectedEdgeId
     if (activeEdgeId) return new Set([activeEdgeId])
     if (!hoveredNodeId) return new Set<string>()
@@ -497,7 +508,7 @@ function Canvas({
         .filter(edge => edge.source === hoveredNodeId || edge.target === hoveredNodeId)
         .map(edge => edge.id),
     )
-  }, [flow.edges, hoveredEdgeId, selectedEdgeId, hoveredNodeId])
+  }, [flow.edges, hoveredEdgeId, selectedEdgeId, hoveredNodeId, connectionHighlightEnabled])
 
   const connectionRoles = useMemo(() => {
     const roles = new Map<string, 'source' | 'target' | 'both'>()
@@ -568,17 +579,30 @@ function Canvas({
     if (hoveredEdgeId && !flow.edges.some(edge => edge.id === hoveredEdgeId)) setHoveredEdgeId(null)
   }, [flow.edges, selectedEdgeId, hoveredEdgeId])
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CONNECTION_HIGHLIGHT_STORAGE_KEY, String(connectionHighlightEnabled))
+    } catch {
+      // La preferencia es opcional (p. ej. almacenamiento bloqueado).
+    }
+    if (!connectionHighlightEnabled) {
+      setHoveredEdgeId(null)
+      setHoveredNodeId(null)
+    }
+  }, [connectionHighlightEnabled])
+
   useEffect(() => () => {
     if (nodeLeaveTimer.current !== null) window.clearTimeout(nodeLeaveTimer.current)
   }, [])
 
   const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    if (!connectionHighlightEnabled) return
     if (nodeLeaveTimer.current !== null) {
       window.clearTimeout(nodeLeaveTimer.current)
       nodeLeaveTimer.current = null
     }
     setHoveredNodeId(node.id)
-  }, [])
+  }, [connectionHighlightEnabled])
 
   const handleNodeMouseLeave = useCallback((_: React.MouseEvent, node: CanvasNode) => {
     if (nodeLeaveTimer.current !== null) window.clearTimeout(nodeLeaveTimer.current)
@@ -645,7 +669,7 @@ function Canvas({
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
-        onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+        onEdgeMouseEnter={(_, edge) => { if (connectionHighlightEnabled) setHoveredEdgeId(edge.id) }}
         onEdgeMouseLeave={(_, edge) => setHoveredEdgeId(current => current === edge.id ? null : current)}
         onEdgeClick={(event, edge) => {
           event.stopPropagation()
@@ -670,7 +694,16 @@ function Canvas({
         minZoom={0.2}
       >
         <Background gap={22} size={1} className="opacity-60" />
-        <Controls position="top-right" orientation="horizontal" showInteractive={false} />
+        <Controls position="top-right" orientation="horizontal" showInteractive={false}>
+          <ControlButton
+            onClick={() => setConnectionHighlightEnabled(enabled => !enabled)}
+            title={connectionHighlightEnabled ? 'Ocultar resaltado de rutas' : 'Resaltar rutas'}
+            aria-label={connectionHighlightEnabled ? 'Ocultar resaltado de rutas' : 'Resaltar rutas'}
+            aria-pressed={connectionHighlightEnabled}
+          >
+            {connectionHighlightEnabled ? <Eye className="h-4 w-4 text-violet-600" /> : <EyeOff className="h-4 w-4" />}
+          </ControlButton>
+        </Controls>
         <MiniMap pannable zoomable className="!bg-white dark:!bg-wa-panel-dark" />
       </ReactFlow>
     </div>

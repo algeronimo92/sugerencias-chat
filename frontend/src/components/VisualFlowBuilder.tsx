@@ -494,7 +494,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-wa-primary-strong" />{label}</div><p className="mt-1 text-[10px] text-wa-muted">{description}</p></div>)}
         <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
           <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
-          <p><strong>Cómo seguir una conexión:</strong> pasa sobre una línea o un bloque para iluminar su recorrido. Haz clic en la línea para dejar marcados su origen y destino.</p>
+          <p><strong>Cómo seguir una conexión:</strong> activa el botón del ojo y pasa sobre una línea o bloque. Haz clic en la línea para dejar marcados su origen y destino.</p>
           <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</p>
         </div>
       </aside>
