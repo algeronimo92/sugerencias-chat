@@ -34,7 +34,9 @@ describe('toCanvasEdges', () => {
 
     expect(hovered.style).toMatchObject({ strokeWidth: 3, opacity: 1 })
     expect(String(hovered.style?.filter)).toContain('drop-shadow(0 0 2px')
+    expect(hovered.animated).toBe(false)
     expect(hovered.label).toBeUndefined()
+    expect(other.animated).toBe(true)
     expect(other.style).toMatchObject({ strokeWidth: 2, opacity: 1 })
   })
 })

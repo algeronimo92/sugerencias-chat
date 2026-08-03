@@ -431,7 +431,9 @@ export function toCanvasEdges(
       target: edge.target,
       sourceHandle: edge.source_handle,
       label: highlighted ? (EDGE_LABELS[edge.source_handle] ?? 'Siguiente') : EDGE_LABELS[edge.source_handle],
-      animated: hasHighlight ? highlighted : true,
+      // El hover leve detiene el trazo punteado y lo vuelve continuo; así se
+      // distingue con claridad sin necesitar el modo intenso de rutas.
+      animated: hovered ? false : hasHighlight ? highlighted : true,
       selected: edge.id === selectedEdgeId,
       type: 'smoothstep',
       interactionWidth: 32,
