@@ -648,8 +648,8 @@ function Canvas({
     if (!raw) return
     const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
     onDropNewNode(raw as AutomationFlowNodeType, {
-      x: Math.max(0, Math.round(position.x)),
-      y: Math.max(0, Math.round(position.y)),
+      x: Math.round(position.x),
+      y: Math.round(position.y),
     })
   }, [screenToFlowPosition, onDropNewNode])
 

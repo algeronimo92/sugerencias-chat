@@ -7,10 +7,12 @@ import pytest
 
 from domain_types import FlowHandle, FlowNodeType
 from services.automation_rules import (
+    FLOW_COORDINATE_LIMIT,
     is_business_hours,
     matches_static_conditions,
     normalize_conditions,
     normalize_edges,
+    normalize_flow_position,
     render_variables,
     unknown_variables,
     validate_graph_topology,
@@ -88,6 +90,27 @@ class TestNormalizeConditions:
 
     def test_non_dict_input_yields_empty_conditions(self):
         assert normalize_conditions(None)["stage"] is None
+
+
+class TestNormalizeFlowPosition:
+    def test_preserves_coordinates_beyond_the_old_canvas_limit(self):
+        assert normalize_flow_position({"x": 25_000, "y": 80_000}) == {
+            "x": 25_000, "y": 80_000,
+        }
+
+    def test_allows_negative_coordinates(self):
+        assert normalize_flow_position({"x": -12_500, "y": -750}) == {
+            "x": -12_500, "y": -750,
+        }
+
+    def test_clamps_only_extreme_coordinates(self):
+        assert normalize_flow_position({
+            "x": FLOW_COORDINATE_LIMIT + 1,
+            "y": -FLOW_COORDINATE_LIMIT - 1,
+        }) == {"x": FLOW_COORDINATE_LIMIT, "y": -FLOW_COORDINATE_LIMIT}
+
+    def test_invalid_coordinates_fall_back_to_origin(self):
+        assert normalize_flow_position({"x": "no-numero", "y": None}) == {"x": 0, "y": 0}
 
 
 class TestMatchesStaticConditions:

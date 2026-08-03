@@ -93,11 +93,28 @@ def matches_static_conditions(conditions: dict, chat: dict) -> tuple[bool, str |
     return True, None
 
 
+FLOW_COORDINATE_LIMIT = 1_000_000
+
+
+def _normalize_flow_coordinate(value: object) -> int:
+    try:
+        coordinate = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        coordinate = 0
+    return max(-FLOW_COORDINATE_LIMIT, min(FLOW_COORDINATE_LIMIT, coordinate))
+
+
 def normalize_flow_position(value: object) -> dict:
+    """Conserva la posición del lienzo en un rango prácticamente infinito.
+
+    El límite evita valores no representables o coordenadas absurdas que
+    degraden el navegador, pero permite más de dos millones de unidades en
+    cada eje y trabajar también a la izquierda/arriba del origen.
+    """
     position = value if isinstance(value, dict) else {}
     return {
-        "x": max(0, min(4000, int(position.get("x") or 0))),
-        "y": max(0, min(4000, int(position.get("y") or 0))),
+        "x": _normalize_flow_coordinate(position.get("x")),
+        "y": _normalize_flow_coordinate(position.get("y")),
     }
 
 
