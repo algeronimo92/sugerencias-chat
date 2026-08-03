@@ -24,6 +24,7 @@ class SettingDef:
     group: str
     group_label: str
     secret: bool
+    boolean: bool = False
 
 
 # Fuente de verdad de qué keys son editables desde la app. Agregar una nueva
@@ -56,6 +57,14 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
     ),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
+    SettingDef(
+        "auto_assign_leads_enabled",
+        "Asignar leads de WhatsApp por turnos (round robin)",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
+        boolean=True,
+    ),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0
@@ -135,6 +144,7 @@ async def list_settings() -> list[dict]:
                 "group": d.group,
                 "group_label": d.group_label,
                 "secret": d.secret,
+                "boolean": d.boolean,
                 "configured": bool(effective),
                 # Los valores secretos nunca viajan al navegador ya guardados;
                 # solo se pueden sobrescribir, no releer.

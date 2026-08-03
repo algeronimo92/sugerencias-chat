@@ -17,6 +17,8 @@ from sqlalchemy.exc import IntegrityError
 
 from db.models import Lead, WhatsAppIdentity
 from db.session import get_sessionmaker
+from services.lead_assignment import pick_next_vendedor_id
+from services.settings_service import get_effective
 
 
 PHONE_SUFFIX = "@s.whatsapp.net"
@@ -172,10 +174,26 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                 legacy_jid = identity.phone_jid or identity.lid_jid
                 if legacy_jid is None:
                     raise InvalidWhatsAppIdentityError("No se pudo elegir un JID canónico")
+
+                vendedor_id = None
+                if (await get_effective("auto_assign_leads_enabled")) == "true":
+                    # Serializa la asignación entre leads nuevos concurrentes:
+                    # sin este lock, dos altas en paralelo podrían leer el
+                    # mismo "último asignado" y caer en el mismo vendedor.
+                    await session.execute(
+                        select(
+                            func.pg_advisory_xact_lock(
+                                func.hashtextextended("lead_round_robin_assignment", 0)
+                            )
+                        )
+                    )
+                    vendedor_id = await pick_next_vendedor_id(session)
+
                 lead = Lead(
                     legacy_remote_jid=legacy_jid,
                     telefono=_phone_from_jid(identity.phone_jid),
                     nombre=identity.push_name,
+                    vendedor_id=vendedor_id,
                     created_at=now,
                     updated_at=now,
                 )
