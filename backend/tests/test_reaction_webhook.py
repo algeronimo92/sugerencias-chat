@@ -5,6 +5,8 @@ import pytest
 from routers import webhooks
 from routers.webhooks import ReactionWebhookBody
 
+LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+
 
 @pytest.mark.asyncio
 async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
@@ -15,16 +17,16 @@ async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
 
     result = await webhooks.reaction_webhook(
         ReactionWebhookBody(
-            chat_id="51999@s.whatsapp.net",
+            chat_id=LEAD_ID,
             target_wa_message_id="WA-TARGET",
             emoji="❤️",
             from_me=False,
         )
     )
 
-    set_reaction.assert_awaited_once_with("51999@s.whatsapp.net", "WA-TARGET", "❤️", False)
+    set_reaction.assert_awaited_once_with(LEAD_ID, "WA-TARGET", "❤️", False)
     broadcast.assert_awaited_once_with(
-        {"type": "chats_updated", "chat_id": "51999@s.whatsapp.net", "reason": "reaction"}
+        {"type": "chats_updated", "chat_id": LEAD_ID, "reason": "reaction"}
     )
     assert result == {"status": "ok", "matched": True}
 
@@ -39,7 +41,7 @@ async def test_reaction_on_unknown_target_is_ignored_without_broadcast(monkeypat
 
     result = await webhooks.reaction_webhook(
         ReactionWebhookBody(
-            chat_id="51999@s.whatsapp.net",
+            chat_id=LEAD_ID,
             target_wa_message_id="WA-UNKNOWN",
             emoji="👍",
         )

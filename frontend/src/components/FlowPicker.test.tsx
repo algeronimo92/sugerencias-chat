@@ -14,6 +14,7 @@ import { FlowPicker } from './FlowPicker'
 import type { AutomationRule } from '../types'
 
 const mutate = vi.fn()
+const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 
 vi.mock('../hooks/useAutomations', () => ({
   useManualFlows: vi.fn(),
@@ -54,7 +55,7 @@ describe('FlowPicker', () => {
   it('muestra el estado vacío cuando no hay flujos disponibles', async () => {
     vi.mocked(useManualFlows).mockReturnValue({ data: [], isLoading: false } as never)
     const user = userEvent.setup()
-    render(<FlowPicker chatId="51999@s.whatsapp.net" />, { wrapper })
+    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
     await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
 
@@ -67,13 +68,13 @@ describe('FlowPicker', () => {
       isLoading: false,
     } as never)
     const user = userEvent.setup()
-    render(<FlowPicker chatId="51999@s.whatsapp.net" />, { wrapper })
+    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
     await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
     await user.click(screen.getByText('Bienvenida guiada'))
 
     expect(mutate).toHaveBeenCalledWith(
-      { ruleId: 9, chatId: '51999@s.whatsapp.net' },
+      { ruleId: 9, chatId: CHAT_ID },
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
     )
   })

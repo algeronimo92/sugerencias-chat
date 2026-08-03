@@ -6,6 +6,7 @@ from routers import webhooks
 from routers.webhooks import OutgoingAnalysisWebhookBody
 
 ANALYSIS = {"summary": "una imagen de una crema", "kind": "descripcion", "version": 1}
+LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 @pytest.mark.asyncio
@@ -17,7 +18,7 @@ async def test_merges_analysis_into_app_message(monkeypatch):
 
     result = await webhooks.outgoing_analysis_webhook(
         OutgoingAnalysisWebhookBody(
-            chat_id="51999@s.whatsapp.net",
+            chat_id=LEAD_ID,
             message_type="image",
             analysis=ANALYSIS,
             wa_message_id="ECO-1",
@@ -26,11 +27,11 @@ async def test_merges_analysis_into_app_message(monkeypatch):
     )
 
     attach.assert_awaited_once_with(
-        "51999@s.whatsapp.net", "image", ANALYSIS,
+        LEAD_ID, "image", ANALYSIS,
         wa_message_id="ECO-1", content=None, media_url="/media/x.jpg",
     )
     broadcast.assert_awaited_once_with(
-        {"type": "chats_updated", "chat_id": "51999@s.whatsapp.net", "reason": "analysis"}
+        {"type": "chats_updated", "chat_id": LEAD_ID, "reason": "analysis"}
     )
     assert result == {"status": "ok", "matched": True, "message_id": 1253}
 
@@ -46,7 +47,7 @@ async def test_inserts_when_no_app_message_matches(monkeypatch):
 
     result = await webhooks.outgoing_analysis_webhook(
         OutgoingAnalysisWebhookBody(
-            chat_id="51999@s.whatsapp.net", message_type="audio", analysis=ANALYSIS,
+            chat_id=LEAD_ID, message_type="audio", analysis=ANALYSIS,
         )
     )
 

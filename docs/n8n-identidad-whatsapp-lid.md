@@ -37,7 +37,7 @@ Respuesta típica con ambos alias:
 ```json
 {
   "status": "ok",
-  "chat_id": "51943663225@s.whatsapp.net",
+  "chat_id": "7b08f4d9-855f-4718-b95f-9c021da52f77",
   "send_jid": "51943663225@s.whatsapp.net",
   "phone": "+51943663225",
   "phone_jid": "51943663225@s.whatsapp.net",
@@ -51,9 +51,9 @@ Respuesta típica con ambos alias:
 }
 ```
 
-Si Evolution todavía no permite conocer el teléfono, `chat_id` y `send_jid`
-serán el LID, `phone` será `null` y `unresolved` será `true`. Nunca fabricar un
-teléfono con los dígitos del LID.
+`chat_id` siempre es el `leads.id` interno en formato UUID. Si Evolution todavía no
+permite conocer el teléfono, `send_jid` será el LID, `phone` será `null` y
+`unresolved` será `true`. Nunca fabricar un teléfono con los dígitos del LID.
 
 ## Sustituciones obligatorias
 
@@ -66,7 +66,7 @@ AHORA: identity.chat_id
 
 En particular:
 
-- `leads.remote_jid` / búsquedas de lead: `identity.chat_id`.
+- `leads.id` / búsquedas de lead: `identity.chat_id` (tipo string UUID).
 - `wsp_messages.chat_id`: `identity.chat_id`.
 - Webhooks `/messages`, `/outgoing`, `/analysis`, `/reaction` y `/lead-stage`:
   mandar `identity.chat_id` cuando soliciten `chat_id`.
@@ -81,7 +81,7 @@ UPDATE leads
 SET nombre = COALESCE(NULLIF($2, ''), nombre),
     telefono = COALESCE($3, telefono),
     updated_at = now()
-WHERE remote_jid = $1;
+WHERE id = $1;
 ```
 
 Parámetros: `$1 = identity.chat_id`, `$2 = body.data.pushName`,
@@ -105,4 +105,5 @@ La deduplicación de mensajes sigue usando `key.id` en
 3. Probar un número tradicional, un LID con `remoteJidAlt` y un LID sin
    `remoteJidAlt`.
 4. Confirmar que `whatsapp_identities` contiene ambos JID con el mismo
-   `lead_id` y que los mensajes nuevos comparten un solo `chat_id`.
+   `lead_id` UUID y que los mensajes nuevos comparten ese mismo
+   `wsp_messages.chat_id`.

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import client from '../api/client'
 import { useEvolutionHistory } from './useEvolutionHistory'
 
-const CHAT_ID = '51958334533@s.whatsapp.net'
+const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 const OLDEST_DB_MESSAGE = '2024-05-01T10:00:00.000000Z'
 
 function wrapper({ children }: PropsWithChildren) {

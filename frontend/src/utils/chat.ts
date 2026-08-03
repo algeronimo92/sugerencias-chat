@@ -1,20 +1,15 @@
 import type { Chat } from '../types'
 
-export function phoneFromChatId(chatId: string): string {
-  const digits = chatId.split('@')[0]
-  return `+${digits}`
-}
-
 export function displayName(chat: Chat): string {
-  return chat.name ?? chat.phone ?? phoneFromChatId(chat.chat_id)
+  return chat.name ?? chat.phone ?? `Lead #${chat.chat_id}`
 }
 
 export function displayPhone(chat: Chat): string {
-  return chat.phone ?? phoneFromChatId(chat.chat_id)
+  return chat.phone ?? 'Sin teléfono asociado'
 }
 
 export function avatarInitial(chat: Chat): string {
-  return chat.name?.[0]?.toUpperCase() ?? '#'
+  return (chat.name ?? chat.phone)?.[0]?.toUpperCase() ?? '#'
 }
 
 export type WaitingTier = 'fresh' | 'warning' | 'urgent'

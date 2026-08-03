@@ -386,7 +386,7 @@ async def list_automation_executions(
         AutomationExecution.start_source,
         AutomationExecution.started_by_user_id,
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
-        Lead, Lead.remote_jid == AutomationExecution.lead_id
+        Lead, Lead.id == AutomationExecution.lead_id
     )
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
@@ -461,7 +461,7 @@ async def cancel_automation_execution(execution_id: int) -> dict | None:
 _normalize_automation_conditions = normalize_conditions
 
 
-async def validate_automation_rule(values: dict) -> dict:
+async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> dict:
     name = str(values.get("name") or "").strip()
     if not name or len(name) > 120:
         raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
@@ -483,8 +483,8 @@ async def validate_automation_rule(values: dict) -> dict:
     normalized_conditions = _normalize_automation_conditions(values.get("conditions"))
 
     actions = values.get("actions") if isinstance(values.get("actions"), list) else []
-    if not 1 <= len(actions) <= MAX_ACTIONS:
-        raise ValueError(f"Configura entre 1 y {MAX_ACTIONS} acciones")
+    if not 1 <= len(actions) <= max_actions:
+        raise ValueError(f"Configura entre 1 y {max_actions} acciones")
     normalized_actions: list[dict] = []
     referenced_users: set[int] = set()
     referenced_tags: set[int] = set()
@@ -691,6 +691,17 @@ def _normalize_wait_any_conditions(data: dict, position: int) -> dict:
 MAX_QUESTION_BUTTONS = 3
 
 
+def _question_button_label(raw_button: object) -> str:
+    """Un botón llega como string simple o como `{id, label}` — el editor
+    visual siempre manda esto último para poder asignarle un id estable al
+    handle del grafo."""
+    if isinstance(raw_button, dict):
+        return str(raw_button.get("label") or "").strip()[:20]
+    if isinstance(raw_button, str):
+        return raw_button.strip()[:20]
+    return ""
+
+
 def _normalize_question(data: dict, position: int) -> dict:
     """Bloque Pregunta (`question`): manda un mensaje con hasta 3 botones y
     ramifica según cuál tocó el cliente. `id` de cada botón es `btn_1..btn_n`
@@ -704,9 +715,11 @@ def _normalize_question(data: dict, position: int) -> dict:
         raise ValueError(f"Pregunta {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
     raw_buttons = data.get("buttons")
     labels = [
-        str(label).strip()[:20]
-        for label in (raw_buttons if isinstance(raw_buttons, list) else [])
-        if isinstance(label, str) and str(label).strip()
+        label for label in (
+            _question_button_label(raw_button)
+            for raw_button in (raw_buttons if isinstance(raw_buttons, list) else [])
+        )
+        if label
     ]
     if not 1 <= len(labels) <= MAX_QUESTION_BUTTONS:
         raise ValueError(f"Pregunta {position}: configura entre 1 y {MAX_QUESTION_BUTTONS} botones")
@@ -912,6 +925,10 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
     if not action_nodes:
         raise ValueError("El flujo debe tener al menos una acción")
 
+    # MAX_ACTIONS (10) es el tope del modo simple, una lista plana y
+    # secuencial. Acá sumamos los bloques Acción de TODAS las ramas del
+    # grafo aunque una ejecución nunca recorra más de una, así que se acota
+    # por MAX_FLOW_NODES (el tope estructural del flujo) en vez de MAX_ACTIONS.
     normalized_action_values = await validate_automation_rule({
         "name": name,
         "trigger_type": trigger_nodes[0]["data"]["trigger_type"],
@@ -920,7 +937,7 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
         "actions": [action for _, action in action_nodes],
         "delay_minutes": 0,
         "is_active": False,
-    })
+    }, max_actions=MAX_FLOW_NODES)
     for (node_index, _), normalized_action in zip(action_nodes, normalized_action_values["actions"]):
         normalized_nodes[node_index]["data"]["action"] = normalized_action
 
@@ -1385,14 +1402,27 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
         elif node["type"] == FlowNodeType.WAIT_ANY:
             # No hay forma de simular cuál condición se cumpliría primero en
             # la vida real — se muestra el bloque y se sigue por la rama del
-            # temporizador (siempre presente) para completar el preview.
+            # temporizador (siempre presente como condición) para completar
+            # el preview. Su salida es opcional: sin conexión, el flujo
+            # termina acá.
             path.append({
                 "node_id": current_id,
                 "type": FlowNodeType.WAIT_ANY,
                 "status": "would_wait",
                 "conditions": node["data"].get("conditions", []),
             })
-            current_id = edges[(current_id, WaitAnyConditionKind.TIMER)]
+            next_id = edges.get((current_id, WaitAnyConditionKind.TIMER))
+            if next_id is None:
+                path.append({
+                    "node_id": None,
+                    "type": FlowNodeType.END,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                })
+                return {
+                    "lead_id": chat["chat_id"], "lead_name": chat.get("name"),
+                    "flow_version": current["flow_version"], "path": path,
+                }
+            current_id = next_id
         elif node["type"] == FlowNodeType.QUESTION:
             # Igual que wait_any: no hay forma de simular qué contesta el
             # cliente — se muestra el bloque y se sigue por "timeout".
@@ -2029,7 +2059,27 @@ async def _run_visual_execution(
                     "status": AutomationExecutionStatus.COMPLETED,
                     "branch": branch,
                 })
-                current_id = edges[(current_id, branch)]
+                next_id = edges.get((current_id, branch))
+                if next_id is None:
+                    # Solo la rama del temporizador puede llegar sin conexión
+                    # (es la única opcional) — el flujo termina acá, igual que
+                    # si hubiera llegado a un bloque Fin.
+                    results.append({
+                        "position": len(results) + 1, "node_id": None,
+                        "type": FlowNodeType.END,
+                        "status": AutomationExecutionStatus.COMPLETED,
+                    })
+                    await _persist_visual_execution(
+                        execution.id,
+                        AutomationExecutionStatus.COMPLETED,
+                        results,
+                        None,
+                        path,
+                        flow_version,
+                    deps=deps,
+                    )
+                    return
+                current_id = next_id
                 await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,

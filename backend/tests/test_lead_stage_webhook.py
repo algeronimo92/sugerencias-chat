@@ -5,10 +5,12 @@ from fastapi import HTTPException
 
 from routers import webhooks
 
+LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+
 
 def _body(**overrides):
     payload = {
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": LEAD_ID,
         "estado": "en_seguimiento",
         "razonamiento": "El vendedor habló último y pasaron 24 horas sin respuesta.",
     }
@@ -19,7 +21,7 @@ def _body(**overrides):
 @pytest.mark.asyncio
 async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
     update_stage = AsyncMock(return_value={
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": LEAD_ID,
         "stage": "en_seguimiento",
         "changed": True,
     })
@@ -32,7 +34,7 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
     result = await webhooks.lead_stage_webhook(_body())
 
     update_stage.assert_awaited_once_with(
-        "51999999999@s.whatsapp.net",
+        LEAD_ID,
         webhooks.LeadStage.en_seguimiento,
         actor_type="agent",
         metadata={"reason": "El vendedor habló último y pasaron 24 horas sin respuesta."},
@@ -40,7 +42,7 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
     )
     broadcast.assert_awaited_once()
     assert broadcast.await_args.args[0]["reason"] == "stage_changed"
-    trigger.assert_awaited_once_with("51999999999@s.whatsapp.net")
+    trigger.assert_awaited_once_with(LEAD_ID)
     assert result == {"status": "ok", "changed": True, "stage": "en_seguimiento"}
 
 
@@ -51,7 +53,7 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
     CRM se queda con los datos viejos: con el WebSocket conectado no hay
     polling que lo salve."""
     monkeypatch.setattr(webhooks, "update_lead_stage", AsyncMock(return_value={
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": LEAD_ID,
         "stage": "en_seguimiento",
         "changed": False,
     }))
@@ -65,7 +67,7 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
     broadcast.assert_awaited_once()
     assert broadcast.await_args.args[0] == {
         "type": "chats_updated",
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": LEAD_ID,
         "reason": "lead_updated",
     }
     # La etapa no se movió: disparar las automatizaciones de cambio de etapa

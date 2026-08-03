@@ -7,9 +7,11 @@ un largo acotado, sin importar qué se pegue en el input.
 
 from models.schemas import SUGGESTION_INSTRUCTION_MAX_LENGTH, SuggestionRequest
 
+LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+
 
 def _request(instruction):
-    return SuggestionRequest(chat_id="123@s.whatsapp.net", instruction=instruction)
+    return SuggestionRequest(chat_id=LEAD_ID, instruction=instruction)
 
 
 def test_sin_instruccion_queda_none():

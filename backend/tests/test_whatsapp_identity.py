@@ -1,4 +1,8 @@
+from unittest.mock import AsyncMock
+
 import pytest
+
+from services import whatsapp_identity_service
 
 from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
@@ -6,6 +10,8 @@ from services.whatsapp_identity_service import (
     parse_evolution_identity,
     resolve_whatsapp_destination,
 )
+
+LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 def _payload(key: dict, push_name: str = "Gerson P") -> dict:
@@ -40,6 +46,16 @@ def test_parse_phone_and_lid_aliases_deduplicates_values():
     )
     assert parsed.phone_jid == "51943663225@s.whatsapp.net"
     assert parsed.lid_jid == "267692862898397@lid"
+
+
+@pytest.mark.parametrize("own_name", ["Você", "Voce", "DermicaPro"])
+def test_outgoing_push_name_is_never_used_as_contact_name(own_name):
+    parsed = parse_evolution_identity(_payload({
+        "remoteJid": "51943663225@s.whatsapp.net",
+        "fromMe": True,
+    }, push_name=own_name))
+
+    assert parsed.push_name is None
 
 
 def test_accepts_complete_n8n_item_wrapper():
@@ -78,8 +94,21 @@ def test_lid_digits_are_not_accepted_as_a_phone_lookup_result():
 
 
 @pytest.mark.asyncio
-async def test_phone_destination_does_not_query_the_database():
-    assert (
-        await resolve_whatsapp_destination("51943663225@s.whatsapp.net")
-        == "51943663225@s.whatsapp.net"
+async def test_destination_is_resolved_from_internal_lead_id(monkeypatch):
+    session = type("Session", (), {})()
+    session.scalar = AsyncMock(return_value="51943663225@s.whatsapp.net")
+
+    class SessionContext:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(
+        whatsapp_identity_service,
+        "get_sessionmaker",
+        lambda: SessionContext,
     )
+
+    assert await resolve_whatsapp_destination(LEAD_ID) == "51943663225@s.whatsapp.net"

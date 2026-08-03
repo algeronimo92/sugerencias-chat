@@ -38,7 +38,7 @@ async def _compute_dashboard_metrics(days: int) -> dict:
     start = datetime.combine(start_date, time.min, tzinfo=business_timezone).astimezone(timezone.utc)
     latest_sender = (
         select(WspMessage.sender)
-        .where(WspMessage.chat_id == Lead.remote_jid)
+        .where(WspMessage.chat_id == Lead.id)
         .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
         .correlate(Lead)
@@ -59,9 +59,9 @@ async def _compute_dashboard_metrics(days: int) -> dict:
     )
 
     summary_stmt = select(
-        select(func.count(Lead.remote_jid)).scalar_subquery().label("total_leads"),
-        select(func.count(Lead.remote_jid)).where(Lead.created_at >= start).scalar_subquery().label("new_leads"),
-        select(func.count(Lead.remote_jid)).where(latest_sender == "cliente").scalar_subquery().label("awaiting_reply"),
+        select(func.count(Lead.id)).scalar_subquery().label("total_leads"),
+        select(func.count(Lead.id)).where(Lead.created_at >= start).scalar_subquery().label("new_leads"),
+        select(func.count(Lead.id)).where(latest_sender == "cliente").scalar_subquery().label("awaiting_reply"),
         select(func.count(LeadTask.id)).where(
                 LeadTask.status == TaskStatus.PENDING,
                 LeadTask.due_at < now,
@@ -77,32 +77,32 @@ async def _compute_dashboard_metrics(days: int) -> dict:
             ).scalar_subquery().label("avg_response_seconds"),
     )
     stage_stmt = (
-        select(Lead.estado.label("name"), func.count(Lead.remote_jid).label("value"))
+        select(Lead.estado.label("name"), func.count(Lead.id).label("value"))
             .group_by(Lead.estado)
-            .order_by(func.count(Lead.remote_jid).desc())
+            .order_by(func.count(Lead.id).desc())
     )
     origin_label = func.coalesce(Lead.origen, "Sin origen")
     origin_stmt = (
-        select(origin_label.label("name"), func.count(Lead.remote_jid).label("value"))
+        select(origin_label.label("name"), func.count(Lead.id).label("value"))
             .group_by(origin_label)
-            .order_by(func.count(Lead.remote_jid).desc()).limit(8)
+            .order_by(func.count(Lead.id).desc()).limit(8)
     )
     service_label = func.coalesce(Lead.servicio_interes, "Sin servicio")
     service_stmt = (
-        select(service_label.label("name"), func.count(Lead.remote_jid).label("value"))
+        select(service_label.label("name"), func.count(Lead.id).label("value"))
             .group_by(service_label)
-            .order_by(func.count(Lead.remote_jid).desc()).limit(8)
+            .order_by(func.count(Lead.id).desc()).limit(8)
     )
     seller_label = func.coalesce(User.name, Lead.vendedor, "Sin asignar")
     seller_stmt = (
-        select(seller_label.label("name"), func.count(Lead.remote_jid).label("value"))
+        select(seller_label.label("name"), func.count(Lead.id).label("value"))
             .outerjoin(User, User.id == Lead.vendedor_id)
             .group_by(seller_label)
-            .order_by(func.count(Lead.remote_jid).desc()).limit(12)
+            .order_by(func.count(Lead.id).desc()).limit(12)
     )
     local_created_day = func.date(func.timezone("America/Lima", Lead.created_at))
     trend_stmt = (
-        select(local_created_day.label("day"), func.count(Lead.remote_jid).label("total"))
+        select(local_created_day.label("day"), func.count(Lead.id).label("total"))
             .where(Lead.created_at >= start)
             .group_by(local_created_day)
             .order_by(local_created_day)

@@ -14,7 +14,7 @@ from datetime import datetime, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from domain_types import FlowHandle, FlowNodeType, QuestionHandle
+from domain_types import FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
 from db.models import LeadStage
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
@@ -176,8 +176,12 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
         elif node["type"] == FlowNodeType.WAIT_ANY:
             expected = {condition["id"] for condition in node["data"].get("conditions", [])}
             handles = [edge["source_handle"] for edge in node_edges]
-            if len(handles) != len(expected) or set(handles) != expected:
-                raise ValueError("Cada condición de la pausa debe tener exactamente una salida propia")
+            # El temporizador es la única salida opcional: si no se conecta,
+            # el flujo simplemente termina ahí al cumplirse (ver
+            # _run_visual_execution). Las demás condiciones sí son obligatorias.
+            required = expected - {WaitAnyConditionKind.TIMER}
+            if len(handles) != len(set(handles)) or not set(handles) <= expected or not required <= set(handles):
+                raise ValueError("Cada condición de la pausa debe tener su propia salida (el temporizador es opcional)")
         elif node["type"] == FlowNodeType.QUESTION:
             expected = {button["id"] for button in node["data"].get("buttons", [])} | {
                 QuestionHandle.OTHER, QuestionHandle.TIMEOUT,

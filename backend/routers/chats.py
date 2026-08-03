@@ -41,7 +41,6 @@ from services.db_service import (
     KANBAN_PAGE_SIZE,
     MESSAGES_PAGE_SIZE,
     LeadAlreadyExistsError,
-    LeadHasMessagesError,
     create_lead,
     assign_tag,
     fetch_chat,
@@ -375,8 +374,8 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     if "con_especialista" in values and values["con_especialista"] is None:
         del values["con_especialista"]
 
-    # El teléfono es la identidad del chat (remote_jid): no se puede vaciar y
-    # cambiarlo exige re-key. Un phone: null explícito se ignora.
+    # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
+    # su alias externo; el chat_id interno permanece estable.
     new_phone = values.pop("telefono", None)
     if new_phone:
         try:
@@ -384,24 +383,15 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
         except PhoneValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         new_jid = digits_to_jid(digits)
-        if new_jid != chat_id:
-            exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
-            if exists_wa is False:
-                raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
-            try:
-                rekeyed = await rekey_lead_phone(chat_id, digits, canonical_jid or new_jid, user.id)
-            except LeadHasMessagesError:
-                raise HTTPException(
-                    status_code=409,
-                    detail="No se puede cambiar el teléfono: el lead ya tiene conversación en WhatsApp",
-                )
-            except LeadAlreadyExistsError:
-                raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
-            if rekeyed is None:
-                raise HTTPException(status_code=404, detail="Lead no encontrado")
-            chat_id = rekeyed["chat_id"]
-        else:
-            values["telefono"] = f"+{digits}"
+        exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
+        if exists_wa is False:
+            raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
+        try:
+            rekeyed = await rekey_lead_phone(chat_id, digits, canonical_jid or new_jid, user.id)
+        except LeadAlreadyExistsError:
+            raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
+        if rekeyed is None:
+            raise HTTPException(status_code=404, detail="Lead no encontrado")
 
     try:
         lead = await update_lead(chat_id, values, "user", user.id)

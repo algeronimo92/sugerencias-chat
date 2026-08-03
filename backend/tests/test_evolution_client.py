@@ -102,6 +102,8 @@ async def test_find_phone_jid_for_lid_never_treats_lid_digits_as_phone(
 
 @pytest.mark.asyncio
 async def test_find_chat_messages_consulta_el_historial_del_chat(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    destination = "51906471403@s.whatsapp.net"
     monkeypatch.setattr(
         evolution_service,
         "_config",
@@ -109,19 +111,74 @@ async def test_find_chat_messages_consulta_el_historial_del_chat(monkeypatch):
     )
     post = AsyncMock(return_value={"messages": {"records": []}})
     monkeypatch.setattr(evolution_service, "_post", post)
+    monkeypatch.setattr(
+        evolution_service,
+        "resolve_whatsapp_destination",
+        AsyncMock(return_value=destination),
+    )
 
-    await evolution_service.find_chat_messages("51906471403@s.whatsapp.net", 3)
+    await evolution_service.find_chat_messages(lead_id, 3)
 
     post.assert_awaited_once_with(
         "https://evolution.test/chat/findMessages/dermica",
         "secret",
         {
-            "where": {"key": {"remoteJid": "51906471403@s.whatsapp.net"}},
+            "where": {"key": {"remoteJid": destination}},
             "page": 3,
             "offset": 50,
         },
         timeout=30.0,
     )
+
+
+@pytest.mark.asyncio
+async def test_send_text_replaces_uuid_in_quoted_key_with_destination(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    destination = "51906471403@s.whatsapp.net"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(evolution_service, "_post", post)
+    monkeypatch.setattr(
+        evolution_service,
+        "resolve_whatsapp_destination",
+        AsyncMock(return_value=destination),
+    )
+    quoted = {
+        "key": {"remoteJid": lead_id, "fromMe": False, "id": "WA-1"},
+        "message": {"conversation": "hola"},
+    }
+
+    await evolution_service.send_whatsapp_text(lead_id, "respuesta", quoted=quoted)
+
+    payload = post.await_args.args[2]
+    assert payload["number"] == destination
+    assert payload["quoted"]["key"]["remoteJid"] == destination
+
+
+@pytest.mark.asyncio
+async def test_send_reaction_resolves_uuid_to_destination(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    destination = "51906471403@s.whatsapp.net"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(evolution_service, "_post", post)
+    resolve = AsyncMock(return_value=destination)
+    monkeypatch.setattr(evolution_service, "resolve_whatsapp_destination", resolve)
+
+    await evolution_service.send_whatsapp_reaction(
+        {"remoteJid": lead_id, "fromMe": False, "id": "WA-1"}, "❤️"
+    )
+
+    resolve.assert_awaited_once_with(lead_id)
+    assert post.await_args.args[2]["key"]["remoteJid"] == destination
 
 
 @pytest.mark.asyncio

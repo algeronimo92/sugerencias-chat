@@ -52,7 +52,7 @@ interface MoveLeadStageInput {
 }
 
 async function moveLeadStage({ chatId, stage, razonPerdido }: MoveLeadStageInput): Promise<Chat> {
-  const { data } = await client.patch<Chat>(`/api/chats/${encodeURIComponent(chatId)}/stage`, {
+  const { data } = await client.patch<Chat>(`/api/chats/${encodeURIComponent(String(chatId))}/stage`, {
     stage,
     razon_perdido: razonPerdido ?? null,
   })

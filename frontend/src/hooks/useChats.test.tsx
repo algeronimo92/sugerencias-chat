@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useChatUpdates } from './useChats'
 
-const CHAT_ID = '51958334533@s.whatsapp.net'
+const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []

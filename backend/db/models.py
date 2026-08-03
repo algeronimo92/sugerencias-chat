@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
@@ -16,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from domain_types import (
@@ -51,7 +52,17 @@ class LeadStage(str, Enum):
 class Lead(Base):
     __tablename__ = "leads"
 
-    remote_jid: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Identidad estable del CRM. Los identificadores externos de WhatsApp
+    # viven en whatsapp_identities y nunca vuelven a ser la PK del lead.
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=func.gen_random_uuid(),
+    )
+    # Compatibilidad transitoria para integraciones antiguas durante el
+    # despliegue coordinado con n8n. Ya no participa en relaciones internas.
+    legacy_remote_jid: Mapped[str | None] = mapped_column("remote_jid", Text, unique=True)
     telefono: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str | None] = mapped_column(Text)
     servicio_interes: Mapped[str | None] = mapped_column(Text)
@@ -98,8 +109,8 @@ class WhatsAppIdentity(Base):
 
     WhatsApp puede representar a la misma persona mediante un JID telefónico
     (``@s.whatsapp.net``) o mediante un LID privado (``@lid``). El lead conserva
-    su ``remote_jid`` histórico como PK por compatibilidad; esta tabla permite
-    resolver cualquiera de los dos identificadores sin crear otro lead.
+    un identificador interno estable; esta tabla permite resolver cualquiera
+    de los dos identificadores sin crear otro lead.
     """
 
     __tablename__ = "whatsapp_identities"
@@ -109,8 +120,8 @@ class WhatsAppIdentity(Base):
     jid: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     lead_id: Mapped[str] = mapped_column(
-        Text,
-        ForeignKey("leads.remote_jid", ondelete="CASCADE", onupdate="CASCADE"),
+        PG_UUID(as_uuid=False),
+        ForeignKey("leads.id", ondelete="CASCADE"),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -132,7 +143,7 @@ class WspMessage(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("leads.remote_jid", ondelete="CASCADE")
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE")
     )
     sender: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
@@ -219,8 +230,8 @@ class MessageOutbox(Base):
         nullable=False,
     )
     chat_id: Mapped[str] = mapped_column(
-        Text,
-        ForeignKey("leads.remote_jid", ondelete="CASCADE"),
+        PG_UUID(as_uuid=False),
+        ForeignKey("leads.id", ondelete="CASCADE"),
         nullable=False,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -250,8 +261,8 @@ class ScheduledMessage(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     lead_id: Mapped[str] = mapped_column(
-        Text,
-        ForeignKey("leads.remote_jid", ondelete="CASCADE"),
+        PG_UUID(as_uuid=False),
+        ForeignKey("leads.id", ondelete="CASCADE"),
         nullable=False,
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -325,7 +336,7 @@ class LeadTagAssignment(Base):
     __tablename__ = "lead_tag_assignments"
 
     lead_id: Mapped[str] = mapped_column(
-        ForeignKey("leads.remote_jid", ondelete="CASCADE"), primary_key=True
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True
     )
     tag_id: Mapped[int] = mapped_column(
         ForeignKey("lead_tags.id", ondelete="CASCADE"), primary_key=True
@@ -345,7 +356,7 @@ class LeadActivity(Base):
     __tablename__ = "lead_activity"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    lead_id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"))
     event_type: Mapped[str] = mapped_column(Text)
     actor_type: Mapped[str] = mapped_column(Text)  # user | agent | n8n | system
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -364,7 +375,7 @@ class LeadNote(Base):
     __tablename__ = "lead_notes"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    lead_id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"))
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -396,7 +407,7 @@ class UserNotification(Base):
     notification_type: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
-    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    lead_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL"))
     source_id: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -413,7 +424,7 @@ class LeadTask(Base):
     __tablename__ = "lead_tasks"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.remote_jid", ondelete="CASCADE"))
+    lead_id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     task_type: Mapped[str] = mapped_column(Text, default=TaskType.FOLLOW_UP)
@@ -587,7 +598,7 @@ class AutomationExecution(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"))
-    lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.remote_jid", ondelete="SET NULL"))
+    lead_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL"))
     trigger_type: Mapped[str] = mapped_column(Text)
     event_key: Mapped[str] = mapped_column(Text)
     event_payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")

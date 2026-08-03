@@ -50,14 +50,15 @@ datos*, no de conectar/desconectar WhatsApp.
   `notifications`, `lead_activity`, `message_outbox`, `media_library`,
   `scheduled_messages`.
 
-### 3.2 El problema de la PK de `leads` (crítico)
-Hoy `leads.remote_jid` es PK. Dos organizaciones pueden tener el **mismo cliente**
-(mismo número) → colisión. Además muchas tablas referencian
-`leads.remote_jid` por FK.
+### 3.2 Identidad interna de `leads`
+La primera parte ya está resuelta: `leads.id` es una PK `UUID` y todas las
+FK internas apuntan a ella. Los JID externos viven en
+`whatsapp_identities.lead_id`; `leads.remote_jid` queda únicamente como columna
+legacy nullable durante la transición.
 
-**Propuesta:** introducir una PK sustituta `lead_id` (bigint/uuid) y volver
-`(organization_id, remote_jid)` un índice único. Las FKs pasan a apuntar a
-`lead_id` (columna simple → migración de FKs más limpia que una PK compuesta).
+Para multi-tenant todavía falta incorporar `organization_id` a la unicidad de
+los alias, por ejemplo `(organization_id, instance, jid)`, para que dos
+organizaciones puedan registrar el mismo contacto sin colisión.
 
 Como `leads` y `wsp_messages` son tablas **externas que también escribe n8n**,
 cualquier cambio de esquema hay que coordinarlo con el workflow de n8n (y con
