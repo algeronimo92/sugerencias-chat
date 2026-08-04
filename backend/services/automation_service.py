@@ -439,6 +439,29 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
     return await get_automation_execution(execution_id)
 
 
+async def cancel_scheduled_system_executions(lead_id: str) -> int:
+    """Al pausar la automatización de un lead, cancela lo que quedó
+    programado (con delay) de disparadores de sistema — no toca lo que ya
+    está corriendo (`_action_*` en curso no se interrumpe a mitad de envío,
+    mismo criterio que `delete_automation_rule`) ni los flujos manuales del
+    vendedor (`start_source == "manual"`), que el vendedor pidió a propósito."""
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.lead_id == lead_id,
+            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+            AutomationExecution.start_source != "manual",
+        ).values(
+            status=AutomationExecutionStatus.SKIPPED,
+            error="Automatización pausada para este chat",
+            finished_at=now,
+        ))
+        await session.commit()
+    if result.rowcount:
+        await manager.broadcast({"type": "automations_updated"})
+    return result.rowcount or 0
+
+
 async def cancel_automation_execution(execution_id: int) -> dict | None:
     async with get_sessionmaker()() as session:
         execution = await session.get(AutomationExecution, execution_id)
@@ -1095,10 +1118,18 @@ async def schedule_automation_event(
     if rule_id is not None:
         stmt = stmt.where(AutomationRule.id == rule_id)
     async with get_sessionmaker()() as session:
-        if await session.get(Lead, lead_id) is None:
+        lead = await session.get(Lead, lead_id)
+        if lead is None:
             # debug y no warning: el watcher redescubre mensajes de chats sin
             # lead cada ciclo y un warning por chat cada 10s inunda el log.
             logger.debug("Evento de automatización ignorado: lead %s no existe", lead_id)
+            return 0
+        # La pausa solo corta los triggers de sistema (lead_created,
+        # stage_changed, message_received, *_overdue, task_due...). Un flujo
+        # manual (start_source == "manual", el vendedor tocó "Iniciar flujo")
+        # se respeta igual: lo pidió a propósito.
+        if lead.automatizacion_pausada and start_source == "system":
+            logger.debug("Evento de automatización ignorado: %s tiene la automatización pausada", lead_id)
             return 0
         rules = (await session.execute(stmt)).mappings().all()
         now = datetime.now(timezone.utc)

@@ -84,6 +84,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "notas": row["notas"],
         "stage": stage.value if isinstance(stage, LeadStage) else stage,
         "con_especialista": row["con_especialista"],
+        "automatizacion_pausada": row["automatizacion_pausada"],
         "razon_perdido": row["razon_perdido"],
         "fecha_recontacto": row["fecha_recontacto"].isoformat() if row["fecha_recontacto"] else None,
         "proxima_cita": _fmt_ts(row["proxima_cita"]),
@@ -358,6 +359,7 @@ def _chat_columns(last_message):
         Lead.notas,
         Lead.estado.label("stage"),
         Lead.con_especialista,
+        Lead.automatizacion_pausada,
         Lead.razon_perdido,
         Lead.fecha_recontacto,
         Lead.proxima_cita,
@@ -410,6 +412,7 @@ async def fetch_chats(
     inactive_days: int | None = None,
     waiting_time: str | None = None,
     cursor_rank: int | None = None,
+    automation_paused: bool = False,
 ) -> dict:
     last_message = _last_message_subquery()
 
@@ -429,6 +432,9 @@ async def fetch_chats(
 
     if unread_only:
         stmt = stmt.where(_has_unread_messages_condition())
+
+    if automation_paused:
+        stmt = stmt.where(Lead.automatizacion_pausada.is_(True))
 
     if stages:
         stmt = stmt.where(Lead.estado.in_(stages))

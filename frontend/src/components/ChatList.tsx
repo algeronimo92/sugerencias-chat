@@ -9,6 +9,7 @@ import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
 import { LeadFormDialog } from './LeadFormDialog'
 import { Button } from './ui/Button'
+import { Checkbox } from './ui/Checkbox'
 import { EmptyState } from './ui/EmptyState'
 import { Select } from './ui/Input'
 import { Skeleton } from './ui/Skeleton'
@@ -125,7 +126,8 @@ export function ChatList({
     Number(!!advancedFilters.origin) +
     Number(!!advancedFilters.lastSender) +
     Number(!!advancedFilters.inactiveDays) +
-    Number(!!advancedFilters.waitingTime)
+    Number(!!advancedFilters.waitingTime) +
+    Number(advancedFilters.automationPaused)
 
   function toggleStage(stage: LeadStage) {
     const stages = advancedFilters.stages.includes(stage)
@@ -153,6 +155,7 @@ export function ChatList({
       lastSender: '',
       inactiveDays: null,
       waitingTime: '',
+      automationPaused: false,
     })
   }
 
@@ -459,6 +462,14 @@ export function ChatList({
                 <option value="urgent">Más de 1 hora</option>
               </Select>
             </div>
+
+            <label className="flex items-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
+              <Checkbox
+                checked={advancedFilters.automationPaused}
+                onCheckedChange={(checked) => onAdvancedFiltersChange({ ...advancedFilters, automationPaused: checked })}
+              />
+              Solo con automatización pausada
+            </label>
           </div>
         )}
       </div>

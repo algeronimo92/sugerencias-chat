@@ -1,5 +1,5 @@
 import { useEffect, useState, type DragEvent } from 'react'
-import { AlertCircle, Check, GripVertical, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
+import { AlertCircle, BotOff, Check, GripVertical, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
 import type { Chat, LeadStage } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import {
@@ -97,10 +97,19 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
               <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">{displayName(chat)}</p>
               <GripVertical className="h-4 w-4 shrink-0 text-gray-300 group-hover:text-wa-muted dark:text-gray-600" />
             </div>
-            {chat.con_especialista && (
-              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
-                <UserRound className="h-2.5 w-2.5" /> Con especialista
-              </span>
+            {(chat.con_especialista || chat.automatizacion_pausada) && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {chat.con_especialista && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
+                    <UserRound className="h-2.5 w-2.5" /> Con especialista
+                  </span>
+                )}
+                {chat.automatizacion_pausada && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                    <BotOff className="h-2.5 w-2.5" /> Bot pausado
+                  </span>
+                )}
+              </div>
             )}
             <p className="mt-0.5 truncate text-[11px] text-wa-muted dark:text-wa-muted-dark">{chat.phone || chat.chat_id}</p>
           </div>

@@ -61,6 +61,7 @@ async function fetchChatsPage(search: string, pageParam: PageParam, filters?: Ch
   if (filters?.lastSender) params.last_sender = filters.lastSender
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
   if (filters?.waitingTime) params.waiting_time = filters.waitingTime
+  if (filters?.automationPaused) params.automation_paused = 'true'
   if (pageParam) {
     params.cursor_id = String(pageParam.cursorId)
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
