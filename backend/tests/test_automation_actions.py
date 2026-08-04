@@ -7,11 +7,12 @@ efecto irreversible hacia afuera (un WhatsApp al cliente).
 import dataclasses
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient
-from services.automation_service import _execute_action, _resolve_recipient
+from services.automation_service import _execute_action, _resolve_recipient, _run_execution
 from tests.conftest import make_chat, make_execution, make_rule
 
 
@@ -185,17 +186,18 @@ class TestNotify:
 
 
 class TestSendTemplate:
-    async def test_sends_rendered_text_and_records_message(self, deps, recorder, whatsapp):
+    async def test_sends_rendered_text_and_records_message(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         result = await _execute_action(
             action, make_chat(), make_execution(), make_rule(), deps_with_template(deps, template()),
         )
-        assert whatsapp.texts == [("51999@s.whatsapp.net", "Hola Ana")]
-        assert recorder.messages[0]["sender"] == "vendedor"
-        assert recorder.messages[0]["wa_message_id"] == "WA1"
+        assert outbox.enqueued == [(
+            "51999@s.whatsapp.net",
+            [{"content": "Hola Ana", "payload": {"type": "text", "text": "Hola Ana"}}],
+        )]
         assert result["message_ids"] == [1]
 
-    async def test_refuses_to_send_when_window_is_closed(self, deps, whatsapp):
+    async def test_refuses_to_send_when_window_is_closed(self, deps, outbox):
         async def closed_window(chat_id):
             return {"is_open": False, "seconds_remaining": 0}
 
@@ -203,9 +205,9 @@ class TestSendTemplate:
         closed = dataclasses.replace(deps_with_template(deps, template()), get_customer_service_window=closed_window)
         with pytest.raises(ValueError, match="ventana de 24 horas"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
-        assert whatsapp.texts == []
+        assert outbox.enqueued == []
 
-    async def test_sends_text_and_each_attachment(self, deps, whatsapp, recorder):
+    async def test_sends_text_and_each_attachment_in_a_single_enqueue_call(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         with_media = deps_with_template(
             deps, template(),
@@ -213,49 +215,38 @@ class TestSendTemplate:
         )
         await _execute_action(action, make_chat(), make_execution(), make_rule(), with_media)
 
-        assert len(whatsapp.texts) == 1
-        assert whatsapp.media == [
-            ("51999@s.whatsapp.net", "image", "foto.jpg"),
-            ("51999@s.whatsapp.net", "document", "guia.pdf"),
-        ]
-        # El tipo va en message_type y el nombre del documento en payload;
-        # el content queda limpio (los adjuntos no llevan caption).
-        assert recorder.messages[1]["content"] is None
-        assert recorder.messages[1]["message_type"] == "image"
-        assert recorder.messages[1]["payload"] is None
-        assert recorder.messages[2]["content"] is None
-        assert recorder.messages[2]["message_type"] == "document"
-        assert recorder.messages[2]["payload"] == {"filename": "guia.pdf"}
+        # Texto + los 2 adjuntos quedan en un solo enqueue_messages, no en
+        # tres llamadas separadas.
+        assert len(outbox.enqueued) == 1
+        chat_id, items = outbox.enqueued[0]
+        assert chat_id == "51999@s.whatsapp.net"
+        assert items[0]["payload"] == {"type": "text", "text": "Hola Ana"}
+        assert items[1]["payload"] == {
+            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "image", "filename": "foto.jpg",
+        }
+        assert items[2]["payload"] == {
+            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "document", "filename": "guia.pdf",
+        }
 
-    async def test_attachment_only_template_needs_no_text(self, deps, whatsapp):
+    async def test_attachment_only_template_needs_no_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         only_media = deps_with_template(deps, template(content="  "), [attachment()])
         await _execute_action(action, make_chat(), make_execution(), make_rule(), only_media)
-        assert whatsapp.texts == []
-        assert len(whatsapp.media) == 1
-
-    async def test_missing_attachment_file_aborts_with_clear_message(self, deps):
-        def missing(media_url):
-            raise FileNotFoundError(media_url)
-
-        action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
-        broken = dataclasses.replace(
-            deps_with_template(deps, template(), [attachment()]), read_media_base64=missing,
-        )
-        with pytest.raises(ValueError, match="No se encontró el adjunto foto.jpg"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), broken)
+        _, items = outbox.enqueued[0]
+        assert len(items) == 1
+        assert items[0]["payload"]["type"] == "media"
 
     @pytest.mark.parametrize("bad", [
         {"is_active": False},
         {"template_type": "official"},
         {"interactive_type": "buttons"},
     ])
-    async def test_rejects_templates_that_are_no_longer_automatable(self, deps, whatsapp, bad):
+    async def test_rejects_templates_that_are_no_longer_automatable(self, deps, outbox, bad):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         invalid = deps_with_template(deps, template(**bad))
         with pytest.raises(ValueError, match="plantilla interna válida"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), invalid)
-        assert whatsapp.texts == []
+        assert outbox.enqueued == []
 
     async def test_rejects_text_over_whatsapp_limit(self, deps):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
@@ -268,14 +259,16 @@ class TestSendMessage:
     """Enviar texto libre sin plantilla — mismo circuito que SendTemplate
     pero sin buscar plantilla ni adjuntos."""
 
-    async def test_sends_rendered_text_and_records_message(self, deps, recorder, whatsapp):
+    async def test_sends_rendered_text_and_records_message(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola {{nombre}}, ¿seguimos?"}
         result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
-        assert whatsapp.texts == [("51999@s.whatsapp.net", "Hola Ana, ¿seguimos?")]
-        assert recorder.messages[0]["sender"] == "vendedor"
+        assert outbox.enqueued == [(
+            "51999@s.whatsapp.net",
+            [{"content": "Hola Ana, ¿seguimos?", "payload": {"type": "text", "text": "Hola Ana, ¿seguimos?"}}],
+        )]
         assert result["message_ids"] == [1]
 
-    async def test_refuses_to_send_when_window_is_closed(self, deps, whatsapp):
+    async def test_refuses_to_send_when_window_is_closed(self, deps, outbox):
         async def closed_window(chat_id):
             return {"is_open": False, "seconds_remaining": 0}
 
@@ -283,7 +276,7 @@ class TestSendMessage:
         closed = dataclasses.replace(deps, get_customer_service_window=closed_window)
         with pytest.raises(ValueError, match="ventana de 24 horas"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
-        assert whatsapp.texts == []
+        assert outbox.enqueued == []
 
     async def test_rejects_text_that_renders_empty(self, deps):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "   "}
@@ -346,14 +339,15 @@ class TestReactToLastCustomerMessage:
 
 
 class TestSendAudio:
-    async def test_sends_audio_from_media_library(self, deps, recorder, whatsapp):
+    async def test_sends_audio_from_media_library(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
         result = await _execute_action(
             action, make_chat(), make_execution(), make_rule(),
             deps_with_media_asset(deps, media_asset()),
         )
-        assert whatsapp.audio == ["51999@s.whatsapp.net"]
-        assert recorder.messages[0]["message_type"] == "audio"
+        chat_id, items = outbox.enqueued[0]
+        assert chat_id == "51999@s.whatsapp.net"
+        assert items == [{"media_url": "/media/audio.ogg", "payload": {"type": "audio", "media_url": "/media/audio.ogg"}}]
         assert result["message_ids"] == [1]
 
     async def test_rejects_when_asset_is_not_audio(self, deps):
@@ -371,15 +365,6 @@ class TestSendAudio:
         with pytest.raises(ValueError, match="ventana de 24 horas"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
 
-    async def test_missing_file_aborts_with_clear_message(self, deps):
-        def missing(media_url):
-            raise FileNotFoundError(media_url)
-
-        action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
-        broken = dataclasses.replace(deps_with_media_asset(deps, media_asset()), read_media_base64=missing)
-        with pytest.raises(ValueError, match="No se encontró el archivo"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), broken)
-
     async def test_fails_when_asset_no_longer_exists(self, deps):
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
         gone = deps_with_media_asset(deps, None)
@@ -388,21 +373,22 @@ class TestSendAudio:
 
 
 class TestSendAttachment:
-    async def test_sends_image_attachment_without_text(self, deps, recorder, whatsapp):
+    async def test_sends_image_attachment_without_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
         asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
         await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
-        assert whatsapp.texts == []
-        assert whatsapp.media == [("51999@s.whatsapp.net", "image", "foto.jpg")]
-        assert recorder.messages[0]["content"] is None
-        assert recorder.messages[0]["message_type"] == "image"
+        _, items = outbox.enqueued[0]
+        assert "content" not in items[0]
+        assert items[0]["payload"]["mediatype"] == "image"
+        assert items[0]["payload"]["filename"] == "foto.jpg"
 
-    async def test_sends_document_with_filename_in_payload(self, deps, recorder, whatsapp):
+    async def test_sends_document_with_filename_in_payload(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
         asset = media_asset(content_type="application/pdf", filename="guia.pdf")
         await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
-        assert recorder.messages[0]["message_type"] == "document"
-        assert recorder.messages[0]["payload"] == {"filename": "guia.pdf"}
+        _, items = outbox.enqueued[0]
+        assert items[0]["payload"]["mediatype"] == "document"
+        assert items[0]["payload"]["filename"] == "guia.pdf"
 
 
 class TestDispatch:
@@ -414,3 +400,57 @@ class TestDispatch:
         action = {"type": AutomationActionType.ADD_TAG, "tag_id": 1}
         result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert result["type"] == AutomationActionType.ADD_TAG
+
+
+class TestResumeDoesNotRepeatEnqueuedActions:
+    async def test_run_execution_only_executes_the_remaining_action(self, deps, outbox):
+        """Un reintento tras un crash no debe reenviar un WhatsApp que ya se
+        encoló — el chequeo de qué acciones ya corrieron es puramente
+        posicional (len(action_results) vs. cantidad de acciones); nunca
+        dependió del wa_message_id real, que con el outbox ni siquiera se
+        conoce en este punto (el mensaje queda "pending" hasta que el worker
+        lo procesa)."""
+        execution = SimpleNamespace(
+            id=1, rule_id=1, lead_id="51999@s.whatsapp.net",
+            action_results=[{
+                "position": 1, "type": AutomationActionType.SEND_MESSAGE,
+                "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
+            }],
+            event_payload={}, flow_state={},
+        )
+        rule = make_rule(
+            builder_mode="simple", max_executions_per_hour=None,
+            actions=[
+                {"type": AutomationActionType.SEND_MESSAGE, "text": "Primero"},
+                {"type": AutomationActionType.SEND_MESSAGE, "text": "Segundo"},
+            ],
+        )
+
+        class FakeSession:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get(self, model, pk):
+                name = getattr(model, "__name__", "")
+                return execution if name == "AutomationExecution" else rule
+
+            async def execute(self, stmt):
+                return SimpleNamespace(rowcount=1)
+
+            async def commit(self):
+                pass
+
+        test_deps = dataclasses.replace(
+            deps,
+            session_factory=lambda: FakeSession,
+            fetch_chat=AsyncMock(return_value=make_chat()),
+        )
+
+        await _run_execution(1, test_deps)
+
+        assert len(outbox.enqueued) == 1
+        _, items = outbox.enqueued[0]
+        assert items[0]["content"] == "Segundo"

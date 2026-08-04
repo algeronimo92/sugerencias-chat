@@ -635,6 +635,16 @@ class AutomationExecution(Base):
         Index("idx_automation_executions_due", status, scheduled_for),
         Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),
         Index("idx_automation_executions_lead_created", lead_id, created_at.desc()),
+        # Un solo flujo manual activo (scheduled/running) por lead — el
+        # vendedor puede repetirlo una vez que el anterior llegó a un estado
+        # terminal. Los triggers de sistema no entran acá: ya dedupan por
+        # event_key fijo.
+        Index(
+            "uq_automation_executions_manual_active_per_lead",
+            rule_id, lead_id,
+            unique=True,
+            postgresql_where=text("start_source = 'manual' AND status IN ('scheduled', 'running')"),
+        ),
         CheckConstraint(
             "start_source IN ('system', 'manual')",
             name="ck_automation_executions_start_source",

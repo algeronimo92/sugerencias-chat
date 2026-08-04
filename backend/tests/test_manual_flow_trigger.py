@@ -8,6 +8,7 @@ sustituyen, siguiendo el mismo patrón que test_flow_versions.py.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationBuilderMode, AutomationTrigger
 from services.automation_service import start_manual_flow_execution
@@ -156,3 +157,19 @@ class TestStartManualFlowExecution:
         assert first_key != second_key
         assert first_key.startswith("manual:")
         assert second_key.startswith("manual:")
+
+    async def test_second_start_while_one_is_active_raises_a_clear_error(self):
+        """El índice único parcial (rule_id, lead_id) sobre ejecuciones
+        manuales no terminales (migración b3d8f5c1a927) frena un doble click
+        o dos vendedores arrancando el mismo flujo sobre el mismo lead —
+        acá se verifica que ese conflicto de base se traduce a un mensaje
+        claro en vez de propagarse como un 500."""
+        with (
+            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=manual_rule())),
+            patch(
+                "services.automation_service.schedule_automation_event",
+                AsyncMock(side_effect=IntegrityError("INSERT", {}, Exception("duplicate key"))),
+            ),
+        ):
+            with pytest.raises(ValueError, match="Ya hay una ejecución"):
+                await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)

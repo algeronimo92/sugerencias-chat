@@ -23,20 +23,13 @@ from services.db_service import (
     fetch_chat,
     fetch_latest_customer_message_target,
     get_customer_service_window,
-    insert_message,
     remove_tag,
     set_message_reaction,
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import (
-    send_whatsapp_audio,
-    send_whatsapp_buttons,
-    send_whatsapp_media,
-    send_whatsapp_reaction,
-    send_whatsapp_text,
-)
-from services.media_storage import read_media_base64
+from services.evolution_service import send_whatsapp_reaction
+from services.message_outbox import enqueue_messages
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
 from services.ws_manager import manager
@@ -65,7 +58,6 @@ class AutomationDeps:
     update_lead_stage: Callable[..., Awaitable[dict | None]] = update_lead_stage
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
-    insert_message: Callable[..., Awaitable[dict]] = insert_message
     set_message_reaction: Callable[..., Awaitable[dict | None]] = set_message_reaction
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
 
@@ -73,12 +65,14 @@ class AutomationDeps:
     record_template_use: Callable[..., Awaitable[bool]] = record_template_use
     create_notification: Callable[..., Awaitable[dict]] = create_system_notification
 
-    send_text: Callable[[str, str], Awaitable[dict]] = send_whatsapp_text
-    send_media: Callable[..., Awaitable[dict]] = send_whatsapp_media
-    send_audio: Callable[..., Awaitable[dict]] = send_whatsapp_audio
-    send_buttons: Callable[..., Awaitable[dict]] = send_whatsapp_buttons
+    # Encola en message_outbox en vez de llamar a Evolution API directo: da a
+    # las automatizaciones los mismos reintentos con backoff y la misma
+    # serialización estricta por chat que ya tiene cualquier mensaje manual
+    # del vendedor. Las reacciones quedan afuera (send_reaction, abajo): no
+    # tienen orden que preservar contra otros mensajes salientes y son
+    # idempotentes (WhatsApp reemplaza la reacción propia).
+    enqueue_messages: Callable[[str, list[dict]], Awaitable[list[dict]]] = enqueue_messages
     send_reaction: Callable[[dict, str], Awaitable[dict]] = send_whatsapp_reaction
-    read_media_base64: Callable[[str], str] = read_media_base64
 
     broadcast: Callable[[dict], Awaitable[None]] = _broadcast
     send_to_user: Callable[[int, dict], Awaitable[None]] = _send_to_user

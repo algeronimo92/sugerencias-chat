@@ -365,11 +365,11 @@ class TestMatchQuestionButton:
 
 
 class TestRunVisualExecutionQuestion:
-    async def test_first_arrival_sends_buttons_and_pauses(self, deps, whatsapp, monkeypatch):
-        async def business_capabilities():
-            return {"integration": "WHATSAPP-BUSINESS"}
-
-        monkeypatch.setattr("services.automation_service.get_template_capabilities", business_capabilities)
+    async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox):
+        # Ya no resuelve acá si son botones nativos o el fallback de texto:
+        # eso quedó a cargo del worker del outbox en el momento real del
+        # envío (ver _send_buttons_message), así que no hace falta mockear
+        # get_template_capabilities para este test.
         FakeSession, calls = capturing_session()
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
@@ -382,11 +382,14 @@ class TestRunVisualExecutionQuestion:
             dataclasses.replace(deps, session_factory=lambda: FakeSession),
         )
 
-        assert len(whatsapp.buttons) == 1
-        chat_id, text, buttons = whatsapp.buttons[0]
+        assert len(outbox.enqueued) == 1
+        chat_id, items = outbox.enqueued[0]
         assert chat_id == "51999@s.whatsapp.net"
-        assert text == "¿Te gustó, Ana?"
-        assert [b["displayText"] for b in buttons] == ["Sí", "No"]
+        payload = items[0]["payload"]
+        assert payload["type"] == "interactive"
+        assert payload["interactive_type"] == "buttons"
+        assert payload["config"]["title"] == "¿Te gustó, Ana?"
+        assert [b["displayText"] for b in payload["config"]["buttons"]] == ["Sí", "No"]
         assert len(calls) == 1
         state = calls[0]["flow_state"]
         assert state["waiting_at_node"] == "q"
