@@ -1000,6 +1000,20 @@ async def rekey_lead_phone(
     return await fetch_chat(lead_id)
 
 
+_INSERT_MESSAGE_COLUMNS = (
+    WspMessage.id,
+    WspMessage.sender,
+    WspMessage.content,
+    WspMessage.sent_at,
+    WspMessage.media_url,
+    WspMessage.wa_message_id,
+    WspMessage.status,
+    WspMessage.message_type,
+    WspMessage.analysis,
+    WspMessage.payload,
+)
+
+
 async def insert_message(
     chat_id: str,
     sender: str,
@@ -1025,22 +1039,25 @@ async def insert_message(
             analysis=analysis,
             payload=payload,
         )
-        .returning(
-            WspMessage.id,
-            WspMessage.sender,
-            WspMessage.content,
-            WspMessage.sent_at,
-            WspMessage.media_url,
-            WspMessage.wa_message_id,
-            WspMessage.status,
-            WspMessage.message_type,
-            WspMessage.analysis,
-            WspMessage.payload,
-        )
+        .returning(*_INSERT_MESSAGE_COLUMNS)
     )
     async with get_sessionmaker()() as session:
-        row = (await session.execute(stmt)).mappings().one()
-        await session.commit()
+        try:
+            row = (await session.execute(stmt)).mappings().one()
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            if wa_message_id is None:
+                raise
+            # El índice único de wa_message_id existe justamente para esto:
+            # Evolution reenvía el mismo webhook sin confirmación, o el eco
+            # de un mensaje saliente llega y se inserta por ese otro camino
+            # antes de que esta llamada termine. La fila ya existe con el
+            # mismo wa_message_id — se devuelve esa en vez de romper al
+            # llamador (p. ej. una acción de automatización).
+            row = (await session.execute(
+                select(*_INSERT_MESSAGE_COLUMNS).where(WspMessage.wa_message_id == wa_message_id)
+            )).mappings().one()
 
     return {
         "id": row["id"],
