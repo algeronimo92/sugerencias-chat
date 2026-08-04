@@ -412,6 +412,7 @@ async def fetch_chats(
     inactive_days: int | None = None,
     waiting_time: str | None = None,
     cursor_rank: int | None = None,
+    automation_paused: bool = False,
 ) -> dict:
     last_message = _last_message_subquery()
 
@@ -431,6 +432,9 @@ async def fetch_chats(
 
     if unread_only:
         stmt = stmt.where(_has_unread_messages_condition())
+
+    if automation_paused:
+        stmt = stmt.where(Lead.automatizacion_pausada.is_(True))
 
     if stages:
         stmt = stmt.where(Lead.estado.in_(stages))

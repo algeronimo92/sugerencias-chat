@@ -80,6 +80,7 @@ const EMPTY_CHAT_FILTERS: ChatFilters = {
   lastSender: '',
   inactiveDays: null,
   waitingTime: '',
+  automationPaused: false,
 }
 
 function PageLoader() {

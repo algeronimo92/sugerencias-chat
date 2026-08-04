@@ -231,6 +231,7 @@ async def get_chats(
     inactive_days: int | None = Query(default=None, ge=1, le=3650),
     waiting_time: str | None = Query(default=None, pattern="^(any|fresh|warning|urgent)$"),
     cursor_rank: int | None = Query(default=None, ge=0, le=2),
+    automation_paused: bool = False,
 ):
     try:
         parsed_stages = [DbLeadStage(value) for value in stages.split(",") if value] if stages else None
@@ -251,6 +252,7 @@ async def get_chats(
             inactive_days,
             waiting_time,
             cursor_rank,
+            automation_paused,
         )
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Filtros inválidos")

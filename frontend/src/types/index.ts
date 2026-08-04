@@ -47,6 +47,7 @@ export interface ChatFilters {
   lastSender: '' | 'cliente' | 'vendedor'
   inactiveDays: number | null
   waitingTime: '' | 'any' | 'fresh' | 'warning' | 'urgent'
+  automationPaused: boolean
 }
 
 export interface LeadActivity {
