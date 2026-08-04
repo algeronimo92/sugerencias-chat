@@ -95,11 +95,14 @@ jobs:
             set -eu
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            COMPOSE="docker compose -f compose.prod.yml -f traefik/docker-compose.yml"
             COMPOSE_DB="docker compose -f compose.db.yml --env-file db/.env"
 
-            # Se guarda antes de mover nada: es el punto al que se vuelve si la
-            # versión nueva no llega a responder.
+            # Se guarda antes de mover nada: es el punto al que se vuelve si el
+            # despliegue no llega a completarse. Con blue-green no hace falta
+            # recrear nada para revertir — el color que servía nunca se toca
+            # mientras el nuevo se prueba (ver deploy-bluegreen.sh) — esto solo
+            # deja el repositorio en el commit conocido-bueno para el próximo
+            # intento.
             PREVIOUS=$(git rev-parse HEAD)
             echo "Versión en curso: $PREVIOUS"
 
@@ -135,71 +138,27 @@ jobs:
             git reset --hard origin/main
             echo "Desplegando: $(git rev-parse HEAD)"
 
-            # El backend responde /health/ready sólo si alcanza PostgreSQL y el
-            # almacenamiento multimedia, así que sirve de comprobación real y no
-            # sólo de "el proceso arrancó". El start_period del healthcheck es de
-            # 60 s; se concede el doble antes de dar el despliegue por fallido.
-            wait_until_healthy() {
-              i=0
-              while [ $i -lt 40 ]; do
-                if $COMPOSE exec -T backend python -c \
-                     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)" \
-                     >/dev/null 2>&1; then
-                  # Y de paso el camino completo: traefik -> nginx -> SPA.
-                  # Va contra el 443 con --resolve, no contra el 80: traefik
-                  # redirige http a https, así que una petición al 80 devuelve
-                  # un 301 que curl da por bueno sin haber tocado nginx.
-                  if curl -fsSk -o /dev/null \
-                       --resolve chat.dermicapro.app:443:127.0.0.1 \
-                       https://chat.dermicapro.app/; then
-                    return 0
-                  fi
-                fi
-                i=$((i + 1))
-                sleep 5
-              done
-              return 1
-            }
-
-            # Las migraciones van antes de arrancar y en un contenedor aparte:
-            # scripts/migrate.py toma un advisory lock, así que si algún día hay
-            # más de una instancia sólo una aplica el DDL y el resto espera.
-            # Si falla, no se arranca nada: mejor quedarse en la versión
-            # anterior que servir con el esquema a medias.
-            migrate() {
-              # La base primero: crea la red `dermicapro-data`, que
-              # compose.prod.yml declara como external. Sin ella, levantar la
-              # aplicación falla con "network declared as external, but could
-              # not be found" — un mensaje que no apunta a la causa. Es
-              # idempotente: si ya está arriba, no hace nada.
-              $COMPOSE_DB up -d && \
-              $COMPOSE build backend && \
-              $COMPOSE run --rm --no-deps backend python -m scripts.migrate
-            }
-
-            if migrate && $COMPOSE up -d --build && wait_until_healthy; then
+            # scripts/deploy-bluegreen.sh levanta el color inactivo al lado del
+            # que sirve, migra (scripts/migrate.py toma un advisory lock, así
+            # que si algún día hay más de una instancia sólo una aplica el DDL)
+            # y comprueba /health/ready + el camino completo traefik -> nginx ->
+            # SPA en el color nuevo, todo ANTES de tocar el tráfico. Si algo
+            # falla ahí, el color activo nunca se enteró y no hace falta
+            # revertir nada del lado de los contenedores.
+            #
+            # La base va aparte porque el script no la administra: crea la red
+            # `dermicapro-data`, que compose.prod.yml declara como external.
+            # Sin ella, levantar la aplicación falla con "network declared as
+            # external, but could not be found". Es idempotente: si ya está
+            # arriba, no hace nada.
+            if $COMPOSE_DB up -d && ./scripts/deploy-bluegreen.sh; then
               echo "Despliegue verificado"
               # Se conservan las imágenes de la última semana: son las que
               # permiten revertir sin reconstruir desde cero.
               docker image prune -f --filter "until=168h"
             else
-              echo "El despliegue no respondió sano. Revirtiendo a $PREVIOUS"
+              echo "El despliegue no llegó a conmutar. El color que servía sigue activo sin cambios."
+              echo "Dejando el repositorio en $PREVIOUS para el próximo intento."
               git reset --hard "$PREVIOUS"
-              # La base también, no sólo la aplicación: migrate() ya recreó el
-              # contenedor con el compose.db.yml y el pg_hba de la versión
-              # nueva. Sin volver a aplicarlos, PostgreSQL se queda con la
-              # configuración de la versión que acaba de fallar mientras el
-              # código vuelve a la anterior — y esa pareja puede no hablarse.
-              $COMPOSE_DB up -d
-              # No se revierte el esquema: las migraciones son aditivas y el
-              # código anterior convive con columnas de más. Un downgrade
-              # automático sí podría destruir datos, así que se deja para una
-              # decisión humana.
-              $COMPOSE up -d --build
-              if wait_until_healthy; then
-                echo "Reversión completada: producción quedó en $PREVIOUS"
-              else
-                echo "ATENCIÓN: la reversión tampoco responde. Requiere intervención manual."
-              fi
               exit 1
             fi
