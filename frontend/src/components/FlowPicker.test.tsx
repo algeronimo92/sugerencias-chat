@@ -18,10 +18,11 @@ const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 
 vi.mock('../hooks/useAutomations', () => ({
   useManualFlows: vi.fn(),
+  useAutomationExecutions: vi.fn(),
   useStartManualFlow: () => ({ mutate, isPending: false }),
 }))
 
-import { useManualFlows } from '../hooks/useAutomations'
+import { useAutomationExecutions, useManualFlows } from '../hooks/useAutomations'
 
 function flow(overrides: Partial<AutomationRule> & { id: number; name: string }): AutomationRule {
   return {
@@ -54,6 +55,7 @@ function wrapper({ children }: PropsWithChildren) {
 describe('FlowPicker', () => {
   it('muestra el estado vacío cuando no hay flujos disponibles', async () => {
     vi.mocked(useManualFlows).mockReturnValue({ data: [], isLoading: false } as never)
+    vi.mocked(useAutomationExecutions).mockReturnValue({ data: [] } as never)
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
@@ -67,6 +69,7 @@ describe('FlowPicker', () => {
       data: [flow({ id: 9, name: 'Bienvenida guiada' })],
       isLoading: false,
     } as never)
+    vi.mocked(useAutomationExecutions).mockReturnValue({ data: [] } as never)
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
@@ -77,5 +80,22 @@ describe('FlowPicker', () => {
       { ruleId: 9, chatId: CHAT_ID },
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
     )
+  })
+
+  it('deshabilita un flujo que ya tiene una ejecución manual activa', async () => {
+    vi.mocked(useManualFlows).mockReturnValue({
+      data: [flow({ id: 9, name: 'Bienvenida guiada' })],
+      isLoading: false,
+    } as never)
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [{ id: 1, rule_id: 9, start_source: 'manual', status: 'running' }],
+    } as never)
+    const user = userEvent.setup()
+    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
+
+    expect(screen.getByText('Ya en curso')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Bienvenida guiada/ })).toBeDisabled()
   })
 })
