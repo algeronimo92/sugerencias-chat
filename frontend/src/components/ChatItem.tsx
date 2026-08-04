@@ -1,5 +1,5 @@
 import type { Chat } from '../types'
-import { LockKeyhole } from 'lucide-react'
+import { BotOff, LockKeyhole } from 'lucide-react'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, waitingTier } from '../utils/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 
@@ -122,6 +122,11 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
               <span className="truncate">{previewText}</span>
             )}
           </p>
+          {chat.automatizacion_pausada && (
+            <span title="Automatización pausada en este chat" className="shrink-0 text-amber-500 dark:text-amber-400">
+              <BotOff className="h-3.5 w-3.5" />
+            </span>
+          )}
           {!isCustomerWindowOpen && (
             <span title="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">
               <LockKeyhole className="h-3.5 w-3.5" />
