@@ -106,6 +106,11 @@ export interface Chat {
   notas: string | null
   stage: LeadStage
   con_especialista: boolean
+  /** Corta el piloto automático para este lead: los triggers de sistema
+   * (mensaje entrante, cambio de etapa, etc.) dejan de programar
+   * ejecuciones nuevas. El chat sigue abierto para conversar normal, y un
+   * flujo iniciado a mano desde el chat lo ignora a propósito. */
+  automatizacion_pausada: boolean
   razon_perdido: string | null
   /** ISO date (YYYY-MM-DD), entra tal cual en un input type="date". */
   fecha_recontacto: string | null
@@ -149,6 +154,7 @@ export interface LeadUpdateInput {
   origen?: string | null
   notas?: string | null
   con_especialista?: boolean
+  automatizacion_pausada?: boolean
   razon_perdido?: string | null
   fecha_recontacto?: string | null
   proxima_cita?: string | null

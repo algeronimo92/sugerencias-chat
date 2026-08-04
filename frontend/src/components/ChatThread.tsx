@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft, ChevronDown, Database, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Database, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
 import { useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useUpdateLead } from '../hooks/useChats'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -95,6 +97,18 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
+  const { mutate: updateLead, isPending: isTogglingAutomation } = useUpdateLead(chat.chat_id)
+
+  function toggleAutomation() {
+    const next = !chat.automatizacion_pausada
+    updateLead(
+      { automatizacion_pausada: next },
+      {
+        onSuccess: () => toast.success(next ? 'Automatización pausada para este chat' : 'Automatización reactivada'),
+        onError: (err) => toast.error(extractErrorMessage(err)),
+      }
+    )
+  }
 
   const {
     threadRef,
@@ -182,16 +196,32 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
           </div>
         </div>
-        {onOpenSuggestions && (
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={onOpenSuggestions}
-            aria-label="Ver sugerencias del lead"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            onClick={toggleAutomation}
+            disabled={isTogglingAutomation}
+            aria-label={chat.automatizacion_pausada ? 'Reactivar automatización para este chat' : 'Pausar automatización para este chat'}
+            title={chat.automatizacion_pausada ? 'Automatización pausada — tocá para reactivarla' : 'Automatización activa — tocá para pausarla en este chat'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+              chat.automatizacion_pausada
+                ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
+            }`}
           >
-            <Sparkles className="h-5 w-5" />
+            {chat.automatizacion_pausada ? <BotOff className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
           </button>
-        )}
+          {onOpenSuggestions && (
+            <button
+              type="button"
+              onClick={onOpenSuggestions}
+              aria-label="Ver sugerencias del lead"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <Sparkles className="h-5 w-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Thread — el wrapper relativo permite flotar el botón "ir al final"

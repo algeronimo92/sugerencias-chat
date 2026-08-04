@@ -84,7 +84,11 @@ from services.phone_utils import (
 from services.ws_manager import manager
 from services.message_outbox import enqueue_messages, enqueue_text_message, retry_failed_message
 from services.productivity_service import list_templates, record_template_use
-from services.automation_service import trigger_lead_created, trigger_stage_changed
+from services.automation_service import (
+    cancel_scheduled_system_executions,
+    trigger_lead_created,
+    trigger_stage_changed,
+)
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
@@ -175,6 +179,7 @@ _LEAD_FIELD_TO_COLUMN = {
     "origen": "origen",
     "notas": "notas",
     "con_especialista": "con_especialista",
+    "automatizacion_pausada": "automatizacion_pausada",
     "razon_perdido": "razon_perdido",
     "fecha_recontacto": "fecha_recontacto",
     "proxima_cita": "proxima_cita",
@@ -369,10 +374,12 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
         _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
     }
 
-    # con_especialista es NOT NULL: un null explícito se ignora en vez de
-    # reventar contra la base.
+    # con_especialista y automatizacion_pausada son NOT NULL: un null
+    # explícito se ignora en vez de reventar contra la base.
     if "con_especialista" in values and values["con_especialista"] is None:
         del values["con_especialista"]
+    if "automatizacion_pausada" in values and values["automatizacion_pausada"] is None:
+        del values["automatizacion_pausada"]
 
     # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
     # su alias externo; el chat_id interno permanece estable.
@@ -399,6 +406,12 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
         raise HTTPException(status_code=404, detail=str(exc))
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
+
+    if values.get("automatizacion_pausada") is True:
+        try:
+            await cancel_scheduled_system_executions(chat_id)
+        except Exception:
+            logger.exception("No se pudieron cancelar las automatizaciones programadas al pausar %s", chat_id)
 
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
     return lead

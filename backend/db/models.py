@@ -94,6 +94,13 @@ class Lead(Base):
     # Chat derivado a un especialista humano — flag independiente del estado,
     # no una etapa del Kanban.
     con_especialista: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Corta el piloto automático para este lead puntual (los triggers de
+    # sistema — lead_created, stage_changed, message_received, etc. — dejan
+    # de programar ejecuciones nuevas) sin tocar el chat en sí: el vendedor
+    # sigue viendo y mandando mensajes normal. Un flujo iniciado a mano desde
+    # el chat (FlowPicker) ignora esta pausa a propósito. Ver
+    # automation_service.schedule_automation_event.
+    automatizacion_pausada: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     razon_perdido: Mapped[str | None] = mapped_column(Text)
     fecha_recontacto: Mapped[date | None] = mapped_column(Date)
     contador_noshow: Mapped[int | None] = mapped_column(SmallInteger)
