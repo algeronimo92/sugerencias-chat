@@ -15,38 +15,12 @@ from services.automation_deps import AutomationDeps
 
 @dataclass
 class FakeWhatsApp:
-    """Registra los envíos en vez de llamar a Evolution API."""
+    """Registra las reacciones en vez de llamar a Evolution API. Los envíos
+    de mensaje pasan por FakeOutbox (ver abajo), no por acá — el motor de
+    automatizaciones los encola en vez de mandarlos directo."""
 
-    texts: list[tuple[str, str]] = field(default_factory=list)
-    media: list[tuple[str, str, str]] = field(default_factory=list)
-    audio: list[str] = field(default_factory=list)
-    buttons: list[tuple[str, str, list]] = field(default_factory=list)
     reactions: list[tuple[dict, str]] = field(default_factory=list)
     fail_with: Exception | None = None
-
-    async def send_text(self, chat_id: str, text: str) -> dict:
-        if self.fail_with:
-            raise self.fail_with
-        self.texts.append((chat_id, text))
-        return {"key": {"id": f"WA{len(self.texts)}"}}
-
-    async def send_media(self, chat_id: str, encoded: str, mediatype: str, filename: str | None = None) -> dict:
-        if self.fail_with:
-            raise self.fail_with
-        self.media.append((chat_id, mediatype, filename or ""))
-        return {"key": {"id": f"WAM{len(self.media)}"}}
-
-    async def send_audio(self, chat_id: str, encoded: str) -> dict:
-        if self.fail_with:
-            raise self.fail_with
-        self.audio.append(chat_id)
-        return {"key": {"id": f"WAA{len(self.audio)}"}}
-
-    async def send_buttons(self, chat_id: str, title: str, description: str, footer: str, buttons: list) -> dict:
-        if self.fail_with:
-            raise self.fail_with
-        self.buttons.append((chat_id, title, buttons))
-        return {"key": {"id": f"WAB{len(self.buttons)}"}}
 
     async def send_reaction(self, key: dict, emoji: str) -> dict:
         if self.fail_with:
@@ -56,10 +30,29 @@ class FakeWhatsApp:
 
 
 @dataclass
+class FakeOutbox:
+    """Registra lo que el motor de automatizaciones intentó encolar, en vez
+    de insertar de verdad en message_outbox — mismo espíritu que FakeWhatsApp,
+    pero para deps.enqueue_messages."""
+
+    enqueued: list[tuple[str, list[dict]]] = field(default_factory=list)
+    fail_with: Exception | None = None
+
+    async def enqueue_messages(self, chat_id: str, items: list[dict]) -> list[dict]:
+        if self.fail_with:
+            raise self.fail_with
+        self.enqueued.append((chat_id, items))
+        start = sum(len(sent_items) for _, sent_items in self.enqueued[:-1])
+        return [
+            {"id": start + position + 1, "chat_id": chat_id, "status": "PENDING", **item}
+            for position, item in enumerate(items)
+        ]
+
+
+@dataclass
 class Recorder:
     """Acumula los efectos secundarios para poder afirmar sobre ellos."""
 
-    messages: list[dict] = field(default_factory=list)
     tasks: list[dict] = field(default_factory=list)
     notifications: list[dict] = field(default_factory=list)
     broadcasts: list[dict] = field(default_factory=list)
@@ -128,27 +121,19 @@ def whatsapp() -> FakeWhatsApp:
 
 
 @pytest.fixture
+def outbox() -> FakeOutbox:
+    return FakeOutbox()
+
+
+@pytest.fixture
 def frozen_now() -> datetime:
     return datetime(2026, 7, 20, 15, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> AutomationDeps:
+def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_now: datetime) -> AutomationDeps:
     """Deps con la ventana de WhatsApp abierta por defecto; cada test la cierra
     o cambia lo que necesite con dataclasses.replace."""
-
-    async def insert_message(
-        chat_id, sender, content, media_url=None, wa_message_id=None, status=None,
-        message_type=None, analysis=None, payload=None,
-    ):
-        message = {
-            "id": len(recorder.messages) + 1, "chat_id": chat_id, "sender": sender,
-            "content": content, "media_url": media_url,
-            "wa_message_id": wa_message_id, "status": status,
-            "message_type": message_type, "analysis": analysis, "payload": payload,
-        }
-        recorder.messages.append(message)
-        return message
 
     async def create_task(values, user_id):
         task = {"id": len(recorder.tasks) + 1, **values, "created_by": user_id}
@@ -204,7 +189,6 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
 
     return AutomationDeps(
         now=lambda: frozen_now,
-        insert_message=insert_message,
         create_task=create_task,
         create_notification=create_notification,
         assign_tag=assign_tag,
@@ -217,10 +201,6 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, frozen_now: datetime) -> Au
         get_customer_service_window=open_window,
         fetch_latest_customer_message_target=latest_customer_message,
         set_message_reaction=set_message_reaction,
-        send_text=whatsapp.send_text,
-        send_media=whatsapp.send_media,
-        send_audio=whatsapp.send_audio,
-        send_buttons=whatsapp.send_buttons,
+        enqueue_messages=outbox.enqueue_messages,
         send_reaction=whatsapp.send_reaction,
-        read_media_base64=lambda media_url: "ZmFrZS1iYXNlNjQ=",
     )

@@ -8,6 +8,7 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 
 from domain_types import (
     AutomationActionType,
@@ -19,8 +20,6 @@ from domain_types import (
     FlowHandle,
     FlowNodeType,
     InteractiveType,
-    MessageSender,
-    MessageStatus,
     NotificationType,
     QuestionHandle,
     TaskPriority,
@@ -56,13 +55,8 @@ from services.db_service import (
 )
 from services.evolution_service import (
     EvolutionApiError,
-    get_template_capabilities,
-    media_message_fields,
     mediatype_from_content_type,
-    send_whatsapp_media,
-    send_whatsapp_text,
 )
-from services.message_outbox import _buttons_text_fallback
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.automation_rules import (
     business_timezone,
@@ -85,8 +79,10 @@ AUTOMATION_POLL_SECONDS = 10
 MAX_ACTIONS = 10
 # Cuántas ejecuciones vencidas corren en paralelo por ciclo del watcher.
 MAX_CONCURRENT_EXECUTIONS = 5
-# Reclamos máximos de una misma ejecución antes de marcarla failed — evita
-# reintentar para siempre una ejecución que se interrumpe una y otra vez.
+# Veces máximas que una ejecución RUNNING puede recuperarse de quedar
+# atascada (crash, reinicio del backend) antes de marcarla failed — no cuenta
+# las reanudaciones normales de una pausa (wait/wait_any), solo las
+# recuperaciones que hace _release_stale_executions.
 MAX_EXECUTION_ATTEMPTS = 3
 # Un flujo visual legítimo (varias llamadas a Evolution API de 30-60s) puede
 # superar los 10 minutos; con menos margen se re-agendaría una ejecución viva.
@@ -122,11 +118,6 @@ _unknown_variables = unknown_variables
 
 def _ts(value):
     return value.isoformat().replace("+00:00", "Z") if value else None
-
-
-def _wa_message_id(response: dict) -> str | None:
-    key = response.get("key") if isinstance(response, dict) else None
-    return key.get("id") if isinstance(key, dict) else None
 
 
 def _wait_seconds(data: dict) -> int:
@@ -414,7 +405,12 @@ async def get_automation_execution(execution_id: int) -> dict | None:
 async def retry_automation_execution(execution_id: int) -> dict | None:
     """Reintenta una ejecución failed o skipped desde donde quedó — no repite
     acciones ya persistidas en action_results. Nunca aplica a completed: eso
-    reiniciaría el flujo desde el disparador y reenviaría lo ya enviado."""
+    reiniciaría el flujo desde el disparador y reenviaría lo ya enviado.
+
+    Resetea attempts a 0: es un reinicio explícito del usuario, no debería
+    heredar el contador de recuperaciones automáticas agotado que la llevó a
+    failed (si no, una ejecución que se vuelve a atascar moriría en el primer
+    ciclo de _release_stale_executions sin darle ninguna chance)."""
     async with get_sessionmaker()() as session:
         execution = await session.get(AutomationExecution, execution_id)
         if execution is None or execution.status not in {
@@ -424,16 +420,22 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
         rule = await session.get(AutomationRule, execution.rule_id)
         if rule is None or rule.deleted_at is not None or not rule.is_active:
             return None
-        await session.execute(update(AutomationExecution).where(
-            AutomationExecution.id == execution_id
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id,
+            AutomationExecution.status.in_([
+                AutomationExecutionStatus.FAILED, AutomationExecutionStatus.SKIPPED,
+            ]),
         ).values(
             status=AutomationExecutionStatus.SCHEDULED,
             scheduled_for=datetime.now(timezone.utc),
             started_at=None,
             finished_at=None,
             error=None,
+            attempts=0,
         ))
         await session.commit()
+    if not result.rowcount:
+        return None
     await manager.broadcast({"type": "automations_updated"})
     _wake.set()
     return await get_automation_execution(execution_id)
@@ -464,19 +466,19 @@ async def cancel_scheduled_system_executions(lead_id: str) -> int:
 
 async def cancel_automation_execution(execution_id: int) -> dict | None:
     async with get_sessionmaker()() as session:
-        execution = await session.get(AutomationExecution, execution_id)
-        if execution is None or execution.status not in {
-            AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.RUNNING,
-        }:
-            return None
-        await session.execute(update(AutomationExecution).where(
-            AutomationExecution.id == execution_id
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id,
+            AutomationExecution.status.in_([
+                AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.RUNNING,
+            ]),
         ).values(
             status=AutomationExecutionStatus.SKIPPED,
             error="Cancelada manualmente",
             finished_at=datetime.now(timezone.utc),
         ))
         await session.commit()
+    if not result.rowcount:
+        return None
     await manager.broadcast({"type": "automations_updated"})
     return await get_automation_execution(execution_id)
 
@@ -1187,10 +1189,14 @@ async def start_manual_flow_execution(
 
     A diferencia de los triggers de sistema (que dedupan por event_key fijo:
     un lead solo entra una vez por lead_created, stage_changed, etc.), acá el
-    vendedor debe poder repetir el mismo flujo sobre el mismo lead cuantas
-    veces quiera — por eso la event_key lleva un uuid único por click en vez
-    de derivarse del lead o del evento, y nunca choca con el índice único
-    (rule_id, event_key).
+    vendedor debe poder repetir el mismo flujo sobre el mismo lead una vez que
+    la ejecución anterior terminó — por eso la event_key lleva un uuid único
+    por click en vez de derivarse del lead o del evento, y nunca choca con el
+    índice único (rule_id, event_key). Lo que sí impide una segunda ejecución
+    en curso es el índice único parcial (rule_id, lead_id) sobre ejecuciones
+    manuales no terminales (ver migración b3d8f5c1a927): un doble click, dos
+    vendedores, o un refresh accidental chocan contra él y ese conflicto se
+    traduce acá abajo en un mensaje claro en vez de propagarse como un 500.
     """
     rule = await get_automation_rule(rule_id)
     if rule is None:
@@ -1203,15 +1209,21 @@ async def start_manual_flow_execution(
         raise ValueError("Este flujo no está disponible para vendedores")
 
     event_key = f"manual:{uuid4()}"
-    created = await schedule_automation_event(
-        AutomationTrigger.MANUAL,
-        lead_id,
-        event_key=event_key,
-        payload={"started_by_user_id": started_by_user_id},
-        rule_id=rule_id,
-        started_by_user_id=started_by_user_id,
-        start_source="manual",
-    )
+    try:
+        created = await schedule_automation_event(
+            AutomationTrigger.MANUAL,
+            lead_id,
+            event_key=event_key,
+            payload={"started_by_user_id": started_by_user_id},
+            rule_id=rule_id,
+            started_by_user_id=started_by_user_id,
+            start_source="manual",
+        )
+    except IntegrityError as exc:
+        raise ValueError(
+            "Ya hay una ejecución de este flujo en curso para este lead. "
+            "Esperá a que termine o cancelala antes de iniciar otra."
+        ) from exc
     if not created:
         raise ValueError("No se pudo iniciar el flujo: verifica que el lead exista")
     _wake.set()
@@ -1612,29 +1624,22 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado de la plantilla no es válido")
 
-    sent: list[dict] = []
+    items: list[dict] = []
     if text:
-        response = await deps.send_text(chat["chat_id"], text)
-        sent.append(await deps.insert_message(
-            chat["chat_id"], MessageSender.SELLER, text,
-            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-            message_type="text",
-        ))
+        items.append({"content": text, "payload": {"type": "text", "text": text}})
     for attachment in attachments:
-        try:
-            encoded = deps.read_media_base64(attachment.media_url)
-        except FileNotFoundError:
-            raise ValueError(f"No se encontró el adjunto {attachment.filename}")
         mediatype = mediatype_from_content_type(attachment.content_type)
-        response = await deps.send_media(chat["chat_id"], encoded, mediatype, filename=attachment.filename)
-        # El adjunto no lleva caption; el tipo y el nombre (solo documentos) van
-        # a message_type/payload, no embebidos en content.
-        message_type, payload = media_message_fields(mediatype, attachment.filename)
-        sent.append(await deps.insert_message(
-            chat["chat_id"], MessageSender.SELLER, None, media_url=attachment.media_url,
-            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-            message_type=message_type, payload=payload,
-        ))
+        items.append({
+            "media_url": attachment.media_url,
+            "payload": {
+                "type": "media", "media_url": attachment.media_url,
+                "mediatype": mediatype, "filename": attachment.filename,
+            },
+        })
+    # Un solo enqueue_messages para texto + todos los adjuntos: quedan
+    # encolados atómicamente en una sola transacción, en vez de una llamada
+    # por ítem.
+    sent = await deps.enqueue_messages(chat["chat_id"], items)
     await deps.record_template_use(template.id, rule.created_by_user_id)
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
     return {
@@ -1656,14 +1661,11 @@ async def _action_send_message(action, chat, execution, rule, deps) -> dict:
         raise ValueError("El mensaje no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado del mensaje no es válido")
-    response = await deps.send_text(chat["chat_id"], text)
-    message = await deps.insert_message(
-        chat["chat_id"], MessageSender.SELLER, text,
-        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-        message_type="text",
+    sent = await deps.enqueue_messages(
+        chat["chat_id"], [{"content": text, "payload": {"type": "text", "text": text}}],
     )
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
-    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
 async def _action_react_to_last_customer_message(action, chat, execution, rule, deps) -> dict:
@@ -1730,18 +1732,12 @@ async def _action_send_audio(action, chat, execution, rule, deps) -> dict:
     window = await deps.get_customer_service_window(chat["chat_id"])
     if not window or not window["is_open"]:
         raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
-    try:
-        encoded = deps.read_media_base64(asset.media_url)
-    except FileNotFoundError:
-        raise ValueError(f"No se encontró el archivo {asset.filename}")
-    response = await deps.send_audio(chat["chat_id"], encoded)
-    message = await deps.insert_message(
-        chat["chat_id"], MessageSender.SELLER, None, media_url=asset.media_url,
-        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-        message_type="audio",
-    )
+    sent = await deps.enqueue_messages(chat["chat_id"], [{
+        "media_url": asset.media_url,
+        "payload": {"type": "audio", "media_url": asset.media_url},
+    }])
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
-    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
 async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
@@ -1753,44 +1749,41 @@ async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
     window = await deps.get_customer_service_window(chat["chat_id"])
     if not window or not window["is_open"]:
         raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
-    try:
-        encoded = deps.read_media_base64(asset.media_url)
-    except FileNotFoundError:
-        raise ValueError(f"No se encontró el archivo {asset.filename}")
     mediatype = mediatype_from_content_type(asset.content_type)
-    response = await deps.send_media(chat["chat_id"], encoded, mediatype, filename=asset.filename)
-    message_type, payload = media_message_fields(mediatype, asset.filename)
-    message = await deps.insert_message(
-        chat["chat_id"], MessageSender.SELLER, None, media_url=asset.media_url,
-        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-        message_type=message_type, payload=payload,
-    )
+    sent = await deps.enqueue_messages(chat["chat_id"], [{
+        "media_url": asset.media_url,
+        "payload": {
+            "type": "media", "media_url": asset.media_url,
+            "mediatype": mediatype, "filename": asset.filename,
+        },
+    }])
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
-    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [message["id"]]}
+    return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
 async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
     """Manda un mensaje con botones nativos si la integración es WhatsApp
     Business; si no, cae al fallback de texto numerado (mismo que usa el
-    envío manual de plantillas interactivas). Devuelve el mensaje insertado.
+    envío manual de plantillas interactivas). Devuelve el mensaje encolado.
     Compartido por el nodo `question` (única forma de mandar botones desde
     un flujo: la acción `send_buttons` se reemplazó por ese nodo, que sí
-    puede ramificar según la respuesta)."""
-    capabilities = await get_template_capabilities()
-    if capabilities.get("integration") != "WHATSAPP-BUSINESS":
-        fallback = _buttons_text_fallback(text, "", "", buttons)
-        response = await deps.send_text(chat["chat_id"], fallback)
-        return await deps.insert_message(
-            chat["chat_id"], MessageSender.SELLER, fallback,
-            wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-            message_type="text",
-        )
-    response = await deps.send_buttons(chat["chat_id"], text, "", "", buttons)
-    return await deps.insert_message(
-        chat["chat_id"], MessageSender.SELLER, text,
-        wa_message_id=_wa_message_id(response), status=MessageStatus.SERVER_ACK,
-        message_type="text",
-    )
+    puede ramificar según la respuesta).
+
+    A diferencia de la versión anterior, no decide acá mismo entre botones
+    nativos y el fallback de texto numerado: encola un payload interactive y
+    deja que el worker del outbox (message_outbox._send_payload) resuelva
+    las capacidades en el momento real del envío — la misma lógica ya
+    centralizada y probada que usa el envío manual de plantillas
+    interactivas, en vez de reimplementarla acá."""
+    sent = await deps.enqueue_messages(chat["chat_id"], [{
+        "content": text,
+        "payload": {
+            "type": "interactive", "interactive_type": "buttons",
+            "description": "",
+            "config": {"title": text, "buttons": buttons},
+        },
+    }])
+    return sent[0]
 
 
 # Un handler por tipo de acción: agregar una acción nueva es sumar una entrada
@@ -1836,7 +1829,7 @@ async def _persist_visual_execution(
     scheduled_for: datetime | None = None,
     wait_any_state: dict | None = None,
     deps: AutomationDeps = DEFAULT_DEPS,
-) -> None:
+) -> bool:
     values = {
         "status": status,
         "action_results": results,
@@ -1856,7 +1849,7 @@ async def _persist_visual_execution(
         values["scheduled_for"] = scheduled_for
         values["started_at"] = None
         values["finished_at"] = None
-    await _save_execution(execution_id, deps, **values)
+    return await _save_execution(execution_id, deps, **values)
 
 
 async def _notify_execution_failure(
@@ -1965,7 +1958,7 @@ async def _run_visual_execution(
             path.append(current_id)
             if node["type"] == FlowNodeType.TRIGGER:
                 current_id = edges[(current_id, FlowHandle.NEXT)]
-                await _persist_visual_execution(
+                saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,
                     results,
@@ -1974,6 +1967,8 @@ async def _run_visual_execution(
                     flow_version,
                 deps=deps,
                 )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
                 continue
             if node["type"] == FlowNodeType.CONDITION:
                 matches, detail = await _matches_flow_condition(node["data"], chat, deps)
@@ -1986,7 +1981,7 @@ async def _run_visual_execution(
                     "detail": detail,
                 })
                 current_id = edges[(current_id, branch)]
-                await _persist_visual_execution(
+                saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,
                     results,
@@ -1995,13 +1990,15 @@ async def _run_visual_execution(
                     flow_version,
                 deps=deps,
                 )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
                 continue
             if node["type"] == FlowNodeType.ACTION:
                 action = node["data"]["action"]
                 result = await _execute_action(action, chat, execution, rule, deps)
                 results.append({"position": len(results) + 1, "node_id": node["id"], **result})
                 current_id = edges[(current_id, FlowHandle.NEXT)]
-                await _persist_visual_execution(
+                saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,
                     results,
@@ -2010,6 +2007,8 @@ async def _run_visual_execution(
                     flow_version,
                 deps=deps,
                 )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
                 continue
             if node["type"] == FlowNodeType.WAIT:
                 seconds = _wait_seconds(node["data"])
@@ -2111,7 +2110,7 @@ async def _run_visual_execution(
                     )
                     return
                 current_id = next_id
-                await _persist_visual_execution(
+                saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,
                     results,
@@ -2120,6 +2119,8 @@ async def _run_visual_execution(
                     flow_version,
                 deps=deps,
                 )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
                 continue
             if node["type"] == FlowNodeType.QUESTION:
                 if state.get("waiting_at_node") != current_id:
@@ -2176,7 +2177,7 @@ async def _run_visual_execution(
                     "branch": branch,
                 })
                 current_id = edges[(current_id, branch)]
-                await _persist_visual_execution(
+                saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,
                     results,
@@ -2185,6 +2186,8 @@ async def _run_visual_execution(
                     flow_version,
                 deps=deps,
                 )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
                 continue
             results.append({
                 "position": len(results) + 1, "node_id": node["id"],
@@ -2242,11 +2245,19 @@ async def _save_execution(
     execution_id: int,
     deps: AutomationDeps = DEFAULT_DEPS,
     **values,
-) -> None:
-    """Único punto de escritura del estado de una ejecución.
+) -> bool:
+    """Punto de escritura del estado de una ejecución durante _run_execution/
+    _run_visual_execution (_discover_wait_any_replies escribe aparte con el
+    mismo criterio de guarda de abajo).
 
     Pone finished_at solo cuando el estado es terminal, para que ninguna rama
-    se olvide de marcarlo (antes esto estaba copiado en 15 lugares)."""
+    se olvide de marcarlo (antes esto estaba copiado en 15 lugares).
+
+    Nunca pisa una fila que ya quedó skipped: eso significa que alguien la
+    canceló externamente (cancel_automation_execution) mientras este motor
+    la tenía en curso. Devuelve False en ese caso para que el caller corte el
+    procesamiento en vez de seguir enviando acciones de una ejecución
+    cancelada."""
     if values.get("status") in {
         AutomationExecutionStatus.COMPLETED,
         AutomationExecutionStatus.FAILED,
@@ -2254,10 +2265,12 @@ async def _save_execution(
     }:
         values.setdefault("finished_at", deps.now())
     async with deps.session() as session:
-        await session.execute(update(AutomationExecution).where(
-            AutomationExecution.id == execution_id
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id,
+            AutomationExecution.status != AutomationExecutionStatus.SKIPPED,
         ).values(**values))
         await session.commit()
+    return bool(result.rowcount)
 
 
 async def _rate_limit_reached(rule: AutomationRule, deps: AutomationDeps) -> bool:
@@ -2329,7 +2342,9 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
         for index in range(len(results), len(actions)):
             result = await _execute_action(actions[index], chat, execution, rule, deps)
             results.append({"position": index + 1, **result})
-            await _save_execution(execution_id, deps, action_results=results)
+            saved = await _save_execution(execution_id, deps, action_results=results)
+            if not saved:
+                return  # cancelada externamente: no proceses más acciones
     except (ValueError, EvolutionApiError, httpx.HTTPError) as exc:
         failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
         results.append({
@@ -2373,7 +2388,6 @@ async def process_due_automation_executions(limit: int = 20) -> int:
                 status=AutomationExecutionStatus.RUNNING,
                 started_at=now,
                 error=None,
-                attempts=AutomationExecution.attempts + 1,
             ))
         await session.commit()
     if not ids:
@@ -2617,6 +2631,7 @@ async def _release_stale_executions() -> None:
             status=AutomationExecutionStatus.SCHEDULED,
             started_at=None,
             error="Reintentando una ejecución interrumpida",
+            attempts=AutomationExecution.attempts + 1,
         ))
         await session.commit()
     for execution_id in exhausted:

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Loader2, Workflow } from 'lucide-react'
 import { toast } from 'sonner'
-import { useManualFlows, useStartManualFlow } from '../hooks/useAutomations'
+import { useAutomationExecutions, useManualFlows, useStartManualFlow } from '../hooks/useAutomations'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../utils/errors'
 
@@ -18,6 +18,22 @@ export function FlowPicker({ chatId }: Props) {
   const [open, setOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
   const { data: flows = [], isLoading } = useManualFlows(chatId)
+  // Mismo hook que usa FlowRunStatus: react-query cachea por chatId, así que
+  // esto no duplica el pedido de red mientras el banner esté montado. Es solo
+  // UX (deshabilita el botón y avisa "Ya en curso") — la guarda real contra
+  // dos ejecuciones simultáneas es el índice único del backend, que sigue
+  // respondiendo 400 aunque este chequeo llegue a estar desactualizado por
+  // un refetch pendiente.
+  const { data: executions = [] } = useAutomationExecutions({ chatId })
+  const activeRuleIds = new Set(
+    executions
+      .filter(
+        (execution) =>
+          execution.start_source === 'manual' &&
+          (execution.status === 'scheduled' || execution.status === 'running')
+      )
+      .map((execution) => execution.rule_id)
+  )
   const startFlow = useStartManualFlow()
 
   function choose(ruleId: number, name: string) {
@@ -57,20 +73,28 @@ export function FlowPicker({ chatId }: Props) {
                 No hay flujos disponibles para vendedores todavía.
               </p>
             )}
-            {flows.map((flow) => (
-              <button
-                key={flow.id}
-                type="button"
-                disabled={startFlow.isPending}
-                onClick={() => choose(flow.id, flow.name)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-wa-hover disabled:cursor-wait disabled:opacity-50 dark:hover:bg-wa-active-dark"
-              >
-                <Workflow className="h-4 w-4 shrink-0 text-wa-primary-strong" />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-wa-text dark:text-white">
-                  {flow.name}
-                </span>
-              </button>
-            ))}
+            {flows.map((flow) => {
+              const alreadyRunning = activeRuleIds.has(flow.id)
+              return (
+                <button
+                  key={flow.id}
+                  type="button"
+                  disabled={startFlow.isPending || alreadyRunning}
+                  onClick={() => choose(flow.id, flow.name)}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-wa-hover disabled:cursor-wait disabled:opacity-50 dark:hover:bg-wa-active-dark"
+                >
+                  <Workflow className="h-4 w-4 shrink-0 text-wa-primary-strong" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-wa-text dark:text-white">
+                    {flow.name}
+                  </span>
+                  {alreadyRunning && (
+                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-wa-muted">
+                      Ya en curso
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
