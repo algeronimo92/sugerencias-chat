@@ -6,7 +6,7 @@ from time import monotonic
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
@@ -49,6 +49,7 @@ from services.db_service import (
     fetch_chat,
     get_customer_service_window,
     insert_message,
+    open_conversation_from_inbound,
     remove_tag,
     update_lead,
     update_lead_stage,
@@ -72,6 +73,7 @@ from services.automation_rules import (
 )
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
+from services.template_delivery import MEDIA_CAPTION_MAX_LENGTH, build_internal_template_items
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -105,7 +107,13 @@ TASK_PRIORITIES = frozenset(TaskPriority)
 MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
 MAX_WHATSAPP_TEXT_LENGTH = 4096
+MAX_MEDIA_CAPTION_LENGTH = MEDIA_CAPTION_MAX_LENGTH
 MAX_REACTION_LENGTH = 16
+CONVERSATION_STATES = frozenset({"open", "closed"})
+MAX_MESSAGE_CONDITION_LENGTH = 500
+MAX_CONDITION_GROUPS = 10
+MAX_CONDITIONS_PER_GROUP = 10
+MAX_CONDITIONS_PER_NODE = 30
 
 # Los triggers de los routers lo activan para que watch_automations procese la
 # cola de inmediato sin bloquear la request HTTP del usuario (una acción
@@ -250,7 +258,10 @@ async def create_automation_rule(values: dict, user_id: int) -> dict:
             ).returning(AutomationRule.id)
         )).scalar_one()
         await session.commit()
-    return await get_automation_rule(rule_id)
+    item = await get_automation_rule(rule_id)
+    if item and item["is_active"] and item["trigger_type"] == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
+        await _backfill_customer_response_deadlines(rule_id)
+    return item
 
 
 async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
@@ -288,6 +299,9 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
 
 
 async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
+    deadline_changed = bool(
+        {"is_active", "trigger_type", "trigger_config", "delay_minutes"} & set(values)
+    )
     if values:
         values["updated_at"] = datetime.now(timezone.utc)
         async with get_sessionmaker()() as session:
@@ -300,7 +314,15 @@ async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
             await session.commit()
         if not result.rowcount:
             return None
-    return await get_automation_rule(rule_id)
+    item = await get_automation_rule(rule_id)
+    if (
+        deadline_changed
+        and item
+        and item["is_active"]
+        and item["trigger_type"] == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE
+    ):
+        await _backfill_customer_response_deadlines(rule_id)
+    return item
 
 
 async def delete_automation_rule(rule_id: int) -> dict | None:
@@ -357,6 +379,7 @@ async def list_automation_executions(
     exclude_skipped: bool = False,
     lead_id: str | None = None,
     start_source: str | None = None,
+    include_seller_flow_children: bool = False,
 ) -> list[dict]:
     stmt = select(
         AutomationExecution.id,
@@ -391,6 +414,14 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.lead_id == lead_id)
     if start_source is not None:
         stmt = stmt.where(AutomationExecution.start_source == start_source)
+    if include_seller_flow_children:
+        stmt = stmt.where(or_(
+            AutomationExecution.start_source == "manual",
+            and_(
+                AutomationExecution.start_source == "flow",
+                AutomationExecution.started_by_user_id.is_not(None),
+            ),
+        ))
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
@@ -603,13 +634,30 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
             # actual, no un error de formulario.
             service = str(raw.get("service") or "").strip()[:160] or None
             normalized_actions.append({"type": action_type, "service": service})
-        else:
-            # SEND_AUDIO, SEND_ATTACHMENT
+        elif action_type == AutomationActionType.SET_CONVERSATION_STATE:
+            state = str(raw.get("state") or "")
+            if state not in CONVERSATION_STATES:
+                raise ValueError(f"Acción {position}: estado de conversación inválido")
+            normalized_actions.append({"type": action_type, "state": state})
+        elif action_type in {
+            AutomationActionType.SEND_AUDIO,
+            AutomationActionType.SEND_ATTACHMENT,
+            AutomationActionType.SEND_MEDIA,
+        }:
             media_asset_id = int(raw.get("media_asset_id") or 0)
             if not media_asset_id:
                 raise ValueError(f"Acción {position}: selecciona un archivo de la librería de medios")
             referenced_media_assets.add(media_asset_id)
-            normalized_actions.append({"type": action_type, "media_asset_id": media_asset_id})
+            normalized = {"type": action_type, "media_asset_id": media_asset_id}
+            if action_type == AutomationActionType.SEND_MEDIA:
+                caption = str(raw.get("caption") or "").strip()
+                if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+                    raise ValueError(
+                        f"Acción {position}: el caption admite máximo "
+                        f"{MAX_MEDIA_CAPTION_LENGTH} caracteres"
+                    )
+                normalized["caption"] = caption
+            normalized_actions.append(normalized)
 
     for position, action in enumerate(normalized_actions, start=1):
         unknown = set().union(*(
@@ -769,10 +817,22 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
     elif condition_type in {
         FlowConditionType.ORIGIN_CONTAINS,
         FlowConditionType.SERVICE_CONTAINS,
+        FlowConditionType.MESSAGE_CONTAINS,
+        FlowConditionType.MESSAGE_EQUALS,
+        FlowConditionType.MESSAGE_NOT_CONTAINS,
     }:
         value = str(value or "").strip()
-        if not value or len(value) > 120:
-            raise ValueError(f"Condición {position}: escribe un valor de hasta 120 caracteres")
+        max_length = (
+            MAX_MESSAGE_CONDITION_LENGTH
+            if condition_type in {
+                FlowConditionType.MESSAGE_CONTAINS,
+                FlowConditionType.MESSAGE_EQUALS,
+                FlowConditionType.MESSAGE_NOT_CONTAINS,
+            }
+            else 120
+        )
+        if not value or len(value) > max_length:
+            raise ValueError(f"Condición {position}: escribe un valor de hasta {max_length} caracteres")
     elif condition_type == FlowConditionType.SELLER_EQUALS:
         user_id = int(value or 0)
         if not user_id:
@@ -786,6 +846,77 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
     else:
         value = True
     return {"condition_type": condition_type, "value": value}, user_id, tag_id
+
+
+def _normalize_flow_condition_node(
+    data: dict, position: int,
+) -> tuple[dict, set[int], set[int]]:
+    """Normaliza grupos OR de condiciones AND, aceptando el formato legado.
+
+    `condition_groups`: cualquiera de los grupos puede cumplir (OR); dentro
+    de cada grupo deben cumplir todas las condiciones (AND). Un nodo viejo
+    con `condition_type`/`value` se convierte en un grupo de una condición.
+    """
+    raw_groups = data.get("condition_groups")
+    if raw_groups is None:
+        normalized, user_id, tag_id = _normalize_flow_condition(data, position)
+        return {
+            "condition_groups": [{
+                "id": "group_1",
+                "conditions": [{"id": "condition_1", **normalized}],
+            }],
+        }, ({user_id} if user_id else set()), ({tag_id} if tag_id else set())
+    if not isinstance(raw_groups, list) or not 1 <= len(raw_groups) <= MAX_CONDITION_GROUPS:
+        raise ValueError(
+            f"Condición {position}: configura entre 1 y {MAX_CONDITION_GROUPS} grupos"
+        )
+
+    groups: list[dict] = []
+    users: set[int] = set()
+    tags: set[int] = set()
+    group_ids: set[str] = set()
+    total_conditions = 0
+    for group_position, raw_group in enumerate(raw_groups, start=1):
+        if not isinstance(raw_group, dict):
+            raise ValueError(f"Condición {position}, grupo {group_position}: formato inválido")
+        group_id = str(raw_group.get("id") or f"group_{group_position}").strip()[:80]
+        if not group_id or group_id in group_ids:
+            raise ValueError(f"Condición {position}: identificador de grupo vacío o duplicado")
+        group_ids.add(group_id)
+        raw_conditions = raw_group.get("conditions")
+        if not isinstance(raw_conditions, list) or not 1 <= len(raw_conditions) <= MAX_CONDITIONS_PER_GROUP:
+            raise ValueError(
+                f"Condición {position}, grupo {group_position}: configura entre 1 y "
+                f"{MAX_CONDITIONS_PER_GROUP} reglas AND"
+            )
+        condition_ids: set[str] = set()
+        conditions: list[dict] = []
+        for condition_position, raw_condition in enumerate(raw_conditions, start=1):
+            if not isinstance(raw_condition, dict):
+                raise ValueError(
+                    f"Condición {position}, grupo {group_position}, regla {condition_position}: formato inválido"
+                )
+            condition_id = str(
+                raw_condition.get("id") or f"condition_{condition_position}"
+            ).strip()[:80]
+            if not condition_id or condition_id in condition_ids:
+                raise ValueError(
+                    f"Condición {position}, grupo {group_position}: identificador de regla vacío o duplicado"
+                )
+            condition_ids.add(condition_id)
+            normalized, user_id, tag_id = _normalize_flow_condition(raw_condition, position)
+            conditions.append({"id": condition_id, **normalized})
+            if user_id:
+                users.add(user_id)
+            if tag_id:
+                tags.add(tag_id)
+        total_conditions += len(conditions)
+        groups.append({"id": group_id, "conditions": conditions})
+    if total_conditions > MAX_CONDITIONS_PER_NODE:
+        raise ValueError(
+            f"Condición {position}: admite hasta {MAX_CONDITIONS_PER_NODE} reglas en total"
+        )
+    return {"condition_groups": groups}, users, tags
 
 
 def normalize_visual_draft(name: str, definition: dict) -> dict:
@@ -831,6 +962,12 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
         if isinstance(condition, dict) and isinstance(condition.get("kind"), str)
     }
     dynamic_handles |= {
+        group["id"]
+        for node in nodes if node["type"] == FlowNodeType.CONDITION
+        for group in (node["data"].get("condition_groups") or [])
+        if isinstance(group, dict) and isinstance(group.get("id"), str)
+    }
+    dynamic_handles |= {
         button["id"]
         for node in nodes if node["type"] == FlowNodeType.QUESTION
         for button in (node["data"].get("buttons") or [])
@@ -860,7 +997,66 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
     }
 
 
-async def validate_visual_flow(name: str, definition: dict) -> dict:
+def _invoked_flow_ids(definition: dict | None) -> set[int]:
+    """Devuelve las reglas referenciadas por bloques Invocar flujo."""
+    return {
+        int(node.get("data", {}).get("flow_rule_id") or 0)
+        for node in (definition or {}).get("nodes", [])
+        if node.get("type") == FlowNodeType.INVOKE_FLOW
+        and int(node.get("data", {}).get("flow_rule_id") or 0) > 0
+    }
+
+
+async def _validate_invoked_flows(
+    session, target_ids: set[int], current_rule_id: int | None, candidate_definition: dict,
+) -> None:
+    if not target_ids:
+        return
+    rows = (await session.execute(select(
+        AutomationRule.id,
+        AutomationRule.name,
+        AutomationRule.builder_mode,
+        AutomationRule.published_flow_definition,
+    ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
+    rules = {row["id"]: row for row in rows}
+    for target_id in target_ids:
+        target = rules.get(target_id)
+        if target is None:
+            raise ValueError(f"El flujo invocado #{target_id} no existe")
+        if current_rule_id is not None and target_id == current_rule_id:
+            raise ValueError("Un flujo no puede invocarse a sí mismo")
+        if target["builder_mode"] != AutomationBuilderMode.VISUAL:
+            raise ValueError(f"{target['name']} no es un flujo visual")
+        if not target["published_flow_definition"]:
+            raise ValueError(f"Publica el flujo hijo {target['name']} antes de invocarlo")
+
+    if current_rule_id is None:
+        return
+    dependencies = {
+        rule_id: _invoked_flow_ids(row["published_flow_definition"])
+        for rule_id, row in rules.items()
+    }
+    dependencies[current_rule_id] = _invoked_flow_ids(candidate_definition)
+    visiting: set[int] = set()
+    visited: set[int] = set()
+
+    def walk(rule_id: int) -> None:
+        if rule_id in visiting:
+            raise ValueError("La invocación entre flujos contiene un ciclo")
+        if rule_id in visited:
+            return
+        visiting.add(rule_id)
+        for child_id in dependencies.get(rule_id, set()):
+            walk(child_id)
+        visiting.remove(rule_id)
+        visited.add(rule_id)
+
+    walk(current_rule_id)
+
+
+async def validate_visual_flow(
+    name: str, definition: dict, *, current_rule_id: int | None = None,
+) -> dict:
     name = str(name or "").strip()
     if not name or len(name) > 120:
         raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
@@ -877,6 +1073,7 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
     ids: set[str] = set()
     normalized_nodes: list[dict] = []
     action_nodes: list[tuple[int, dict]] = []
+    invoke_flow_nodes: list[tuple[int, int]] = []
     condition_users: set[int] = set()
     condition_tags: set[int] = set()
     trigger_nodes: list[dict] = []
@@ -915,15 +1112,19 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             }
             trigger_nodes.append({"id": node_id, "data": normalized_data})
         elif node_type == FlowNodeType.CONDITION:
-            normalized_data, user_id, tag_id = _normalize_flow_condition(data, position)
-            if user_id:
-                condition_users.add(user_id)
-            if tag_id:
-                condition_tags.add(tag_id)
+            normalized_data, user_ids, tag_ids = _normalize_flow_condition_node(data, position)
+            condition_users.update(user_ids)
+            condition_tags.update(tag_ids)
         elif node_type == FlowNodeType.ACTION:
             action = data.get("action") if isinstance(data.get("action"), dict) else {}
             normalized_data = {"action": action}
             action_nodes.append((len(normalized_nodes), action))
+        elif node_type == FlowNodeType.INVOKE_FLOW:
+            flow_rule_id = int(data.get("flow_rule_id") or 0)
+            if not flow_rule_id:
+                raise ValueError(f"Invocación {position}: selecciona un flujo hijo")
+            normalized_data = {"flow_rule_id": flow_rule_id}
+            invoke_flow_nodes.append((len(normalized_nodes), flow_rule_id))
         elif node_type == FlowNodeType.WAIT:
             seconds = _wait_seconds(data)
             if not 1 <= seconds <= 604800:
@@ -947,19 +1148,22 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
         raise ValueError("El flujo debe tener exactamente un disparador")
     if not end_count:
         raise ValueError("El flujo debe tener al menos un bloque Fin")
-    if not action_nodes:
-        raise ValueError("El flujo debe tener al menos una acción")
+    if not action_nodes and not invoke_flow_nodes:
+        raise ValueError("El flujo debe tener al menos una acción o invocación")
 
     # MAX_ACTIONS (10) es el tope del modo simple, una lista plana y
     # secuencial. Acá sumamos los bloques Acción de TODAS las ramas del
     # grafo aunque una ejecución nunca recorra más de una, así que se acota
     # por MAX_FLOW_NODES (el tope estructural del flujo) en vez de MAX_ACTIONS.
+    actions_for_validation = [action for _, action in action_nodes] or [
+        {"type": AutomationActionType.CHANGE_STAGE, "stage": "nuevo"}
+    ]
     normalized_action_values = await validate_automation_rule({
         "name": name,
         "trigger_type": trigger_nodes[0]["data"]["trigger_type"],
         "trigger_config": {"minutes": trigger_nodes[0]["data"].get("minutes")},
         "conditions": raw_conditions,
-        "actions": [action for _, action in action_nodes],
+        "actions": actions_for_validation,
         "delay_minutes": 0,
         "is_active": False,
     }, max_actions=MAX_FLOW_NODES)
@@ -979,6 +1183,12 @@ async def validate_visual_flow(name: str, definition: dict) -> dict:
             ))).scalars().all())
             if found != condition_tags:
                 raise ValueError("Alguna etiqueta usada en una condición no existe o está inactiva")
+        await _validate_invoked_flows(
+            session,
+            {flow_rule_id for _, flow_rule_id in invoke_flow_nodes},
+            current_rule_id,
+            {"nodes": normalized_nodes},
+        )
 
     normalized_edges = normalize_edges(raw_edges, ids)
     validate_graph_topology(normalized_nodes, normalized_edges, trigger_nodes[0]["id"])
@@ -1029,7 +1239,9 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         return None
-    validated = await validate_visual_flow(current["name"], current["flow_definition"])
+    validated = await validate_visual_flow(
+        current["name"], current["flow_definition"], current_rule_id=rule_id,
+    )
     if validated["flow_definition"] == current["published_flow_definition"]:
         raise ValueError("No hay cambios pendientes para publicar")
     now = datetime.now(timezone.utc)
@@ -1055,7 +1267,10 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
             index_elements=[AutomationFlowVersion.rule_id, AutomationFlowVersion.version]
         ))
         await session.commit()
-    return await get_automation_rule(rule_id)
+    item = await get_automation_rule(rule_id)
+    if item and item["trigger_type"] == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
+        await _backfill_customer_response_deadlines(rule_id)
+    return item
 
 
 async def list_flow_versions(rule_id: int) -> list[dict]:
@@ -1277,13 +1492,175 @@ async def trigger_stage_changed(lead_id: str) -> None:
         _wake.set()
 
 
+def _message_sent_at(value) -> datetime:
+    """Normaliza el timestamp que llega desde el webhook o el watcher.
+
+    Los mensajes consultados desde la base ya incluyen ``sent_at``. El fallback
+    conserva compatibilidad con productores antiguos durante un despliegue
+    gradual, aunque los eventos nuevos siempre deberían traerlo.
+    """
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            parsed = datetime.now(timezone.utc)
+    else:
+        parsed = datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+async def _cancel_customer_response_deadlines(lead_id: str) -> int:
+    """Invalida el cierre pendiente cuando el cliente vuelve a responder."""
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.lead_id == lead_id,
+            AutomationExecution.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+            AutomationExecution.started_at.is_(None),
+        ).values(
+            status=AutomationExecutionStatus.SKIPPED,
+            error="El cliente respondió antes del vencimiento",
+            finished_at=now,
+        ))
+        await session.commit()
+    return result.rowcount or 0
+
+
+async def _schedule_customer_response_deadlines(
+    message: dict,
+    rule_id: int | None = None,
+) -> int:
+    """Crea o mueve el vencimiento de cada regla sin recorrer otros chats.
+
+    La clave se ancla al último mensaje del cliente. Así varios mensajes del
+    vendedor mueven el mismo temporizador y un mensaje enviado por la propia
+    automatización no genera un ciclo infinito de nuevos follow-ups.
+    """
+    lead_id = message.get("chat_id")
+    message_key = str(message.get("message_id") or "")
+    if not lead_id or not message_key or message.get("sender") != "vendedor":
+        return 0
+
+    rule_stmt = select(
+        AutomationRule.id,
+        AutomationRule.trigger_config,
+        AutomationRule.delay_minutes,
+        AutomationRule.builder_mode,
+        AutomationRule.flow_version,
+    ).where(
+        AutomationRule.is_active.is_(True),
+        AutomationRule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+    )
+    if rule_id is not None:
+        rule_stmt = rule_stmt.where(AutomationRule.id == rule_id)
+
+    now = datetime.now(timezone.utc)
+    sent_at = _message_sent_at(message.get("sent_at"))
+    async with get_sessionmaker()() as session:
+        lead = await session.get(Lead, lead_id)
+        if lead is None or lead.automatizacion_pausada:
+            return 0
+        rules = (await session.execute(rule_stmt)).mappings().all()
+        if not rules:
+            return 0
+        customer_anchor = await session.scalar(select(WspMessage.id).where(
+            WspMessage.chat_id == lead_id,
+            WspMessage.sender == "cliente",
+        ).order_by(WspMessage.sent_at.desc(), WspMessage.id.desc()).limit(1))
+        event_key = (
+            f"silence:{customer_anchor}"
+            if customer_anchor is not None
+            else f"silence:none:{lead_id}"
+        )
+        changed = 0
+        for rule in rules:
+            minutes = max(1, int((rule["trigger_config"] or {}).get("minutes", 1)))
+            scheduled_for = sent_at + timedelta(
+                minutes=minutes + int(rule["delay_minutes"] or 0)
+            )
+            payload = {
+                "last_message_id": message_key,
+                "last_sender": "vendedor",
+                "last_message_at": _ts(sent_at),
+                "deadline_at": _ts(scheduled_for),
+            }
+            flow_state = (
+                {
+                    "flow_version": rule["flow_version"],
+                    "current_node_id": None,
+                    "path": [],
+                }
+                if rule["builder_mode"] == AutomationBuilderMode.VISUAL
+                else {}
+            )
+            result = await session.execute(
+                pg_insert(AutomationExecution).values(
+                    rule_id=rule["id"],
+                    lead_id=lead_id,
+                    trigger_type=AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+                    event_key=event_key,
+                    event_payload=payload,
+                    status=AutomationExecutionStatus.SCHEDULED,
+                    scheduled_for=scheduled_for,
+                    action_results=[],
+                    flow_state=flow_state,
+                    created_at=now,
+                    start_source="system",
+                ).on_conflict_do_update(
+                    index_elements=[AutomationExecution.rule_id, AutomationExecution.event_key],
+                    set_={
+                        "event_payload": payload,
+                        "scheduled_for": scheduled_for,
+                        "flow_state": flow_state,
+                        "error": None,
+                        "finished_at": None,
+                    },
+                    where=and_(
+                        AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+                        AutomationExecution.started_at.is_(None),
+                    ),
+                )
+            )
+            changed += result.rowcount or 0
+        await session.commit()
+    if changed:
+        _wake.set()
+        await manager.broadcast({"type": "automations_updated"})
+    return changed
+
+
 async def trigger_inbound_message(message: dict) -> None:
-    if message.get("sender") != "cliente" or not message.get("chat_id"):
+    sender = message.get("sender")
+    if sender not in {"cliente", "vendedor"} or not message.get("chat_id"):
         return
     lead_id = message["chat_id"]
     message_key = str(message.get("message_id") or "")
     if not message_key:
         return
+    if sender == "vendedor":
+        await _schedule_customer_response_deadlines(message)
+        return
+    cancelled = await _cancel_customer_response_deadlines(lead_id)
+    if cancelled:
+        await manager.broadcast({"type": "automations_updated"})
+    conversation = await open_conversation_from_inbound(lead_id, message_key, message.get("content"))
+    if conversation is not None:
+        await schedule_automation_event(
+            AutomationTrigger.CONVERSATION_STARTED,
+            lead_id,
+            f"conversation:{lead_id}:{conversation['version']}",
+            {
+                "message_id": message_key,
+                "content": message.get("content"),
+                "conversation_version": conversation["version"],
+                "conversation_opened_at": conversation["opened_at"],
+            },
+        )
     await schedule_automation_event(
         AutomationTrigger.MESSAGE_RECEIVED,
         lead_id,
@@ -1355,8 +1732,26 @@ async def _matches_conditions(
     return await _matches_condition_values(rule.conditions or {}, chat, rule.id, deps)
 
 
+def _execution_message_context(execution: AutomationExecution) -> dict:
+    state = execution.flow_state or {}
+    resumed_message = state.get("message_context")
+    if isinstance(resumed_message, dict) and "content" in resumed_message:
+        return {
+            "message_id": resumed_message.get("message_id"),
+            "content": resumed_message.get("content"),
+        }
+    payload = execution.event_payload or {}
+    return {
+        "message_id": payload.get("message_id"),
+        "content": payload.get("content"),
+    }
+
+
 async def _matches_flow_condition(
-    data: dict, chat: dict, deps: AutomationDeps = DEFAULT_DEPS
+    data: dict,
+    chat: dict,
+    deps: AutomationDeps = DEFAULT_DEPS,
+    message_content: str | None = None,
 ) -> tuple[bool, str]:
     condition_type = data.get("condition_type")
     value = data.get("value")
@@ -1369,6 +1764,25 @@ async def _matches_flow_condition(
     if condition_type == FlowConditionType.SERVICE_CONTAINS:
         matches = str(value).lower() in (chat.get("servicio_interes") or "").lower()
         return matches, f"Servicio {'contiene' if matches else 'no contiene'} {value}"
+    if condition_type in {
+        FlowConditionType.MESSAGE_CONTAINS,
+        FlowConditionType.MESSAGE_EQUALS,
+        FlowConditionType.MESSAGE_NOT_CONTAINS,
+    }:
+        if message_content is None or not str(message_content).strip():
+            return False, "No hay un mensaje de cliente disponible en el contexto del flujo"
+        normalized_message = _normalize_reply_text(str(message_content))
+        normalized_value = _normalize_reply_text(str(value))
+        if condition_type == FlowConditionType.MESSAGE_EQUALS:
+            matches = normalized_message == normalized_value
+            operation = "es igual a"
+        elif condition_type == FlowConditionType.MESSAGE_NOT_CONTAINS:
+            matches = normalized_value not in normalized_message
+            operation = "no contiene"
+        else:
+            matches = normalized_value in normalized_message
+            operation = "contiene"
+        return matches, f"Mensaje {'cumple' if matches else 'no cumple'}: {operation} {value}"
     if condition_type == FlowConditionType.SELLER_EQUALS:
         matches = chat.get("vendedor_id") == value
         return matches, "Vendedor coincide" if matches else "Vendedor no coincide"
@@ -1383,6 +1797,39 @@ async def _matches_flow_condition(
     return matches, "Dentro del horario laboral" if matches else "Fuera del horario laboral"
 
 
+async def _matches_flow_condition_node(
+    data: dict,
+    chat: dict,
+    deps: AutomationDeps = DEFAULT_DEPS,
+    message_content: str | None = None,
+) -> tuple[bool, str, str]:
+    """OR entre grupos y AND dentro de cada grupo.
+
+    Las definiciones publicadas antes de los grupos siguen funcionando como
+    un único grupo con una sola condición.
+    """
+    groups = data.get("condition_groups")
+    if not isinstance(groups, list):
+        matches, detail = await _matches_flow_condition(data, chat, deps, message_content)
+        return matches, (FlowHandle.YES if matches else FlowHandle.NO), detail
+    failed_groups: list[str] = []
+    for group_position, group in enumerate(groups, start=1):
+        details: list[str] = []
+        group_matches = True
+        for condition in group.get("conditions") or []:
+            matches, detail = await _matches_flow_condition(
+                condition, chat, deps, message_content,
+            )
+            details.append(detail)
+            if not matches:
+                group_matches = False
+                break
+        if group_matches:
+            return True, group["id"], f"Grupo {group_position} cumple: {'; '.join(details)}"
+        failed_groups.append(f"Grupo {group_position}: {'; '.join(details)}")
+    return False, FlowHandle.NO, f"Ninguno de los grupos cumple. {' | '.join(failed_groups)}"
+
+
 _flow_indexes = flow_indexes
 
 
@@ -1390,7 +1837,9 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         raise ValueError("Flujo visual no encontrado")
-    validated = await validate_visual_flow(current["name"], current["flow_definition"])
+    validated = await validate_visual_flow(
+        current["name"], current["flow_definition"], current_rule_id=rule_id,
+    )
     chat = await fetch_chat(lead_id)
     if not chat:
         raise ValueError("Lead no encontrado")
@@ -1418,8 +1867,14 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
             path.append({"node_id": current_id, "type": FlowNodeType.TRIGGER, "status": "matched"})
             current_id = edges[(current_id, FlowHandle.NEXT)]
         elif node["type"] == FlowNodeType.CONDITION:
-            matches, detail = await _matches_flow_condition(node["data"], chat)
-            branch = FlowHandle.YES if matches else FlowHandle.NO
+            simulation_message = (
+                chat.get("last_message")
+                if chat.get("last_message_sender") == "cliente"
+                else None
+            )
+            matches, branch, detail = await _matches_flow_condition_node(
+                node["data"], chat, message_content=simulation_message,
+            )
             path.append({
                 "node_id": current_id,
                 "type": FlowNodeType.CONDITION,
@@ -1435,6 +1890,16 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
                 if not window or not window["is_open"]:
                     result.update(status="would_fail", detail="La ventana de 24 horas está cerrada")
             path.append(result)
+            current_id = edges[(current_id, FlowHandle.NEXT)]
+        elif node["type"] == FlowNodeType.INVOKE_FLOW:
+            target_id = int(node["data"]["flow_rule_id"])
+            target = await get_automation_rule(target_id)
+            path.append({
+                "node_id": current_id,
+                "type": FlowNodeType.INVOKE_FLOW,
+                "status": "would_run",
+                "detail": f"Iniciaría el flujo hijo: {target['name'] if target else f'#{target_id}'}",
+            })
             current_id = edges[(current_id, FlowHandle.NEXT)]
         elif node["type"] == FlowNodeType.WAIT:
             path.append({
@@ -1544,6 +2009,35 @@ async def _action_change_service(action, chat, execution, rule, deps) -> dict:
     return {"status": AutomationExecutionStatus.COMPLETED, "service": action["service"]}
 
 
+async def _action_set_conversation_state(action, chat, execution, rule, deps) -> dict:
+    state = action["state"]
+    should_open = state == "open"
+    if bool(chat.get("conversacion_abierta")) == should_open:
+        return {
+            "status": AutomationExecutionStatus.SKIPPED,
+            "conversation_state": state,
+        }
+
+    updated = await deps.update_lead(
+        chat["chat_id"],
+        {"conversacion_abierta": should_open},
+        "system",
+        rule.created_by_user_id,
+    )
+    if not updated:
+        raise ValueError("Lead no encontrado")
+    chat.update(updated)
+    await deps.broadcast({
+        "type": "chats_updated",
+        "chat_id": chat["chat_id"],
+        "reason": "conversation_opened" if should_open else "conversation_closed",
+    })
+    return {
+        "status": AutomationExecutionStatus.COMPLETED,
+        "conversation_state": state,
+    }
+
+
 async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
     updated = await deps.update_lead(
         chat["chat_id"], {"vendedor_id": action["user_id"]}, "system", rule.created_by_user_id
@@ -1626,18 +2120,7 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado de la plantilla no es válido")
 
-    items: list[dict] = []
-    if text:
-        items.append({"content": text, "payload": {"type": "text", "text": text}})
-    for attachment in attachments:
-        mediatype = mediatype_from_content_type(attachment.content_type)
-        items.append({
-            "media_url": attachment.media_url,
-            "payload": {
-                "type": "media", "media_url": attachment.media_url,
-                "mediatype": mediatype, "filename": attachment.filename,
-            },
-        })
+    items = build_internal_template_items(text, attachments)
     # Un solo enqueue_messages para texto + todos los adjuntos: quedan
     # encolados atómicamente en una sola transacción, en vez de una llamada
     # por ítem.
@@ -1763,6 +2246,53 @@ async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
+async def _action_send_media(action, chat, execution, rule, deps) -> dict:
+    """Envía un recurso de la librería con texto opcional.
+
+    Imagen, video y documento llevan el caption dentro del mismo mensaje.
+    WhatsApp no admite caption nativo en audio: en ese caso se conserva el
+    envío como nota de voz y el texto se encola justo después.
+    """
+    asset = await _fetch_media_asset(action, deps)
+    window = await deps.get_customer_service_window(chat["chat_id"])
+    if not window or not window["is_open"]:
+        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    caption = _render(action.get("caption") or "", chat).strip()
+    if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+        raise ValueError("El caption renderizado admite máximo 1024 caracteres")
+
+    mediatype = mediatype_from_content_type(asset.content_type)
+    if mediatype == "audio":
+        items = [{
+            "media_url": asset.media_url,
+            "payload": {"type": "audio", "media_url": asset.media_url},
+        }]
+        if caption:
+            items.append({
+                "content": caption,
+                "payload": {"type": "text", "text": caption},
+            })
+    else:
+        items = [{
+            "content": caption or None,
+            "media_url": asset.media_url,
+            "payload": {
+                "type": "media",
+                "media_url": asset.media_url,
+                "mediatype": mediatype,
+                "filename": asset.filename,
+                "caption": caption or None,
+            },
+        }]
+
+    sent = await deps.enqueue_messages(chat["chat_id"], items)
+    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    return {
+        "status": AutomationExecutionStatus.COMPLETED,
+        "message_ids": [message["id"] for message in sent],
+    }
+
+
 async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
     """Manda un mensaje con botones nativos si la integración es WhatsApp
     Business; si no, cae al fallback de texto numerado (mismo que usa el
@@ -1794,6 +2324,7 @@ ACTION_HANDLERS = {
     AutomationActionType.CREATE_TASK: _action_create_task,
     AutomationActionType.ASSIGN_SELLER: _action_assign_seller,
     AutomationActionType.CHANGE_SERVICE: _action_change_service,
+    AutomationActionType.SET_CONVERSATION_STATE: _action_set_conversation_state,
     AutomationActionType.ADD_TAG: _action_add_tag,
     AutomationActionType.REMOVE_TAG: _action_remove_tag,
     AutomationActionType.CHANGE_STAGE: _action_change_stage,
@@ -1802,6 +2333,7 @@ ACTION_HANDLERS = {
     AutomationActionType.SEND_MESSAGE: _action_send_message,
     AutomationActionType.SEND_AUDIO: _action_send_audio,
     AutomationActionType.SEND_ATTACHMENT: _action_send_attachment,
+    AutomationActionType.SEND_MEDIA: _action_send_media,
     AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE: _action_react_to_last_customer_message,
 }
 
@@ -1896,6 +2428,79 @@ async def _resolve_flow_definition(
     return definition or rule.published_flow_definition or {}
 
 
+async def _start_invoked_flow(
+    parent_execution: AutomationExecution,
+    flow_rule_id: int,
+    node_id: str,
+    deps: AutomationDeps = DEFAULT_DEPS,
+) -> tuple[int, str]:
+    """Programa una ejecución hija para el mismo lead y devuelve id/nombre.
+
+    La ejecución es independiente: si el hijo contiene una pausa puede quedar
+    esperando sin retener al padre. La ascendencia viaja en event_payload para
+    frenar ciclos incluso si una definición antigua eludió la validación de
+    publicación.
+    """
+    payload = parent_execution.event_payload or {}
+    ancestry = [int(item) for item in (payload.get("flow_ancestry") or [])]
+    ancestry.append(parent_execution.rule_id)
+    if flow_rule_id in ancestry:
+        raise ValueError("La invocación entre flujos contiene un ciclo")
+    if len(ancestry) >= 20:
+        raise ValueError("La cadena de flujos invocados es demasiado profunda")
+    message_context = _execution_message_context(parent_execution)
+    child_payload = {
+        "parent_execution_id": parent_execution.id,
+        "parent_rule_id": parent_execution.rule_id,
+        "flow_ancestry": ancestry,
+    }
+    if message_context.get("content") is not None:
+        child_payload.update(message_context)
+
+    now = deps.now()
+    async with deps.session() as session:
+        target = await session.get(AutomationRule, flow_rule_id)
+        if target is None or target.deleted_at is not None:
+            raise ValueError("El flujo hijo ya no existe")
+        if target.builder_mode != AutomationBuilderMode.VISUAL:
+            raise ValueError("El destino ya no es un flujo visual")
+        if not target.is_active or not target.published_flow_definition:
+            raise ValueError(f"El flujo hijo {target.name} no está publicado y activo")
+        event_key = f"flow:{parent_execution.id}:{node_id}"
+        child_id = (await session.execute(pg_insert(AutomationExecution).values(
+            rule_id=target.id,
+            lead_id=parent_execution.lead_id,
+            trigger_type=target.trigger_type,
+            event_key=event_key,
+            event_payload=child_payload,
+            status=AutomationExecutionStatus.SCHEDULED,
+            scheduled_for=now,
+            action_results=[],
+            flow_state={
+                "flow_version": target.flow_version,
+                "current_node_id": None,
+                "path": [],
+            },
+            created_at=now,
+            start_source="flow",
+            started_by_user_id=parent_execution.started_by_user_id,
+        ).on_conflict_do_nothing(
+            index_elements=[AutomationExecution.rule_id, AutomationExecution.event_key]
+        ).returning(AutomationExecution.id))).scalar_one_or_none()
+        if child_id is None:
+            child_id = await session.scalar(select(AutomationExecution.id).where(
+                AutomationExecution.rule_id == target.id,
+                AutomationExecution.event_key == event_key,
+            ))
+        if child_id is None:
+            raise ValueError("No se pudo recuperar la ejecución del flujo hijo")
+        target_name = target.name
+        await session.commit()
+    await deps.broadcast({"type": "automations_updated"})
+    _wake.set()
+    return child_id, target_name
+
+
 async def _run_visual_execution(
     execution: AutomationExecution, rule: AutomationRule, chat: dict,
     deps: AutomationDeps = DEFAULT_DEPS,
@@ -1918,6 +2523,7 @@ async def _run_visual_execution(
         return
     path = list(state.get("path") or [])
     results = list(execution.action_results or [])
+    message_context = _execution_message_context(execution)
     current_id = state.get("current_node_id")
     if not current_id:
         matches, reason = await _matches_condition_values(
@@ -1973,8 +2579,9 @@ async def _run_visual_execution(
                     return  # cancelada externamente: no proceses más nodos
                 continue
             if node["type"] == FlowNodeType.CONDITION:
-                matches, detail = await _matches_flow_condition(node["data"], chat, deps)
-                branch = FlowHandle.YES if matches else FlowHandle.NO
+                matches, branch, detail = await _matches_flow_condition_node(
+                    node["data"], chat, deps, message_context.get("content"),
+                )
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
                     "type": FlowNodeType.CONDITION,
@@ -2011,6 +2618,33 @@ async def _run_visual_execution(
                 )
                 if not saved:
                     return  # cancelada externamente: no proceses más nodos
+                continue
+            if node["type"] == FlowNodeType.INVOKE_FLOW:
+                flow_rule_id = int(node["data"]["flow_rule_id"])
+                child_id, target_name = await _start_invoked_flow(
+                    execution, flow_rule_id, node["id"], deps,
+                )
+                results.append({
+                    "position": len(results) + 1,
+                    "node_id": node["id"],
+                    "type": FlowNodeType.INVOKE_FLOW,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                    "flow_rule_id": flow_rule_id,
+                    "child_execution_id": child_id,
+                    "detail": f"Flujo hijo iniciado: {target_name}",
+                })
+                current_id = edges[(current_id, FlowHandle.NEXT)]
+                saved = await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                    deps=deps,
+                )
+                if not saved:
+                    return
                 continue
             if node["type"] == FlowNodeType.WAIT:
                 seconds = _wait_seconds(node["data"])
@@ -2211,6 +2845,8 @@ async def _run_visual_execution(
         action_type = "flow"
         if current_id in nodes and nodes[current_id]["type"] == FlowNodeType.ACTION:
             action_type = nodes[current_id]["data"].get("action", {}).get("type", FlowNodeType.ACTION)
+        elif current_id in nodes and nodes[current_id]["type"] == FlowNodeType.INVOKE_FLOW:
+            action_type = FlowNodeType.INVOKE_FLOW
         results.append({
             "position": len(results) + 1, "node_id": current_id,
             "type": action_type,
@@ -2290,6 +2926,43 @@ async def _rate_limit_reached(rule: AutomationRule, deps: AutomationDeps) -> boo
     return (recent or 0) >= rule.max_executions_per_hour
 
 
+async def _customer_response_deadline_is_current(
+    execution: AutomationExecution,
+    deps: AutomationDeps,
+) -> bool:
+    """Última defensa contra carreras entre el vencimiento y una respuesta."""
+    if getattr(execution, "trigger_type", None) != AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
+        return True
+    # Una ejecución visual puede quedar SCHEDULED por un nodo de espera. Para
+    # entonces el deadline ya disparó y no debe volver a validarse ni
+    # cancelarse por mensajes que sean parte del propio flujo.
+    flow_state = getattr(execution, "flow_state", None) or {}
+    if (
+        getattr(execution, "action_results", None)
+        or flow_state.get("current_node_id")
+        or flow_state.get("path")
+    ):
+        return True
+    payload = execution.event_payload or {}
+    expected_id = str(payload.get("last_message_id") or "")
+    if not expected_id or not execution.lead_id:
+        return False
+    async with deps.session() as session:
+        row = (await session.execute(select(
+            WspMessage.id,
+            WspMessage.wa_message_id,
+            WspMessage.sender,
+        ).where(
+            WspMessage.chat_id == execution.lead_id,
+        ).order_by(
+            WspMessage.sent_at.desc(), WspMessage.id.desc()
+        ).limit(1))).mappings().first()
+    if row is None or row["sender"] != "vendedor":
+        return False
+    current_id = str(row["wa_message_id"] or row["id"])
+    return current_id == expected_id
+
+
 async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS) -> None:
     async with deps.session() as session:
         execution = await session.get(AutomationExecution, execution_id)
@@ -2300,6 +2973,14 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
         await _save_execution(
             execution_id, deps,
             status=AutomationExecutionStatus.SKIPPED, error="La regla fue desactivada",
+        )
+        return
+    if not await _customer_response_deadline_is_current(execution, deps):
+        await _save_execution(
+            execution_id,
+            deps,
+            status=AutomationExecutionStatus.SKIPPED,
+            error="El chat cambió antes del vencimiento; no se ejecutó el cierre",
         )
         return
     if await _rate_limit_reached(rule, deps):
@@ -2413,6 +3094,7 @@ async def _discover_recent_inbound_messages() -> None:
             AutomationRule.trigger_type.in_([
                 AutomationTrigger.MESSAGE_RECEIVED,
                 AutomationTrigger.LEAD_CREATED,
+                AutomationTrigger.CONVERSATION_STARTED,
             ]),
         ).limit(1))
         if not has_rules:
@@ -2430,11 +3112,45 @@ async def _discover_recent_inbound_messages() -> None:
             {"message_id": str(row["wa_message_id"] or row["id"]), "content": row["content"]},
         )
 
+    # La apertura queda auditada en la misma transacción que cambia el lead.
+    # Si el webhook cayó después de ese commit pero antes de programar el
+    # flujo, este barrido reconstruye el evento sin volver a abrir ni duplicar.
+    async with get_sessionmaker()() as session:
+        conversation_rows = (await session.execute(
+            select(
+                LeadActivity.lead_id,
+                LeadActivity.new_value,
+                LeadActivity.metadata_,
+                LeadActivity.created_at,
+            ).where(
+                LeadActivity.event_type == AutomationTrigger.CONVERSATION_STARTED,
+                LeadActivity.created_at >= since,
+            ).order_by(LeadActivity.created_at.asc(), LeadActivity.id.asc()).limit(200)
+        )).mappings().all()
+    for row in conversation_rows:
+        new_value = row["new_value"] or {}
+        metadata = row["metadata_"] or {}
+        version = int(new_value.get("conversacion_version") or 0)
+        if version <= 0:
+            continue
+        await schedule_automation_event(
+            AutomationTrigger.CONVERSATION_STARTED,
+            row["lead_id"],
+            f"conversation:{row['lead_id']}:{version}",
+            {
+                "message_id": str(metadata.get("message_id") or ""),
+                "content": metadata.get("content"),
+                "conversation_version": version,
+                "conversation_opened_at": _ts(row["created_at"]),
+            },
+        )
+
 
 def _normalize_reply_text(value: str) -> str:
-    """trim + minúsculas + sin acentos, para matchear la respuesta libre del
-    cliente contra el label de un botón sin depender de mayúsculas/tildes."""
-    decomposed = unicodedata.normalize("NFKD", value.strip().lower())
+    """Trim, espacios estables, minúsculas y sin acentos para comparar texto
+    de cliente sin depender de presentación, mayúsculas o tildes."""
+    compact = " ".join(value.strip().lower().split())
+    decomposed = unicodedata.normalize("NFKD", compact)
     return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
@@ -2486,16 +3202,27 @@ async def _discover_wait_any_replies() -> None:
             continue
         since = datetime.fromisoformat(waiting_since)
         resume_reason = None
+        reply_context = None
         async with get_sessionmaker()() as session:
             if flow_state.get("awaiting_message"):
                 reply = (await session.execute(
-                    select(WspMessage.message_type, WspMessage.content, WspMessage.payload).where(
+                    select(
+                        WspMessage.id,
+                        WspMessage.wa_message_id,
+                        WspMessage.message_type,
+                        WspMessage.content,
+                        WspMessage.payload,
+                    ).where(
                         WspMessage.chat_id == lead_id,
                         WspMessage.sender == "cliente",
                         WspMessage.sent_at > since,
                     ).order_by(WspMessage.sent_at.asc(), WspMessage.id.asc()).limit(1)
                 )).mappings().first()
                 if reply:
+                    reply_context = {
+                        "message_id": str(reply["wa_message_id"] or reply["id"]),
+                        "content": reply["content"],
+                    }
                     question_buttons = flow_state.get("question_buttons")
                     resume_reason = (
                         _match_question_button(question_buttons, reply["message_type"], reply["content"], reply["payload"])
@@ -2516,7 +3243,11 @@ async def _discover_wait_any_replies() -> None:
                 AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
             ).values(
                 scheduled_for=datetime.now(timezone.utc),
-                flow_state={**flow_state, "resume_reason": resume_reason},
+                flow_state={
+                    **flow_state,
+                    "resume_reason": resume_reason,
+                    **({"message_context": reply_context} if reply_context else {}),
+                },
             ))
             await session.commit()
             resumed = True
@@ -2525,12 +3256,16 @@ async def _discover_wait_any_replies() -> None:
 
 
 async def _discover_timed_events() -> None:
+    """Descubre únicamente eventos externos que todavía no crean su deadline.
+
+    ``customer_response_overdue`` no aparece aquí: se programa al insertar cada
+    mensaje del vendedor y, por tanto, no necesita recorrer chats por minuto.
+    """
     async with get_sessionmaker()() as session:
         rules = (await session.execute(select(AutomationRule).where(
             AutomationRule.is_active.is_(True),
             AutomationRule.trigger_type.in_([
                 AutomationTrigger.SELLER_RESPONSE_OVERDUE,
-                AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
                 AutomationTrigger.TASK_DUE,
             ]),
         ))).scalars().all()
@@ -2558,11 +3293,7 @@ async def _discover_timed_events() -> None:
                     }, rule.id
                 )
             continue
-        expected_sender = (
-            "cliente"
-            if rule.trigger_type == AutomationTrigger.SELLER_RESPONSE_OVERDUE
-            else "vendedor"
-        )
+        expected_sender = "cliente"
         now = datetime.now(timezone.utc)
         minutes = int((rule.trigger_config or {}).get("minutes", 1))
         threshold = now - timedelta(minutes=minutes)
@@ -2581,34 +3312,64 @@ async def _discover_timed_events() -> None:
                 last_message.c.sender == expected_sender,
                 last_message.c.sent_at <= threshold,
             ).limit(500))).mappings().all()
-            anchors: dict[str, int] = {}
-            if rule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE and rows:
-                # La deduplicación se ancla al último mensaje DEL CLIENTE: los
-                # follow-ups que envía la propia regla crean mensajes nuevos
-                # del vendedor y, sin este ancla, cada uno re-dispararía la
-                # regla en un goteo infinito hasta que el cliente responda.
-                anchors = dict((await session.execute(
-                    select(WspMessage.chat_id, WspMessage.id).where(
-                        WspMessage.chat_id.in_([row["chat_id"] for row in rows]),
-                        WspMessage.sender == "cliente",
-                        WspMessage.sent_at >= lookback,
-                    ).order_by(
-                        WspMessage.chat_id, WspMessage.sent_at.desc(), WspMessage.id.desc()
-                    ).distinct(WspMessage.chat_id)
-                )).all())
         for row in rows:
-            if rule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
-                anchor = anchors.get(row["chat_id"])
-                event_key = f"silence:{anchor}" if anchor else f"silence:none:{row['chat_id']}"
-            else:
-                event_key = f"overdue:{row['id']}"
             await schedule_automation_event(
                 AutomationTrigger(rule.trigger_type),
                 row["chat_id"],
-                event_key,
+                f"overdue:{row['id']}",
                 {"last_message_id": str(row["id"]), "last_sender": row["sender"], "last_message_at": _ts(row["sent_at"])},
                 rule.id,
             )
+
+
+async def _backfill_customer_response_deadlines(rule_id: int) -> int:
+    """Programa una sola vez los chats recientes al activar/publicar una regla.
+
+    Esto evita perder conversaciones ya abiertas durante un deploy sin volver
+    al barrido periódico. La ventana limitada conserva la protección previa
+    contra envíos masivos a historiales antiguos.
+    """
+    async with get_sessionmaker()() as session:
+        rule = (await session.execute(select(
+            AutomationRule.id,
+            AutomationRule.trigger_config,
+        ).where(
+            AutomationRule.id == rule_id,
+            AutomationRule.is_active.is_(True),
+            AutomationRule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+        ))).mappings().first()
+        if rule is None:
+            return 0
+        minutes = max(1, int((rule["trigger_config"] or {}).get("minutes", 1)))
+        lookback = datetime.now(timezone.utc) - timedelta(
+            minutes=minutes + OVERDUE_LOOKBACK_GRACE_MINUTES
+        )
+        last_message = select(
+            WspMessage.id,
+            WspMessage.wa_message_id,
+            WspMessage.chat_id,
+            WspMessage.sender,
+            WspMessage.sent_at,
+        ).where(WspMessage.sent_at >= lookback).order_by(
+            WspMessage.chat_id,
+            WspMessage.sent_at.desc(),
+            WspMessage.id.desc(),
+        ).distinct(WspMessage.chat_id).subquery()
+        rows = (await session.execute(select(last_message).join(
+            Lead, Lead.id == last_message.c.chat_id
+        ).where(
+            last_message.c.sender == "vendedor",
+            Lead.automatizacion_pausada.is_(False),
+        ).limit(500))).mappings().all()
+    scheduled = 0
+    for row in rows:
+        scheduled += await _schedule_customer_response_deadlines({
+            "chat_id": row["chat_id"],
+            "message_id": str(row["wa_message_id"] or row["id"]),
+            "sender": "vendedor",
+            "sent_at": row["sent_at"],
+        }, rule_id=rule_id)
+    return scheduled
 
 
 async def _release_stale_executions() -> None:
@@ -2653,6 +3414,8 @@ async def backfill_automation_state() -> None:
     2. Reescribe las claves de eventos task_due del formato viejo
        task:{id}:{updated_at} al nuevo task:{id}:{due_at}, para que el deploy
        no re-dispare automatizaciones de tareas ya procesadas.
+    3. Crea una vez los deadlines recientes de ``customer_response_overdue``;
+       después los mensajes los mantienen sin ningún barrido periódico.
     """
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
@@ -2708,7 +3471,15 @@ async def backfill_automation_state() -> None:
                 AutomationExecution.id == row["id"]
             ).values(event_key=new_key))
             existing_keys.add((row["rule_id"], new_key))
+        customer_deadline_rule_ids = (await session.execute(select(
+            AutomationRule.id
+        ).where(
+            AutomationRule.is_active.is_(True),
+            AutomationRule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+        ))).scalars().all()
         await session.commit()
+    for rule_id in customer_deadline_rule_ids:
+        await _backfill_customer_response_deadlines(rule_id)
 
 
 async def watch_automations() -> None:

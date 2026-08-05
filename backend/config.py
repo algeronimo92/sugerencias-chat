@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     minio_secure: bool = True
     minio_verify_tls: bool = True
     minio_prefix: str = "dermicapro"
+    # Timeouts del cliente MinIO. El SDK es síncrono y sus llamadas corren en
+    # el threadpool de anyio, así que una conexión colgada retiene un hilo:
+    # sin timeout, suficientes descargas atascadas dejan sin servir todos los
+    # endpoints síncronos. El de lectura es por trozo, no total, para no
+    # cortar descargas grandes que sí avanzan.
+    minio_connect_timeout_seconds: float = 5.0
+    minio_read_timeout_seconds: float = 30.0
+    minio_pool_maxsize: int = 20
 
     # Marca `Secure` de la cookie de sesión. None = deducirla del esquema real
     # de la petición (incluyendo X-Forwarded-Proto de Traefik). Detrás del

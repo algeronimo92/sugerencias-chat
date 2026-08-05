@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Un banner "Flujo 'X' en curso — paso N/M" por cada ejecución manual
+ * Un banner "Flujo 'X' en curso — paso N/M" por cada ejecución manual o hija
  * (disparada por un vendedor con FlowPicker) que sigue scheduled/running
  * sobre este chat — puede haber más de una si el vendedor lo arrancó dos
  * veces antes de que la guarda de reentrada del backend lo bloqueara, o si
@@ -25,7 +25,7 @@ export function FlowRunStatus({ chatId }: Props) {
 
   const active = executions.filter(
     (execution) =>
-      execution.start_source === 'manual' &&
+      (execution.start_source === 'manual' || execution.start_source === 'flow') &&
       (execution.status === 'scheduled' || execution.status === 'running')
   )
   if (active.length === 0) return null

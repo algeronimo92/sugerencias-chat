@@ -42,7 +42,7 @@ class FakeWebSocket {
     this.closed = true
   }
 
-  emit(payload: unknown) {
+  emit(payload: object) {
     this.onmessage?.({ data: JSON.stringify(payload) })
   }
 
@@ -73,7 +73,7 @@ let currentClient: QueryClient
 
 beforeEach(() => {
   FakeWebSocket.instances = []
-  vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket)
+  vi.stubGlobal('WebSocket', FakeWebSocket)
 })
 
 afterEach(() => {
@@ -138,7 +138,7 @@ describe('useChatUpdates con otros motivos', () => {
       FakeWebSocket.last.emit({ type: 'chats_updated', chat_id: CHAT_ID, reason: 'inbound_message' })
     })
 
-    const keys = invalidate.mock.calls.map(([arg]) => JSON.stringify((arg as { queryKey: unknown }).queryKey))
+    const keys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey))
     expect(keys).toContain(JSON.stringify(['chats']))
     expect(keys).toContain(JSON.stringify(['messages', CHAT_ID]))
     expect(keys).toContain(JSON.stringify(['unread-count']))
@@ -154,7 +154,7 @@ describe('useChatUpdates con otros motivos', () => {
     })
 
     // El contador de no leídos sí cambia; los mensajes no.
-    const keys = invalidate.mock.calls.map(([arg]) => JSON.stringify((arg as { queryKey: unknown }).queryKey))
+    const keys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey))
     expect(keys).toContain(JSON.stringify(['unread-count']))
   })
 })

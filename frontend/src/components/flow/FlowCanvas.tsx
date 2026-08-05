@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, ControlButton, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
+  Background, ControlButton, Controls, Handle, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
   type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
@@ -12,8 +12,8 @@ import {
   Eye, EyeOff, SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
 } from 'lucide-react'
 import type {
-  AutomationAction, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, MediaAsset, MessageTemplate, QuestionButton, WaitAnyCondition,
+  AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
+  AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, WaitAnyCondition,
 } from '../../types'
 import {
   AUTOMATION_ACTION_LABELS, AUTOMATION_TRIGGERS, AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
@@ -21,10 +21,31 @@ import {
   QuestionHandle, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
 } from '../../domain/automationCatalog'
 import { resolveMediaUrl } from '../../utils/message'
+import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
-type CanvasNodeData = Record<string, unknown> & {
+type CanvasNodeDataValue =
+  | string | number | boolean | null | undefined
+  | AutomationAction | AutomationFlowConditionGroup[] | WaitAnyCondition[] | QuestionButton[]
+  | MessageTemplate | MediaAsset
+  | ((id: string) => void)
+
+interface CanvasNodeData {
+  [key: string]: CanvasNodeDataValue
+  trigger_type?: AutomationTrigger
+  condition_type?: AutomationFlowConditionType
+  value?: string | number | boolean | null
+  condition_groups?: AutomationFlowConditionGroup[]
+  action?: AutomationAction
+  flow_rule_id?: number | null
+  invokedFlowName?: string
+  seconds?: number
+  conditions?: WaitAnyCondition[]
+  text?: string
+  buttons?: QuestionButton[]
+  timeout_seconds?: number
+  label?: string
   onDelete?: (id: string) => void
   isSelected?: boolean
   previewTemplate?: MessageTemplate
@@ -37,6 +58,9 @@ type CanvasNode = Node<CanvasNodeData>
 
 const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
+const EMPTY_TEMPLATES: MessageTemplate[] = []
+const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
+const EMPTY_FLOW_RULES: AutomationRule[] = []
 
 function storedConnectionHighlightPreference(): boolean {
   try {
@@ -51,24 +75,28 @@ function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
     return AUTOMATION_TRIGGERS.find(item => item.value === data.trigger_type)?.label ?? 'Disparador'
   }
   if (type === FlowNodeType.Condition) {
-    const condition = String(data.condition_type ?? '')
-    return isFlowConditionType(condition) ? FLOW_CONDITION_LABELS[condition] : 'Condición'
+    const first = data.condition_groups?.[0]?.conditions[0]
+    const condition = String(first?.condition_type ?? data.condition_type ?? '')
+    const count = data.condition_groups?.reduce((sum, group) => sum + group.conditions.length, 0) ?? 1
+    const label = isFlowConditionType(condition) ? FLOW_CONDITION_LABELS[condition] : 'Condición'
+    return `${label}${count > 1 ? ` (+${count - 1})` : ''}`
   }
   if (type === FlowNodeType.Action) {
-    const action = data.action as { type?: string } | undefined
+    const action = data.action
     const actionType = String(action?.type ?? '')
     return isAutomationActionType(actionType) ? AUTOMATION_ACTION_LABELS[actionType] : 'Acción'
   }
+  if (type === FlowNodeType.InvokeFlow) return data.invokedFlowName ?? 'Selecciona un flujo'
   if (type === FlowNodeType.Wait) return `Esperar ${formatWaitDuration(Number(data.seconds ?? 0))}`
   if (type === FlowNodeType.WaitAny) {
-    const conditions = (data.conditions as WaitAnyCondition[] | undefined) ?? []
+    const conditions = data.conditions ?? []
     const timer = conditions.find(c => c.kind === WaitAnyConditionKind.Timer)
     const hasMessage = conditions.some(c => c.kind === WaitAnyConditionKind.Message)
     const timerLabel = timer ? formatWaitDuration(timer.seconds) : ''
     return hasMessage ? `${timerLabel} o mensaje` : timerLabel
   }
   if (type === FlowNodeType.Question) {
-    const buttons = (data.buttons as QuestionButton[] | undefined) ?? []
+    const buttons = data.buttons ?? []
     return buttons.length ? buttons.map(button => button.label).join(' / ') : 'Sin botones'
   }
   return String(data.label || 'Fin')
@@ -76,14 +104,16 @@ function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
 
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
   if (type === FlowNodeType.Question) return 'Mensaje interactivo'
+  if (type === FlowNodeType.InvokeFlow) return 'Flujo hijo'
   if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
-  const action = data.action as AutomationAction | undefined
+  const action = data.action
   if (action?.type === AutomationActionType.ReactToLastCustomerMessage) return 'Reacción'
   return action?.type === AutomationActionType.SendMessage
     || action?.type === AutomationActionType.SendTemplate
     || action?.type === AutomationActionType.SendAudio
     || action?.type === AutomationActionType.SendAttachment
+    || action?.type === AutomationActionType.SendMedia
     ? 'Mensaje'
     : 'Acción'
 }
@@ -92,6 +122,7 @@ const TONES: Record<AutomationFlowNodeType, string> = {
   [FlowNodeType.Trigger]: 'border-wa-primary bg-green-50 dark:border-emerald-700 dark:bg-[#102737]',
   [FlowNodeType.Condition]: 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-[#102737]',
   [FlowNodeType.Action]: 'border-violet-400 bg-violet-50 dark:border-sky-800 dark:bg-[#102737]',
+  [FlowNodeType.InvokeFlow]: 'border-indigo-400 bg-indigo-50 dark:border-indigo-800 dark:bg-[#102737]',
   [FlowNodeType.Wait]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
   [FlowNodeType.WaitAny]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
   [FlowNodeType.Question]: 'border-pink-400 bg-pink-50 dark:border-sky-800 dark:bg-[#102737]',
@@ -102,6 +133,7 @@ const ICONS: Record<AutomationFlowNodeType, typeof Zap> = {
   [FlowNodeType.Trigger]: Zap,
   [FlowNodeType.Condition]: Split,
   [FlowNodeType.Action]: Activity,
+  [FlowNodeType.InvokeFlow]: CirclePlay,
   [FlowNodeType.Wait]: Timer,
   [FlowNodeType.WaitAny]: Timer,
   [FlowNodeType.Question]: MessageCircleQuestion,
@@ -118,6 +150,7 @@ interface ShellProps {
 
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
   const Icon = ICONS[type]
+  const widthClass = type === FlowNodeType.Condition ? 'w-[26rem]' : 'w-72'
   const connectionClass = data.connectionRole === 'source'
     ? 'ring-2 ring-cyan-400 ring-offset-2 shadow-[0_0_24px_rgba(34,211,238,0.45)] dark:ring-offset-gray-950'
     : data.connectionRole === 'target'
@@ -136,7 +169,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         : null
   return (
     <div
-      className={`relative w-72 rounded-xl border-2 px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 ${TONES[type]} ${connectionClass} ${
+      className={`relative ${widthClass} rounded-xl border-2 px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 ${TONES[type]} ${connectionClass} ${
         data.connectionDimmed ? 'opacity-40 saturate-50' : ''
       }`}
     >
@@ -166,7 +199,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
 }
 
 function ActionPreview({ data }: { data: CanvasNodeData }) {
-  const action = data.action as AutomationAction | undefined
+  const action = data.action
   if (!action) return null
 
   if (action.type === AutomationActionType.SendMessage) {
@@ -202,6 +235,13 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   if (action.type === AutomationActionType.SendAttachment) {
     return <div className="nodrag nowheel mt-2" onClick={event => event.stopPropagation()}>
       {data.previewAsset ? <AttachmentMedia attachment={data.previewAsset} interactive /> : <EmptyPreview label="Elige un archivo para previsualizarlo" />}
+    </div>
+  }
+
+  if (action.type === AutomationActionType.SendMedia) {
+    return <div className="nodrag nowheel mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-violet-800 dark:bg-gray-950/30" onClick={event => event.stopPropagation()}>
+      {data.previewAsset ? <AttachmentMedia attachment={data.previewAsset} interactive /> : <EmptyPreview label="Elige un archivo para previsualizarlo" />}
+      <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin caption'}</p>
     </div>
   }
 
@@ -290,29 +330,53 @@ const ActionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   </NodeShell>
 ))
 
+const InvokeFlowNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
+  <NodeShell id={id} type={FlowNodeType.InvokeFlow} data={data} selected={selected}>
+    <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
+    <div className="mt-2 rounded-lg border border-indigo-200 bg-white/80 p-2 text-[10px] text-indigo-700 dark:border-indigo-800 dark:bg-gray-950/30 dark:text-indigo-300">
+      Inicia una ejecución independiente para el mismo lead
+    </div>
+    <Handle type="source" position={Position.Right} id={FlowHandle.Next} style={HANDLE_STYLE} />
+  </NodeShell>
+))
+
 const EndNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.End} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
   </NodeShell>
 ))
 
-/** La condición expone dos salidas separadas y etiquetadas: arrastrar desde la
- *  verde crea la rama Sí y desde la roja la rama No, sin menús intermedios. */
-const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
-  <NodeShell id={id} type={FlowNodeType.Condition} data={data} selected={selected}>
+/** Una salida verde por grupo OR y una roja cuando ninguno coincide. */
+const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
+  const groups = data.condition_groups?.length ? data.condition_groups : [{
+    id: FlowHandle.Yes,
+    conditions: [{
+      id: 'legacy-condition',
+      condition_type: data.condition_type ?? ('stage_equals' as AutomationFlowConditionType),
+      value: data.value ?? null,
+    }],
+  }]
+  return <NodeShell id={id} type={FlowNodeType.Condition} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
     <div className="mt-2 space-y-1">
-      <div className="relative rounded-md border border-green-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-wa-primary-strong dark:border-emerald-800 dark:bg-[#173b59] dark:text-wa-primary">
-        Sí, se cumple
-        <Handle type="source" position={Position.Right} id={FlowHandle.Yes} style={{ ...HANDLE_STYLE, background: '#00a884', right: -18, top: '50%' }} />
-      </div>
+      {groups.map((group, groupIndex) => <div key={group.id}>
+        {groupIndex > 0 && <div className="py-0.5 text-center text-[8px] font-bold uppercase text-amber-600">O</div>}
+        <div className="relative rounded-md border border-green-200 bg-white/70 px-2 py-1.5 text-[9px] text-gray-700 dark:border-emerald-800 dark:bg-[#173b59] dark:text-gray-200">
+          {group.conditions.map((condition, conditionIndex) => <div key={condition.id} className="leading-snug">
+            {conditionIndex > 0 && <span className="mr-1 font-bold text-wa-primary-strong">Y</span>}
+            <span className="font-semibold">{FLOW_CONDITION_LABELS[condition.condition_type]}</span>
+            {typeof condition.value === 'string' || typeof condition.value === 'number' ? <span>: {String(condition.value)}</span> : null}
+          </div>)}
+          <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: '#00a884', right: -18, top: '50%' }} />
+        </div>
+      </div>)}
       <div className="relative rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-red-500 dark:border-red-900 dark:bg-[#173b59] dark:text-red-400">
-        No se cumple
+        Ninguna de las condiciones
         <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: '#ef4444', right: -18, top: '50%' }} />
       </div>
     </div>
   </NodeShell>
-))
+})
 
 const WAIT_ANY_HANDLE_COLORS: Record<string, string> = {
   [WaitAnyConditionKind.Timer]: '#0891b2',
@@ -325,7 +389,7 @@ const WAIT_ANY_HANDLE_COLORS: Record<string, string> = {
  *  condición (== su "kind": "timer"/"message"/"business_hours"/
  *  "media_played") es el handle. */
 function PauseNodeView({ id, data, selected, legacy = false }: NodeProps<CanvasNode> & { legacy?: boolean }) {
-  const storedConditions = (data.conditions as WaitAnyCondition[] | undefined) ?? []
+  const storedConditions = data.conditions ?? []
   const conditions = legacy
     ? [{ id: FlowHandle.Next, kind: WaitAnyConditionKind.Timer, seconds: Number(data.seconds ?? 0) }]
     : storedConditions
@@ -355,7 +419,7 @@ const LegacyPauseNode = memo((props: NodeProps<CanvasNode>) => <PauseNodeView {.
 /** Una fila por botón + "Otra respuesta" + "Sin respuesta" (timeout), cada
  *  una con su propia salida — mismo patrón visual que WaitAnyNode. */
 const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
-  const buttons = (data.buttons as QuestionButton[] | undefined) ?? []
+  const buttons = data.buttons ?? []
   const rows: Array<{ handle: string; label: string; color: string }> = [
     ...buttons.map((button, index) => ({ handle: button.id, label: button.label, color: BUTTON_COLORS[index % BUTTON_COLORS.length] })),
     { handle: QuestionHandle.Other, label: 'Otra respuesta', color: '#6b7280' },
@@ -383,6 +447,7 @@ const NODE_TYPES: NodeTypes = {
   [FlowNodeType.Trigger]: TriggerNode,
   [FlowNodeType.Condition]: ConditionNode,
   [FlowNodeType.Action]: ActionNode,
+  [FlowNodeType.InvokeFlow]: InvokeFlowNode,
   [FlowNodeType.Wait]: LegacyPauseNode,
   [FlowNodeType.WaitAny]: PauseNode,
   [FlowNodeType.Question]: QuestionNode,
@@ -391,101 +456,11 @@ const NODE_TYPES: NodeTypes = {
 
 const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
-const EDGE_COLORS: Record<string, string> = {
-  [FlowHandle.Yes]: '#00a884',
-  [FlowHandle.No]: '#ef4444',
-  [FlowHandle.Next]: '#94a3b8',
-  [WaitAnyConditionKind.Timer]: '#0891b2',
-  [WaitAnyConditionKind.Message]: '#7c3aed',
-  [WaitAnyConditionKind.BusinessHours]: '#f59e0b',
-  [WaitAnyConditionKind.MediaPlayed]: '#db2777',
-  [QuestionHandle.Other]: '#6b7280',
-  [QuestionHandle.Timeout]: '#ef4444',
-}
-
-const EDGE_LABELS: Record<string, string> = {
-  [FlowHandle.Yes]: 'Sí',
-  [FlowHandle.No]: 'No',
-  [WaitAnyConditionKind.Timer]: 'Timer',
-  [WaitAnyConditionKind.Message]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.Message],
-  [WaitAnyConditionKind.BusinessHours]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.BusinessHours],
-  [WaitAnyConditionKind.MediaPlayed]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.MediaPlayed],
-  [QuestionHandle.Other]: 'Otra respuesta',
-  [QuestionHandle.Timeout]: 'Sin respuesta',
-}
-
-export function toCanvasEdges(
-  edges: AutomationFlowEdge[],
-  highlightedEdgeIds: ReadonlySet<string> = new Set(),
-  selectedEdgeId: string | null = null,
-  hoveredEdgeId: string | null = null,
-): Edge[] {
-  const hasHighlight = highlightedEdgeIds.size > 0
-  return edges.map(edge => {
-    const color = EDGE_COLORS[edge.source_handle] ?? '#94a3b8'
-    const highlighted = highlightedEdgeIds.has(edge.id)
-    const hovered = edge.id === hoveredEdgeId
-    return {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.source_handle,
-      label: highlighted ? (EDGE_LABELS[edge.source_handle] ?? 'Siguiente') : EDGE_LABELS[edge.source_handle],
-      // El hover leve detiene el trazo punteado y lo vuelve continuo; así se
-      // distingue con claridad sin necesitar el modo intenso de rutas.
-      animated: hovered ? false : hasHighlight ? highlighted : true,
-      selected: edge.id === selectedEdgeId,
-      type: 'smoothstep',
-      interactionWidth: 32,
-      style: {
-        stroke: color,
-        strokeWidth: highlighted ? 4 : hovered ? 3 : 2,
-        opacity: hasHighlight && !highlighted ? 0.16 : 1,
-        filter: highlighted
-          ? `drop-shadow(0 0 5px ${color})`
-          : hovered
-            ? `drop-shadow(0 0 2px ${color})`
-            : undefined,
-        transition: 'stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease',
-      },
-      labelStyle: {
-        fill: highlighted ? color : '#64748b',
-        fontSize: highlighted ? 11 : 9,
-        fontWeight: highlighted ? 700 : 600,
-      },
-      labelShowBg: true,
-      labelBgStyle: { fill: '#ffffff', fillOpacity: highlighted ? 0.96 : 0.78 },
-      labelBgPadding: highlighted ? [6, 4] as [number, number] : [4, 2] as [number, number],
-      labelBgBorderRadius: 6,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color,
-        width: highlighted ? 24 : hovered ? 20 : 18,
-        height: highlighted ? 24 : hovered ? 20 : 18,
-      },
-    }
-  })
-}
-
-export function fromCanvasEdge(edge: Edge | Connection, id: string): AutomationFlowEdge {
-  // El handle siempre sale de uno de nuestros propios <Handle id=...> (Sí/No,
-  // el "kind" de una condición de Pausa, o "btn_N"/"other"/"timeout" de una
-  // Pregunta) — nunca de una entrada de usuario, así que alcanza con
-  // aceptarlo tal cual llega y solo usar "next" cuando el nodo no tiene un
-  // handle nombrado (un único source, como Trigger/Acción/Espera).
-  const handle = edge.sourceHandle
-  return {
-    id,
-    source: edge.source,
-    target: edge.target,
-    source_handle: (typeof handle === 'string' && handle ? handle : FlowHandle.Next) as AutomationFlowEdge['source_handle'],
-  }
-}
-
 interface FlowCanvasProps {
   flow: AutomationFlowDefinition
   templates?: MessageTemplate[]
   mediaAssets?: MediaAsset[]
+  flowRules?: AutomationRule[]
   selectedId: string | null
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
@@ -496,7 +471,7 @@ interface FlowCanvasProps {
 }
 
 function Canvas({
-  flow, templates = [], mediaAssets = [], selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
@@ -533,13 +508,15 @@ function Canvas({
   }, [flow.edges, highlightedEdgeIds])
 
   const derivedNodes = useMemo<CanvasNode[]>(() => flow.nodes.map(node => {
-    const nodeData = node.data as Record<string, unknown>
     const action = node.type === FlowNodeType.Action ? node.data.action : null
     const previewTemplate = action?.type === AutomationActionType.SendTemplate
       ? templates.find(template => template.id === action.template_id)
       : undefined
-    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment
+    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
       ? mediaAssets.find(asset => asset.id === action.media_asset_id)
+      : undefined
+    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
+      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
       : undefined
     return {
       id: node.id,
@@ -547,13 +524,14 @@ function Canvas({
       position: node.position,
       selected: node.id === selectedId,
       data: {
-        ...nodeData,
+        ...node.data,
         previewTemplate,
         previewAsset,
+        invokedFlowName,
         onDelete: id => onDeleteNodes([id]),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, selectedId, onDeleteNodes])
+  }), [flow.nodes, templates, mediaAssets, flowRules, selectedId, onDeleteNodes])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si

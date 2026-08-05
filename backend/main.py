@@ -23,8 +23,8 @@ from services.tts_service import close_tts_client
 from services.message_outbox import watch_message_outbox
 from services.scheduled_message_service import watch_scheduled_messages
 from services.performance import begin_request_metrics, finish_request_metrics
-from services.media_storage import MediaStorageError, check_media_storage
-from services.settings_service import migrate_settings_encryption
+from services.media_storage import MediaStorageError, check_media_storage, storage_backend
+from services.settings_service import get_effective, migrate_settings_encryption
 
 logger = logging.getLogger(__name__)
 DATABASE_RETRY_MAX_SECONDS = 30
@@ -164,6 +164,61 @@ async def _detect_search_capabilities() -> None:
         )
 
 
+async def _require_inbound_webhook_token() -> None:
+    """Impide arrancar sin token de webhook entrante.
+
+    `/api/webhooks/*` y la subida de media están expuestos a Internet y sólo
+    los protege ese token. Con el valor vacío que traía backend/.env.example,
+    `verify_webhook_token` dejaba pasar cualquier petición.
+
+    La comprobación es aquí y no en `config.py` porque el token también puede
+    venir de `app_settings` (es editable desde Configuración), así que hace
+    falta la base de datos para saber si está configurado de verdad.
+
+    Falla el arranque a propósito: en blue-green eso deja el color viejo
+    sirviendo y el despliegue no promociona, que es preferible a promocionar
+    una versión con los webhooks abiertos.
+    """
+    if (await get_effective("inbound_webhook_token")).strip():
+        return
+    raise RuntimeError(
+        "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
+        "subida de media quedarían abiertos a Internet. Generá uno con "
+        "`openssl rand -hex 32`, ponelo en backend/.env (o en Configuración) y "
+        "configurá el mismo valor en n8n y en Evolution API."
+    )
+
+
+async def _check_media_persistence() -> None:
+    """Avisa o falla según el almacenamiento multimedia configurado.
+
+    Con backend "minio" valida la configuración ahora, en vez de descubrir que
+    faltaba una credencial en la primera subida de un usuario.
+
+    Con backend "local" los archivos van a `backend/media` dentro del
+    contenedor. Si esa ruta no está montada desde el host, cada despliegue
+    blue-green levanta un contenedor nuevo y se lleva por delante todo lo
+    subido. compose.prod.yml ya monta `./data/media`, pero el aviso queda para
+    quien despliegue con otra topología.
+    """
+    backend = storage_backend()
+    if backend == "minio":
+        from services.media_storage import validate_minio_config
+
+        validate_minio_config()
+        logger.info("Almacenamiento multimedia: MinIO (bucket %s)", settings.minio_bucket)
+        return
+
+    from services.media_storage import MEDIA_DIR
+
+    logger.warning(
+        "MEDIA_STORAGE_BACKEND=local: los archivos se guardan en %s, dentro del "
+        "contenedor. Si esa ruta no está montada desde el host, cada despliegue "
+        "borra el multimedia subido. Usar MEDIA_STORAGE_BACKEND=minio en producción.",
+        MEDIA_DIR,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # El esquema ya no se toca aquí. Antes este bloque ejecutaba create_all
@@ -186,6 +241,11 @@ async def lifespan(app: FastAPI):
             encrypted_settings,
             decrypted_settings,
         )
+
+    # Después de normalizar app_settings: el token puede vivir ahí y no en el
+    # entorno, así que antes de este punto la lectura daría un falso negativo.
+    await _require_inbound_webhook_token()
+    await _check_media_persistence()
 
     if settings.admin_email and settings.admin_password:
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))

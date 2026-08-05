@@ -39,7 +39,7 @@ function fakeGeometry(el: HTMLElement, { scrollHeight, clientHeight }: { scrollH
   Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true })
 }
 
-let latest: ReturnType<typeof useThreadScroll>
+let latest: ReturnType<typeof useThreadScroll> = undefined!
 
 function Harness({ params, messageIds = [] }: { params: Params; messageIds?: number[] }) {
   const scroll = useThreadScroll(params)
@@ -79,7 +79,7 @@ function renderThread(overrides: Partial<Params> = {}, messageIds: number[] = []
 
 describe('useThreadScroll', () => {
   beforeEach(() => {
-    latest = undefined as unknown as ReturnType<typeof useThreadScroll>
+    latest = undefined!
   })
 
   it('abre el chat en el último mensaje', async () => {

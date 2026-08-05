@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown, FileText, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
-import { messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
+import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { MapPreview } from './MapPreview'
@@ -192,7 +192,7 @@ function LocationBody({ parsed }: MessageBodyContext) {
 
 function ContactBody({ parsed }: MessageBodyContext) {
   const contacts = Array.isArray(parsed.payload?.contacts)
-    ? (parsed.payload!.contacts as Array<Record<string, unknown>>)
+    ? parsed.payload.contacts.filter(isJsonObject)
     : []
   if (contacts.length === 0) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   return (
@@ -220,7 +220,7 @@ function ContactBody({ parsed }: MessageBodyContext) {
 
 function PollBody({ parsed }: MessageBodyContext) {
   const values = Array.isArray(parsed.payload?.values)
-    ? (parsed.payload!.values as unknown[]).map(String)
+    ? parsed.payload.values.map(String)
     : []
   return (
     <div className="flex flex-col gap-1.5">
@@ -285,7 +285,8 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
 }
 
 export function MessageBody(ctx: MessageBodyContext) {
-  return BODY_RENDERERS[ctx.parsed.kind](ctx)
+  const Renderer = BODY_RENDERERS[ctx.parsed.kind]
+  return <Renderer {...ctx} />
 }
 
 /** Análisis IA del adjunto (descripción/transcripción), plegado por defecto:

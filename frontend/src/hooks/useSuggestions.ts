@@ -20,8 +20,8 @@ async function generateSuggestions(params: GenerateParams): Promise<SuggestionRe
   } catch (err) {
     // El backend manda el motivo en `detail`. Se re-lanza como Error normal
     // para que la UI muestre algo legible.
-    if (axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object') {
-      const detail = (err.response.data as { detail?: unknown }).detail
+    if (axios.isAxiosError<{ detail?: string }>(err) && err.response?.data) {
+      const detail = err.response.data.detail
       if (typeof detail === 'string') throw new Error(detail)
     }
     throw err

@@ -34,13 +34,13 @@ interface Props {
   unreadCount: number
   advancedFilters: ChatFilters
   onAdvancedFiltersChange: (value: ChatFilters) => void
-  onRefresh: () => Promise<unknown>
+  onRefresh: () => Promise<void>
   selectedId: string | null
   onSelect: (chat: Chat) => void
   hasNextPage: boolean
   isFetchingNextPage: boolean
   hasNextPageError: boolean
-  onLoadMore: () => unknown
+  onLoadMore: () => Promise<void> | void
   // Muestra un llamado a conectar WhatsApp en el estado vacío (solo admin, y
   // solo cuando la instancia no está vinculada).
   showConnectWhatsapp?: boolean

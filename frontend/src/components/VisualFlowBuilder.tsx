@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Activity, ArrowRight, Beaker, Check, CheckCircle2, History, LayoutGrid,
+  Activity, ArrowRight, Beaker, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
   ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Save, Split, Timer, Undo2, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
@@ -10,6 +10,7 @@ import { AutomationReactionPicker } from './AutomationReactionPicker'
 import client from '../api/client'
 import type {
   AppUser, AutomationAction, AutomationActionType, AutomationConditions,
+  AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType,
   AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
   AutomationFlowNodeType, AutomationRule, Chat, MediaAsset, MessageTemplate, QuestionButton,
   Tag, WaitAnyCondition,
@@ -18,7 +19,7 @@ import { isLeadStage, LEAD_STAGES } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
-  useCreateVisualFlow, useFlowVersions, usePublishVisualFlow, useRestoreFlowVersion,
+  useAutomationRules, useCreateVisualFlow, useFlowVersions, usePublishVisualFlow, useRestoreFlowVersion,
   useSaveVisualFlow, useSimulateVisualFlow, useUpdateAutomation,
   type AutomationFlowSimulation,
 } from '../hooks/useAutomations'
@@ -31,6 +32,7 @@ import {
   AUTOMATION_ACTION_LABELS as ACTION_LABELS,
   AUTOMATION_TRIGGERS as TRIGGERS,
   AutomationActionType as ActionType,
+  AutomationBuilderMode,
   AutomationRecipient,
   AutomationTrigger as TriggerType,
   FLOW_CONDITION_LABELS as CONDITION_LABELS,
@@ -58,6 +60,38 @@ import { Checkbox } from './ui/Checkbox'
 import { Select } from './ui/Input'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
 
+const MESSAGE_CONDITION_TYPES = new Set<AutomationFlowConditionType>([
+  ConditionType.MessageContains,
+  ConditionType.MessageEquals,
+  ConditionType.MessageNotContains,
+])
+
+function defaultConditionValue(type: AutomationFlowConditionType): string | null {
+  if (type === ConditionType.StageEquals) return 'nuevo'
+  if (MESSAGE_CONDITION_TYPES.has(type)) return ''
+  return null
+}
+
+function conditionGroups(
+  data: Extract<AutomationFlowNode, { type: typeof NodeType.Condition }>['data'],
+  nodeId = 'condition',
+): AutomationFlowConditionGroup[] {
+  if (data.condition_groups?.length) return data.condition_groups
+  return [{
+    id: `${nodeId}-group-1`,
+    conditions: [{
+      id: `${nodeId}-rule-1`,
+      condition_type: data.condition_type ?? ConditionType.StageEquals,
+      value: data.value ?? 'nuevo',
+    }],
+  }]
+}
+
+function newConditionItem(type: AutomationFlowConditionType = ConditionType.MessageContains): AutomationFlowConditionItem {
+  const id = `rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  return { id, condition_type: type, value: defaultConditionValue(type) }
+}
+
 function defaultAction(type: AutomationActionType): AutomationAction {
   switch (type) {
     case ActionType.CreateTask:
@@ -77,10 +111,14 @@ function defaultAction(type: AutomationActionType): AutomationAction {
       return { type, text: '' }
     case ActionType.ChangeService:
       return { type, service: null }
+    case ActionType.SetConversationState:
+      return { type, state: 'closed' }
     case ActionType.SendAudio:
       return { type, media_asset_id: null }
     case ActionType.SendAttachment:
       return { type, media_asset_id: null }
+    case ActionType.SendMedia:
+      return { type, media_asset_id: null, caption: '' }
     case ActionType.ReactToLastCustomerMessage:
       return { type, emoji: '❤️' }
     default:
@@ -103,14 +141,20 @@ function initialFlow(): AutomationFlowDefinition {
   }
 }
 
-function isFlowDefinition(value: unknown): value is AutomationFlowDefinition {
-  if (!value || typeof value !== 'object') return false
-  return 'nodes' in value && 'edges' in value && Array.isArray(value.nodes) && Array.isArray(value.edges)
+function isFlowDefinition(value: AutomationRule['flow_definition'] | undefined): value is AutomationFlowDefinition {
+  return value !== undefined && 'nodes' in value && 'edges' in value && Array.isArray(value.nodes) && Array.isArray(value.edges)
 }
 
 function withDefaultConditions(definition: AutomationFlowDefinition): AutomationFlowDefinition {
   const legacyWaitIds = new Set(
     definition.nodes.filter(node => node.type === NodeType.Wait).map(node => node.id),
+  )
+  const legacyConditionGroupIds = new Map(
+    definition.nodes
+      .filter((node): node is Extract<AutomationFlowNode, { type: typeof NodeType.Condition }> => (
+        node.type === NodeType.Condition && !node.data.condition_groups?.length
+      ))
+      .map(node => [node.id, `${node.id}-group-1`]),
   )
   return {
     ...definition,
@@ -119,8 +163,11 @@ function withDefaultConditions(definition: AutomationFlowDefinition): Automation
     // formato editable (`wait_any`) y su salida `next` pasa a ser `timer`.
     // También admite borradores aún más viejos que guardaban `minutes`.
     nodes: definition.nodes.map(node => {
+      if (node.type === NodeType.Condition) {
+        return { ...node, data: { condition_groups: conditionGroups(node.data, node.id) } }
+      }
       if (node.type !== NodeType.Wait) return node
-      const data = node.data as unknown as { seconds?: number; minutes?: number }
+      const data: { seconds?: number; minutes?: number } = node.data
       const seconds = data.seconds ?? (data.minutes ?? 30) * 60
       return {
         ...node,
@@ -128,9 +175,16 @@ function withDefaultConditions(definition: AutomationFlowDefinition): Automation
         data: { conditions: [{ id: WaitAnyConditionKind.Timer, kind: WaitAnyConditionKind.Timer, seconds }] },
       }
     }),
-    edges: definition.edges.map(edge => legacyWaitIds.has(edge.source)
-      ? { ...edge, source_handle: WaitAnyConditionKind.Timer }
-      : edge),
+    edges: definition.edges.map(edge => {
+      if (legacyWaitIds.has(edge.source)) {
+        return { ...edge, source_handle: WaitAnyConditionKind.Timer }
+      }
+      const groupId = legacyConditionGroupIds.get(edge.source)
+      if (groupId && edge.source_handle === FlowHandle.Yes) {
+        return { ...edge, source_handle: groupId }
+      }
+      return edge
+    }),
   }
 }
 
@@ -140,9 +194,14 @@ function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: 
     case NodeType.Trigger:
       return { id, type, position, data: { trigger_type: TriggerType.LeadCreated } }
     case NodeType.Condition:
-      return { id, type, position, data: { condition_type: ConditionType.StageEquals, value: 'nuevo' } }
+      return { id, type, position, data: { condition_groups: [{
+        id: `${id}-group-1`,
+        conditions: [{ id: `${id}-rule-1`, condition_type: ConditionType.StageEquals, value: 'nuevo' }],
+      }] } }
     case NodeType.Action:
       return { id, type, position, data: { action: defaultAction(ActionType.CreateTask) } }
+    case NodeType.InvokeFlow:
+      return { id, type, position, data: { flow_rule_id: null } }
     // `Wait` solo puede llegar desde un cliente antiguo; crear cualquiera de
     // las dos variantes produce el bloque Pausa unificado.
     case NodeType.Wait:
@@ -161,19 +220,36 @@ function nodeIcon(type: AutomationFlowNodeType) {
   if (type === NodeType.Trigger) return <Zap className="h-4 w-4 text-wa-primary-strong" />
   if (type === NodeType.Condition) return <Split className="h-4 w-4 text-amber-600" />
   if (type === NodeType.Action) return <Activity className="h-4 w-4 text-violet-600" />
+  if (type === NodeType.InvokeFlow) return <CirclePlay className="h-4 w-4 text-indigo-600" />
   if (type === NodeType.Wait || type === NodeType.WaitAny) return <Timer className="h-4 w-4 text-cyan-600" />
   if (type === NodeType.Question) return <MessageCircleQuestion className="h-4 w-4 text-pink-600" />
   return <CheckCircle2 className="h-4 w-4 text-wa-muted" />
 }
 
-function nodeTitle(node: AutomationFlowNode) {
+function nodeTitle(node: AutomationFlowNode, rules: AutomationRule[] = []) {
   if (node.type === NodeType.Trigger) return TRIGGERS.find(item => item.value === node.data.trigger_type)?.label ?? 'Disparador'
-  if (node.type === NodeType.Condition) return CONDITION_LABELS[node.data.condition_type]
+  if (node.type === NodeType.Condition) {
+    const groups = conditionGroups(node.data, node.id)
+    const first = groups[0]?.conditions[0]
+    const total = groups.reduce((sum, group) => sum + group.conditions.length, 0)
+    return first ? `${CONDITION_LABELS[first.condition_type]}${total > 1 ? ` (+${total - 1})` : ''}` : 'Condición'
+  }
   if (node.type === NodeType.Action) return ACTION_LABELS[node.data.action.type]
+  if (node.type === NodeType.InvokeFlow) {
+    return rules.find(item => item.id === node.data.flow_rule_id)?.name
+      ?? (node.data.flow_rule_id ? `Flujo #${node.data.flow_rule_id}` : 'Selecciona un flujo')
+  }
   if (node.type === NodeType.Wait) return `Pausa · ${formatWaitDuration(node.data.seconds)}`
   if (node.type === NodeType.WaitAny) return FLOW_NODE_LABELS[NodeType.WaitAny]
   if (node.type === NodeType.Question) return node.data.buttons.map(button => button.label).join(' / ') || FLOW_NODE_LABELS[NodeType.Question]
   return node.data.label || 'Fin'
+}
+
+function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
+  if (node.type !== NodeType.Condition) return handle
+  if (handle === FlowHandle.No) return 'Ninguna'
+  const index = conditionGroups(node.data, node.id).findIndex(group => group.id === handle)
+  return index >= 0 ? `Salida ${index + 1}` : handle
 }
 
 interface VisualFlowBuilderProps {
@@ -192,6 +268,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const publishFlow = usePublishVisualFlow()
   const simulateFlow = useSimulateVisualFlow()
   const updateRule = useUpdateAutomation()
+  const { data: automationRules = [] } = useAutomationRules()
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
   const { data: templates = [] } = useTemplates(true)
@@ -229,7 +306,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const { data: versions = [], isLoading: versionsLoading } = useFlowVersions(versionsOpen ? ruleId : null)
   const restoreVersion = useRestoreFlowVersion()
   const selected = flow.nodes.find(node => node.id === selectedId) ?? null
+  const selectedOutgoingEdges = selected
+    ? flow.edges.filter(edge => edge.source === selected.id)
+    : []
   const activeUsers = users.filter(user => user.is_active)
+  const invokableFlows = automationRules.filter(item => (
+    item.id !== ruleId
+    && item.builder_mode === AutomationBuilderMode.Visual
+    && item.published_flow_definition !== null
+  ))
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
   const hasUnpublishedChanges = publishedDefinition == null || !areFlowDefinitionsEqual(flow, publishedDefinition)
@@ -269,6 +354,20 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   function replaceSelectedAction(nextAction: AutomationAction) {
     if (!selected || selected.type !== NodeType.Action) return
     replaceNode({ ...selected, data: { action: nextAction } })
+  }
+
+  function replaceConditionGroups(
+    node: Extract<AutomationFlowNode, { type: typeof NodeType.Condition }>,
+    groups: AutomationFlowConditionGroup[],
+  ) {
+    const validHandles = new Set<string>([FlowHandle.No, ...groups.map(group => group.id)])
+    setFlow(current => ({
+      ...current,
+      nodes: current.nodes.map(item => item.id === node.id
+        ? { ...node, data: { condition_groups: groups } }
+        : item),
+      edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
+    }), `condition-groups:${node.id}`)
   }
 
   /** Igual que replaceNode pero además descarta cualquier conexión que
@@ -507,6 +606,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         {([
           [NodeType.Condition, FLOW_NODE_LABELS[NodeType.Condition], Split, 'Rama Sí/No'],
           [NodeType.Action, FLOW_NODE_LABELS[NodeType.Action], Activity, 'Ejecuta una operación'],
+          [NodeType.InvokeFlow, FLOW_NODE_LABELS[NodeType.InvokeFlow], CirclePlay, 'Inicia otro flujo para este lead'],
           [NodeType.WaitAny, FLOW_NODE_LABELS[NodeType.WaitAny], Timer, 'Continúa cuando ocurra la primera condición'],
           [NodeType.Question, FLOW_NODE_LABELS[NodeType.Question], MessageCircleQuestion, 'Botones con una rama por respuesta'],
           [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
@@ -524,6 +624,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           flow={flow}
           templates={automaticTemplates}
           mediaAssets={mediaAssets}
+          flowRules={automationRules}
           selectedId={selectedId}
           onSelect={id => { setSelectedId(id); if (id) setShowEntryConditions(false) }}
           onMoveNodes={moveNodes}
@@ -535,9 +636,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </main>
 
       <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : !selected ? <p className="py-16 text-center text-xs text-wa-muted">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div></div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : !selected ? <p className="py-16 text-center text-xs text-wa-muted">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div></div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
-          {selected.type === NodeType.Condition && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Comprobar<Select value={selected.data.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) replaceNode({ ...selected, data: { condition_type: value, value: value === ConditionType.StageEquals ? 'nuevo' : null } }) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>{selected.data.condition_type === ConditionType.StageEquals && <Select value={String(selected.data.value ?? 'nuevo')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}{selected.data.condition_type === ConditionType.OriginContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Facebook" className={fieldClass} />}{selected.data.condition_type === ConditionType.ServiceContains && <input value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: event.target.value } })} placeholder="Ej. Limpieza" className={fieldClass} />}{selected.data.condition_type === ConditionType.SellerEquals && <Select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona vendedor</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}{selected.data.condition_type === ConditionType.TagPresent && <Select value={String(selected.data.value ?? '')} onChange={event => replaceNode({ ...selected, data: { ...selected.data, value: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}<p className="rounded-lg bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Conecta las dos salidas: Sí cuando se cumple y No cuando no se cumple.</p></div>}
+          {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
           {selected.type === NodeType.Question && <QuestionEditor
             text={selected.data.text}
@@ -547,14 +648,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
             updateTimeout={timeout_seconds => replaceNode({ ...selected, data: { ...selected.data, timeout_seconds } })}
             updateButtons={buttons => replaceQuestionButtons(selected, buttons)}
           />}
+          {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { label: event.target.value } })} className={fieldClass} /></label>}
           {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} templates={automaticTemplates} mediaAssets={mediaAssets} />}
-          <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{flow.edges.filter(edge => edge.source === selected.id).length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : flow.edges.filter(edge => edge.source === selected.id).map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{edge.source_handle} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
+          <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
       </aside>
     </div>
 
-    {simulationOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"><div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark"><div className="flex items-start justify-between"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Beaker className="h-4 w-4 text-wa-primary-strong" />Simular sin ejecutar acciones</h2><p className="mt-1 text-[11px] text-wa-muted">Guarda el borrador y recorre el flujo con los datos actuales de un lead.</p></div><button type="button" onClick={() => setSimulationOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button></div><div className="mt-4 flex gap-2"><input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void searchLeads() }} placeholder="Buscar por nombre o teléfono" className={fieldClass} /><button type="button" disabled={searching} onClick={() => void searchLeads()} className="rounded-lg bg-wa-head-dark px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-wa-active-dark">Buscar</button></div>{leadResults.length > 0 && <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-wa-border dark:border-wa-border-dark">{leadResults.map(lead => <button key={lead.chat_id} type="button" onClick={() => setSelectedLead(lead)} className={`flex w-full items-center gap-2 border-b border-wa-border px-3 py-2 text-left last:border-0 dark:border-wa-border-dark ${selectedLead?.chat_id === lead.chat_id ? 'bg-green-50 dark:bg-green-950/30' : ''}`}><UserRound className="h-4 w-4 text-wa-muted" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{lead.name || 'Sin nombre'}</span><span className="block text-[10px] text-wa-muted">{lead.phone || lead.chat_id} · {lead.stage}</span></span></button>)}</div>}<button type="button" disabled={!selectedLead || simulateFlow.isPending} onClick={() => void simulate()} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{simulateFlow.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Recorrer flujo</button>{simulation && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark">Ruta para {simulation.lead_name || simulation.lead_id}</p><div className="space-y-1.5">{simulation.path.map((step, index) => <div key={`${String(step.node_id)}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] ${step.status === 'would_fail' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-wa-border bg-wa-hover text-gray-600 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-300'}`}><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-wa-border font-bold dark:bg-wa-active-dark">{index + 1}</span><span><strong>{String(step.type)}</strong>{step.branch ? ` · rama ${step.branch === 'yes' ? 'Sí' : 'No'}` : ''}{step.minutes ? ` · ${String(step.minutes)} min` : ''}{step.detail ? <span className="block opacity-80">{String(step.detail)}</span> : null}</span></div>)}</div></div>}</div></div>}
+    {simulationOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"><div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark"><div className="flex items-start justify-between"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Beaker className="h-4 w-4 text-wa-primary-strong" />Simular sin ejecutar acciones</h2><p className="mt-1 text-[11px] text-wa-muted">Guarda el borrador y recorre el flujo con los datos actuales de un lead.</p></div><button type="button" onClick={() => setSimulationOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button></div><div className="mt-4 flex gap-2"><input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void searchLeads() }} placeholder="Buscar por nombre o teléfono" className={fieldClass} /><button type="button" disabled={searching} onClick={() => void searchLeads()} className="rounded-lg bg-wa-head-dark px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-wa-active-dark">Buscar</button></div>{leadResults.length > 0 && <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-wa-border dark:border-wa-border-dark">{leadResults.map(lead => <button key={lead.chat_id} type="button" onClick={() => setSelectedLead(lead)} className={`flex w-full items-center gap-2 border-b border-wa-border px-3 py-2 text-left last:border-0 dark:border-wa-border-dark ${selectedLead?.chat_id === lead.chat_id ? 'bg-green-50 dark:bg-green-950/30' : ''}`}><UserRound className="h-4 w-4 text-wa-muted" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{lead.name || 'Sin nombre'}</span><span className="block text-[10px] text-wa-muted">{lead.phone || lead.chat_id} · {lead.stage}</span></span></button>)}</div>}<button type="button" disabled={!selectedLead || simulateFlow.isPending} onClick={() => void simulate()} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{simulateFlow.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Recorrer flujo</button>{simulation && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark">Ruta para {simulation.lead_name || simulation.lead_id}</p><div className="space-y-1.5">{simulation.path.map((step, index) => <div key={String(step.node_id)} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] ${step.status === 'would_fail' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-wa-border bg-wa-hover text-gray-600 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-300'}`}><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-wa-border font-bold dark:bg-wa-active-dark">{index + 1}</span><span><strong>{String(step.type)}</strong>{step.branch ? ` · rama ${step.branch === FlowHandle.No ? 'Ninguna' : step.branch === FlowHandle.Yes ? 'Sí' : 'coincidente'}` : ''}{step.minutes ? ` · ${String(step.minutes)} min` : ''}{step.detail ? <span className="block opacity-80">{String(step.detail)}</span> : null}</span></div>)}</div></div>}</div></div>}
     {versionsOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setVersionsOpen(false) }}>
       <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
         <div className="flex items-start justify-between">
@@ -579,6 +681,85 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         </div>
       </div>
     </div>}
+  </div>
+}
+
+interface ConditionGroupsEditorProps {
+  groups: AutomationFlowConditionGroup[]
+  users: AppUser[]
+  tags: Tag[]
+  onChange: (groups: AutomationFlowConditionGroup[]) => void
+}
+
+function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroupsEditorProps) {
+  const totalConditions = groups.reduce((sum, group) => sum + group.conditions.length, 0)
+
+  function updateCondition(groupId: string, conditionId: string, patch: Partial<AutomationFlowConditionItem>) {
+    onChange(groups.map(group => group.id !== groupId ? group : {
+      ...group,
+      conditions: group.conditions.map(condition => condition.id === conditionId
+        ? { ...condition, ...patch }
+        : condition),
+    }))
+  }
+
+  function changeConditionType(groupId: string, conditionId: string, type: AutomationFlowConditionType) {
+    updateCondition(groupId, conditionId, { condition_type: type, value: defaultConditionValue(type) })
+  }
+
+  function addAnd(groupId: string) {
+    if (totalConditions >= 30) return
+    onChange(groups.map(group => group.id === groupId && group.conditions.length < 10
+      ? { ...group, conditions: [...group.conditions, newConditionItem()] }
+      : group))
+  }
+
+  function addOrGroup() {
+    if (groups.length >= 10 || totalConditions >= 30) return
+    onChange([...groups, {
+      id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      conditions: [newConditionItem()],
+    }])
+  }
+
+  function removeCondition(groupId: string, conditionId: string) {
+    const next = groups.reduce<AutomationFlowConditionGroup[]>((remaining, group) => {
+      const updated = group.id === groupId
+        ? { ...group, conditions: group.conditions.filter(condition => condition.id !== conditionId) }
+        : group
+      if (updated.conditions.length > 0) remaining.push(updated)
+      return remaining
+    }, [])
+    if (next.length) onChange(next)
+  }
+
+  return <div className="space-y-3">
+    <p className="rounded-lg bg-blue-50 p-2 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">Dentro de cada grupo todas las reglas se combinan con <strong>Y</strong>. Los grupos se prueban en orden como <strong>O</strong>; el primero que coincide usa su propia salida.</p>
+    {groups.map((group, groupIndex) => <div key={group.id}>
+      {groupIndex > 0 && <div className="my-2 flex items-center gap-2 text-[9px] font-bold uppercase text-amber-600"><span className="h-px flex-1 bg-amber-200 dark:bg-amber-900" />O<span className="h-px flex-1 bg-amber-200 dark:bg-amber-900" /></div>}
+      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/50 p-2.5 dark:border-amber-900 dark:bg-amber-950/20">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Salida {groupIndex + 1}</p>
+        {group.conditions.map((condition, conditionIndex) => <div key={condition.id} className="rounded-lg border border-wa-border bg-white p-2 dark:border-wa-border-dark dark:bg-wa-head-dark">
+          {conditionIndex > 0 && <p className="mb-1 text-center text-[9px] font-bold uppercase text-wa-primary-strong">Y</p>}
+          <div className="flex items-start gap-1.5">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Select value={condition.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) changeConditionType(group.id, condition.id, value) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+              {condition.condition_type === ConditionType.StageEquals && <Select value={String(condition.value ?? 'nuevo')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
+              {condition.condition_type === ConditionType.OriginContains && <label className="grid gap-1 text-[10px] text-wa-muted">Origen a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} /></label>}
+              {condition.condition_type === ConditionType.ServiceContains && <label className="grid gap-1 text-[10px] text-wa-muted">Servicio a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} /></label>}
+              {MESSAGE_CONDITION_TYPES.has(condition.condition_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Contenido del mensaje<input maxLength={500} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Hollywood Peel" className={fieldClass} /></label>}
+              {condition.condition_type === ConditionType.SellerEquals && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
+              {condition.condition_type === ConditionType.TagPresent && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
+            </div>
+            {(group.conditions.length > 1 || groups.length > 1) && <button type="button" title="Quitar regla" onClick={() => removeCondition(group.id, condition.id)} className="mt-1 rounded p-1 text-wa-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"><X className="h-3.5 w-3.5" /></button>}
+          </div>
+        </div>)}
+        <button type="button" disabled={group.conditions.length >= 10 || totalConditions >= 30} onClick={() => addAnd(group.id)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-amber-300 px-2 py-1.5 text-[10px] font-semibold text-amber-700 disabled:opacity-40 dark:border-amber-800 dark:text-amber-300"><Plus className="h-3 w-3" />Agregar condición (Y)</button>
+      </div>
+    </div>)}
+    <button type="button" disabled={groups.length >= 10 || totalConditions >= 30} onClick={addOrGroup} className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-wa-primary px-2 py-2 text-[10px] font-semibold text-wa-primary-strong disabled:opacity-40"><Plus className="h-3 w-3" />Agregar siguiente condición (O)</button>
+    <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[10px] font-semibold text-red-600 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">Ninguna de las condiciones → salida No</div>
+    <p className="text-[10px] leading-relaxed text-wa-muted">Las comparaciones de mensajes usan el texto que inició o reanudó el flujo e ignoran mayúsculas, tildes y espacios repetidos.</p>
   </div>
 }
 
@@ -768,8 +949,10 @@ function ActionEditor({ action, updateAction, users, tags, templates, mediaAsset
     {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
     {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => { const value = event.target.value; if (isLeadStage(value)) updateAction({ ...action, stage: value }) }} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
     {action.type === ActionType.ChangeService && <><input value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className={fieldClass} /><p className="text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></>}
+    {action.type === ActionType.SetConversationState && <><Select value={action.state} onChange={event => updateAction({ ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className={fieldClass}><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select><p className="text-[10px] text-wa-muted">No dispara “Conversación nueva”; ese evento queda reservado para mensajes entrantes del cliente.</p></>}
     {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => updateAction({ ...action, media_asset_id: id })} />}
     {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => updateAction({ ...action, media_asset_id: id })} />}
+    {action.type === ActionType.SendMedia && <><MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => updateAction({ ...action, media_asset_id: id })} /><label className="grid gap-1 text-[10px] text-wa-muted">Caption o texto acompañante<textarea rows={4} maxLength={1024} value={action.caption} onChange={event => updateAction({ ...action, caption: event.target.value })} placeholder="Ej. Hola {{nombre}}, mira este contenido…" className={fieldClass} /></label><p className="text-[10px] leading-relaxed text-wa-muted">Imagen, video y documento: caption nativo. Audio: texto enviado inmediatamente después.</p></>}
     {action.type === ActionType.ReactToLastCustomerMessage && <AutomationReactionPicker emoji={action.emoji} onChange={emoji => updateAction({ ...action, emoji })} />}
     {action.type === ActionType.Notify && <><Select value={action.recipient} onChange={event => updateAction({ ...action, recipient: event.target.value === AutomationRecipient.Specific ? AutomationRecipient.Specific : AutomationRecipient.Seller, user_id: null })} className={fieldClass}><option value={AutomationRecipient.Seller}>Vendedor del lead</option><option value={AutomationRecipient.Specific}>Usuario específico</option></Select>{action.recipient === AutomationRecipient.Specific && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona usuario</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} placeholder="Título" className={fieldClass} /><textarea rows={3} value={action.body} onChange={event => updateAction({ ...action, body: event.target.value })} placeholder="Contenido" className={fieldClass} /></>}
     {action.type === ActionType.SendMessage && <textarea rows={4} value={action.text} onChange={event => updateAction({ ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className={fieldClass} />}

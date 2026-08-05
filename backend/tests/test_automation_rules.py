@@ -218,6 +218,31 @@ class TestValidateGraphTopology:
         ]
         validate_graph_topology(nodes, edges, "t")
 
+    def test_grouped_condition_requires_each_or_group_and_none_output(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "c", "type": FlowNodeType.CONDITION, "data": {
+                "condition_groups": [
+                    {"id": "hollywood", "conditions": [{"id": "a"}]},
+                    {"id": "women_week", "conditions": [{"id": "b"}]},
+                ],
+            }},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+            node("e3", FlowNodeType.END),
+        ]
+        incomplete = [
+            edge("t", "c"),
+            edge("c", "e1", "hollywood"),
+            edge("c", "e3", FlowHandle.NO),
+        ]
+        with pytest.raises(ValueError, match="grupo OR"):
+            validate_graph_topology(nodes, incomplete, "t")
+        validate_graph_topology(nodes, [
+            *incomplete,
+            edge("c", "e2", "women_week"),
+        ], "t")
+
     def test_action_must_have_exactly_one_outgoing_edge(self):
         nodes, edges = linear_flow()
         edges.append(edge("a", "e", FlowHandle.YES))

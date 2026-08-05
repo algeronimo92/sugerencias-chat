@@ -25,15 +25,32 @@ export function renderOfficialTemplate(template: MessageTemplate, chat: Chat, pa
 }
 
 export function renderInteractiveConfig(template: MessageTemplate, chat: Chat): TemplateInteractiveConfig {
-  function render(value: unknown): unknown {
-    if (typeof value === 'string') return renderTemplateText(value, chat)
-    if (Array.isArray(value)) return value.map(render)
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, render(item)]))
-    }
-    return value
+  const render = (value: string | undefined) => value === undefined
+    ? undefined
+    : renderTemplateText(value, chat)
+  const config = template.interactive_config
+  const rendered: TemplateInteractiveConfig = {
+    title: render(config.title),
+    footer: render(config.footer),
+    footerText: render(config.footerText),
+    buttonText: render(config.buttonText),
+    buttons: config.buttons?.map(button => ({
+      ...button,
+      displayText: renderTemplateText(button.displayText, chat),
+      id: render(button.id),
+      url: render(button.url),
+      phoneNumber: render(button.phoneNumber),
+      copyCode: render(button.copyCode),
+    })),
+    sections: config.sections?.map(section => ({
+      title: renderTemplateText(section.title, chat),
+      rows: section.rows.map(row => ({
+        title: renderTemplateText(row.title, chat),
+        description: renderTemplateText(row.description, chat),
+        rowId: renderTemplateText(row.rowId, chat),
+      })),
+    })),
   }
-  const rendered = render(template.interactive_config) as TemplateInteractiveConfig
   if (template.interactive_type === 'buttons') rendered.footer = rendered.footer?.trim() || 'DermicaPro'
   if (template.interactive_type === 'list') rendered.footerText = rendered.footerText?.trim() || 'DermicaPro'
   return rendered

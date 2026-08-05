@@ -5,6 +5,16 @@ services:
     env_file:
       - ./backend/.env
     restart: unless-stopped
+    volumes:
+      # Red de seguridad para MEDIA_STORAGE_BACKEND=local. Sin esto los
+      # archivos viven dentro del contenedor y cada despliegue blue-green los
+      # borra al recrearlo. Es un bind mount y no un volumen con nombre a
+      # propósito: compose prefija los volúmenes con el nombre del proyecto, y
+      # blue y green son proyectos distintos, así que cada color tendría el
+      # suyo y no verían los archivos del otro.
+      #
+      # Con MEDIA_STORAGE_BACKEND=minio —lo recomendado— queda sin usar.
+      - ./data/media:/app/media
     # La base vive en compose.db.yml, en su propio proyecto, y se
     # alcanza por esta red compartida. Ver ese archivo para el porqué.
     networks:

@@ -3,6 +3,9 @@ backend/.env
 db/.env
 db/backups/*
 !db/backups/.gitkeep
+# Multimedia subida por los usuarios cuando MEDIA_STORAGE_BACKEND=local.
+# compose.prod.yml la monta acá para que sobreviva a los despliegues.
+data/
 # Certificado y clave TLS de Postgres: se generan por servidor, no se versionan
 # (la clave privada JAMÁS debe subirse al repo).
 db/tls/

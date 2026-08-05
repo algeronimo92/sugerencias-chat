@@ -53,7 +53,7 @@ function RichMessage({ text }: { text: string }) {
   })}</>
 }
 
-function AttachmentBubble({ attachment, onOpen }: { attachment: TemplateAttachment; onOpen: (media: OpenMedia) => void }) {
+function AttachmentBubble({ attachment, caption, onOpen }: { attachment: TemplateAttachment; caption?: string; onOpen: (media: OpenMedia) => void }) {
   const url = resolveMediaUrl(attachment.media_url) ?? ''
   const kind = attachmentKind(attachment)
   const Icon = attachmentIcon(attachment)
@@ -85,6 +85,11 @@ function AttachmentBubble({ attachment, onOpen }: { attachment: TemplateAttachme
         <div className="flex items-center gap-1.5 px-1.5 pb-0.5 pt-1.5 text-[11px] text-gray-700 dark:text-gray-300">
           <Icon className="h-3 w-3 shrink-0" /><span className="truncate">{attachment.filename}</span>
         </div>
+      )}
+      {caption && (
+        <p className="whitespace-pre-wrap break-words px-1.5 pb-0.5 pt-1 text-sm">
+          <RichMessage text={caption} />
+        </p>
       )}
       <div className="px-1.5 text-right text-[9px] text-wa-muted dark:text-wa-muted-dark">Vista previa</div>
     </div>
@@ -140,7 +145,12 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     ))],
     [text, interactiveConfig, isInteractive],
   )
-  const stepCount = isOfficial || isInteractive ? 1 : (text.trim() ? 1 : 0) + attachments.length
+  const captionAttachmentIndex = !isOfficial && !isInteractive && text.trim().length > 0 && text.trim().length <= 1024
+    ? attachments.findIndex(attachment => attachmentMessageType(attachment) !== 'audio')
+    : -1
+  const stepCount = isOfficial || isInteractive
+    ? 1
+    : (captionAttachmentIndex >= 0 ? 0 : text.trim() ? 1 : 0) + attachments.length
   const officialReady = !isOfficial || (
     template.official_status === 'APPROVED'
     && capabilities?.official_sending_supported === true
@@ -173,11 +183,11 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     const optimisticMessages: OptimisticMessageDraft[] = isOfficial || isInteractive
       ? [{ content: isInteractive ? interactiveContent : text, message_type: isInteractive ? 'interactive' : 'template' }]
       : [
-          ...(text.trim() ? [{ content: text, message_type: 'text' as const }] : []),
-          ...attachments.map(attachment => {
+          ...(captionAttachmentIndex < 0 && text.trim() ? [{ content: text, message_type: 'text' as const }] : []),
+          ...attachments.map((attachment, index) => {
             const messageType = attachmentMessageType(attachment)
             return {
-              content: null,
+              content: index === captionAttachmentIndex ? text.trim() : null,
               message_type: messageType,
               payload: messageType === 'document' ? { filename: attachment.filename } : null,
               media_url: attachment.media_url,
@@ -274,7 +284,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                       <MessageSquareText className="h-4 w-4 shrink-0 text-wa-primary-strong" />
                       <span className="min-w-0 flex-1"><span className="block text-xs font-medium text-gray-800 dark:text-wa-text-dark">{usesSafeInteractiveFallback ? 'Mensaje compatible con opciones numeradas' : template.interactive_type === 'buttons' ? 'Mensaje con botones' : 'Mensaje con lista'}</span><span className="block truncate text-[10px] text-wa-muted">{interactiveConfig.title}</span></span>
                     </li>
-                  ) : text.trim() && (
+                  ) : captionAttachmentIndex < 0 && text.trim() && (
                     <li className="flex items-center gap-3 rounded-lg border border-wa-border px-3 py-2 dark:border-wa-border-dark">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-wa-primary text-[10px] font-bold text-white">1</span>
                       <MessageSquareText className="h-4 w-4 shrink-0 text-wa-primary-strong" />
@@ -283,21 +293,22 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                   )}
                   {attachments.map((attachment, index) => {
                     const Icon = attachmentIcon(attachment)
-                    const number = index + (text.trim() ? 2 : 1)
+                    const number = index + (captionAttachmentIndex < 0 && text.trim() ? 2 : 1)
+                    const carriesCaption = index === captionAttachmentIndex
                     return (
                       <li key={attachment.id} className="flex items-center gap-3 rounded-lg border border-wa-border px-3 py-2 dark:border-wa-border-dark">
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-[10px] font-bold text-white">{number}</span>
                         <Icon className="h-4 w-4 shrink-0 text-violet-500" />
-                        <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium text-gray-800 dark:text-wa-text-dark">{attachment.filename}</span><span className="block text-[10px] text-wa-muted">{attachmentKind(attachment)} · {attachment.content_type}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium text-gray-800 dark:text-wa-text-dark">{attachment.filename}</span><span className="block text-[10px] text-wa-muted">{attachmentKind(attachment)} · {carriesCaption ? 'incluye el texto como caption' : attachment.content_type}</span></span>
                       </li>
                     )
                   })}
                 </ol>
               </div>
 
-              {!isOfficial && !isInteractive && <div className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>Cada elemento se encolará como un mensaje independiente y conservará el orden mostrado. Si uno falla, podrá reintentarse sin duplicarlo.</p>
+              {!isOfficial && !isInteractive && <div className="flex gap-2 rounded-xl bg-green-50 px-3 py-2.5 text-xs text-green-800 dark:bg-green-950/30 dark:text-green-300">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{captionAttachmentIndex >= 0 ? 'El texto se enviará dentro del primer adjunto compatible como caption. Los demás adjuntos conservarán el orden mostrado.' : 'La secuencia se enviará en el orden mostrado. El audio y los textos de más de 1024 caracteres requieren un mensaje de texto separado.'}</p>
               </div>}
 
               {send.error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{extractErrorMessage(send.error)}</div>}
@@ -322,13 +333,13 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                     </div>
                     {template.interactive_type === 'list' && <div className="ml-auto w-full max-w-[88%] rounded-xl bg-white p-3 shadow-lg dark:bg-wa-head-dark"><p className="mb-2 text-center text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Vista de la lista</p>{interactiveConfig.sections?.map((section, sectionIndex) => <div key={sectionIndex} className="mt-2"><p className="text-[10px] font-semibold uppercase text-wa-muted">{section.title}</p>{section.rows.map((row, rowIndex) => <div key={rowIndex} className="border-b border-wa-border py-2 last:border-0 dark:border-wa-border-dark"><p className="text-xs font-medium text-gray-800 dark:text-wa-text-dark">{row.title}</p>{row.description && <p className="text-[10px] text-wa-muted dark:text-wa-muted-dark">{row.description}</p>}</div>)}</div>)}</div>}
                   </>
-                ) : text.trim() && (
+                ) : captionAttachmentIndex < 0 && text.trim() && (
                   <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out px-3 py-2 text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
                     <p className="whitespace-pre-wrap break-words"><RichMessage text={text} /></p>
                     <p className="mt-1 text-right text-[9px] text-wa-muted dark:text-wa-muted-dark">Vista previa</p>
                   </div>
                 )}
-                {attachments.map(attachment => <AttachmentBubble key={attachment.id} attachment={attachment} onOpen={setOpenMedia} />)}
+                {attachments.map((attachment, index) => <AttachmentBubble key={attachment.id} attachment={attachment} caption={index === captionAttachmentIndex ? text.trim() : undefined} onOpen={setOpenMedia} />)}
                 {stepCount === 0 && <p className="py-20 text-center text-xs text-wa-muted">La plantilla no tiene contenido para mostrar.</p>}
               </div>
             </section>

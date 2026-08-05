@@ -43,6 +43,10 @@ class Chat(BaseModel):
     stage: LeadStage = "nuevo"
     con_especialista: bool = False
     automatizacion_pausada: bool = False
+    conversacion_abierta: bool = False
+    conversacion_abierta_at: str | None = None
+    conversacion_cerrada_at: str | None = None
+    conversacion_version: int = 0
     razon_perdido: str | None = None
     # Fechas ya serializadas a ISO por _row_to_chat: fecha_recontacto es un
     # DATE (YYYY-MM-DD), las otras dos timestamps con zona.
@@ -325,6 +329,7 @@ class LeadUpdate(BaseModel):
     notas: str | None = None
     con_especialista: bool | None = None
     automatizacion_pausada: bool | None = None
+    conversacion_abierta: bool | None = None
     razon_perdido: str | None = Field(default=None, max_length=500)
     fecha_recontacto: date | None = None
     proxima_cita: datetime | None = None
