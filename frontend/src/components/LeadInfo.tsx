@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, MessageCircle, MessageCircleOff, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { useUpdateLead } from '../hooks/useChats'
@@ -56,6 +56,17 @@ export function LeadInfo({ chat }: Props) {
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
     { label: 'Estado', value: stageMeta.label, icon: CircleDot, iconClassName: stageMeta.accent, valueClassName: stageMeta.badge },
+    {
+      label: 'Conversación',
+      value: chat.conversacion_abierta ? 'Abierta' : 'Cerrada',
+      icon: chat.conversacion_abierta ? MessageCircle : MessageCircleOff,
+      iconClassName: chat.conversacion_abierta ? 'text-wa-primary' : 'text-red-500',
+    },
+    {
+      label: chat.conversacion_abierta ? 'Abierta desde' : 'Cerrada desde',
+      value: formatDateTime(chat.conversacion_abierta ? chat.conversacion_abierta_at : chat.conversacion_cerrada_at),
+      icon: CalendarClock,
+    },
     { label: 'Servicio', value: chat.servicio_interes, icon: Tag },
     { label: 'Vendedor', value: chat.vendedor, icon: User },
     { label: 'Origen', value: chat.origen, icon: MapPin },

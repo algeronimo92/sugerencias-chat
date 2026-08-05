@@ -25,15 +25,12 @@ export function FlowPicker({ chatId }: Props) {
   // respondiendo 400 aunque este chequeo llegue a estar desactualizado por
   // un refetch pendiente.
   const { data: executions = [] } = useAutomationExecutions({ chatId })
-  const activeRuleIds = new Set(
-    executions
-      .filter(
-        (execution) =>
-          execution.start_source === 'manual' &&
-          (execution.status === 'scheduled' || execution.status === 'running')
-      )
-      .map((execution) => execution.rule_id)
-  )
+  const activeRuleIds = new Set<number>()
+  for (const execution of executions) {
+    const isSellerFlow = execution.start_source === 'manual' || execution.start_source === 'flow'
+    const isActive = execution.status === 'scheduled' || execution.status === 'running'
+    if (isSellerFlow && isActive) activeRuleIds.add(execution.rule_id)
+  }
   const startFlow = useStartManualFlow()
 
   function choose(ruleId: number, name: string) {

@@ -42,6 +42,30 @@ async def test_media_job_preserves_type_and_filename(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_media_template_caption_reaches_evolution_send_media(monkeypatch):
+    monkeypatch.setattr(message_outbox, "read_media_base64", Mock(return_value="BASE64"))
+    send_media = AsyncMock(return_value={"key": {"id": "WA-VIDEO"}})
+    monkeypatch.setattr(message_outbox, "send_whatsapp_media", send_media)
+
+    await message_outbox._send_payload("51999@s.whatsapp.net", {
+        "type": "media",
+        "media_url": "/api/media/videos/demo.mp4",
+        "mediatype": "video",
+        "filename": "demo.mp4",
+        "caption": "Hola Ana, mira este video",
+    })
+
+    send_media.assert_awaited_once_with(
+        "51999@s.whatsapp.net",
+        "BASE64",
+        "video",
+        filename="demo.mp4",
+        caption="Hola Ana, mira este video",
+        quoted=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_location_and_official_template_jobs_dispatch_without_route_wait(monkeypatch):
     send_location = AsyncMock(return_value={"key": {"id": "WA-LOCATION"}})
     send_template = AsyncMock(return_value={"key": {"id": "WA-TEMPLATE"}})

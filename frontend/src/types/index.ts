@@ -6,6 +6,10 @@ import type {
 } from '../domain/automationCatalog'
 import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from '../domain/automationCatalog'
 
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
+export interface JsonObject { [key: string]: JsonValue }
+
 export const LEAD_STAGES = [
   // Flujo principal
   'nuevo',
@@ -55,9 +59,9 @@ export interface LeadActivity {
   event_type: string
   actor_type: string
   actor_name: string | null
-  old_value: Record<string, unknown> | null
-  new_value: Record<string, unknown> | null
-  metadata: Record<string, unknown> | null
+  old_value: JsonObject | null
+  new_value: JsonObject | null
+  metadata: JsonObject | null
   created_at: string
 }
 
@@ -85,7 +89,7 @@ export interface UserNotification {
   body: string
   lead_id: string | null
   source_id: string | null
-  metadata: Record<string, unknown> | null
+  metadata: JsonObject | null
   read_at: string | null
   created_at: string
 }
@@ -112,6 +116,11 @@ export interface Chat {
    * ejecuciones nuevas. El chat sigue abierto para conversar normal, y un
    * flujo iniciado a mano desde el chat lo ignora a propósito. */
   automatizacion_pausada: boolean
+  /** Estado comercial propio del lead; no es la ventana de 24 h de WhatsApp. */
+  conversacion_abierta: boolean
+  conversacion_abierta_at: string | null
+  conversacion_cerrada_at: string | null
+  conversacion_version: number
   razon_perdido: string | null
   /** ISO date (YYYY-MM-DD), entra tal cual en un input type="date". */
   fecha_recontacto: string | null
@@ -156,6 +165,7 @@ export interface LeadUpdateInput {
   notas?: string | null
   con_especialista?: boolean
   automatizacion_pausada?: boolean
+  conversacion_abierta?: boolean
   razon_perdido?: string | null
   fecha_recontacto?: string | null
   proxima_cita?: string | null
@@ -213,7 +223,7 @@ export interface Message {
   /** Enriquecimiento IA del adjunto, servido aparte de `content`. */
   analysis?: MessageAnalysis | null
   /** Datos estructurados propios del tipo (lat/lon, filename, opciones…). */
-  payload?: Record<string, unknown> | null
+  payload?: JsonObject | null
   /** Reacciones sobre este mensaje (badge estilo WhatsApp, no una burbuja
    * aparte): a lo sumo una por lado en un chat 1:1. null si nadie reaccionó. */
   reactions?: MessageReaction[] | null
@@ -241,7 +251,7 @@ export interface HistoryMessage {
   content: string | null
   sent_at: string
   message_type?: MessageType | null
-  payload?: Record<string, unknown> | null
+  payload?: JsonObject | null
 }
 
 export interface HistoryPage {
@@ -487,6 +497,11 @@ export interface ChangeServiceAutomationAction {
   service: string | null
 }
 
+export interface SetConversationStateAutomationAction {
+  type: typeof AutomationActionType.SetConversationState
+  state: 'open' | 'closed'
+}
+
 export interface SendAudioAutomationAction {
   type: typeof AutomationActionType.SendAudio
   media_asset_id: number | null
@@ -495,6 +510,12 @@ export interface SendAudioAutomationAction {
 export interface SendAttachmentAutomationAction {
   type: typeof AutomationActionType.SendAttachment
   media_asset_id: number | null
+}
+
+export interface SendMediaAutomationAction {
+  type: typeof AutomationActionType.SendMedia
+  media_asset_id: number | null
+  caption: string
 }
 
 export interface ReactToLastCustomerMessageAutomationAction {
@@ -511,8 +532,10 @@ export type AutomationAction =
   | SendTemplateAutomationAction
   | SendMessageAutomationAction
   | ChangeServiceAutomationAction
+  | SetConversationStateAutomationAction
   | SendAudioAutomationAction
   | SendAttachmentAutomationAction
+  | SendMediaAutomationAction
   | ReactToLastCustomerMessageAutomationAction
 
 export type AutomationFlowNodeType = FlowNodeTypeValue
@@ -550,6 +573,17 @@ export interface QuestionButton {
   label: string
 }
 
+export interface AutomationFlowConditionItem {
+  id: string
+  condition_type: AutomationFlowConditionType
+  value: string | number | boolean | null
+}
+
+export interface AutomationFlowConditionGroup {
+  id: string
+  conditions: AutomationFlowConditionItem[]
+}
+
 interface BaseAutomationFlowNode<TType extends AutomationFlowNodeType, TData> {
   id: string
   type: TType
@@ -559,8 +593,14 @@ interface BaseAutomationFlowNode<TType extends AutomationFlowNodeType, TData> {
 
 export type AutomationFlowNode =
   | BaseAutomationFlowNode<typeof FlowNodeType.Trigger, { trigger_type: AutomationTrigger; minutes?: number }>
-  | BaseAutomationFlowNode<typeof FlowNodeType.Condition, { condition_type: AutomationFlowConditionType; value: string | number | boolean | null }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Condition, {
+      condition_groups?: AutomationFlowConditionGroup[]
+      /** Compatibilidad con definiciones publicadas antes de los grupos. */
+      condition_type?: AutomationFlowConditionType
+      value?: string | number | boolean | null
+    }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Action, { action: AutomationAction }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.InvokeFlow, { flow_rule_id: number | null }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { seconds: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.WaitAny, { conditions: WaitAnyCondition[] }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Question, { text: string; buttons: QuestionButton[]; timeout_seconds: number }>
@@ -570,10 +610,8 @@ export interface AutomationFlowEdge {
   id: string
   source: string
   target: string
-  // Los bloques Pausa (wait_any) y Pregunta (question) agregan handles
-  // dinámicos ("timer"/"message"/"business_hours"/"media_played", el "kind"
-  // de cada condición; "btn_1".."btn_n", "other", "timeout") fuera del enum
-  // fijo FlowHandle.
+  // Condición, Pausa y Pregunta agregan handles dinámicos (ids de grupos OR,
+  // condiciones de espera y botones) fuera del enum fijo FlowHandle.
   source_handle: FlowHandleValue | WaitAnyConditionKindValue | QuestionHandleValue | string
 }
 
@@ -610,7 +648,16 @@ export interface AutomationRule {
   updated_at: string
 }
 
-export type AutomationExecutionStartSource = 'system' | 'manual'
+export type AutomationExecutionStartSource = 'system' | 'manual' | 'flow'
+
+export interface AutomationActionResult {
+  position?: number
+  type?: AutomationActionType
+  status?: string
+  error?: string
+  flow_rule_id?: number
+  child_execution_id?: number
+}
 
 export interface AutomationExecution {
   id: number
@@ -624,7 +671,7 @@ export interface AutomationExecution {
   scheduled_for: string
   started_at: string | null
   finished_at: string | null
-  action_results: Array<Record<string, unknown>>
+  action_results: AutomationActionResult[]
   flow_state: {
     current_node_id?: string | null
     path?: string[]

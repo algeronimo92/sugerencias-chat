@@ -209,3 +209,30 @@ def test_minio_object_paths_are_grouped_by_media_kind(
 ):
     monkeypatch.setattr(storage.settings, "minio_prefix", "dermicapro")
     assert storage._object_name_from_filename(filename, content_type) == expected
+
+
+def test_minio_http_client_has_timeouts():
+    """El pool del SDK debe traer timeout explícito.
+
+    Sin él una conexión colgada no se corta nunca, y como el SDK es síncrono
+    cada llamada retiene un hilo del threadpool de anyio: suficientes
+    descargas atascadas y el proceso deja de atender los endpoints `def`.
+    """
+    pool_kwargs = storage._minio_http_client().connection_pool_kw
+    timeout = pool_kwargs["timeout"]
+    assert timeout.connect_timeout == storage.settings.minio_connect_timeout_seconds
+    assert timeout.read_timeout == storage.settings.minio_read_timeout_seconds
+
+
+def test_minio_http_client_verifies_certificates_by_default():
+    """`cert_check` del SDK se ignora al pasar http_client propio.
+
+    La verificación pasa a depender de `cert_reqs` del pool, así que el valor
+    de MINIO_VERIFY_TLS tiene que llegar hasta ahí.
+    """
+    assert storage._minio_http_client().connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
+
+
+def test_minio_http_client_can_disable_verification(monkeypatch):
+    monkeypatch.setattr(storage.settings, "minio_verify_tls", False)
+    assert storage._minio_http_client().connection_pool_kw["cert_reqs"] == "CERT_NONE"

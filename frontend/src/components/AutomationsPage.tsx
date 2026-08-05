@@ -6,7 +6,7 @@ import {
   GitBranch, History, Loader2, Pencil, Plus, Power, RotateCcw, Save, Trash2, XCircle,
 } from 'lucide-react'
 import type {
-  AutomationAction, AutomationActionType, AutomationConditions, AutomationExecution, AutomationRule,
+  AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution, AutomationRule,
   AutomationTrigger,
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
@@ -65,10 +65,14 @@ function defaultAction(type: AutomationActionType): AutomationAction {
       return { type, text: '' }
     case ActionType.ChangeService:
       return { type, service: null }
+    case ActionType.SetConversationState:
+      return { type, state: 'closed' }
     case ActionType.SendAudio:
       return { type, media_asset_id: null }
     case ActionType.SendAttachment:
       return { type, media_asset_id: null }
+    case ActionType.SendMedia:
+      return { type, media_asset_id: null, caption: '' }
     case ActionType.ReactToLastCustomerMessage:
       return { type, emoji: '❤️' }
     default:
@@ -97,9 +101,8 @@ function triggerLabel(value: AutomationTrigger) {
   return TRIGGERS.find(item => item.value === value)?.label ?? value
 }
 
-function actionLabel(value: unknown) {
-  const type = String(value)
-  return isAutomationActionType(type) ? ACTION_LABELS[type] : type
+function actionLabel(value: AutomationActionResult['type']) {
+  return value ? ACTION_LABELS[value] : ''
 }
 
 function formatDate(value: string | null) {
@@ -145,6 +148,8 @@ function validateForm(form: RuleForm) {
     if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje a enviar.`)
     if (action.type === ActionType.ReactToLastCustomerMessage && (!action.emoji.trim() || action.emoji.length > 16)) errors.push(`${prefix}: selecciona una reacción válida.`)
     if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
+    if (action.type === ActionType.SendMedia && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
+    if (action.type === ActionType.SendMedia && action.caption.length > 1024) errors.push(`${prefix}: el caption admite máximo 1024 caracteres.`)
   })
   return errors
 }
@@ -253,7 +258,7 @@ export function AutomationsPage() {
     const successMessage = editingId == null ? 'Automatización creada' : 'Automatización actualizada'
     const options = {
       onSuccess: () => { toast.success(successMessage); closeForm() },
-      onError: (reason: unknown) => setError(extractErrorMessage(reason)),
+      onError: (reason: Error) => setError(extractErrorMessage(reason)),
     }
     if (editingId == null) create.mutate(input, options)
     else update.mutate({ id: editingId, ...input }, options)
@@ -413,8 +418,10 @@ export function AutomationsPage() {
             {action.type === ActionType.SendTemplate && <div><Select required value={action.template_id ?? ''} onChange={event => setAction(index, { ...action, template_id: Number(event.target.value) || null })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona plantilla de texto</option>{automaticTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</Select><p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">Solo se envía con la ventana de 24 horas abierta. Se admiten adjuntos (imagen, video, audio, documento); no se admiten plantillas con botones o listas.</p></div>}
             {action.type === ActionType.SendMessage && <textarea required rows={3} value={action.text} onChange={event => setAction(index, { ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />}
             {action.type === ActionType.ChangeService && <div><input value={action.service ?? ''} onChange={event => setAction(index, { ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><p className="mt-1 text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></div>}
+            {action.type === ActionType.SetConversationState && <div><Select value={action.state} onChange={event => setAction(index, { ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select><p className="mt-1 text-[10px] text-wa-muted">No dispara “Conversación nueva”; ese evento solo ocurre cuando escribe el cliente.</p></div>}
             {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
             {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
+            {action.type === ActionType.SendMedia && <div className="space-y-2"><MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} /><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Caption o texto acompañante<textarea rows={3} maxLength={1024} value={action.caption} onChange={event => setAction(index, { ...action, caption: event.target.value })} placeholder="Ej. Hola {{nombre}}, mira este contenido…" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><p className="text-[10px] text-wa-muted">En imagen, video y documento viaja como caption. Con audio se envía como mensaje de texto inmediatamente después.</p></div>}
             {action.type === ActionType.ReactToLastCustomerMessage && <AutomationReactionPicker emoji={action.emoji} onChange={emoji => setAction(index, { ...action, emoji })} />}
           </div>)}</div></section>
 

@@ -176,8 +176,8 @@ function MainLayout() {
   const { data: whatsappStatus } = useWhatsappStatus({ enabled: me?.role === 'admin' })
   const showConnectWhatsapp = me?.role === 'admin' && whatsappStatus != null && whatsappStatus.state !== 'open'
 
-  function handleLoadMore() {
-    if (hasNextPage && !isFetchingNextPage) return fetchNextPage()
+  async function handleLoadMore(): Promise<void> {
+    if (hasNextPage && !isFetchingNextPage) await fetchNextPage()
   }
 
   // Consulta directa por clave primaria, independiente de la búsqueda de la lista.
@@ -424,7 +424,7 @@ function MainLayout() {
                 unreadCount={unreadCount}
                 advancedFilters={advancedFilters}
                 onAdvancedFiltersChange={setAdvancedFilters}
-                onRefresh={refetch}
+                onRefresh={async () => { await refetch() }}
                 selectedId={selectedChat?.chat_id ?? null}
                 onSelect={handleSelectChat}
                 hasNextPage={!!hasNextPage}

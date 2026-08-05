@@ -25,7 +25,7 @@ interface Params {
   hasNextPage: boolean
   isFetchingNextPage: boolean
   fetchNextPage: () => Promise<{ isError: boolean }>
-  historyError: unknown
+  historyError: Error | null
 }
 
 /**

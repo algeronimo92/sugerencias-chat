@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient
+from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
+from services import automation_service
 from services.automation_service import _execute_action, _resolve_recipient, _run_execution
 from tests.conftest import make_chat, make_execution, make_rule
 
@@ -74,6 +75,54 @@ def deps_with_template(deps, tpl, attachments=()):
             return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(attachments)))
 
     return dataclasses.replace(deps, session_factory=lambda: FakeSession)
+
+
+class _MediaValidationSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute(self, stmt):
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [9]))
+
+
+class TestSendMediaValidation:
+    async def test_rule_accepts_and_preserves_caption(self, monkeypatch):
+        monkeypatch.setattr(
+            automation_service,
+            "get_sessionmaker",
+            lambda: lambda: _MediaValidationSession(),
+        )
+
+        values = await automation_service.validate_automation_rule({
+            "name": "Video de bienvenida",
+            "trigger_type": AutomationTrigger.MANUAL,
+            "actions": [{
+                "type": AutomationActionType.SEND_MEDIA,
+                "media_asset_id": 9,
+                "caption": "  Hola {{nombre}}  ",
+            }],
+        })
+
+        assert values["actions"] == [{
+            "type": AutomationActionType.SEND_MEDIA,
+            "media_asset_id": 9,
+            "caption": "Hola {{nombre}}",
+        }]
+
+    async def test_rule_rejects_caption_over_limit(self):
+        with pytest.raises(ValueError, match="caption admite máximo 1024"):
+            await automation_service.validate_automation_rule({
+                "name": "Video largo",
+                "trigger_type": AutomationTrigger.MANUAL,
+                "actions": [{
+                    "type": AutomationActionType.SEND_MEDIA,
+                    "media_asset_id": 9,
+                    "caption": "x" * 1025,
+                }],
+            })
 
 
 class TestCreateTask:
@@ -162,6 +211,88 @@ class TestTagsAndStage:
             )
 
 
+class TestConversationState:
+    async def test_rule_accepts_and_preserves_state(self):
+        values = await automation_service.validate_automation_rule({
+            "name": "Cerrar al terminar",
+            "trigger_type": AutomationTrigger.MANUAL,
+            "actions": [{
+                "type": AutomationActionType.SET_CONVERSATION_STATE,
+                "state": "closed",
+            }],
+        })
+
+        assert values["actions"] == [{
+            "type": AutomationActionType.SET_CONVERSATION_STATE,
+            "state": "closed",
+        }]
+
+    async def test_rule_rejects_unknown_state(self):
+        with pytest.raises(ValueError, match="estado de conversación inválido"):
+            await automation_service.validate_automation_rule({
+                "name": "Estado inválido",
+                "trigger_type": AutomationTrigger.MANUAL,
+                "actions": [{
+                    "type": AutomationActionType.SET_CONVERSATION_STATE,
+                    "state": "toggle",
+                }],
+            })
+
+    async def test_opens_a_closed_conversation(self, deps, recorder):
+        chat = make_chat(conversacion_abierta=False)
+        action = {
+            "type": AutomationActionType.SET_CONVERSATION_STATE,
+            "state": "open",
+        }
+
+        result = await _execute_action(
+            action, chat, make_execution(), make_rule(), deps,
+        )
+
+        assert result["status"] == AutomationExecutionStatus.COMPLETED
+        assert recorder.lead_updates == [(
+            "51999@s.whatsapp.net", {"conversacion_abierta": True},
+        )]
+        assert chat["conversacion_abierta"] is True
+        assert recorder.broadcasts[-1]["reason"] == "conversation_opened"
+
+    async def test_closes_an_open_conversation(self, deps, recorder):
+        chat = make_chat(conversacion_abierta=True)
+        action = {
+            "type": AutomationActionType.SET_CONVERSATION_STATE,
+            "state": "closed",
+        }
+
+        result = await _execute_action(
+            action, chat, make_execution(), make_rule(), deps,
+        )
+
+        assert result["status"] == AutomationExecutionStatus.COMPLETED
+        assert recorder.lead_updates == [(
+            "51999@s.whatsapp.net", {"conversacion_abierta": False},
+        )]
+        assert chat["conversacion_abierta"] is False
+        assert recorder.broadcasts[-1]["reason"] == "conversation_closed"
+
+    async def test_same_state_is_idempotent(self, deps, recorder):
+        action = {
+            "type": AutomationActionType.SET_CONVERSATION_STATE,
+            "state": "open",
+        }
+
+        result = await _execute_action(
+            action,
+            make_chat(conversacion_abierta=True),
+            make_execution(),
+            make_rule(),
+            deps,
+        )
+
+        assert result["status"] == AutomationExecutionStatus.SKIPPED
+        assert recorder.lead_updates == []
+        assert recorder.broadcasts == []
+
+
 class TestNotify:
     async def test_notifies_lead_seller_by_default(self, deps, recorder):
         action = {
@@ -207,7 +338,7 @@ class TestSendTemplate:
             await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
         assert outbox.enqueued == []
 
-    async def test_sends_text_and_each_attachment_in_a_single_enqueue_call(self, deps, outbox):
+    async def test_sends_text_as_caption_of_first_compatible_attachment(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         with_media = deps_with_template(
             deps, template(),
@@ -215,18 +346,34 @@ class TestSendTemplate:
         )
         await _execute_action(action, make_chat(), make_execution(), make_rule(), with_media)
 
-        # Texto + los 2 adjuntos quedan en un solo enqueue_messages, no en
-        # tres llamadas separadas.
+        # El texto se integra al primer adjunto y todo queda en una única
+        # llamada a enqueue_messages.
         assert len(outbox.enqueued) == 1
         chat_id, items = outbox.enqueued[0]
         assert chat_id == "51999@s.whatsapp.net"
-        assert items[0]["payload"] == {"type": "text", "text": "Hola Ana"}
+        assert len(items) == 2
+        assert items[0]["content"] == "Hola Ana"
+        assert items[0]["payload"] == {
+            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "image",
+            "filename": "foto.jpg", "caption": "Hola Ana",
+        }
         assert items[1]["payload"] == {
-            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "image", "filename": "foto.jpg",
+            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "document",
+            "filename": "guia.pdf", "caption": None,
         }
-        assert items[2]["payload"] == {
-            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "document", "filename": "guia.pdf",
-        }
+
+    async def test_audio_only_template_keeps_text_as_separate_message(self, deps, outbox):
+        action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
+        audio = attachment(content_type="audio/ogg", filename="indicacion.ogg")
+        await _execute_action(
+            action, make_chat(), make_execution(), make_rule(),
+            deps_with_template(deps, template(), [audio]),
+        )
+
+        _, items = outbox.enqueued[0]
+        assert items[0] == {"content": "Hola Ana", "payload": {"type": "text", "text": "Hola Ana"}}
+        assert items[1]["payload"]["mediatype"] == "audio"
+        assert items[1]["payload"]["caption"] is None
 
     async def test_attachment_only_template_needs_no_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
@@ -389,6 +536,81 @@ class TestSendAttachment:
         _, items = outbox.enqueued[0]
         assert items[0]["payload"]["mediatype"] == "document"
         assert items[0]["payload"]["filename"] == "guia.pdf"
+
+
+class TestSendMedia:
+    async def test_sends_video_with_rendered_native_caption(self, deps, outbox):
+        action = {
+            "type": AutomationActionType.SEND_MEDIA,
+            "media_asset_id": 9,
+            "caption": "Hola {{nombre}}, mira este video",
+        }
+        asset = media_asset(
+            media_url="/media/demo.mp4",
+            content_type="video/mp4",
+            filename="demo.mp4",
+        )
+
+        result = await _execute_action(
+            action, make_chat(name="Ana"), make_execution(), make_rule(),
+            deps_with_media_asset(deps, asset),
+        )
+
+        _, items = outbox.enqueued[0]
+        assert items == [{
+            "content": "Hola Ana, mira este video",
+            "media_url": "/media/demo.mp4",
+            "payload": {
+                "type": "media",
+                "media_url": "/media/demo.mp4",
+                "mediatype": "video",
+                "filename": "demo.mp4",
+                "caption": "Hola Ana, mira este video",
+            },
+        }]
+        assert result["message_ids"] == [1]
+
+    async def test_sends_audio_then_companion_text(self, deps, outbox):
+        action = {
+            "type": AutomationActionType.SEND_MEDIA,
+            "media_asset_id": 9,
+            "caption": "Escucha esta indicación",
+        }
+
+        result = await _execute_action(
+            action, make_chat(), make_execution(), make_rule(),
+            deps_with_media_asset(deps, media_asset()),
+        )
+
+        _, items = outbox.enqueued[0]
+        assert items == [
+            {
+                "media_url": "/media/audio.ogg",
+                "payload": {"type": "audio", "media_url": "/media/audio.ogg"},
+            },
+            {
+                "content": "Escucha esta indicación",
+                "payload": {"type": "text", "text": "Escucha esta indicación"},
+            },
+        ]
+        assert result["message_ids"] == [1, 2]
+
+    async def test_allows_media_without_caption(self, deps, outbox):
+        action = {
+            "type": AutomationActionType.SEND_MEDIA,
+            "media_asset_id": 9,
+            "caption": "",
+        }
+        asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
+
+        await _execute_action(
+            action, make_chat(), make_execution(), make_rule(),
+            deps_with_media_asset(deps, asset),
+        )
+
+        _, items = outbox.enqueued[0]
+        assert items[0]["content"] is None
+        assert items[0]["payload"]["caption"] is None
 
 
 class TestDispatch:

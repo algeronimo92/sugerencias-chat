@@ -2,9 +2,9 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import type { Chat, ChatFilters, LeadInput, LeadUpdateInput, Message, MessageStatus, MessageType } from '../types'
+import type { Chat, ChatFilters, JsonValue, LeadInput, LeadUpdateInput, Message, MessageStatus, MessageType } from '../types'
 import type { NotificationOptions } from './useNotifications'
-import { parseContent } from '../utils/message'
+import { isJsonObject, parseContent } from '../utils/message'
 import { NotificationType } from '../domain/automationCatalog'
 
 interface ChatsPage {
@@ -20,6 +20,28 @@ interface CachedMessagePage {
 interface MessageStatusUpdate {
   id: number
   status: MessageStatus
+}
+
+interface MessageStatusCandidate {
+  id?: number
+  status?: string
+}
+
+const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
+  'PENDING', 'FAILED', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED',
+])
+
+const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
+  'text', 'image', 'video', 'ptv', 'audio', 'document', 'location', 'sticker',
+  'contact', 'poll', 'reaction', 'interactive', 'template', 'unsupported',
+])
+
+function isMessageStatus(value: string): value is Exclude<MessageStatus, null> {
+  return MESSAGE_STATUS_VALUES.has(value)
+}
+
+function isMessageType(value: string): value is MessageType {
+  return MESSAGE_TYPE_VALUES.has(value)
 }
 
 function applyMessageStatuses(
@@ -114,6 +136,147 @@ interface LatestMessage {
   name: string | null
 }
 
+interface CreatedNotification {
+  id: number
+  notification_type: string
+  title: string
+  body: string
+  lead_id: string | null
+  metadata: { author_name?: string } | null
+}
+
+type ChatSocketEvent =
+  | { type: 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' }
+  | { type: 'scheduled_messages_updated'; chat_id?: string }
+  | { type: 'internal_notes_updated'; lead_id: string }
+  | { type: 'notification_created'; notification: CreatedNotification }
+  | { type: 'internal_note_mention'; note: { id: number; lead_id: string; content: string }; mentioned_by: { name: string } }
+  | { type: 'task_reminder'; task: { task_id: number; lead_id: string; lead_name: string | null; title: string } }
+  | {
+      type: 'chats_updated'
+      chat_id?: string
+      reason?: string
+      latest_message?: LatestMessage
+      message_statuses?: MessageStatusCandidate[]
+    }
+
+function isNullableString(value: JsonValue | undefined): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
+function parseChatSocketEvent(data: string): ChatSocketEvent | null {
+  const parsed: JsonValue = JSON.parse(data)
+  if (!isJsonObject(parsed) || typeof parsed.type !== 'string') return null
+
+  switch (parsed.type) {
+    case 'tasks_updated':
+    case 'templates_updated':
+    case 'media_library_updated':
+    case 'notifications_updated':
+    case 'automations_updated':
+      return { type: parsed.type }
+    case 'scheduled_messages_updated':
+      return {
+        type: parsed.type,
+        chat_id: typeof parsed.chat_id === 'string' ? parsed.chat_id : undefined,
+      }
+    case 'internal_notes_updated':
+      return typeof parsed.lead_id === 'string' ? { type: parsed.type, lead_id: parsed.lead_id } : null
+    case 'notification_created': {
+      const notification = parsed.notification
+      if (
+        !isJsonObject(notification)
+        || typeof notification.id !== 'number'
+        || typeof notification.notification_type !== 'string'
+        || typeof notification.title !== 'string'
+        || typeof notification.body !== 'string'
+        || !isNullableString(notification.lead_id)
+      ) return null
+      const metadata = isJsonObject(notification.metadata)
+        ? { author_name: typeof notification.metadata.author_name === 'string' ? notification.metadata.author_name : undefined }
+        : null
+      return {
+        type: parsed.type,
+        notification: {
+          id: notification.id,
+          notification_type: notification.notification_type,
+          title: notification.title,
+          body: notification.body,
+          lead_id: notification.lead_id,
+          metadata,
+        },
+      }
+    }
+    case 'internal_note_mention': {
+      const note = parsed.note
+      const mentionedBy = parsed.mentioned_by
+      if (
+        !isJsonObject(note)
+        || typeof note.id !== 'number'
+        || typeof note.lead_id !== 'string'
+        || typeof note.content !== 'string'
+        || !isJsonObject(mentionedBy)
+        || typeof mentionedBy.name !== 'string'
+      ) return null
+      return {
+        type: parsed.type,
+        note: { id: note.id, lead_id: note.lead_id, content: note.content },
+        mentioned_by: { name: mentionedBy.name },
+      }
+    }
+    case 'task_reminder': {
+      const task = parsed.task
+      if (
+        !isJsonObject(task)
+        || typeof task.task_id !== 'number'
+        || typeof task.lead_id !== 'string'
+        || !isNullableString(task.lead_name)
+        || typeof task.title !== 'string'
+      ) return null
+      return {
+        type: parsed.type,
+        task: { task_id: task.task_id, lead_id: task.lead_id, lead_name: task.lead_name, title: task.title },
+      }
+    }
+    case 'chats_updated': {
+      const rawLatest = parsed.latest_message
+      const latest = isJsonObject(rawLatest)
+        && typeof rawLatest.message_id === 'string'
+        && typeof rawLatest.chat_id === 'string'
+        && typeof rawLatest.sender === 'string'
+        && isNullableString(rawLatest.content)
+        && isNullableString(rawLatest.name)
+        ? {
+            message_id: rawLatest.message_id,
+            chat_id: rawLatest.chat_id,
+            sender: rawLatest.sender,
+            content: rawLatest.content,
+            message_type: typeof rawLatest.message_type === 'string' && isMessageType(rawLatest.message_type)
+              ? rawLatest.message_type
+              : null,
+            name: rawLatest.name,
+          }
+        : undefined
+      const messageStatuses = Array.isArray(parsed.message_statuses)
+        ? parsed.message_statuses.flatMap(item => isJsonObject(item)
+          && typeof item.id === 'number'
+          && typeof item.status === 'string'
+          ? [{ id: item.id, status: item.status }]
+          : [])
+        : undefined
+      return {
+        type: parsed.type,
+        chat_id: typeof parsed.chat_id === 'string' ? parsed.chat_id : undefined,
+        reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+        latest_message: latest,
+        message_statuses: messageStatuses,
+      }
+    }
+    default:
+      return null
+  }
+}
+
 type NotifyFn = (title: string, body: string, onClick: () => void, options?: NotificationOptions) => void
 export interface InternalMentionAlert { notificationId: number; leadId: string; authorName: string; content: string }
 type InternalMentionFn = (alert: InternalMentionAlert) => void
@@ -196,7 +359,8 @@ export function useChatUpdates(
       socket.onmessage = (event) => {
         lastActivityAt = Date.now()
         try {
-          const payload = JSON.parse(event.data)
+          const payload = parseChatSocketEvent(event.data)
+          if (!payload) return
           if (payload.type === 'tasks_updated') {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -225,14 +389,7 @@ export function useChatUpdates(
             queryClient.invalidateQueries({ queryKey: ['automation-executions'] })
           }
           if (payload.type === 'notification_created') {
-            const notification = payload.notification as {
-              id: number
-              notification_type: string
-              title: string
-              body: string
-              lead_id: string | null
-              metadata: { author_name?: string } | null
-            }
+            const notification = payload.notification
             queryClient.invalidateQueries({ queryKey: ['notifications'] })
             notifyRef.current(
               notification.title,
@@ -250,8 +407,8 @@ export function useChatUpdates(
             }
           }
           if (payload.type === 'internal_note_mention') {
-            const note = payload.note as { id: number; lead_id: string; content: string }
-            const mentionedBy = payload.mentioned_by as { name: string }
+            const note = payload.note
+            const mentionedBy = payload.mentioned_by
             queryClient.invalidateQueries({ queryKey: ['internal-notes', note.lead_id] })
             notifyRef.current(
               `${mentionedBy.name} te mencionó en una nota`,
@@ -268,7 +425,7 @@ export function useChatUpdates(
           }
           if (payload.type === 'task_reminder') {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
-            const task = payload.task as { task_id: number; lead_id: string; lead_name: string | null; title: string }
+            const task = payload.task
             notifyRef.current(
               `Recordatorio: ${task.lead_name || 'Lead'}`,
               task.title,
@@ -277,15 +434,13 @@ export function useChatUpdates(
             )
           }
           if (payload.type === 'chats_updated') {
-            const latest = payload.latest_message as LatestMessage | undefined
+            const latest = payload.latest_message
             const changedChatId = typeof payload.chat_id === 'string' ? payload.chat_id : latest?.chat_id
             const reason = typeof payload.reason === 'string' ? payload.reason : 'unknown'
             const messageStatuses: MessageStatusUpdate[] = Array.isArray(payload.message_statuses)
-              ? payload.message_statuses.flatMap((item: unknown) => {
-                  if (!item || typeof item !== 'object') return []
-                  const candidate = item as { id?: unknown; status?: unknown }
-                  if (typeof candidate.id !== 'number' || typeof candidate.status !== 'string') return []
-                  return [{ id: candidate.id, status: candidate.status as MessageStatus }]
+              ? payload.message_statuses.flatMap((candidate) => {
+                  if (typeof candidate.id !== 'number' || typeof candidate.status !== 'string' || !isMessageStatus(candidate.status)) return []
+                  return [{ id: candidate.id, status: candidate.status }]
                 })
               : []
 

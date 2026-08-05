@@ -1,11 +1,14 @@
 import { ChevronDown, History, Loader2 } from 'lucide-react'
 import { useLeadActivity } from '../hooks/useLeadMeta'
 import { parseContent } from '../utils/message'
-import type { LeadActivity } from '../types'
+import type { JsonObject, JsonValue, LeadActivity } from '../types'
 
 const EVENT_LABELS: Record<string, string> = {
   lead_created: 'Lead creado',
   lead_updated: 'Datos actualizados',
+  conversation_started: 'Conversación nueva',
+  conversation_opened: 'Conversación abierta manualmente',
+  conversation_closed: 'Conversación cerrada',
   stage_changed: 'Estado modificado',
   tag_added: 'Etiqueta agregada',
   tag_removed: 'Etiqueta eliminada',
@@ -25,6 +28,8 @@ const FIELD_LABELS: Record<string, string> = {
   origen: 'Origen',
   notas: 'Notas',
   con_especialista: 'Con especialista',
+  conversacion_abierta: 'Conversación abierta',
+  conversacion_version: 'Número de conversación',
   razon_perdido: 'Razón de pérdida',
   fecha_recontacto: 'Fecha de recontacto',
   proxima_cita: 'Próxima cita',
@@ -54,11 +59,11 @@ function fieldLabel(field: string): string {
   return FIELD_LABELS[field] ?? humanizeKey(field)
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: JsonValue): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function valueLabel(value: unknown): string {
+function valueLabel(value: JsonValue | undefined): string {
   if (value == null || value === '') return 'Sin definir'
   if (typeof value === 'boolean') return value ? 'Sí' : 'No'
   if (Array.isArray(value)) {

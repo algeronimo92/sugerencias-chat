@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AutomationFlowEdge } from '../../types'
 import { FlowHandle } from '../../domain/automationCatalog'
-import { toCanvasEdges } from './FlowCanvas'
+import { toCanvasEdges } from './flowCanvasEdges'
 
 const FLOW_EDGES: AutomationFlowEdge[] = [
   { id: 'edge-a-b', source: 'a', target: 'b', source_handle: FlowHandle.Next },

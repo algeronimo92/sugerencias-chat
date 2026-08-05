@@ -7,6 +7,16 @@
 # que rehacerlo -como acaba de pasar-, es un comando en vez de reconstruir de
 # memoria que permisos llevaba.
 #
+# Es IDEMPOTENTE: volver a ejecutarlo con la infraestructura ya montada no
+# cambia nada y no toca la credencial en uso. Antes borraba politica y usuario
+# para recrearlos y generaba un secreto nuevo en cada corrida, asi que
+# reejecutarlo -por ejemplo para revisar los permisos- dejaba al backend en
+# produccion con una credencial invalida hasta editar el .env a mano.
+#
+# Para rotar el secreto a proposito:
+#
+#   scripts/minio-setup.sh --rotate-secret
+#
 # El usuario que crea NO es el root de MinIO. Solo puede leer, escribir y
 # borrar objetos dentro de su bucket: no puede listar otros buckets, ni
 # crearlos, ni borrarlos, ni tocar politicas. Si esa credencial se filtra, el
@@ -23,6 +33,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT/backend/.env"
+
+ROTATE_SECRET=false
+for arg in "$@"; do
+  case "$arg" in
+    --rotate-secret) ROTATE_SECRET=true ;;
+    -h|--help)
+      sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^#\s\?//'
+      exit 0
+      ;;
+    *) echo "opcion desconocida: $arg" >&2; exit 2 ;;
+  esac
+done
 
 read_env() {
   grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
@@ -42,12 +64,38 @@ SCHEME="https"
 [ "$SECURE" = "false" ] && SCHEME="http"
 URL="$SCHEME://$ENDPOINT"
 
-# Secreto de 40 caracteres, como los que genera MinIO.
-APP_SECRET="${MINIO_APP_SECRET:-$(head -c 30 /dev/urandom | base64 | tr -d '/+=' | head -c 40)}"
-
 echo "Servidor : $URL"
 echo "Bucket   : $BUCKET"
 echo "Usuario  : $APP_USER"
+
+# Se consulta si el usuario ya existe ANTES de generar nada: el secreto solo
+# se toca cuando hay que crearlo o cuando se pide la rotacion explicitamente.
+# Generarlo siempre era lo que invalidaba la credencial del backend en cada
+# corrida.
+if docker run --rm \
+  -e MC_HOST_target="$SCHEME://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@$ENDPOINT" \
+  --entrypoint mc minio/mc admin user info target "$APP_USER" >/dev/null 2>&1; then
+  USER_EXISTS=true
+else
+  USER_EXISTS=false
+fi
+
+# Secreto de 40 caracteres, como los que genera MinIO.
+if [ "$USER_EXISTS" = false ] || [ "$ROTATE_SECRET" = true ] || [ -n "${MINIO_APP_SECRET:-}" ]; then
+  APP_SECRET="${MINIO_APP_SECRET:-$(head -c 30 /dev/urandom | base64 | tr -d '/+=' | head -c 40)}"
+else
+  # Vacio = no tocar la credencial. MinIO no permite releer un secreto ya
+  # creado, asi que tampoco se puede mostrar: si se perdio, hay que rotarlo.
+  APP_SECRET=""
+fi
+
+if [ "$USER_EXISTS" = true ] && [ -z "$APP_SECRET" ]; then
+  echo "Secreto  : sin cambios (usar --rotate-secret para generar uno nuevo)"
+elif [ "$USER_EXISTS" = true ]; then
+  echo "Secreto  : SE VA A ROTAR (el backend dejara de autenticar hasta actualizar el .env)"
+else
+  echo "Secreto  : se genera uno nuevo (el usuario no existe todavia)"
+fi
 
 # La politica se genera aqui, y su alcance se deriva de MINIO_PREFIX, para que
 # no pueda quedar desincronizada con donde la aplicacion escribe de verdad.
@@ -134,18 +182,34 @@ mc anonymous set none "target/$BUCKET" >/dev/null
 echo "  acceso anonimo: denegado"
 
 echo "--- politica ---"
-# Se borra siempre antes de crear, ignorando el fallo si no existia. Encadenar
-# create-o-si-no-borra-y-crea era fragil y ocultaba el error real.
-mc admin policy remove target "${APP_USER}-policy" >/dev/null 2>&1 || true
+# `policy create` sobre una politica existente la reemplaza, asi que no hace
+# falta borrarla antes. Se evita el borrado a proposito: entre el remove y el
+# create la aplicacion recibia AccessDenied en cada subida y descarga.
 mc admin policy create target "${APP_USER}-policy" /tmp/policy.json
 echo "  ${APP_USER}-policy: solo lectura/escritura/borrado dentro de $BUCKET"
 
 echo "--- usuario ---"
-mc admin user remove target "$APP_USER" >/dev/null 2>&1 || true
-mc admin user add target "$APP_USER" "$APP_SECRET"
-mc admin policy attach target "${APP_USER}-policy" --user "$APP_USER"
-echo "  creado y politica adjunta"
+# El usuario no se borra nunca. `user add` sobre uno existente actualiza su
+# secreto, que es justo lo que se quiere al rotar y lo que hay que evitar en
+# el resto de los casos: por eso APP_SECRET llega vacio cuando no toca.
+if [ -n "$APP_SECRET" ]; then
+  mc admin user add target "$APP_USER" "$APP_SECRET"
+  echo "  credencial escrita"
+else
+  echo "  ya existe, credencial intacta"
+fi
+# Adjuntar una politica ya adjunta devuelve error; es el estado deseado.
+mc admin policy attach target "${APP_USER}-policy" --user "$APP_USER" 2>/dev/null || true
+echo "  politica adjunta"
 SCRIPT
+
+if [ -z "$APP_SECRET" ]; then
+  echo
+  echo "Nada que actualizar en backend/.env: la credencial no cambio."
+  echo "La comprobacion de permisos se omite porque MinIO no permite releer un"
+  echo "secreto ya creado. Para verificarla, rotarla: scripts/minio-setup.sh --rotate-secret"
+  exit 0
+fi
 
 echo
 echo "Comprobando que la credencial nueva funciona y que NO puede mas de la cuenta..."

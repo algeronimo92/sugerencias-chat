@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from time import monotonic
 
@@ -8,6 +10,8 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from config import settings
 from db.models import User
+
+logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "access_token"
 JWT_ALGORITHM = "HS256"
@@ -112,7 +116,23 @@ async def verify_webhook_token(
 
     expected = await get_effective("inbound_webhook_token")
     if not expected:
-        return
+        # Falla cerrado. Antes esto hacía `return`, de modo que con el token
+        # vacío —el valor de backend/.env.example— /api/webhooks/* y la subida
+        # de media quedaban abiertos a Internet: cualquiera podía insertar
+        # mensajes o mover la etapa de un lead, y eso dispara automatizaciones
+        # y con ellas envíos reales de WhatsApp.
+        #
+        # 503 y no 401 a propósito: el que llama mandó lo correcto, es el
+        # servidor el que está mal configurado. El arranque ya lo impide (ver
+        # _require_inbound_webhook_token en main.py); esto cubre el caso de que
+        # alguien borre el valor desde Configuración con la app en marcha.
+        logger.error(
+            "INBOUND_WEBHOOK_TOKEN no está configurado: se rechazan los webhooks "
+            "entrantes. Definirlo en el entorno o en Configuración."
+        )
+        raise HTTPException(status_code=503, detail="Webhook entrante no configurado")
     provided = _extract_bearer(authorization) or x_webhook_token
-    if provided != expected:
+    # compare_digest en vez de != para no filtrar el token por el tiempo de
+    # comparación: estos endpoints son públicos y admiten reintentos ilimitados.
+    if not provided or not secrets.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="Token inválido")

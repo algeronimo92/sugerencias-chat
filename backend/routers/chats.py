@@ -82,6 +82,7 @@ from services.phone_utils import (
     normalize_phone,
 )
 from services.ws_manager import manager
+from services.template_delivery import build_internal_template_items
 from services.message_outbox import enqueue_messages, enqueue_text_message, retry_failed_message
 from services.productivity_service import list_templates, record_template_use
 from services.automation_service import (
@@ -180,6 +181,7 @@ _LEAD_FIELD_TO_COLUMN = {
     "notas": "notas",
     "con_especialista": "con_especialista",
     "automatizacion_pausada": "automatizacion_pausada",
+    "conversacion_abierta": "conversacion_abierta",
     "razon_perdido": "razon_perdido",
     "fecha_recontacto": "fecha_recontacto",
     "proxima_cita": "proxima_cita",
@@ -382,6 +384,8 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
         del values["con_especialista"]
     if "automatizacion_pausada" in values and values["automatizacion_pausada"] is None:
         del values["automatizacion_pausada"]
+    if "conversacion_abierta" in values and values["conversacion_abierta"] is None:
+        del values["conversacion_abierta"]
 
     # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
     # su alias externo; el chat_id interno permanece estable.
@@ -686,21 +690,7 @@ async def send_template(
     if len(text) > 4096:
         raise HTTPException(400, "El texto de la plantilla supera el máximo de 4096 caracteres")
 
-    items: list[dict] = []
-    if text:
-        items.append({"content": text, "payload": {"type": "text", "text": text}})
-    for attachment in template["attachments"]:
-        mediatype = _mediatype_from_content_type(attachment["content_type"])
-        items.append({
-            "content": None,
-            "media_url": attachment["media_url"],
-            "payload": {
-                "type": "media",
-                "media_url": attachment["media_url"],
-                "mediatype": mediatype,
-                "filename": attachment["filename"],
-            },
-        })
+    items = build_internal_template_items(text, template["attachments"])
     sent = await enqueue_messages(chat_id, items)
     await record_template_use(template_id, user.id)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
