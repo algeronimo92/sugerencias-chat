@@ -188,3 +188,18 @@ def test_the_two_colors_never_share_a_port(tmp_path) -> None:
     ports = dict(line.split() for line in result.stdout.split("\n") if line.strip())
     assert set(ports) == {"blue", "green"}
     assert len(set(ports.values())) == 2, ports
+
+
+@requires_bash
+@pytest.mark.parametrize("color", ["blue", "green"])
+def test_compose_for_embeds_color_port_for_every_subcommand(tmp_path, color: str) -> None:
+    """Regresión: compose.bluegreen.yml exige COLOR_PORT para interpolar el
+    puerto del color, y ese error ocurre al parsear el archivo — esto rompió
+    scripts.migrate en producción porque esa invocación de compose_for no
+    llevaba el prefijo COLOR_PORT=... a mano como sí lo llevaba "up".
+    Embeberlo dentro de compose_for hace que cualquier subcomando (up, run,
+    exec, logs, down, ps) lo tenga siempre, sin depender de que cada call
+    site se acuerde de prefijarlo."""
+    result = _run_bash(_sandbox(tmp_path), f'compose_for {color}')
+    assert result.returncode == 0, result.stderr
+    assert f"COLOR_PORT={PORTS[color]}" in result.stdout
