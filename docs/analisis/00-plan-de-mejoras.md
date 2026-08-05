@@ -14,17 +14,14 @@ ejecución. Antes de tocar rendimiento, léase la advertencia de la Fase 3.
 
 | Informe | Contenido | Estado |
 |---|---|---|
-| `01-codigo-y-buenas-practicas.md` | Calidad de código, SOLID, duplicación, tipado | Completo (falta redactar su resumen ejecutivo) |
+| `01-codigo-y-buenas-practicas.md` | Calidad de código, SOLID, duplicación, tipado | Completo |
 | `02-bugs.md` | 15 bugs verificados, por severidad | Completo |
 | `03-arquitectura-y-flujo-de-eventos.md` | Arquitectura real y flujos de eventos end-to-end | Completo |
-| `04-plan-testing-playwright.md` | Plan de testing E2E | **Parcial**: sec. 1-2 escritas, 3-7 pendientes |
-| `05-plan-infra-terraform-minio.md` | Terraform para MinIO | **Pendiente**: solo esqueleto |
+| `04-plan-testing-playwright.md` | Plan de adopción de Playwright para E2E | Completo |
+| `05-plan-infra-terraform-minio.md` | Terraform para MinIO | Completo |
 | `06-consistencia-configuracion.md` | Coherencia entre ficheros de configuración | Completo |
 | `07-analisis-mensajeria.md` | Evaluación de una capa de colas/eventos | Completo |
 | `08-latencia-endpoints-y-servicios.md` | Latencia de endpoints y servicios externos | Completo |
-
-Los dos informes incompletos se interrumpieron por agotamiento de cuota de API, no
-por un problema del repositorio.
 
 ## Hilo conductor del diagnóstico
 
@@ -56,7 +53,8 @@ causar daño visible al negocio hoy.
 |---|---|---|---|---|
 | 1 | Exigir `INBOUND_WEBHOOK_TOKEN` no vacío o fallar al arrancar | 02 (A-1), 06 (1) | Webhooks abiertos a Internet: inserción de mensajes y disparo de envíos reales por terceros | S |
 | 2 | Separar el POST a Evolution de su persistencia y añadir clave de idempotencia | 02 (C-1), 07 (4.1) | Reenvío hasta 3 veces del mismo WhatsApp a un cliente | M |
-| 3 | Montar volumen o forzar MinIO para media en producción | 06 (2) | Cada despliegue blue-green destruye el multimedia subido | S |
+| 3 | Forzar `MEDIA_STORAGE_BACKEND=minio` en producción y fallar si no está configurado | 06 (2), 05 (1) | Cada despliegue blue-green destruye el multimedia subido | S |
+| 3b | Hacer `scripts/minio-setup.sh` idempotente y dejar de rotar el secreto en cada ejecución | 05 (1) | Reejecutar la provisión borra política y usuario, e invalida la credencial en uso | S |
 | 4 | Timeout en el cliente MinIO | 08 (5) | ~40 descargas colgadas dejan la app sin servir endpoints síncronos | S |
 | 5 | Mover `_recover_stale_jobs()` dentro del bucle, con corte a `failed` | 02, 03, 07 (4.2) | Cola de salida de un chat bloqueada indefinidamente | S |
 | 6 | Persistir el recordatorio de tarea antes de entregarlo | 02 (A-4), 03, 07 (4.4) | Recordatorios que desaparecen sin rastro | S |
@@ -72,7 +70,8 @@ causar daño visible al negocio hoy.
 | 16 | Redis pub/sub detrás de `ws_manager` | 07 (4.3), 03 (3) | Broadcasts que no cruzan entre colores en blue-green | M |
 | 17 | Quitar el UNIQUE global de `wsp_messages.wa_message_id` | 03 (2) | En multi-tenant, mensajes de una org descartados como duplicados de otra | M |
 | 18 | Partir `automation_service.py` (2737 líneas) y `db_service.py` (2001) | 01 (#8, #9) | Dos ficheros concentran el 20 % del backend y bloquean el multi-tenant | L |
-| 19 | Completar los informes 04 (Playwright) y 05 (Terraform/MinIO) | — | Dos entregables pedidos que quedaron sin terminar | M |
+| 19 | Adoptar Playwright para E2E: fases 1-2 del informe 04 | 04 (6) | Cero cobertura E2E hoy; ningún test cubre el camino WhatsApp -> UI | L |
+| 20 | Llevar la provisión de MinIO a Terraform, importando lo existente | 05 (5) | Provisión artesanal, destructiva y no reproducible | M |
 
 ## Fases
 
@@ -166,16 +165,49 @@ y deberían incorporarse a él:
 - `evolution_service._config()` resuelve una única instancia y `app_settings` no
   tiene dimensión de organización.
 
-### Fase 6 — Entregables pendientes
+### Fase 6 — Testing E2E e infraestructura como código
 
-Acción 19: completar el plan de Playwright (secciones 3-7) y el de Terraform para
-MinIO (completo). Ambos son planes, no implementación; se pueden retomar en
-cualquier momento sin bloquear las fases anteriores.
+Acciones 19 y 20. Son las dos únicas líneas de trabajo que no corrigen nada roto,
+sino que evitan que lo corregido se rompa otra vez. Van al final por eso, pero la
+acción 19 gana valor si se adelanta a la Fase 1: los bugs de datos son
+precisamente los que un test E2E detecta y una prueba unitaria no.
 
-Nota sobre el informe 04: **en este repositorio no existe Cypress**. Se verificó que
+**Testing (informe 04).** En este repositorio **no existe Cypress**: se verificó que
 hay cero referencias. El frontend prueba con Vitest, Testing Library y Storybook, y
-el backend con pytest. El plan es por tanto de adopción de Playwright desde cero, no
-de migración.
+el backend con pytest. El plan es por tanto de adopción desde cero, no de migración,
+y así lo advierte el propio informe.
+
+El diseño propuesto levanta la imagen `frontend --target prod` con nginx para
+reproducir el mismo origen que producción, aísla por namespacing de lead por worker
+(no hay endpoint de borrado de leads), simula entrantes reproduciendo lo que hace
+n8n y espera por trama de WebSocket en vez de por `sleep`. Incluye un
+`compose.e2e.yml` completo y el job de CI.
+
+Dos consecuencias prácticas a tener presentes:
+
+- **No hay ni un `data-testid` en `frontend/src/components`.** El plan se apoya en
+  roles y etiquetas ya existentes y solo pide dos testids nuevos, en un PR aparte.
+- El mock de Evolution se inyecta por `EVOLUTION_API_URL`, pero `_config()` lee
+  `get_effective_many`, así que `app_settings` pisa al entorno. Hay que contarlo con
+  eso o el mock no se aplica.
+
+**Infraestructura (informe 05).** El servidor MinIO no está declarado en ningún
+compose del repo: es un endpoint externo. Lo que sí existe es
+`scripts/minio-setup.sh`, que es el equivalente artesanal de lo que se llevaría a
+Terraform, con dos defectos que la acción 3b corrige antes de nada: es destructivo
+por diseño y rota el secreto en cada ejecución, imprimiéndolo por stdout para
+copiarlo a mano.
+
+El informe advierte explícitamente de lo que no pudo verificar: la versión y los
+atributos del provider `aminueza/minio` hay que confirmarlos en el registry, y
+ofrece la alternativa con `hashicorp/aws` + `s3_use_path_style` señalando que esa
+vía no cubre las identidades. La adopción es por `terraform import`, con la
+salvedad de que **las service accounts no se pueden importar** porque MinIO no
+devuelve su secreto.
+
+Un requisito previo real: la lectura tolerante de `_object_name_candidates`
+(`backend/services/media_storage.py:102-121`) impide aplicar lifecycle por
+categoría. Hay que resolver eso antes de poder expirar media antigua.
 
 ## Lo que funciona y no conviene tocar
 

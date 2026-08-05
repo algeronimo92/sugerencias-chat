@@ -1,12 +1,44 @@
 # Análisis 01 — Calidad de código y buenas prácticas
 
-> Estado: EN PROGRESO (se rellena por bloques). Fecha: 2026-08-05.
+> Estado: COMPLETO. Fecha: 2026-08-05.
 > Alcance: `backend/` (FastAPI + SQLAlchemy async) y `frontend/src/` (React 19 + TS).
 > Este documento es de solo lectura sobre el código: no se ha modificado ningún fichero de la aplicación.
 
 ## Resumen ejecutivo
 
-_(pendiente: se redacta al final, máximo 10 viñetas)_
+- **Dos ficheros concentran el 20 % del backend.** `automation_service.py` (2737
+  líneas, 72 funciones de nivel superior) es en realidad siete módulos en uno, y
+  `db_service.py` (2001 líneas, 90 funciones) es un *God Object*. Todo lo demás de
+  este informe se refactoriza con dificultad mientras esos dos no se partan (B1.1,
+  B1.2).
+- **La misma lógica está escrita tres veces y las copias ya divergieron.** El
+  renderizado de variables `{{…}}` existe en `automation_rules`, en
+  `routers/chats.py` y en el frontend, y la versión del router usa otra zona
+  horaria: eso no es deuda estética, es un bug de producción (B2.1, F2.5).
+- **Hay un bug real en la ruta de error del motor de automatizaciones**: el handler
+  de excepción genérica de `_run_visual_execution` pierde `deps` al llamar a
+  `_notify_execution_failure`, de modo que el aviso de fallo falla también (B3.2).
+- **Los `except Exception` devuelven el mensaje interno al cliente como HTTP 500** y
+  no dejan traza. Se filtran detalles de implementación y a la vez se pierde la
+  información necesaria para diagnosticarlos (B4.1, B4.2).
+- **El backend no tiene linter ni verificador de tipos, y el frontend no está en
+  modo `strict`.** Es la causa estructural de buena parte de lo anterior: nada
+  impide que vuelva a aparecer (B5, F4.1, F6.1).
+- **251 firmas devuelven `dict` sin parametrizar** como tipo de todo el dominio, con
+  lo que el contrato real entre capas solo existe en la cabeza de quien lo escribió
+  (B5.1).
+- **`AutomationDeps` existe pero se ignora** en la mayoría de accesos a base de
+  datos, así que la inyección de dependencias que el diseño previó no llega a
+  cumplirse y el motor no es testeable de forma aislada (B3.1).
+- **En el frontend, `MainLayout` re-implementa el enrutado que React Router ya
+  resolvió**, y `useChatUpdates` acumula 248 líneas con tres responsabilidades y un
+  `catch` que traga cualquier error del tiempo real en silencio (F1.1, F1.2, F3.1).
+- **El editor de las 12 acciones de automatización está escrito dos veces** (más una
+  tercera definición en el backend), y conviven tres formatos de fecha distintos:
+  `es-PE`, `es-AR` y el locale del navegador (F2.1, F2.2).
+- **130 líneas superan los 300 caracteres y la peor tiene 4167**, lo que hace
+  materialmente irrevisable en diff cerca del 15 % del frontend. Formatear debería
+  ir en un commit aislado, antes de tocar esos ficheros (F5.1).
 
 ## Metodología y métricas base
 
