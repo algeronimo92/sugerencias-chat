@@ -121,7 +121,7 @@ def _object_name_candidates(media_url: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
-def _validate_minio_config() -> None:
+def validate_minio_config() -> None:
     endpoint = settings.minio_endpoint.strip().rstrip("/")
     if not endpoint or not settings.minio_bucket.strip():
         raise MediaStorageError("MINIO_ENDPOINT y MINIO_BUCKET son obligatorios")
@@ -131,22 +131,66 @@ def _validate_minio_config() -> None:
         raise MediaStorageError("MINIO_ACCESS_KEY y MINIO_SECRET_KEY son obligatorios")
 
 
+def _minio_http_client():
+    """Pool HTTP con timeouts explícitos para el SDK de MinIO.
+
+    Sin esto el SDK construye su propio pool sin `timeout`, así que una
+    conexión que se queda colgada no se corta nunca. Como el SDK es síncrono,
+    esas llamadas viven en el threadpool de anyio (40 hilos por defecto):
+    suficientes descargas colgadas y el proceso deja de atender *cualquier*
+    endpoint definido con `def` en vez de `async def`.
+
+    El timeout de lectura es por trozo recibido, no total, así que no corta
+    descargas grandes legítimas — sólo las que dejaron de avanzar.
+    """
+    import os
+
+    import urllib3
+
+    ca_certs = os.environ.get("SSL_CERT_FILE")
+    if not ca_certs:
+        try:
+            import certifi
+
+            ca_certs = certifi.where()
+        except ImportError:  # pragma: no cover - certifi llega con minio
+            ca_certs = None
+
+    return urllib3.PoolManager(
+        timeout=urllib3.Timeout(
+            connect=settings.minio_connect_timeout_seconds,
+            read=settings.minio_read_timeout_seconds,
+        ),
+        maxsize=settings.minio_pool_maxsize,
+        cert_reqs="CERT_REQUIRED" if settings.minio_verify_tls else "CERT_NONE",
+        ca_certs=ca_certs,
+        retries=urllib3.Retry(
+            total=2,
+            backoff_factor=0.2,
+            status_forcelist=[500, 502, 503, 504],
+        ),
+    )
+
+
 @lru_cache(maxsize=1)
 def get_minio_client():
     """Crea un cliente thread-safe por proceso, tal como recomienda el SDK."""
-    _validate_minio_config()
+    validate_minio_config()
     try:
         from minio import Minio
     except ImportError as exc:  # pragma: no cover - solo ocurre en una imagen incompleta
         raise MediaStorageError("Falta instalar la dependencia 'minio'") from exc
 
+    # Con `http_client` propio el SDK ya no mira `secure` ni `cert_check` para
+    # construir el pool, pero `secure` sigue decidiendo el esquema de la URL y
+    # la verificación de certificado se traslada a `cert_reqs` del pool.
     return Minio(
         settings.minio_endpoint.strip().rstrip("/"),
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key,
         secure=settings.minio_secure,
         region=settings.minio_region or None,
-        cert_check=settings.minio_verify_tls,
+        http_client=_minio_http_client(),
     )
 
 
@@ -529,7 +573,7 @@ def upload_local_file_to_minio(path: Path, content_type: str, overwrite: bool = 
     """Sube un archivo local conservando su nombre; usado por el migrador."""
     if not path.is_file() or path.parent.resolve() != MEDIA_DIR.resolve():
         raise MediaStorageError(f"Archivo local inválido: {path}")
-    _validate_minio_config()
+    validate_minio_config()
     media_url = f"/media/{path.name}"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
 
