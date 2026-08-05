@@ -1,18 +1,14 @@
-import type { AutomationFlowDefinition } from '../types'
+import type { AutomationRule } from '../types'
 
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value)
-}
+type ComparableFlowDefinition =
+  | AutomationRule['flow_definition']
+  | AutomationRule['published_flow_definition']
+  | undefined
 
 export function areFlowDefinitionsEqual(
-  left: AutomationFlowDefinition | null | undefined,
-  right: AutomationFlowDefinition | null | undefined,
+  left: ComparableFlowDefinition,
+  right: ComparableFlowDefinition,
 ): boolean {
   if (left == null || right == null) return left === right
-  return stableJson(left) === stableJson(right)
+  return JSON.stringify(left) === JSON.stringify(right)
 }
