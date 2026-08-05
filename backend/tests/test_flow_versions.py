@@ -3,8 +3,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from domain_types import AutomationBuilderMode
-from services.automation_service import list_flow_versions, restore_flow_version
+from services.automation_service import list_flow_versions, publish_visual_flow, restore_flow_version
 
 RULE_ID = 7
 
@@ -117,3 +119,29 @@ class TestRestoreFlowVersion:
         _, values = update_mock.await_args.args
         assert set(values) == {"flow_definition"}
         assert len(values["flow_definition"]["nodes"]) == 2
+
+
+class TestPublishFlowVersion:
+    async def test_rejects_a_new_version_when_the_draft_matches_the_published_flow(self):
+        published = definition(2, 1)
+        current = visual_rule(
+            flow_definition=published,
+            published_flow_definition=published,
+        )
+        validated = {
+            "name": current["name"],
+            "trigger_type": "lead_created",
+            "trigger_config": {},
+            "conditions": {},
+            "flow_definition": published,
+        }
+        sessionmaker = patch("services.automation_service.get_sessionmaker")
+        with (
+            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=current)),
+            patch("services.automation_service.validate_visual_flow", AsyncMock(return_value=validated)),
+            sessionmaker as get_sessionmaker,
+        ):
+            with pytest.raises(ValueError, match="No hay cambios pendientes para publicar"):
+                await publish_visual_flow(RULE_ID)
+
+        get_sessionmaker.assert_not_called()

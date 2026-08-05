@@ -1030,6 +1030,8 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         return None
     validated = await validate_visual_flow(current["name"], current["flow_definition"])
+    if validated["flow_definition"] == current["published_flow_definition"]:
+        raise ValueError("No hay cambios pendientes para publicar")
     now = datetime.now(timezone.utc)
     new_version = current["flow_version"] + 1
     async with get_sessionmaker()() as session:

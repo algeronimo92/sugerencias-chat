@@ -26,6 +26,7 @@ import { useUsers } from '../hooks/useUsers'
 import { useTags } from '../hooks/useLeadMeta'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
+import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import {
   AUTOMATION_ACTION_LABELS as ACTION_LABELS,
   AUTOMATION_TRIGGERS as TRIGGERS,
@@ -196,6 +197,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const { data: templates = [] } = useTemplates(true)
   const { data: mediaAssets = [] } = useMediaLibrary()
   const [ruleId, setRuleId] = useState<number | null>(rule?.id ?? null)
+  const [publishedDefinition, setPublishedDefinition] = useState<AutomationFlowDefinition | null>(rule?.published_flow_definition ?? null)
   const [name, setName] = useState(rule?.name ?? 'Nuevo flujo visual')
   const [maxPerHour, setMaxPerHour] = useState<number | null>(rule?.max_executions_per_hour ?? null)
   const [visibleToSellers, setVisibleToSellers] = useState<boolean>(rule?.visible_to_sellers ?? false)
@@ -230,6 +232,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const activeUsers = users.filter(user => user.is_active)
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
+  const hasUnpublishedChanges = publishedDefinition == null || !areFlowDefinitionsEqual(flow, publishedDefinition)
   const triggerNode = flow.nodes.find(
     (node): node is Extract<AutomationFlowNode, { type: typeof NodeType.Trigger }> => node.type === NodeType.Trigger
   )
@@ -441,6 +444,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     if (!saved) return
     try {
       const published = await publishFlow.mutateAsync(saved.id)
+      setPublishedDefinition(published.published_flow_definition)
       setNotice(`Flujo publicado · versión ${published.flow_version}.`)
     } catch (reason) { setError(extractErrorMessage(reason)) }
   }
@@ -492,7 +496,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => setVersionsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-wa-border-dark dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
       <button type="button" onClick={() => { setSimulationOpen(true); setSimulation(null) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-primary-strong px-3 py-2 text-xs font-semibold text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Save className="h-4 w-4" />Guardar borrador</button>
-      <button type="button" disabled={isBusy} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
+      <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
 
     {(error || notice) && <div className={`px-4 py-2 text-xs ${error ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'}`}>{error ?? notice}</div>}
