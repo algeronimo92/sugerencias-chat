@@ -34,7 +34,13 @@ declare -A PORT=([blue]=8081 [green]=8082)
 
 compose_for() {
   local color="$1"
-  echo "docker compose -p sugerencias-chat-$color -f $ROOT/compose.prod.yml -f $ROOT/compose.bluegreen.yml"
+  # COLOR_PORT va embebido acá, no como prefijo en cada call site: compose.bluegreen.yml
+  # lo exige para interpolar el puerto del color (${COLOR_PORT:?...}), y ese
+  # error de interpolación ocurre al parsear el archivo, así que CUALQUIER
+  # subcomando (up, run, exec, logs, down, ps) lo necesita — no solo "up".
+  # Confiar en que cada call site lo prefije a mano ya rompió migrate() en
+  # producción porque esa llamada no lo tenía.
+  echo "env COLOR_PORT=${PORT[$color]} docker compose -p sugerencias-chat-$color -f $ROOT/compose.prod.yml -f $ROOT/compose.bluegreen.yml"
 }
 
 active_color() {
@@ -116,7 +122,7 @@ cmd_deploy() {
 
   echo "Sirviendo: $active. Desplegando en: $target (puerto ${PORT[$target]})"
 
-  COLOR_PORT="${PORT[$target]}" $compose_target up -d --build
+  $compose_target up -d --build
 
   # Antes de conmutar: si el esquema no queda listo, el color viejo sigue
   # sirviendo y aquí no ha pasado nada.
@@ -128,7 +134,7 @@ cmd_deploy() {
     echo "ERROR: $target no llegó a estar sano. No se conmuta." >&2
     echo "$active sigue sirviendo con normalidad. Logs del color fallido:" >&2
     $compose_target logs --tail 40 backend >&2 || true
-    COLOR_PORT="${PORT[$target]}" $compose_target down || true
+    $compose_target down || true
     exit 1
   fi
 
@@ -145,7 +151,7 @@ cmd_deploy() {
 
   # El color viejo se apaga al final y no se borra su imagen: es la reversión
   # inmediata durante los próximos despliegues.
-  COLOR_PORT="${PORT[$active]}" $(compose_for "$active") down || true
+  $(compose_for "$active") down || true
   echo "Color anterior ($active) detenido. Despliegue completo."
 }
 
