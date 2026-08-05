@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useReducer, useRef, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { LeadStage, MediaAsset, MessageTemplate, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
@@ -213,6 +213,34 @@ type PendingAttachment =
   | { key: string; source: 'upload'; file: File }
   | { key: string; source: 'library'; asset: MediaAsset }
 
+interface TemplatesPageState {
+  open: boolean
+  editingId: number | null
+  form: TemplateFormState
+  error: string | null
+  pendingAttachments: PendingAttachment[]
+  libraryOpen: boolean
+  isDraggingFiles: boolean
+}
+
+const INITIAL_PAGE_STATE: TemplatesPageState = {
+  open: false,
+  editingId: null,
+  form: EMPTY_FORM,
+  error: null,
+  pendingAttachments: [],
+  libraryOpen: false,
+  isDraggingFiles: false,
+}
+
+type TemplatesPageUpdate =
+  | Partial<TemplatesPageState>
+  | ((state: TemplatesPageState) => Partial<TemplatesPageState>)
+
+function templatesPageReducer(state: TemplatesPageState, update: TemplatesPageUpdate): TemplatesPageState {
+  return { ...state, ...(typeof update === 'function' ? update(state) : update) }
+}
+
 function pendingKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
@@ -235,13 +263,19 @@ export function TemplatesPage() {
   const addLibraryAttachment = useAddLibraryTemplateAttachment()
   const deleteTemplate = useDeleteTemplate()
   const deleteAttachment = useDeleteTemplateAttachment()
-  const [open, setOpen] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [error, setError] = useState<string | null>(null)
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
-  const [libraryOpen, setLibraryOpen] = useState(false)
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false)
+  const [pageState, updatePageState] = useReducer(templatesPageReducer, INITIAL_PAGE_STATE)
+  const { open, editingId, form, error, pendingAttachments, libraryOpen, isDraggingFiles } = pageState
+  const setOpen = (value: boolean) => updatePageState({ open: value })
+  const setEditingId = (value: number | null) => updatePageState({ editingId: value })
+  const setForm = (value: SetStateAction<TemplateFormState>) => updatePageState(state => ({
+    form: typeof value === 'function' ? value(state.form) : value,
+  }))
+  const setError = (value: string | null) => updatePageState({ error: value })
+  const setPendingAttachments = (value: SetStateAction<PendingAttachment[]>) => updatePageState(state => ({
+    pendingAttachments: typeof value === 'function' ? value(state.pendingAttachments) : value,
+  }))
+  const setLibraryOpen = (value: boolean) => updatePageState({ libraryOpen: value })
+  const setIsDraggingFiles = (value: boolean) => updatePageState({ isDraggingFiles: value })
   const dragDepth = useRef(0)
 
   function openCreateForm() {

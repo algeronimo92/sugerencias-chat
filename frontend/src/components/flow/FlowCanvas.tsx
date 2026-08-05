@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, ControlButton, Controls, Handle, MarkerType, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
+  Background, ControlButton, Controls, Handle, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
   type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
@@ -21,6 +21,7 @@ import {
   QuestionHandle, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
 } from '../../domain/automationCatalog'
 import { resolveMediaUrl } from '../../utils/message'
+import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -57,6 +58,9 @@ type CanvasNode = Node<CanvasNodeData>
 
 const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
+const EMPTY_TEMPLATES: MessageTemplate[] = []
+const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
+const EMPTY_FLOW_RULES: AutomationRule[] = []
 
 function storedConnectionHighlightPreference(): boolean {
   try {
@@ -452,97 +456,6 @@ const NODE_TYPES: NodeTypes = {
 
 const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
-const EDGE_COLORS: Record<string, string> = {
-  [FlowHandle.Yes]: '#00a884',
-  [FlowHandle.No]: '#ef4444',
-  [FlowHandle.Next]: '#94a3b8',
-  [WaitAnyConditionKind.Timer]: '#0891b2',
-  [WaitAnyConditionKind.Message]: '#7c3aed',
-  [WaitAnyConditionKind.BusinessHours]: '#f59e0b',
-  [WaitAnyConditionKind.MediaPlayed]: '#db2777',
-  [QuestionHandle.Other]: '#6b7280',
-  [QuestionHandle.Timeout]: '#ef4444',
-}
-
-const EDGE_LABELS: Record<string, string> = {
-  [FlowHandle.Yes]: 'Sí',
-  [FlowHandle.No]: 'No',
-  [WaitAnyConditionKind.Timer]: 'Timer',
-  [WaitAnyConditionKind.Message]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.Message],
-  [WaitAnyConditionKind.BusinessHours]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.BusinessHours],
-  [WaitAnyConditionKind.MediaPlayed]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.MediaPlayed],
-  [QuestionHandle.Other]: 'Otra respuesta',
-  [QuestionHandle.Timeout]: 'Sin respuesta',
-}
-
-export function toCanvasEdges(
-  edges: AutomationFlowEdge[],
-  highlightedEdgeIds: ReadonlySet<string> = new Set(),
-  selectedEdgeId: string | null = null,
-  hoveredEdgeId: string | null = null,
-): Edge[] {
-  const hasHighlight = highlightedEdgeIds.size > 0
-  return edges.map(edge => {
-    const color = EDGE_COLORS[edge.source_handle] ?? '#94a3b8'
-    const highlighted = highlightedEdgeIds.has(edge.id)
-    const hovered = edge.id === hoveredEdgeId
-    return {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.source_handle,
-      label: highlighted ? (EDGE_LABELS[edge.source_handle] ?? 'Siguiente') : EDGE_LABELS[edge.source_handle],
-      // El hover leve detiene el trazo punteado y lo vuelve continuo; así se
-      // distingue con claridad sin necesitar el modo intenso de rutas.
-      animated: hovered ? false : hasHighlight ? highlighted : true,
-      selected: edge.id === selectedEdgeId,
-      type: 'smoothstep',
-      interactionWidth: 32,
-      style: {
-        stroke: color,
-        strokeWidth: highlighted ? 4 : hovered ? 3 : 2,
-        opacity: hasHighlight && !highlighted ? 0.16 : 1,
-        filter: highlighted
-          ? `drop-shadow(0 0 5px ${color})`
-          : hovered
-            ? `drop-shadow(0 0 2px ${color})`
-            : undefined,
-        transition: 'stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease',
-      },
-      labelStyle: {
-        fill: highlighted ? color : '#64748b',
-        fontSize: highlighted ? 11 : 9,
-        fontWeight: highlighted ? 700 : 600,
-      },
-      labelShowBg: true,
-      labelBgStyle: { fill: '#ffffff', fillOpacity: highlighted ? 0.96 : 0.78 },
-      labelBgPadding: highlighted ? [6, 4] as [number, number] : [4, 2] as [number, number],
-      labelBgBorderRadius: 6,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color,
-        width: highlighted ? 24 : hovered ? 20 : 18,
-        height: highlighted ? 24 : hovered ? 20 : 18,
-      },
-    }
-  })
-}
-
-export function fromCanvasEdge(edge: Edge | Connection, id: string): AutomationFlowEdge {
-  // El handle siempre sale de uno de nuestros propios <Handle id=...> (Sí/No,
-  // el "kind" de una condición de Pausa, o "btn_N"/"other"/"timeout" de una
-  // Pregunta) — nunca de una entrada de usuario, así que alcanza con
-  // aceptarlo tal cual llega y solo usar "next" cuando el nodo no tiene un
-  // handle nombrado (un único source, como Trigger/Acción/Espera).
-  const handle = edge.sourceHandle
-  return {
-    id,
-    source: edge.source,
-    target: edge.target,
-    source_handle: (typeof handle === 'string' && handle ? handle : FlowHandle.Next) as AutomationFlowEdge['source_handle'],
-  }
-}
-
 interface FlowCanvasProps {
   flow: AutomationFlowDefinition
   templates?: MessageTemplate[]
@@ -558,7 +471,7 @@ interface FlowCanvasProps {
 }
 
 function Canvas({
-  flow, templates = [], mediaAssets = [], flowRules = [], selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()

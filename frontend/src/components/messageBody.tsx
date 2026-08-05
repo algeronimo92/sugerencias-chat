@@ -285,7 +285,8 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
 }
 
 export function MessageBody(ctx: MessageBodyContext) {
-  return BODY_RENDERERS[ctx.parsed.kind](ctx)
+  const Renderer = BODY_RENDERERS[ctx.parsed.kind]
+  return <Renderer {...ctx} />
 }
 
 /** Análisis IA del adjunto (descripción/transcripción), plegado por defecto:
