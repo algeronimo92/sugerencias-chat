@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
-import type { Message, MessageReaction, MessageType } from '../types'
+import type { JsonObject, Message, MessageReaction, MessageType } from '../types'
 
 interface MessagePage {
   items: Message[]
@@ -68,7 +68,7 @@ export interface OptimisticMessageDraft {
   media_url?: string | null
   reply_to?: ReplyTarget | null
   message_type?: MessageType | null
-  payload?: Record<string, unknown> | null
+  payload?: JsonObject | null
 }
 
 interface OptimisticContext {

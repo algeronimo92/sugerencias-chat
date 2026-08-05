@@ -13,7 +13,7 @@ afterEach(() => {
 // jsdom no implementa matchMedia, y varios componentes lo consultan para
 // decidir el layout. Sin este doble, montarlos revienta.
 if (!window.matchMedia) {
-  window.matchMedia = ((query: string) => ({
+  window.matchMedia = (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -22,7 +22,7 @@ if (!window.matchMedia) {
     addEventListener: () => {},
     removeEventListener: () => {},
     dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia
+  })
 }
 
 // Tampoco implementa scrollIntoView, que el hilo de mensajes usa al abrir un
@@ -61,5 +61,5 @@ class ResizeObserverMock implements ResizeObserver {
 }
 
 if (!globalThis.ResizeObserver) {
-  globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
+  globalThis.ResizeObserver = ResizeObserverMock
 }

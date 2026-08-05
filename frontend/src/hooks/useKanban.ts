@@ -81,7 +81,7 @@ export interface BulkActionResult {
  * decenas, no miles) y así se reusan los mismos endpoints de a uno que ya
  * están probados. Promise.allSettled para que un 404 suelto (un lead
  * borrado mientras tanto) no tire abajo el resto de la selección. */
-async function runBulk(chatIds: string[], run: (chatId: string) => Promise<unknown>): Promise<BulkActionResult> {
+async function runBulk<T>(chatIds: string[], run: (chatId: string) => Promise<T>): Promise<BulkActionResult> {
   const results = await Promise.allSettled(chatIds.map(run))
   const succeeded: string[] = []
   const failed: string[] = []

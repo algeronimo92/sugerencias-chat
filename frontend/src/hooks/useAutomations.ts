@@ -1,7 +1,10 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
-import type { AutomationAction, AutomationConditions, AutomationExecution, AutomationFlowDefinition, AutomationRule, AutomationTrigger } from '../types'
+import type {
+  AutomationAction, AutomationActionType, AutomationConditions, AutomationExecution,
+  AutomationFlowDefinition, AutomationFlowNodeType, AutomationRule, AutomationTrigger,
+} from '../types'
 import type { AutomationExecutionStatusValue } from '../domain/automationCatalog'
 import { useChatSocketConnected } from './useChats'
 
@@ -186,7 +189,17 @@ export interface AutomationFlowSimulation {
   lead_id: string
   lead_name: string | null
   flow_version: number
-  path: Array<Record<string, unknown>>
+  path: AutomationFlowSimulationStep[]
+}
+
+export interface AutomationFlowSimulationStep {
+  node_id?: string | null
+  type: AutomationFlowNodeType | AutomationActionType | 'entry_conditions'
+  status: AutomationExecutionStatusValue | 'matched' | 'evaluated' | 'would_run' | 'would_fail' | 'would_wait'
+  branch?: string
+  minutes?: number
+  seconds?: number
+  detail?: string
 }
 
 export function useSimulateVisualFlow() {

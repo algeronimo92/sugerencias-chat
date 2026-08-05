@@ -29,7 +29,7 @@ export function FlowPicker({ chatId }: Props) {
     executions
       .filter(
         (execution) =>
-          execution.start_source === 'manual' &&
+          (execution.start_source === 'manual' || execution.start_source === 'flow') &&
           (execution.status === 'scheduled' || execution.status === 'running')
       )
       .map((execution) => execution.rule_id)

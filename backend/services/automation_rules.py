@@ -125,9 +125,8 @@ def normalize_edges(
     """Valida forma y referencias de las conexiones. No mira la topología:
     de eso se encarga validate_graph_topology.
 
-    `extra_handles` admite los handles dinámicos de los bloques Pausa
-    (wait_any) — el "kind" de cada condición ("timer"/"message") — que no
-    forman parte del enum fijo FlowHandle.
+    `extra_handles` admite handles dinámicos de grupos Condición, bloques
+    Pausa y Pregunta, que no forman parte del enum fijo FlowHandle.
     """
     valid_handles = set(FlowHandle) | (extra_handles or set())
     edges: list[dict] = []
@@ -171,8 +170,18 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
                 raise ValueError("Un bloque Fin no puede tener conexiones de salida")
         elif node["type"] == FlowNodeType.CONDITION:
             handles = sorted(edge["source_handle"] for edge in node_edges)
-            if handles != sorted([FlowHandle.NO, FlowHandle.YES]):
-                raise ValueError("Cada condición debe tener exactamente una salida Sí y una salida No")
+            groups = node["data"].get("condition_groups")
+            expected = (
+                {group["id"] for group in groups} | {FlowHandle.NO}
+                if isinstance(groups, list)
+                else {FlowHandle.YES, FlowHandle.NO}
+            )
+            if len(handles) != len(expected) or set(handles) != expected:
+                raise ValueError(
+                    "Cada grupo OR y la opción Ninguna deben tener su propia salida"
+                    if isinstance(groups, list)
+                    else "Cada condición debe tener exactamente una salida Sí y una salida No"
+                )
         elif node["type"] == FlowNodeType.WAIT_ANY:
             expected = {condition["id"] for condition in node["data"].get("conditions", [])}
             handles = [edge["source_handle"] for edge in node_edges]
@@ -190,7 +199,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             if len(handles) != len(expected) or set(handles) != expected:
                 raise ValueError("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida")
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
-            raise ValueError("Cada disparador, acción o espera debe tener exactamente una salida")
+            raise ValueError("Cada disparador, acción, invocación o espera debe tener exactamente una salida")
         if node["id"] != trigger_id and not incoming[node["id"]]:
             raise ValueError("Todos los bloques deben estar conectados desde el disparador")
 

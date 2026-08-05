@@ -259,7 +259,7 @@ async def get_executions(
         # Un vendedor solo ve las ejecuciones manuales de ese chat (las suyas y
         # las de otros vendedores sobre el mismo lead), no el historial de
         # triggers de sistema del admin (vencimientos, etc.) para ese lead.
-        start_source=None if is_admin else "manual",
+        include_seller_flow_children=not is_admin,
     )
 
 
@@ -277,7 +277,7 @@ async def post_cancel_execution(execution_id: int, user: User = Depends(get_curr
         execution = await get_automation_execution(execution_id)
         if (
             execution is None
-            or execution["start_source"] != "manual"
+            or execution["start_source"] not in {"manual", "flow"}
             or execution["started_by_user_id"] != user.id
         ):
             raise HTTPException(403, "No podés cancelar esta ejecución")

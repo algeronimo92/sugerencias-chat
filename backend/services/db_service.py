@@ -85,6 +85,10 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "stage": stage.value if isinstance(stage, LeadStage) else stage,
         "con_especialista": row["con_especialista"],
         "automatizacion_pausada": row["automatizacion_pausada"],
+        "conversacion_abierta": row["conversacion_abierta"],
+        "conversacion_abierta_at": _fmt_ts(row["conversacion_abierta_at"]),
+        "conversacion_cerrada_at": _fmt_ts(row["conversacion_cerrada_at"]),
+        "conversacion_version": row["conversacion_version"],
         "razon_perdido": row["razon_perdido"],
         "fecha_recontacto": row["fecha_recontacto"].isoformat() if row["fecha_recontacto"] else None,
         "proxima_cita": _fmt_ts(row["proxima_cita"]),
@@ -360,6 +364,10 @@ def _chat_columns(last_message):
         Lead.estado.label("stage"),
         Lead.con_especialista,
         Lead.automatizacion_pausada,
+        Lead.conversacion_abierta,
+        Lead.conversacion_abierta_at,
+        Lead.conversacion_cerrada_at,
+        Lead.conversacion_version,
         Lead.razon_perdido,
         Lead.fecha_recontacto,
         Lead.proxima_cita,
@@ -933,15 +941,33 @@ async def update_lead(
             return None
         changed = {key: value for key, value in values.items() if old_row[key] != value}
         if changed:
+            now = datetime.now(timezone.utc)
+            db_changes = dict(changed)
+            conversation_changed = "conversacion_abierta" in changed
+            if conversation_changed:
+                if changed["conversacion_abierta"]:
+                    db_changes.update(
+                        conversacion_abierta_at=now,
+                        conversacion_cerrada_at=None,
+                        conversacion_version=Lead.conversacion_version + 1,
+                    )
+                else:
+                    db_changes["conversacion_cerrada_at"] = now
             await session.execute(
                 update(Lead)
                 .where(Lead.id == chat_id)
-                .values(**changed, updated_at=datetime.now(timezone.utc))
+                .values(**db_changes, updated_at=now)
             )
             await _record_activity(
                 session,
                 chat_id,
-                "lead_updated",
+                (
+                    "conversation_opened"
+                    if conversation_changed and changed["conversacion_abierta"]
+                    else "conversation_closed"
+                    if conversation_changed
+                    else "lead_updated"
+                ),
                 actor_type,
                 actor_user_id,
                 _activity_safe({key: old_row[key] for key in changed}),
@@ -950,6 +976,54 @@ async def update_lead(
         await session.commit()
 
     return await fetch_chat(chat_id)
+
+
+async def open_conversation_from_inbound(
+    chat_id: str,
+    message_id: str,
+    content: str | None = None,
+) -> dict | None:
+    """Abre atómicamente una conversación cerrada por un mensaje entrante.
+
+    El WHERE sobre ``conversacion_abierta`` hace que dos webhooks concurrentes
+    no puedan crear dos conversaciones. La versión identifica esta apertura
+    de forma estable para deduplicar la ejecución de cada regla.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(
+            update(Lead)
+            .where(Lead.id == chat_id, Lead.conversacion_abierta.is_(False))
+            .values(
+                conversacion_abierta=True,
+                conversacion_abierta_at=now,
+                conversacion_cerrada_at=None,
+                conversacion_version=Lead.conversacion_version + 1,
+                updated_at=now,
+            )
+            .returning(Lead.conversacion_version, Lead.conversacion_abierta_at)
+        )).mappings().first()
+        if row is None:
+            await session.rollback()
+            return None
+        version = int(row["conversacion_version"])
+        await _record_activity(
+            session,
+            chat_id,
+            AutomationTrigger.CONVERSATION_STARTED,
+            "system",
+            old_value={"conversacion_abierta": False},
+            new_value={
+                "conversacion_abierta": True,
+                "conversacion_version": version,
+            },
+            metadata={"message_id": message_id, "content": content},
+        )
+        await session.commit()
+    return {
+        "version": version,
+        "opened_at": _fmt_ts(row["conversacion_abierta_at"]),
+    }
 
 
 async def rekey_lead_phone(
@@ -1215,6 +1289,24 @@ async def fetch_chat_signature() -> str:
     return f"{count}:{last_sent.isoformat() if last_sent else ''}"
 
 
+async def fetch_latest_message_cursor() -> tuple[datetime, int] | None:
+    """Cursor del último mensaje existente, sin recuperar su contenido.
+
+    El monitor lo toma al iniciar para no volver a disparar automatizaciones por
+    todo el historial. A partir de ahí avanza por ``(sent_at, id)``.
+    """
+    stmt = (
+        select(WspMessage.sent_at, WspMessage.id)
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).first()
+    if row is None:
+        return None
+    return row.sent_at, int(row.id)
+
+
 def _message_notification_stmt():
     return select(
         WspMessage.id,
@@ -1223,6 +1315,7 @@ def _message_notification_stmt():
         WspMessage.sender,
         WspMessage.content,
         WspMessage.message_type,
+        WspMessage.sent_at,
         Lead.nombre,
     ).outerjoin(Lead, Lead.id == WspMessage.chat_id)
 
@@ -1235,8 +1328,39 @@ def _message_notification_payload(row) -> dict:
         "sender": row["sender"],
         "content": row["content"],
         "message_type": row["message_type"],
+        "sent_at": _fmt_ts(row["sent_at"]),
         "name": row["nombre"],
     }
+
+
+async def fetch_messages_after_cursor(
+    cursor: tuple[datetime, int] | None,
+    limit: int = 500,
+) -> list[tuple[tuple[datetime, int], dict]]:
+    """Mensajes posteriores al cursor, en orden estable y sin saltos.
+
+    Devuelve también el cursor de cada fila para que el monitor pueda paginar y
+    reanudar aun cuando varios mensajes compartan el mismo ``sent_at``.
+    """
+    stmt = (
+        _message_notification_stmt()
+        .order_by(WspMessage.sent_at.asc(), WspMessage.id.asc())
+        .limit(limit)
+    )
+    if cursor is not None:
+        cursor_ts, cursor_id = cursor
+        stmt = stmt.where(or_(
+            WspMessage.sent_at > cursor_ts,
+            and_(WspMessage.sent_at == cursor_ts, WspMessage.id > cursor_id),
+        ))
+
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+
+    return [
+        ((row["sent_at"], int(row["id"])), _message_notification_payload(row))
+        for row in rows
+    ]
 
 
 async def fetch_latest_message() -> dict | None:

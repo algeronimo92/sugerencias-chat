@@ -2,6 +2,7 @@ type ValueOf<T> = T[keyof T]
 
 export const AutomationTrigger = {
   LeadCreated: 'lead_created',
+  ConversationStarted: 'conversation_started',
   StageChanged: 'stage_changed',
   MessageReceived: 'message_received',
   SellerResponseOverdue: 'seller_response_overdue',
@@ -13,6 +14,7 @@ export type AutomationTriggerValue = ValueOf<typeof AutomationTrigger>
 
 export const AUTOMATION_TRIGGERS = [
   { value: AutomationTrigger.LeadCreated, label: 'Lead nuevo', description: 'Cuando se registra un contacto por primera vez.' },
+  { value: AutomationTrigger.ConversationStarted, label: 'Conversación nueva', description: 'Cuando un mensaje del cliente abre una conversación que estaba cerrada.' },
   { value: AutomationTrigger.StageChanged, label: 'Cambio de etapa', description: 'Cuando una persona o el agente mueve el lead.' },
   { value: AutomationTrigger.MessageReceived, label: 'Mensaje recibido', description: 'Cuando llega un nuevo mensaje del cliente.' },
   { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
@@ -40,8 +42,10 @@ export const AutomationActionType = {
   SendTemplate: 'send_template',
   SendMessage: 'send_message',
   ChangeService: 'change_service',
+  SetConversationState: 'set_conversation_state',
   SendAudio: 'send_audio',
   SendAttachment: 'send_attachment',
+  SendMedia: 'send_media',
   ReactToLastCustomerMessage: 'react_to_last_customer_message',
 } as const
 export type AutomationActionTypeValue = ValueOf<typeof AutomationActionType>
@@ -56,8 +60,10 @@ export const AUTOMATION_ACTION_LABELS = {
   [AutomationActionType.SendTemplate]: 'Enviar plantilla WhatsApp',
   [AutomationActionType.SendMessage]: 'Enviar mensaje directo',
   [AutomationActionType.ChangeService]: 'Cambiar/quitar servicio de interés',
+  [AutomationActionType.SetConversationState]: 'Cambiar estado de conversación',
   [AutomationActionType.SendAudio]: 'Enviar audio',
   [AutomationActionType.SendAttachment]: 'Enviar solo adjunto',
+  [AutomationActionType.SendMedia]: 'Enviar multimedia + caption',
   [AutomationActionType.ReactToLastCustomerMessage]: 'Reaccionar al último mensaje del cliente',
 } satisfies Record<AutomationActionTypeValue, string>
 
@@ -67,6 +73,7 @@ export const FlowNodeType = {
   Trigger: 'trigger',
   Condition: 'condition',
   Action: 'action',
+  InvokeFlow: 'invoke_flow',
   Wait: 'wait',
   WaitAny: 'wait_any',
   Question: 'question',
@@ -78,6 +85,7 @@ export const FLOW_NODE_LABELS = {
   [FlowNodeType.Trigger]: 'Disparador',
   [FlowNodeType.Condition]: 'Condición',
   [FlowNodeType.Action]: 'Acción',
+  [FlowNodeType.InvokeFlow]: 'Invocar flujo',
   // `wait` se conserva únicamente para leer flujos antiguos. En el editor,
   // ambos formatos se presentan como un único bloque Pausa (`wait_any`).
   [FlowNodeType.Wait]: 'Pausa',
@@ -118,6 +126,9 @@ export const FlowConditionType = {
   StageEquals: 'stage_equals',
   OriginContains: 'origin_contains',
   ServiceContains: 'service_contains',
+  MessageContains: 'message_contains',
+  MessageEquals: 'message_equals',
+  MessageNotContains: 'message_not_contains',
   SellerEquals: 'seller_equals',
   TagPresent: 'tag_present',
   WhatsAppWindowOpen: 'whatsapp_window_open',
@@ -129,6 +140,9 @@ export const FLOW_CONDITION_LABELS = {
   [FlowConditionType.StageEquals]: 'Etapa es',
   [FlowConditionType.OriginContains]: 'Origen contiene',
   [FlowConditionType.ServiceContains]: 'Servicio contiene',
+  [FlowConditionType.MessageContains]: 'Mensaje contiene',
+  [FlowConditionType.MessageEquals]: 'Mensaje es igual a',
+  [FlowConditionType.MessageNotContains]: 'Mensaje no contiene',
   [FlowConditionType.SellerEquals]: 'Vendedor es',
   [FlowConditionType.TagPresent]: 'Tiene etiqueta',
   [FlowConditionType.WhatsAppWindowOpen]: 'Ventana WhatsApp abierta',

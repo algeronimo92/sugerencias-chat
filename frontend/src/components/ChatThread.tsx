@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft, Bot, BotOff, ChevronDown, Database, History, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Database, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
@@ -97,7 +97,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
-  const { mutate: updateLead, isPending: isTogglingAutomation } = useUpdateLead(chat.chat_id)
+  const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead(chat.chat_id)
 
   function toggleAutomation() {
     const next = !chat.automatizacion_pausada
@@ -105,6 +105,17 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       { automatizacion_pausada: next },
       {
         onSuccess: () => toast.success(next ? 'Automatización pausada para este chat' : 'Automatización reactivada'),
+        onError: (err) => toast.error(extractErrorMessage(err)),
+      }
+    )
+  }
+
+  function toggleConversation() {
+    const next = !chat.conversacion_abierta
+    updateLead(
+      { conversacion_abierta: next },
+      {
+        onSuccess: () => toast.success(next ? 'Conversación abierta' : 'Conversación cerrada'),
         onError: (err) => toast.error(extractErrorMessage(err)),
       }
     )
@@ -199,8 +210,22 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
+            onClick={toggleConversation}
+            disabled={isUpdatingLead}
+            aria-label={chat.conversacion_abierta ? 'Cerrar conversación' : 'Abrir conversación'}
+            title={chat.conversacion_abierta ? 'Conversación abierta — tocá para cerrarla' : 'Conversación cerrada — tocá para abrirla'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+              chat.conversacion_abierta
+                ? 'text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30'
+                : 'text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
+            }`}
+          >
+            {chat.conversacion_abierta ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
+          </button>
+          <button
+            type="button"
             onClick={toggleAutomation}
-            disabled={isTogglingAutomation}
+            disabled={isUpdatingLead}
             aria-label={chat.automatizacion_pausada ? 'Reactivar automatización para este chat' : 'Pausar automatización para este chat'}
             title={chat.automatizacion_pausada ? 'Automatización pausada — tocá para reactivarla' : 'Automatización activa — tocá para pausarla en este chat'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${

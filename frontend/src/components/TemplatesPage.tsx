@@ -670,6 +670,9 @@ export function TemplatesPage() {
                   <FolderOpen className="h-4 w-4" /> Elegir de la biblioteca
                 </button>
               </div>
+              <p className="mt-2 text-center text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark">
+                Con imagen, video o documento, el contenido de hasta 1024 caracteres se enviará como caption mediante Evolution. Con audio o textos más largos se enviará por separado.
+              </p>
               {((editingTemplate?.attachments.length ?? 0) > 0 || pendingAttachments.length > 0) && (
                 <div className="mt-3 space-y-1">
                   {editingTemplate?.attachments.map(attachment => {

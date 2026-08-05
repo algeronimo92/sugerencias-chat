@@ -101,6 +101,14 @@ class Lead(Base):
     # el chat (FlowPicker) ignora esta pausa a propósito. Ver
     # automation_service.schedule_automation_event.
     automatizacion_pausada: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Estado comercial de la conversación, independiente de la ventana de
+    # atención de WhatsApp. Un mensaje del cliente hace la transición
+    # cerrada -> abierta y esa transición emite conversation_started una sola
+    # vez. El vendedor la cierra cuando considera terminada la atención.
+    conversacion_abierta: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    conversacion_abierta_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    conversacion_cerrada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    conversacion_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     razon_perdido: Mapped[str | None] = mapped_column(Text)
     fecha_recontacto: Mapped[date | None] = mapped_column(Date)
     contador_noshow: Mapped[int | None] = mapped_column(SmallInteger)
@@ -625,8 +633,7 @@ class AutomationExecution(Base):
     # Quién y cómo arrancó esta ejecución: 'system' para todos los triggers
     # automáticos de siempre, 'manual' cuando la inicia un vendedor con el
     # botón "Iniciar flujo" del chat. started_by_user_id solo se llena en el
-    # caso manual — permite mostrar "Iniciado por Ana" y limitar la
-    # cancelación a quien lo lanzó.
+    # caso manual. 'flow' identifica una ejecución creada por otro flujo.
     start_source: Mapped[str] = mapped_column(Text, default="system", server_default="system")
     started_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
@@ -646,7 +653,7 @@ class AutomationExecution(Base):
             postgresql_where=text("start_source = 'manual' AND status IN ('scheduled', 'running')"),
         ),
         CheckConstraint(
-            "start_source IN ('system', 'manual')",
+            "start_source IN ('system', 'manual', 'flow')",
             name="ck_automation_executions_start_source",
         ),
     )
