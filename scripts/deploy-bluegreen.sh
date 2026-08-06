@@ -29,6 +29,10 @@ ACTIVE_FILE="$ROOT/traefik/dynamic/active.yml"
 DOMAIN="${DEPLOY_DOMAIN:-chat.dermicapro.app}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-40}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
+# Proyecto de compose del despliegue anterior a blue-green, el que enruta por
+# etiquetas de Docker (compose.prod.yml + traefik/docker-compose.yml). Los
+# colores usan "$LEGACY_PROJECT-blue" y "-green", nombres distintos.
+LEGACY_PROJECT="sugerencias-chat"
 
 declare -A PORT=([blue]=8081 [green]=8082)
 
@@ -82,9 +86,42 @@ healthy() {
   return 1
 }
 
+stop_legacy_stack() {
+  # El stack anterior a blue-green (proyecto "sugerencias-chat", enrutado por
+  # etiquetas) no puede convivir con los colores: su router reclama el mismo
+  # Host que el del archivo dinámico y traefik tiene los dos proveedores
+  # activos, así que sirve el suyo pase lo que pase en active.yml.
+  #
+  # No es hipotético: quedó levantado tras migrar a blue-green y durante días
+  # los despliegues construyeron, migraron la base y conmutaron el color
+  # mientras los usuarios seguían recibiendo los contenedores viejos. Con el
+  # esquema ya migrado, ese código antiguo devolvía 500 en /api/automations
+  # porque no conocía los valores nuevos de la base.
+  local ids
+  # Igualdad exacta: no alcanza a "$LEGACY_PROJECT-blue" ni a "-green".
+  ids="$(docker ps -q --filter "label=com.docker.compose.project=$LEGACY_PROJECT" 2>/dev/null || true)"
+  [ -n "$ids" ] || return 0
+  echo "Parando el stack heredado ($LEGACY_PROJECT): reclama el mismo Host que blue-green"
+  # shellcheck disable=SC2086 - son varios ids separados por saltos de línea.
+  docker rm -f $ids >/dev/null
+}
+
 serving_through_traefik() {
-  # Comprueba el camino real de un usuario, no sólo el puerto interno.
-  curl -fsSk -o /dev/null --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/"
+  # Comprueba el camino real de un usuario y, además, que lo que le llega es lo
+  # que sirve el color recién desplegado. Que responda 200 no basta: cuando
+  # otro contenedor reclama el dominio, esta comprobación la pasaba él y el
+  # despliegue se daba por bueno sin que nadie llegara a ver la versión nueva.
+  local port="${PORT[$1]}" direct via
+  direct="$(curl -fsS "http://127.0.0.1:$port/" 2>/dev/null | sha256sum)" || return 1
+  via="$(curl -fsSk --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" 2>/dev/null | sha256sum)" || return 1
+  [ "$direct" = "$via" ]
+}
+
+routing_diagnostics() {
+  echo "Lo que traefik está sirviendo ahora mismo:" >&2
+  curl -sIk --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" 2>&1 | sed 's/^/  /' >&2 || true
+  echo "Contenedores vivos que pueden estar reclamando $DOMAIN:" >&2
+  docker ps --format '  {{.Names}}  {{.Image}}  {{.Status}}' >&2 || true
 }
 
 running_containers() {
@@ -99,6 +136,12 @@ cmd_status() {
   for color in blue green; do
     echo "  $color: $(running_containers "$color") contenedores"
   done
+  local legacy
+  legacy="$(docker ps -q --filter "label=com.docker.compose.project=$LEGACY_PROJECT" 2>/dev/null | grep -c . || true)"
+  if [ "$legacy" != "0" ]; then
+    echo "  AVISO: el stack heredado ($LEGACY_PROJECT) tiene $legacy contenedores vivos"
+    echo "  y reclama el mismo Host: es él quien sirve, no el color activo."
+  fi
 }
 
 cmd_rollback() {
@@ -110,8 +153,14 @@ cmd_rollback() {
     exit 1
   fi
   write_active "$target"
+  stop_legacy_stack
   sleep 2
-  serving_through_traefik && echo "Reversión a $target completada"
+  if ! serving_through_traefik "$target"; then
+    echo "ERROR: traefik no está sirviendo $target pese a la reversión." >&2
+    routing_diagnostics
+    exit 1
+  fi
+  echo "Reversión a $target completada"
 }
 
 cmd_deploy() {
@@ -139,10 +188,14 @@ cmd_deploy() {
   fi
 
   write_active "$target"
+  # Después de conmutar y antes de comprobar: mientras el heredado siga vivo,
+  # active.yml no decide nada y la comprobación de abajo mediría a otro.
+  stop_legacy_stack
   sleep 2
 
-  if ! serving_through_traefik; then
+  if ! serving_through_traefik "$target"; then
     echo "ERROR: traefik no sirve $target. Revirtiendo a $active." >&2
+    routing_diagnostics
     write_active "$active"
     exit 1
   fi

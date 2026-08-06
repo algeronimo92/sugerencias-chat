@@ -191,6 +191,60 @@ def test_the_two_colors_never_share_a_port(tmp_path) -> None:
 
 
 @requires_bash
+def test_stop_legacy_stack_removes_only_the_legacy_project(tmp_path) -> None:
+    """Regresión: el stack anterior a blue-green quedó levantado en el
+    servidor y, como traefik enruta también por etiquetas, servía él el
+    dominio. Los despliegues construían, migraban y conmutaban de color sin
+    que nadie llegara a ver la versión nueva."""
+    result = _run_bash(
+        _sandbox(tmp_path),
+        'docker() { echo "$*" >> calls.txt; if [ "$1" = ps ]; then echo cafe1; fi; }; '
+        "stop_legacy_stack",
+    )
+    assert result.returncode == 0, result.stderr
+
+    calls = (tmp_path / "calls.txt").read_text(encoding="utf-8")
+    assert "--filter label=com.docker.compose.project=sugerencias-chat\n" in calls
+    assert "rm -f cafe1" in calls
+    # El filtro es de igualdad exacta; los colores son otro proyecto.
+    assert "sugerencias-chat-green" not in calls
+    assert "sugerencias-chat-blue" not in calls
+
+
+@requires_bash
+def test_stop_legacy_stack_removes_nothing_when_it_is_not_running(tmp_path) -> None:
+    """Lo normal a partir de ahora: no hay heredado que parar."""
+    result = _run_bash(
+        _sandbox(tmp_path),
+        'docker() { echo "$*" >> calls.txt; }; stop_legacy_stack',
+    )
+    assert result.returncode == 0, result.stderr
+    assert "rm -f" not in (tmp_path / "calls.txt").read_text(encoding="utf-8")
+
+
+@requires_bash
+def test_traefik_check_rejects_another_container_answering_the_domain(tmp_path) -> None:
+    """Comprobar sólo que el dominio devuelve 200 daba por bueno un despliegue
+    que servía otro contenedor. Ahora se compara con lo que devuelve el propio
+    color recién desplegado."""
+    stub = (
+        'curl() { case "$*" in *127.0.0.1:8082/*) echo color-nuevo;; '
+        "*) echo otro-contenedor;; esac; }; "
+    )
+    result = _run_bash(_sandbox(tmp_path), f"{stub} serving_through_traefik green")
+    assert result.returncode != 0, "el despliegue se habría dado por bueno"
+
+
+@requires_bash
+def test_traefik_check_accepts_the_color_it_just_deployed(tmp_path) -> None:
+    result = _run_bash(
+        _sandbox(tmp_path),
+        'curl() { echo color-nuevo; }; serving_through_traefik green',
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@requires_bash
 @pytest.mark.parametrize("color", ["blue", "green"])
 def test_compose_for_embeds_color_port_for_every_subcommand(tmp_path, color: str) -> None:
     """Regresión: compose.bluegreen.yml exige COLOR_PORT para interpolar el

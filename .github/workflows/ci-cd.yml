@@ -134,9 +134,21 @@ jobs:
               exit 1
             fi
 
+            # traefik/dynamic/active.yml está versionado, pero en el servidor
+            # es estado de ejecución: es el interruptor que dice qué color
+            # sirve ahora. Un `git reset --hard` lo devuelve al color que
+            # quedó commiteado, y traefik lo relee en caliente: si ese color
+            # está apagado —lo normal, porque el despliegue anterior lo bajó—
+            # el dominio queda sin backend hasta que el script vuelve a
+            # escribirlo. Pasó con dos pushes seguidos a main.
+            ACTIVE=traefik/dynamic/active.yml
+            cp "$ACTIVE" /tmp/active.yml.deploy
+
             git fetch origin main
             git reset --hard origin/main
             echo "Desplegando: $(git rev-parse HEAD)"
+
+            cp /tmp/active.yml.deploy "$ACTIVE"
 
             # scripts/deploy-bluegreen.sh levanta el color inactivo al lado del
             # que sirve, migra (scripts/migrate.py toma un advisory lock, así
@@ -159,6 +171,11 @@ jobs:
             else
               echo "El despliegue no llegó a conmutar. El color que servía sigue activo sin cambios."
               echo "Dejando el repositorio en $PREVIOUS para el próximo intento."
+              # El script ya dejó active.yml apuntando al color que sirve; se
+              # vuelve a poner por la misma razón que arriba, para que volver
+              # atrás el código no mueva el tráfico.
+              cp "$ACTIVE" /tmp/active.yml.serving
               git reset --hard "$PREVIOUS"
+              cp /tmp/active.yml.serving "$ACTIVE"
               exit 1
             fi

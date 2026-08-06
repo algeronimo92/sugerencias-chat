@@ -164,7 +164,7 @@ Toma un advisory lock de PostgreSQL, así que es seguro aunque se lance más de 
 
 Alternativa a los pasos anteriores para desplegar **sin corte**. La versión nueva se levanta al lado de la que sirve, se migra y se comprueba mientras nadie la usa; sólo entonces se conmuta el tráfico reescribiendo `traefik/dynamic/active.yml`, que Traefik relee en caliente.
 
-No se combina con `traefik/docker-compose.yml`: aquel enruta por etiquetas de Docker y este por el archivo dinámico, y ambos reclamarían el mismo `Host`.
+No se combina con `traefik/docker-compose.yml`: aquel enruta por etiquetas de Docker y este por el archivo dinámico, y ambos reclamarían el mismo `Host`. Como Traefik tiene los dos proveedores activos, el router por etiquetas gana y sirve él pase lo que pase en `active.yml`: el despliegue construye, migra y conmuta de color sin que nadie vea la versión nueva. Por eso el script para el proyecto heredado (`sugerencias-chat`, sin sufijo de color) antes de dar el despliegue por bueno, y comprueba que lo que Traefik devuelve es byte a byte lo que sirve el color recién desplegado, no sólo que responde 200.
 
 ```bash
 scripts/deploy-bluegreen.sh            # despliega el color inactivo y conmuta
