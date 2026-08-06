@@ -286,6 +286,55 @@ del cliente, pero las del cliente llegan al CRM sin el recuadro. La migración
 manual es `backend/migrations/023_quoted_messages.sql`; el despliegue la
 aplica solo vía Alembic.
 
+### Editar y eliminar un mensaje enviado
+
+Al pasar el mouse por una burbuja propia aparecen, además de responder y
+reaccionar, un lápiz y un tacho. Ambos actúan sobre WhatsApp de verdad, no solo
+sobre el CRM: el cliente ve el texto corregido con la marca "Editado", o
+"Se eliminó este mensaje" en el lugar del original.
+
+Los límites los pone WhatsApp y la app los replica para no ofrecer un botón que
+va a fallar:
+
+- **Editar**: solo mensajes propios, de texto y dentro de los **15 minutos**
+  posteriores al envío. Pasado ese margen el lápiz desaparece; si igual se
+  intenta, la API responde 409. Un adjunto no se puede reescribir.
+- **Eliminar para todos**: solo mensajes propios, de cualquier tipo y sin
+  límite de tiempo. El "eliminar para todos" de un mensaje ajeno no existe en
+  un chat 1:1.
+- En los dos casos el mensaje tiene que estar confirmado en WhatsApp: sobre uno
+  todavía en la outbox los botones no aparecen y la API responde 409.
+
+Primero se llama a Evolution y recién después se toca la base. Si Evolution
+falla, no se cambia nada y el endpoint responde 502 — una corrección que solo
+existiera de nuestro lado sería peor que no corregir.
+
+El borrado es lógico: `wsp_messages.deleted_at` marca la fila y el backend deja
+de servir contenido, adjunto y análisis de ese mensaje (tampoco aparece en la
+búsqueda ni en el preview de la lista). El registro de que hubo un mensaje ahí
+se conserva para la auditoría del CRM. La edición guarda el texto vigente en
+`content` y la fecha en `edited_at`; no se guardan versiones anteriores.
+
+**Para reflejar lo que se edita o borra desde el teléfono** (o lo que hace el
+propio cliente), el workflow de n8n tiene que reenviar el `protocolMessage`
+correspondiente a:
+
+```text
+POST https://chat.dermicapro.app/api/webhooks/message-edited
+{"chat_id": "<lead.id>", "wa_message_id": "<id del original>", "text": "<texto nuevo>"}
+
+POST https://chat.dermicapro.app/api/webhooks/message-deleted
+{"chat_id": "<lead.id>", "wa_message_id": "<id del original>"}
+```
+
+El `wa_message_id` es el del mensaje **apuntado** por el `protocolMessage`, no
+el del aviso en sí. Sin ese cambio en n8n la función queda operativa solo en
+sentido saliente: lo que se edita o elimina desde el CRM sí llega al cliente.
+La migración es `a2f7b4c81d63`, que aplica Alembic en el despliegue.
+
+Detalle de los endpoints de Evolution:
+[docs/evolution-api-2.3-mensajes/edit-delete-message.md](docs/evolution-api-2.3-mensajes/edit-delete-message.md).
+
 ### Búsqueda estilo WhatsApp
 
 La búsqueda de la lista de leads y del Kanban ignora acentos ("jose" encuentra

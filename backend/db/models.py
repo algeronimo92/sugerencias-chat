@@ -206,6 +206,14 @@ class WspMessage(Base):
     # Las escribe set_message_reaction, tanto desde el webhook entrante como
     # desde el envío del vendedor. NULL cuando nadie reaccionó.
     reactions: Mapped[list | None] = mapped_column(JSONB(none_as_null=True))
+    # Última vez que se reescribió el texto (WhatsApp permite editar un mensaje
+    # propio de texto dentro de los 15 minutos). `content` guarda el texto
+    # vigente; esta marca es la que habilita el "Editado" de la burbuja.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Eliminado para todos. Borrado lógico: la fila queda para la auditoría del
+    # CRM, pero la API deja de servir contenido y adjunto (ver _mask_deleted en
+    # db_service) y el hilo pinta la lápida, igual que WhatsApp.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index(

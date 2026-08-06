@@ -182,6 +182,56 @@ async def test_send_reaction_resolves_uuid_to_destination(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_edit_message_builds_own_key_on_resolved_destination(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    destination = "51906471403@s.whatsapp.net"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(evolution_service, "_post", post)
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination", AsyncMock(return_value=destination)
+    )
+
+    await evolution_service.edit_whatsapp_message(lead_id, "WA-1", "corregido")
+
+    url, _api_key, payload = post.await_args.args[:3]
+    assert url == "https://evolution.test/chat/updateMessage/dermica"
+    assert payload == {
+        "number": destination,
+        "text": "corregido",
+        "key": {"remoteJid": destination, "fromMe": True, "id": "WA-1"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_delete_message_uses_delete_with_flat_key(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    destination = "51906471403@s.whatsapp.net"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    request = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(evolution_service, "_request", request)
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination", AsyncMock(return_value=destination)
+    )
+
+    await evolution_service.delete_whatsapp_message(lead_id, "WA-1")
+
+    method, url, _api_key, payload = request.await_args.args[:4]
+    assert method == "DELETE"
+    assert url == "https://evolution.test/chat/deleteMessageForEveryone/dermica"
+    # La key va desarmada, no anidada bajo `key` como en sendReaction.
+    assert payload == {"id": "WA-1", "fromMe": True, "remoteJid": destination}
+
+
+@pytest.mark.asyncio
 async def test_http_client_is_reused_and_closed(monkeypatch):
     client = AsyncMock()
     client.is_closed = False

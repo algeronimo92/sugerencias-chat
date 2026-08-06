@@ -3,7 +3,7 @@ import { ArrowLeft, Bot, BotOff, ChevronDown, Database, History, Loader2, Messag
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
-import { useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useDeleteMessage, useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
@@ -15,6 +15,7 @@ import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
 import { TemplateSendDialog } from './TemplateSendDialog'
 import { ChatComposer } from './ChatComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
+import { MessageEditDialog } from './MessageEditDialog'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useChatTimeline } from '../hooks/useChatTimeline'
@@ -152,6 +153,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [previewSticker, setPreviewSticker] = useState<{ src: string; mediaUrl: string } | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
+  const [messageToEdit, setMessageToEdit] = useState<Message | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
   const [isNoteMode, setIsNoteMode] = useState(false)
 
@@ -161,6 +163,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
+  const deleteMessage = useDeleteMessage(chat.chat_id)
+
+  function removeMessage(message: Message) {
+    deleteMessage.mutate(message.id, {
+      onSuccess: () => toast.success('Mensaje eliminado para todos'),
+      onError: error => toast.error(extractErrorMessage(error)),
+    })
+  }
 
 
   // El foco del cursor lo pone el compositor al ver la cita nueva: el
@@ -177,6 +187,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   useEffect(() => {
     setReplyTo(null)
     setIsNoteMode(false)
+    setMessageToEdit(null)
   }, [chat.chat_id])
 
   function handleRetryMessage(message: Message) {
@@ -408,6 +419,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onRetry={() => handleRetryMessage(item.message)}
                     onStartReply={() => startReply(item.message)}
                     onReact={(emoji) => reactToMessage({ messageId: item.message.id, emoji })}
+                    onEdit={() => setMessageToEdit(item.message)}
+                    onDelete={() => removeMessage(item.message)}
+                    isDeleting={deleteMessage.isPending && deleteMessage.variables === item.message.id}
                     onSaveTemplate={setTemplateContentToSave}
                   />
                 </Fragment>
@@ -485,6 +499,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
       {templateContentToSave && (
         <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
+      )}
+
+      {messageToEdit && (
+        <MessageEditDialog
+          chatId={chat.chat_id}
+          message={messageToEdit}
+          onClose={() => setMessageToEdit(null)}
+        />
       )}
 
       {multimediaTemplate && (

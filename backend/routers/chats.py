@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +10,7 @@ from models.schemas import (
     Chat,
     ChatPage,
     CustomerServiceWindow,
+    EditMessageRequest,
     HistoryPage,
     KanbanPage,
     KanbanSnapshot,
@@ -51,7 +52,9 @@ from services.db_service import (
     fetch_messages,
     fetch_reply_target,
     insert_message,
+    mark_message_deleted,
     set_message_reaction,
+    update_message_content,
     list_lead_activity,
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
@@ -68,6 +71,8 @@ from services.auth_service import get_current_user
 from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
+    delete_whatsapp_message,
+    edit_whatsapp_message,
     is_configured,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
@@ -752,6 +757,93 @@ async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest)
 
     message = await set_message_reaction(chat_id, target["wa_message_id"], body.emoji, from_me=True)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "reaction"})
+    return message
+
+
+# WhatsApp deja reescribir un mensaje propio de texto solo dentro de esta
+# ventana. Se comprueba acá para poder explicarlo: pasado el límite Evolution
+# acepta el pedido pero WhatsApp lo descarta en silencio, y el vendedor se
+# quedaría creyendo que corrigió algo que el cliente sigue viendo como estaba.
+EDIT_MESSAGE_WINDOW = timedelta(minutes=15)
+
+
+def _editable_or_deletable_target(target: dict | None, action: str) -> dict:
+    """Comprobaciones que comparten editar y eliminar.
+
+    WhatsApp solo permite las dos cosas sobre mensajes propios y ya
+    confirmados; de un mensaje del cliente no se puede tocar nada (el "eliminar
+    para todos" ajeno no existe fuera de los grupos, y ahí solo para admins).
+    """
+    if target is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    if target["deleted_at"] is not None:
+        raise HTTPException(409, "El mensaje ya fue eliminado")
+    if target["sender"] != "vendedor":
+        raise HTTPException(409, f"WhatsApp solo permite {action} los mensajes que enviaste vos")
+    if not target["wa_message_id"]:
+        # Un mensaje del vendedor todavía en la outbox no tiene id de WhatsApp:
+        # no existe del otro lado como para editarlo o borrarlo.
+        raise HTTPException(409, "El mensaje todavía no está confirmado en WhatsApp")
+    return target
+
+
+@router.patch("/{chat_id}/messages/{message_id}", response_model=Message)
+async def edit_message(chat_id: str, message_id: int, body: EditMessageRequest):
+    """Reescribe el texto de un mensaje ya enviado, como el "Editar" de WhatsApp.
+
+    Igual que las reacciones: primero WhatsApp y recién después la base. Un
+    texto corregido solo de nuestro lado sería peor que no corregirlo — el
+    vendedor daría por hecho que el cliente ve la versión nueva.
+    """
+    target = _editable_or_deletable_target(
+        await fetch_reply_target(chat_id, message_id), "editar"
+    )
+    if target["message_type"] not in (None, "text"):
+        raise HTTPException(409, "WhatsApp solo permite editar mensajes de texto")
+    sent_at = target["sent_at"]
+    if sent_at is not None and datetime.now(timezone.utc) - sent_at > EDIT_MESSAGE_WINDOW:
+        raise HTTPException(
+            409,
+            "WhatsApp solo permite editar un mensaje dentro de los 15 minutos posteriores al envío",
+        )
+
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "El texto del mensaje no puede quedar vacío")
+
+    try:
+        await edit_whatsapp_message(chat_id, target["wa_message_id"], text)
+    except (EvolutionApiError, httpx.HTTPError) as exc:
+        raise HTTPException(502, f"No se pudo editar el mensaje en WhatsApp: {exc}")
+
+    message = await update_message_content(chat_id, target["wa_message_id"], text)
+    if message is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "message_edited"})
+    return message
+
+
+@router.delete("/{chat_id}/messages/{message_id}", response_model=Message)
+async def delete_message(chat_id: str, message_id: int):
+    """Elimina para todos un mensaje ya enviado.
+
+    No borra la fila: la marca como eliminada y deja de servir su contenido
+    (ver mark_message_deleted). El CRM conserva que hubo un mensaje ahí —el
+    hilo muestra la lápida, como WhatsApp— sin exponer lo que decía.
+    """
+    target = _editable_or_deletable_target(
+        await fetch_reply_target(chat_id, message_id), "eliminar"
+    )
+
+    try:
+        await delete_whatsapp_message(chat_id, target["wa_message_id"])
+    except (EvolutionApiError, httpx.HTTPError) as exc:
+        raise HTTPException(502, f"No se pudo eliminar el mensaje en WhatsApp: {exc}")
+
+    message = await mark_message_deleted(chat_id, target["wa_message_id"])
+    if message is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "message_deleted"})
     return message
 
 

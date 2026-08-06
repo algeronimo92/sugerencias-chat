@@ -43,5 +43,5 @@ Resumen de cambios relevantes a mensajería entre 2.3.0 y 2.3.7: [novedades-2.3.
 ## Endpoints relacionados (fuera del router de mensajes)
 
 - `POST /call/offer/{instance}` — simula una llamada entrante (`number`, `isVideo`, `callDuration` 1–15 s).
-- `POST /chat/updateMessage/{instance}` y `DELETE /chat/deleteMessageForEveryone/{instance}` — editar y borrar mensajes ya enviados.
+- `POST /chat/updateMessage/{instance}` y `DELETE /chat/deleteMessageForEveryone/{instance}` — editar y borrar mensajes ya enviados: la app ya los usa ([edit-delete-message.md](edit-delete-message.md), `edit_whatsapp_message` / `delete_whatsapp_message`).
 - `POST /chat/markMessageAsRead/{instance}` — la app ya lo usa (`mark_messages_as_read`).

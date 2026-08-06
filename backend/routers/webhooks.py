@@ -8,9 +8,11 @@ from services.db_service import (
     fetch_latest_message,
     fetch_message_by_wa_id,
     mark_chat_read_from_whatsapp_receipt,
+    mark_message_deleted,
     reconcile_outgoing_message,
     set_message_reaction,
     update_lead_stage,
+    update_message_content,
     update_message_status,
 )
 from services.ad_referral_service import rehost_ad_thumbnail
@@ -147,6 +149,59 @@ async def reaction_webhook(
     if matched:
         await manager.broadcast(
             {"type": "chats_updated", "chat_id": body.chat_id, "reason": "reaction"}
+        )
+    return {"status": "ok", "matched": matched}
+
+
+class MessageEditedWebhookBody(BaseModel):
+    chat_id: str
+    # wa_message_id del mensaje editado (el id NO cambia al editar: WhatsApp
+    # manda un protocolMessage que apunta al original).
+    wa_message_id: str
+    text: str
+
+
+@router.post("/message-edited")
+async def message_edited_webhook(
+    body: MessageEditedWebhookBody,
+):
+    """Llamado por n8n cuando WhatsApp avisa que un mensaje se editó.
+
+    Cubre lo que la app no originó: el cliente corrigiendo lo que escribió, o
+    el vendedor editando desde el teléfono. La edición hecha desde el CRM ya
+    guardó el texto nuevo al llamar a Evolution, así que este webhook la
+    reescribe con el mismo valor y no cambia nada.
+    """
+    message = await update_message_content(body.chat_id, body.wa_message_id, body.text)
+    # None cuando el editado no está en nuestra base (histórico anterior a la
+    # integración) o ya fue eliminado: no hay burbuja que corregir.
+    matched = message is not None
+    if matched:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "message_edited"}
+        )
+    return {"status": "ok", "matched": matched}
+
+
+class MessageDeletedWebhookBody(BaseModel):
+    chat_id: str
+    # wa_message_id del mensaje eliminado (el que viaja en el protocolMessage
+    # de revoke, no el id del propio aviso).
+    wa_message_id: str
+
+
+@router.post("/message-deleted")
+async def message_deleted_webhook(
+    body: MessageDeletedWebhookBody,
+):
+    """Llamado por n8n cuando WhatsApp avisa que un mensaje se eliminó para
+    todos. Mismo borrado lógico que hace la app al eliminar desde el CRM: la
+    fila queda, el contenido deja de servirse y el hilo muestra la lápida."""
+    message = await mark_message_deleted(body.chat_id, body.wa_message_id)
+    matched = message is not None
+    if matched:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "message_deleted"}
         )
     return {"status": "ok", "matched": matched}
 

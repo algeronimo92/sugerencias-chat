@@ -134,6 +134,9 @@ export interface Chat {
   /** Tipo del último mensaje: deja mostrar "📷 Imagen" en el preview de la
    * lista aunque `last_message` venga vacío (adjuntos sin caption). */
   last_message_type?: MessageType | null
+  /** El último mensaje se eliminó: `last_message` viene vacío y el preview
+   * muestra "Se eliminó este mensaje". */
+  last_message_deleted?: boolean
   timestamp: string | null
   last_customer_message_at: string | null
   unread_count: number
@@ -227,6 +230,12 @@ export interface Message {
   /** Reacciones sobre este mensaje (badge estilo WhatsApp, no una burbuja
    * aparte): a lo sumo una por lado en un chat 1:1. null si nadie reaccionó. */
   reactions?: MessageReaction[] | null
+  /** Última edición del texto. null = nunca se editó; con valor, la burbuja
+   * muestra "Editado" al lado de la hora, como en WhatsApp. */
+  edited_at?: string | null
+  /** Eliminado para todos. Con valor, el backend ya no sirve el contenido ni
+   * el adjunto y la burbuja se pinta como lápida. */
+  deleted_at?: string | null
   /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
    * antes de que cargue, para que la conversación no se mueva. */
   media_width?: number | null

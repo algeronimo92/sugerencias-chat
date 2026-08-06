@@ -1,4 +1,4 @@
-import { BookmarkPlus, Check, CheckCheck, CornerUpLeft, Loader2, RefreshCw } from 'lucide-react'
+import { Ban, BookmarkPlus, Check, CheckCheck, CornerUpLeft, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
@@ -7,9 +7,14 @@ import { MessageAnalysis, MessageBody } from './messageBody'
 import { QuotedMessage } from './QuotedMessage'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
 import { TemplateMessageButtons } from './TemplateMessageCard'
+import { ConfirmDialog } from './ui/ConfirmDialog'
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320
+// WhatsApp solo deja reescribir un mensaje propio de texto dentro de este
+// margen. Se replica acá para no ofrecer un botón que el backend va a
+// rechazar; el límite real lo sigue poniendo WhatsApp.
+const EDIT_WINDOW_MS = 15 * 60 * 1000
 // Padding horizontal (px-3.5 x2) de la burbuja (sin bordes, como WhatsApp):
 // lo que se descuenta del ancho máximo de la burbuja (75% del hilo) para el
 // contenido.
@@ -66,7 +71,23 @@ interface Props {
   onRetry: () => void
   onStartReply: () => void
   onReact: (emoji: string) => void
+  onEdit: () => void
+  onDelete: () => void
+  /** El borrado en WhatsApp está en curso: el botón queda en espera. */
+  isDeleting: boolean
   onSaveTemplate: (content: string) => void
+}
+
+/** Lápida de un mensaje eliminado para todos: ocupa el lugar del mensaje en el
+ * hilo pero no muestra nada de lo que decía (el backend directamente ya no lo
+ * sirve), igual que WhatsApp. */
+function DeletedBody({ isVendedor }: { isVendedor: boolean }) {
+  return (
+    <p className="flex items-center gap-1.5 italic text-wa-muted dark:text-wa-text-dark/60">
+      <Ban aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+      {isVendedor ? 'Eliminaste este mensaje' : 'Se eliminó este mensaje'}
+    </p>
+  )
 }
 
 /** Una burbuja del hilo: texto, media, ubicación, documento o plantilla, con
@@ -86,12 +107,17 @@ export function MessageBubble({
   onRetry,
   onStartReply,
   onReact,
+  onEdit,
+  onDelete,
+  isDeleting,
   onSaveTemplate,
 }: Props) {
   const isVendedor = m.sender === 'vendedor'
+  const isDeleted = !!m.deleted_at
   const parsed = parseContent(m)
   const { kind, text, analysis, template } = parsed
-  const reactions = m.reactions ?? []
+  // Un eliminado no conserva reacciones, igual que en WhatsApp.
+  const reactions = isDeleted ? [] : (m.reactions ?? [])
   const adReferral = messageAdReferral(parsed.payload)
   // Si el archivo falló al cargar (ej. no existe en este entorno),
   // lo tratamos como si no hubiera media: el navegador muestra su
@@ -127,7 +153,13 @@ export function MessageBubble({
    * Solo se puede citar un mensaje que ya existe en WhatsApp: sin
    * wa_message_id (envío en curso, fallido, o histórico previo a la
    * integración) el botón no aparece en vez de fallar al enviar. */
-  const canReply = m.id > 0 && !!m.wa_message_id
+  const canReply = m.id > 0 && !!m.wa_message_id && !isDeleted
+  // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
+  // además, solo texto y dentro de los 15 minutos.
+  const canDelete = canReply && isVendedor
+  const sentAgo = m.sent_at ? Date.now() - new Date(m.sent_at).getTime() : Infinity
+  const canEdit = canDelete && (kind === 'text') && sentAgo < EDIT_WINDOW_MS
+  const actionButtonClass = 'rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark'
   const messageActions = canReply && (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
       <button
@@ -135,7 +167,7 @@ export function MessageBubble({
         onClick={onStartReply}
         aria-label="Responder a este mensaje"
         title="Responder"
-        className="rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
+        className={actionButtonClass}
       >
         <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
@@ -144,6 +176,39 @@ export function MessageBubble({
         onReact={onReact}
         side={isVendedor ? 'left' : 'right'}
       />
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label="Editar este mensaje"
+          title="Editar"
+          className={actionButtonClass}
+        >
+          <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {canDelete && (
+        <ConfirmDialog
+          title="Eliminar mensaje para todos"
+          description="El mensaje desaparecerá también del WhatsApp del cliente, que verá 'Se eliminó este mensaje'. No se puede deshacer."
+          confirmLabel="Eliminar para todos"
+          disabled={isDeleting}
+          onConfirm={onDelete}
+        >
+          <button
+            type="button"
+            disabled={isDeleting}
+            aria-busy={isDeleting}
+            aria-label="Eliminar este mensaje para todos"
+            title={isDeleting ? 'Eliminando…' : 'Eliminar para todos'}
+            className={`${actionButtonClass} hover:text-red-600 disabled:cursor-wait disabled:opacity-60 dark:hover:text-red-400`}
+          >
+            {isDeleting
+              ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              : <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
+          </button>
+        </ConfirmDialog>
+      )}
     </div>
   )
 
@@ -167,32 +232,40 @@ export function MessageBubble({
               : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
           } ${isFlashing ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
         >
-          {adReferral && <AdReferralCard ad={adReferral} />}
-          {m.quoted_message_id != null && (
-            <QuotedMessage
-              sender={m.quoted_sender ?? 'cliente'}
-              content={m.quoted_content ?? null}
-              messageType={m.quoted_message_type}
-              contactName={displayName(chat)}
-              onJump={() => onQuotedJump(m.quoted_message_id as number)}
-              className="mb-1"
-            />
+          {isDeleted ? (
+            <DeletedBody isVendedor={isVendedor} />
+          ) : (
+            <>
+              {adReferral && <AdReferralCard ad={adReferral} />}
+              {m.quoted_message_id != null && (
+                <QuotedMessage
+                  sender={m.quoted_sender ?? 'cliente'}
+                  content={m.quoted_content ?? null}
+                  messageType={m.quoted_message_type}
+                  contactName={displayName(chat)}
+                  onJump={() => onQuotedJump(m.quoted_message_id as number)}
+                  className="mb-1"
+                />
+              )}
+              <MessageBody
+                message={m}
+                parsed={parsed}
+                mediaSrc={mediaSrc}
+                isVendedor={isVendedor}
+                mediaBox={mediaBoxDimensions()}
+                onMediaError={onMediaFailed}
+                onOpenMedia={onOpenMedia}
+                onPreviewSticker={onPreviewSticker}
+                videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
+                hasQuote={m.quoted_message_id != null}
+              />
+              {analysis && <MessageAnalysis summary={analysis} />}
+            </>
           )}
-          <MessageBody
-            message={m}
-            parsed={parsed}
-            mediaSrc={mediaSrc}
-            isVendedor={isVendedor}
-            mediaBox={mediaBoxDimensions()}
-            onMediaError={onMediaFailed}
-            onOpenMedia={onOpenMedia}
-            onPreviewSticker={onPreviewSticker}
-            videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
-            hasQuote={m.quoted_message_id != null}
-          />
-          {analysis && <MessageAnalysis summary={analysis} />}
-          {kind !== 'video' && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
-            {isVendedor && kind === 'text' && text.trim() && (
+          {/* El pie va embebido en el reproductor de video, salvo que el
+              mensaje se haya eliminado: ahí ya no hay reproductor. */}
+          {(isDeleted || kind !== 'video') && <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
+            {!isDeleted && isVendedor && kind === 'text' && text.trim() && (
               <button
                 type="button"
                 title="Guardar como plantilla personal"
@@ -202,7 +275,7 @@ export function MessageBubble({
                 <BookmarkPlus className="h-3 w-3" />
               </button>
             )}
-            {isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
+            {!isDeleted && isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
               <span
                 className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
                   m.status === 'PLAYED'
@@ -220,6 +293,7 @@ export function MessageBubble({
                 {m.status === 'PLAYED' ? 'Escuchado' : 'No escuchado'}
               </span>
             )}
+            {!isDeleted && m.edited_at && <span title={`Editado ${formatMessageTime(m.edited_at)}`}>Editado</span>}
             <span>{formatMessageTime(m.sent_at)}</span>
             {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} />}
           </div>}

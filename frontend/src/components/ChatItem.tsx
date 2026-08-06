@@ -46,10 +46,15 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
       ? chat.matched_message!
       : { content: chat.last_message, message_type: chat.last_message_type },
   )
-  const Icon = preview.icon
+  // De un mensaje eliminado el backend no manda el texto: el preview lo dice
+  // en vez de quedar en "—", igual que la lista de chats de WhatsApp.
+  const isDeletedPreview = !isMessageMatch && !!chat.last_message_deleted
+  const Icon = isDeletedPreview ? null : preview.icon
   // El texto humano si lo hay; si no, la etiqueta del tipo ("Imagen",
   // "Ubicación"…) para que un adjunto sin caption no quede en "—".
-  const rawPreviewText = preview.text || (preview.kind !== 'text' ? preview.label : '—')
+  const rawPreviewText = isDeletedPreview
+    ? 'Se eliminó este mensaje'
+    : preview.text || (preview.kind !== 'text' ? preview.label : '—')
   // El término puede estar en el medio de un mensaje largo: el snippet lo
   // deja visible al inicio del preview y el split lo resalta en negrita.
   const previewText = isMessageMatch ? searchSnippet(rawPreviewText, search) : rawPreviewText

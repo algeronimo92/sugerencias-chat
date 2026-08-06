@@ -95,9 +95,12 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "contador_noshow": row["contador_noshow"],
         "toques_seguimiento": row["toques_seguimiento"],
         "fecha_ultimo_toque": _fmt_ts(row["fecha_ultimo_toque"]),
-        "last_message": row["last_message"],
+        # De un mensaje eliminado no se sirve el texto ni en el preview: la
+        # lista lo muestra como "Se eliminó este mensaje" a partir del flag.
+        "last_message": None if row["last_message_deleted_at"] else row["last_message"],
         "last_message_sender": row["last_message_sender"],
         "last_message_type": row["last_message_type"] if "last_message_type" in row else None,
+        "last_message_deleted": row["last_message_deleted_at"] is not None,
         "timestamp": _fmt_ts(row["timestamp"]),
         "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
@@ -148,6 +151,7 @@ def _last_message_subquery():
             WspMessage.sent_at,
             WspMessage.sender,
             WspMessage.message_type,
+            WspMessage.deleted_at,
         )
         .where(WspMessage.chat_id == Lead.id)
         .order_by(WspMessage.sent_at.desc())
@@ -286,11 +290,17 @@ def _message_text_match(search: str):
     "yape" encuentre el comprobante cuya descripción generó la IA, aunque el
     cliente no haya escrito nada. El índice trigram sobre
     f_unaccent(analysis->>'summary') (idx_wsp_messages_analysis_trgm) evita el
-    recorrido completo."""
+    recorrido completo.
+
+    Los eliminados quedan fuera: su texto ya no se sirve en ningún lado, así
+    que tampoco puede aparecer como preview de un resultado de búsqueda."""
     pattern = f"%{_escape_like(search)}%"
-    return or_(
-        _unaccent_ilike(WspMessage.content, pattern),
-        _unaccent_ilike(WspMessage.analysis["summary"].astext, pattern),
+    return and_(
+        WspMessage.deleted_at.is_(None),
+        or_(
+            _unaccent_ilike(WspMessage.content, pattern),
+            _unaccent_ilike(WspMessage.analysis["summary"].astext, pattern),
+        ),
     )
 
 
@@ -377,6 +387,7 @@ def _chat_columns(last_message):
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
         last_message.c.message_type.label("last_message_type"),
+        last_message.c.deleted_at.label("last_message_deleted_at"),
         last_message.c.sent_at.label("timestamp"),
         _last_customer_message_at_subquery().label("last_customer_message_at"),
         _unread_count_subquery().label("unread_count"),
@@ -1508,6 +1519,8 @@ async def fetch_messages(
                 WspMessage.analysis,
                 WspMessage.payload,
                 WspMessage.reactions,
+                WspMessage.edited_at,
+                WspMessage.deleted_at,
             )
             .where(WspMessage.chat_id == chat_id)
             # Las reacciones no son burbujas: viven como badge sobre el mensaje
@@ -1535,7 +1548,7 @@ async def fetch_messages(
         quoted = await _resolve_quoted_messages(session, chat_id, page)
 
     items = [
-        {
+        _mask_deleted({
             "id": r["id"],
             "sender": r["sender"],
             "content": r["content"],
@@ -1547,11 +1560,13 @@ async def fetch_messages(
             "analysis": r["analysis"],
             "payload": r["payload"],
             "reactions": r["reactions"],
+            "edited_at": _fmt_ts(r["edited_at"]),
+            "deleted_at": _fmt_ts(r["deleted_at"]),
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
             **quoted.get(r["quoted_wa_message_id"], {}),
-        }
+        })
         for r in page
     ]
     return {"items": items, "has_more": has_more}
@@ -1602,12 +1617,19 @@ async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
     vendedor todavía en la outbox existe pero aún no tiene id de WhatsApp, y
     el llamador necesita distinguir "no existe" de "todavía no se puede
     citar" para dar el error correcto.
+
+    También lo usan editar y eliminar, que necesitan además el tipo y la fecha
+    de envío para poder aplicar los límites de WhatsApp (solo texto, 15
+    minutos) antes de llamar a Evolution.
     """
     stmt = select(
         WspMessage.id,
         WspMessage.sender,
         WspMessage.content,
         WspMessage.wa_message_id,
+        WspMessage.message_type,
+        WspMessage.sent_at,
+        WspMessage.deleted_at,
     ).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
     async with get_sessionmaker()() as session:
         row = (await session.execute(stmt)).mappings().first()
@@ -1637,10 +1659,32 @@ async def fetch_latest_customer_message_target(chat_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
+def _mask_deleted(item: dict) -> dict:
+    """Vacía lo que un mensaje eliminado ya no debe mostrar.
+
+    El borrado es lógico (la fila queda para la auditoría del CRM), así que el
+    ocultamiento se hace acá, al servir: un solo lugar para los dos caminos que
+    devuelven mensajes (el hilo paginado y la fila suelta que devuelven las
+    mutaciones). `sender`, `sent_at` y `status` se conservan — son los que
+    permiten ubicar la lápida en el hilo, igual que WhatsApp.
+    """
+    if not item.get("deleted_at"):
+        return item
+    return {
+        **item,
+        "content": None,
+        "media_url": None,
+        "analysis": None,
+        "payload": None,
+        "media_width": None,
+        "media_height": None,
+    }
+
+
 def _message_payload(row: WspMessage) -> dict:
     """Un mensaje en la forma que espera el schema Message (misma que arma
     fetch_messages), a partir de una fila ORM ya cargada."""
-    return {
+    return _mask_deleted({
         "id": row.id,
         "sender": row.sender,
         "content": row.content,
@@ -1652,9 +1696,11 @@ def _message_payload(row: WspMessage) -> dict:
         "analysis": row.analysis,
         "payload": row.payload,
         "reactions": row.reactions,
+        "edited_at": _fmt_ts(row.edited_at),
+        "deleted_at": _fmt_ts(row.deleted_at),
         "media_width": row.media_width or None,
         "media_height": row.media_height or None,
-    }
+    })
 
 
 async def set_message_reaction(
@@ -1685,6 +1731,58 @@ async def set_message_reaction(
             reactions.append({"emoji": emoji, "from_me": from_me})
         row.reactions = reactions or None
         await session.commit()
+        return _message_payload(row)
+
+
+async def _load_message_by_wa_id(session, chat_id: str, wa_message_id: str) -> WspMessage | None:
+    return (await session.execute(
+        select(WspMessage).where(
+            WspMessage.chat_id == chat_id,
+            WspMessage.wa_message_id == wa_message_id,
+        )
+    )).scalar_one_or_none()
+
+
+async def update_message_content(chat_id: str, wa_message_id: str, text: str) -> dict | None:
+    """Guarda el texto nuevo de un mensaje editado y devuelve el mensaje ya
+    actualizado, o None si no está en la base.
+
+    El objetivo se resuelve por (chat_id, wa_message_id) —  igual que las
+    reacciones— para que sirva tanto a la edición hecha desde la app como a la
+    que llega por webhook cuando el vendedor edita desde el teléfono.
+
+    Se guarda solo el texto vigente: WhatsApp tampoco conserva las versiones
+    anteriores, y `edited_at` es lo único que la burbuja necesita para mostrar
+    el "Editado". Un mensaje eliminado no se reescribe.
+    """
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_wa_id(session, chat_id, wa_message_id)
+        if row is None or row.deleted_at is not None:
+            return None
+
+        row.content = text
+        row.edited_at = datetime.now(timezone.utc)
+        await session.commit()
+        return _message_payload(row)
+
+
+async def mark_message_deleted(chat_id: str, wa_message_id: str) -> dict | None:
+    """Marca un mensaje como eliminado para todos y devuelve el mensaje ya
+    actualizado, o None si no está en la base.
+
+    Borrado lógico: la fila queda (el CRM no pierde el registro de que hubo un
+    mensaje ahí), pero desde acá en adelante la API no sirve su contenido
+    —lo tapa `_mask_deleted`—. Idempotente: volver a eliminar algo ya
+    eliminado conserva la marca original en vez de correrla.
+    """
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_wa_id(session, chat_id, wa_message_id)
+        if row is None:
+            return None
+
+        if row.deleted_at is None:
+            row.deleted_at = datetime.now(timezone.utc)
+            await session.commit()
         return _message_payload(row)
 
 

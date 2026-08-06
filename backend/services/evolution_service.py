@@ -85,20 +85,30 @@ async def is_configured() -> bool:
     return all(values.values())
 
 
-async def _post(url: str, api_key: str, payload: dict, timeout: float) -> Any:
-    """POST a Evolution API. Si responde con error, la excepción incluye el
-    body de la respuesta (no solo el status code) — sin esto, un 400 por un
-    payload mal formado es indistinguible de cualquier otro error y hay que
-    ir a probar con curl a mano para saber qué se quejó realmente."""
+async def _request(method: str, url: str, api_key: str, payload: dict, timeout: float) -> Any:
+    """Llamada con cuerpo JSON a Evolution API. Si responde con error, la
+    excepción incluye el body de la respuesta (no solo el status code) — sin
+    esto, un 400 por un payload mal formado es indistinguible de cualquier otro
+    error y hay que ir a probar con curl a mano para saber qué se quejó
+    realmente.
+
+    El método es un parámetro porque no todo va por POST: eliminar un mensaje
+    es un DELETE *con* cuerpo (ver delete_whatsapp_message)."""
     headers = {"apikey": api_key}
     started_at = perf_counter()
     try:
-        response = await _client().post(url, json=payload, headers=headers, timeout=timeout)
+        response = await _client().request(
+            method, url, json=payload, headers=headers, timeout=timeout
+        )
     finally:
         record_external_duration("evolution", (perf_counter() - started_at) * 1000)
     if response.is_error:
         raise EvolutionApiError(f"Evolution API respondió {response.status_code}: {response.text}")
     return response.json()
+
+
+async def _post(url: str, api_key: str, payload: dict, timeout: float) -> Any:
+    return await _request("POST", url, api_key, payload, timeout)
 
 
 async def get_template_capabilities() -> dict:
@@ -411,6 +421,43 @@ async def send_whatsapp_reaction(key: dict, emoji: str) -> dict:
         }
     payload = {"key": key, "reaction": emoji}
     return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def edit_whatsapp_message(chat_id: str, wa_message_id: str, text: str) -> dict:
+    """Reescribe el texto de un mensaje propio ya enviado.
+
+    WhatsApp solo admite editar mensajes de texto salidos de esta instancia y
+    dentro de los 15 minutos; fuera de eso Evolution responde con error y el
+    mensaje queda como estaba. El llamador filtra esos casos antes para poder
+    explicarlos, pero el límite real lo pone WhatsApp, no la app.
+
+    `fromMe` va fijo en True: editar un mensaje ajeno no existe en WhatsApp.
+    """
+    api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
+
+    url = f"{api_url.rstrip('/')}/chat/updateMessage/{instance}"
+    payload = {
+        "number": destination,
+        "text": text,
+        "key": {"remoteJid": destination, "fromMe": True, "id": wa_message_id},
+    }
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def delete_whatsapp_message(chat_id: str, wa_message_id: str) -> dict:
+    """Elimina para todos un mensaje propio ("Eliminar para todos" de WhatsApp).
+
+    Es un DELETE *con* cuerpo, y la key va desarmada en campos sueltos (no
+    anidada bajo `key` como en sendReaction): así la espera Evolution en
+    /chat/deleteMessageForEveryone.
+    """
+    api_url, api_key, instance = await _config()
+    destination = await resolve_whatsapp_destination(chat_id)
+
+    url = f"{api_url.rstrip('/')}/chat/deleteMessageForEveryone/{instance}"
+    payload = {"id": wa_message_id, "fromMe": True, "remoteJid": destination}
+    return await _request("DELETE", url, api_key, payload, timeout=30.0)
 
 
 # --- Vinculación de la instancia por QR ---------------------------------------

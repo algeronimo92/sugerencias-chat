@@ -389,6 +389,48 @@ export function useReactToMessage(chatId: string) {
   })
 }
 
+interface EditPayload {
+  messageId: number
+  text: string
+}
+
+/** Reescribe el texto de un mensaje ya enviado (el "Editar" de WhatsApp).
+ *
+ * Sin update optimista a propósito: el backend rechaza la edición fuera de los
+ * 15 minutos, sobre adjuntos y sobre mensajes ajenos, y pintar el texto nuevo
+ * antes de esa respuesta mostraría una corrección que el cliente nunca vio. */
+export function useEditMessage(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, EditPayload>({
+    mutationFn: async ({ messageId, text }) =>
+      (await client.patch<Message>(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
+        { text },
+      )).data,
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+      // El preview de la lista muestra el último mensaje: si era este, cambió.
+      void queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+}
+
+/** Elimina para todos un mensaje ya enviado. La burbuja no desaparece: queda
+ * la lápida ("Se eliminó este mensaje"), igual que en WhatsApp. */
+export function useDeleteMessage(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, number>({
+    mutationFn: async messageId =>
+      (await client.delete<Message>(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
+      )).data,
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+      void queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+}
+
 interface StickerPayload {
   assetId: number
   /** URL del asset, para pintar la burbuja optimista antes de la respuesta. */

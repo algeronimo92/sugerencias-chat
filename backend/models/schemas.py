@@ -59,6 +59,9 @@ class Chat(BaseModel):
     last_message: str | None = None
     last_message_sender: str | None = None
     last_message_type: str | None = None
+    # El último mensaje se eliminó: `last_message` viene vacío y la lista
+    # muestra "Se eliminó este mensaje" en vez del texto original.
+    last_message_deleted: bool = False
     timestamp: str | None = None
     last_customer_message_at: str | None = None
     unread_count: int = 0
@@ -202,6 +205,12 @@ class Message(BaseModel):
     # Reacciones sobre este mensaje (badge estilo WhatsApp): lista de
     # {emoji, from_me}. None cuando nadie reaccionó.
     reactions: list[dict] | None = None
+    # Última edición del texto. None = nunca se editó; con valor, la burbuja
+    # muestra "Editado" como en WhatsApp.
+    edited_at: str | None = None
+    # Eliminado para todos. Con valor, el resto de los campos de contenido
+    # vienen vacíos (el backend no los sirve) y el hilo pinta la lápida.
+    deleted_at: str | None = None
     # Dimensiones de la imagen adjunta: el frontend reserva el espacio exacto
     # antes de que cargue, para que la conversación no se mueva.
     media_width: int | None = None
@@ -290,6 +299,12 @@ class SendLocationRequest(BaseModel):
     latitude: float
     longitude: float
     reply_to_message_id: int | None = Field(default=None, ge=1)
+
+
+class EditMessageRequest(BaseModel):
+    # Texto nuevo del mensaje. Mismo tope que un envío normal: es el mismo
+    # mensaje de WhatsApp, solo que reescrito.
+    text: str = Field(min_length=1, max_length=4096)
 
 
 class ReactionRequest(BaseModel):
