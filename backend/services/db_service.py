@@ -1636,6 +1636,50 @@ async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
     return dict(row) if row is not None else None
 
 
+async def fetch_messages_to_forward(chat_id: str, message_ids: list[int]) -> list[dict]:
+    """Mensajes de ``chat_id`` que se van a reenviar, en orden de conversación.
+
+    Reenviar no toca WhatsApp del lado del original: se vuelve a enviar lo que
+    tenemos guardado (texto, archivo, ubicación) al chat destino, así que acá
+    alcanza con el contenido — no hace falta ``wa_message_id``. Los eliminados
+    se filtran: de esos ya no servimos el contenido.
+
+    El orden lo pone la base y no la lista pedida: reenviar cinco mensajes
+    tiene que reproducir la conversación tal cual se leyó, no el orden en que
+    se fueron tildando.
+    """
+    if not message_ids:
+        return []
+    stmt = (
+        select(
+            WspMessage.id,
+            WspMessage.sender,
+            WspMessage.content,
+            WspMessage.media_url,
+            WspMessage.message_type,
+            WspMessage.payload,
+        )
+        .where(
+            WspMessage.chat_id == chat_id,
+            WspMessage.id.in_(message_ids),
+            WspMessage.deleted_at.is_(None),
+        )
+        .order_by(WspMessage.sent_at.asc(), WspMessage.id.asc())
+    )
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+async def filter_existing_leads(chat_ids: list[str]) -> set[str]:
+    """Cuáles de esos chats existen como lead. Una consulta para todos."""
+    if not chat_ids:
+        return set()
+    stmt = select(Lead.id).where(Lead.id.in_(chat_ids))
+    async with get_sessionmaker()() as session:
+        return set((await session.execute(stmt)).scalars().all())
+
+
 async def fetch_latest_customer_message_target(chat_id: str) -> dict | None:
     """Último mensaje real del cliente al que WhatsApp permite reaccionar.
 

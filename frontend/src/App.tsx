@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, usePa
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, X } from 'lucide-react'
-import type { Chat, ChatFilters } from './types'
+import { EMPTY_CHAT_FILTERS, type Chat, type ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
 import { LoginPage } from './components/LoginPage'
@@ -68,20 +68,6 @@ const SettingsDialog = lazy(() =>
 const SuggestionPanel = lazy(() =>
   import('./components/SuggestionPanel').then(module => ({ default: module.SuggestionPanel })),
 )
-
-const EMPTY_CHAT_FILTERS: ChatFilters = {
-  unreadOnly: false,
-  stages: [],
-  tagIds: [],
-  tagMode: 'any',
-  service: '',
-  sellerId: null,
-  origin: '',
-  lastSender: '',
-  inactiveDays: null,
-  waitingTime: '',
-  automationPaused: false,
-}
 
 function PageLoader() {
   return (

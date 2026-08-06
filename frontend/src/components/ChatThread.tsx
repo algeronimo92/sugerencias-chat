@@ -1,14 +1,16 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft, Bot, BotOff, ChevronDown, Database, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
-import { useDeleteMessage, useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import { useDeleteMessage, useDeleteMessages, useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
+import { ForwardMessageDialog } from './ForwardMessageDialog'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
-import { formatDayLabel } from '../utils/message'
+import { formatDayLabel, formatMessageTime, parseContent } from '../utils/message'
+import { ConfirmDialog } from './ui/ConfirmDialog'
 import { MediaLightbox } from './MediaLightbox'
 import { StickerPreviewDialog } from './StickerPreviewDialog'
 import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
@@ -164,6 +166,37 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
   const deleteMessage = useDeleteMessage(chat.chat_id)
+  const deleteMessages = useDeleteMessages(chat.chat_id)
+
+  // Selección múltiple estilo WhatsApp: se abre manteniendo apretada una
+  // burbuja (o desde el botón del hover) y habilita copiar, reenviar y
+  // eliminar sobre varios mensajes a la vez.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const isSelecting = selectedIds.size > 0
+  // Mensajes a reenviar: la selección múltiple, o el mensaje suelto desde el
+  // botón de su burbuja. null = el diálogo está cerrado.
+  const [messageIdsToForward, setMessageIdsToForward] = useState<number[] | null>(null)
+
+  function toggleSelected(messageId: number) {
+    setSelectedIds(current => {
+      const next = new Set(current)
+      if (!next.delete(messageId)) next.add(messageId)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  // En el orden del hilo, no en el que se fueron tildando: es el orden en que
+  // se copian y se reenvían.
+  const selectedMessages = messages.filter(message => selectedIds.has(message.id))
+  // "Eliminar para todos" solo aplica a los mensajes propios ya confirmados en
+  // WhatsApp; el resto de la selección se ignora, como hace WhatsApp.
+  const deletableSelection = selectedMessages.filter(
+    message => message.sender === 'vendedor' && !!message.wa_message_id && !message.deleted_at,
+  )
 
   function removeMessage(message: Message) {
     deleteMessage.mutate(message.id, {
@@ -171,6 +204,50 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       onError: error => toast.error(extractErrorMessage(error)),
     })
   }
+
+  /** Copia la selección al portapapeles. Un solo mensaje se copia pelado (es
+   * lo que se espera al copiar para pegar en otro lado); con varios se
+   * antepone hora y autor, como el "Copiar" de WhatsApp. */
+  async function copySelection() {
+    const lines = selectedMessages.map(message => {
+      const parsed = parseContent(message)
+      // Un adjunto sin epígrafe no tiene texto que copiar: va su tipo
+      // ("Imagen", "Audio"), como el "<multimedia omitido>" de WhatsApp.
+      const body = parsed.text.trim() || parsed.label || 'Mensaje'
+      if (selectedMessages.length === 1) return body
+      const author = message.sender === 'vendedor' ? 'Vos' : displayName(chat)
+      return `[${formatMessageTime(message.sent_at)}] ${author}: ${body}`
+    })
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      toast.success(lines.length === 1 ? 'Mensaje copiado' : `${lines.length} mensajes copiados`)
+      clearSelection()
+    } catch {
+      toast.error('El navegador no dejó copiar al portapapeles')
+    }
+  }
+
+  function deleteSelection() {
+    if (!deletableSelection.length) return
+    deleteMessages.mutate(deletableSelection.map(message => message.id), {
+      onSuccess: ({ deleted, failed }) => {
+        if (deleted) toast.success(`${deleted} mensaje(s) eliminados para todos`)
+        if (failed) toast.error(`${failed} mensaje(s) no se pudieron eliminar`)
+        clearSelection()
+      },
+      onError: error => toast.error(extractErrorMessage(error)),
+    })
+  }
+
+  // Escape cierra el modo selección, como cualquier otra capa de la interfaz.
+  useEffect(() => {
+    if (!isSelecting) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') clearSelection()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSelecting])
 
 
   // El foco del cursor lo pone el compositor al ver la cita nueva: el
@@ -188,6 +265,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     setReplyTo(null)
     setIsNoteMode(false)
     setMessageToEdit(null)
+    setSelectedIds(new Set())
+    setMessageIdsToForward(null)
   }, [chat.chat_id])
 
   function handleRetryMessage(message: Message) {
@@ -197,7 +276,70 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
   return (
     <div className="flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
-      {/* Header — gris claro / #202C33, como el header de conversación de WhatsApp */}
+      {/* Barra de selección: reemplaza al header mientras hay mensajes
+          tildados, igual que WhatsApp. */}
+      {isSelecting ? (
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-wa-border bg-wa-head px-2 py-2.5 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={clearSelection}
+              aria-label="Cancelar selección"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+              {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => void copySelection()}
+              aria-label="Copiar mensajes seleccionados"
+              title="Copiar"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <Copy className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMessageIdsToForward(selectedMessages.map(message => message.id))}
+              aria-label="Reenviar mensajes seleccionados"
+              title="Reenviar"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <Forward className="h-5 w-5" />
+            </button>
+            <ConfirmDialog
+              title="Eliminar mensajes para todos"
+              description={
+                deletableSelection.length === selectedIds.size
+                  ? 'Los mensajes desaparecerán también del WhatsApp del cliente, que verá "Se eliminó este mensaje". No se puede deshacer.'
+                  : `De los ${selectedIds.size} seleccionados solo se pueden eliminar ${deletableSelection.length}: WhatsApp únicamente permite borrar para todos los mensajes propios ya enviados. No se puede deshacer.`
+              }
+              confirmLabel="Eliminar para todos"
+              disabled={!deletableSelection.length || deleteMessages.isPending}
+              onConfirm={deleteSelection}
+            >
+              <button
+                type="button"
+                disabled={!deletableSelection.length || deleteMessages.isPending}
+                aria-busy={deleteMessages.isPending}
+                aria-label="Eliminar mensajes seleccionados para todos"
+                title={deletableSelection.length ? 'Eliminar para todos' : 'Ninguno de los mensajes seleccionados se puede eliminar'}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-red-400"
+              >
+                {deleteMessages.isPending
+                  ? <Loader2 className="h-5 w-5 animate-spin" />
+                  : <Trash2 className="h-5 w-5" />}
+              </button>
+            </ConfirmDialog>
+          </div>
+        </div>
+      ) : (
+      /* Header — gris claro / #202C33, como el header de conversación de WhatsApp */
       <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-wa-border bg-wa-head px-2 py-2.5 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
         <div className="flex min-w-0 items-center gap-1 sm:gap-3">
           {onBack && (
@@ -259,6 +401,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           )}
         </div>
       </div>
+      )}
 
       {/* Thread — el wrapper relativo permite flotar el botón "ir al final"
           por fuera del scroll, así no se desplaza con el contenido. */}
@@ -421,8 +564,12 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onReact={(emoji) => reactToMessage({ messageId: item.message.id, emoji })}
                     onEdit={() => setMessageToEdit(item.message)}
                     onDelete={() => removeMessage(item.message)}
+                    onForward={() => setMessageIdsToForward([item.message.id])}
                     isDeleting={deleteMessage.isPending && deleteMessage.variables === item.message.id}
                     onSaveTemplate={setTemplateContentToSave}
+                    selectionMode={isSelecting}
+                    isSelected={selectedIds.has(item.message.id)}
+                    onToggleSelect={() => toggleSelected(item.message.id)}
                   />
                 </Fragment>
               )
@@ -511,6 +658,15 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
       {multimediaTemplate && (
         <TemplateSendDialog chat={chat} template={multimediaTemplate} onClose={() => setMultimediaTemplate(null)} />
+      )}
+
+      {messageIdsToForward && (
+        <ForwardMessageDialog
+          chatId={chat.chat_id}
+          messageIds={messageIdsToForward}
+          onClose={() => setMessageIdsToForward(null)}
+          onForwarded={clearSelection}
+        />
       )}
     </div>
   )

@@ -54,6 +54,22 @@ export interface ChatFilters {
   automationPaused: boolean
 }
 
+/** Filtros avanzados en cero: el estado inicial de la lista y el que usan las
+ * vistas que listan leads sin ofrecer filtros (ej. el selector de reenvío). */
+export const EMPTY_CHAT_FILTERS: ChatFilters = {
+  unreadOnly: false,
+  stages: [],
+  tagIds: [],
+  tagMode: 'any',
+  service: '',
+  sellerId: null,
+  origin: '',
+  lastSender: '',
+  inactiveDays: null,
+  waitingTime: '',
+  automationPaused: false,
+}
+
 export interface LeadActivity {
   id: number
   event_type: string

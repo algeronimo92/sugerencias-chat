@@ -1,4 +1,5 @@
-import { Ban, BookmarkPlus, Check, CheckCheck, CornerUpLeft, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Forward, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
@@ -73,10 +74,23 @@ interface Props {
   onReact: (emoji: string) => void
   onEdit: () => void
   onDelete: () => void
+  onForward: () => void
   /** El borrado en WhatsApp está en curso: el botón queda en espera. */
   isDeleting: boolean
   onSaveTemplate: (content: string) => void
+  /** El hilo está en modo selección (hay al menos un mensaje tildado): las
+   * burbujas dejan de abrir media y pasan a tildarse al tocarlas. */
+  selectionMode: boolean
+  isSelected: boolean
+  onToggleSelect: () => void
 }
+
+// Cuánto hay que mantener apretada una burbuja para entrar en modo selección,
+// como en WhatsApp. En escritorio también existe el botón del hover.
+const LONG_PRESS_MS = 450
+// Movimiento a partir del cual se entiende que el dedo está haciendo scroll y
+// no manteniendo apretado.
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10
 
 /** Lápida de un mensaje eliminado para todos: ocupa el lugar del mensaje en el
  * hilo pero no muestra nada de lo que decía (el backend directamente ya no lo
@@ -109,8 +123,12 @@ export function MessageBubble({
   onReact,
   onEdit,
   onDelete,
+  onForward,
   isDeleting,
   onSaveTemplate,
+  selectionMode,
+  isSelected,
+  onToggleSelect,
 }: Props) {
   const isVendedor = m.sender === 'vendedor'
   const isDeleted = !!m.deleted_at
@@ -147,6 +165,54 @@ export function MessageBubble({
     return { width, height, style: { width, height } }
   }
 
+  // Mantener apretada una burbuja abre el modo selección, como WhatsApp en el
+  // teléfono. El timer se cancela si el dedo se mueve (eso es scroll, no una
+  // pulsación larga) o si se levanta antes de tiempo. Con mouse no aplica: en
+  // escritorio la selección se abre desde el botón del hover.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressOrigin = useRef<{ x: number; y: number } | null>(null)
+  // El navegador dispara igual el click al levantar el dedo. Sin esta marca,
+  // ese click volvería a tildar el mensaje que la pulsación larga acaba de
+  // seleccionar — es decir, lo destildaría en el acto.
+  const longPressSelected = useRef(false)
+
+  function cancelLongPress() {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    longPressTimer.current = null
+    longPressOrigin.current = null
+  }
+
+  // Un timer vivo tras desmontar la burbuja tildaría un mensaje que ya no está
+  // en pantalla (pasa al recargar el hilo mientras el dedo sigue apoyado).
+  useEffect(() => cancelLongPress, [])
+
+  function startLongPress(event: ReactPointerEvent) {
+    longPressSelected.current = false
+    if (!canForward || selectionMode || event.pointerType === 'mouse') return
+    longPressOrigin.current = { x: event.clientX, y: event.clientY }
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null
+      longPressSelected.current = true
+      onToggleSelect()
+    }, LONG_PRESS_MS)
+  }
+
+  function trackLongPress(event: ReactPointerEvent) {
+    const origin = longPressOrigin.current
+    if (!origin) return
+    const moved = Math.abs(event.clientX - origin.x) > LONG_PRESS_MOVE_TOLERANCE_PX
+      || Math.abs(event.clientY - origin.y) > LONG_PRESS_MOVE_TOLERANCE_PX
+    if (moved) cancelLongPress()
+  }
+
+  function handleRowClick() {
+    if (longPressSelected.current) {
+      longPressSelected.current = false
+      return
+    }
+    if (selectionMode && canForward) onToggleSelect()
+  }
+
   /** Aparece al pasar el mouse por la burbuja, del lado de afuera, para no
    * tapar el contenido. Queda visible al enfocarlo con el teclado.
    *
@@ -154,28 +220,54 @@ export function MessageBubble({
    * wa_message_id (envío en curso, fallido, o histórico previo a la
    * integración) el botón no aparece en vez de fallar al enviar. */
   const canReply = m.id > 0 && !!m.wa_message_id && !isDeleted
+  // Reenviar y seleccionar solo necesitan que el mensaje exista en la base con
+  // su contenido: se manda una copia nueva, no se toca el original en WhatsApp.
+  const canForward = m.id > 0 && !isDeleted
   // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
   // además, solo texto y dentro de los 15 minutos.
   const canDelete = canReply && isVendedor
   const sentAgo = m.sent_at ? Date.now() - new Date(m.sent_at).getTime() : Infinity
   const canEdit = canDelete && (kind === 'text') && sentAgo < EDIT_WINDOW_MS
+  const isForwarded = m.payload?.forwarded === true && !isDeleted
   const actionButtonClass = 'rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark'
-  const messageActions = canReply && (
+  const messageActions = canForward && !selectionMode && (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      {canReply && (
+        <button
+          type="button"
+          onClick={onStartReply}
+          aria-label="Responder a este mensaje"
+          title="Responder"
+          className={actionButtonClass}
+        >
+          <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {canReply && (
+        <ReactionMenu
+          ownEmoji={reactions.find((r) => r.from_me)?.emoji ?? null}
+          onReact={onReact}
+          side={isVendedor ? 'left' : 'right'}
+        />
+      )}
       <button
         type="button"
-        onClick={onStartReply}
-        aria-label="Responder a este mensaje"
-        title="Responder"
+        onClick={onForward}
+        aria-label="Reenviar este mensaje"
+        title="Reenviar"
         className={actionButtonClass}
       >
-        <CornerUpLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        <Forward aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
-      <ReactionMenu
-        ownEmoji={reactions.find((r) => r.from_me)?.emoji ?? null}
-        onReact={onReact}
-        side={isVendedor ? 'left' : 'right'}
-      />
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-label="Seleccionar este mensaje"
+        title="Seleccionar"
+        className={actionButtonClass}
+      >
+        <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
       {canEdit && (
         <button
           type="button"
@@ -214,9 +306,44 @@ export function MessageBubble({
 
   return (
     <div
-      className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'} ${reactions.length > 0 ? 'mb-2.5' : ''}`}
+      className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'} ${reactions.length > 0 ? 'mb-2.5' : ''} ${
+        selectionMode
+          ? `-mx-3 select-none px-3 sm:-mx-6 sm:px-6 ${isSelected ? 'bg-wa-primary/10 dark:bg-wa-primary/15' : ''} ${canForward ? 'cursor-pointer' : 'cursor-default'}`
+          : ''
+      }`}
       data-message-id={m.id}
+      onPointerDown={startLongPress}
+      onPointerMove={trackLongPress}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onClick={canForward ? handleRowClick : undefined}
+      onKeyDown={selectionMode && canForward
+        ? event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            onToggleSelect()
+          }
+        : undefined}
+      role={selectionMode && canForward ? 'button' : undefined}
+      tabIndex={selectionMode && canForward ? 0 : undefined}
+      aria-pressed={selectionMode && canForward ? isSelected : undefined}
+      aria-label={selectionMode && canForward ? 'Seleccionar mensaje' : undefined}
     >
+      {selectionMode && (
+        <span
+          aria-hidden="true"
+          className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${isVendedor ? 'mr-auto' : ''} ${
+            !canForward
+              ? 'border-transparent'
+              : isSelected
+                ? 'border-wa-primary bg-wa-primary text-white'
+                : 'border-wa-muted/50 dark:border-wa-muted-dark/60'
+          }`}
+        >
+          {canForward && isSelected && <Check className="h-3 w-3" />}
+        </span>
+      )}
       {isVendedor && messageActions}
       {/* Columna: la burbuja y, debajo, los botones de la plantilla.
           Al estirarse los dos al ancho de la columna, los botones
@@ -232,10 +359,20 @@ export function MessageBubble({
               : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
           } ${isFlashing ? 'ring-2 ring-amber-400 dark:ring-amber-500' : 'ring-0 ring-transparent'}`}
         >
+          {/* En modo selección la burbuja entera deja de ser interactiva: esta
+              capa se come el click para que tocar una imagen tilde el mensaje
+              en vez de abrir el visor, y lo mismo con links y botones. */}
+          {selectionMode && <span aria-hidden="true" className="absolute inset-0 z-20 rounded-bubble" />}
           {isDeleted ? (
             <DeletedBody isVendedor={isVendedor} />
           ) : (
             <>
+              {isForwarded && (
+                <p className="flex items-center gap-1 text-xs italic text-wa-muted dark:text-wa-text-dark/60">
+                  <Forward aria-hidden="true" className="h-3 w-3 shrink-0" />
+                  Reenviado
+                </p>
+              )}
               {adReferral && <AdReferralCard ad={adReferral} />}
               {m.quoted_message_id != null && (
                 <QuotedMessage

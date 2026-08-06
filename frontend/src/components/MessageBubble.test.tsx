@@ -1,9 +1,10 @@
 /**
- * Editar y eliminar en la burbuja.
+ * Acciones de la burbuja: editar, eliminar, reenviar y seleccionar.
  *
  * Lo que se cubre acá es la disponibilidad de cada acción —qué mensajes deja
- * tocar WhatsApp— y cómo queda un mensaje ya eliminado o ya editado. El envío
- * en sí vive en los hooks; esto es la puerta que decide si se ofrece.
+ * tocar WhatsApp— y cómo queda un mensaje ya eliminado, ya editado o
+ * reenviado. El envío en sí vive en los hooks; esto es la puerta que decide
+ * si se ofrece.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -30,8 +31,18 @@ function message(overrides: Partial<Message> = {}): Message {
   } as Message
 }
 
-function renderBubble(overrides: Partial<Message> = {}, handlers: Partial<{ onEdit: () => void }> = {}) {
-  const onEdit = handlers.onEdit ?? vi.fn()
+interface Options {
+  onEdit?: () => void
+  onForward?: () => void
+  onToggleSelect?: () => void
+  selectionMode?: boolean
+  isSelected?: boolean
+}
+
+function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
+  const onEdit = options.onEdit ?? vi.fn()
+  const onForward = options.onForward ?? vi.fn()
+  const onToggleSelect = options.onToggleSelect ?? vi.fn()
   render(
     <MessageBubble
       chat={CHAT}
@@ -49,11 +60,15 @@ function renderBubble(overrides: Partial<Message> = {}, handlers: Partial<{ onEd
       onReact={vi.fn()}
       onEdit={onEdit}
       onDelete={vi.fn()}
+      onForward={onForward}
       isDeleting={false}
       onSaveTemplate={vi.fn()}
+      selectionMode={options.selectionMode ?? false}
+      isSelected={options.isSelected ?? false}
+      onToggleSelect={onToggleSelect}
     />,
   )
-  return { onEdit }
+  return { onEdit, onForward, onToggleSelect }
 }
 
 describe('MessageBubble', () => {
@@ -119,5 +134,45 @@ describe('MessageBubble', () => {
 
     expect(screen.getByText('Editado')).toBeInTheDocument()
     expect(screen.getByText('Te dejo el precio corregido')).toBeInTheDocument()
+  })
+
+  it('ofrece reenviar un mensaje del cliente', async () => {
+    const user = userEvent.setup()
+    const { onForward } = renderBubble({ sender: 'cliente', content: 'Hola' })
+
+    await user.click(screen.getByLabelText('Reenviar este mensaje'))
+
+    expect(onForward).toHaveBeenCalledOnce()
+  })
+
+  it('deja reenviar un mensaje propio todavía sin confirmar: el contenido ya está guardado', () => {
+    renderBubble({ wa_message_id: null, status: 'PENDING' })
+
+    expect(screen.getByLabelText('Reenviar este mensaje')).toBeInTheDocument()
+    // Responder sí necesita el id de WhatsApp del original.
+    expect(screen.queryByLabelText('Responder a este mensaje')).not.toBeInTheDocument()
+  })
+
+  it('no ofrece reenviar ni seleccionar un mensaje eliminado', () => {
+    renderBubble({ content: null, deleted_at: '2026-08-06T12:00:00.000Z' })
+
+    expect(screen.queryByLabelText('Reenviar este mensaje')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Seleccionar este mensaje')).not.toBeInTheDocument()
+  })
+
+  it('marca como reenviado el mensaje que llegó de otro chat', () => {
+    renderBubble({ payload: { forwarded: true } })
+
+    expect(screen.getByText('Reenviado')).toBeInTheDocument()
+  })
+
+  it('en modo selección la burbuja se tilda al tocarla y esconde las acciones', async () => {
+    const user = userEvent.setup()
+    const { onToggleSelect } = renderBubble({}, { selectionMode: true })
+
+    expect(screen.queryByLabelText('Responder a este mensaje')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Seleccionar mensaje' }))
+
+    expect(onToggleSelect).toHaveBeenCalledOnce()
   })
 })

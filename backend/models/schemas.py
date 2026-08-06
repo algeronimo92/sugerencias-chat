@@ -307,6 +307,23 @@ class EditMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4096)
 
 
+class ForwardMessagesRequest(BaseModel):
+    # Mensajes del chat de origen a reenviar, y chats destino. Los topes son
+    # los de WhatsApp: hasta 30 mensajes seleccionados y 5 chats por reenvío.
+    message_ids: list[int] = Field(min_length=1, max_length=30)
+    target_chat_ids: list[str] = Field(min_length=1, max_length=5)
+
+
+class ForwardMessagesResponse(BaseModel):
+    # Chats a los que efectivamente se encoló algo.
+    forwarded_chats: int
+    # Total de mensajes encolados (mensajes reenviables × chats destino).
+    forwarded_messages: int
+    # Mensajes que quedaron afuera por ser de un tipo que no se puede volver a
+    # enviar (encuestas, contactos, stickers rotos…). El frontend lo avisa.
+    skipped_messages: int
+
+
 class ReactionRequest(BaseModel):
     # Emoji de la reacción. Vacío quita la reacción propia (como en WhatsApp).
     emoji: str = ""

@@ -114,6 +114,7 @@ export function ChatList({
   const [createError, setCreateError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead()
   const { data: tags = [] } = useTags()
   const { data: sellers = [] } = useSellers()
@@ -295,12 +296,30 @@ export function ChatList({
         <div className="relative">
           <Search className="w-4 h-4 text-wa-muted dark:text-wa-muted-dark absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Buscar lead..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-full pl-10 pr-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
+            className="w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-full pl-10 pr-10 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
           />
+          {/* Vaciar la búsqueda: en el teléfono borrar a mano lo escrito es
+              incómodo y el teclado tapa media pantalla. Solo aparece con algo
+              escrito, así el buscador vacío queda igual que antes. */}
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                onSearchChange('')
+                searchInputRef.current?.focus()
+              }}
+              aria-label="Borrar búsqueda"
+              title="Borrar búsqueda"
+              className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="mt-2 flex rounded-lg bg-wa-field p-1 dark:bg-wa-field-dark" role="group" aria-label="Filtrar leads">
           <button

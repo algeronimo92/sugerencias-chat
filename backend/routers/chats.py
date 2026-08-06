@@ -11,6 +11,8 @@ from models.schemas import (
     ChatPage,
     CustomerServiceWindow,
     EditMessageRequest,
+    ForwardMessagesRequest,
+    ForwardMessagesResponse,
     HistoryPage,
     KanbanPage,
     KanbanSnapshot,
@@ -46,6 +48,8 @@ from services.db_service import (
     assign_tag,
     fetch_chat,
     fetch_chats,
+    fetch_messages_to_forward,
+    filter_existing_leads,
     fetch_kanban_counts,
     fetch_kanban_snapshot,
     fetch_kanban_stage,
@@ -719,6 +723,122 @@ async def send_location(chat_id: str, body: SendLocationRequest):
     }]))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
+
+
+# Tipos de adjunto que se reenvían con sendMedia, y con qué mediatype. Un
+# video-nota (ptv) sale como video normal: WhatsApp no deja crear uno nuevo
+# desde la API, y mandarlo como video conserva el contenido.
+_FORWARDABLE_MEDIA_TYPES = {
+    "image": "image",
+    "video": "video",
+    "ptv": "video",
+    "document": "document",
+}
+
+
+def _forward_item(message: dict) -> dict | None:
+    """Convierte un mensaje guardado en un ítem de outbox para otro chat.
+
+    Reenviar es volver a enviar el contenido, no delegar en WhatsApp: el
+    archivo ya está en nuestro almacenamiento y el texto en la base, así que
+    el destino recibe un mensaje nuevo con el mismo contenido (como el
+    "Reenviar" de WhatsApp, que tampoco reenvía el mensaje original).
+
+    Devuelve None si el tipo no se puede volver a enviar y tampoco tiene texto
+    con el que sustituirlo — encuestas, contactos, reacciones.
+    """
+    kind = message["message_type"]
+    content = (message["content"] or "").strip() or None
+    media_url = message["media_url"]
+    payload = message["payload"] or {}
+
+    if media_url and kind in _FORWARDABLE_MEDIA_TYPES:
+        mediatype = _FORWARDABLE_MEDIA_TYPES[kind]
+        return {
+            "content": content,
+            "media_url": media_url,
+            "payload": {
+                "type": "media",
+                "media_url": media_url,
+                "mediatype": mediatype,
+                "filename": payload.get("filename"),
+                "caption": content,
+            },
+            "forwarded": True,
+        }
+    if media_url and kind == "audio":
+        return {
+            "content": None,
+            "media_url": media_url,
+            "payload": {"type": "audio", "media_url": media_url},
+            "forwarded": True,
+        }
+    if media_url and kind == "sticker":
+        return {
+            "content": None,
+            "media_url": media_url,
+            "payload": {"type": "sticker", "media_url": media_url},
+            "forwarded": True,
+        }
+    if kind == "location":
+        latitude, longitude = payload.get("latitude"), payload.get("longitude")
+        if latitude is None or longitude is None:
+            return None
+        return {
+            "content": None,
+            "payload": {"type": "location", "latitude": latitude, "longitude": longitude},
+            "forwarded": True,
+        }
+    # Todo lo demás (texto, y también plantillas o interactivos, que del otro
+    # lado no se pueden reconstruir) viaja como texto plano mientras haya algo
+    # que decir. Un adjunto cuyo archivo ya no está queda igual: se reenvía su
+    # epígrafe, que es lo único que sobrevive.
+    if content:
+        return {
+            "content": content,
+            "payload": {"type": "text", "text": content},
+            "forwarded": True,
+        }
+    return None
+
+
+@router.post("/{chat_id}/messages/forward", response_model=ForwardMessagesResponse)
+async def forward_messages(chat_id: str, body: ForwardMessagesRequest):
+    """Reenvía uno o varios mensajes de este chat a otros leads.
+
+    Cada destino recibe los mensajes en el orden en que están en la
+    conversación de origen, encolados por la outbox como cualquier otro envío
+    (con reintentos y sin bloquear la respuesta).
+    """
+    await _require_existing_lead(chat_id)
+    messages = await fetch_messages_to_forward(chat_id, body.message_ids)
+    if not messages:
+        raise HTTPException(404, "No se encontraron los mensajes a reenviar")
+
+    items = [item for item in (_forward_item(message) for message in messages) if item]
+    skipped = len(messages) - len(items)
+    if not items:
+        raise HTTPException(409, "Ninguno de los mensajes seleccionados se puede reenviar")
+
+    # Se validan todos los destinos de una vez: reenviar a un lead borrado no
+    # debería tumbar el reenvío a los demás.
+    targets = list(dict.fromkeys(body.target_chat_ids))
+    existing = await filter_existing_leads(targets)
+    targets = [target for target in targets if target in existing]
+    if not targets:
+        raise HTTPException(404, "Ninguno de los chats destino existe")
+
+    for target in targets:
+        await enqueue_messages(target, items)
+        await manager.broadcast({
+            "type": "chats_updated", "chat_id": target, "reason": "outbound_queued",
+        })
+
+    return ForwardMessagesResponse(
+        forwarded_chats=len(targets),
+        forwarded_messages=len(items) * len(targets),
+        skipped_messages=skipped,
+    )
 
 
 @router.post("/{chat_id}/messages/{message_id}/retry", response_model=Message)

@@ -415,18 +415,90 @@ export function useEditMessage(chatId: string) {
   })
 }
 
+async function deleteMessage(chatId: string, messageId: number): Promise<Message> {
+  const { data } = await client.delete<Message>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
+  )
+  return data
+}
+
 /** Elimina para todos un mensaje ya enviado. La burbuja no desaparece: queda
  * la lápida ("Se eliminó este mensaje"), igual que en WhatsApp. */
 export function useDeleteMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, number>({
-    mutationFn: async messageId =>
-      (await client.delete<Message>(
-        `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
-      )).data,
+    mutationFn: messageId => deleteMessage(chatId, messageId),
     onSuccess: message => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
       void queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+}
+
+export interface BulkDeleteResult {
+  deleted: number
+  failed: number
+}
+
+/** Elimina para todos una selección de mensajes.
+ *
+ * Van de a uno y en serie a propósito: cada borrado es una llamada a WhatsApp,
+ * y mandarlas todas juntas hace que Evolution empiece a rechazarlas. Un fallo
+ * no corta el resto — se informa cuántos quedaron sin borrar. */
+export function useDeleteMessages(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<BulkDeleteResult, Error, number[]>({
+    mutationFn: async messageIds => {
+      let deleted = 0
+      let failed = 0
+      for (const messageId of messageIds) {
+        try {
+          const message = await deleteMessage(chatId, messageId)
+          mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+          deleted += 1
+        } catch {
+          failed += 1
+        }
+      }
+      return { deleted, failed }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chats'] })
+      void queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    },
+  })
+}
+
+export interface ForwardPayload {
+  messageIds: number[]
+  targetChatIds: string[]
+}
+
+export interface ForwardResult {
+  forwarded_chats: number
+  forwarded_messages: number
+  skipped_messages: number
+}
+
+/** Reenvía mensajes de este chat a otros leads (el "Reenviar" de WhatsApp).
+ *
+ * El backend encola un mensaje nuevo por destino, así que lo único que hay que
+ * refrescar acá es la lista (cambió el último mensaje de esos chats) y el hilo
+ * del destino si estaba abierto — de eso ya se encarga el broadcast, pero la
+ * invalidación deja la lista al día aunque el websocket esté caído. */
+export function useForwardMessages(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<ForwardResult, Error, ForwardPayload>({
+    mutationFn: async ({ messageIds, targetChatIds }) =>
+      (await client.post<ForwardResult>(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/forward`,
+        { message_ids: messageIds, target_chat_ids: targetChatIds },
+      )).data,
+    onSuccess: (_result, { targetChatIds }) => {
+      void queryClient.invalidateQueries({ queryKey: ['chats'] })
+      for (const target of targetChatIds) {
+        void queryClient.invalidateQueries({ queryKey: ['messages', target] })
+      }
     },
   })
 }

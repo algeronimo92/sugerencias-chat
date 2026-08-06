@@ -17,10 +17,11 @@ from services.evolution_service import (
     send_whatsapp_list,
     send_whatsapp_location,
     send_whatsapp_media,
+    send_whatsapp_sticker,
     send_whatsapp_template,
     send_whatsapp_text,
 )
-from services.media_storage import read_media_base64
+from services.media_storage import image_to_sticker_webp, read_media_base64, read_media_bytes
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,8 @@ def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
         return "interactive", {"interactive_type": payload.get("interactive_type")}
     if kind == "audio":
         return "audio", None
+    if kind == "sticker":
+        return "sticker", None
     if kind == "text":
         return "text", None
     return "unsupported", None
@@ -148,6 +151,9 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
 
     ``reply_to`` (opcional) es el mensaje citado ya resuelto por el llamador
     —ver ``db_service.fetch_reply_target``—; debe traer ``wa_message_id``.
+
+    ``forwarded`` (opcional) marca el mensaje como reenviado: solo agrega la
+    etiqueta "Reenviado" de la burbuja, el envío a WhatsApp es idéntico.
     """
     if not items:
         return []
@@ -158,6 +164,8 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
             reply_to = item.get("reply_to")
             payload = item["payload"]
             message_type, db_payload = _outbound_message_fields(payload)
+            if item.get("forwarded"):
+                db_payload = {**(db_payload or {}), "forwarded": True}
             if reply_to:
                 payload = {**payload, "quoted": quoted_context(chat_id, reply_to)}
             message = WspMessage(
@@ -438,6 +446,13 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
             chat_id, encoded, payload["mediatype"],
             filename=payload.get("filename"), caption=payload.get("caption"), quoted=quoted,
         ), None
+    if kind == "sticker":
+        # sendSticker no acepta cita ni caption: solo el WEBP. Se reconvierte
+        # acá (y no al encolar) porque el archivo original puede ser el que
+        # subió el cliente, no un sticker ya normalizado.
+        data = await asyncio.to_thread(read_media_bytes, payload["media_url"])
+        encoded = await asyncio.to_thread(image_to_sticker_webp, data)
+        return await send_whatsapp_sticker(chat_id, encoded), None
     if kind == "location":
         return await send_whatsapp_location(
             chat_id, payload["latitude"], payload["longitude"], quoted=quoted
