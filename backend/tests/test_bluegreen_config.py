@@ -190,6 +190,32 @@ def test_the_two_colors_never_share_a_port(tmp_path) -> None:
     assert len(set(ports.values())) == 2, ports
 
 
+def test_reverse_proxy_enables_the_file_provider() -> None:
+    """Sin el proveedor de archivo, active.yml no enruta nada: traefik sólo ve
+    las etiquetas de Docker. Es lo que pasaba en el servidor —el contenedor
+    era anterior al blue-green— y por eso ningún despliegue llegaba a
+    servirse: conmutar de color no cambiaba absolutamente nada."""
+    document = yaml.safe_load(
+        (ROOT / "traefik" / "reverse-proxy.docker-compose.yml").read_text(encoding="utf-8")
+    )
+    traefik = document["services"]["traefik"]
+
+    assert "--providers.file.directory=/dynamic" in traefik["command"]
+    assert "--providers.file.watch=true" in traefik["command"]
+    assert any(volume.startswith("./dynamic:/dynamic") for volume in traefik["volumes"])
+    assert not traefik["image"].endswith(":latest"), "una versión mayor cambiaría el enrutado"
+
+
+def test_deploy_reconciles_traefik_with_this_configuration() -> None:
+    """El despliegue tiene que dejar corriendo ESTE traefik. Si sólo confía en
+    el que hubiera en el servidor, vuelve el fallo silencioso: despliegues en
+    verde sobre un proxy que enruta a otra cosa."""
+    workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
+    assert "reverse-proxy.docker-compose.yml" in workflow
+    # El proyecto es el que ya existe: conserva el volumen del certificado.
+    assert "-p traefik" in workflow
+
+
 @requires_bash
 def test_stop_legacy_stack_removes_only_the_legacy_project(tmp_path) -> None:
     """Regresión: el stack anterior a blue-green quedó levantado en el

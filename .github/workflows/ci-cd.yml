@@ -150,6 +150,28 @@ jobs:
 
             cp /tmp/active.yml.deploy "$ACTIVE"
 
+            # Traefik, con la configuración de este repositorio. El contenedor
+            # que había se levantó antes del blue-green: sin
+            # --providers.file.directory, de modo que active.yml no enrutaba
+            # nada y el único router del dominio era el del stack heredado, por
+            # etiquetas. Así ningún despliegue llegaba a servirse nunca.
+            #
+            # -p traefik es el proyecto con el que ya está creado: mantiene el
+            # volumen traefik_traefik-letsencrypt y con él el certificado. Sin
+            # ese nombre se crearía un segundo traefik que ni siquiera podría
+            # atar el :443 que tiene el primero.
+            #
+            # `up -d` es idempotente: sólo recrea el contenedor cuando la
+            # imagen o los argumentos cambian.
+            if [ ! -s traefik/.env ]; then
+              echo "ERROR: falta traefik/.env (ACME_EMAIL)." >&2
+              echo "Copiar traefik/.env.example y completarlo en el servidor." >&2
+              exit 1
+            fi
+            docker compose -p traefik \
+              -f traefik/reverse-proxy.docker-compose.yml \
+              --env-file traefik/.env up -d
+
             # scripts/deploy-bluegreen.sh levanta el color inactivo al lado del
             # que sirve, migra (scripts/migrate.py toma un advisory lock, así
             # que si algún día hay más de una instancia sólo una aplica el DDL)
