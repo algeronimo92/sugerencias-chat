@@ -83,7 +83,12 @@ services:
       - --web.listen-address=127.0.0.1:9100
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    # v0.49.1 (2024) no reconoce el layout de metadata de contenedores que
+    # trae Docker 29: "failed to identify the read-write layer ID" en cada
+    # contenedor, y container_memory_usage_bytes/etc. quedaban sin las
+    # labels name/image (imposible filtrar por contenedor). v0.55.1 sí lo
+    # soporta — verificado en este mismo host antes de fijarlo acá.
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     restart: unless-stopped
     network_mode: host
     environment:
@@ -130,6 +135,8 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana-dashboards-provider.yml:/etc/grafana/provisioning/dashboards/dermicapro.yml:ro
+      - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
       - loki
