@@ -42,6 +42,10 @@ class ConnectionManager:
                 except Exception:
                     pass
 
+    async def connection_count(self) -> int:
+        async with self._lock:
+            return len(self._connections)
+
     async def send_to_user(self, user_id: int, message: dict) -> bool:
         async with self._lock:
             connections = [ws for ws, owner_id in self._connections.items() if owner_id == user_id]

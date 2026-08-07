@@ -6,6 +6,7 @@ from time import perf_counter
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from config import settings
@@ -21,6 +22,7 @@ from services.evolution_service import close_evolution_client
 from services.n8n_service import close_n8n_client
 from services.tts_service import close_tts_client
 from services.message_outbox import watch_message_outbox
+from services.queue_metrics import watch_queue_metrics
 from services.scheduled_message_service import watch_scheduled_messages
 from services.performance import begin_request_metrics, finish_request_metrics
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
@@ -257,12 +259,14 @@ async def lifespan(app: FastAPI):
     automation_task = asyncio.create_task(watch_automations())
     outbox_task = asyncio.create_task(watch_message_outbox())
     scheduled_messages_task = asyncio.create_task(watch_scheduled_messages())
+    queue_metrics_task = asyncio.create_task(watch_queue_metrics())
     yield
     watcher_task.cancel()
     reminder_task.cancel()
     automation_task.cancel()
     outbox_task.cancel()
     scheduled_messages_task.cancel()
+    queue_metrics_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await watcher_task
     with contextlib.suppress(asyncio.CancelledError):
@@ -273,6 +277,8 @@ async def lifespan(app: FastAPI):
         await outbox_task
     with contextlib.suppress(asyncio.CancelledError):
         await scheduled_messages_task
+    with contextlib.suppress(asyncio.CancelledError):
+        await queue_metrics_task
     await close_evolution_client()
     await close_n8n_client()
     await close_tts_client()
@@ -280,6 +286,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WSP Suggestions API", lifespan=lifespan)
+
+# Expone /metrics (histogramas por ruta/método) para Prometheus. Solo lo
+# alcanza nginx desde loopback (ver frontend/nginx.conf) — nunca queda
+# público a través de chat.dermicapro.app.
+Instrumentator().instrument(app).expose(app)
 
 
 @app.middleware("http")

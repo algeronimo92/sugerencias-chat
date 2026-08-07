@@ -24,6 +24,13 @@ services:
       # Internet y cualquiera podría saltarse traefik —y su TLS— entrando
       # por el puerto del color.
       - "127.0.0.1:${COLOR_PORT:?define COLOR_PORT (8081 blue / 8082 green)}:80"
+      # Puerto interno de solo-métricas (ver el segundo `server` en
+      # frontend/nginx.conf) — nunca lo referencia active.yml, así que
+      # Traefik no le manda tráfico del dominio público. Es lo que separa
+      # "vino por chat.dermicapro.app" de "vino de Prometheus", algo que un
+      # allow/deny por IP no puede hacer acá (Docker hace NAT incluso en
+      # puertos atados a loopback).
+      - "127.0.0.1:${METRICS_PORT:?define METRICS_PORT (9081 blue / 9082 green)}:9113"
     # Sin etiquetas de traefik: en este modo el enrutado lo decide
     # traefik/dynamic/active.yml, no el descubrimiento por Docker.
     labels:

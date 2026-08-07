@@ -35,16 +35,20 @@ HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 LEGACY_PROJECT="sugerencias-chat"
 
 declare -A PORT=([blue]=8081 [green]=8082)
+# Puerto de solo-métricas de cada color (ver frontend/nginx.conf: un `server`
+# aparte que ningún router de Traefik referencia). Numerado aparte de PORT
+# para que quede obvio en `docker ps`/logs cuál es cuál.
+declare -A METRICS_PORT=([blue]=9081 [green]=9082)
 
 compose_for() {
   local color="$1"
-  # COLOR_PORT va embebido acá, no como prefijo en cada call site: compose.bluegreen.yml
-  # lo exige para interpolar el puerto del color (${COLOR_PORT:?...}), y ese
-  # error de interpolación ocurre al parsear el archivo, así que CUALQUIER
-  # subcomando (up, run, exec, logs, down, ps) lo necesita — no solo "up".
-  # Confiar en que cada call site lo prefije a mano ya rompió migrate() en
-  # producción porque esa llamada no lo tenía.
-  echo "env COLOR_PORT=${PORT[$color]} docker compose -p sugerencias-chat-$color -f $ROOT/compose.prod.yml -f $ROOT/compose.bluegreen.yml"
+  # COLOR_PORT/METRICS_PORT van embebidos acá, no como prefijo en cada call
+  # site: compose.bluegreen.yml los exige para interpolar (${COLOR_PORT:?...},
+  # ${METRICS_PORT:?...}), y ese error de interpolación ocurre al parsear el
+  # archivo, así que CUALQUIER subcomando (up, run, exec, logs, down, ps) los
+  # necesita — no solo "up". Confiar en que cada call site los prefije a mano
+  # ya rompió migrate() en producción porque esa llamada no lo tenía.
+  echo "env COLOR_PORT=${PORT[$color]} METRICS_PORT=${METRICS_PORT[$color]} docker compose -p sugerencias-chat-$color -f $ROOT/compose.prod.yml -f $ROOT/compose.bluegreen.yml"
 }
 
 active_color() {
