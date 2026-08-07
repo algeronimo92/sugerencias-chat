@@ -1,0 +1,35 @@
+# Router estático para Grafana, separado de active.yml a propósito:
+# active.yml solo lo reescribe scripts/deploy-bluegreen.sh al conmutar
+# colores de la app — Grafana no participa del blue-green, así que su router
+# vive en su propio archivo y nadie más lo toca.
+#
+# Requiere que el DNS de grafana.chat.dermicapro.app apunte a este servidor
+# ANTES de que traefik intente el challenge HTTP-01 de Let's Encrypt, si no
+# la emisión del certificado falla (reintenta solo, no hace falta reiniciar
+# nada una vez que el DNS propague).
+#
+# Nombrado grafana.chat.* (sistema primero, herramienta después) porque
+# dermicapro.app tiene más de un sistema — el ERP en panel.dermicapro.app,
+# en otro VPS, tendrá su propio grafana.panel.dermicapro.app con su propio
+# stack. No hay Grafana centralizado: los dos VPS no tienen red privada
+# entre sí (ver docs/red-privada-wireguard.md, documentado pero no activo),
+# así que cada sistema queda con su propia observabilidad por ahora.
+#
+# Grafana corre en network_mode: host, atado a 127.0.0.1:3000 (ver
+# compose.monitoring.yml) — igual que blue/green llegan por 127.0.0.1:8081/82.
+
+http:
+  routers:
+    grafana:
+      rule: "Host(`grafana.chat.dermicapro.app`)"
+      entryPoints:
+        - websecure
+      service: grafana
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3000"

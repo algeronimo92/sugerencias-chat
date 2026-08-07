@@ -18,3 +18,9 @@ Pillow==11.1.0
 # La zona horaria del negocio (America/Lima) se resuelve con zoneinfo, que en
 # Windows y en imágenes slim no trae la base de datos de zonas del sistema.
 tzdata==2024.2
+# Expone /metrics para Prometheus: histogramas por ruta/método listos
+# (instrumentator) más los gauges propios de services/queue_metrics.py
+# (prometheus_client). No reemplaza services/performance.py, que sigue
+# emitiendo Server-Timing para devtools.
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.0

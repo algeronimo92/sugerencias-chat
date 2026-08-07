@@ -1,6 +1,13 @@
 traefik/.env
 backend/.env
 db/.env
+monitoring/.env
+# La URL del webhook de n8n autoriza a publicar en él sin más credencial —
+# es un secreto aunque no lo parezca. Ver monitoring/alertmanager.yml.template.
+monitoring/secrets/n8n_webhook_url
+# Generado por scripts/render-alertmanager-config.sh: trae la URL de arriba
+# embebida.
+monitoring/alertmanager.generated.yml
 db/backups/*
 !db/backups/.gitkeep
 # Multimedia subida por los usuarios cuando MEDIA_STORAGE_BACKEND=local.

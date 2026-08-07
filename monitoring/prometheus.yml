@@ -1,0 +1,41 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["127.0.0.1:9093"]
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["127.0.0.1:9280"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["127.0.0.1:9187"]
+
+  # blue y green: en cada momento uno de los dos targets está "down" (el
+  # color que deploy-bluegreen.sh apagó) — es normal, no dispara la alerta
+  # BackendCaido (esa exige que caigan LOS DOS). Ver
+  # frontend/nginx.conf y compose.bluegreen.yml (METRICS_PORT) para cómo
+  # llega esto hasta acá.
+  - job_name: backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:9081"]
+        labels: {color: blue}
+      - targets: ["127.0.0.1:9082"]
+        labels: {color: green}
