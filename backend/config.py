@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,7 +26,11 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
     database_pool_recycle_seconds: int = 1800
     n8n_webhook_url: str = ""
-    n8n_webhook_token: str = ""
+    # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
+    # webhook de n8n (dirección app -> n8n). Env var OUTBOUND_WEBHOOK_TOKEN a
+    # propósito, distinta de INBOUND_WEBHOOK_TOKEN (n8n/Evolution -> backend,
+    # la dirección opuesta) para que no se confundan al configurarlas.
+    n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
     evolution_api_url: str = ""
     evolution_api_key: str = ""
