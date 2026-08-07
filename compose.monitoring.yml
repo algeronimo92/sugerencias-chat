@@ -1,0 +1,141 @@
+# Observabilidad: Prometheus + Grafana + Loki + Alertmanager + exporters.
+#
+# Proyecto de compose propio y separado del deploy blue-green de la app:
+# nada de esto se recrea, se apaga ni se ve afectado por
+# scripts/deploy-bluegreen.sh.
+#
+# Todo corre en network_mode: host, igual que traefik
+# (traefik/reverse-proxy.docker-compose.yml), y cada proceso se ata a
+# 127.0.0.1 con su propio flag. Así ningún puerto de monitoreo queda
+# expuesto a Internet aunque el host no tenga firewall — el único público es
+# Grafana, y llega por Traefik (ver traefik/dynamic/grafana.yml), nunca por
+# su puerto directo.
+#
+#   docker compose -f compose.monitoring.yml --env-file monitoring/.env up -d
+
+name: monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # 84 GB libres en disco y una app chica: 30 días de métricas no pesa
+      # nada acá. Ajustar si crece mucho.
+      - --storage.tsdb.retention.time=30d
+      - --web.listen-address=127.0.0.1:9090
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:9093
+    volumes:
+      # Generado por scripts/render-alertmanager-config.sh a partir de
+      # monitoring/alertmanager.yml.template — ver ese template para el
+      # porqué (url_file hace panic en esta versión de Alertmanager).
+      - ./monitoring/alertmanager.generated.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+
+  loki:
+    image: grafana/loki:3.2.1
+    restart: unless-stopped
+    network_mode: host
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    restart: unless-stopped
+    network_mode: host
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      - --web.listen-address=127.0.0.1:9100
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # El HEALTHCHECK de la imagen pega a esta URL vía wget; sin definirla
+      # queda vacía y el contenedor se marca "unhealthy" aunque cadvisor
+      # responda bien — pasa porque --port lo movió del 8080 por defecto al
+      # 9280 (loopback, junto al resto del stack de monitoreo). 127.0.0.1 y
+      # no "localhost": /etc/hosts del contenedor lo resuelve primero a ::1
+      # y cadvisor solo escucha en IPv4, así que "localhost" da siempre
+      # "connection refused" aunque el healthcheck apunte al puerto correcto.
+      - CADVISOR_HEALTHCHECK_URL=http://127.0.0.1:9280/healthz
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - --port=9280
+      - --listen_ip=127.0.0.1
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Generado por scripts/monitoring-setup.sh (rol de solo lectura
+      # pg_monitor). sslmode=require porque db/pg_hba.conf exige TLS a toda
+      # conexión de red.
+      - DATA_SOURCE_NAME=${POSTGRES_EXPORTER_DSN:?definir POSTGRES_EXPORTER_DSN en monitoring/.env, ver scripts/monitoring-setup.sh}
+      - PG_EXPORTER_WEB_LISTEN_ADDRESS=127.0.0.1:9187
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - GF_SERVER_HTTP_ADDR=127.0.0.1
+      - GF_SERVER_HTTP_PORT=3000
+      - GF_SERVER_ROOT_URL=https://grafana.chat.dermicapro.app
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?definir GRAFANA_ADMIN_PASSWORD en monitoring/.env}
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  grafana-data:

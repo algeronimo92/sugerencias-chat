@@ -1,0 +1,57 @@
+# Umbrales tomados de docs/analisis/07-analisis-mensajeria.md §5.7
+# ("Observabilidad y alertas") — ahí está el razonamiento detrás de cada uno.
+groups:
+  - name: negocio
+    rules:
+      - alert: OutboxAtascado
+        expr: outbox_oldest_pending_age_seconds > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mensajes esperando en message_outbox hace más de 2 minutos"
+          description: "Los vendedores están mandando mensajes que no salen. outbox_oldest_pending_age_seconds = {{ $value }}s."
+
+      - alert: OutboxFallosRecientes
+        expr: outbox_failed > 3
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Más de 3 mensajes en estado failed en message_outbox"
+          description: "Evolution API caído o mal configurado. outbox_failed = {{ $value }}."
+
+      - alert: AutomatizacionesFallando
+        expr: automation_failed_last_hour > 5
+        for: 5m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Más de 5 automatizaciones fallaron en la última hora"
+
+      - alert: MensajesProgramadosParados
+        expr: scheduled_messages_due_unprocessed > 0
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Hay mensajes programados vencidos sin procesar"
+          description: "El worker de scheduled_messages parece detenido."
+
+  - name: infraestructura
+    rules:
+      - alert: BackendCaido
+        expr: sum(up{job="backend"}) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ningún color (blue/green) del backend responde"
+
+      - alert: PostgresCaido
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL no responde"

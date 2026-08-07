@@ -1,0 +1,24 @@
+# Plantilla versionada, sin secreto adentro. scripts/render-alertmanager-config.sh
+# la convierte en monitoring/alertmanager.generated.yml (gitignoreado, es lo
+# que monta compose.monitoring.yml) reemplazando el marcador de la URL, más
+# abajo, por el contenido de monitoring/secrets/n8n_webhook_url.
+#
+# NO se usa `url_file` acá a propósito: Alertmanager 0.27.0 hace panic (nil
+# pointer, no solo loguea error) en notify/webhook/webhook.go:60 al chequear
+# el reintento de un webhook cargado con url_file — se reprodujo dos veces en
+# esta misma instalación (RestartCount llegó a 22 en loop de crashes) incluso
+# con el webhook de n8n respondiendo 200 en una prueba directa con curl. El
+# campo `url` plano es el camino bien probado del proyecto; por eso el
+# secreto se hornea en un archivo generado en vez de referenciarse en caliente.
+route:
+  receiver: n8n
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: n8n
+    webhook_configs:
+      - url: "__N8N_WEBHOOK_URL__"
+        send_resolved: true
