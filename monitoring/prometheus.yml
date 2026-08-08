@@ -10,32 +10,46 @@ alerting:
 rule_files:
   - /etc/prometheus/alert-rules.yml
 
+# Todos los targets llevan un `instance` propio en vez del `127.0.0.1:puerto`
+# que Prometheus pone por defecto: como todo corre en network_mode host, la
+# IP es siempre la misma y lo único que distingue un target de otro es el
+# puerto. En las notificaciones de Alertmanager (el workflow de n8n arma el
+# "Objetivo:" con name || instance || job) eso llegaba como "127.0.0.1:9081"
+# y no había forma de saber a qué contenedor se refería.
 scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["127.0.0.1:9090"]
+        labels: {instance: prometheus}
 
   - job_name: node
     static_configs:
       - targets: ["127.0.0.1:9100"]
+        labels: {instance: host-vps}
 
   - job_name: cadvisor
     static_configs:
       - targets: ["127.0.0.1:9280"]
+        labels: {instance: cadvisor}
 
   - job_name: postgres
     static_configs:
       - targets: ["127.0.0.1:9187"]
+        labels: {instance: dermicapro-data-postgres-1}
 
   # blue y green: en cada momento uno de los dos targets está "down" (el
   # color que deploy-bluegreen.sh apagó) — es normal, no dispara la alerta
   # BackendCaido (esa exige que caigan LOS DOS). Ver
   # frontend/nginx.conf y compose.bluegreen.yml (METRICS_PORT) para cómo
   # llega esto hasta acá.
+  #
+  # El puerto 9081/9082 lo publica el nginx del frontend (frontend/nginx.conf,
+  # server :9113), que hace proxy a backend:8000/metrics — de ahí que el
+  # instance apunte al contenedor de backend, que es quien produce la métrica.
   - job_name: backend
     metrics_path: /metrics
     static_configs:
       - targets: ["127.0.0.1:9081"]
-        labels: {color: blue}
+        labels: {color: blue, instance: sugerencias-chat-blue-backend-1}
       - targets: ["127.0.0.1:9082"]
-        labels: {color: green}
+        labels: {color: green, instance: sugerencias-chat-green-backend-1}
