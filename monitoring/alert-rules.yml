@@ -55,3 +55,68 @@ groups:
           severity: critical
         annotations:
           summary: "PostgreSQL no responde"
+
+  # No se incluye acá a los contenedores de la app (sugerencias-chat-blue-*/
+  # -green-*): apagar el color inactivo es el comportamiento NORMAL de cada
+  # deploy blue-green, así que un "contenedor desapareció" sobre esos
+  # nombres dispararía en cada release. Solo se vigila lo que NUNCA debería
+  # desaparecer por sí solo. Backend/Postgres "caído de verdad" ya lo cubre
+  # BackendCaido/PostgresCaido arriba (que sí toleran el color apagado).
+  - name: contenedores
+    rules:
+      - alert: ContenedorCriticoCaido
+        expr: (time() - container_last_seen{name=~"traefik-traefik-1|dermicapro-data-postgres-1"}) > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El contenedor {{ $labels.name }} dejó de reportar hace más de 2 minutos"
+          description: "Ni Traefik ni Postgres deberían desaparecer nunca por sí solos — no son parte del ciclo de deploy."
+
+  - name: http
+    rules:
+      - alert: TasaErroresHTTPAlta
+        expr: sum(rate(http_requests_total{status="5xx"}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Más del 5% de las requests al backend están devolviendo 5xx"
+          description: "Proporción de errores 5xx en los últimos 5 minutos: {{ $value | humanizePercentage }}."
+
+  - name: recursos
+    rules:
+      - alert: CPUAltaEnHost
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: medium
+        annotations:
+          summary: "CPU del servidor por encima del 85% durante 10 minutos"
+          description: "CPU usada: {{ $value | printf \"%.1f\" }}%."
+
+      - alert: MemoriaAltaEnHost
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Memoria del servidor por encima del 85% durante 10 minutos"
+          description: "Memoria usada: {{ $value | printf \"%.1f\" }}%."
+
+      - alert: DiscoAltoEnHost
+        expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100) > 85
+        for: 10m
+        labels:
+          severity: high
+        annotations:
+          summary: "Disco del servidor por encima del 85%"
+          description: "Con el disco lleno, Postgres y los backups dejan de poder escribir. Uso actual: {{ $value | printf \"%.1f\" }}%."
+
+      - alert: CPUAltaEnContenedorApp
+        expr: sum by (name) (rate(container_cpu_usage_seconds_total{name=~"sugerencias-chat-.*-(backend|frontend)-1"}[5m])) * 100 > 80
+        for: 10m
+        labels:
+          severity: medium
+        annotations:
+          summary: "{{ $labels.name }} usando más del 80% de un núcleo de CPU durante 10 minutos"
