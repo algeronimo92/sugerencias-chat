@@ -56,15 +56,31 @@ services:
       - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
 
-  promtail:
-    image: grafana/promtail:3.2.1
+  alloy:
+    # Reemplaza a Promtail, EOL desde 2026-03-02 (sin más parches de
+    # seguridad). monitoring/config.alloy se generó con `alloy convert
+    # --source-format=promtail` a partir del viejo
+    # monitoring/promtail-config.yml (borrado acá; está en git hasta 8201703),
+    # así que el pipeline de labels es el mismo: container + stream.
+    image: grafana/alloy:v1.18.1
     restart: unless-stopped
     network_mode: host
-    command: -config.file=/etc/promtail/promtail-config.yml
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      # Alloy sirve su UI/API de debug en :12345 y por defecto bindea a
+      # 0.0.0.0. Con network_mode: host eso la dejaría abierta a Internet
+      # (el host no tiene firewall), así que va a loopback como el resto.
+      - --server.http.listen-addr=127.0.0.1:12345
+      # Acá viven las posiciones de lectura. Promtail las guardaba en
+      # /tmp/positions.yaml dentro del contenedor y las perdía en cada
+      # recreate, lo que causaba relectura de logs; el volumen las persiste.
+      - --storage.path=/var/lib/alloy/data
     volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
 
   node-exporter:
     image: prom/node-exporter:v1.8.2
@@ -145,4 +161,5 @@ volumes:
   prometheus-data:
   alertmanager-data:
   loki-data:
+  alloy-data:
   grafana-data:
