@@ -30,16 +30,27 @@ export interface OpenMedia {
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente. En audios, PLAYED agrega además una confirmación visible de que
  * el destinatario reprodujo la nota de voz. */
-export function MessageStatusTicks({ status, isAudio = false, onRetry }: { status: MessageStatus; isAudio?: boolean; onRetry?: () => void }) {
+export function MessageStatusTicks({ status, isAudio = false, onRetry, onDiscard }: { status: MessageStatus; isAudio?: boolean; onRetry?: () => void; onDiscard?: () => void }) {
   if (status === 'PENDING') {
     return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
   }
   if (status === 'FAILED') {
     return (
-      <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label="No se pudo confirmar el envío. Reintentar" title="Reintentar envío">
-        <RefreshCw aria-hidden="true" className="h-3 w-3" /> No enviado · Reintentar
-      </button>
+      <span className="inline-flex items-center gap-1.5">
+        <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label="No se pudo confirmar el envío. Reintentar" title="Reintentar envío">
+          <RefreshCw aria-hidden="true" className="h-3 w-3" /> No enviado · Reintentar
+        </button>
+        <span aria-hidden="true" className="text-wa-faint dark:text-wa-text-dark/60">·</span>
+        <button type="button" onClick={onDiscard} className="text-wa-faint hover:text-wa-muted dark:text-wa-text-dark/60 dark:hover:text-wa-text-dark" aria-label="Descartar el envío fallido" title="Descartar: no reintentar este mensaje">
+          Descartar
+        </button>
+      </span>
     )
+  }
+  // El mensaje nunca llegó, pero alguien ya decidió que no se reenvía: se
+  // dice, sin el rojo de lo que reclama acción ni el botón de reintento.
+  if (status === 'DISCARDED') {
+    return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="No enviado, descartado" title="No se envió y se descartó: no se va a reintentar"><Ban aria-hidden="true" className="h-3 w-3" /> No enviado · Descartado</span>
   }
   if (status === 'PLAYED') {
     const label = isAudio ? 'Audio escuchado' : 'Leído'
@@ -70,6 +81,8 @@ interface Props {
   onPreviewSticker: (item: { src: string; mediaUrl: string }) => void
   onQuotedJump: (messageId: number) => void
   onRetry: () => void
+  /** Cierra un envío fallido que no se va a reintentar. */
+  onDiscard: () => void
   onStartReply: () => void
   onReact: (emoji: string) => void
   onEdit: () => void
@@ -119,6 +132,7 @@ export function MessageBubble({
   onPreviewSticker,
   onQuotedJump,
   onRetry,
+  onDiscard,
   onStartReply,
   onReact,
   onEdit,
@@ -393,7 +407,7 @@ export function MessageBubble({
                 onMediaError={onMediaFailed}
                 onOpenMedia={onOpenMedia}
                 onPreviewSticker={onPreviewSticker}
-                videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} />}</>}
+                videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} onDiscard={onDiscard} />}</>}
                 hasQuote={m.quoted_message_id != null}
               />
               {analysis && <MessageAnalysis summary={analysis} />}
@@ -412,7 +426,7 @@ export function MessageBubble({
                 <BookmarkPlus className="h-3 w-3" />
               </button>
             )}
-            {!isDeleted && isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && (
+            {!isDeleted && isVendedor && kind === 'audio' && m.status !== 'PENDING' && m.status !== 'FAILED' && m.status !== 'DISCARDED' && (
               <span
                 className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
                   m.status === 'PLAYED'
@@ -432,7 +446,7 @@ export function MessageBubble({
             )}
             {!isDeleted && m.edited_at && <span title={`Editado ${formatMessageTime(m.edited_at)}`}>Editado</span>}
             <span>{formatMessageTime(m.sent_at)}</span>
-            {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} />}
+            {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} onDiscard={onDiscard} />}
           </div>}
           <ReactionBadge reactions={reactions} isVendedor={isVendedor} />
         </div>

@@ -92,7 +92,12 @@ from services.phone_utils import (
 )
 from services.ws_manager import manager
 from services.template_delivery import build_internal_template_items
-from services.message_outbox import enqueue_messages, enqueue_text_message, retry_failed_message
+from services.message_outbox import (
+    discard_failed_message,
+    enqueue_messages,
+    enqueue_text_message,
+    retry_failed_message,
+)
 from services.productivity_service import list_templates, record_template_use
 from services.automation_service import (
     cancel_scheduled_system_executions,
@@ -847,6 +852,14 @@ async def retry_message(chat_id: str, message_id: int):
     if message is None:
         raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
+@router.post("/{chat_id}/messages/{message_id}/discard", response_model=Message)
+async def discard_message(chat_id: str, message_id: int):
+    message = await discard_failed_message(chat_id, message_id)
+    if message is None:
+        raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
     return message
 
 

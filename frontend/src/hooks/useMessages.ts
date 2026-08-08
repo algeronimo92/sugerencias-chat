@@ -233,12 +233,41 @@ export function useSendMessage(chatId: string) {
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 
+  // Descartar no pasa por orderedRequest: no envía nada a WhatsApp, solo cierra
+  // el job, así que no compite por el orden de la cola del chat.
+  const discard = useMutation<Message, Error, Message>({
+    mutationFn: async message => (
+      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/discard`)
+    ).data,
+    onMutate: async message => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id
+        ? { ...current, status: 'DISCARDED' }
+        : current)
+    },
+    onError: (_error, message) => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id
+        ? { ...current, status: 'FAILED' }
+        : current)
+    },
+  })
+
   function retryMessage(message: Message) {
     if (message.status !== 'FAILED' || message.id < 1) return
     retry.mutate(message)
   }
 
-  return { ...mutation, error: mutation.error ?? retry.error, retryMessage }
+  function discardMessage(message: Message) {
+    if (message.status !== 'FAILED' || message.id < 1) return
+    discard.mutate(message)
+  }
+
+  return {
+    ...mutation,
+    error: mutation.error ?? retry.error ?? discard.error,
+    retryMessage,
+    discardMessage,
+  }
 }
 
 interface AudioPayload {

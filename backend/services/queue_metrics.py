@@ -26,6 +26,18 @@ POLL_SECONDS = 20
 outbox_pending = Gauge("outbox_pending", "Mensajes en message_outbox en estado pending")
 outbox_processing = Gauge("outbox_processing", "Mensajes en message_outbox en estado processing")
 outbox_failed = Gauge("outbox_failed", "Mensajes en message_outbox en estado failed")
+# `outbox_failed` cuenta el acumulado histórico: nada purga la tabla y un job
+# solo sale de failed por reintento manual, así que unos pocos fallos viejos
+# que nadie reintentó lo dejan por encima de cualquier umbral para siempre.
+# Sirve para el dashboard, pero como alerta era ruido permanente. Esta versión
+# con ventana es la que se vigila: se apaga sola cuando el incidente pasa.
+outbox_failed_last_hour = Gauge(
+    "outbox_failed_last_hour", "Mensajes de message_outbox que agotaron sus intentos en la última hora"
+)
+# Fallos que alguien revisó y decidió no reenviar. Se cuentan aparte para que
+# cerrarlos no los haga desaparecer del panel: siguen siendo mensajes que el
+# cliente nunca recibió.
+outbox_discarded = Gauge("outbox_discarded", "Mensajes fallidos descartados a mano en message_outbox")
 outbox_oldest_pending_age_seconds = Gauge(
     "outbox_oldest_pending_age_seconds", "Antigüedad del job pending más viejo de message_outbox"
 )
@@ -59,6 +71,16 @@ async def _update_once() -> None:
         outbox_pending.set(outbox_counts.get("pending", 0))
         outbox_processing.set(outbox_counts.get("processing", 0))
         outbox_failed.set(outbox_counts.get("failed", 0))
+        outbox_discarded.set(outbox_counts.get("discarded", 0))
+        # updated_at es la marca del intento que agotó MAX_ATTEMPTS
+        # (`_mark_failed` lo escribe), y el reintento manual lo reescribe al
+        # sacar la fila de failed: sirve como "cuándo falló esto".
+        outbox_failed_last_hour.set(await session.scalar(
+            select(func.count(MessageOutbox.id)).where(
+                MessageOutbox.status == "failed",
+                MessageOutbox.updated_at >= now - timedelta(hours=1),
+            )
+        ) or 0)
 
         oldest_pending = await session.scalar(
             select(func.min(MessageOutbox.updated_at)).where(MessageOutbox.status == "pending")

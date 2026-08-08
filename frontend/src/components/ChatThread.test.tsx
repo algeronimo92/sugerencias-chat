@@ -62,7 +62,7 @@ vi.mock('../hooks/useMessages', async () => {
       hasNextPage: false,
       isFetchingNextPage: false,
     }),
-    useSendMessage: () => ({ mutate: vi.fn(), retryMessage: vi.fn(), error: null }),
+    useSendMessage: () => ({ mutate: vi.fn(), retryMessage: vi.fn(), discardMessage: vi.fn(), error: null }),
     useSendAudio: () => ({ mutate: vi.fn() }),
     useSendMedia: () => ({ mutate: vi.fn() }),
     useSendLocation: () => ({ mutate: vi.fn() }),

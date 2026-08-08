@@ -232,6 +232,49 @@ async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
         return _message_dict(message, reply_to)
 
 
+async def discard_failed_message(chat_id: str, message_id: int) -> dict | None:
+    """Cierra un envío fallido que ya no vale la pena reintentar.
+
+    Es la contraparte de ``retry_failed_message``: misma precondición (job
+    fallido con su mensaje en FAILED), decisión opuesta. El job sale de
+    ``failed`` —por eso deja de contar en ``outbox_failed``, que solo mira ese
+    estado— y el mensaje queda en DISCARDED, sin botón de reintento.
+
+    No se borra nada, y el estado es distinto de "enviado" a propósito: el
+    mensaje nunca llegó al cliente y el historial tiene que seguir diciéndolo.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        job = (await session.execute(
+            select(MessageOutbox)
+            .join(WspMessage, WspMessage.id == MessageOutbox.message_id)
+            .where(
+                MessageOutbox.message_id == message_id,
+                MessageOutbox.chat_id == chat_id,
+                MessageOutbox.status == "failed",
+                WspMessage.status == "FAILED",
+            )
+            .with_for_update()
+        )).scalar_one_or_none()
+        if job is None:
+            return None
+        message = await session.get(WspMessage, message_id)
+        if message is None:  # pragma: no cover - protegido por el JOIN
+            return None
+        job.status = "discarded"
+        job.updated_at = now
+        message.status = "DISCARDED"
+        reply_to = await _quoted_message(session, chat_id, message.quoted_wa_message_id)
+        await session.commit()
+    await manager.broadcast({
+        "type": "chats_updated",
+        "chat_id": chat_id,
+        "reason": "message_status",
+        "message_statuses": [{"id": message_id, "status": "DISCARDED"}],
+    })
+    return _message_dict(message, reply_to)
+
+
 async def _quoted_message(session, chat_id: str, wa_message_id: str | None) -> dict | None:
     if not wa_message_id:
         return None

@@ -28,7 +28,7 @@ interface MessageStatusCandidate {
 }
 
 const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
-  'PENDING', 'FAILED', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED',
+  'PENDING', 'FAILED', 'DISCARDED', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED',
 ])
 
 const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
