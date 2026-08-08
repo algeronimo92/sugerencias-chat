@@ -12,14 +12,19 @@ groups:
           summary: "Mensajes esperando en message_outbox hace más de 2 minutos"
           description: "Los vendedores están mandando mensajes que no salen. outbox_oldest_pending_age_seconds = {{ $value }}s."
 
+      # Se vigila la ventana de 1h, no el total (`outbox_failed`): nada purga
+      # message_outbox y un job solo sale de failed por reintento manual, así
+      # que el acumulado histórico deja la alerta disparada para siempre —
+      # pasó con 58 fallos viejos ya descartados. El total sigue en el
+      # dashboard, que es donde el número acumulado sí dice algo.
       - alert: OutboxFallosRecientes
-        expr: outbox_failed > 3
+        expr: outbox_failed_last_hour > 3
         for: 5m
         labels:
           severity: high
         annotations:
-          summary: "Más de 3 mensajes en estado failed en message_outbox"
-          description: "Evolution API caído o mal configurado. outbox_failed = {{ $value }}."
+          summary: "Más de 3 mensajes agotaron sus reintentos en la última hora"
+          description: "Evolution API caído o mal configurado. outbox_failed_last_hour = {{ $value }}."
 
       - alert: AutomatizacionesFallando
         expr: automation_failed_last_hour > 5

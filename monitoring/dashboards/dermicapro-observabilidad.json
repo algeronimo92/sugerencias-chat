@@ -93,15 +93,23 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
     },
     {
-      "id": 13, "type": "stat", "title": "Fallidos",
-      "description": "Alerta OutboxFallosRecientes dispara con > 3",
+      "id": 13, "type": "stat", "title": "Fallidos (última hora / total)",
+      "description": "Alerta OutboxFallosRecientes dispara con > 3 en la última hora. El total es acumulado: nada purga message_outbox y un job solo sale de failed por reintento manual, así que no baja solo y no sirve como umbral.",
       "gridPos": { "x": 12, "y": 6, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "outbox_failed", "refId": "A" }],
+      "targets": [
+        { "expr": "outbox_failed_last_hour", "refId": "A", "legendFormat": "última hora" },
+        { "expr": "outbox_failed", "refId": "B", "legendFormat": "total" }
+      ],
       "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
         "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null }, { "color": "red", "value": 4 }
-        ] } }, "overrides": [] },
+          { "color": "green", "value": null }
+        ] } }, "overrides": [
+        { "matcher": { "id": "byFrameRefID", "options": "A" },
+          "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "red", "value": 4 }
+          ] } }] }
+      ] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
     },
     {
@@ -123,7 +131,9 @@
       "targets": [
         { "expr": "outbox_pending", "refId": "A", "legendFormat": "pendientes" },
         { "expr": "outbox_processing", "refId": "B", "legendFormat": "procesando" },
-        { "expr": "outbox_failed", "refId": "C", "legendFormat": "fallidos" }
+        { "expr": "outbox_failed", "refId": "C", "legendFormat": "fallidos (total)" },
+        { "expr": "outbox_failed_last_hour", "refId": "D", "legendFormat": "fallidos (última hora)" },
+        { "expr": "outbox_discarded", "refId": "E", "legendFormat": "descartados" }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }

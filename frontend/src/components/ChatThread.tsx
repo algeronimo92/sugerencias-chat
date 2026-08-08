@@ -163,7 +163,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // lo que salga del compositor: texto, audio, adjuntos y ubicación.
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
-  const { mutate: sendMessage, retryMessage, error: sendError } = useSendMessage(chat.chat_id)
+  const { mutate: sendMessage, retryMessage, discardMessage, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
   const deleteMessage = useDeleteMessage(chat.chat_id)
   const deleteMessages = useDeleteMessages(chat.chat_id)
@@ -560,6 +560,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onPreviewSticker={setPreviewSticker}
                     onQuotedJump={goToQuotedMessage}
                     onRetry={() => handleRetryMessage(item.message)}
+                    onDiscard={() => discardMessage(item.message)}
                     onStartReply={() => startReply(item.message)}
                     onReact={(emoji) => reactToMessage({ messageId: item.message.id, emoji })}
                     onEdit={() => setMessageToEdit(item.message)}

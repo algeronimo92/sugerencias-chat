@@ -35,6 +35,8 @@ interface Options {
   onEdit?: () => void
   onForward?: () => void
   onToggleSelect?: () => void
+  onRetry?: () => void
+  onDiscard?: () => void
   selectionMode?: boolean
   isSelected?: boolean
 }
@@ -43,6 +45,8 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onEdit = options.onEdit ?? vi.fn()
   const onForward = options.onForward ?? vi.fn()
   const onToggleSelect = options.onToggleSelect ?? vi.fn()
+  const onRetry = options.onRetry ?? vi.fn()
+  const onDiscard = options.onDiscard ?? vi.fn()
   render(
     <MessageBubble
       chat={CHAT}
@@ -55,7 +59,8 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onOpenMedia={vi.fn()}
       onPreviewSticker={vi.fn()}
       onQuotedJump={vi.fn()}
-      onRetry={vi.fn()}
+      onRetry={onRetry}
+      onDiscard={onDiscard}
       onStartReply={vi.fn()}
       onReact={vi.fn()}
       onEdit={onEdit}
@@ -68,7 +73,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onToggleSelect={onToggleSelect}
     />,
   )
-  return { onEdit, onForward, onToggleSelect }
+  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard }
 }
 
 describe('MessageBubble', () => {
@@ -80,6 +85,25 @@ describe('MessageBubble', () => {
     await user.click(screen.getByLabelText('Editar este mensaje'))
 
     expect(onEdit).toHaveBeenCalledOnce()
+  })
+
+  it('un envío fallido ofrece reintentar y descartar', async () => {
+    const user = userEvent.setup()
+    const { onRetry, onDiscard } = renderBubble({ status: 'FAILED', wa_message_id: null })
+
+    await user.click(screen.getByLabelText('No se pudo confirmar el envío. Reintentar'))
+    await user.click(screen.getByLabelText('Descartar el envío fallido'))
+
+    expect(onRetry).toHaveBeenCalledOnce()
+    expect(onDiscard).toHaveBeenCalledOnce()
+  })
+
+  it('un envío descartado deja de ofrecer reintento', () => {
+    renderBubble({ status: 'DISCARDED', wa_message_id: null })
+
+    expect(screen.getByLabelText('No enviado, descartado')).toBeInTheDocument()
+    expect(screen.queryByLabelText('No se pudo confirmar el envío. Reintentar')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Descartar el envío fallido')).not.toBeInTheDocument()
   })
 
   it('no ofrece editar pasados los 15 minutos, pero sí eliminar', () => {
