@@ -3,17 +3,39 @@ auth_enabled: false
 server:
   http_listen_address: 127.0.0.1
   http_listen_port: 3100
+  # Igual que http: sin esto el gRPC (9095) bindea a 0.0.0.0 y, con
+  # network_mode: host y sin firewall, queda abierto a Internet.
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: 9095
 
 common:
   path_prefix: /loki
+  # Dirección que Loki anuncia para hablar consigo mismo (ring, frontend,
+  # scheduler). Ver el comentario en ring.instance_addr de abajo.
+  instance_addr: 127.0.0.1
   storage:
     filesystem:
       chunks_directory: /loki/chunks
       rules_directory: /loki/rules
   replication_factor: 1
   ring:
+    # Sin esto Loki autodetecta la IP del ring agarrando la primera interfaz
+    # privada que encuentra, que acá era el gateway de un bridge de Docker
+    # (172.16.3.1). Al recrearse los stacks ese bridge desaparece, el ring
+    # queda apuntando a una IP muerta y el querier no puede hablar con su
+    # propio ingester: Loki responde /ready pero no devuelve ningún log.
+    instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+
+# El query-frontend se anuncia al scheduler con su propia dirección, que no
+# sale de common.instance_addr: sin esto agarraba 172.16.1.1 (otro bridge) y
+# las queries se colgaban esperando un frontend inalcanzable.
+frontend:
+  address: 127.0.0.1
+
+frontend_worker:
+  frontend_address: 127.0.0.1:9095
 
 schema_config:
   configs:
