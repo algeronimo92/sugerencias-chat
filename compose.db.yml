@@ -70,22 +70,37 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    # Por defecto no se publica nada: solo llegan los contenedores de la red
-    # `dermicapro-data`, en esta misma maquina.
-    #
     # n8n corre en otra VPS, asi que necesita un camino. POSTGRES_BIND_IP debe
     # ser la IP PRIVADA de este host (la de la red interna entre tus VPS), no
     # 0.0.0.0: atado a todas las interfaces, el puerto queda expuesto a
     # Internet, que es exactamente como acabo la base anterior.
     #
-    #   POSTGRES_BIND_IP=10.0.0.5   -> escucha solo en la red privada
-    #   sin definir                 -> no escucha fuera de Docker
+    #   POSTGRES_BIND_IP=10.0.0.5   -> red privada + loopback (ver abajo)
+    #   POSTGRES_BIND_IP=127.0.0.1  -> INVALIDO, choca con la linea de loopback
+    #   sin definir                 -> compose aborta con el mensaje del `:?`
+    #
+    # Es obligatoria y no tiene default a proposito: el default anterior era
+    # 127.0.0.1, o sea justo el valor que choca. Si no hay que darle acceso a
+    # nadie de afuera, borra la primera linea de `ports` en vez de buscarle un
+    # valor a la variable.
     #
     # Si no hay red privada disponible y hay que salir por la publica, hay que
     # habilitar TLS en PostgreSQL y subir DATABASE_SSL a "require": si no, las
     # credenciales y el contenido de los mensajes viajan en claro.
     ports:
-      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PUBLISH_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_IP:?definir POSTGRES_BIND_IP en db/.env con la IP privada de este host (NO 127.0.0.1, choca con la publicacion en loopback), o borrar esta linea si nadie entra desde afuera}:${POSTGRES_PUBLISH_PORT:-5432}:5432"
+      # Loopback aparte, siempre. Cuando POSTGRES_BIND_IP apunta a una IP
+      # concreta el puerto DEJA de escuchar en 127.0.0.1, y ahí se caen las
+      # herramientas locales que dan por hecho esa dirección:
+      # postgres_exporter (que corre en network_mode: host) y
+      # scripts/db-backup.sh. Publicarlo en las dos no expone nada extra:
+      # 127.0.0.1 no es alcanzable desde fuera de la máquina.
+      #
+      # POR ESTO, POSTGRES_BIND_IP NO PUEDE VALER 127.0.0.1: chocaría con esta
+      # línea y Docker abortaría con "port is already allocated". Debe ser la
+      # IP externa por la que entra n8n. Si no hay que dar acceso a nadie de
+      # fuera, borrá la línea de arriba y quedate solo con esta.
+      - "127.0.0.1:${POSTGRES_LOCAL_PORT:-5432}:5432"
     networks:
       data:
         aliases:
