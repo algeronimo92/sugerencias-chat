@@ -50,3 +50,11 @@ schema_config:
 limits_config:
   # 14 días. Ajustar según cuánto disco se quiera dedicar a logs históricos.
   retention_period: 336h
+
+# retention_period solo describe la política: quien la ejecuta es el compactor,
+# y viene apagado por defecto. Sin esto los logs no se borran nunca.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  # Obligatorio cuando retention_enabled está en true: sin esto Loki no arranca.
+  delete_request_store: filesystem
