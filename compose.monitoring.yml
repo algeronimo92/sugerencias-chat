@@ -28,8 +28,15 @@ services:
       - --storage.tsdb.retention.time=30d
       - --web.listen-address=127.0.0.1:9090
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      # Se monta el directorio, no cada archivo: un bind-mount de archivo
+      # suelto fija el inodo, y `git checkout`/`git pull` reemplazan el
+      # archivo en vez de editarlo in-place, así que el contenedor se queda
+      # sirviendo el contenido viejo indefinidamente y el SIGHUP recarga eso.
+      # Pasó con alert-rules.yml (siguió con la alerta por acumulado tras
+      # f8266a0) y con prometheus.yml (sin el override de `instance`).
+      # El directorio es propio y no `./monitoring` porque ahí viven .env y
+      # secrets/, que no tienen por qué entrar a este contenedor.
+      - ./monitoring/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
 
   alertmanager:
