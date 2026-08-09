@@ -2,6 +2,12 @@ traefik/.env
 backend/.env
 db/.env
 monitoring/.env
+# Copias a mano de los .env de arriba (backend/.env.bak-incident y demás):
+# tienen las mismas credenciales que el original, pero como cada .env está
+# listado por su nombre exacto, cualquier sufijo quedaba fuera de la lista y un
+# `git add -A` los subía al repo.
+**/.env.bak*
+**/.env.*.bak
 # La URL del webhook de n8n autoriza a publicar en él sin más credencial —
 # es un secreto aunque no lo parezca. Ver monitoring/alertmanager.yml.template.
 monitoring/secrets/n8n_webhook_url
