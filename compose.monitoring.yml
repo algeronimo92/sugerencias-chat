@@ -62,12 +62,16 @@ services:
     network_mode: host
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus. Acá
+      # muerde todavía más que en el resto, porque Loki no recarga config en
+      # caliente: se lo recrea, y un `docker compose up -d` no recrea nada si
+      # el único cambio es el contenido del archivo montado.
+      - ./monitoring/loki:/etc/loki:ro
       - loki-data:/loki
 
   alloy:
     # Reemplaza a Promtail, EOL desde 2026-03-02 (sin más parches de
-    # seguridad). monitoring/config.alloy se generó con `alloy convert
+    # seguridad). monitoring/alloy/config.alloy se generó con `alloy convert
     # --source-format=promtail` a partir del viejo
     # monitoring/promtail-config.yml (borrado acá; está en git hasta 8201703),
     # así que el pipeline de labels es el mismo: container + stream.
