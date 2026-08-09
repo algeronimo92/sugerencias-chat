@@ -28,8 +28,15 @@ services:
       - --storage.tsdb.retention.time=30d
       - --web.listen-address=127.0.0.1:9090
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      # Se monta el directorio, no cada archivo: un bind-mount de archivo
+      # suelto fija el inodo, y `git checkout`/`git pull` reemplazan el
+      # archivo en vez de editarlo in-place, así que el contenedor se queda
+      # sirviendo el contenido viejo indefinidamente y el SIGHUP recarga eso.
+      # Pasó con alert-rules.yml (siguió con la alerta por acumulado tras
+      # f8266a0) y con prometheus.yml (sin el override de `instance`).
+      # El directorio es propio y no `./monitoring` porque ahí viven .env y
+      # secrets/, que no tienen por qué entrar a este contenedor.
+      - ./monitoring/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
 
   alertmanager:
@@ -41,10 +48,12 @@ services:
       - --storage.path=/alertmanager
       - --web.listen-address=127.0.0.1:9093
     volumes:
-      # Generado por scripts/render-alertmanager-config.sh a partir de
-      # monitoring/alertmanager.yml.template — ver ese template para el
-      # porqué (url_file hace panic en esta versión de Alertmanager).
-      - ./monitoring/alertmanager.generated.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus.
+      # El archivo de adentro lo genera scripts/render-alertmanager-config.sh
+      # a partir de monitoring/alertmanager.yml.template — ver ese template
+      # para el porqué (url_file hace panic en esta versión de Alertmanager).
+      # Está gitignoreado: trae embebida la URL del webhook de n8n.
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
 
   loki:
@@ -53,12 +62,16 @@ services:
     network_mode: host
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus. Acá
+      # muerde todavía más que en el resto, porque Loki no recarga config en
+      # caliente: se lo recrea, y un `docker compose up -d` no recrea nada si
+      # el único cambio es el contenido del archivo montado.
+      - ./monitoring/loki:/etc/loki:ro
       - loki-data:/loki
 
   alloy:
     # Reemplaza a Promtail, EOL desde 2026-03-02 (sin más parches de
-    # seguridad). monitoring/config.alloy se generó con `alloy convert
+    # seguridad). monitoring/alloy/config.alloy se generó con `alloy convert
     # --source-format=promtail` a partir del viejo
     # monitoring/promtail-config.yml (borrado acá; está en git hasta 8201703),
     # así que el pipeline de labels es el mismo: container + stream.
@@ -77,7 +90,8 @@ services:
       # recreate, lo que causaba relectura de logs; el volumen las persiste.
       - --storage.path=/var/lib/alloy/data
     volumes:
-      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus.
+      - ./monitoring/alloy:/etc/alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy-data:/var/lib/alloy/data
@@ -150,8 +164,11 @@ services:
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
-      - ./monitoring/grafana-dashboards-provider.yml:/etc/grafana/provisioning/dashboards/dermicapro.yml:ro
+      # Directorios y no archivos sueltos: ver el comentario en prometheus.
+      # Se montan las dos carpetas hoja de provisioning y no provisioning/
+      # entera para no tapar alerting/, plugins/ y demás que trae la imagen.
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboard-provider:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus

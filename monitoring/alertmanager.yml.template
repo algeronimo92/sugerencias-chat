@@ -1,7 +1,8 @@
 # Plantilla versionada, sin secreto adentro. scripts/render-alertmanager-config.sh
-# la convierte en monitoring/alertmanager.generated.yml (gitignoreado, es lo
-# que monta compose.monitoring.yml) reemplazando el marcador de la URL, más
-# abajo, por el contenido de monitoring/secrets/n8n_webhook_url.
+# la convierte en monitoring/alertmanager/alertmanager.yml (gitignoreado; el
+# directorio que lo contiene es lo que monta compose.monitoring.yml)
+# reemplazando el marcador de la URL, más abajo, por el contenido de
+# monitoring/secrets/n8n_webhook_url.
 #
 # NO se usa `url_file` acá a propósito: Alertmanager 0.27.0 hace panic (nil
 # pointer, no solo loguea error) en notify/webhook/webhook.go:60 al chequear
