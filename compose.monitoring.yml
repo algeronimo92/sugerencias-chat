@@ -48,10 +48,12 @@ services:
       - --storage.path=/alertmanager
       - --web.listen-address=127.0.0.1:9093
     volumes:
-      # Generado por scripts/render-alertmanager-config.sh a partir de
-      # monitoring/alertmanager.yml.template — ver ese template para el
-      # porqué (url_file hace panic en esta versión de Alertmanager).
-      - ./monitoring/alertmanager.generated.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus.
+      # El archivo de adentro lo genera scripts/render-alertmanager-config.sh
+      # a partir de monitoring/alertmanager.yml.template — ver ese template
+      # para el porqué (url_file hace panic en esta versión de Alertmanager).
+      # Está gitignoreado: trae embebida la URL del webhook de n8n.
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
 
   loki:
@@ -84,7 +86,8 @@ services:
       # recreate, lo que causaba relectura de logs; el volumen las persiste.
       - --storage.path=/var/lib/alloy/data
     volumes:
-      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      # Directorio y no archivo suelto: ver el comentario en prometheus.
+      - ./monitoring/alloy:/etc/alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy-data:/var/lib/alloy/data
@@ -157,8 +160,11 @@ services:
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
-      - ./monitoring/grafana-dashboards-provider.yml:/etc/grafana/provisioning/dashboards/dermicapro.yml:ro
+      # Directorios y no archivos sueltos: ver el comentario en prometheus.
+      # Se montan las dos carpetas hoja de provisioning y no provisioning/
+      # entera para no tapar alerting/, plugins/ y demás que trae la imagen.
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboard-provider:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus

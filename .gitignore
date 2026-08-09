@@ -6,8 +6,9 @@ monitoring/.env
 # es un secreto aunque no lo parezca. Ver monitoring/alertmanager.yml.template.
 monitoring/secrets/n8n_webhook_url
 # Generado por scripts/render-alertmanager-config.sh: trae la URL de arriba
-# embebida.
-monitoring/alertmanager.generated.yml
+# embebida. Se llama alertmanager.yml (y no .generated.yml) porque el
+# contenedor monta el directorio, y un mount de directorio no renombra.
+monitoring/alertmanager/alertmanager.yml
 db/backups/*
 !db/backups/.gitkeep
 # Multimedia subida por los usuarios cuando MEDIA_STORAGE_BACKEND=local.
