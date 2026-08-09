@@ -19,10 +19,25 @@ TEMPLATE="$ROOT/monitoring/alertmanager.yml.template"
 SECRET="$ROOT/monitoring/secrets/n8n_webhook_url"
 OUT="$ROOT/monitoring/alertmanager/alertmanager.yml"
 
-: "${SECRET:?}"
 [ -s "$SECRET" ] || { echo "ERROR: $SECRET no existe o está vacío." >&2; exit 1; }
+
+# El directorio está en git (con .gitkeep) pero su contenido no, así que en un
+# clon nuevo existe vacío. Igual se crea acá por las dudas: si no existiera, el
+# `>` de abajo moriría con "No such file or directory" y, peor, un `docker
+# compose up` previo lo habría creado como directorio vacío y alertmanager
+# quedaría en crash-loop sin config.
+mkdir -p "$(dirname "$OUT")"
 
 WEBHOOK_URL="$(tr -d '[:space:]' < "$SECRET")"
 
-sed "s|__N8N_WEBHOOK_URL__|$WEBHOOK_URL|" "$TEMPLATE" > "$OUT"
+# index/substr y no `sed s|…|…|` (ni gsub, ni la expansión ${var//…/…} de bash):
+# en el texto de reemplazo de los tres, `&` significa "todo lo que matcheó", así
+# que una URL de webhook con query string (…?a=1&b=2) se corrompía en silencio y
+# alertmanager quedaba notificando a una URL rota. index/substr no interpretan
+# nada: la URL entra literal.
+awk -v url="$WEBHOOK_URL" '
+  { i = index($0, "__N8N_WEBHOOK_URL__")
+    if (i) $0 = substr($0, 1, i - 1) url substr($0, i + length("__N8N_WEBHOOK_URL__"))
+    print }
+' "$TEMPLATE" > "$OUT"
 echo "Generado: $OUT"
