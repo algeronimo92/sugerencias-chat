@@ -95,6 +95,40 @@ groups:
           summary: "El contenedor {{ $labels.name }} dejó de reportar hace más de 2 minutos"
           description: "Ni Traefik ni Postgres deberían desaparecer nunca por sí solos — no son parte del ciclo de deploy."
 
+      # Releva a la regla de arriba en el punto exacto donde se rinde. Si un
+      # contenedor desaparece y NO vuelve, a los 5 minutos Prometheus se lleva
+      # la serie del todo: `max by (name) (...)` se queda sin vector, la
+      # expresión no devuelve nada y la alerta se resuelve sola con el
+      # contenedor muerto. Para Postgres eso lo tapa PostgresCaido, que lee
+      # pg_up del exporter y es una fuente independiente de cadvisor. Traefik
+      # no tenía segunda fuente.
+      #
+      # Y no la tiene por ningún lado: todos los targets de prometheus.yml
+      # apuntan a 127.0.0.1:<puerto>, directos al exporter o —el backend— al
+      # nginx del frontend. Ninguno pasa por traefik, que solo termina el :443
+      # que viene de internet. Con traefik caído, BackendCaido y PostgresCaido
+      # siguen en verde porque sus targets responden igual, y
+      # TasaErroresHTTPAlta tampoco dispara: sin peticiones entrando el rate se
+      # va a cero y no hay 5xx que contar. O sea que pasados esos 5 minutos el
+      # dominio está caído y el monitoreo entero en verde. Esta regla no es un
+      # extra: es el único aviso.
+      #
+      # `absent()` vale 1 justo cuando la serie deja de existir, así que las
+      # dos reglas se turnan sin solaparse. Recrear traefik no la dispara: ahí
+      # la serie vieja sigue publicada y la nueva ya apareció. Lleva la misma
+      # guarda de cadvisor para no convertir "se cayó el que mide" en "se cayó
+      # traefik".
+      - alert: TraefikDesaparecido
+        expr: >
+          absent(container_last_seen{name="traefik-traefik-1"})
+          and on() (up{job="cadvisor"} == 1)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El contenedor de Traefik ya no existe"
+          description: "Sin traefik no entra tráfico por el :443 y el dominio está caído, aunque backend y base sigan sanos: sus targets no pasan por él. Revisar con `docker compose -p traefik -f traefik/reverse-proxy.docker-compose.yml ps`."
+
       # Sin esta regla, la guarda de arriba convierte "cadvisor caído" en
       # silencio: dejaríamos de vigilar contenedores sin que nadie se entere.
       # `up` se escribe siempre, también cuando el scrape falla, así que esto
