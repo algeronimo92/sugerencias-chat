@@ -69,14 +69,44 @@ groups:
   # BackendCaido/PostgresCaido arriba (que sí toleran el color apagado).
   - name: contenedores
     rules:
+      # El `max by (name)` no es cosmético. container_last_seen lleva también
+      # el id del contenedor, así que recrear traefik o postgres deja DOS
+      # series con el mismo name: la del id viejo, congelada en su último
+      # scrape, y la del nuevo. Sin agregar, esto se evalúa serie por serie,
+      # la vieja envejece hasta cruzar los 120s y dispara ~3 minutos después
+      # del recreate, para resolverse sola a los 5 cuando Prometheus la marca
+      # stale — todo con el contenedor corriendo y reportando al lado.
+      # Pasó el 2026-08-10 15:04 UTC actualizando las imágenes de Postgres y
+      # Traefik: las dos alertas salieron juntas y no había nada caído.
+      # Colapsando por name gana siempre la serie fresca.
+      #
+      # La guarda de cadvisor cubre el falso positivo simétrico: si se cae el
+      # que mide, todas las series quedan stale a la vez y esto avisaría de
+      # contenedores caídos que están perfectos. Ese caso lo reporta
+      # CadvisorCaido, abajo, en vez de disfrazarse de otra cosa.
       - alert: ContenedorCriticoCaido
-        expr: (time() - container_last_seen{name=~"traefik-traefik-1|dermicapro-data-postgres-1"}) > 120
+        expr: >
+          (time() - max by (name) (container_last_seen{name=~"traefik-traefik-1|dermicapro-data-postgres-1"})) > 120
+          and on() (up{job="cadvisor"} == 1)
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "El contenedor {{ $labels.name }} dejó de reportar hace más de 2 minutos"
           description: "Ni Traefik ni Postgres deberían desaparecer nunca por sí solos — no son parte del ciclo de deploy."
+
+      # Sin esta regla, la guarda de arriba convierte "cadvisor caído" en
+      # silencio: dejaríamos de vigilar contenedores sin que nadie se entere.
+      # `up` se escribe siempre, también cuando el scrape falla, así que esto
+      # no depende de que cadvisor alcance a reportar nada.
+      - alert: CadvisorCaido
+        expr: up{job="cadvisor"} == 0
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "cAdvisor no responde: sin métricas de contenedores"
+          description: "Mientras esté caído, ContenedorCriticoCaido no puede disparar y los paneles de contenedores del dashboard quedan vacíos."
 
   - name: http
     rules:
