@@ -1,0 +1,29 @@
+# Config de Alertmanager. Se versiona entera y sin secreto adentro: la URL
+# del webhook de n8n se lee en caliente de un archivo montado
+# (monitoring/secrets/n8n_webhook_url, gitignoreado), no se hornea acá.
+#
+# Antes esto era una plantilla (monitoring/alertmanager.yml.template) que
+# scripts/render-alertmanager-config.sh convertía en el archivo que se monta
+# acá — los dos borrados junto con este cambio —, porque Alertmanager 0.27.0 hacía
+# panic (nil pointer en notify/webhook/webhook.go) al chequear el reintento
+# de un webhook cargado con `url_file` — se reprodujo dos veces en esta misma
+# instalación, con RestartCount llegando a 22 en loop de crashes. Ese bug se
+# arregló en 0.28.0 (prometheus/alertmanager#3800, "Fix crash errors when
+# using url_file in the Webhook integration"), así que desde 0.33.1 `url_file`
+# es el camino bueno: el archivo se lee en cada notificación y se le hace
+# TrimSpace, o sea que rotar el webhook ya no necesita re-render ni recrear
+# el contenedor, solo reescribir el archivo del secreto.
+route:
+  receiver: n8n
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: n8n
+    webhook_configs:
+      # Montado por compose.monitoring.yml desde monitoring/secrets/. Va
+      # fuera de /etc/alertmanager para no anidar un mount adentro del otro.
+      - url_file: /etc/alertmanager-secrets/n8n_webhook_url
+        send_resolved: true

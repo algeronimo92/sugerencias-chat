@@ -48,6 +48,14 @@ scrape_configs:
   # instance apunte al contenedor de backend, que es quien produce la métrica.
   - job_name: backend
     metrics_path: /metrics
+    # Prometheus 3 valida el Content-Type de la respuesta y falla el scrape
+    # si no lo reconoce, en vez de asumir texto plano como hacía v2. Este es
+    # el único target que no habla directo con su exporter: pasa por el nginx
+    # del frontend. proxy_pass reenvía el header del upstream tal cual y
+    # prometheus-fastapi-instrumentator manda el correcto, así que en teoría
+    # no hace falta — pero si algún día se mete un middleware o un cambio de
+    # nginx en el medio, esto evita quedarse ciego del backend sin enterarse.
+    fallback_scrape_protocol: PrometheusText0.0.4
     static_configs:
       - targets: ["127.0.0.1:9081"]
         labels: {color: blue, instance: sugerencias-chat-blue-backend-1}

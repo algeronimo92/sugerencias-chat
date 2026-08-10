@@ -3,7 +3,7 @@ services:
     # Fijado a propósito. Con "latest", un `up -d` cualquiera podía traer una
     # versión mayor y cambiar el enrutado sin que nadie lo pidiera — algo que
     # importa más ahora que el despliegue depende de que traefik conmute bien.
-    image: traefik:3.7.9
+    image: traefik:3.7.10
     restart: unless-stopped
     network_mode: host
     command:

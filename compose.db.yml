@@ -25,7 +25,7 @@ services:
     # Fijada por versión: una actualización mayor de PostgreSQL no arranca
     # sobre un directorio de datos de la versión anterior, y con `latest` eso
     # ocurriría en el peor momento, sin avisar.
-    image: postgres:16.10-alpine
+    image: postgres:16.14-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}

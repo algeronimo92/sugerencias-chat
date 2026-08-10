@@ -17,7 +17,21 @@ name: monitoring
 
 services:
   prometheus:
-    image: prom/prometheus:v2.55.1
+    # v3.13 es la LTS vigente (soporte hasta 2027-07-31); la anterior, 3.5,
+    # venció el 2026-07-31. Se salta de 2.55 a 3.x de una:
+    # los flags de acá (--config.file, --storage.tsdb.path,
+    # --storage.tsdb.retention.time, --web.listen-address) siguen siendo
+    # válidos, y monitoring/prometheus/prometheus.yml no usa nada que v3 quitó
+    # (todos los targets llevan puerto explícito, así que la eliminación del
+    # puerto por defecto no lo afecta).
+    #
+    # Lo único que sí cambia de comportamiento: v3 normaliza los valores de
+    # `le`/`quantile` a float (le="1" pasa a ser le="1.0"). El panel p95 del
+    # dashboard hace `sum by (le, handler)` sobre
+    # http_request_duration_seconds_bucket, así que mientras convivan series
+    # viejas y nuevas en la misma ventana de 5m va a mostrar un bache. Se
+    # arregla solo cuando lo scrapeado con v2 salga de los 30d de retención.
+    image: prom/prometheus:v3.13.2
     restart: unless-stopped
     network_mode: host
     command:
@@ -40,7 +54,7 @@ services:
       - prometheus-data:/prometheus
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.33.1
     restart: unless-stopped
     network_mode: host
     command:
@@ -48,16 +62,28 @@ services:
       - --storage.path=/alertmanager
       - --web.listen-address=127.0.0.1:9093
     volumes:
-      # Directorio y no archivo suelto: ver el comentario en prometheus.
-      # El archivo de adentro lo genera scripts/render-alertmanager-config.sh
-      # a partir de monitoring/alertmanager.yml.template — ver ese template
-      # para el porqué (url_file hace panic en esta versión de Alertmanager).
-      # Está gitignoreado: trae embebida la URL del webhook de n8n.
+      # Directorio y no archivo suelto: ver el comentario en prometheus. El
+      # archivo de adentro ahora está versionado y sin secreto: desde 0.28.0
+      # el panic de `url_file` está arreglado (prometheus/alertmanager#3800),
+      # así que la URL del webhook se lee del archivo montado abajo en vez de
+      # hornearse con un script de render.
       - ./monitoring/alertmanager:/etc/alertmanager:ro
+      # El secreto, en su propio mount y también por directorio (mismo motivo
+      # que el resto: reescribir el archivo en el host cambia el inodo y el
+      # contenedor se quedaría leyendo el contenido viejo al rotar la URL).
+      # No va anidado bajo /etc/alertmanager para no montar uno adentro del
+      # otro. El directorio existe en git — trae el .example —, así que Docker
+      # no puede crearlo vacío y de root en un clon nuevo.
+      - ./monitoring/secrets:/etc/alertmanager-secrets:ro
       - alertmanager-data:/alertmanager
 
   loki:
-    image: grafana/loki:3.2.1
+    # El config de monitoring/loki/loki-config.yml (common + filesystem + tsdb
+    # schema v13) no necesitó cambios para el salto desde 3.2: los breaking
+    # del camino son bloom blocks (no se usan), clientes Thanos (opt-in) y
+    # AWS SDK v2 (no hay S3). Sí desapareció la shell de la imagen (3.5.8+,
+    # por CVEs de busybox): ya no hay `docker exec ... sh` acá adentro.
+    image: grafana/loki:3.7.6
     restart: unless-stopped
     network_mode: host
     command: -config.file=/etc/loki/loki-config.yml
@@ -97,7 +123,7 @@ services:
       - alloy-data:/var/lib/alloy/data
 
   node-exporter:
-    image: prom/node-exporter:v1.8.2
+    image: prom/node-exporter:v1.12.1
     restart: unless-stopped
     network_mode: host
     pid: host
@@ -116,20 +142,29 @@ services:
     # v0.49.1 (2024) no reconoce el layout de metadata de contenedores que
     # trae Docker 29: "failed to identify the read-write layer ID" en cada
     # contenedor, y container_memory_usage_bytes/etc. quedaban sin las
-    # labels name/image (imposible filtrar por contenedor). v0.55.1 sí lo
-    # soporta — verificado en este mismo host antes de fijarlo acá.
-    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    # labels name/image (imposible filtrar por contenedor). De v0.55.1 en
+    # adelante sí lo soporta.
+    #
+    # CAMBIA DE REGISTRO, no solo de tag: gcr.io/cadvisor/cadvisor no publica
+    # nada después de v0.55.1 (el proyecto migró a GHCR en v0.56.0,
+    # google/cadvisor#3806). Todo lo nuevo vive en ghcr.io/google/cadvisor.
+    # v0.56.0 además dejó de soportar Docker < 25.0; este host corre 29.
+    image: ghcr.io/google/cadvisor:v0.60.5
     restart: unless-stopped
     network_mode: host
-    environment:
-      # El HEALTHCHECK de la imagen pega a esta URL vía wget; sin definirla
-      # queda vacía y el contenedor se marca "unhealthy" aunque cadvisor
-      # responda bien — pasa porque --port lo movió del 8080 por defecto al
-      # 9280 (loopback, junto al resto del stack de monitoreo). 127.0.0.1 y
-      # no "localhost": /etc/hosts del contenedor lo resuelve primero a ::1
-      # y cadvisor solo escucha en IPv4, así que "localhost" da siempre
-      # "connection refused" aunque el healthcheck apunte al puerto correcto.
-      - CADVISOR_HEALTHCHECK_URL=http://127.0.0.1:9280/healthz
+    # El HEALTHCHECK de la imagen se reescribió en v0.56.0
+    # (google/cadvisor#3789): ahora deduce el puerto del flag --port —bien,
+    # porque acá no es el 8080 por defecto— pero pega contra "localhost" y ya
+    # no mira la variable CADVISOR_HEALTHCHECK_URL que se usaba antes.
+    # /etc/hosts del contenedor resuelve "localhost" primero a ::1 y cadvisor
+    # solo escucha en IPv4, así que el healthcheck de la imagen da siempre
+    # "connection refused" y marca el contenedor unhealthy aunque responda
+    # bien. Por eso se sobrescribe acá apuntando a 127.0.0.1 explícito.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:9280/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -141,7 +176,11 @@ services:
       - --listen_ip=127.0.0.1
 
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    # DATA_SOURCE_NAME, PG_EXPORTER_WEB_LISTEN_ADDRESS y pg_up no cambiaron
+    # entre 0.15 y 0.20. Los renames de 0.20 son sobre pg_replication_slot*
+    # (no se usa: instancia única, sin réplicas) y 0.16 cambió el formato de
+    # los logs a slog, que es lo único visible en `docker logs`.
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
     restart: unless-stopped
     network_mode: host
     environment:
@@ -152,7 +191,13 @@ services:
       - PG_EXPORTER_WEB_LISTEN_ADDRESS=127.0.0.1:9187
 
   grafana:
-    image: grafana/grafana:11.3.1
+    # Se queda en la rama 12 y no salta a 13 a propósito: 12.4 sigue
+    # recibiendo parches y es el salto más chico desde 11.3. La remoción de
+    # Angular en 12.0 no afecta a monitoring/dashboards/ (solo usa stat,
+    # timeseries y row, todos React) y Grafana migra su schemaVersion 39
+    # hacia adelante al provisionarlo. `editors_can_admin`, también removido
+    # en 12.0, no se usa acá.
+    image: grafana/grafana:12.4.8
     restart: unless-stopped
     network_mode: host
     environment:

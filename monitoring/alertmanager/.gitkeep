@@ -1,8 +1,0 @@
-# El directorio se versiona vacío a propósito: lo único que va adentro es
-# alertmanager.yml, que genera scripts/render-alertmanager-config.sh y está
-# gitignoreado por traer embebida la URL del webhook de n8n.
-#
-# Sin este archivo el directorio no existiría en un clon nuevo, y el
-# `- ./monitoring/alertmanager:/etc/alertmanager:ro` de compose.monitoring.yml
-# haría que Docker lo cree vacío y de root, dejando a alertmanager en
-# crash-loop por config faltante antes de que nadie corra el script.

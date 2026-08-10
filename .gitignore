@@ -9,12 +9,16 @@ monitoring/.env
 **/.env.bak*
 **/.env.*.bak
 # La URL del webhook de n8n autoriza a publicar en él sin más credencial —
-# es un secreto aunque no lo parezca. Ver monitoring/alertmanager.yml.template.
+# es un secreto aunque no lo parezca. Alertmanager lo lee en caliente del
+# archivo montado, ver monitoring/alertmanager/alertmanager.yml.
 monitoring/secrets/n8n_webhook_url
-# Generado por scripts/render-alertmanager-config.sh: trae la URL de arriba
-# embebida. Se llama alertmanager.yml (y no .generated.yml) porque el
-# contenedor monta el directorio, y un mount de directorio no renombra.
-monitoring/alertmanager/alertmanager.yml
+# Restos del render que hacía falta cuando Alertmanager 0.27 no soportaba
+# url_file (scripts/render-alertmanager-config.sh, ya borrado). Se siguen
+# ignorando para no versionar por accidente un archivo con la URL embebida
+# que haya quedado en un servidor ya desplegado. Ojo: monitoring/alertmanager
+# /alertmanager.yml ahora SÍ se versiona, así que si en el server quedó el
+# generado hay que borrarlo antes del pull o git se niega a pisarlo.
+monitoring/alertmanager.generated.yml
 db/backups/*
 !db/backups/.gitkeep
 # Multimedia subida por los usuarios cuando MEDIA_STORAGE_BACKEND=local.
