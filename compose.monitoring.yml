@@ -61,6 +61,14 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
       - --web.listen-address=127.0.0.1:9093
+      # Vacío = clustering apagado. Acá hay una sola instancia, así que el
+      # gossip de HA no aporta nada y traía tres problemas, los mismos que
+      # fa4a9da le arregló al ring de Loki: bindeaba el 9094 en 0.0.0.0, o sea
+      # abierto a Internet con network_mode: host y sin firewall delante; se
+      # anunciaba en 172.16.1.1, el gateway de un bridge de Docker que
+      # desaparece al recrear stacks; y se comía 10s de cada arranque
+      # esperando a que "asiente" un cluster de un nodo.
+      - --cluster.listen-address=
     volumes:
       # Directorio y no archivo suelto: ver el comentario en prometheus. El
       # archivo de adentro ahora está versionado y sin secreto: desde 0.28.0
