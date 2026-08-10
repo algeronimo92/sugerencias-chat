@@ -252,19 +252,35 @@ jobs:
 
             cp /tmp/active.yml.deploy "$ACTIVE"
 
-            # Aviso, no comprobación: no hay nada que impedir aquí. `up -d`
-            # recrea traefik cuando cambia su imagen o sus argumentos, y con
-            # network_mode: host y un único :443 eso es un corte real de unos
-            # diez segundos. En un solo host no se puede evitar; lo que sí se
-            # puede es que quede escrito en el log del despliegue, en vez de
-            # tener que reconstruirlo después a base de `docker inspect` y
-            # marcas de tiempo de los pull.
+            # Qué va a recrear este despliegue, dicho antes de hacerlo.
+            #
+            # Son avisos, no comprobaciones: no hay nada que impedir aquí. Los
+            # `up -d` de traefik y de la base corren en TODOS los despliegues
+            # —a diferencia del monitoreo, que está detrás de una puerta más
+            # abajo—, así que un commit que cambie esos archivos recrea
+            # infraestructura de producción aunque venga con otro asunto. Pasó
+            # el 2026-08-10: f0c4a8d se anunciaba como una actualización del
+            # stack de monitoreo y traía también los pins de PostgreSQL y de
+            # traefik. Se recrearon los dos, que era lo correcto, pero la
+            # explicación hubo que reconstruirla después a base de
+            # `docker inspect` y marcas de tiempo de los pull.
             #
             # Se mira el diff del archivo y no el tag de la imagen porque
-            # cambiar un flag del `command:` recrea el contenedor igual.
+            # cambiar un flag del `command:` o un volumen recrea el contenedor
+            # igual. Un cambio que resulte ser solo de comentarios avisa sin
+            # que haya recreate: en una línea de log el falso positivo no
+            # cuesta nada, y lo caro es el silencio.
             if ! git diff --quiet "$PREVIOUS" HEAD -- traefik/reverse-proxy.docker-compose.yml; then
               echo "AVISO: cambió la configuración de traefik; este despliegue lo recrea."
               echo "AVISO: habrá un corte de ~10 s en :443 mientras vuelve a atar el puerto."
+            fi
+
+            # La base no se corta por esto —el guard de más arriba ya descartó
+            # el único cambio del que no se vuelve, el de versión mayor—, pero
+            # recrearla sí tira las conexiones abiertas del backend.
+            if ! git diff --quiet "$PREVIOUS" HEAD -- compose.db.yml; then
+              echo "AVISO: cambió compose.db.yml; este despliegue recrea PostgreSQL."
+              echo "AVISO: el backend perderá las conexiones abiertas mientras rearranca."
             fi
 
             # Traefik, con la configuración de este repositorio. El contenedor
