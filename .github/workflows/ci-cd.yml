@@ -172,6 +172,70 @@ jobs:
               exit 1
             fi
 
+            # Un cambio de versión MAYOR de PostgreSQL no arranca sobre el
+            # directorio de datos de la anterior: el contenedor nuevo entra en
+            # bucle de reinicio con "database files are incompatible with
+            # server" y revertir el commit no lo arregla, porque el volumen
+            # sigue como estaba pero la aplicación ya lleva abajo desde el
+            # `up -d`. compose.db.yml lo advierte en un comentario; esto es lo
+            # que lo hace cumplir.
+            #
+            # El pin entrante se lee del commit remoto SIN traerlo al árbol de
+            # trabajo, para que un corte aquí deje el repositorio todavía en
+            # $PREVIOUS, igual que el resto de comprobaciones previas.
+            git fetch origin main
+            PG_NUEVO=$(git show origin/main:compose.db.yml \
+              | sed -n 's/^[[:space:]]*image:[[:space:]]*postgres:\([0-9]\{1,\}\).*/\1/p' \
+              | head -1)
+            # Falla cerrado si el pin dejó de ser legible —una variable, otro
+            # formato—, que es justo cuando conviene que alguien mire. El `head`
+            # final también garantiza salida 0: con un `grep` pelado, `set -e`
+            # mataría el script en esta asignación y sin ningún mensaje.
+            if [ -z "$PG_NUEVO" ]; then
+              echo "ERROR: no se pudo leer la versión de postgres en compose.db.yml." >&2
+              echo "Se esperaba una línea 'image: postgres:<mayor>...'. Si cambió" >&2
+              echo "el formato, hay que actualizar esta comprobación en ci-cd.yml." >&2
+              exit 1
+            fi
+
+            # La versión viva se le pregunta al directorio de datos, que es lo
+            # que de verdad tiene que ser compatible. El tag de la imagen
+            # mentiría si alguien ya subió el pin y el contenedor está
+            # reiniciándose: diría la versión nueva sobre datos viejos. Si el
+            # contenedor no responde se cae al tag, y si no hay contenedor no
+            # hay nada que proteger —primer despliegue, o base apagada— y se
+            # sigue adelante.
+            PG_CID=$($COMPOSE_DB ps -q postgres 2>/dev/null | head -1)
+            PG_VIVO=""
+            if [ -n "$PG_CID" ]; then
+              PG_VIVO=$(docker exec "$PG_CID" cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null \
+                | cut -d. -f1 | tr -dc '0-9')
+              if [ -z "$PG_VIVO" ]; then
+                PG_VIVO=$(docker inspect -f '{{.Config.Image}}' "$PG_CID" 2>/dev/null \
+                  | sed -n 's/^postgres:\([0-9]\{1,\}\).*/\1/p' | head -1)
+              fi
+            fi
+
+            if [ -z "$PG_CID" ]; then
+              echo "No hay contenedor de PostgreSQL: no se comprueba compatibilidad."
+            elif [ -z "$PG_VIVO" ]; then
+              # Se distingue de la rama anterior a propósito: decir "no hay
+              # PostgreSQL corriendo" cuando sí lo hay manda a buscar el
+              # problema al lado equivocado.
+              echo "AVISO: hay PostgreSQL corriendo pero no se pudo leer su versión." >&2
+              echo "AVISO: se sigue sin comprobar compatibilidad." >&2
+            elif [ "$PG_NUEVO" != "$PG_VIVO" ]; then
+              echo "ERROR: este despliegue cambiaría PostgreSQL $PG_VIVO -> $PG_NUEVO." >&2
+              echo "El contenedor nuevo NO puede arrancar sobre los datos de $PG_VIVO." >&2
+              echo "Producción se queda intacta y el repositorio en $PREVIOUS." >&2
+              echo "Una actualización mayor se hace a mano y con la app parada:" >&2
+              echo "copia de seguridad (scripts/db-backup.sh), restaurar en la" >&2
+              echo "versión nueva, verificar, y recién entonces subir el pin." >&2
+              exit 1
+            else
+              echo "PostgreSQL $PG_VIVO, sin cambio de versión mayor."
+            fi
+
             # traefik/dynamic/active.yml está versionado, pero en el servidor
             # es estado de ejecución: es el interruptor que dice qué color
             # sirve ahora. Un `git reset --hard` lo devuelve al color que
@@ -182,11 +246,26 @@ jobs:
             ACTIVE=traefik/dynamic/active.yml
             cp "$ACTIVE" /tmp/active.yml.deploy
 
-            git fetch origin main
+            # El fetch ya se hizo arriba, para el guard de PostgreSQL.
             git reset --hard origin/main
             echo "Desplegando: $(git rev-parse HEAD)"
 
             cp /tmp/active.yml.deploy "$ACTIVE"
+
+            # Aviso, no comprobación: no hay nada que impedir aquí. `up -d`
+            # recrea traefik cuando cambia su imagen o sus argumentos, y con
+            # network_mode: host y un único :443 eso es un corte real de unos
+            # diez segundos. En un solo host no se puede evitar; lo que sí se
+            # puede es que quede escrito en el log del despliegue, en vez de
+            # tener que reconstruirlo después a base de `docker inspect` y
+            # marcas de tiempo de los pull.
+            #
+            # Se mira el diff del archivo y no el tag de la imagen porque
+            # cambiar un flag del `command:` recrea el contenedor igual.
+            if ! git diff --quiet "$PREVIOUS" HEAD -- traefik/reverse-proxy.docker-compose.yml; then
+              echo "AVISO: cambió la configuración de traefik; este despliegue lo recrea."
+              echo "AVISO: habrá un corte de ~10 s en :443 mientras vuelve a atar el puerto."
+            fi
 
             # Traefik, con la configuración de este repositorio. El contenedor
             # que había se levantó antes del blue-green: sin
