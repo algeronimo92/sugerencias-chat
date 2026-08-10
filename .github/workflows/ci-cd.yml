@@ -80,8 +80,46 @@ jobs:
           docker rm -f backend frontend 2>/dev/null || true
           docker network rm ci-net 2>/dev/null || true
 
+  # Un config de monitoreo roto no rompe la app, así que nadie se entera hasta
+  # que hace falta una alerta que ya no existe. Se valida acá, contra las
+  # mismas versiones que fija compose.monitoring.yml: validar con otra versión
+  # no dice nada sobre la que después va a cargar el archivo.
+  monitoring-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `check config` sigue los rule_files, así que esto valida también
+      # alert-rules.yml. La ruta del mount es la misma que en prod porque
+      # prometheus.yml los referencia por ruta absoluta (/etc/prometheus).
+      - name: Validate Prometheus config and alert rules
+        run: |
+          docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
+            --entrypoint promtool prom/prometheus:v3.13.2 \
+            check config /etc/prometheus/prometheus.yml
+      - name: Validate Alertmanager config
+        run: |
+          # url_file apunta al secreto del webhook, que no existe en el runner
+          # (ni debe). Se monta uno de mentira para que la validación mire la
+          # sintaxis del config y no el entorno donde corre.
+          mkdir -p /tmp/am-secrets
+          echo 'https://example.invalid/webhook' > /tmp/am-secrets/n8n_webhook_url
+          docker run --rm \
+            -v "$PWD/monitoring/alertmanager:/etc/alertmanager:ro" \
+            -v /tmp/am-secrets:/etc/alertmanager-secrets:ro \
+            --entrypoint amtool prom/alertmanager:v0.33.1 \
+            check-config /etc/alertmanager/alertmanager.yml
+      - name: Validate Loki config
+        run: |
+          # El config declara path_prefix /loki, que en prod es el volumen de
+          # datos. Se le da un directorio escribible para que un fallo acá sea
+          # por el config y no porque el runner no tiene esa ruta.
+          mkdir -p /tmp/loki-data && chmod 777 /tmp/loki-data
+          docker run --rm \
+            -v "$PWD/monitoring/loki:/etc/loki:ro" -v /tmp/loki-data:/loki \
+            grafana/loki:3.7.6 -verify-config -config.file=/etc/loki/loki-config.yml
+
   deploy:
-    needs: [frontend-checks, backend-checks, docker-build-check]
+    needs: [frontend-checks, backend-checks, docker-build-check, monitoring-checks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -187,6 +225,106 @@ jobs:
             # arriba, no hace nada.
             if $COMPOSE_DB up -d && ./scripts/deploy-bluegreen.sh; then
               echo "Despliegue verificado"
+
+              # Monitoreo. Va DESPUÉS de que la app quedó servida y dentro de
+              # la rama de éxito a propósito: si algo de acá falla, el script
+              # corta con set -eu y el workflow queda en rojo, pero no entra a
+              # la rama de rollback, así que la app desplegada no se revierte
+              # por un problema del stack que la observa.
+              #
+              # Solo se toca cuando cambió algo suyo: recrear Prometheus o Loki
+              # en cada push de la app dejaría huecos en métricas y logs sin
+              # ninguna razón.
+              if git diff --quiet "$PREVIOUS" HEAD -- monitoring compose.monitoring.yml; then
+                echo "Monitoreo sin cambios, no se toca."
+              else
+                if [ ! -s monitoring/.env ]; then
+                  echo "ERROR: falta monitoring/.env (GRAFANA_ADMIN_PASSWORD," >&2
+                  echo "POSTGRES_EXPORTER_DSN). Ver scripts/monitoring-setup.sh." >&2
+                  exit 1
+                fi
+                COMPOSE_MON="docker compose -f compose.monitoring.yml --env-file monitoring/.env"
+
+                # Cubre lo que cambia de imagen o de argumentos. NO cubre el
+                # contenido de los configs montados: para compose el servicio
+                # sigue igual y no lo recrea. Eso se resuelve abajo, servicio
+                # por servicio, porque cada uno recarga distinto.
+                $COMPOSE_MON up -d
+
+                # Prometheus y Alertmanager releen con SIGHUP, pero si el
+                # config nuevo es inválido lo loguean y SIGUEN sirviendo el
+                # anterior: el SIGHUP no falla y el deploy se iría en verde con
+                # las reglas viejas cargadas. De ahí las dos comprobaciones,
+                # antes y después. La de después mira la métrica que expone el
+                # propio proceso, que es el estado real en memoria y no lo que
+                # haya en el disco.
+                esperar_reload() { # $1=puerto $2=prefijo métrica $3=nombre $4=timestamp previo
+                  i=0
+                  while [ "$i" -lt 15 ]; do
+                    m=$(curl -sf "http://127.0.0.1:$1/metrics" || true)
+                    ok=$(printf '%s\n' "$m" | awk -v p="$2_config_last_reload_successful" '$1==p{print $2}')
+                    ts=$(printf '%s\n' "$m" | awk -v p="$2_config_last_reload_success_timestamp_seconds" '$1==p{print $2}')
+                    if [ "$ok" = "1" ] && [ "$ts" != "$4" ]; then
+                      echo "$3: config nuevo cargado."
+                      return 0
+                    fi
+                    i=$((i + 1))
+                    sleep 1
+                  done
+                  echo "ERROR: $3 no aplicó el config nuevo y sigue con el anterior." >&2
+                  echo "Ver 'docker logs monitoring-$3-1' para el error de parseo." >&2
+                  return 1
+                }
+                leer_ts() { # $1=puerto $2=prefijo métrica
+                  curl -sf "http://127.0.0.1:$1/metrics" |
+                    awk -v p="$2_config_last_reload_success_timestamp_seconds" '$1==p{print $2}'
+                }
+
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/prometheus; then
+                  docker exec monitoring-prometheus-1 promtool check config /etc/prometheus/prometheus.yml
+                  ANTES=$(leer_ts 9090 prometheus)
+                  docker kill -s HUP monitoring-prometheus-1
+                  esperar_reload 9090 prometheus prometheus "$ANTES"
+                fi
+
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/alertmanager; then
+                  docker exec monitoring-alertmanager-1 amtool check-config /etc/alertmanager/alertmanager.yml
+                  ANTES=$(leer_ts 9093 alertmanager)
+                  docker kill -s HUP monitoring-alertmanager-1
+                  esperar_reload 9093 alertmanager alertmanager "$ANTES"
+                fi
+
+                # Loki no recarga en caliente: hay que recrearlo. --force-recreate
+                # porque `up -d` a secas no lo tocaría, ya que para compose no
+                # cambió nada. Es el caso que documenta compose.monitoring.yml:
+                # sin esto los arreglos de config no llegan nunca al proceso.
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/loki; then
+                  $COMPOSE_MON up -d --force-recreate loki
+                  i=0
+                  until curl -sf http://127.0.0.1:3100/ready >/dev/null; do
+                    i=$((i + 1))
+                    if [ "$i" -ge 30 ]; then
+                      echo "ERROR: Loki no volvió a /ready tras recrearlo." >&2
+                      exit 1
+                    fi
+                    sleep 2
+                  done
+                  echo "loki: recreado y listo."
+                fi
+
+                # Alloy y Grafana, por la misma razón que Loki. Los dashboards
+                # de monitoring/dashboards/ no entran acá: Grafana los relee
+                # solo, es el provisioning de datasources el que se aplica al
+                # arrancar. Alloy guarda las posiciones en su volumen, así que
+                # recrearlo no relee logs desde cero.
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/alloy; then
+                  $COMPOSE_MON up -d --force-recreate alloy
+                fi
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/grafana; then
+                  $COMPOSE_MON up -d --force-recreate grafana
+                fi
+              fi
+
               # Se conservan las imágenes de la última semana: son las que
               # permiten revertir sin reconstruir desde cero.
               docker image prune -f --filter "until=168h"
