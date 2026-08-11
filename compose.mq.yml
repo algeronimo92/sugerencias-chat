@@ -14,7 +14,7 @@
 # Se levanta una sola vez por servidor, DESPUÉS de compose.db.yml (usa su red):
 #
 #   docker compose -f compose.mq.yml --env-file mq/.env up -d
-#   docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /provision.sh
+#   docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /mq/provision.sh
 #
 # Quién habla con él:
 #   - Evolution API (otra VPS)  -> publica en evolution_exchange
@@ -57,18 +57,41 @@ services:
       # historial de la shell del servidor.
       RABBITMQ_EVOLUTION_PASSWORD: ${RABBITMQ_EVOLUTION_PASSWORD:?falta RABBITMQ_EVOLUTION_PASSWORD en mq/.env}
       RABBITMQ_N8N_PASSWORD: ${RABBITMQ_N8N_PASSWORD:?falta RABBITMQ_N8N_PASSWORD en mq/.env}
+      # Necesaria porque rabbitmq.conf ya no se monta en su ruta por defecto,
+      # sino dentro de /mq (ver el comentario del volumen). Si esta variable
+      # falta o apunta mal, RabbitMQ arranca con TODOS sus valores por defecto
+      # sin decir una palabra; el arranque de provision.sh lo comprueba.
+      RABBITMQ_CONFIG_FILE: /mq/rabbitmq.conf
 
     volumes:
       - rabbitmq:/var/lib/rabbitmq
-      # Topología (exchanges, colas, bindings) declarada en un archivo y
-      # cargada al arrancar, en vez de creada a mano por la consola: así el
-      # servidor se puede reconstruir desde el repo y no desde la memoria.
-      - ./mq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./mq/definitions.json:/etc/rabbitmq/definitions.json:ro
-      # Usuarios y permisos: van en un script y no en definitions.json porque
-      # ese archivo pide el hash de la contraseña, y un hash de contraseña en
-      # el repo sigue siendo material sensible.
-      - ./mq/provision.sh:/provision.sh:ro
+      # El directorio ENTERO, y no los tres archivos uno por uno.
+      #
+      # Docker resuelve el bind mount de un archivo suelto por INODO, y lo fija
+      # al crear el contenedor. `git pull` no edita en sitio: escribe el archivo
+      # nuevo al lado y lo renombra encima, con otro inodo. El contenedor se
+      # queda apuntando al inodo viejo, ya desenlazado del árbol, y sirve para
+      # siempre la versión anterior. Como `up -d` es idempotente y no recrea
+      # nada mientras compose.mq.yml no cambie, el arreglo no llega nunca.
+      #
+      # No es hipotético: así fue como el `read` de `evolution` se quedó en `^$`
+      # dentro del contenedor durante días, con el repo ya corregido, mientras
+      # Evolution reintentaba cada 5 s sin publicar un solo mensaje.
+      #
+      # El bind mount de un DIRECTORIO resuelve cada nombre en el momento de
+      # abrirlo, así que el renombrado de git se ve enseguida.
+      #
+      # Contenido: rabbitmq.conf (config), definitions.json (topología:
+      # exchanges, colas y bindings declarados en el repo, no creados a mano por
+      # la consola) y provision.sh (usuarios y permisos; van en un script y no
+      # en definitions.json porque ese archivo pide el hash de la contraseña, y
+      # un hash de contraseña en el repo sigue siendo material sensible).
+      #
+      # Montar el directorio mete también `mq/.env` dentro del contenedor. No
+      # agrega exposición: esas mismas contraseñas ya viajan como variables de
+      # entorno del servicio, acá arriba. Si algún día se guarda en mq/ un
+      # secreto que el broker NO deba ver, hay que sacarlo de esta carpeta.
+      - ./mq:/mq:ro
 
     ports:
       # AMQP sólo por la IP del túnel WireGuard. Debe ser la IP privada de este

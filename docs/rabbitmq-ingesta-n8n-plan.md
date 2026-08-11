@@ -1,7 +1,7 @@
 # Ingesta de WhatsApp por RabbitMQ, con n8n como consumidor
 
-Estado: implementado en el repo, **sin desplegar**. Los pasos manuales están al
-final.
+Estado: **desplegado**. Los pasos manuales están al final; las secciones 5 y 6 de
+"Las decisiones que importan" salieron de lo que falló al ponerlo en producción.
 
 ## Qué resuelve
 
@@ -171,6 +171,58 @@ que converge solo.
 
 El patrón no toca ninguna cola nuestra: todas empiezan por `q.wsp.`.
 
+### 5. La carpeta `mq/` se monta entera, no archivo por archivo
+
+Parece un detalle de compose y es la causa del incidente más caro que tuvo esta
+ingesta hasta ahora.
+
+Docker resuelve el bind mount de un **archivo suelto** por inodo, fijado al
+crear el contenedor. `git pull` no edita en sitio: escribe el archivo nuevo al
+lado y lo renombra encima, con otro inodo. El contenedor sigue apuntando al
+inodo viejo —ya desenlazado del árbol, invisible para `ls`— y sirve para siempre
+la versión anterior. Y como `up -d` es idempotente y no recrea nada mientras
+`compose.mq.yml` no cambie, el arreglo del repo no llega nunca.
+
+Fue exactamente lo que pasó: el `read` de `evolution` seguía en `^$` dentro del
+contenedor con el repo ya corregido y `provision.sh` corriendo en cada
+despliegue —imprimiendo `Setting permissions for user "evolution"` sin que el
+permiso cambiara—, mientras Evolution reintentaba cada 5 s en un bucle de
+`ACCESS_REFUSED` sin publicar un solo mensaje de WhatsApp.
+
+Cómo se reconoce, si vuelve a pasar con cualquier otro archivo montado así:
+
+```bash
+md5sum mq/provision.sh
+docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq md5sum /mq/provision.sh
+```
+
+El bind mount de un **directorio** resuelve cada nombre al abrirlo, así que el
+renombrado de git se ve enseguida. De ahí que hoy vaya `./mq:/mq:ro`, que
+`rabbitmq.conf` viva en `/mq/rabbitmq.conf` con `RABBITMQ_CONFIG_FILE`
+apuntándole, y que el script se ejecute como `/mq/provision.sh`.
+
+Quedan dos cabos, atados en el mismo cambio:
+
+- **Recrear cuando toque.** `rabbitmq.conf` y `definitions.json` sólo se leen al
+  arrancar el nodo. `ci-cd.yml` ya detectaba si cambió algo de `mq/`, pero sólo
+  lo imprimía; ahora eso agrega `--force-recreate`.
+- **Que la configuración se haya cargado.** Con el archivo fuera de su ruta por
+  defecto, un `RABBITMQ_CONFIG_FILE` mal puesto deja al broker arrancando
+  perfecto y en silencio con todos los valores por defecto: sin
+  `load_definitions` y con el límite de disco en 50 MB. `provision.sh` lo
+  comprueba al empezar, leyendo `disk_free_limit` del nodo y comparándolo con
+  los 2 GB del archivo.
+
+### 6. `provision.sh` espera a que el nodo exista, no sólo a que esté listo
+
+`rabbitmqctl await_startup` espera a que un nodo **que ya corre** termine de
+inicializarse. Recién recreado el contenedor no corre todavía: `up -d` devuelve
+el control en unos segundos y el broker tarda bastante más. En ese hueco
+`await_startup` falla en el acto con `node 'rabbit' not running at all` y, con
+`set -e`, se lleva el script entero antes de tocar un permiso — dejando en CI un
+AVISO que nadie lee y el broker con la configuración vieja. Por eso el
+`await_startup` va dentro de un bucle de 60 intentos por 2 s.
+
 ## Archivos
 
 | Archivo | Qué es |
@@ -299,7 +351,7 @@ Para levantarlo a mano la primera vez, sin esperar un push:
 
 ```bash
 docker compose -f compose.mq.yml --env-file mq/.env up -d
-docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /provision.sh
+docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /mq/provision.sh
 ```
 
 Comprobar que el puerto quedó donde debe — esto es lo que importa, no que el

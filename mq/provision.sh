@@ -1,7 +1,7 @@
 #!/bin/sh
 # Usuarios y permisos del broker. Se ejecuta DENTRO del contenedor:
 #
-#   docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /provision.sh
+#   docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /mq/provision.sh
 #
 # Es idempotente: se puede volver a correr cuando se rota una contraseña o se
 # ajusta un permiso.
@@ -25,7 +25,51 @@ ADMIN="${RABBITMQ_ADMIN_USER:?falta RABBITMQ_ADMIN_USER}"
 : "${RABBITMQ_DEFAULT_PASS:?falta RABBITMQ_DEFAULT_PASS}"
 
 echo "Esperando a que el nodo responda..."
-rabbitmqctl await_startup
+
+# `await_startup` NO alcanza por sí solo, y esto se pagó en un despliegue.
+#
+# Ese comando espera a que un nodo que YA ESTÁ CORRIENDO termine de
+# inicializarse. Si el proceso Erlang todavía no existe —el caso normal
+# inmediatamente después de un `up -d --force-recreate`, que devuelve el control
+# en ~3 s mientras el broker tarda bastante más— falla en el acto con
+# "node 'rabbit' not running at all" y, con `set -e`, se lleva puesto el script
+# entero antes de tocar un solo permiso. En CI eso queda en un AVISO que nadie
+# lee y el broker se queda con la configuración vieja.
+#
+# 60 intentos por 2 s = 2 min de margen, holgado contra el `start_period: 60s`
+# del healthcheck de compose.mq.yml.
+intento=0
+until rabbitmqctl await_startup 2>/dev/null; do
+  intento=$((intento + 1))
+  if [ "$intento" -ge 60 ]; then
+    echo "ERROR: el nodo no respondió en 2 minutos. Diagnóstico:" >&2
+    # Sin silenciar, para que el motivo real quede en el log del despliegue.
+    rabbitmqctl await_startup
+    exit 1
+  fi
+  sleep 2
+done
+
+# Que rabbitmq.conf se haya cargado DE VERDAD.
+#
+# Desde que el archivo vive en /mq y no en la ruta por defecto, quien los une es
+# RABBITMQ_CONFIG_FILE. Si esa variable falta, el broker arranca perfecto y en
+# silencio con todos los valores por defecto: sin `load_definitions` (colas y
+# bindings sin declarar) y con el límite de disco en 50 MB. Todo parece bien
+# hasta el día en que hace falta.
+#
+# Se comprueba el efecto y no el formato de ningún comando: `disk_free_limit` es
+# el ajuste que más se aleja del default (2 GB contra 50 MB), así que sirve de
+# huella de que el archivo se leyó. En rabbitmq.conf hay una nota recíproca.
+limite=$(rabbitmqctl eval 'application:get_env(rabbit, disk_free_limit).' 2>&1)
+case "$limite" in
+  *2000000000*) ;;
+  *)
+    echo "ERROR: rabbitmq.conf no se cargó (disk_free_limit = $limite)." >&2
+    echo "Revisar RABBITMQ_CONFIG_FILE en compose.mq.yml y el montaje de ./mq." >&2
+    exit 1
+    ;;
+esac
 
 # `add_user` falla si el usuario ya existe; `change_password` es lo que hace
 # que volver a correr el script sirva para rotar la credencial.

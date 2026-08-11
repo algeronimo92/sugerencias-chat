@@ -320,15 +320,23 @@ jobs:
             # cola no estaría, que es justo el fallo que este servicio viene a
             # evitar.
             if [ -s mq/.env ]; then
+              # rabbitmq.conf y definitions.json sólo se leen al arrancar el
+              # nodo, así que un cambio en mq/ no sirve de nada sin recrear el
+              # contenedor: `up -d` a secas no lo toca mientras compose.mq.yml
+              # no cambie. Antes esto sólo imprimía un aviso, y la topología del
+              # repo se quedaba a medio camino del broker.
+              MQ_RECREAR=""
               if ! git diff --quiet "$PREVIOUS" HEAD -- compose.mq.yml mq; then
                 echo "AVISO: cambió la configuración de RabbitMQ; este despliegue lo recrea."
                 echo "AVISO: los consumidores de n8n se reconectan solos; las colas durables no se pierden."
+                MQ_RECREAR="--force-recreate"
               fi
               COMPOSE_MQ="docker compose -f compose.mq.yml --env-file mq/.env"
-              # provision.sh es idempotente y trae su propio await_startup, así
-              # que corre en cada despliegue: es lo que hace que un cambio de
-              # permisos en el repo llegue de verdad al broker.
-              if $COMPOSE_MQ up -d && $COMPOSE_MQ exec -T rabbitmq /provision.sh; then
+              # provision.sh es idempotente y espera a que el nodo arranque (no
+              # sólo a que termine de inicializarse: recién recreado todavía no
+              # existe), así que corre en cada despliegue. Es lo que hace que un
+              # cambio de permisos en el repo llegue de verdad al broker.
+              if $COMPOSE_MQ up -d $MQ_RECREAR && $COMPOSE_MQ exec -T rabbitmq /mq/provision.sh; then
                 echo "RabbitMQ al día"
               else
                 echo "AVISO: falló el despliegue de RabbitMQ; la ingesta por cola puede estar parada." >&2
