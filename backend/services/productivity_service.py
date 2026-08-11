@@ -4,7 +4,7 @@ from sqlalchemy import and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from domain_types import AutomationExecutionStatus, TaskStatus
+from domain_types import AutomationExecutionStatus, TaskStatus, TaskType
 from db.models import (
     AutomationExecution,
     AutomationFlowVersion,
@@ -110,6 +110,60 @@ async def update_task(task_id: int, values: dict, user_id: int):
             await session.rollback()
             raise
     return await get_task(task_id) if result.rowcount else None
+
+
+async def complete_reply_tasks(lead_id: str, user_id: int) -> int:
+    """Completa los seguimientos que una respuesta real del vendedor satisface.
+
+    No toca llamadas, citas, cotizaciones ni tareas de otro responsable. La
+    outbox llama a este helper recién después del ACK de WhatsApp, por lo que
+    un envío fallido no hace desaparecer trabajo pendiente.
+    """
+    now = datetime.now(timezone.utc)
+    stmt = (
+        update(LeadTask)
+        .where(
+            LeadTask.lead_id == lead_id,
+            LeadTask.assigned_user_id == user_id,
+            LeadTask.status == TaskStatus.PENDING,
+            LeadTask.task_type.in_([TaskType.FOLLOW_UP, TaskType.WHATSAPP]),
+        )
+        .values(
+            status=TaskStatus.COMPLETED,
+            completed_at=now,
+            completed_by_user_id=user_id,
+            updated_at=now,
+        )
+    )
+    async with get_sessionmaker()() as session:
+        result = await session.execute(stmt)
+        await session.commit()
+    return result.rowcount
+
+
+async def complete_pending_tasks(
+    user_id: int,
+    is_admin: bool,
+    assigned_user_id: int | None = None,
+    all_users: bool = False,
+) -> int:
+    """Completa en bloque las tareas pendientes visibles para el usuario."""
+    now = datetime.now(timezone.utc)
+    stmt = update(LeadTask).where(LeadTask.status == TaskStatus.PENDING)
+    if not is_admin or (not all_users and assigned_user_id is None):
+        stmt = stmt.where(LeadTask.assigned_user_id == user_id)
+    elif assigned_user_id is not None:
+        stmt = stmt.where(LeadTask.assigned_user_id == assigned_user_id)
+    stmt = stmt.values(
+        status=TaskStatus.COMPLETED,
+        completed_at=now,
+        completed_by_user_id=user_id,
+        updated_at=now,
+    )
+    async with get_sessionmaker()() as session:
+        result = await session.execute(stmt)
+        await session.commit()
+    return result.rowcount
 
 
 async def claim_due_reminders() -> list[dict]:

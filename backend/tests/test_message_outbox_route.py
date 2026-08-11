@@ -1,9 +1,12 @@
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 import pytest
 
 from models.schemas import SendLocationRequest, SendMediaRequest, SendMessageRequest
 from routers import chats
+
+USER = SimpleNamespace(id=7)
 
 
 @pytest.mark.asyncio
@@ -27,11 +30,14 @@ async def test_text_send_returns_queued_message_without_waiting_for_evolution(mo
     result = await chats.send_message(
         "51999999999@s.whatsapp.net",
         SendMessageRequest(text="  Hola  "),
+        USER,
     )
 
     assert result == queued
     require_lead.assert_awaited_once_with("51999999999@s.whatsapp.net")
-    enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", "Hola", None)
+    enqueue.assert_awaited_once_with(
+        "51999999999@s.whatsapp.net", "Hola", None, actor_user_id=USER.id,
+    )
     broadcast.assert_awaited_once_with({
         "type": "chats_updated",
         "chat_id": "51999999999@s.whatsapp.net",
@@ -57,6 +63,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
     result = await chats.send_audio(
         "51999999999@s.whatsapp.net",
         SendMediaRequest(content_type="audio/ogg", data_base64="QUJD"),
+        USER,
     )
 
     assert result == queued
@@ -65,7 +72,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
         "media_url": "/api/media/audio/voice.ogg",
         "payload": {"type": "audio", "media_url": "/api/media/audio/voice.ogg"},
         "reply_to": None,
-    }])
+    }], actor_user_id=USER.id)
     broadcast.assert_awaited_once()
 
 
@@ -85,6 +92,7 @@ async def test_location_send_returns_pending_job(monkeypatch):
     result = await chats.send_location(
         "51999999999@s.whatsapp.net",
         SendLocationRequest(latitude=-12.1, longitude=-77.0),
+        USER,
     )
 
     assert result["status"] == "PENDING"

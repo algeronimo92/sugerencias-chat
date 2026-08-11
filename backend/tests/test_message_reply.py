@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -6,6 +7,8 @@ from fastapi import HTTPException
 from models.schemas import SendMessageRequest
 from routers import chats
 from services import message_outbox
+
+USER = SimpleNamespace(id=7)
 
 
 def test_quoted_context_marca_de_quien_era_el_mensaje_citado():
@@ -93,6 +96,9 @@ async def test_el_texto_se_encola_con_el_mensaje_citado(monkeypatch):
     await chats.send_message(
         "51999999999@s.whatsapp.net",
         SendMessageRequest(text="Sale 200", reply_to_message_id=42),
+        USER,
     )
 
-    enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", "Sale 200", target)
+    enqueue.assert_awaited_once_with(
+        "51999999999@s.whatsapp.net", "Sale 200", target, actor_user_id=USER.id,
+    )

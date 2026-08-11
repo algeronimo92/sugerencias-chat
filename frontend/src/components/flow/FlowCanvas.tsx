@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyNodeChanges,
-  Background, ControlButton, Controls, Handle, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
+  Background, BaseEdge, ControlButton, Controls, EdgeToolbar, Handle, MiniMap, PanOnScrollMode, Position, ReactFlow, ReactFlowProvider, SelectionMode,
+  getSmoothStepPath,
   useReactFlow, type Connection, type Edge, type Node, type NodeProps, type NodeTypes,
-  type OnConnect, type OnNodesChange,
+  type EdgeProps, type EdgeTypes, type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -47,6 +48,7 @@ interface CanvasNodeData {
   outputs?: RoundRobinOutput[]
   timeout_seconds?: number
   label?: string
+  close_conversation?: boolean
   onDelete?: (id: string) => void
   isSelected?: boolean
   previewTemplate?: MessageTemplate
@@ -351,6 +353,7 @@ const InvokeFlowNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
 const EndNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.End} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
+    {data.close_conversation && <div className="mt-2 rounded-md border border-gray-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-slate-700 dark:bg-gray-950/30 dark:text-gray-300">Cierra la conversación</div>}
   </NodeShell>
 ))
 
@@ -487,6 +490,57 @@ const NODE_TYPES: NodeTypes = {
   [FlowNodeType.End]: EndNode,
 }
 
+interface DeletableEdgeData extends Record<string, unknown> {
+  showDelete: boolean
+  onDelete: (id: string) => void
+  onToolbarEnter: (id: string) => void
+  onToolbarLeave: (id: string) => void
+}
+
+type DeletableEdge = Edge<DeletableEdgeData, 'deletable'>
+
+function DeletableConnection({
+  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  markerEnd, style, interactionWidth, label, labelStyle, labelShowBg,
+  labelBgStyle, labelBgPadding, labelBgBorderRadius, data,
+}: EdgeProps<DeletableEdge>) {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  })
+  return <>
+    <BaseEdge
+      id={id}
+      path={path}
+      markerEnd={markerEnd}
+      style={style}
+      interactionWidth={interactionWidth}
+      label={label}
+      labelX={labelX}
+      labelY={labelY}
+      labelStyle={labelStyle}
+      labelShowBg={labelShowBg}
+      labelBgStyle={labelBgStyle}
+      labelBgPadding={labelBgPadding}
+      labelBgBorderRadius={labelBgBorderRadius}
+    />
+    <EdgeToolbar edgeId={id} x={labelX} y={labelY - 24} isVisible={data?.showDelete === true} className="nodrag nopan">
+      <button
+        type="button"
+        title="Eliminar conexión"
+        aria-label="Eliminar conexión"
+        onMouseEnter={() => data?.onToolbarEnter(id)}
+        onMouseLeave={() => data?.onToolbarLeave(id)}
+        onClick={event => { event.stopPropagation(); data?.onDelete(id) }}
+        className="flex h-7 w-7 items-center justify-center rounded-full border border-red-200 bg-white text-red-500 shadow-md transition hover:bg-red-50 hover:text-red-600 dark:border-red-900 dark:bg-wa-panel-dark dark:hover:bg-red-950"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </EdgeToolbar>
+  </>
+}
+
+const EDGE_TYPES: EdgeTypes = { deletable: DeletableConnection }
+
 const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
 interface FlowCanvasProps {
@@ -513,6 +567,7 @@ function Canvas({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [connectionHighlightEnabled, setConnectionHighlightEnabled] = useState(storedConnectionHighlightPreference)
   const nodeLeaveTimer = useRef<number | null>(null)
+  const edgeLeaveTimer = useRef<number | null>(null)
 
   const highlightedEdgeIds = useMemo(() => {
     if (!connectionHighlightEnabled) return new Set<string>()
@@ -598,9 +653,34 @@ function Canvas({
     },
   })), [nodes, connectionRoles, highlightedEdgeIds])
 
-  const edges = useMemo(
-    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId),
-    [flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId],
+  const scheduleEdgeLeave = useCallback((edgeId: string) => {
+    if (edgeLeaveTimer.current !== null) window.clearTimeout(edgeLeaveTimer.current)
+    edgeLeaveTimer.current = window.setTimeout(() => {
+      setHoveredEdgeId(current => current === edgeId ? null : current)
+      edgeLeaveTimer.current = null
+    }, 160)
+  }, [])
+
+  const keepEdgeHovered = useCallback((edgeId: string) => {
+    if (edgeLeaveTimer.current !== null) {
+      window.clearTimeout(edgeLeaveTimer.current)
+      edgeLeaveTimer.current = null
+    }
+    setHoveredEdgeId(edgeId)
+  }, [])
+
+  const edges = useMemo<DeletableEdge[]>(
+    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => ({
+      ...edge,
+      type: 'deletable' as const,
+      data: {
+        showDelete: edge.id === hoveredEdgeId || edge.id === selectedEdgeId,
+        onDelete: onDeleteEdge,
+        onToolbarEnter: keepEdgeHovered,
+        onToolbarLeave: scheduleEdgeLeave,
+      },
+    })),
+    [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId],
   )
 
   useEffect(() => {
@@ -622,6 +702,7 @@ function Canvas({
 
   useEffect(() => () => {
     if (nodeLeaveTimer.current !== null) window.clearTimeout(nodeLeaveTimer.current)
+    if (edgeLeaveTimer.current !== null) window.clearTimeout(edgeLeaveTimer.current)
   }, [])
 
   const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: CanvasNode) => {
@@ -699,6 +780,7 @@ function Canvas({
         nodes={displayNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={handleNodesChange}
         onEdgesChange={changes => changes.forEach(change => {
           if (change.type === 'remove') onDeleteEdge(change.id)
@@ -708,8 +790,8 @@ function Canvas({
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
-        onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
-        onEdgeMouseLeave={(_, edge) => setHoveredEdgeId(current => current === edge.id ? null : current)}
+        onEdgeMouseEnter={(_, edge) => keepEdgeHovered(edge.id)}
+        onEdgeMouseLeave={(_, edge) => scheduleEdgeLeave(edge.id)}
         onEdgeClick={(event, edge) => {
           event.stopPropagation()
           setSelectedEdgeId(current => current === edge.id ? null : edge.id)

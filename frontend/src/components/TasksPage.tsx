@@ -1,14 +1,15 @@
-import { Check, Clock, Loader2, MessageSquare } from 'lucide-react'
+import { Check, CheckCheck, Clock, Loader2, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { LeadTask } from '../types'
-import { useTasks, useUpdateTask } from '../hooks/useTasks'
+import { useCompleteAllTasks, useTasks, useUpdateTask } from '../hooks/useTasks'
 import { useMe } from '../hooks/useAuth'
 import { useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { TASK_PRIORITY_LABELS, TaskPriorityValue, TaskStatusValue } from '../domain/automationCatalog'
 import type { TaskPriority } from '../types'
 import { Select } from './ui/Input'
+import { ConfirmDialog } from './ui/ConfirmDialog'
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
   [TaskPriorityValue.Low]: 'bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300',
   [TaskPriorityValue.Normal]: 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400',
@@ -35,6 +36,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   const assignedUserId = assignee !== 'mine' && assignee !== 'all' ? Number(assignee) : undefined
   const { data = [], isLoading } = useTasks('pending', undefined, assignedUserId, allUsers)
   const updateTask = useUpdateTask()
+  const completeAll = useCompleteAllTasks()
   const [error, setError] = useState<string | null>(null)
   const groups = bucketTasks(data)
   const sections: { title: string; items: LeadTask[] }[] = [
@@ -48,17 +50,45 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
     updateTask.mutate({ id, status: TaskStatusValue.Completed }, { onSuccess: () => toast.success('Tarea completada'), onError: (err) => setError(extractErrorMessage(err)) })
   }
 
+  function handleCompleteAll() {
+    setError(null)
+    completeAll.mutate(
+      { assignedUserId, allUsers },
+      {
+        onSuccess: ({ completed }) => toast.success(
+          completed === 1 ? '1 tarea completada' : `${completed} tareas completadas`,
+        ),
+        onError: err => setError(extractErrorMessage(err)),
+      },
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><Clock className="h-5 w-5 text-wa-primary-strong" />
           <h1 className="text-xl font-semibold text-wa-text dark:text-white">Mis tareas</h1></div>
-          {isAdmin && <Select value={assignee} onChange={(event) => setAssignee(event.target.value)} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
-            <option value="mine">Mis tareas</option>
-            {users.filter(user => user.is_active && user.id !== me?.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-            <option value="all">Todo el equipo</option>
-          </Select>}
+          <div className="flex items-center gap-2">
+            {isAdmin && <Select value={assignee} onChange={(event) => setAssignee(event.target.value)} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
+              <option value="mine">Mis tareas</option>
+              {users.filter(user => user.is_active && user.id !== me?.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+              <option value="all">Todo el equipo</option>
+            </Select>}
+            <ConfirmDialog
+              title="¿Completar todas las tareas?"
+              description={`Se marcarán como completadas todas las tareas pendientes del filtro actual (${data.length} visibles). Esta acción también quita sus recordatorios.`}
+              confirmLabel="Completar todas"
+              confirmVariant="primary"
+              disabled={data.length === 0 || completeAll.isPending}
+              onConfirm={handleCompleteAll}
+            >
+              <button type="button" disabled={data.length === 0 || completeAll.isPending} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-sm font-semibold text-white hover:bg-wa-primary-strong disabled:cursor-not-allowed disabled:opacity-40">
+                {completeAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+                {completeAll.isPending ? 'Completando…' : 'Completar todas'}
+              </button>
+            </ConfirmDialog>
+          </div>
         </div>
 
         {error && (

@@ -72,6 +72,7 @@ from services.db_service import (
     update_lead_stage,
 )
 from services.auth_service import get_current_user
+from services.productivity_service import complete_reply_tasks
 from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
@@ -524,19 +525,27 @@ async def get_service_window(chat_id: str):
 
 
 @router.post("/{chat_id}/messages", response_model=Message)
-async def send_message(chat_id: str, body: SendMessageRequest):
+async def send_message(
+    chat_id: str,
+    body: SendMessageRequest,
+    user: User = Depends(get_current_user),
+):
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
     await _require_existing_lead(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
-    message = await enqueue_text_message(chat_id, text, reply_to)
+    message = await enqueue_text_message(chat_id, text, reply_to, actor_user_id=user.id)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
 @router.post("/{chat_id}/audio", response_model=Message)
-async def send_audio(chat_id: str, body: SendMediaRequest):
+async def send_audio(
+    chat_id: str,
+    body: SendMediaRequest,
+    user: User = Depends(get_current_user),
+):
     """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
@@ -553,13 +562,17 @@ async def send_audio(chat_id: str, body: SendMediaRequest):
         "media_url": media_url,
         "payload": {"type": "audio", "media_url": media_url},
         "reply_to": reply_to,
-    }]))[0]
+    }], actor_user_id=user.id))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
 @router.post("/{chat_id}/media", response_model=Message)
-async def send_media(chat_id: str, body: SendMediaRequest):
+async def send_media(
+    chat_id: str,
+    body: SendMediaRequest,
+    user: User = Depends(get_current_user),
+):
     """Guarda y encola un adjunto sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
     mediatype = _mediatype_from_content_type(body.content_type)
@@ -593,13 +606,17 @@ async def send_media(chat_id: str, body: SendMediaRequest):
             "caption": caption,
         },
         "reply_to": reply_to,
-    }]))[0]
+    }], actor_user_id=user.id))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
 @router.post("/{chat_id}/sticker", response_model=Message)
-async def send_sticker(chat_id: str, body: StickerRequest):
+async def send_sticker(
+    chat_id: str,
+    body: StickerRequest,
+    user: User = Depends(get_current_user),
+):
     """Manda una imagen de la librería de medios como sticker: la convierte a
     WEBP 512×512 y la envía por sendSticker. Envío directo (no outbox): un
     sticker es liviano y de bajo riesgo."""
@@ -630,7 +647,16 @@ async def send_sticker(chat_id: str, body: StickerRequest):
         status="SERVER_ACK",
         message_type="sticker",
     )
+    try:
+        completed_tasks = await complete_reply_tasks(chat_id, user.id)
+    except Exception:
+        # El sticker ya salió y quedó persistido; no respondemos 500 porque el
+        # vendedor podría reintentarlo y duplicarlo solo por un fallo secundario.
+        logger.exception("No se pudieron completar las tareas del lead %s", chat_id)
+        completed_tasks = 0
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
+    if completed_tasks:
+        await manager.broadcast({"type": "tasks_updated"})
     return message
 
 
@@ -667,7 +693,7 @@ async def send_template(
                 "language": template["official_language"],
                 "components": components,
             },
-        }]))[0]
+        }], actor_user_id=user.id))[0]
         await record_template_use(template_id, user.id)
         await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
         return [message]
@@ -694,7 +720,7 @@ async def send_template(
                 "description": description,
                 "config": config,
             },
-        }]))[0]
+        }], actor_user_id=user.id))[0]
         await record_template_use(template_id, user.id)
         await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
         return [message]
@@ -705,14 +731,18 @@ async def send_template(
         raise HTTPException(400, "El texto de la plantilla supera el máximo de 4096 caracteres")
 
     items = build_internal_template_items(text, template["attachments"])
-    sent = await enqueue_messages(chat_id, items)
+    sent = await enqueue_messages(chat_id, items, actor_user_id=user.id)
     await record_template_use(template_id, user.id)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return sent
 
 
 @router.post("/{chat_id}/location", response_model=Message)
-async def send_location(chat_id: str, body: SendLocationRequest):
+async def send_location(
+    chat_id: str,
+    body: SendLocationRequest,
+    user: User = Depends(get_current_user),
+):
     await _require_existing_lead(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     # lat/lon van a la columna payload (los deriva enqueue_messages del payload
@@ -725,7 +755,7 @@ async def send_location(chat_id: str, body: SendLocationRequest):
             "longitude": body.longitude,
         },
         "reply_to": reply_to,
-    }]))[0]
+    }], actor_user_id=user.id))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
@@ -808,7 +838,11 @@ def _forward_item(message: dict) -> dict | None:
 
 
 @router.post("/{chat_id}/messages/forward", response_model=ForwardMessagesResponse)
-async def forward_messages(chat_id: str, body: ForwardMessagesRequest):
+async def forward_messages(
+    chat_id: str,
+    body: ForwardMessagesRequest,
+    user: User = Depends(get_current_user),
+):
     """Reenvía uno o varios mensajes de este chat a otros leads.
 
     Cada destino recibe los mensajes en el orden en que están en la
@@ -834,7 +868,7 @@ async def forward_messages(chat_id: str, body: ForwardMessagesRequest):
         raise HTTPException(404, "Ninguno de los chats destino existe")
 
     for target in targets:
-        await enqueue_messages(target, items)
+        await enqueue_messages(target, items, actor_user_id=user.id)
         await manager.broadcast({
             "type": "chats_updated", "chat_id": target, "reason": "outbound_queued",
         })

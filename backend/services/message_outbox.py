@@ -22,6 +22,7 @@ from services.evolution_service import (
     send_whatsapp_text,
 )
 from services.media_storage import image_to_sticker_webp, read_media_base64, read_media_bytes
+from services.productivity_service import complete_reply_tasks
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,18 @@ def _wa_message_id(response: dict) -> str | None:
     return key.get("id") or response.get("messageId") or response.get("id")
 
 
-async def enqueue_text_message(chat_id: str, text: str, reply_to: dict | None = None) -> dict:
+async def enqueue_text_message(
+    chat_id: str,
+    text: str,
+    reply_to: dict | None = None,
+    *,
+    actor_user_id: int | None = None,
+) -> dict:
     return (await enqueue_messages(chat_id, [{
         "content": text,
         "payload": {"type": "text", "text": text},
         "reply_to": reply_to,
-    }]))[0]
+    }], actor_user_id=actor_user_id))[0]
 
 
 # Tope del texto que se manda como vista previa de la cita. WhatsApp recorta
@@ -143,7 +150,12 @@ def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
     }
 
 
-async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
+async def enqueue_messages(
+    chat_id: str,
+    items: list[dict],
+    *,
+    actor_user_id: int | None = None,
+) -> list[dict]:
     """Guarda uno o más mensajes y sus trabajos en una sola transacción.
 
     El payload contiene únicamente metadatos pequeños. Los archivos ya deben
@@ -163,6 +175,8 @@ async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
         for position, item in enumerate(items):
             reply_to = item.get("reply_to")
             payload = item["payload"]
+            if actor_user_id is not None:
+                payload = {**payload, "_actor_user_id": actor_user_id}
             message_type, db_payload = _outbound_message_fields(payload)
             if item.get("forwarded"):
                 db_payload = {**(db_payload or {}), "forwarded": True}
@@ -359,12 +373,27 @@ async def _mark_sent(job: dict, response: dict, delivered_content: str | None = 
             .values(status="sent", error=None, updated_at=now)
         )
         await session.commit()
+    actor_user_id = job["payload"].get("_actor_user_id")
+    completed_tasks = 0
+    if actor_user_id is not None:
+        try:
+            completed_tasks = await complete_reply_tasks(job["chat_id"], int(actor_user_id))
+        except Exception:
+            # El mensaje ya fue aceptado por WhatsApp y la outbox quedó en
+            # sent. Un fallo secundario al cerrar tareas nunca debe convertirlo
+            # en failed ni provocar que el worker lo envíe otra vez.
+            logger.exception(
+                "No se pudieron completar las tareas del lead %s tras responder",
+                job["chat_id"],
+            )
     await manager.broadcast({
         "type": "chats_updated",
         "chat_id": job["chat_id"],
         "reason": "outbound_message",
         "message_statuses": [{"id": job["message_id"], "status": "SERVER_ACK"}],
     })
+    if completed_tasks:
+        await manager.broadcast({"type": "tasks_updated"})
     if scheduled_result.rowcount:
         await manager.broadcast({
             "type": "scheduled_messages_updated",

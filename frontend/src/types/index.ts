@@ -640,7 +640,7 @@ export type AutomationFlowNode =
   | BaseAutomationFlowNode<typeof FlowNodeType.WaitAny, { conditions: WaitAnyCondition[] }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Question, { text: string; buttons: QuestionButton[]; timeout_seconds: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.RoundRobin, { outputs: RoundRobinOutput[] }>
-  | BaseAutomationFlowNode<typeof FlowNodeType.End, { label: string }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.End, { label: string; close_conversation?: boolean }>
 
 export interface AutomationFlowEdge {
   id: string

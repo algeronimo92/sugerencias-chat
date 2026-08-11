@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -9,6 +10,7 @@ from routers import chats
 CHAT_ID = "51999999999@s.whatsapp.net"
 TARGET = "51888888888@s.whatsapp.net"
 OTHER_TARGET = "51777777777@s.whatsapp.net"
+USER = SimpleNamespace(id=7)
 
 
 def _message(**overrides) -> dict:
@@ -107,12 +109,13 @@ class TestForwardRoute:
 
         result = await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
             message_ids=[2, 1], target_chat_ids=[TARGET, OTHER_TARGET],
-        ))
+        ), USER)
 
         assert result.forwarded_chats == 2
         assert result.forwarded_messages == 4
         assert result.skipped_messages == 0
         assert [call.args[0] for call in enqueue.await_args_list] == [TARGET, OTHER_TARGET]
+        assert all(call.kwargs == {"actor_user_id": USER.id} for call in enqueue.await_args_list)
         # El orden es el de la conversación (el que devuelve la base), no el
         # orden en que se fueron tildando los mensajes.
         assert [item["content"] for item in enqueue.await_args_list[0].args[1]] == ["uno", "dos"]
@@ -123,7 +126,7 @@ class TestForwardRoute:
 
         result = await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
             message_ids=[1], target_chat_ids=[TARGET, TARGET],
-        ))
+        ), USER)
 
         assert result.forwarded_chats == 1
         enqueue.assert_awaited_once()
@@ -137,7 +140,7 @@ class TestForwardRoute:
 
         result = await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
             message_ids=[1, 2], target_chat_ids=[TARGET],
-        ))
+        ), USER)
 
         assert result.skipped_messages == 1
         assert result.forwarded_messages == 1
@@ -149,7 +152,7 @@ class TestForwardRoute:
         with pytest.raises(HTTPException) as exc:
             await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
                 message_ids=[1], target_chat_ids=[TARGET],
-            ))
+            ), USER)
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -158,7 +161,7 @@ class TestForwardRoute:
         with pytest.raises(HTTPException) as exc:
             await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
                 message_ids=[1], target_chat_ids=[TARGET],
-            ))
+            ), USER)
         assert exc.value.status_code == 409
         enqueue.assert_not_awaited()
 
@@ -168,6 +171,6 @@ class TestForwardRoute:
         with pytest.raises(HTTPException) as exc:
             await chats.forward_messages(CHAT_ID, ForwardMessagesRequest(
                 message_ids=[1], target_chat_ids=[TARGET],
-            ))
+            ), USER)
         assert exc.value.status_code == 404
         enqueue.assert_not_awaited()

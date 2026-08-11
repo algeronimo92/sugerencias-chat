@@ -38,3 +38,17 @@ export function useUpdateTask() {
     onSuccess: invalidateTasks,
   })
 }
+
+export function useCompleteAllTasks() {
+  return useMutation({
+    mutationFn: async ({ assignedUserId, allUsers }: { assignedUserId?: number; allUsers?: boolean }) => (
+      await client.post<{ completed: number }>('/api/tasks/complete-all', undefined, {
+        params: {
+          assigned_user_id: assignedUserId,
+          all_users: allUsers || undefined,
+        },
+      })
+    ).data,
+    onSuccess: invalidateTasks,
+  })
+}

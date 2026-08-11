@@ -1210,7 +1210,10 @@ async def validate_visual_flow(
             normalized_data = _normalize_round_robin(data, position)
         else:
             end_count += 1
-            normalized_data = {"label": str(data.get("label") or "Fin").strip()[:80] or "Fin"}
+            normalized_data = {
+                "label": str(data.get("label") or "Fin").strip()[:80] or "Fin",
+                "close_conversation": data.get("close_conversation") is True,
+            }
         normalized_nodes.append({
             "id": node_id,
             "type": node_type,
@@ -2033,6 +2036,13 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
             })
             current_id = edges[(current_id, output["id"])]
         else:
+            if node["data"].get("close_conversation") is True:
+                path.append({
+                    "node_id": current_id,
+                    "type": AutomationActionType.SET_CONVERSATION_STATE,
+                    "status": "would_run",
+                    "detail": "Cerraría la conversación",
+                })
             path.append({
                 "node_id": current_id,
                 "type": FlowNodeType.END,
@@ -2938,6 +2948,22 @@ async def _run_visual_execution(
                 if not saved:
                     return  # cancelada externamente: no proceses más nodos
                 continue
+            if node["data"].get("close_conversation") is True:
+                close_result = await _execute_action(
+                    {
+                        "type": AutomationActionType.SET_CONVERSATION_STATE,
+                        "state": "closed",
+                    },
+                    chat,
+                    execution,
+                    rule,
+                    deps,
+                )
+                results.append({
+                    "position": len(results) + 1,
+                    "node_id": node["id"],
+                    **close_result,
+                })
             results.append({
                 "position": len(results) + 1, "node_id": node["id"],
                 "type": FlowNodeType.END,

@@ -5,7 +5,13 @@ from domain_types import TaskStatus
 from db.models import User
 from models.schemas import TaskCreate, TaskItem, TaskUpdate
 from services.auth_service import get_current_user
-from services.productivity_service import create_task, get_task, list_tasks, update_task
+from services.productivity_service import (
+    complete_pending_tasks,
+    create_task,
+    get_task,
+    list_tasks,
+    update_task,
+)
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -41,6 +47,25 @@ async def post_task(body: TaskCreate, user: User = Depends(get_current_user)):
         raise HTTPException(404, "Lead o responsable no encontrado")
     await manager.broadcast({"type": "tasks_updated"})
     return item
+
+
+@router.post("/complete-all")
+async def post_complete_all_tasks(
+    assigned_user_id: int | None = None,
+    all_users: bool = False,
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin" and (assigned_user_id is not None or all_users):
+        raise HTTPException(403, "Solo un administrador puede completar tareas de otros usuarios")
+    completed = await complete_pending_tasks(
+        user.id,
+        user.role == "admin",
+        assigned_user_id,
+        all_users,
+    )
+    if completed:
+        await manager.broadcast({"type": "tasks_updated"})
+    return {"completed": completed}
 
 
 @router.patch("/{task_id}", response_model=TaskItem)

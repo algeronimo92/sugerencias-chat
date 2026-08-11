@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity, ArrowRight, Beaker, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
-  ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, UserRound, X, Zap,
+  Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { CreateTemplateDialog } from './CreateTemplateDialog'
@@ -133,7 +133,7 @@ function initialFlow(): AutomationFlowDefinition {
     nodes: [
       { id: 'trigger-1', type: NodeType.Trigger, position: { x: 70, y: 220 }, data: { trigger_type: TriggerType.LeadCreated } },
       { id: 'action-1', type: NodeType.Action, position: { x: 390, y: 220 }, data: { action: defaultAction(ActionType.CreateTask) } },
-      { id: 'end-1', type: NodeType.End, position: { x: 710, y: 220 }, data: { label: 'Fin' } },
+      { id: 'end-1', type: NodeType.End, position: { x: 710, y: 220 }, data: { label: 'Fin', close_conversation: false } },
     ],
     edges: [
       { id: 'edge-trigger-1-action-1', source: 'trigger-1', target: 'action-1', source_handle: FlowHandle.Next },
@@ -166,6 +166,9 @@ function withDefaultConditions(definition: AutomationFlowDefinition): Automation
     nodes: definition.nodes.map(node => {
       if (node.type === NodeType.Condition) {
         return { ...node, data: { condition_groups: conditionGroups(node.data, node.id) } }
+      }
+      if (node.type === NodeType.End) {
+        return { ...node, data: { ...node.data, close_conversation: node.data.close_conversation === true } }
       }
       if (node.type !== NodeType.Wait) return node
       const data: { seconds?: number; minutes?: number } = node.data
@@ -213,7 +216,7 @@ function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: 
     case NodeType.RoundRobin:
       return { id, type, position, data: { outputs: withPositionalOutputIds(['Salida 1', 'Salida 2']) } }
     case NodeType.End:
-      return { id, type, position, data: { label: 'Fin' } }
+      return { id, type, position, data: { label: 'Fin', close_conversation: false } }
     default:
       return assertNever(type)
   }
@@ -283,7 +286,14 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const { data: templates = [] } = useTemplates(true)
   const { data: mediaAssets = [] } = useMediaLibrary()
   const [ruleId, setRuleId] = useState<number | null>(rule?.id ?? null)
-  const [publishedDefinition, setPublishedDefinition] = useState<AutomationFlowDefinition | null>(rule?.published_flow_definition ?? null)
+  const [publishedDefinition, setPublishedDefinition] = useState<AutomationFlowDefinition | null>(() => (
+    rule?.published_flow_definition ? withDefaultConditions(rule.published_flow_definition) : null
+  ))
+  const [savedDefinition, setSavedDefinition] = useState<AutomationFlowDefinition | null>(() => {
+    const definition = rule?.flow_definition
+    return isFlowDefinition(definition) && definition.nodes.length ? withDefaultConditions(definition) : null
+  })
+  const [savedName, setSavedName] = useState<string | null>(rule?.name ?? null)
   const [name, setName] = useState(rule?.name ?? 'Nuevo flujo visual')
   const [maxPerHour, setMaxPerHour] = useState<number | null>(rule?.max_executions_per_hour ?? null)
   const [visibleToSellers, setVisibleToSellers] = useState<boolean>(rule?.visible_to_sellers ?? false)
@@ -312,6 +322,8 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const [simulation, setSimulation] = useState<AutomationFlowSimulation | null>(null)
   const [searching, setSearching] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
+  const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false)
+  const copiedNodeRef = useRef<AutomationFlowNode | null>(null)
   const { data: versions = [], isLoading: versionsLoading } = useFlowVersions(versionsOpen ? ruleId : null)
   const restoreVersion = useRestoreFlowVersion()
   const selected = flow.nodes.find(node => node.id === selectedId) ?? null
@@ -327,6 +339,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
   const hasUnpublishedChanges = publishedDefinition == null || !areFlowDefinitionsEqual(flow, publishedDefinition)
+  const hasUnsavedChanges = savedDefinition == null
+    || name !== savedName
+    || !areFlowDefinitionsEqual(flow, savedDefinition)
   const triggerNode = flow.nodes.find(
     (node): node is Extract<AutomationFlowNode, { type: typeof NodeType.Trigger }> => node.type === NodeType.Trigger
   )
@@ -335,8 +350,24 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     typeof value === 'boolean' ? value : value !== null && value !== undefined && value !== ''
   )).length
 
+  const duplicateNode = useCallback((source: AutomationFlowNode) => {
+    if (source.type === NodeType.Trigger) {
+      setError('El disparador es único y no se puede copiar.')
+      return
+    }
+    const duplicate = {
+      ...structuredClone(source),
+      id: `${source.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+    } as AutomationFlowNode
+    setFlow(current => ({ ...current, nodes: [...current.nodes, duplicate] }))
+    setSelectedId(duplicate.id)
+    copiedNodeRef.current = structuredClone(duplicate)
+    setError(null)
+  }, [setFlow])
+
   useEffect(() => {
-    function handleHistoryShortcut(event: KeyboardEvent) {
+    function handleBuilderShortcut(event: KeyboardEvent) {
       if ((!event.ctrlKey && !event.metaKey) || event.altKey || isEditableTarget(event.target)) return
       const key = event.key.toLowerCase()
       const wantsUndo = key === 'z' && !event.shiftKey
@@ -347,11 +378,31 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       } else if (wantsRedo && canRedo) {
         event.preventDefault()
         redo()
+      } else if (key === 'c' && selected && selected.type !== NodeType.Trigger) {
+        event.preventDefault()
+        copiedNodeRef.current = structuredClone(selected)
+        setNotice('Nodo copiado. Pégalo con Ctrl+V o Cmd+V.')
+      } else if (key === 'v' && copiedNodeRef.current) {
+        event.preventDefault()
+        duplicateNode(copiedNodeRef.current)
+      } else if (key === 'd' && selected && selected.type !== NodeType.Trigger) {
+        event.preventDefault()
+        duplicateNode(selected)
       }
     }
-    window.addEventListener('keydown', handleHistoryShortcut)
-    return () => window.removeEventListener('keydown', handleHistoryShortcut)
-  }, [canRedo, canUndo, redo, undo])
+    window.addEventListener('keydown', handleBuilderShortcut)
+    return () => window.removeEventListener('keydown', handleBuilderShortcut)
+  }, [canRedo, canUndo, duplicateNode, redo, selected, undo])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [hasUnsavedChanges])
 
   function replaceNode(nextNode: AutomationFlowNode) {
     setFlow(current => ({
@@ -525,7 +576,13 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         ? await createFlow.mutateAsync({ name, flow_definition: flow })
         : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flow })
       setRuleId(saved.id)
-      if (isFlowDefinition(saved.flow_definition)) syncFlow(withDefaultConditions(saved.flow_definition))
+      if (isFlowDefinition(saved.flow_definition)) {
+        const normalized = withDefaultConditions(saved.flow_definition)
+        syncFlow(normalized)
+        setSavedDefinition(normalized)
+      }
+      setName(saved.name)
+      setSavedName(saved.name)
       setNotice('Borrador guardado.')
       return saved
     } catch (reason) {
@@ -564,7 +621,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     if (!saved) return
     try {
       const published = await publishFlow.mutateAsync(saved.id)
-      setPublishedDefinition(published.published_flow_definition)
+      setPublishedDefinition(published.published_flow_definition
+        ? withDefaultConditions(published.published_flow_definition)
+        : null)
       setNotice(`Flujo publicado · versión ${published.flow_version}.`)
     } catch (reason) { setError(extractErrorMessage(reason)) }
   }
@@ -588,9 +647,19 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     } catch (reason) { setError(extractErrorMessage(reason)) }
   }
 
+  function requestClose() {
+    if (hasUnsavedChanges) setExitConfirmationOpen(true)
+    else onClose()
+  }
+
+  async function saveAndClose() {
+    const saved = await persistDraft()
+    if (saved) onClose()
+  }
+
   return <div className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-wa-app-dark">
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      <button type="button" onClick={onClose} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-5 w-5" /></button>
+      <button type="button" onClick={requestClose} aria-label="Cerrar constructor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-5 w-5" /></button>
       <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => setName(event.target.value)} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
       <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-wa-border-dark" role="group" aria-label="Historial de cambios">
         <button type="button" disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer" className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Undo2 className="h-4 w-4" /></button>
@@ -637,7 +706,8 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
           <p><strong>Cómo seleccionar varios:</strong> arrastra un rectángulo con el botón izquierdo; solo contará los bloques cubiertos por completo. Usa Ctrl/Cmd + clic para sumar o quitar bloques.</p>
           <p><strong>Cómo seguir una conexión:</strong> las líneas se resaltan levemente al pasar sobre ellas. Activa el botón del ojo para marcar además su origen, destino y recorrido completo.</p>
-          <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, selecciona la conexión y pulsa Supr.</p>
+          <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, pasa el mouse por la conexión y usa el tachito, o selecciónala y pulsa Supr.</p>
+          <p><strong>Cómo copiar:</strong> selecciona un bloque y usa Ctrl/Cmd+C y Ctrl/Cmd+V, o Ctrl/Cmd+D para duplicarlo directamente.</p>
         </div>
       </aside>
 
@@ -658,7 +728,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </main>
 
       <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : !selected ? <p className="py-16 text-center text-xs text-wa-muted">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-center gap-2">{nodeIcon(selected.type)}<div><p className="text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div></div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : !selected ? <p className="py-16 text-center text-xs text-wa-muted">Selecciona un bloque para editarlo.</p> : <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
@@ -675,7 +745,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
             updateOutputs={outputs => replaceRoundRobinOutputs(selected, outputs)}
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
-          {selected.type === NodeType.End && <label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { label: event.target.value } })} className={fieldClass} /></label>}
+          {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span><strong className="block text-xs">Cerrar conversación al finalizar</strong><span className="mt-0.5 block text-wa-muted">Marca el chat como cerrado cuando la ejecución llega a esta salida.</span></span></label></div>}
           {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} templates={automaticTemplates} mediaAssets={mediaAssets} />}
           <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
@@ -704,6 +774,17 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
                 <button type="button" disabled={restoreVersion.isPending} onClick={() => void restore(item.version)} className="shrink-0 rounded-lg border border-wa-border px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-wa-hover disabled:opacity-40 dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark">Restaurar</button>
               </div>
             ))}
+        </div>
+      </div>
+    </div>}
+    {exitConfirmationOpen && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setExitConfirmationOpen(false) }}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-flow-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
+        <h2 id="unsaved-flow-title" className="text-sm font-semibold text-wa-text dark:text-white">Hay cambios sin guardar</h2>
+        <p className="mt-2 text-xs leading-relaxed text-wa-muted">Guarda el borrador antes de salir para conservar la configuración actual. Guardarlo no modifica la versión publicada.</p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={isBusy} onClick={() => setExitConfirmationOpen(false)} className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-wa-hover disabled:opacity-40 dark:text-gray-300 dark:hover:bg-wa-head-dark">Seguir editando</button>
+          <button type="button" disabled={isBusy} onClick={onClose} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">Salir sin guardar</button>
+          <button type="button" disabled={isBusy} onClick={() => void saveAndClose()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar borrador y salir</button>
         </div>
       </div>
     </div>}
