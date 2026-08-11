@@ -44,7 +44,12 @@ docs/rag.json
 docs/rag-v2.json
 /rag*.json
 /analista*.json
-/Webhooks?evolution*.json
+# Las dos grafías: los patrones de git distinguen mayúsculas, y la UI de n8n
+# nombra el archivo con el nombre del workflow tal cual lo escribió quien lo
+# creó. `webhook msg update.json` ya se había quedado fuera de la lista con el
+# token del CRM en claro adentro.
+/webhook*.json
+/Webhook*.json
 /webhooks-evolution*.json
 /FORM-*.json
 /Health-checks*.json
