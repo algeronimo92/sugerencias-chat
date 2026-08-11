@@ -601,6 +601,13 @@ export interface QuestionButton {
   label: string
 }
 
+/** Salida de un bloque Round robin. El id es posicional (`out_1..out_n`) y es
+ *  el handle con el que el lienzo dibuja su conexión. */
+export interface RoundRobinOutput {
+  id: string
+  label: string
+}
+
 export interface AutomationFlowConditionItem {
   id: string
   condition_type: AutomationFlowConditionType
@@ -632,14 +639,16 @@ export type AutomationFlowNode =
   | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { seconds: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.WaitAny, { conditions: WaitAnyCondition[] }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Question, { text: string; buttons: QuestionButton[]; timeout_seconds: number }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.RoundRobin, { outputs: RoundRobinOutput[] }>
   | BaseAutomationFlowNode<typeof FlowNodeType.End, { label: string }>
 
 export interface AutomationFlowEdge {
   id: string
   source: string
   target: string
-  // Condición, Pausa y Pregunta agregan handles dinámicos (ids de grupos OR,
-  // condiciones de espera y botones) fuera del enum fijo FlowHandle.
+  // Condición, Pausa, Pregunta y Round robin agregan handles dinámicos (ids
+  // de grupos OR, condiciones de espera, botones y salidas del reparto) fuera
+  // del enum fijo FlowHandle.
   source_handle: FlowHandleValue | WaitAnyConditionKindValue | QuestionHandleValue | string
 }
 

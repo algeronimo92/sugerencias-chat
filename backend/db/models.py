@@ -616,6 +616,26 @@ class AutomationFlowVersion(Base):
     )
 
 
+class AutomationRoundRobinState(Base):
+    """Turno actual de cada bloque Round robin, una fila por (regla, bloque).
+
+    El reparto es global del bloque, no por lead: la ejecución número N sale
+    por `outputs[N % cantidad_de_salidas]`, así los leads se distribuyen en
+    partes iguales entre las salidas. Vive fuera de automation_executions
+    porque el contador tiene que sobrevivir a cada ejecución y avanzar de a
+    uno aunque varias corran en paralelo (UPDATE atómico con RETURNING).
+    """
+
+    __tablename__ = "automation_round_robin_state"
+
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("automation_rules.id", ondelete="CASCADE"), primary_key=True,
+    )
+    node_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    counter: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AutomationExecution(Base):
     __tablename__ = "automation_executions"
 

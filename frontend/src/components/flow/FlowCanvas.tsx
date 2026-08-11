@@ -9,11 +9,11 @@ import '@xyflow/react/dist/style.css'
 import {
   Activity, Bell, CheckCircle2, ChevronRight, CirclePlay, FileText,
   Image as ImageIcon, MessageCircleQuestion, MessageSquareText, Paperclip,
-  Eye, EyeOff, SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
+  Eye, EyeOff, Repeat, SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, WaitAnyCondition,
+  AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, RoundRobinOutput, WaitAnyCondition,
 } from '../../types'
 import {
   AUTOMATION_ACTION_LABELS, AUTOMATION_TRIGGERS, AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
@@ -27,7 +27,7 @@ import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
 type CanvasNodeDataValue =
   | string | number | boolean | null | undefined
-  | AutomationAction | AutomationFlowConditionGroup[] | WaitAnyCondition[] | QuestionButton[]
+  | AutomationAction | AutomationFlowConditionGroup[] | WaitAnyCondition[] | QuestionButton[] | RoundRobinOutput[]
   | MessageTemplate | MediaAsset
   | ((id: string) => void)
 
@@ -44,6 +44,7 @@ interface CanvasNodeData {
   conditions?: WaitAnyCondition[]
   text?: string
   buttons?: QuestionButton[]
+  outputs?: RoundRobinOutput[]
   timeout_seconds?: number
   label?: string
   onDelete?: (id: string) => void
@@ -99,11 +100,16 @@ function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
     const buttons = data.buttons ?? []
     return buttons.length ? buttons.map(button => button.label).join(' / ') : 'Sin botones'
   }
+  if (type === FlowNodeType.RoundRobin) {
+    const outputs = data.outputs ?? []
+    return outputs.length ? `Reparto entre ${outputs.length} salidas` : 'Sin salidas'
+  }
   return String(data.label || 'Fin')
 }
 
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
   if (type === FlowNodeType.Question) return 'Mensaje interactivo'
+  if (type === FlowNodeType.RoundRobin) return 'Reparto por turnos'
   if (type === FlowNodeType.InvokeFlow) return 'Flujo hijo'
   if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
@@ -126,6 +132,7 @@ const TONES: Record<AutomationFlowNodeType, string> = {
   [FlowNodeType.Wait]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
   [FlowNodeType.WaitAny]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
   [FlowNodeType.Question]: 'border-pink-400 bg-pink-50 dark:border-sky-800 dark:bg-[#102737]',
+  [FlowNodeType.RoundRobin]: 'border-teal-400 bg-teal-50 dark:border-teal-800 dark:bg-[#102737]',
   [FlowNodeType.End]: 'border-gray-400 bg-wa-hover dark:border-slate-600 dark:bg-[#102737]',
 }
 
@@ -137,6 +144,7 @@ const ICONS: Record<AutomationFlowNodeType, typeof Zap> = {
   [FlowNodeType.Wait]: Timer,
   [FlowNodeType.WaitAny]: Timer,
   [FlowNodeType.Question]: MessageCircleQuestion,
+  [FlowNodeType.RoundRobin]: Repeat,
   [FlowNodeType.End]: CheckCircle2,
 }
 
@@ -441,6 +449,30 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
   )
 })
 
+/** Una fila por salida, en el mismo orden en que el motor las va repartiendo:
+ *  la ejecución 1 sale por la primera, la 2 por la segunda, y al llegar a la
+ *  última vuelve a empezar. */
+const RoundRobinNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
+  const outputs = data.outputs ?? []
+  return (
+    <NodeShell id={id} type={FlowNodeType.RoundRobin} data={data} selected={selected}>
+      <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
+      <div className="mt-2 space-y-1">
+        {outputs.map((output, index) => (
+          <div key={output.id} className="relative flex items-center gap-1.5 rounded-md border border-teal-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-teal-900 dark:bg-[#173b59] dark:text-gray-200">
+            <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-teal-100 text-[8px] font-bold text-teal-700 dark:bg-teal-900 dark:text-teal-200">{index + 1}</span>
+            <span className="truncate">{output.label || `Salida ${index + 1}`}</span>
+            <Handle
+              type="source" position={Position.Right} id={output.id}
+              style={{ ...HANDLE_STYLE, background: '#0d9488', right: -18, top: '50%' }}
+            />
+          </div>
+        ))}
+      </div>
+    </NodeShell>
+  )
+})
+
 // Fuera del componente: React Flow re-monta todos los nodos si esta referencia
 // cambia entre renders.
 const NODE_TYPES: NodeTypes = {
@@ -451,6 +483,7 @@ const NODE_TYPES: NodeTypes = {
   [FlowNodeType.Wait]: LegacyPauseNode,
   [FlowNodeType.WaitAny]: PauseNode,
   [FlowNodeType.Question]: QuestionNode,
+  [FlowNodeType.RoundRobin]: RoundRobinNode,
   [FlowNodeType.End]: EndNode,
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity, ArrowRight, Beaker, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
-  ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Save, Split, Timer, Undo2, UserRound, X, Zap,
+  ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { CreateTemplateDialog } from './CreateTemplateDialog'
@@ -13,7 +13,7 @@ import type {
   AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType,
   AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
   AutomationFlowNodeType, AutomationRule, Chat, MediaAsset, MessageTemplate, QuestionButton,
-  Tag, WaitAnyCondition,
+  RoundRobinOutput, Tag, WaitAnyCondition,
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
@@ -40,6 +40,7 @@ import {
   FlowConditionType as ConditionType,
   FlowHandle,
   FlowNodeType as NodeType,
+  MAX_ROUND_ROBIN_OUTPUTS,
   RESPONSE_OVERDUE_TRIGGERS,
   TASK_PRIORITY_OPTIONS,
   TASK_TYPE_OPTIONS as TASK_TYPES,
@@ -209,6 +210,8 @@ function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: 
       return { id, type: NodeType.WaitAny, position, data: { conditions: [{ id: WaitAnyConditionKind.Timer, kind: WaitAnyConditionKind.Timer, seconds: 1800 }] } }
     case NodeType.Question:
       return { id, type, position, data: { text: '', buttons: [{ id: 'btn_1', label: '' }], timeout_seconds: 1800 } }
+    case NodeType.RoundRobin:
+      return { id, type, position, data: { outputs: withPositionalOutputIds(['Salida 1', 'Salida 2']) } }
     case NodeType.End:
       return { id, type, position, data: { label: 'Fin' } }
     default:
@@ -223,6 +226,7 @@ function nodeIcon(type: AutomationFlowNodeType) {
   if (type === NodeType.InvokeFlow) return <CirclePlay className="h-4 w-4 text-indigo-600" />
   if (type === NodeType.Wait || type === NodeType.WaitAny) return <Timer className="h-4 w-4 text-cyan-600" />
   if (type === NodeType.Question) return <MessageCircleQuestion className="h-4 w-4 text-pink-600" />
+  if (type === NodeType.RoundRobin) return <Repeat className="h-4 w-4 text-teal-600" />
   return <CheckCircle2 className="h-4 w-4 text-wa-muted" />
 }
 
@@ -242,10 +246,15 @@ function nodeTitle(node: AutomationFlowNode, rules: AutomationRule[] = []) {
   if (node.type === NodeType.Wait) return `Pausa · ${formatWaitDuration(node.data.seconds)}`
   if (node.type === NodeType.WaitAny) return FLOW_NODE_LABELS[NodeType.WaitAny]
   if (node.type === NodeType.Question) return node.data.buttons.map(button => button.label).join(' / ') || FLOW_NODE_LABELS[NodeType.Question]
+  if (node.type === NodeType.RoundRobin) return `${FLOW_NODE_LABELS[NodeType.RoundRobin]} · ${node.data.outputs.length} salidas`
   return node.data.label || 'Fin'
 }
 
 function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
+  if (node.type === NodeType.RoundRobin) {
+    const output = node.data.outputs.find(item => item.id === handle)
+    return output ? output.label || handle : handle
+  }
   if (node.type !== NodeType.Condition) return handle
   if (handle === FlowHandle.No) return 'Ninguna'
   const index = conditionGroups(node.data, node.id).findIndex(group => group.id === handle)
@@ -390,6 +399,18 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { ...node.data, buttons } } : item),
+      edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
+    }), `node:${node.id}`)
+  }
+
+  /** Mismo saneo que replaceQuestionButtons: al quitar una salida del reparto
+   *  los ids posteriores corren un lugar, así que se descartan las conexiones
+   *  cuyo handle ya no existe. */
+  function replaceRoundRobinOutputs(node: Extract<AutomationFlowNode, { type: typeof NodeType.RoundRobin }>, outputs: RoundRobinOutput[]) {
+    const validHandles = new Set<string>(outputs.map(output => output.id))
+    setFlow(current => ({
+      ...current,
+      nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { outputs } } : item),
       edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
     }), `node:${node.id}`)
   }
@@ -609,6 +630,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           [NodeType.InvokeFlow, FLOW_NODE_LABELS[NodeType.InvokeFlow], CirclePlay, 'Inicia otro flujo para este lead'],
           [NodeType.WaitAny, FLOW_NODE_LABELS[NodeType.WaitAny], Timer, 'Continúa cuando ocurra la primera condición'],
           [NodeType.Question, FLOW_NODE_LABELS[NodeType.Question], MessageCircleQuestion, 'Botones con una rama por respuesta'],
+          [NodeType.RoundRobin, FLOW_NODE_LABELS[NodeType.RoundRobin], Repeat, 'Reparte los leads por turnos entre N salidas'],
           [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-wa-primary-strong" />{label}</div><p className="mt-1 text-[10px] text-wa-muted">{description}</p></div>)}
         <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
@@ -647,6 +669,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
             updateText={text => replaceNode({ ...selected, data: { ...selected.data, text } })}
             updateTimeout={timeout_seconds => replaceNode({ ...selected, data: { ...selected.data, timeout_seconds } })}
             updateButtons={buttons => replaceQuestionButtons(selected, buttons)}
+          />}
+          {selected.type === NodeType.RoundRobin && <RoundRobinEditor
+            outputs={selected.data.outputs}
+            updateOutputs={outputs => replaceRoundRobinOutputs(selected, outputs)}
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { label: event.target.value } })} className={fieldClass} /></label>}
@@ -868,6 +894,46 @@ function QuestionEditor({ text, buttons, timeoutSeconds, updateText, updateTimeo
       <WaitDurationEditor seconds={timeoutSeconds} onChange={updateTimeout} />
     </div>
     <p className="text-[10px] text-amber-600">Si la integración no admite botones nativos, se envía como texto numerado. Conecta cada botón, "Otra respuesta" y "Sin respuesta" a su propia salida.</p>
+  </div>
+}
+
+/** Igual que los botones de Pregunta, el backend reasigna los ids por
+ *  posición al publicar (`out_1`, `out_2`, ...): se deriva acá para que el
+ *  handle dibujado sea el que va a quedar publicado. */
+function withPositionalOutputIds(labels: string[]): RoundRobinOutput[] {
+  return labels.map((label, index) => ({ id: `out_${index + 1}`, label }))
+}
+
+function RoundRobinEditor({ outputs, updateOutputs }: {
+  outputs: RoundRobinOutput[]
+  updateOutputs: (outputs: RoundRobinOutput[]) => void
+}) {
+  const labels = outputs.map(output => output.label)
+  return <div className="space-y-3">
+    <p className="rounded-lg bg-teal-50 p-2 text-[10px] leading-relaxed text-teal-700 dark:bg-teal-950/30 dark:text-teal-300">
+      Cada lead que llega acá sale por la siguiente salida de la lista, y al terminar vuelve a la primera. El turno es del bloque: se comparte entre todos los leads y se conserva aunque republiques el flujo.
+    </p>
+    <div className="space-y-1.5">
+      {outputs.map((output, index) => <div key={output.id} className="flex items-center gap-1.5">
+        <span className="w-4 shrink-0 text-center text-[10px] font-bold text-teal-700 dark:text-teal-300">{index + 1}</span>
+        <input
+          value={output.label} maxLength={40}
+          onChange={event => updateOutputs(withPositionalOutputIds(labels.map((label, labelIndex) => labelIndex === index ? event.target.value : label)))}
+          placeholder={`Salida ${index + 1}`} className={fieldClass}
+        />
+        <button
+          type="button" disabled={outputs.length <= 2} title={outputs.length <= 2 ? 'El reparto necesita al menos dos salidas' : 'Quitar salida'}
+          onClick={() => updateOutputs(withPositionalOutputIds(labels.filter((_, labelIndex) => labelIndex !== index)))}
+          className="shrink-0 rounded-lg p-2 text-red-500 disabled:opacity-30"
+        ><X className="h-3.5 w-3.5" /></button>
+      </div>)}
+      <button
+        type="button" disabled={outputs.length >= MAX_ROUND_ROBIN_OUTPUTS}
+        onClick={() => updateOutputs(withPositionalOutputIds([...labels, `Salida ${labels.length + 1}`]))}
+        className="flex items-center gap-1 text-[11px] font-semibold text-wa-primary-strong disabled:opacity-40"
+      ><Plus className="h-3 w-3" />Agregar salida</button>
+    </div>
+    <p className="text-[10px] leading-relaxed text-wa-muted">Conecta todas las salidas: cualquiera puede tocarle a la próxima ejecución. El nombre es solo para ubicarte en el lienzo.</p>
   </div>
 }
 

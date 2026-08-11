@@ -198,6 +198,13 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             handles = [edge["source_handle"] for edge in node_edges]
             if len(handles) != len(expected) or set(handles) != expected:
                 raise ValueError("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida")
+        elif node["type"] == FlowNodeType.ROUND_ROBIN:
+            expected = {output["id"] for output in node["data"].get("outputs", [])}
+            handles = [edge["source_handle"] for edge in node_edges]
+            # Todas obligatorias: el reparto por turnos le toca a cada salida
+            # tarde o temprano, y una sin conectar dejaría al lead sin camino.
+            if len(handles) != len(expected) or set(handles) != expected:
+                raise ValueError("Cada salida del round robin debe estar conectada")
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
             raise ValueError("Cada disparador, acción, invocación o espera debe tener exactamente una salida")
         if node["id"] != trigger_id and not incoming[node["id"]]:

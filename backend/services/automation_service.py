@@ -31,6 +31,7 @@ from domain_types import (
 from db.models import (
     AutomationExecution,
     AutomationFlowVersion,
+    AutomationRoundRobinState,
     AutomationRule,
     Lead,
     LeadActivity,
@@ -803,6 +804,70 @@ def _normalize_question(data: dict, position: int) -> dict:
     return {"text": text, "buttons": buttons, "timeout_seconds": timeout_seconds}
 
 
+MAX_ROUND_ROBIN_OUTPUTS = 10
+
+
+def _normalize_round_robin(data: dict, position: int) -> dict:
+    """Bloque Round robin (`round_robin`): reparte las ejecuciones entre sus
+    salidas por turnos. Cada salida es un handle del nodo, con id posicional
+    `out_1..out_n` — mismo esquema que los botones de Pregunta, así el handle
+    que dibuja el editor es el que queda publicado.
+    """
+    raw_outputs = data.get("outputs")
+    labels = [
+        str(raw.get("label") if isinstance(raw, dict) else raw or "").strip()[:40]
+        for raw in (raw_outputs if isinstance(raw_outputs, list) else [])
+    ]
+    if not 2 <= len(labels) <= MAX_ROUND_ROBIN_OUTPUTS:
+        raise ValueError(
+            f"Round robin {position}: configura entre 2 y {MAX_ROUND_ROBIN_OUTPUTS} salidas"
+        )
+    return {
+        "outputs": [
+            {"id": f"out_{index}", "label": label or f"Salida {index}"}
+            for index, label in enumerate(labels, start=1)
+        ],
+    }
+
+
+async def _next_round_robin_output(
+    rule_id: int, node_id: str, outputs: list[dict], deps: AutomationDeps = DEFAULT_DEPS,
+) -> dict:
+    """Avanza el turno del bloque y devuelve la salida que le toca.
+
+    El incremento y la lectura van en la misma sentencia para que dos
+    ejecuciones simultáneas no se lleven el mismo turno. El módulo se aplica
+    al leer y no al guardar: así cambiar la cantidad de salidas al republicar
+    no obliga a reiniciar el contador.
+    """
+    now = deps.now()
+    async with deps.session() as session:
+        counter = await session.scalar(pg_insert(AutomationRoundRobinState).values(
+            rule_id=rule_id, node_id=node_id, counter=1, updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[
+                AutomationRoundRobinState.rule_id, AutomationRoundRobinState.node_id,
+            ],
+            set_={
+                "counter": AutomationRoundRobinState.counter + 1,
+                "updated_at": now,
+            },
+        ).returning(AutomationRoundRobinState.counter))
+        await session.commit()
+    return outputs[(int(counter or 1) - 1) % len(outputs)]
+
+
+async def _peek_round_robin_output(rule_id: int, node_id: str, outputs: list[dict]) -> dict:
+    """La salida que tomaría la próxima ejecución, sin gastar el turno — para
+    la simulación, que no debe alterar el reparto real."""
+    async with get_sessionmaker()() as session:
+        counter = await session.scalar(select(AutomationRoundRobinState.counter).where(
+            AutomationRoundRobinState.rule_id == rule_id,
+            AutomationRoundRobinState.node_id == node_id,
+        ))
+    return outputs[int(counter or 0) % len(outputs)]
+
+
 def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
     condition_type = str(data.get("condition_type") or "")
     if condition_type not in FLOW_CONDITION_TYPES:
@@ -950,11 +1015,12 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
             "data": raw_node.get("data") if isinstance(raw_node.get("data"), dict) else {},
         })
     # Los bloques Pausa (wait_any) usan como handle el "kind" de cada
-    # condición ("timer"/"message"/...) y Pregunta (question) usa
-    # "btn_1".."btn_n" + "other" + "timeout" — ninguno está en el enum fijo
-    # FlowHandle. Se admiten acá para que el borrador se pueda guardar
-    # mientras se arma (autosave), sin bloquear por una conexión que la
-    # validación estricta de validate_graph_topology recién exige al publicar.
+    # condición ("timer"/"message"/...), Pregunta (question) usa
+    # "btn_1".."btn_n" + "other" + "timeout" y Round robin "out_1".."out_n" —
+    # ninguno está en el enum fijo FlowHandle. Se admiten acá para que el
+    # borrador se pueda guardar mientras se arma (autosave), sin bloquear por
+    # una conexión que la validación estricta de validate_graph_topology
+    # recién exige al publicar.
     dynamic_handles = {
         condition["kind"]
         for node in nodes if node["type"] == FlowNodeType.WAIT_ANY
@@ -972,6 +1038,12 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
         for node in nodes if node["type"] == FlowNodeType.QUESTION
         for button in (node["data"].get("buttons") or [])
         if isinstance(button, dict) and isinstance(button.get("id"), str)
+    }
+    dynamic_handles |= {
+        output["id"]
+        for node in nodes if node["type"] == FlowNodeType.ROUND_ROBIN
+        for output in (node["data"].get("outputs") or [])
+        if isinstance(output, dict) and isinstance(output.get("id"), str)
     }
     if any(node["type"] == FlowNodeType.QUESTION for node in nodes):
         dynamic_handles |= {QuestionHandle.OTHER, QuestionHandle.TIMEOUT}
@@ -1134,6 +1206,8 @@ async def validate_visual_flow(
             normalized_data = _normalize_wait_any_conditions(data, position)
         elif node_type == FlowNodeType.QUESTION:
             normalized_data = _normalize_question(data, position)
+        elif node_type == FlowNodeType.ROUND_ROBIN:
+            normalized_data = _normalize_round_robin(data, position)
         else:
             end_count += 1
             normalized_data = {"label": str(data.get("label") or "Fin").strip()[:80] or "Fin"}
@@ -1944,6 +2018,20 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
                 "buttons": node["data"].get("buttons", []),
             })
             current_id = edges[(current_id, QuestionHandle.TIMEOUT)]
+        elif node["type"] == FlowNodeType.ROUND_ROBIN:
+            # Se muestra por dónde saldría la próxima ejecución real, pero sin
+            # gastar el turno: simular no debe correr el reparto.
+            output = await _peek_round_robin_output(
+                rule_id, current_id, node["data"]["outputs"],
+            )
+            path.append({
+                "node_id": current_id,
+                "type": FlowNodeType.ROUND_ROBIN,
+                "status": "evaluated",
+                "branch": output["id"],
+                "detail": f"Le tocaría el turno a: {output['label']}",
+            })
+            current_id = edges[(current_id, output["id"])]
         else:
             path.append({
                 "node_id": current_id,
@@ -2813,6 +2901,31 @@ async def _run_visual_execution(
                     "branch": branch,
                 })
                 current_id = edges[(current_id, branch)]
+                saved = await _persist_visual_execution(
+                    execution.id,
+                    AutomationExecutionStatus.RUNNING,
+                    results,
+                    current_id,
+                    path,
+                    flow_version,
+                deps=deps,
+                )
+                if not saved:
+                    return  # cancelada externamente: no proceses más nodos
+                continue
+            if node["type"] == FlowNodeType.ROUND_ROBIN:
+                outputs = node["data"]["outputs"]
+                output = await _next_round_robin_output(
+                    rule.id, node["id"], outputs, deps,
+                )
+                results.append({
+                    "position": len(results) + 1, "node_id": node["id"],
+                    "type": FlowNodeType.ROUND_ROBIN,
+                    "status": AutomationExecutionStatus.COMPLETED,
+                    "branch": output["id"],
+                    "detail": f"Turno: {output['label']}",
+                })
+                current_id = edges[(current_id, output["id"])]
                 saved = await _persist_visual_execution(
                     execution.id,
                     AutomationExecutionStatus.RUNNING,

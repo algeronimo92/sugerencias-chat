@@ -77,6 +77,7 @@ export const FlowNodeType = {
   Wait: 'wait',
   WaitAny: 'wait_any',
   Question: 'question',
+  RoundRobin: 'round_robin',
   End: 'end',
 } as const
 export type FlowNodeTypeValue = ValueOf<typeof FlowNodeType>
@@ -91,8 +92,13 @@ export const FLOW_NODE_LABELS = {
   [FlowNodeType.Wait]: 'Pausa',
   [FlowNodeType.WaitAny]: 'Pausa',
   [FlowNodeType.Question]: 'Pregunta (botones)',
+  [FlowNodeType.RoundRobin]: 'Round robin',
   [FlowNodeType.End]: 'Fin',
 } satisfies Record<FlowNodeTypeValue, string>
+
+/** Tope de salidas de un bloque Round robin (mismo valor que valida el
+ *  backend en MAX_ROUND_ROBIN_OUTPUTS). */
+export const MAX_ROUND_ROBIN_OUTPUTS = 10
 
 export const WaitAnyConditionKind = {
   Timer: 'timer',

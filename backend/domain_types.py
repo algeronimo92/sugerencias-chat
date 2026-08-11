@@ -37,6 +37,7 @@ class FlowNodeType(StrEnum):
     WAIT = "wait"
     WAIT_ANY = "wait_any"
     QUESTION = "question"
+    ROUND_ROBIN = "round_robin"
     END = "end"
 
 
