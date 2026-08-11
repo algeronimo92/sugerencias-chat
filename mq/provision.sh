@@ -61,9 +61,16 @@ done
 # Se comprueba el efecto y no el formato de ningún comando: `disk_free_limit` es
 # el ajuste que más se aleja del default (2 GB contra 50 MB), así que sirve de
 # huella de que el archivo se leyó. En rabbitmq.conf hay una nota recíproca.
+#
+# Se aceptan las dos formas porque RabbitMQ guarda el valor TAL CUAL viene del
+# archivo y sólo lo resuelve a bytes cuando lo va a usar: con `2GB` escrito en
+# rabbitmq.conf, esto devuelve `{ok,"2GB"}` y no `{ok,2000000000}`. Comparar
+# sólo contra el número daba un falso positivo de "configuración perdida" sobre
+# un broker perfectamente configurado. El default, que es lo que hay que
+# detectar, es `{ok,50000000}`: no coincide con ninguna de las dos.
 limite=$(rabbitmqctl eval 'application:get_env(rabbit, disk_free_limit).' 2>&1)
 case "$limite" in
-  *2000000000*) ;;
+  *2GB*|*2000000000*) ;;
   *)
     echo "ERROR: rabbitmq.conf no se cargó (disk_free_limit = $limite)." >&2
     echo "Revisar RABBITMQ_CONFIG_FILE en compose.mq.yml y el montaje de ./mq." >&2
