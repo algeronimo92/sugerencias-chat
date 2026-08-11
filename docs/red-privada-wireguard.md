@@ -20,8 +20,8 @@ desde Internet incluso si alguien abre el puerto por error.
 
 | Máquina | IP en el túnel |
 |---|---|
-| App + PostgreSQL | `10.10.0.1` |
-| n8n | `10.10.0.2` |
+| App + PostgreSQL | `10.8.0.1` |
+| n8n | `10.8.0.2` |
 
 Las IP públicas no se escriben aquí: el repositorio es público y no conviene
 dejar la topología del servidor en él. Sustituir `<IP-PUBLICA-APP>` y
@@ -45,13 +45,13 @@ La clave privada nunca sale de su máquina.
 
 ```ini
 [Interface]
-Address = 10.10.0.1/24
+Address = 10.8.0.1/24
 ListenPort = 51820
 PrivateKey = <privada.key de ESTA máquina>
 
 [Peer]
 PublicKey = <publica.key de la VPS de n8n>
-AllowedIPs = 10.10.0.2/32
+AllowedIPs = 10.8.0.2/32
 PersistentKeepalive = 25
 ```
 
@@ -59,13 +59,13 @@ PersistentKeepalive = 25
 
 ```ini
 [Interface]
-Address = 10.10.0.2/24
+Address = 10.8.0.2/24
 PrivateKey = <privada.key de ESTA máquina>
 
 [Peer]
 PublicKey = <publica.key de la VPS de la app>
 Endpoint = <IP-PUBLICA-APP>:51820
-AllowedIPs = 10.10.0.1/32
+AllowedIPs = 10.8.0.1/32
 PersistentKeepalive = 25
 ```
 
@@ -95,7 +95,7 @@ No hace falta abrir el 5432 en ningún firewall: va por dentro del túnel.
 
 ```bash
 # desde la VPS de n8n
-ping -c 3 10.10.0.1
+ping -c 3 10.8.0.1
 ```
 
 ## 5. Apuntar PostgreSQL al túnel
@@ -103,35 +103,35 @@ ping -c 3 10.10.0.1
 En `db/.env` de la VPS de la app:
 
 ```
-POSTGRES_BIND_IP=10.10.0.1
+POSTGRES_BIND_IP=10.8.0.1
 ```
 
 ```bash
 docker compose -f compose.db.yml --env-file db/.env up -d
-docker ps --filter name=postgres --format '{{.Ports}}'   # 10.10.0.1:5432->5432/tcp
+docker ps --filter name=postgres --format '{{.Ports}}'   # 10.8.0.1:5432->5432/tcp
 ```
 
-Que muestre `10.10.0.1` y no `0.0.0.0` es la comprobación que importa: significa
+Que muestre `10.8.0.1` y no `0.0.0.0` es la comprobación que importa: significa
 que la base sólo atiende por el túnel.
 
 Desde la VPS de n8n:
 
 ```bash
-nc -zv 10.10.0.1 5432
+nc -zv 10.8.0.1 5432
 ```
 
 ## 6. El nodo de PostgreSQL en n8n
 
 | Campo | Valor |
 |---|---|
-| Host | `10.10.0.1` |
+| Host | `10.8.0.1` |
 | Port | `5432` |
 | Database | `dermicapro_db` |
 | User | `dermicapro` |
 | Password | la de `db/.env` |
 | SSL | `disable` — el túnel ya cifra |
 
-n8n corre en Docker Swarm; sus contenedores alcanzan `10.10.0.1` por el
+n8n corre en Docker Swarm; sus contenedores alcanzan `10.8.0.1` por el
 enrutado del host, sin configuración extra.
 
 ## Alternativa si no se quiere WireGuard
