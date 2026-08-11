@@ -235,7 +235,7 @@ En n8n, *Credentials → New → RabbitMQ*:
 
 | Campo | Valor |
 |---|---|
-| Hostname | `10.10.0.1` (la IP del túnel, no el dominio) |
+| Hostname | `10.8.0.1` (la IP del túnel, no el dominio) |
 | Port | `5672` |
 | User | `n8n` |
 | Password | el valor de `RABBITMQ_N8N_PASSWORD` |
@@ -283,10 +283,10 @@ Comprobar que el puerto quedó donde debe — esto es lo que importa, no que el
 contenedor esté arriba:
 
 ```bash
-docker ps --filter name=rabbitmq --format '{{.Ports}}'   # 10.10.0.1:5672 y 127.0.0.1:15672
+docker ps --filter name=rabbitmq --format '{{.Ports}}'   # 10.8.0.1:5672 y 127.0.0.1:15672
 ```
 
-Que muestre `10.10.0.1` y no `0.0.0.0` es la comprobación que importa.
+Que muestre `10.8.0.1` y no `0.0.0.0` es la comprobación que importa.
 
 Consola por túnel SSH, nunca por Traefik:
 
@@ -301,7 +301,7 @@ desplegada, ver la lista de pendientes):
 
 ```
 RABBITMQ_ENABLED=true
-RABBITMQ_URI=amqp://evolution:<clave>@10.10.0.1:5672/dermicapro
+RABBITMQ_URI=amqp://evolution:<clave>@10.8.0.1:5672/dermicapro
 RABBITMQ_EXCHANGE_NAME=evolution_exchange
 RABBITMQ_GLOBAL_ENABLED=true
 RABBITMQ_EVENTS_MESSAGES_UPSERT=true
@@ -315,7 +315,7 @@ Gemini, que se paga.
 
 ### 3. n8n
 
-Credencial RabbitMQ: host `10.10.0.1`, puerto `5672`, usuario `n8n`, vhost
+Credencial RabbitMQ: host `10.8.0.1`, puerto `5672`, usuario `n8n`, vhost
 `dermicapro`.
 
 Importar en este orden, porque cada uno necesita el id del anterior:

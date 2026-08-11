@@ -72,7 +72,7 @@ services:
 
     ports:
       # AMQP sólo por la IP del túnel WireGuard. Debe ser la IP privada de este
-      # host (10.10.0.1), NO 0.0.0.0: atado a todas las interfaces el puerto
+      # host (10.8.0.1), NO 0.0.0.0: atado a todas las interfaces el puerto
       # queda expuesto a Internet, que es exactamente como acabó la base
       # anterior. Es obligatoria y sin default a propósito — el default cómodo
       # es justamente el que se cuela a producción sin que nadie lo mire.
@@ -82,7 +82,7 @@ services:
       # backend lo alcanza por la red `data`), así que esa línea sólo agregaría
       # superficie. Por lo mismo, acá RABBITMQ_BIND_IP sí podría valer
       # 127.0.0.1 si algún día n8n se mudara a esta máquina.
-      - "${RABBITMQ_BIND_IP:?definir RABBITMQ_BIND_IP en mq/.env con la IP del tunel de este host (10.10.0.1), NO 0.0.0.0}:5672:5672"
+      - "${RABBITMQ_BIND_IP:?definir RABBITMQ_BIND_IP en mq/.env con la IP del tunel de este host (10.8.0.1), NO 0.0.0.0}:5672:5672"
       # Consola de administración: SOLO loopback. Se llega por túnel SSH
       #   ssh -L 15672:127.0.0.1:15672 usuario@servidor
       # y nunca por Traefik: es una consola con permiso para purgar colas.

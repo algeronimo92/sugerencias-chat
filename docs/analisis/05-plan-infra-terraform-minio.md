@@ -44,7 +44,7 @@ Lo único que el repo sabe de él es que se alcanza por un endpoint externo:
   defecto: se asume HTTPS con certificado válido.
 
 MinIO tampoco figura en la red privada: `docs/red-privada-wireguard.md` define
-un túnel WireGuard `10.10.0.1` (app + PostgreSQL) ↔ `10.10.0.2` (n8n) y sólo
+un túnel WireGuard `10.8.0.1` (app + PostgreSQL) ↔ `10.8.0.2` (n8n) y sólo
 para PostgreSQL. **El repositorio no documenta cómo ni dónde se instaló el
 servidor MinIO.** Ese dato hay que obtenerlo del operador antes de escribir el
 primer `terraform apply`.
