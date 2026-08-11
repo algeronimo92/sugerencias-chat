@@ -1,0 +1,116 @@
+# RabbitMQ: cola de ingesta de los eventos de WhatsApp que manda Evolution API.
+#
+# Va en su propio archivo y en su propio proyecto de compose, por el mismo
+# razonamiento que compose.db.yml:
+#
+# 1. El despliegue blue-green levanta la aplicación como dos proyectos
+#    distintos. Si el broker viviera en compose.prod.yml, cada color tendría
+#    *su propio* RabbitMQ vacío y los mensajes encolados por uno serían
+#    invisibles para el otro.
+# 2. Una cola con eventos sin procesar no puede desaparecer en un `down` de la
+#    aplicación. Ese es el único motivo por el que existe este servicio: si se
+#    lo puede borrar por accidente, no sirve para lo que se puso.
+#
+# Se levanta una sola vez por servidor, DESPUÉS de compose.db.yml (usa su red):
+#
+#   docker compose -f compose.mq.yml --env-file mq/.env up -d
+#   docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq /provision.sh
+#
+# Quién habla con él:
+#   - Evolution API (otra VPS)  -> publica en evolution_exchange
+#   - n8n (otra VPS)            -> consume q.wsp.inbound
+# Los dos entran por el túnel WireGuard (docs/red-privada-wireguard.md).
+
+name: dermicapro-mq
+
+services:
+  rabbitmq:
+    # Fijada por major.minor y no por `latest`: RabbitMQ exige tener activados
+    # los feature flags de la versión anterior ANTES de saltar de major, y con
+    # una etiqueta móvil ese salto ocurre solo, en el peor momento, dejando un
+    # nodo que no arranca sobre su propio directorio de datos.
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+
+    # LO MÁS IMPORTANTE DE ESTE ARCHIVO.
+    #
+    # RabbitMQ guarda su base en /var/lib/rabbitmq/mnesia/rabbit@<hostname>.
+    # Docker asigna un hostname aleatorio a cada contenedor, así que sin esta
+    # línea un `docker compose up` posterior arranca un nodo NUEVO, con la
+    # carpeta vieja intacta al lado y las colas durables "desaparecidas".
+    # El volumen no protege de esto: los datos siguen ahí, el nodo ya no los
+    # mira. Este hostname no se cambia nunca.
+    hostname: rabbitmq
+
+    environment:
+      # Al definirlos, RabbitMQ NO crea el usuario `guest` (guest/guest, que en
+      # su configuración por defecto sólo entra por loopback, pero acá el
+      # loopback del contenedor es alcanzable desde la red `data`).
+      # Sólo se aplican en el primer arranque, con el volumen vacío.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER:?falta RABBITMQ_ADMIN_USER en mq/.env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_PASSWORD:?falta RABBITMQ_ADMIN_PASSWORD en mq/.env}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-dermicapro}
+      RABBITMQ_ADMIN_USER: ${RABBITMQ_ADMIN_USER:?falta RABBITMQ_ADMIN_USER en mq/.env}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-dermicapro}
+      # Las lee /provision.sh; el broker no las usa para nada. Están acá y no
+      # como argumentos del script para que la contraseña no quede en el
+      # historial de la shell del servidor.
+      RABBITMQ_EVOLUTION_PASSWORD: ${RABBITMQ_EVOLUTION_PASSWORD:?falta RABBITMQ_EVOLUTION_PASSWORD en mq/.env}
+      RABBITMQ_N8N_PASSWORD: ${RABBITMQ_N8N_PASSWORD:?falta RABBITMQ_N8N_PASSWORD en mq/.env}
+
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+      # Topología (exchanges, colas, bindings) declarada en un archivo y
+      # cargada al arrancar, en vez de creada a mano por la consola: así el
+      # servidor se puede reconstruir desde el repo y no desde la memoria.
+      - ./mq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./mq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      # Usuarios y permisos: van en un script y no en definitions.json porque
+      # ese archivo pide el hash de la contraseña, y un hash de contraseña en
+      # el repo sigue siendo material sensible.
+      - ./mq/provision.sh:/provision.sh:ro
+
+    ports:
+      # AMQP sólo por la IP del túnel WireGuard. Debe ser la IP privada de este
+      # host (10.10.0.1), NO 0.0.0.0: atado a todas las interfaces el puerto
+      # queda expuesto a Internet, que es exactamente como acabó la base
+      # anterior. Es obligatoria y sin default a propósito — el default cómodo
+      # es justamente el que se cuela a producción sin que nadie lo mire.
+      #
+      # A diferencia de compose.db.yml acá NO hay una segunda publicación en
+      # 127.0.0.1: nada en este host habla con el broker por loopback (el
+      # backend lo alcanza por la red `data`), así que esa línea sólo agregaría
+      # superficie. Por lo mismo, acá RABBITMQ_BIND_IP sí podría valer
+      # 127.0.0.1 si algún día n8n se mudara a esta máquina.
+      - "${RABBITMQ_BIND_IP:?definir RABBITMQ_BIND_IP en mq/.env con la IP del tunel de este host (10.10.0.1), NO 0.0.0.0}:5672:5672"
+      # Consola de administración: SOLO loopback. Se llega por túnel SSH
+      #   ssh -L 15672:127.0.0.1:15672 usuario@servidor
+      # y nunca por Traefik: es una consola con permiso para purgar colas.
+      - "127.0.0.1:15672:15672"
+
+    healthcheck:
+      # `check_running` responde antes de que el nodo acepte conexiones de
+      # cliente; `check_port_connectivity` es el que confirma que el 5672 sirve.
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    networks:
+      data:
+        aliases:
+          - rabbitmq
+
+volumes:
+  rabbitmq:
+    # Nombre explícito, igual que pgdata. ACÁ VIVEN LAS COLAS: un
+    # `docker compose down -v` borra los mensajes sin procesar.
+    name: dermicapro-rabbitmq
+
+networks:
+  # La crea compose.db.yml. `external` obliga a que la base esté levantada
+  # antes que el broker, en vez de crear una red vacía donde no hay nadie.
+  data:
+    name: dermicapro-data
+    external: true

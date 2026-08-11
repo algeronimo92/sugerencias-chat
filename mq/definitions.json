@@ -1,0 +1,147 @@
+{
+  "users": [],
+  "vhosts": [
+    { "name": "dermicapro" }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [],
+  "exchanges": [
+    {
+      "name": "evolution_exchange",
+      "vhost": "dermicapro",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "wsp.retry",
+      "vhost": "dermicapro",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "wsp.retry.slow",
+      "vhost": "dermicapro",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "wsp.return",
+      "vhost": "dermicapro",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "wsp.dead",
+      "vhost": "dermicapro",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "q.wsp.inbound",
+      "vhost": "dermicapro",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.wsp.retry.30s",
+      "vhost": "dermicapro",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "wsp.return"
+      }
+    },
+    {
+      "name": "q.wsp.retry.15m",
+      "vhost": "dermicapro",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 900000,
+        "x-dead-letter-exchange": "wsp.return"
+      }
+    },
+    {
+      "name": "q.wsp.dlq",
+      "vhost": "dermicapro",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-length": 10000,
+        "x-overflow": "drop-head"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "evolution_exchange",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.inbound",
+      "destination_type": "queue",
+      "routing_key": "messages.upsert",
+      "arguments": {}
+    },
+    {
+      "source": "evolution_exchange",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.inbound",
+      "destination_type": "queue",
+      "routing_key": "send.message",
+      "arguments": {}
+    },
+    {
+      "source": "wsp.retry",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.retry.30s",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "wsp.retry.slow",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.retry.15m",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "wsp.return",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.inbound",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "wsp.dead",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.dlq",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    }
+  ]
+}

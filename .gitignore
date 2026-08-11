@@ -1,6 +1,7 @@
 traefik/.env
 backend/.env
 db/.env
+mq/.env
 monitoring/.env
 # Copias a mano de los .env de arriba (backend/.env.bak-incident y demás):
 # tienen las mismas credenciales que el original, pero como cada .env está
@@ -31,9 +32,19 @@ db/tls/
 # Config local de Claude Code: permisos y ajustes propios de cada maquina.
 .claude/
 
-# Export del workflow de n8n: trae la API key de Evolution y los tokens de
-# webhook embebidos (JAMÁS deben subirse al repo). Se guardan localmente solo
-# como referencia para regenerarlos.
+# Exports de workflows de n8n: traen la API key de Evolution y los tokens de
+# webhook embebidos en claro (JAMÁS deben subirse al repo). Se guardan
+# localmente solo como referencia para regenerarlos.
+#
+# Se listan por PATRÓN y no por nombre exacto a propósito: cada vez que se
+# exporta desde la UI el archivo baja como "rag (5).json", "rag (6).json", y
+# la lista de nombres exactos anterior dejaba fuera todas esas copias. Ya
+# habían quedado dos sin ignorar en el directorio de trabajo.
 docs/rag.json
 docs/rag-v2.json
-/rag.json
+/rag*.json
+/analista*.json
+/Webhooks?evolution*.json
+/webhooks-evolution*.json
+/FORM-*.json
+/Health-checks*.json

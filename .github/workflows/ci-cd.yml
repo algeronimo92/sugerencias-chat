@@ -305,6 +305,40 @@ jobs:
               -f traefik/reverse-proxy.docker-compose.yml \
               --env-file traefik/.env up -d
 
+            # RabbitMQ. Proyecto de compose aparte, como la base: no lo toca el
+            # blue-green y sobrevive a un `down` de la aplicación.
+            #
+            # Todo este bloque está blindado para que NO pueda tumbar un
+            # despliegue de la aplicación. Con `set -eu` activo, un `up -d` que
+            # falle cortaría el script antes de deploy-bluegreen.sh, y la
+            # ingesta por cola no es motivo para dejar la app sin desplegar:
+            # mientras los webhooks HTTP de Evolution sigan como camino de
+            # rollback, un broker caído no impide que los mensajes lleguen.
+            #
+            # Se avisa en los dos casos en que no hace nada. El silencio es lo
+            # caro: un `mq/.env` que falta se vería como "todo salió bien" y la
+            # cola no estaría, que es justo el fallo que este servicio viene a
+            # evitar.
+            if [ -s mq/.env ]; then
+              if ! git diff --quiet "$PREVIOUS" HEAD -- compose.mq.yml mq; then
+                echo "AVISO: cambió la configuración de RabbitMQ; este despliegue lo recrea."
+                echo "AVISO: los consumidores de n8n se reconectan solos; las colas durables no se pierden."
+              fi
+              COMPOSE_MQ="docker compose -f compose.mq.yml --env-file mq/.env"
+              # provision.sh es idempotente y trae su propio await_startup, así
+              # que corre en cada despliegue: es lo que hace que un cambio de
+              # permisos en el repo llegue de verdad al broker.
+              if $COMPOSE_MQ up -d && $COMPOSE_MQ exec -T rabbitmq /provision.sh; then
+                echo "RabbitMQ al día"
+              else
+                echo "AVISO: falló el despliegue de RabbitMQ; la ingesta por cola puede estar parada." >&2
+                echo "AVISO: revisar con: docker compose -f compose.mq.yml --env-file mq/.env logs rabbitmq" >&2
+              fi
+            else
+              echo "AVISO: falta mq/.env, RabbitMQ no se despliega."
+              echo "AVISO: crearlo desde mq/.env.example (ver docs/rabbitmq-ingesta-n8n-plan.md)."
+            fi
+
             # scripts/deploy-bluegreen.sh levanta el color inactivo al lado del
             # que sirve, migra (scripts/migrate.py toma un advisory lock, así
             # que si algún día hay más de una instancia sólo una aplica el DDL)
