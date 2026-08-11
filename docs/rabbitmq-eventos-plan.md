@@ -83,12 +83,12 @@ también, así que ambos llegan por el túnel WireGuard descrito en
 
 | Máquina | IP en el túnel |
 |---|---|
-| App + PostgreSQL + RabbitMQ | `10.10.0.1` |
-| n8n | `10.10.0.2` |
-| Evolution API | pendiente de confirmar; si está en una tercera VPS hay que añadirla como peer (`10.10.0.3`) |
+| App + PostgreSQL + RabbitMQ | `10.8.0.1` |
+| n8n | `10.8.0.2` |
+| Evolution API | pendiente de confirmar; si está en una tercera VPS hay que añadirla como peer (`10.8.0.3`) |
 
 Bind idéntico al de PostgreSQL: `${RABBITMQ_BIND_IP:-127.0.0.1}:5672:5672`, con
-`RABBITMQ_BIND_IP=10.10.0.1` en producción. Publicar 5672 en `0.0.0.0` es
+`RABBITMQ_BIND_IP=10.8.0.1` en producción. Publicar 5672 en `0.0.0.0` es
 exactamente el error que abrió la auditoría de la base anterior.
 
 La consola de administración (15672) sólo por túnel SSH, nunca vía Traefik.
@@ -370,7 +370,11 @@ agente analista, y las llamadas HTTP a `/api/webhooks/analysis` y
 
 ### Credenciales de RabbitMQ en n8n
 
-Host `10.10.0.1` (por WireGuard), usuario `n8n`, vhost `/dermicapro`. El nodo de
+Host `10.8.0.1` (por WireGuard), usuario `n8n`, vhost `dermicapro` — **sin barra
+delante**: el vhost se llama `dermicapro`, y escribir `/dermicapro` en el campo
+de n8n hace que el broker rechace la conexión con `vhost /dermicapro not found`.
+En la URI de Evolution sí va `.../dermicapro`, pero ahí la barra es el separador
+de la URI, no parte del nombre. El nodo de
 n8n hace `ack` automático al terminar el flujo; hay que revisar que un fallo del
 nodo de Gemini produzca `nack` y no un `ack` silencioso, o el análisis se pierde
 sin dejar rastro.
