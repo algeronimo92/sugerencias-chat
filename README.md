@@ -241,7 +241,10 @@ rechace cualquier nuevo mensaje que no indique `cliente` o `vendedor`.
 
 ### Doble check de mensajes enviados
 
-La instancia de Evolution debe tener habilitado el evento `MESSAGES_UPDATE`.
+La instancia de Evolution debe tener habilitado el evento `MESSAGES_UPDATE`
+(`RABBITMQ_EVENTS_MESSAGES_UPDATE=true` si la instancia publica por cola en vez
+de por webhook; en ese caso el evento llega a `q.wsp.status`, ver
+[docs/rabbitmq-ingesta-n8n-plan.md](docs/rabbitmq-ingesta-n8n-plan.md)).
 n8n puede reenviar el JSON original, sin transformarlo, a:
 
 ```text

@@ -75,6 +75,13 @@
       "arguments": {}
     },
     {
+      "name": "q.wsp.status",
+      "vhost": "dermicapro",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
       "name": "q.wsp.retry.30s",
       "vhost": "dermicapro",
       "durable": true,
@@ -136,6 +143,38 @@
       "destination": "q.wsp.inbound",
       "destination_type": "queue",
       "routing_key": "send.message",
+      "arguments": {}
+    },
+    {
+      "source": "evolution_exchange",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.status",
+      "destination_type": "queue",
+      "routing_key": "messages.update",
+      "arguments": {}
+    },
+    {
+      "source": "evolution_exchange",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.status",
+      "destination_type": "queue",
+      "routing_key": "MESSAGES_UPDATE",
+      "arguments": {}
+    },
+    {
+      "source": "evolution",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.status",
+      "destination_type": "queue",
+      "routing_key": "messages.update",
+      "arguments": {}
+    },
+    {
+      "source": "evolution",
+      "vhost": "dermicapro",
+      "destination": "q.wsp.status",
+      "destination_type": "queue",
+      "routing_key": "MESSAGES_UPDATE",
       "arguments": {}
     },
     {

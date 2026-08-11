@@ -58,6 +58,11 @@ Workflow "Webhooks evolution"                           │
 
 `rag` queda como ingesta pura y llama al workflow `analista` sin esperarlo.
 
+Del mismo exchange cuelga una segunda rama, mucho más corta: la routing key
+`messages.update` (acuses de entrega y lectura) va a `q.wsp.status`, que un
+workflow aparte reenvía a `/api/webhooks/message-status`. Sin reintentos y sin
+DLQ, por los motivos de la decisión 7.
+
 ## Las decisiones que importan
 
 ### 1. El debounce del analista sale del camino del ack
@@ -223,13 +228,49 @@ el control en unos segundos y el broker tarda bastante más. En ese hueco
 AVISO que nadie lee y el broker con la configuración vieja. Por eso el
 `await_startup` va dentro de un bucle de 60 intentos por 2 s.
 
+### 7. Los acuses de entrega van por su propia cola
+
+El doble check de los mensajes enviados (evento `MESSAGES_UPDATE`, que alimenta
+`POST /api/webhooks/message-status`) llegaba por webhook HTTP. Su equivalente
+por cola es `q.wsp.status`, atada a los dos exchanges con la routing key
+`messages.update`.
+
+Por qué no reusar `q.wsp.inbound`:
+
+- Su workflow parsea `messages.upsert` y dispara el análisis de Gemini. Meterle
+  acuses de estado es pagar tokens por un evento que sólo cambia una columna.
+- El trigger va con *Parallel Message Processing Limit* 1 para que dos mensajes
+  del mismo chat no se procesen a la vez. Los acuses llegan en ráfagas —uno por
+  destinatario y por transición— y taparían la ingesta real detrás de ellos.
+
+**No lleva escalera de reintento**, a diferencia de la ingesta, y es a
+propósito. El estado de un mensaje es monótono: si se pierde un `DELIVERY_ACK`,
+el `READ` que viene después deja la fila en el valor correcto igual. Montar
+`wsp.retry` / `wsp.dead` para eso sería maquinaria sin nada que proteger. Por lo
+mismo se declara **sin argumentos**, igual que `q.wsp.inbound` y por la misma
+razón: es una cola que n8n declara directamente, y cualquier argumento ahí es un
+`PRECONDITION_FAILED` esperando a pasar.
+
+Sí lleva, en cambio, un binding de más: `MESSAGES_UPDATE` en mayúsculas además
+de `messages.update`. En el broker de producción se ven los dos formatos —
+Evolution ata sus colas globales con el nombre crudo del evento *y* con la
+versión en minúsculas con puntos—, aunque hoy publica sólo con la segunda. Si
+una versión futura cambiara de forma, esta cola sigue recibiendo. Un mensaje se
+entrega **una sola vez por cola** aunque coincidan varios bindings, así que no
+hay duplicado posible.
+
+Ese binding doble **no** se le pone a `q.wsp.inbound`: ahí un duplicado sí
+costaría —dos análisis de Gemini por mensaje— si algún día Evolution publicara
+con las dos formas. Para esa cola la protección correcta es una alerta sobre la
+profundidad de la cola, no un binding extra.
+
 ## Archivos
 
 | Archivo | Qué es |
 |---|---|
 | [compose.mq.yml](../compose.mq.yml) | El broker. Proyecto de compose propio, red `dermicapro-data` |
 | [mq/rabbitmq.conf](../mq/rabbitmq.conf) | `consumer_timeout`, límite de disco, carga de definiciones |
-| [mq/definitions.json](../mq/definitions.json) | Topología: 5 exchanges, 4 colas, 6 bindings |
+| [mq/definitions.json](../mq/definitions.json) | Topología: 6 exchanges, 5 colas, 12 bindings |
 | [mq/provision.sh](../mq/provision.sh) | Usuarios y permisos. Idempotente |
 | [mq/.env.example](../mq/.env.example) | Plantilla de `mq/.env` |
 | `webhooks-evolution-rabbitmq.json` | Workflow padre nuevo (raíz, no versionado) |
@@ -381,7 +422,13 @@ RABBITMQ_EXCHANGE_NAME=evolution_exchange
 RABBITMQ_GLOBAL_ENABLED=true
 RABBITMQ_EVENTS_MESSAGES_UPSERT=true
 RABBITMQ_EVENTS_SEND_MESSAGE=true
+RABBITMQ_EVENTS_MESSAGES_UPDATE=true
 ```
+
+`MESSAGES_UPDATE` son los acuses de entrega y lectura; van a `q.wsp.status` (ver
+la decisión 7). Si ese evento se queda en webhook HTTP mientras los otros dos
+van por cola, no pasa nada malo: son caminos independientes. Lo que no se puede
+es tenerlo activo por los dos lados a la vez.
 
 Dejar los webhooks HTTP **apagados** en el mismo cambio. Si se dejan los dos
 caminos activos, cada mensaje se procesa dos veces: el guard
@@ -413,6 +460,34 @@ entre versiones, n8n la ignora en silencio y aplica su valor por defecto:
 Lo mismo con los tres nodos de publicación: confirmar que quedaron en modo
 **Exchange** (`wsp.retry`, `wsp.retry.slow` y `wsp.dead`, los tres fanout) y no
 en modo Queue.
+
+### 3 bis. El workflow de los acuses
+
+El workflow que hoy recibe `MESSAGES_UPDATE` por webhook cambia sólo el trigger:
+un `RabbitMQ Trigger` sobre `q.wsp.status` en lugar del nodo Webhook, y detrás
+el mismo `POST` a `/api/webhooks/message-status` con el JSON tal cual (el
+endpoint ya normaliza las dos variantes del evento y los lotes).
+
+En el trigger, *Delete From Queue When* puede quedar en **Immediately**, al
+revés que en la ingesta: perder un acuse suelto no rompe nada —el estado es
+monótono y el siguiente evento del mismo mensaje deja la fila correcta— y así se
+evita que un mensaje envenenado gire en un bucle de requeue mientras el CRM esté
+caído.
+
+**Antes de activarlo, comprobar que la cola existe con sus bindings:**
+
+```bash
+docker compose -f compose.mq.yml --env-file mq/.env exec rabbitmq \
+  rabbitmqctl list_bindings -p dermicapro source_name destination_name routing_key \
+  | grep q.wsp.status
+```
+
+Tienen que salir cuatro filas. Si la cola no estuviera, n8n la declara igual al
+conectarse —tiene `configure` sobre ella— pero **sin ningún binding**: quedaría
+vacía para siempre sin un solo error en ningún log. `q.wsp.status` llega por
+`definitions.json`, que sólo se lee al arrancar el nodo, así que el despliegue
+que la introduce tiene que recrear el contenedor (`ci-cd.yml` ya lo hace cuando
+cambia algo de `mq/`).
 
 ### 4. Prueba de humo
 

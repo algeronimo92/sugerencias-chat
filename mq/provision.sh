@@ -150,12 +150,16 @@ echo "Permisos (configure / write / read)"
 # acá y de definitions.json.
 rabbitmqctl set_permissions -p "$VHOST" evolution '.*' '.*' '^(evolution|evolution_exchange)$'
 
-# n8n: consume la cola de entrada y publica en los dos exchanges del reintento.
+# n8n: consume las dos colas de entrada y publica en los exchanges del reintento.
 #
-# Los tres nombres de `configure` son exactamente los que el nodo de n8n
-# declara al conectarse (assertQueue / assertExchange). Si se le quita el
-# permiso, el nodo falla al arrancar; si se le da de más, puede redeclarar algo
-# con otros argumentos. Esta lista es la mínima que funciona.
+# Los nombres de `configure` son exactamente los que el nodo de n8n declara al
+# conectarse (assertQueue / assertExchange). Si se le quita el permiso, el nodo
+# falla al arrancar; si se le da de más, puede redeclarar algo con otros
+# argumentos. Esta lista es la mínima que funciona.
+#
+# `q.wsp.status` (acuses de entrega y lectura, evento MESSAGES_UPDATE) sólo
+# necesita configure y read: su workflow no reintenta por cola, así que no
+# publica en ningún lado.
 #
 # Fijarse en que NO tiene permiso sobre ninguna de las colas de reintento ni
 # sobre la DLQ: publica en los exchanges wsp.retry, wsp.retry.slow y wsp.dead,
@@ -163,9 +167,9 @@ rabbitmqctl set_permissions -p "$VHOST" evolution '.*' '.*' '^(evolution|evoluti
 # una cola que lleva argumentos (TTL, dead-letter) y no puede provocar un
 # PRECONDITION_FAILED al redeclararla con otros distintos.
 rabbitmqctl set_permissions -p "$VHOST" n8n \
-  '^(q\.wsp\.inbound|wsp\.retry|wsp\.retry\.slow|wsp\.dead)$' \
+  '^(q\.wsp\.inbound|q\.wsp\.status|wsp\.retry|wsp\.retry\.slow|wsp\.dead)$' \
   '^(wsp\.retry|wsp\.retry\.slow|wsp\.dead)$' \
-  '^q\.wsp\.inbound$'
+  '^(q\.wsp\.inbound|q\.wsp\.status)$'
 
 # El administrador sí necesita verlo todo, si no la consola aparece vacía.
 rabbitmqctl set_permissions -p "$VHOST" "$ADMIN" '.*' '.*' '.*'
