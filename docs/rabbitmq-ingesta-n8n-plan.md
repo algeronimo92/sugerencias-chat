@@ -58,7 +58,7 @@ Workflow "Webhooks evolution"                           │
 
 `rag` queda como ingesta pura y llama al workflow `analista` sin esperarlo.
 
-## Las tres decisiones que importan
+## Las decisiones que importan
 
 ### 1. El debounce del analista sale del camino del ack
 
@@ -147,6 +147,29 @@ directamente, y cualquier argumento ahí es un 406 esperando a pasar.
 Los permisos de `mq/provision.sh` refuerzan lo mismo: el usuario `n8n` no tiene
 `configure` sobre ninguna de las colas con argumentos, así que ni por error
 puede redeclararlas.
+
+### 4. Las colas huérfanas de Evolution tienen TTL
+
+En modo global Evolution declara sus propias colas por evento y les manda una
+copia de todo. La ingesta real no pasa por ahí —`q.wsp.inbound` está atada al
+mismo exchange con sus propios bindings— así que quedan sin consumidor.
+
+Sin límite, eso no termina en "una cola grande". Termina en que el disco baja de
+`disk_free_limit.absolute` y RabbitMQ **bloquea a todos los publicadores del
+nodo**: Evolution deja de poder publicar y se pierden mensajes de WhatsApp. El
+servicio que se montó para no perder mensajes sería el que los pierde.
+
+La política `evolution-huerfanas` (`^evolution\.`, `apply-to: queues`) les pone
+una hora de TTL y un tope de 10 000 mensajes. Una hora y no diez minutos porque
+de paso deja una copia cruda reciente por si hace falta mirar un payload
+original.
+
+Vive en `mq/provision.sh` y no en `definitions.json` a propósito: ese archivo
+sólo se lee al arrancar el nodo, y una política tiene que poder aplicarse sin
+reiniciar un broker que está sirviendo. El script corre en cada despliegue, así
+que converge solo.
+
+El patrón no toca ninguna cola nuestra: todas empiezan por `q.wsp.`.
 
 ## Archivos
 
@@ -380,9 +403,10 @@ publicarlo de nuevo en `evolution_exchange` con la routing key original).
   `.*` porque todavía no se sabe qué nombres declara por su cuenta en modo
   global. `read` ya está en `^$`, que es lo que protege las conversaciones. El
   procedimiento para cerrarlo está en `mq/provision.sh`.
-- **Purgar la cola que Evolution cree por su cuenta.** En modo global declara sus
-  propias colas por evento; sin consumidor, crecen. Ponerles TTL o borrarlas una
-  vez confirmado que la ingesta va por `q.wsp.inbound`.
+- **Apagar las colas que Evolution crea por su cuenta.** En modo global declara
+  una cola por evento (`evolution.messages.upsert`, `evolution.send.message`) y
+  recibe en ellas una copia de todo; nadie las consume. Ya hay una política que
+  las mantiene a raya (abajo), pero lo definitivo es que Evolution no las cree.
 
 ## Relación con el otro plan
 

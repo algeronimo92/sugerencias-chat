@@ -126,6 +126,36 @@ rabbitmqctl set_permissions -p "$VHOST" n8n \
 # El administrador sí necesita verlo todo, si no la consola aparece vacía.
 rabbitmqctl set_permissions -p "$VHOST" "$ADMIN" '.*' '.*' '.*'
 
+echo "Políticas"
+
+# En modo global, Evolution declara por su cuenta una cola por evento
+# (`evolution.messages.upsert`, `evolution.send.message`) atada a su exchange, y
+# recibe en ellas una copia de todo. Nadie las consume: la ingesta real va por
+# q.wsp.inbound, que está atada al mismo exchange con sus propios bindings.
+#
+# Sin esta política crecen sin techo. Y no terminan en "una cola grande": cuando
+# el disco baja de `disk_free_limit.absolute` (2 GB, ver rabbitmq.conf) RabbitMQ
+# BLOQUEA A TODOS LOS PUBLICADORES del nodo. Evolution deja de poder publicar y
+# ahí sí se pierden mensajes de WhatsApp — el fallo exacto que este servicio
+# vino a evitar, provocado por el propio servicio.
+#
+# Una hora de TTL las mantiene casi vacías y de paso deja una copia cruda
+# reciente por si hiciera falta mirar un payload original. `max-length` cubre
+# la ráfaga que no daría tiempo a expirar.
+#
+# Va acá y no en definitions.json a propósito: ese archivo sólo se lee al
+# arrancar el nodo, y una política tiene que poder aplicarse sin reiniciar un
+# broker que está sirviendo. Este script corre en cada despliegue, así que
+# converge solo.
+#
+# Cuando se confirme que la ingesta no depende de esas colas, lo definitivo es
+# apagarlas del lado de Evolution; esto seguiría siendo la red de seguridad
+# para el día que alguien reactive el modo global sin avisar.
+rabbitmqctl set_policy -p "$VHOST" \
+  evolution-huerfanas '^evolution\.' \
+  '{"message-ttl":3600000,"max-length":10000,"overflow":"drop-head"}' \
+  --apply-to queues --priority 0
+
 # `guest` no debería existir (RABBITMQ_DEFAULT_USER evita que se cree), pero si
 # el volumen viene de un arranque anterior sin esa variable, sigue ahí. Su
 # restricción a loopback no protege acá: el loopback del contenedor es
@@ -139,4 +169,9 @@ echo
 echo "Estado:"
 rabbitmqctl list_permissions -p "$VHOST"
 echo
-rabbitmqctl list_queues -p "$VHOST" name messages consumers
+rabbitmqctl list_policies -p "$VHOST"
+echo
+# `messages` en las colas evolution.* debe quedarse cerca de cero. Si crece
+# despacio y no baja, la política no está agarrando: revisar el patrón contra
+# el nombre real con `rabbitmqctl list_queues -p dermicapro name policy`.
+rabbitmqctl list_queues -p "$VHOST" name messages consumers policy
