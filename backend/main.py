@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from config import settings
 from db.session import close_engine, get_engine
-from routers import auth, automations, chats, dashboard, internal_notes, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, templates, tts, users, webhooks, whatsapp
+from routers import auth, automations, chats, dashboard, internal_notes, lead_services, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
@@ -332,6 +332,8 @@ app.include_router(tts.router, dependencies=[Depends(get_current_user)])
 app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
 app.include_router(whatsapp.router, dependencies=[Depends(require_admin)])
 app.include_router(tags.router)
+app.include_router(lead_services.router)
+app.include_router(template_categories.router)
 app.include_router(tasks.router)
 app.include_router(scheduled_messages.router)
 app.include_router(templates.router)

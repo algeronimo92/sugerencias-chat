@@ -54,3 +54,11 @@ async def test_explicit_skipped_filter_takes_precedence(monkeypatch):
 
     assert "automation_executions.status = 'skipped'" in sql
     assert "automation_executions.status != 'skipped'" not in sql
+
+
+@pytest.mark.asyncio
+async def test_history_joins_execution_initiator(monkeypatch):
+    sql = await _history_sql(monkeypatch)
+
+    assert "users.name AS started_by_name" in sql
+    assert "users.id = automation_executions.started_by_user_id" in sql

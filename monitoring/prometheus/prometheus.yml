@@ -37,6 +37,21 @@ scrape_configs:
       - targets: ["127.0.0.1:9187"]
         labels: {instance: dermicapro-data-postgres-1}
 
+  # RabbitMQ expone sus métricas él mismo (plugin rabbitmq_prometheus), sin
+  # exporter aparte. El 15692 lo publica compose.mq.yml solo en loopback.
+  #
+  # Las series por cola (rabbitmq_queue_messages{queue=...}, que es lo que
+  # consultan las alertas de la ingesta) solo aparecen porque mq/rabbitmq.conf
+  # pone `prometheus.return_per_object_metrics = true`. Sin esa línea este
+  # target responde igual, con métricas agregadas del nodo y sin la etiqueta
+  # `queue`: las reglas no encuentran nada y no disparan nunca. Un scrape sano
+  # con alertas ciegas es peor que un target caído, así que si se toca esa
+  # config hay que revisar acá.
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["127.0.0.1:15692"]
+        labels: {instance: dermicapro-mq-rabbitmq-1}
+
   # blue y green: en cada momento uno de los dos targets está "down" (el
   # color que deploy-bluegreen.sh apagó) — es normal, no dispara la alerta
   # BackendCaido (esa exige que caigan LOS DOS). Ver

@@ -43,6 +43,85 @@ groups:
           summary: "Hay mensajes programados vencidos sin procesar"
           description: "El worker de scheduled_messages parece detenido."
 
+  # Ingesta de WhatsApp por RabbitMQ (docs/rabbitmq-ingesta-n8n-plan.md).
+  #
+  # Todo esto se apoya en las series por cola del plugin rabbitmq_prometheus.
+  # Si el broker está caído, sus series desaparecen y estas reglas se quedan
+  # sin vector en vez de dispararse en falso: quien avisa entonces es
+  # RabbitMQCaido, que lee `up` y se escribe aunque el scrape falle.
+  #
+  # A propósito NO hay ningún workflow que consuma la DLQ y mande un WhatsApp
+  # por mensaje muerto: con la base caída eso manda cientos. Acá una DLQ con
+  # 1 mensaje y con 500 producen exactamente una notificación.
+  - name: mensajeria
+    rules:
+      # Cada mensaje acá es un evento de WhatsApp que agotó sus seis reintentos
+      # (30 s x3, luego 15 min x3) y no llegó a la base: un mensaje de un
+      # cliente que el vendedor nunca va a ver.
+      #
+      # El umbral es > 0 y no un número mayor porque la DLQ en reposo está
+      # vacía; cualquier valor distinto de cero es ya una pérdida real. El
+      # `for: 5m` evita avisar por un mensaje que estaba de paso mientras se
+      # reinyecta a mano.
+      - alert: DlqConMensajes
+        expr: rabbitmq_queue_messages{vhost="dermicapro", queue="q.wsp.dlq"} > 0
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "{{ $value }} mensajes de WhatsApp muertos en q.wsp.dlq"
+          description: "Agotaron los reintentos y no llegaron a la base. Revisar por qué falló la ingesta antes de reinyectarlos: hay que republicarlos en evolution_exchange con su routing key original (Requeue desde la consola no sirve)."
+
+      # n8n desconectado del broker. Los mensajes no se pierden —se acumulan en
+      # la cola durable— pero nadie los procesa: para el vendedor es lo mismo
+      # que WhatsApp caído, y no hay ningún otro síntoma en la app.
+      #
+      # 5 minutos de margen para que un reinicio de n8n no despierte a nadie.
+      - alert: IngestaSinConsumidor
+        expr: rabbitmq_queue_consumers{vhost="dermicapro", queue=~"q\\.wsp\\.(inbound|status)"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.queue }} lleva 5 minutos sin ningún consumidor"
+          description: "n8n no está conectado al broker. Los mensajes se siguen encolando (no se pierden) pero no entra ninguno al CRM."
+
+      # Hay consumidor, pero no da abasto o falla y reencola en bucle. La cola
+      # en reposo está en cero, así que un centenar sostenido diez minutos ya
+      # es anómalo aunque nadie se haya desconectado.
+      - alert: IngestaAcumulandose
+        expr: rabbitmq_queue_messages{vhost="dermicapro", queue=~"q\\.wsp\\.(inbound|status)"} > 100
+        for: 10m
+        labels:
+          severity: high
+        annotations:
+          summary: "{{ $labels.queue }} acumula {{ $value }} mensajes sin procesar"
+          description: "Hay consumidor conectado pero el ritmo no alcanza, o el workflow falla y reencola. Mirar q.wsp.retry.30s y q.wsp.dlq para distinguir un caso del otro."
+
+      - alert: RabbitMQCaido
+        expr: up{job="rabbitmq"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El broker de la ingesta de WhatsApp no responde"
+          description: "Mientras esté caído, Evolution no puede publicar y el resto de las alertas de mensajería se quedan sin datos (sus series desaparecen). Revisar con `docker compose -f compose.mq.yml --env-file mq/.env ps`."
+
+      # Guarda del cambio que apagó el modo global de Evolution. Si alguien lo
+      # reactiva en la otra VPS, estas colas vuelven a aparecer y a recibir una
+      # copia de cada mensaje que nadie consume. La política evolution-huerfanas
+      # les pone techo, así que esto no es urgente: es para enterarse en vez de
+      # descubrirlo el día que el disco se llene y el broker bloquee a TODOS los
+      # publicadores.
+      - alert: ColasHuerfanasDeEvolution
+        expr: count(rabbitmq_queue_messages{vhost="dermicapro", queue=~"evolution\\..+"}) > 0
+        for: 15m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Volvieron a aparecer colas evolution.* en el broker"
+          description: "Alguien reactivó RABBITMQ_GLOBAL_ENABLED en Evolution. No rompe la ingesta, pero acumulan copias que nadie lee. La política evolution-huerfanas las contiene mientras tanto."
+
   - name: infraestructura
     rules:
       - alert: BackendCaido

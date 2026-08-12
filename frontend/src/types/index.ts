@@ -38,6 +38,28 @@ export interface Tag {
   id: number
   name: string
   color: string
+  is_active?: boolean
+  created_by_user_id?: number | null
+  created_by_name?: string | null
+  created_at?: string | null
+}
+
+export interface LeadService {
+  id: number
+  name: string
+  is_active?: boolean
+  created_by_user_id?: number | null
+  created_by_name?: string | null
+  created_at?: string | null
+}
+
+export interface TemplateCategory {
+  id: number
+  name: string
+  is_active?: boolean
+  created_by_user_id?: number | null
+  created_by_name?: string | null
+  created_at?: string | null
 }
 
 export interface ChatFilters {
@@ -433,6 +455,9 @@ export interface MessageTemplate {
   is_favorite: boolean
   last_used_at: string | null
   use_count: number
+  created_by_user_id?: number | null
+  created_by_name?: string | null
+  created_at?: string | null
   attachments: TemplateAttachment[]
 }
 
@@ -753,6 +778,7 @@ export interface AutomationExecution {
    *  inició un vendedor con el botón "Iniciar flujo" del chat. */
   start_source: AutomationExecutionStartSource
   started_by_user_id: number | null
+  started_by_name: string | null
 }
 
 export type MediaAssetKind = 'image' | 'video' | 'audio' | 'document'

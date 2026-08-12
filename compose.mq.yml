@@ -110,6 +110,12 @@ services:
       #   ssh -L 15672:127.0.0.1:15672 usuario@servidor
       # y nunca por Traefik: es una consola con permiso para purgar colas.
       - "127.0.0.1:15672:15672"
+      # Métricas para Prometheus, también solo loopback. Prometheus corre en
+      # este mismo host con network_mode: host (compose.monitoring.yml), así
+      # que 127.0.0.1 le alcanza y el puerto no queda expuesto a Internet ni
+      # al túnel. El endpoint no pide credenciales: publicarlo en la IP del
+      # túnel le daría a las otras VPS la lista de colas y su profundidad.
+      - "127.0.0.1:15692:15692"
 
     healthcheck:
       # `check_running` responde antes de que el nodo acepte conexiones de

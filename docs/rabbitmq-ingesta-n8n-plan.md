@@ -419,11 +419,47 @@ desplegada, ver la lista de pendientes):
 RABBITMQ_ENABLED=true
 RABBITMQ_URI=amqp://evolution:<clave>@10.8.0.1:5672/dermicapro
 RABBITMQ_EXCHANGE_NAME=evolution_exchange
-RABBITMQ_GLOBAL_ENABLED=true
+RABBITMQ_GLOBAL_ENABLED=false
 RABBITMQ_EVENTS_MESSAGES_UPSERT=true
 RABBITMQ_EVENTS_SEND_MESSAGE=true
 RABBITMQ_EVENTS_MESSAGES_UPDATE=true
 ```
+
+Las dos primeras líneas de esa lista **ya no son opcionales ni cosméticas**: el
+broker dejó de tolerar la alternativa.
+
+- `RABBITMQ_EXCHANGE_NAME` tiene que decir exactamente `evolution_exchange`.
+  Durante un tiempo convivieron dos exchanges (`evolution`, que era lo que este
+  archivo tenía puesto en producción, y `evolution_exchange`, el default de la
+  herramienta y el que declara `mq/definitions.json`), con `q.wsp.inbound` atada
+  a los dos. Eso funcionaba pero duplicaba cada binding. Quedó uno solo.
+- `RABBITMQ_GLOBAL_ENABLED` tiene que estar en `false`. En `true`, Evolution
+  declara una cola por evento y ahora **no tiene permiso para hacerlo**.
+
+Si alguna de las dos queda mal, Evolution autentica bien y falla al declarar:
+registra el error y deja de publicar sin caerse. El síntoma es "no entran
+mensajes" con todo verde, y ninguna alerta lo cubre — las de mensajería vigilan
+la cola llena o sin consumidor, y acá la cola queda vacía y con su consumidor
+conectado, esperando algo que nunca llega. La comprobación es manual y va en el
+paso 2 de abajo: mandarse un WhatsApp y ver si sube `messages`.
+
+### Orden del cambio (importa)
+
+El permiso nuevo es más chico que el anterior, así que hay un momento en que
+Evolution puede quedar sin poder publicar. El orden que no rompe nada:
+
+1. **Primero Evolution**, en su VPS: poner las dos variables de arriba y
+   reiniciar. Con los permisos viejos (que son más amplios) esto ya funciona,
+   y el exchange `evolution_exchange` ya existe y está atado.
+2. Comprobar que entran mensajes: mandarse un WhatsApp y ver subir
+   `messages` en `q.wsp.inbound`.
+3. **Después el broker**, en esta VPS: `git pull` y volver a correr
+   `provision.sh`. Ahí se cierran los permisos y se borran las colas huérfanas
+   que quedaron de antes.
+
+Al revés (broker primero) Evolution se queda sin permiso para publicar en el
+exchange `evolution` que todavía tiene configurado, y la ingesta se corta hasta
+que se toque la otra VPS.
 
 `MESSAGES_UPDATE` son los acuses de entrega y lectura; van a `q.wsp.status` (ver
 la decisión 7). Si ese evento se queda en webhook HTTP mientras los otros dos
@@ -511,29 +547,55 @@ publicarlo de nuevo en `evolution_exchange` con la routing key original).
 
 ## Pendiente
 
-- **La alerta de DLQ.** Decidido a propósito dejarla fuera de esta tanda. La
-  forma recomendada es una regla de Prometheus sobre la profundidad de
-  `q.wsp.dlq` (`rabbitmq_queue_messages{queue="q.wsp.dlq"} > 0`) usando el
-  Alertmanager que ya está montado, y **no** un workflow que consuma la DLQ y
-  mande un WhatsApp por mensaje: con la base caída llegan cientos. Si la alerta
-  sale por WhatsApp, tiene que ir por Evolution directo y no por el CRM — el caso
-  más probable de DLQ llena es justamente que el CRM esté caído.
-  Requiere habilitar el plugin `rabbitmq_prometheus` y publicar el 15692.
 - **Confirmar la unidad de `debounce analista1`** (arriba).
-- **Confirmar los nombres de las variables de Evolution** y que la versión
-  desplegada soporta modo global. La carpeta `docs/evolution-api-2.3-mensajes/`
-  sugiere 2.3; conviene mirarlo en el contenedor.
+- **Confirmar los nombres de las variables de Evolution** contra la versión
+  desplegada. La carpeta `docs/evolution-api-2.3-mensajes/` sugiere 2.3;
+  conviene mirarlo en el contenedor.
 - **Confirmar que Evolution declara `evolution_exchange` como `topic` durable.**
   Si lo declara distinto, choca con `mq/definitions.json` y hay que ajustar el
   archivo, no Evolution.
-- **Cerrar los permisos de `evolution`.** Hoy tiene `configure`/`write` sobre
-  `.*` porque todavía no se sabe qué nombres declara por su cuenta en modo
-  global. `read` ya está en `^$`, que es lo que protege las conversaciones. El
-  procedimiento para cerrarlo está en `mq/provision.sh`.
-- **Apagar las colas que Evolution crea por su cuenta.** En modo global declara
-  una cola por evento (`evolution.messages.upsert`, `evolution.send.message`) y
-  recibe en ellas una copia de todo; nadie las consume. Ya hay una política que
-  las mantiene a raya (abajo), pero lo definitivo es que Evolution no las cree.
+
+## Hecho en la última tanda
+
+Los cuatro puntos que quedaban de infraestructura del broker:
+
+- **La alerta.** Grupo `mensajeria` en `monitoring/prometheus/alert-rules.yml`,
+  con cinco reglas: `DlqConMensajes` (`> 0`, que es el umbral correcto porque
+  en reposo está vacía), `IngestaSinConsumidor`, `IngestaAcumulandose`,
+  `RabbitMQCaido` y `ColasHuerfanasDeEvolution`. Sale por el Alertmanager que
+  ya estaba montado; **no** hay ningún workflow que consuma la DLQ y mande un
+  WhatsApp por mensaje muerto, que con la base caída manda cientos: acá una DLQ
+  con 1 mensaje y con 500 producen una sola notificación. Si algún día la
+  notificación sale por WhatsApp, tiene que ir por Evolution directo y no por el
+  CRM — el caso más probable de DLQ llena es justamente que el CRM esté caído.
+
+  Para que existan las series por cola hizo falta
+  `prometheus.return_per_object_metrics = true` en `mq/rabbitmq.conf` (sin eso
+  `/metrics` no trae la etiqueta `queue` y las reglas no encuentran nada),
+  publicar el 15692 en loopback y afirmar el plugin en `provision.sh`.
+
+  Las reglas tienen pruebas: `monitoring/prometheus/alert-rules.test.yml`, que
+  corre con `promtool test rules`. Una alerta mal escrita no falla, se queda
+  callada; ahí se afirma que con datos de entrada dados sí dispara, y que un
+  broker caído no produce cuatro notificaciones distintas.
+
+- **Un solo exchange.** Se fue `evolution` de `definitions.json` con sus cuatro
+  bindings: quedaron ocho en vez de doce. Requiere `RABBITMQ_EXCHANGE_NAME=evolution_exchange`
+  en Evolution (ver el orden del cambio, arriba).
+
+- **Colas huérfanas apagadas en el origen.** `RABBITMQ_GLOBAL_ENABLED=false`.
+  `provision.sh` además borra las que quedaron, con `--if-unused` por si la
+  suposición de que nadie las consume fuera falsa. La política
+  `evolution-huerfanas` se conserva igual, ya no como mecanismo principal sino
+  como red de seguridad: el modo global se reactiva con una variable de entorno
+  en otra VPS, y el fallo que produce (disco lleno, broker bloqueando a todos
+  los publicadores) es de los caros. `ColasHuerfanasDeEvolution` avisa si
+  vuelven.
+
+- **Permisos de `evolution` cerrados.** Los tres patrones son
+  `^evolution_exchange$`. Antes `configure` y `write` eran `.*` porque no estaba
+  confirmado qué nombres declaraba por su cuenta; sin modo global no declara
+  ninguno.
 
 ## Relación con el otro plan
 

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, MessageCircle, X } from 'lucide-react'
-import type { Chat, LeadUpdateInput } from '../types'
+import { Loader2, MessageCircle, Plus, X } from 'lucide-react'
+import type { Chat, LeadService, LeadUpdateInput } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
+import { useCreateLeadService, useLeadServices } from '../hooks/useLeadServices'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
 import { toLocalInput } from '../utils/datetime'
+import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 import { Checkbox } from './ui/Checkbox'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
@@ -52,6 +54,10 @@ export function LeadFormDialog({
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [name, setName] = useState(initial?.name ?? '')
   const [servicioInteres, setServicioInteres] = useState(initial?.servicio_interes ?? '')
+  const [isAddingService, setIsAddingService] = useState(false)
+  const [newServiceName, setNewServiceName] = useState('')
+  const [createdServices, setCreatedServices] = useState<LeadService[]>([])
+  const [serviceError, setServiceError] = useState<string | null>(null)
   const [vendedorId, setVendedorId] = useState<number | null>(initial?.vendedor_id ?? null)
   const [origen, setOrigen] = useState(initial?.origen ?? '')
   const [notas, setNotas] = useState(initial?.notas ?? '')
@@ -67,6 +73,8 @@ export function LeadFormDialog({
   const { data: me } = useMe()
   const { data: sellers = [] } = useSellers()
   const { data: phoneConfig } = usePhoneConfig()
+  const { data: leadServices = [], isLoading: areServicesLoading } = useLeadServices()
+  const createService = useCreateLeadService()
   const countryCode = phoneConfig?.default_country_code ?? FALLBACK_COUNTRY_CODE
   // requirePhoneAndName solo lo manda el alta de leads: en ese modo el
   // seguimiento (cita, recontacto, pérdida) todavía no tiene nada que decir.
@@ -75,6 +83,10 @@ export function LeadFormDialog({
   const visibleSellers = me?.role === 'admin' || !canEditSeller
     ? sellers
     : sellers.filter((seller) => seller.id === me?.id)
+  const availableLeadServices = useMemo(() => {
+    const byId = new Map([...leadServices, ...createdServices].map(service => [service.id, service]))
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+  }, [leadServices, createdServices])
 
   const phoneCheck = useMemo(
     () => (canEditPhone ? normalizePhone(phone, countryCode) : { status: 'empty' as const }),
@@ -150,6 +162,21 @@ export function LeadFormDialog({
             // La hora local tipeada se manda en UTC (la columna es timestamptz).
             proxima_cita: proximaCita.trim() ? new Date(proximaCita).toISOString() : null,
           }),
+    })
+  }
+
+  function handleCreateService() {
+    const name = newServiceName.trim()
+    if (!name || createService.isPending) return
+    setServiceError(null)
+    createService.mutate(name, {
+      onSuccess: (service) => {
+        setCreatedServices(current => [...current.filter(item => item.id !== service.id), service])
+        setServicioInteres(service.name)
+        setNewServiceName('')
+        setIsAddingService(false)
+      },
+      onError: (err) => setServiceError(extractErrorMessage(err)),
     })
   }
 
@@ -265,13 +292,64 @@ export function LeadFormDialog({
           </div>
 
           <div>
-            <label className={LABEL_CLASS}>Servicio de interés</label>
-            <input
-              type="text"
+            <label htmlFor="lead-service" className={LABEL_CLASS}>Servicio de interés</label>
+            <div className="flex items-center gap-2">
+            <Select
+              id="lead-service"
               value={servicioInteres}
               onChange={(e) => setServicioInteres(e.target.value)}
-              className={FIELD_CLASS}
-            />
+              disabled={areServicesLoading}
+              className="min-w-0 flex-1"
+            >
+              <option value="">Sin servicio</option>
+              {servicioInteres && !availableLeadServices.some(service => service.name === servicioInteres) && (
+                <option value={servicioInteres}>{servicioInteres} (valor actual)</option>
+              )}
+              {availableLeadServices.map(service => (
+                <option key={service.id} value={service.name}>{service.name}</option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={() => { setIsAddingService(current => !current); setServiceError(null) }}
+              aria-label={isAddingService ? 'Cancelar nuevo servicio' : 'Crear servicio'}
+              title={isAddingService ? 'Cancelar' : 'Crear servicio'}
+              className="shrink-0"
+            >
+              {isAddingService ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            </Button>
+            </div>
+            {isAddingService && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={newServiceName}
+                  onChange={(event) => setNewServiceName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      handleCreateService()
+                    }
+                  }}
+                  maxLength={120}
+                  placeholder="Nombre del nuevo servicio"
+                  className={`${FIELD_CLASS} min-w-0 flex-1`}
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreateService}
+                  disabled={!newServiceName.trim() || createService.isPending}
+                >
+                  {createService.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Crear
+                </Button>
+              </div>
+            )}
+            {serviceError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{serviceError}</p>}
           </div>
 
           <div>

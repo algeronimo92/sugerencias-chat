@@ -3,8 +3,16 @@ venv
 __pycache__
 **/__pycache__
 *.pyc
-.env
 .git
+
+# Secretos. Por PATRÓN y no por nombre exacto, por el mismo motivo que en
+# .gitignore: una copia a mano (.env.bak-incident, .env.local, .env.prod) no
+# la agarraba la línea `.env` y terminaba horneada en la imagen por el
+# `COPY . .` del Dockerfile. La segunda línea cubre subdirectorios: los
+# patrones de Docker se evalúan por componente de ruta, así que `.env*` solo
+# alcanza a la raíz del contexto.
+.env*
+**/.env*
 
 # Media de clientes: ~500 MB que se copiaban a cada imagen por el `COPY . .`
 # del Dockerfile. En producción vive en MinIO (ver MEDIA_STORAGE_BACKEND), no

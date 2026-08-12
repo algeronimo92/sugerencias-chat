@@ -1,9 +1,10 @@
-import { useReducer, useRef, type SetStateAction } from 'react'
+import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { LeadStage, MediaAsset, MessageTemplate, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
+import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
 import { extractErrorMessage } from '../utils/errors'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
@@ -43,7 +44,7 @@ const EMPTY_FORM: TemplateFormState = {
   name: '',
   shortcut: '',
   content: '',
-  category: 'seguimiento',
+  category: 'Seguimiento',
   stage: '',
   taskType: '',
   templateType: 'internal',
@@ -256,6 +257,8 @@ function fileToBase64(file: File): Promise<string> {
 
 export function TemplatesPage() {
   const { data = [], isLoading } = useTemplates(true)
+  const { data: templateCategories = [], isLoading: categoriesLoading } = useTemplateCategories()
+  const createCategory = useCreateTemplateCategory()
   const { data: capabilities } = useTemplateCapabilities()
   const { mutate: create, isPending: isCreating } = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
@@ -264,6 +267,8 @@ export function TemplatesPage() {
   const deleteTemplate = useDeleteTemplate()
   const deleteAttachment = useDeleteTemplateAttachment()
   const [pageState, updatePageState] = useReducer(templatesPageReducer, INITIAL_PAGE_STATE)
+  const [categoryFormOpen, setCategoryFormOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
   const { open, editingId, form, error, pendingAttachments, libraryOpen, isDraggingFiles } = pageState
   const setOpen = (value: boolean) => updatePageState({ open: value })
   const setEditingId = (value: number | null) => updatePageState({ editingId: value })
@@ -278,12 +283,30 @@ export function TemplatesPage() {
   const setIsDraggingFiles = (value: boolean) => updatePageState({ isDraggingFiles: value })
   const dragDepth = useRef(0)
 
+  useEffect(() => {
+    if (!open || editingId != null || form.category || templateCategories.length === 0) return
+    updatePageState(state => ({
+      form: {
+        ...state.form,
+        category: templateCategories.find(category => category.name === 'Seguimiento')?.name
+          ?? templateCategories[0].name,
+      },
+    }))
+  }, [editingId, form.category, open, templateCategories])
+
   function openCreateForm() {
     setEditingId(null)
-    setForm(EMPTY_FORM)
+    setForm({
+      ...EMPTY_FORM,
+      category: templateCategories.find(category => category.name === 'Seguimiento')?.name
+        ?? templateCategories[0]?.name
+        ?? '',
+    })
     setError(null)
     setPendingAttachments([])
     setOpen(true)
+    setCategoryFormOpen(false)
+    setNewCategoryName('')
   }
 
   function openEditForm(template: MessageTemplate) {
@@ -311,6 +334,8 @@ export function TemplatesPage() {
     setError(null)
     setPendingAttachments([])
     setOpen(true)
+    setCategoryFormOpen(false)
+    setNewCategoryName('')
   }
 
   function closeForm() {
@@ -320,6 +345,23 @@ export function TemplatesPage() {
     setLibraryOpen(false)
     setIsDraggingFiles(false)
     dragDepth.current = 0
+    setCategoryFormOpen(false)
+    setNewCategoryName('')
+  }
+
+  function handleCreateCategory() {
+    const name = newCategoryName.trim()
+    if (!name || createCategory.isPending) return
+    setError(null)
+    createCategory.mutate(name, {
+      onSuccess: category => {
+        setForm(current => ({ ...current, category: category.name }))
+        setNewCategoryName('')
+        setCategoryFormOpen(false)
+        toast.success('Categoría creada y seleccionada')
+      },
+      onError: reason => setError(extractErrorMessage(reason)),
+    })
   }
 
   async function attachPending(templateId: number) {
@@ -593,14 +635,57 @@ export function TemplatesPage() {
               className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             />
             <div className="grid gap-3 md:grid-cols-2">
-              <input
-                required
-                maxLength={60}
-                placeholder="Categoría"
-                value={form.category}
-                onChange={(event) => setForm((f) => ({ ...f, category: event.target.value }))}
-                className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-              />
+              <div className="grid gap-1">
+                <div className="flex items-center gap-2">
+                  <Select
+                    required
+                    aria-label="Categoría"
+                    value={form.category}
+                    disabled={categoriesLoading}
+                    onChange={(event) => setForm((f) => ({ ...f, category: event.target.value }))}
+                    className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+                  >
+                    <option value="" disabled>{categoriesLoading ? 'Cargando categorías…' : 'Selecciona una categoría'}</option>
+                    {!templateCategories.some(category => category.name === form.category) && form.category && (
+                      <option value={form.category}>{form.category} (inactiva)</option>
+                    )}
+                    {templateCategories.map(category => <option key={category.id} value={category.name}>{category.name}</option>)}
+                  </Select>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFormOpen(value => !value)}
+                    className="flex shrink-0 items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Nueva
+                  </button>
+                </div>
+                {categoryFormOpen && (
+                  <div className="flex gap-2 rounded-lg border border-wa-border bg-wa-hover p-2 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+                    <input
+                      autoFocus
+                      value={newCategoryName}
+                      onChange={event => setNewCategoryName(event.target.value)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleCreateCategory()
+                        }
+                      }}
+                      maxLength={60}
+                      placeholder="Nueva categoría"
+                      className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2.5 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"
+                    />
+                    <button
+                      type="button"
+                      disabled={!newCategoryName.trim() || createCategory.isPending}
+                      onClick={handleCreateCategory}
+                      className="rounded-md bg-wa-primary px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                    >
+                      {createCategory.isPending ? 'Creando…' : 'Crear'}
+                    </button>
+                  </div>
+                )}
+              </div>
               <Select
                 value={form.stage}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
@@ -812,6 +897,10 @@ export function TemplatesPage() {
                       {template.shortcut ? ` · /${template.shortcut}` : ''}
                       {template.visibility === 'personal' ? ' · Personal' : ' · Equipo'}
                       {template.use_count > 0 ? ` · Usada ${template.use_count}x` : ''}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-wa-muted dark:text-wa-muted-dark">
+                      Creada por {template.created_by_name ?? 'Usuario eliminado'}
+                      {template.created_at ? ` · ${new Date(template.created_at).toLocaleDateString('es-PE')}` : ''}
                     </p>
                     {template.template_type === 'official' && <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400">{template.official_name} · {template.official_language} · {template.official_category} · <span className="font-semibold">{template.official_status}</span></p>}
                   </div>

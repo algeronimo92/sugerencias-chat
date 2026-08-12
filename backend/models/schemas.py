@@ -78,6 +78,10 @@ class Tag(BaseModel):
     id: int
     name: str
     color: str
+    is_active: bool = True
+    created_by_user_id: int | None = None
+    created_by_name: str | None = None
+    created_at: str | None = None
 
 
 class TagCreate(BaseModel):
@@ -88,6 +92,42 @@ class TagCreate(BaseModel):
 class TagUpdate(BaseModel):
     name: str | None = None
     color: str | None = None
+    is_active: bool | None = None
+
+
+class LeadServiceItem(BaseModel):
+    id: int
+    name: str
+    is_active: bool = True
+    created_by_user_id: int | None = None
+    created_by_name: str | None = None
+    created_at: str | None = None
+
+
+class LeadServiceCreate(BaseModel):
+    name: str = Field(max_length=120)
+
+
+class LeadServiceUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    is_active: bool | None = None
+
+
+class TemplateCategoryItem(BaseModel):
+    id: int
+    name: str
+    is_active: bool = True
+    created_by_user_id: int | None = None
+    created_by_name: str | None = None
+    created_at: str | None = None
+
+
+class TemplateCategoryCreate(BaseModel):
+    name: str = Field(max_length=60)
+
+
+class TemplateCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=60)
     is_active: bool | None = None
 
 
@@ -539,6 +579,9 @@ class TemplateItem(BaseModel):
     is_favorite: bool = False
     last_used_at: str | None = None
     use_count: int = 0
+    created_by_user_id: int | None = None
+    created_by_name: str | None = None
+    created_at: str | None = None
     attachments: list["TemplateAttachmentItem"] = Field(default_factory=list)
 
 
@@ -665,6 +708,7 @@ class AutomationExecutionItem(BaseModel):
     created_at: str
     start_source: str = "system"
     started_by_user_id: int | None = None
+    started_by_name: str | None = None
 
 
 class AutomationFlowCreate(BaseModel):

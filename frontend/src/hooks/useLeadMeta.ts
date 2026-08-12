@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Chat, LeadActivity, Tag } from '../types'
 
-export function useTags() {
+export function useTags(includeInactive = false) {
   return useQuery({
-    queryKey: ['tags'],
-    queryFn: async () => (await client.get<Tag[]>('/api/tags')).data,
+    queryKey: ['tags', { includeInactive }],
+    queryFn: async () => (await client.get<Tag[]>(includeInactive ? '/api/tags/all' : '/api/tags')).data,
     staleTime: 60_000,
   })
 }
@@ -15,6 +15,15 @@ export function useCreateTag() {
   return useMutation({
     mutationFn: async (payload: { name: string; color: string }) =>
       (await client.post<Tag>('/api/tags', payload)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
+export function useUpdateTag() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...values }: { id: number; name?: string; color?: string; is_active?: boolean }) =>
+      (await client.patch<Tag>(`/api/tags/${id}`, values)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
   })
 }

@@ -40,7 +40,7 @@ const FIELD_LABELS: Record<string, string> = {
 const HIDDEN_FIELDS = new Set(['vendedor_id'])
 
 function actorLabel(item: LeadActivity): string {
-  if (item.actor_name) return item.actor_name
+  if (item.actor_type === 'user') return item.actor_name ?? 'Usuario eliminado'
   if (item.actor_type === 'agent') return 'Agente IA'
   if (item.actor_type === 'n8n') return 'n8n'
   return 'Sistema'

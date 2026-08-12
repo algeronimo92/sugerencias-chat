@@ -167,6 +167,30 @@ class TestTagsAndStage:
         assert result["status"] == AutomationExecutionStatus.COMPLETED
         assert recorder.tags_added == [("51999@s.whatsapp.net", 3)]
 
+    async def test_manual_flow_attributes_lead_change_to_its_initiator(self, deps):
+        received = None
+
+        async def update_lead(chat_id, values, actor_type="system", actor_user_id=None):
+            nonlocal received
+            received = (chat_id, values, actor_type, actor_user_id)
+            return values
+
+        action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Botox premium"}
+        await _execute_action(
+            action,
+            make_chat(),
+            make_execution(started_by_user_id=7),
+            make_rule(),
+            dataclasses.replace(deps, update_lead=update_lead),
+        )
+
+        assert received == (
+            "51999@s.whatsapp.net",
+            {"servicio_interes": "Botox premium"},
+            "user",
+            7,
+        )
+
     async def test_remove_tag_that_was_not_assigned_is_skipped_not_failed(self, deps):
         async def remove_nothing(chat_id, tag_id, user_id):
             return False

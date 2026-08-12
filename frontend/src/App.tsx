@@ -63,6 +63,9 @@ const MediaLibraryPage = lazy(() =>
 const AutomationsPage = lazy(() =>
   import('./components/AutomationsPage').then(module => ({ default: module.AutomationsPage })),
 )
+const CatalogsPage = lazy(() =>
+  import('./components/CatalogsPage').then(module => ({ default: module.CatalogsPage })),
+)
 const SettingsDialog = lazy(() =>
   import('./components/SettingsDialog').then(module => ({ default: module.SettingsDialog })),
 )
@@ -94,6 +97,7 @@ function MainLayout() {
   const isMediaLibrary = location.pathname === '/media-library'
   const isDashboard = location.pathname === '/dashboard'
   const isAutomations = location.pathname === '/automations'
+  const isCatalogs = location.pathname === '/catalogs'
 
   // 'mobile' = una vista a la vez + navegación inferior; 'tablet' = lista y
   // conversación, con las sugerencias en un panel deslizable; 'desktop' = las
@@ -407,6 +411,8 @@ function MainLayout() {
           <TemplatesPage />
         ) : isAutomations && me?.role === 'admin' ? (
           <AutomationsPage />
+        ) : isCatalogs && me?.role === 'admin' ? (
+          <CatalogsPage />
         ) : isMediaLibrary && me?.role === 'admin' ? (
           <MediaLibraryPage />
         ) : isKanban ? (
@@ -597,6 +603,7 @@ function AuthGate() {
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/catalogs" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
