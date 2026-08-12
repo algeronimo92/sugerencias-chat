@@ -227,6 +227,9 @@ def _template(row, attachments: list[dict] | None = None):
         "interactive_type": row["interactive_type"],
         "interactive_config": row["interactive_config"] or {},
         "last_used_at": _ts(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
+        "created_by_user_id": row["created_by_user_id"],
+        "created_by_name": row["created_by_name"],
+        "created_at": _ts(row["created_at"]),
         "attachments": attachments or [],
     }
 
@@ -241,12 +244,15 @@ async def list_templates(user_id: int, include_inactive=False):
             MessageTemplate.official_language, MessageTemplate.official_category,
             MessageTemplate.official_status, MessageTemplate.official_parameter_values,
             MessageTemplate.interactive_type, MessageTemplate.interactive_config,
+            MessageTemplate.created_by_user_id, User.name.label("created_by_name"),
+            MessageTemplate.created_at,
             TemplateUserState.is_favorite, TemplateUserState.last_used_at, TemplateUserState.use_count,
         )
         .outerjoin(
             TemplateUserState,
             and_(TemplateUserState.template_id == MessageTemplate.id, TemplateUserState.user_id == user_id),
         )
+        .join(User, User.id == MessageTemplate.created_by_user_id)
         .where(or_(MessageTemplate.visibility == "global", MessageTemplate.created_by_user_id == user_id))
         .order_by(TemplateUserState.is_favorite.desc().nullslast(), TemplateUserState.last_used_at.desc().nullslast(), MessageTemplate.name)
     )

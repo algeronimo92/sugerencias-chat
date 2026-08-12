@@ -10,6 +10,9 @@ vi.mock('./ServicesManagementPanel', () => ({
 vi.mock('./TagsManagementPanel', () => ({
   TagsManagementPanel: () => <div>Panel de etiquetas</div>,
 }))
+vi.mock('./TemplateCategoriesManagementPanel', () => ({
+  TemplateCategoriesManagementPanel: () => <div>Panel de categorías de plantillas</div>,
+}))
 
 describe('CatalogsPage', () => {
   it('agrupa servicios y etiquetas en una página propia', async () => {
@@ -22,5 +25,9 @@ describe('CatalogsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Etiquetas' }))
     expect(screen.getByText('Panel de etiquetas')).toBeInTheDocument()
     expect(screen.queryByText('Panel de servicios')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Categorías de plantillas' }))
+    expect(screen.getByText('Panel de categorías de plantillas')).toBeInTheDocument()
+    expect(screen.queryByText('Panel de etiquetas')).not.toBeInTheDocument()
   })
 })

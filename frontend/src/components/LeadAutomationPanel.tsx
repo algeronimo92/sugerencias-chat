@@ -20,12 +20,6 @@ const ACTIVE_STATUSES: string[] = [
   AutomationExecutionStatus.Paused,
 ]
 
-const SOURCE_LABELS: Record<string, string> = {
-  system: 'Automática',
-  manual: 'La iniciaste vos',
-  flow: 'La llamó otro flujo',
-}
-
 /** Reloj compartido por todas las cuentas regresivas del panel. Solo late
  *  mientras hay algo que contar: sin ejecuciones activas el panel no se
  *  dibuja y el intervalo no se crea. */
@@ -53,6 +47,17 @@ function formatDuration(ms: number) {
 
 function triggerLabel(trigger: string) {
   return AUTOMATION_TRIGGERS.find(item => item.value === trigger)?.label ?? trigger
+}
+
+function executionSourceLabel(execution: AutomationExecution) {
+  if (execution.started_by_name) {
+    return execution.start_source === 'flow'
+      ? `Iniciada por ${execution.started_by_name} · llamada por otro flujo`
+      : `Iniciada por ${execution.started_by_name}`
+  }
+  if (execution.start_source === 'manual') return 'Iniciada por un usuario eliminado'
+  if (execution.start_source === 'flow') return 'Llamada por otro flujo'
+  return 'Ejecutada por el sistema'
 }
 
 /** Qué le falta a la ejecución para dar su próximo paso, en texto. Con la
@@ -145,7 +150,7 @@ export function LeadAutomationPanel({ chatId }: Props) {
                     {execution.rule_name}
                   </span>
                   <span className="block truncate text-[10px] text-wa-muted dark:text-wa-muted-dark">
-                    {SOURCE_LABELS[execution.start_source] ?? execution.start_source} · {triggerLabel(execution.trigger_type)}
+                    {executionSourceLabel(execution)} · {triggerLabel(execution.trigger_type)}
                   </span>
                 </span>
                 <button

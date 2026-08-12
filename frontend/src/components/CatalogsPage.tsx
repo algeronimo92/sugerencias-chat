@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Tags, Sparkles } from 'lucide-react'
+import { FolderTree, Tags, Sparkles } from 'lucide-react'
 import { ServicesManagementPanel } from './ServicesManagementPanel'
 import { TagsManagementPanel } from './TagsManagementPanel'
+import { TemplateCategoriesManagementPanel } from './TemplateCategoriesManagementPanel'
 
-type CatalogTab = 'services' | 'tags'
+type CatalogTab = 'services' | 'tags' | 'template-categories'
 
 const tabClass = (active: boolean) =>
   `inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -27,11 +28,18 @@ export function CatalogsPage() {
           <button type="button" onClick={() => setTab('tags')} className={tabClass(tab === 'tags')}>
             <Tags className="h-4 w-4" /> Etiquetas
           </button>
+          <button type="button" onClick={() => setTab('template-categories')} className={tabClass(tab === 'template-categories')}>
+            <FolderTree className="h-4 w-4" /> Categorías de plantillas
+          </button>
         </nav>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mx-auto max-w-4xl">
-          {tab === 'services' ? <ServicesManagementPanel /> : <TagsManagementPanel />}
+          {tab === 'services'
+            ? <ServicesManagementPanel />
+            : tab === 'tags'
+              ? <TagsManagementPanel />
+              : <TemplateCategoriesManagementPanel />}
         </div>
       </div>
     </main>

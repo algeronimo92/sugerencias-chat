@@ -82,9 +82,9 @@ async def test_admin_catalog_includes_inactive_services(monkeypatch):
 async def test_update_service_normalizes_name(monkeypatch):
     received = None
 
-    async def fake_update(service_id, values):
+    async def fake_update(service_id, values, actor_user_id):
         nonlocal received
-        received = (service_id, values)
+        received = (service_id, values, actor_user_id)
         return {"id": service_id, "name": values["name"], "is_active": True}
 
     monkeypatch.setattr(lead_services, "update_lead_service", fake_update)
@@ -95,7 +95,7 @@ async def test_update_service_normalizes_name(monkeypatch):
         SimpleNamespace(id=1, role="admin"),
     )
 
-    assert received == (4, {"name": "Limpieza profunda"})
+    assert received == (4, {"name": "Limpieza profunda"}, 1)
     assert result["name"] == "Limpieza profunda"
 
 

@@ -38,7 +38,7 @@ async def post_service(body: LeadServiceCreate, user: User = Depends(get_current
 async def patch_service(
     service_id: int,
     body: LeadServiceUpdate,
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
     values = body.model_dump(exclude_unset=True)
     if "name" in values:
@@ -48,7 +48,7 @@ async def patch_service(
         if not values["name"]:
             raise HTTPException(status_code=400, detail="El nombre es obligatorio")
     try:
-        service = await update_lead_service(service_id, values)
+        service = await update_lead_service(service_id, values, admin.id)
     except LeadServiceAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un servicio con ese nombre")
     if service is None:

@@ -91,6 +91,7 @@ def make_execution(**overrides):
         "flow_state": {},
         "status": "running",
         "attempts": 1,
+        "started_by_user_id": None,
     }
     return SimpleNamespace(**{**defaults, **overrides})
 

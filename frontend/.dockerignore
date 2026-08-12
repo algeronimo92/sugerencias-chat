@@ -1,5 +1,12 @@
 node_modules
 dist
 dist-ssr
-.env
 .git
+
+# Secretos, por patrón y no por nombre exacto: una copia a mano
+# (.env.local, .env.bak) se colaba en la imagen con la línea `.env` sola. Acá
+# importa doble, porque Vite hornea cualquier VITE_* del .env dentro del
+# bundle: lo que entre al contexto termina siendo público en el navegador.
+# La URL de la API se pasa como build arg desde compose (VITE_API_BASE_URL).
+.env*
+**/.env*

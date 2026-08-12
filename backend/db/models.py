@@ -435,6 +435,23 @@ class LeadService(Base):
     )
 
 
+class TemplateCategory(Base):
+    """Categorías consistentes para las plantillas compartidas del CRM."""
+
+    __tablename__ = "template_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("uq_template_categories_name_lower", func.lower(name), unique=True),
+        Index("idx_template_categories_created_by", created_by),
+    )
+
+
 class LeadTagAssignment(Base):
     __tablename__ = "lead_tag_assignments"
 

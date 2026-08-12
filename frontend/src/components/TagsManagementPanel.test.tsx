@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../hooks/useLeadMeta', () => ({
   useTags: () => ({
     data: [
-      { id: 1, name: 'VIP', color: '#16a34a', is_active: true },
+      { id: 1, name: 'VIP', color: '#16a34a', is_active: true, created_by_name: 'Lucía Ramos', created_at: '2026-08-10T12:00:00Z' },
       { id: 2, name: 'Campaña antigua', color: '#64748b', is_active: false },
     ],
     isLoading: false,
@@ -39,6 +39,12 @@ describe('TagsManagementPanel', () => {
       { name: 'Paciente frecuente', color: '#16a34a' },
       expect.any(Object),
     )
+  })
+
+  it('muestra quién creó la etiqueta', () => {
+    render(<TagsManagementPanel />)
+
+    expect(screen.getByText(/Creada por Lucía Ramos/)).toBeInTheDocument()
   })
 
   it('edita y desactiva una etiqueta sin borrarla', async () => {

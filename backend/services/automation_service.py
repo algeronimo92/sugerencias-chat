@@ -191,6 +191,7 @@ def _execution_dict(row) -> dict:
         "created_at": _ts(row["created_at"]),
         "start_source": row["start_source"] or "system",
         "started_by_user_id": row["started_by_user_id"],
+        "started_by_name": row["started_by_name"],
     }
 
 
@@ -412,8 +413,11 @@ async def list_automation_executions(
         AutomationExecution.created_at,
         AutomationExecution.start_source,
         AutomationExecution.started_by_user_id,
+        User.name.label("started_by_name"),
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
         Lead, Lead.id == AutomationExecution.lead_id
+    ).outerjoin(
+        User, User.id == AutomationExecution.started_by_user_id
     )
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
@@ -2149,9 +2153,21 @@ async def _action_create_task(action, chat, execution, rule, deps) -> dict:
     return {"status": AutomationExecutionStatus.COMPLETED, "task_id": task["id"]}
 
 
+def _execution_actor(execution) -> tuple[str, int | None]:
+    """Actor humano que originó una acción del motor.
+
+    Los flujos manuales y sus flujos hijos conservan al vendedor iniciador.
+    Un disparador automático no se atribuye al creador de la regla: el actor
+    real es el sistema.
+    """
+    user_id = getattr(execution, "started_by_user_id", None)
+    return ("user", user_id) if user_id is not None else ("system", None)
+
+
 async def _action_change_service(action, chat, execution, rule, deps) -> dict:
+    actor_type, actor_user_id = _execution_actor(execution)
     updated = await deps.update_lead(
-        chat["chat_id"], {"servicio_interes": action["service"]}, "system", rule.created_by_user_id
+        chat["chat_id"], {"servicio_interes": action["service"]}, actor_type, actor_user_id
     )
     if not updated:
         raise ValueError("Lead no encontrado")
@@ -2169,11 +2185,12 @@ async def _action_set_conversation_state(action, chat, execution, rule, deps) ->
             "conversation_state": state,
         }
 
+    actor_type, actor_user_id = _execution_actor(execution)
     updated = await deps.update_lead(
         chat["chat_id"],
         {"conversacion_abierta": should_open},
-        "system",
-        rule.created_by_user_id,
+        actor_type,
+        actor_user_id,
     )
     if not updated:
         raise ValueError("Lead no encontrado")
@@ -2190,8 +2207,9 @@ async def _action_set_conversation_state(action, chat, execution, rule, deps) ->
 
 
 async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
+    actor_type, actor_user_id = _execution_actor(execution)
     updated = await deps.update_lead(
-        chat["chat_id"], {"vendedor_id": action["user_id"]}, "system", rule.created_by_user_id
+        chat["chat_id"], {"vendedor_id": action["user_id"]}, actor_type, actor_user_id
     )
     if not updated:
         raise ValueError("Lead no encontrado")
@@ -2201,14 +2219,16 @@ async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
 
 
 async def _action_add_tag(action, chat, execution, rule, deps) -> dict:
-    if not await deps.assign_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id):
+    _actor_type, actor_user_id = _execution_actor(execution)
+    if not await deps.assign_tag(chat["chat_id"], action["tag_id"], actor_user_id):
         raise ValueError("Lead o etiqueta no encontrado")
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "tag_changed"})
     return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
 
 
 async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
-    removed = await deps.remove_tag(chat["chat_id"], action["tag_id"], rule.created_by_user_id)
+    _actor_type, actor_user_id = _execution_actor(execution)
+    removed = await deps.remove_tag(chat["chat_id"], action["tag_id"], actor_user_id)
     return {
         "status": (
             AutomationExecutionStatus.COMPLETED if removed else AutomationExecutionStatus.SKIPPED
@@ -2218,8 +2238,9 @@ async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
 
 
 async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
+    actor_type, actor_user_id = _execution_actor(execution)
     updated = await deps.update_lead_stage(
-        chat["chat_id"], LeadStage(action["stage"]), "system", rule.created_by_user_id,
+        chat["chat_id"], LeadStage(action["stage"]), actor_type, actor_user_id,
         {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
     )
     if not updated:

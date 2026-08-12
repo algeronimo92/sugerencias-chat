@@ -2011,44 +2011,71 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
 
 
 async def list_tags(include_inactive: bool = False) -> list[dict]:
-    stmt = select(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active).order_by(LeadTag.name.asc())
+    stmt = select(
+        LeadTag.id,
+        LeadTag.name,
+        LeadTag.color,
+        LeadTag.is_active,
+        LeadTag.created_by.label("created_by_user_id"),
+        User.name.label("created_by_name"),
+        LeadTag.created_at,
+    ).outerjoin(User, User.id == LeadTag.created_by).order_by(LeadTag.name.asc())
     if not include_inactive:
         stmt = stmt.where(LeadTag.is_active == true())
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
 
 
 async def list_lead_services(include_inactive: bool = False) -> list[dict]:
-    stmt = select(LeadService.id, LeadService.name, LeadService.is_active).order_by(
+    stmt = select(
+        LeadService.id,
+        LeadService.name,
+        LeadService.is_active,
+        LeadService.created_by.label("created_by_user_id"),
+        User.name.label("created_by_name"),
+        LeadService.created_at,
+    ).outerjoin(User, User.id == LeadService.created_by).order_by(
         func.lower(LeadService.name).asc()
     )
     if not include_inactive:
         stmt = stmt.where(LeadService.is_active == true())
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
 
 
 async def create_lead_service(name: str, user_id: int) -> dict:
+    now = datetime.now(timezone.utc)
     stmt = (
         insert(LeadService)
         .values(
             name=name,
             is_active=True,
             created_by=user_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=now,
         )
-        .returning(LeadService.id, LeadService.name, LeadService.is_active)
+        .returning(
+            LeadService.id,
+            LeadService.name,
+            LeadService.is_active,
+            LeadService.created_by.label("created_by_user_id"),
+            LeadService.created_at,
+        )
     )
     async with get_sessionmaker()() as session:
         try:
             row = (await session.execute(stmt)).mappings().one()
+            creator_name = await session.scalar(select(User.name).where(User.id == user_id))
             await session.commit()
         except IntegrityError:
             await session.rollback()
             raise LeadServiceAlreadyExistsError(name)
-    return dict(row)
+    return {
+        **dict(row),
+        "created_by_name": creator_name,
+        "created_at": _fmt_ts(row["created_at"]),
+    }
 
 
 def _rename_service_references(value, old_name: str, new_name: str):
@@ -2090,19 +2117,28 @@ def _rename_service_references(value, old_name: str, new_name: str):
     return result, changed
 
 
-async def update_lead_service(service_id: int, values: dict) -> dict | None:
+async def update_lead_service(
+    service_id: int,
+    values: dict,
+    actor_user_id: int | None = None,
+) -> dict | None:
     async with get_sessionmaker()() as session:
         current = (
             await session.execute(
-                select(LeadService.id, LeadService.name, LeadService.is_active).where(
-                    LeadService.id == service_id
-                )
+                select(
+                    LeadService.id,
+                    LeadService.name,
+                    LeadService.is_active,
+                    LeadService.created_by.label("created_by_user_id"),
+                    User.name.label("created_by_name"),
+                    LeadService.created_at,
+                ).outerjoin(User, User.id == LeadService.created_by).where(LeadService.id == service_id)
             )
         ).mappings().first()
         if current is None:
             return None
         if not values:
-            return dict(current)
+            return {**dict(current), "created_at": _fmt_ts(current["created_at"])}
 
         try:
             row = (
@@ -2118,11 +2154,29 @@ async def update_lead_service(service_id: int, values: dict) -> dict | None:
             new_name = values.get("name")
             if new_name and new_name != old_name:
                 old_match = old_name.lower()
+                affected_lead_ids = (
+                    await session.execute(
+                        select(Lead.id).where(
+                            func.lower(func.btrim(Lead.servicio_interes)) == old_match
+                        )
+                    )
+                ).scalars().all()
                 await session.execute(
                     update(Lead)
                     .where(func.lower(func.btrim(Lead.servicio_interes)) == old_match)
-                    .values(servicio_interes=new_name)
+                    .values(servicio_interes=new_name, updated_at=datetime.now(timezone.utc))
                 )
+                for lead_id in affected_lead_ids:
+                    await _record_activity(
+                        session,
+                        lead_id,
+                        "lead_updated",
+                        "user" if actor_user_id is not None else "system",
+                        actor_user_id,
+                        old_value={"servicio_interes": old_name},
+                        new_value={"servicio_interes": new_name},
+                        metadata={"source": "service_catalog", "service_id": service_id},
+                    )
                 await session.execute(
                     update(MessageTemplate)
                     .where(func.lower(func.btrim(MessageTemplate.service)) == old_match)
@@ -2163,10 +2217,16 @@ async def update_lead_service(service_id: int, values: dict) -> dict | None:
         except IntegrityError:
             await session.rollback()
             raise LeadServiceAlreadyExistsError(values.get("name", ""))
-    return dict(row)
+    return {
+        **dict(row),
+        "created_by_user_id": current["created_by_user_id"],
+        "created_by_name": current["created_by_name"],
+        "created_at": _fmt_ts(current["created_at"]),
+    }
 
 
 async def create_tag(name: str, color: str, user_id: int) -> dict:
+    now = datetime.now(timezone.utc)
     stmt = (
         insert(LeadTag)
         .values(
@@ -2174,43 +2234,73 @@ async def create_tag(name: str, color: str, user_id: int) -> dict:
             color=color,
             is_active=True,
             created_by=user_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=now,
         )
-        .returning(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active)
+        .returning(
+            LeadTag.id,
+            LeadTag.name,
+            LeadTag.color,
+            LeadTag.is_active,
+            LeadTag.created_by.label("created_by_user_id"),
+            LeadTag.created_at,
+        )
     )
     async with get_sessionmaker()() as session:
         try:
             row = (await session.execute(stmt)).mappings().one()
+            creator_name = await session.scalar(select(User.name).where(User.id == user_id))
             await session.commit()
         except IntegrityError:
             await session.rollback()
             raise TagAlreadyExistsError(name)
-    return dict(row)
+    return {
+        **dict(row),
+        "created_by_name": creator_name,
+        "created_at": _fmt_ts(row["created_at"]),
+    }
 
 
 async def update_tag(tag_id: int, values: dict) -> dict | None:
-    if not values:
-        stmt = select(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active).where(LeadTag.id == tag_id)
-        async with get_sessionmaker()() as session:
-            row = (await session.execute(stmt)).mappings().first()
-        return dict(row) if row else None
-    stmt = (
-        update(LeadTag)
-        .where(LeadTag.id == tag_id)
-        .values(**values)
-        .returning(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active)
-    )
     async with get_sessionmaker()() as session:
+        current = (
+            await session.execute(
+                select(
+                    LeadTag.id,
+                    LeadTag.name,
+                    LeadTag.color,
+                    LeadTag.is_active,
+                    LeadTag.created_by.label("created_by_user_id"),
+                    User.name.label("created_by_name"),
+                    LeadTag.created_at,
+                ).outerjoin(User, User.id == LeadTag.created_by).where(LeadTag.id == tag_id)
+            )
+        ).mappings().first()
+        if current is None:
+            return None
+        if not values:
+            return {**dict(current), "created_at": _fmt_ts(current["created_at"])}
         try:
-            row = (await session.execute(stmt)).mappings().first()
+            row = (
+                await session.execute(
+                    update(LeadTag)
+                    .where(LeadTag.id == tag_id)
+                    .values(**values)
+                    .returning(LeadTag.id, LeadTag.name, LeadTag.color, LeadTag.is_active)
+                )
+            ).mappings().first()
             await session.commit()
         except IntegrityError:
             await session.rollback()
             raise TagAlreadyExistsError(values.get("name", ""))
-    return dict(row) if row else None
+    return {
+        **dict(row),
+        "created_by_user_id": current["created_by_user_id"],
+        "created_by_name": current["created_by_name"],
+        "created_at": _fmt_ts(current["created_at"]),
+    } if row else None
 
 
-async def assign_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
+async def assign_tag(chat_id: str, tag_id: int, user_id: int | None) -> bool:
     async with get_sessionmaker()() as session:
         lead_exists = (await session.execute(select(Lead.id).where(Lead.id == chat_id))).first()
         tag = (
@@ -2243,7 +2333,7 @@ async def assign_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
                 session,
                 chat_id,
                 "tag_added",
-                "user",
+                "user" if user_id is not None else "system",
                 user_id,
                 new_value={"tag": _tag_dict(tag)},
             )
@@ -2251,7 +2341,7 @@ async def assign_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
         return True
 
 
-async def remove_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
+async def remove_tag(chat_id: str, tag_id: int, user_id: int | None) -> bool:
     async with get_sessionmaker()() as session:
         tag = (
             await session.execute(
@@ -2272,7 +2362,7 @@ async def remove_tag(chat_id: str, tag_id: int, user_id: int) -> bool:
             session,
             chat_id,
             "tag_removed",
-            "user",
+            "user" if user_id is not None else "system",
             user_id,
             old_value={"tag": _tag_dict(tag)},
         )

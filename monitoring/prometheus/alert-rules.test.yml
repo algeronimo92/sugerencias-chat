@@ -1,0 +1,143 @@
+# Pruebas de las reglas de mensajería, para `promtool test rules`:
+#
+#   docker run --rm -v "$PWD/monitoring/prometheus:/rules:ro" \
+#     --entrypoint promtool prom/prometheus:v3.13.2 \
+#     test rules /rules/alert-rules.test.yml
+#
+# Existen porque una alerta mal escrita no falla: se queda callada. Un nombre
+# de métrica cambiado, una etiqueta que el exporter no pone o un `\.` de más en
+# el regex dan exactamente el mismo resultado que "todo está bien", y sólo se
+# descubre el día que hacía falta que sonara. Acá se afirma lo contrario: con
+# estos datos de entrada, la alerta SÍ dispara.
+#
+# Prometheus no lee este archivo: rule_files en prometheus.yml nombra sólo
+# alert-rules.yml.
+rule_files:
+  - alert-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Un solo mensaje muerto ya es una pérdida real: el umbral es > 0, no un
+  # número grande. Los cinco minutos de `for` son para no avisar por uno que
+  # está de paso mientras se reinyecta a mano.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="q.wsp.dlq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "0 0 0 0 0 3 3 3 3 3 3 3 3"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DlqConMensajes
+        exp_alerts: []
+      # Aparece en el minuto 5; con for: 5m recién dispara pasado el 10.
+      - eval_time: 9m
+        alertname: DlqConMensajes
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: DlqConMensajes
+        exp_alerts:
+          - exp_labels:
+              severity: high
+              vhost: dermicapro
+              queue: q.wsp.dlq
+              instance: dermicapro-mq-rabbitmq-1
+            exp_annotations:
+              summary: "3 mensajes de WhatsApp muertos en q.wsp.dlq"
+              description: "Agotaron los reintentos y no llegaron a la base. Revisar por qué falló la ingesta antes de reinyectarlos: hay que republicarlos en evolution_exchange con su routing key original (Requeue desde la consola no sirve)."
+
+  # n8n desconectado. Lo que se prueba de verdad acá es el regex: el punto va
+  # escapado, así que `q.wsp.inbound` matchea y ninguna otra cola se cuela.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+      # La cola de acuses sigue con su consumidor: la alerta debe señalar sólo
+      # a la que se quedó sola, no a las dos.
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.status", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+      # Una cola de reintento sin consumidores es lo NORMAL (nadie la consume:
+      # el TTL la vacía sola hacia wsp.return). No debe disparar nunca.
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.retry.30s", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "0 0 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: IngestaSinConsumidor
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: IngestaSinConsumidor
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              vhost: dermicapro
+              queue: q.wsp.inbound
+              instance: dermicapro-mq-rabbitmq-1
+            exp_annotations:
+              summary: "q.wsp.inbound lleva 5 minutos sin ningún consumidor"
+              description: "n8n no está conectado al broker. Los mensajes se siguen encolando (no se pierden) pero no entra ninguno al CRM."
+
+  # Hay consumidor pero no da abasto. En reposo la cola está en cero, así que
+  # cien sostenidos diez minutos ya es anómalo.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "150x15"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: IngestaAcumulandose
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: IngestaAcumulandose
+        exp_alerts:
+          - exp_labels:
+              severity: high
+              vhost: dermicapro
+              queue: q.wsp.inbound
+              instance: dermicapro-mq-rabbitmq-1
+            exp_annotations:
+              summary: "q.wsp.inbound acumula 150 mensajes sin procesar"
+              description: "Hay consumidor conectado pero el ritmo no alcanza, o el workflow falla y reencola. Mirar q.wsp.retry.30s y q.wsp.dlq para distinguir un caso del otro."
+
+  # Con el broker caído desaparecen todas sus series. Lo que se afirma acá es
+  # que en ese escenario avisa RabbitMQCaido y NO las reglas de cola: si
+  # dispararan por ausencia de datos, un corte del broker mandaría cuatro
+  # notificaciones distintas diciendo cosas que no pasaron.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="rabbitmq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1 1 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RabbitMQCaido
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: rabbitmq
+              instance: dermicapro-mq-rabbitmq-1
+            exp_annotations:
+              summary: "El broker de la ingesta de WhatsApp no responde"
+              description: "Mientras esté caído, Evolution no puede publicar y el resto de las alertas de mensajería se quedan sin datos (sus series desaparecen). Revisar con `docker compose -f compose.mq.yml --env-file mq/.env ps`."
+      - eval_time: 6m
+        alertname: IngestaSinConsumidor
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: DlqConMensajes
+        exp_alerts: []
+
+  # Alguien reactivó el modo global en la otra VPS y las colas huérfanas
+  # volvieron. `count()` colapsa las etiquetas: una sola notificación sin
+  # importar cuántas colas aparezcan.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="evolution.messages.upsert", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "0+10x20"
+      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="evolution.send.message", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "0+5x20"
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: ColasHuerfanasDeEvolution
+        exp_alerts:
+          - exp_labels:
+              severity: medium
+            exp_annotations:
+              summary: "Volvieron a aparecer colas evolution.* en el broker"
+              description: "Alguien reactivó RABBITMQ_GLOBAL_ENABLED en Evolution. No rompe la ingesta, pero acumulan copias que nadie lee. La política evolution-huerfanas las contiene mientras tanto."

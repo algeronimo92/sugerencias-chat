@@ -10,6 +10,7 @@ from services.productivity_service import (
     add_template_attachment, create_personal_template, create_template, delete_template as delete_template_record, list_templates,
     record_template_use, remove_template_attachment, set_template_favorite, update_template,
 )
+from services.template_category_service import get_template_category_by_name
 from routers.media import normalize_media_content_type, save_media_file
 from services.media_library_service import create_media_asset, delete_media_asset, get_media_asset
 from services.media_storage import MediaStorageError, delete_media, media_size
@@ -257,6 +258,10 @@ async def get_capabilities(_user: User = Depends(get_current_user)):
 async def post_template(body: TemplateCreate, admin: User = Depends(require_admin)):
     values = body.model_dump()
     values = _validate_template_values(values)
+    category = await get_template_category_by_name(values["category"])
+    if category is None:
+        raise HTTPException(400, "Selecciona una categoría activa del catálogo")
+    values["category"] = category["name"]
     try:
         item = await create_template(values, admin.id)
     except ValueError as exc:
@@ -403,6 +408,15 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         raise HTTPException(404, "Plantilla no encontrada")
     merged = {**current, **values}
     _validate_template_values(merged)
+    category_changed = (
+        "category" in values
+        and str(merged["category"]).casefold() != str(current["category"]).casefold()
+    )
+    if category_changed:
+        category = await get_template_category_by_name(merged["category"])
+        if category is None:
+            raise HTTPException(400, "Selecciona una categoría activa del catálogo")
+        merged["category"] = category["name"]
     if merged.get("interactive_type") != "none" and current["attachments"]:
         raise HTTPException(400, "Quita los adjuntos antes de convertir la plantilla en interactiva")
     for key in ("name", "content", "category", "shortcut"):

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../hooks/useLeadServices', () => ({
   useLeadServices: () => ({
     data: [
-      { id: 1, name: 'Botox', is_active: true },
+      { id: 1, name: 'Botox', is_active: true, created_by_name: 'Lucía Ramos', created_at: '2026-08-10T12:00:00Z' },
       { id: 2, name: 'Tratamiento anterior', is_active: false },
     ],
     isLoading: false,
@@ -36,6 +36,12 @@ describe('ServicesManagementPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Crear servicio' }))
 
     expect(mocks.create).toHaveBeenCalledWith('Limpieza profunda', expect.any(Object))
+  })
+
+  it('muestra quién creó el servicio', () => {
+    render(<ServicesManagementPanel />)
+
+    expect(screen.getByText(/Creado por Lucía Ramos/)).toBeInTheDocument()
   })
 
   it('edita y desactiva un servicio sin perderlo', async () => {

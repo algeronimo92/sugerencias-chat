@@ -101,13 +101,19 @@ export function ServicesManagementPanel() {
           const isThisPending = updateService.isPending && updateService.variables?.id === service.id
           return (
             <div key={service.id} className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center ${isActive ? 'border-wa-border dark:border-wa-border-dark' : 'border-dashed border-wa-border bg-wa-hover/70 opacity-70 dark:border-wa-border-dark dark:bg-wa-head-dark/60'}`}>
-              <input
-                value={draft}
-                onChange={event => setDrafts(current => ({ ...current, [service.id]: event.target.value }))}
-                maxLength={120}
-                aria-label={`Nombre de ${service.name}`}
-                className="min-w-0 flex-1 rounded-lg border border-wa-border bg-white px-3 py-1.5 text-sm text-wa-text outline-none focus:ring-2 focus:ring-wa-primary/60 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-              />
+              <div className="min-w-0 flex-1">
+                <input
+                  value={draft}
+                  onChange={event => setDrafts(current => ({ ...current, [service.id]: event.target.value }))}
+                  maxLength={120}
+                  aria-label={`Nombre de ${service.name}`}
+                  className="w-full rounded-lg border border-wa-border bg-white px-3 py-1.5 text-sm text-wa-text outline-none focus:ring-2 focus:ring-wa-primary/60 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+                />
+                <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">
+                  Creado por {service.created_by_name ?? 'Sistema'}
+                  {service.created_at ? ` · ${new Date(service.created_at).toLocaleDateString('es-PE')}` : ''}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"

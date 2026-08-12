@@ -129,13 +129,19 @@ export function TagsManagementPanel() {
                 aria-label={`Color de ${tag.name}`}
                 className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0"
               />
-              <input
-                value={draft.name}
-                onChange={event => setDraft(tag, { name: event.target.value })}
-                maxLength={80}
-                aria-label={`Nombre de ${tag.name}`}
-                className="min-w-0 flex-1 rounded-lg border border-wa-border bg-white px-3 py-1.5 text-sm text-wa-text outline-none focus:ring-2 focus:ring-wa-primary/60 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-              />
+              <div className="min-w-0 flex-1">
+                <input
+                  value={draft.name}
+                  onChange={event => setDraft(tag, { name: event.target.value })}
+                  maxLength={80}
+                  aria-label={`Nombre de ${tag.name}`}
+                  className="w-full rounded-lg border border-wa-border bg-white px-3 py-1.5 text-sm text-wa-text outline-none focus:ring-2 focus:ring-wa-primary/60 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+                />
+                <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">
+                  Creada por {tag.created_by_name ?? 'Sistema'}
+                  {tag.created_at ? ` · ${new Date(tag.created_at).toLocaleDateString('es-PE')}` : ''}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"

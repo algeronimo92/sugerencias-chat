@@ -119,9 +119,25 @@ crear_usuario "$ADMIN" "$RABBITMQ_DEFAULT_PASS" administrator
 crear_usuario evolution "$RABBITMQ_EVOLUTION_PASSWORD"
 crear_usuario n8n "$RABBITMQ_N8N_PASSWORD"
 
+echo "Plugin de métricas"
+
+# La imagen oficial trae rabbitmq_prometheus activado, pero de eso depende la
+# única alerta que avisa de una DLQ llena, así que se afirma en vez de darse
+# por hecho: `enable` es idempotente y no reinicia el nodo. Sin el plugin,
+# Prometheus scrapea el 15692 en vacío, `up` queda en 0 y lo que dispara es
+# RabbitMQCaido — molesto pero honesto, no un silencio.
+rabbitmq-plugins enable --quiet rabbitmq_prometheus
+
 echo "Permisos (configure / write / read)"
 
-# Evolution API: publica y nada más.
+# Evolution API: publica en un exchange y nada más.
+#
+# Los tres patrones apuntan al mismo y único nombre. Eso exige DOS cosas del
+# lado de Evolution, y si alguna falta deja de publicar (registra el error y
+# sigue vivo, así que el síntoma es "no entran mensajes", no una caída):
+#
+#   RABBITMQ_EXCHANGE_NAME=evolution_exchange   (antes decía `evolution`)
+#   RABBITMQ_GLOBAL_ENABLED=false               (ya no declara colas propias)
 #
 # El `read` acotado al exchange (y NO vacío) es a propósito, y cuesta un poco de
 # explicar. En RabbitMQ, atar una cola a un exchange (`queue.bind`) exige
@@ -134,28 +150,18 @@ echo "Permisos (configure / write / read)"
 #
 # y entraba en un bucle de reconexión cada 5 s sin publicar un solo mensaje.
 #
-# Lo importante es que esto NO le devuelve la capacidad de leer conversaciones:
+# Lo importante es que esto NO le da la capacidad de leer conversaciones:
 # `read` sobre una COLA es lo que habilita consumir, y ninguna cola matchea
 # `^evolution_exchange$`. Si la credencial se filtra, sigue sin poder sacar un
 # mensaje de q.wsp.inbound.
 #
-# El `configure`/`write` abiertos son deliberadamente amplios EN ESTA PRIMERA
-# ETAPA: en modo global Evolution declara por su cuenta el exchange y una cola
-# por evento, y todavía no está confirmado con qué nombres exactos. Denegarlo
-# antes de saberlo produce un fallo silencioso (Evolution registra el error y
-# deja de publicar) que cuesta caro diagnosticar.
-#
-# Para cerrarlo, después del primer día de tráfico:
-#   rabbitmqctl list_queues -p dermicapro name
-#   rabbitmqctl list_exchanges -p dermicapro name
-# y reemplazar los dos '.*' por un '^(evolution_exchange|<lo que aparezca>)$'.
-# Los DOS nombres de exchange: `evolution_exchange` es el default de la imagen y
-# el que declara definitions.json; `evolution` es el que quedó configurado en el
-# .env de Evolution en producción (RABBITMQ_EXCHANGE_NAME). q.wsp.inbound está
-# atada a los dos, así que el flujo funciona con cualquiera de las dos config.
-# Cuando se unifique el nombre en el .env de Evolution, sacar el que sobre de
-# acá y de definitions.json.
-rabbitmqctl set_permissions -p "$VHOST" evolution '.*' '.*' '^(evolution|evolution_exchange)$'
+# Antes acá había `.*` en configure y write, porque no estaba confirmado con
+# qué nombres declaraba sus colas en modo global. Con el modo global apagado ya
+# no declara ninguna, así que el permiso mínimo es exactamente el exchange.
+# Si algún día hiciera falta reactivarlo, el patrón que hay que devolver es
+# '^(evolution_exchange|evolution\..*)$' en configure y write — no el '.*'.
+rabbitmqctl set_permissions -p "$VHOST" evolution \
+  '^evolution_exchange$' '^evolution_exchange$' '^evolution_exchange$'
 
 # n8n: consume las dos colas de entrada y publica en los exchanges del reintento.
 #
@@ -181,9 +187,42 @@ rabbitmqctl set_permissions -p "$VHOST" n8n \
 # El administrador sí necesita verlo todo, si no la consola aparece vacía.
 rabbitmqctl set_permissions -p "$VHOST" "$ADMIN" '.*' '.*' '.*'
 
+echo "Colas huérfanas de Evolution"
+
+# Con RABBITMQ_GLOBAL_ENABLED=false Evolution deja de declarar una cola por
+# evento, pero las que ya existen no se van solas: siguen atadas al exchange,
+# recibiendo una copia de cada mensaje que nadie consume. Apagar el origen sin
+# borrarlas deja el problema exactamente igual.
+#
+# `--if-unused` es la red: si algo estuviera consumiendo una de estas colas
+# —o sea, si esta suposición fuera falsa— el borrado falla y no se pierde
+# nada. Lo que sí se descarta son los mensajes acumulados adentro, y está
+# bien: son copias de lo que ya entró por q.wsp.inbound, no la única.
+#
+# Idempotente: en un broker ya limpio el bucle no encuentra ninguna.
+colas_huerfanas=$(rabbitmqctl list_queues -p "$VHOST" --formatter json name consumers \
+  | tr '}' '\n' | grep '"name":"evolution\.' | sed 's/.*"name":"\([^"]*\)".*/\1/' || true)
+if [ -n "$colas_huerfanas" ]; then
+  for cola in $colas_huerfanas; do
+    if rabbitmqctl delete_queue -p "$VHOST" "$cola" --if-unused 2>/dev/null; then
+      echo "  $cola: borrada"
+    else
+      echo "  $cola: EN USO, no se toca (¿alguien la está consumiendo?)" >&2
+    fi
+  done
+else
+  echo "  ninguna (Evolution ya no las declara)"
+fi
+
 echo "Políticas"
 
-# En modo global, Evolution declara por su cuenta una cola por evento
+# Esta política ya NO es el mecanismo principal: las colas huérfanas se apagan
+# en el origen (RABBITMQ_GLOBAL_ENABLED=false) y las que quedaron se borran
+# arriba. Se conserva a propósito como red de seguridad, porque el modo global
+# se reactiva con una variable de entorno en otra VPS y el fallo que produce es
+# de los caros.
+#
+# Si vuelve a estar activo, Evolution declara una cola por evento
 # (`evolution.messages.upsert`, `evolution.send.message`) atada a su exchange, y
 # recibe en ellas una copia de todo. Nadie las consume: la ingesta real va por
 # q.wsp.inbound, que está atada al mismo exchange con sus propios bindings.
@@ -203,9 +242,6 @@ echo "Políticas"
 # broker que está sirviendo. Este script corre en cada despliegue, así que
 # converge solo.
 #
-# Cuando se confirme que la ingesta no depende de esas colas, lo definitivo es
-# apagarlas del lado de Evolution; esto seguiría siendo la red de seguridad
-# para el día que alguien reactive el modo global sin avisar.
 rabbitmqctl set_policy -p "$VHOST" \
   evolution-huerfanas '^evolution\.' \
   '{"message-ttl":3600000,"max-length":10000,"overflow":"drop-head"}' \
