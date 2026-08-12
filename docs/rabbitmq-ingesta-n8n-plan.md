@@ -419,7 +419,7 @@ desplegada, ver la lista de pendientes):
 RABBITMQ_ENABLED=true
 RABBITMQ_URI=amqp://evolution:<clave>@10.8.0.1:5672/dermicapro
 RABBITMQ_EXCHANGE_NAME=evolution_exchange
-RABBITMQ_GLOBAL_ENABLED=false
+RABBITMQ_GLOBAL_ENABLED=true
 RABBITMQ_EVENTS_MESSAGES_UPSERT=true
 RABBITMQ_EVENTS_SEND_MESSAGE=true
 RABBITMQ_EVENTS_MESSAGES_UPDATE=true
@@ -433,8 +433,12 @@ broker dejó de tolerar la alternativa.
   archivo tenía puesto en producción, y `evolution_exchange`, el default de la
   herramienta y el que declara `mq/definitions.json`), con `q.wsp.inbound` atada
   a los dos. Eso funcionaba pero duplicaba cada binding. Quedó uno solo.
-- `RABBITMQ_GLOBAL_ENABLED` tiene que estar en `false`. En `true`, Evolution
-  declara una cola por evento y ahora **no tiene permiso para hacerlo**.
+- `RABBITMQ_GLOBAL_ENABLED` tiene que quedarse en `true`. **No lo apagues para
+  librarte de las colas huérfanas**: el modo global es "un exchange compartido,
+  el tenant en el campo `instance` del evento", así que apagarlo cambia a dónde
+  publica Evolution. Los mensajes dejan de pasar por `evolution_exchange`,
+  `q.wsp.inbound` no recibe nada y no se cae nada: simplemente no entra un solo
+  WhatsApp. Pasó el 2026-08-12 y cortó la ingesta.
 
 Si alguna de las dos queda mal, Evolution autentica bien y falla al declarar:
 registra el error y deja de publicar sin caerse. El síntoma es "no entran
@@ -583,19 +587,28 @@ Los cuatro puntos que quedaban de infraestructura del broker:
   bindings: quedaron ocho en vez de doce. Requiere `RABBITMQ_EXCHANGE_NAME=evolution_exchange`
   en Evolution (ver el orden del cambio, arriba).
 
-- **Colas huérfanas apagadas en el origen.** `RABBITMQ_GLOBAL_ENABLED=false`.
-  `provision.sh` además borra las que quedaron, con `--if-unused` por si la
-  suposición de que nadie las consume fuera falsa. La política
-  `evolution-huerfanas` se conserva igual, ya no como mecanismo principal sino
-  como red de seguridad: el modo global se reactiva con una variable de entorno
-  en otra VPS, y el fallo que produce (disco lleno, broker bloqueando a todos
-  los publicadores) es de los caros. `ColasHuerfanasDeEvolution` avisa si
-  vuelven.
+- **Colas huérfanas: NO se pueden apagar en el origen.** Se intentó con
+  `RABBITMQ_GLOBAL_ENABLED=false` y cortó la ingesta el 2026-08-12: esa
+  variable no controla "declarar colas", controla el modelo de publicación
+  entero. Son inseparables del modo global en esta versión, así que la
+  política `evolution-huerfanas` deja de ser una red de seguridad y pasa a ser
+  el mecanismo: una hora de TTL y tope de 10 000 mensajes.
+  `ColasHuerfanasDeEvolution` sigue avisando si crecen fuera de eso.
 
-- **Permisos de `evolution` cerrados.** Los tres patrones son
-  `^evolution_exchange$`. Antes `configure` y `write` eran `.*` porque no estaba
-  confirmado qué nombres declaraba por su cuenta; sin modo global no declara
-  ninguno.
+  Si hay que vaciarlas a mano: `rabbitmqctl delete_queue -p dermicapro <cola>`
+  **sin** `--if-unused`. Son quorum queues y RabbitMQ rechaza esa bandera sobre
+  ese tipo de cola tenga o no consumidores — el error es un `not_implemented`
+  que no se parece en nada a "está en uso".
+
+- **Permisos de `evolution` cerrados.** `configure` y `write` pasaron de `.*`
+  a `^(evolution_exchange|evolution\..*)$`: ya se sabe qué nombres declara.
+  `read` queda en `^evolution_exchange$`, que es lo que necesita para atar sus
+  colas sin poder consumir ninguna.
+
+  Cuidado al tocar `read`: mientras el `.env` de Evolution diga `evolution` en
+  vez de `evolution_exchange`, ese patrón le impide atar y deja de publicar.
+  Los dos lados tienen que decir lo mismo, y el orden del cambio de arriba
+  existe por eso.
 
 ## Relación con el otro plan
 
