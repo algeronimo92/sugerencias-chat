@@ -130,10 +130,30 @@ function VideoBody(ctx: MessageBodyContext) {
   )
 }
 
+/** Nombre con el que se guarda un audio del chat. Las notas de voz no traen
+ *  filename, así que se arma uno con la fecha para que varias descargas no
+ *  terminen todas como "audio.ogg" y se pisen en la carpeta de descargas. */
+function audioFilename(message: Message, parsed: ParsedContent): string {
+  const original = String(parsed.payload?.filename ?? '').trim()
+  if (original) return original
+  const extension = message.media_url?.split(/[?#]/)[0].split('.').pop()
+  const safeExtension = extension && /^[a-z0-9]{1,5}$/i.test(extension) ? extension.toLowerCase() : 'ogg'
+  const stamp = (message.sent_at ?? '').slice(0, 16).replace('T', '_').replace(/:/g, '-')
+  return stamp ? `audio-${stamp}.${safeExtension}` : `audio.${safeExtension}`
+}
+
 function AudioBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, onMediaError } = ctx
+  const { parsed, message, mediaSrc, onMediaError } = ctx
   if (!mediaSrc) return <AttachmentChip parsed={parsed} />
-  return <AudioPlayer src={mediaSrc} onError={onMediaError} variant="bubble" className="mb-1.5 min-w-[min(16rem,100%)] max-w-full" />
+  return (
+    <AudioPlayer
+      src={mediaSrc}
+      onError={onMediaError}
+      variant="bubble"
+      className="mb-1.5 min-w-[min(16rem,100%)] max-w-full"
+      downloadName={audioFilename(message, parsed)}
+    />
+  )
 }
 
 function StickerBody(ctx: MessageBodyContext) {

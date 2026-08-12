@@ -6,7 +6,7 @@ from time import monotonic
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import and_, func, insert, or_, select, update
+from sqlalchemy import DateTime, and_, func, insert, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
@@ -60,6 +60,7 @@ from services.evolution_service import (
     mediatype_from_content_type,
 )
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
+from services.settings_service import get_effective
 from services.automation_rules import (
     business_timezone,
     flow_indexes,
@@ -111,6 +112,10 @@ MAX_WHATSAPP_TEXT_LENGTH = 4096
 MAX_MEDIA_CAPTION_LENGTH = MEDIA_CAPTION_MAX_LENGTH
 MAX_REACTION_LENGTH = 16
 CONVERSATION_STATES = frozenset({"open", "closed"})
+# Tope de conversaciones que cierra por inactividad cada barrido. Con el
+# watcher pasando cada minuto alcanza de sobra, y acota el trabajo del primer
+# ciclo después de activar el ajuste sobre un historial viejo.
+MAX_AUTO_CLOSE_PER_SWEEP = 200
 MAX_MESSAGE_CONDITION_LENGTH = 500
 MAX_CONDITION_GROUPS = 10
 MAX_CONDITIONS_PER_GROUP = 10
@@ -177,6 +182,7 @@ def _execution_dict(row) -> dict:
         "trigger_type": row["trigger_type"],
         "status": row["status"],
         "scheduled_for": _ts(row["scheduled_for"]),
+        "paused_at": _ts(row["paused_at"]),
         "started_at": _ts(row["started_at"]),
         "finished_at": _ts(row["finished_at"]),
         "action_results": row["action_results"] or [],
@@ -359,10 +365,16 @@ async def delete_automation_rule(rule_id: int) -> dict | None:
             )
         scheduled = await session.execute(update(AutomationExecution).where(
             AutomationExecution.rule_id == rule_id,
-            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+            AutomationExecution.status.in_([
+                AutomationExecutionStatus.SCHEDULED,
+                # También las congeladas por la pausa de un lead: si no, al
+                # reanudar volverían a la cola de una regla que ya no existe.
+                AutomationExecutionStatus.PAUSED,
+            ]),
         ).values(
             status=AutomationExecutionStatus.SKIPPED,
             error="La automatización fue eliminada",
+            paused_at=None,
             finished_at=now,
         ))
         await session.execute(update(AutomationRule).where(
@@ -380,7 +392,6 @@ async def list_automation_executions(
     exclude_skipped: bool = False,
     lead_id: str | None = None,
     start_source: str | None = None,
-    include_seller_flow_children: bool = False,
 ) -> list[dict]:
     stmt = select(
         AutomationExecution.id,
@@ -392,6 +403,7 @@ async def list_automation_executions(
         AutomationExecution.trigger_type,
         AutomationExecution.status,
         AutomationExecution.scheduled_for,
+        AutomationExecution.paused_at,
         AutomationExecution.started_at,
         AutomationExecution.finished_at,
         AutomationExecution.action_results,
@@ -415,14 +427,6 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.lead_id == lead_id)
     if start_source is not None:
         stmt = stmt.where(AutomationExecution.start_source == start_source)
-    if include_seller_flow_children:
-        stmt = stmt.where(or_(
-            AutomationExecution.start_source == "manual",
-            and_(
-                AutomationExecution.start_source == "flow",
-                AutomationExecution.started_by_user_id.is_not(None),
-            ),
-        ))
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
@@ -473,12 +477,23 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
     return await get_automation_execution(execution_id)
 
 
-async def cancel_scheduled_system_executions(lead_id: str) -> int:
-    """Al pausar la automatización de un lead, cancela lo que quedó
-    programado (con delay) de disparadores de sistema — no toca lo que ya
-    está corriendo (`_action_*` en curso no se interrumpe a mitad de envío,
-    mismo criterio que `delete_automation_rule`) ni los flujos manuales del
-    vendedor (`start_source == "manual"`), que el vendedor pidió a propósito."""
+async def pause_lead_executions(lead_id: str) -> int:
+    """Al pausar la automatización de un lead, congela lo que tiene programado
+    de disparadores de sistema en vez de cancelarlo: `paused`, con
+    `scheduled_for` intacto y `paused_at` marcando desde cuándo, para que
+    `resume_lead_executions` le devuelva el tiempo que le faltaba.
+
+    Incluye a las que están esperando en un bloque Pausa/Pregunta — para el
+    scheduler eso es simplemente una fila `scheduled` con `scheduled_for`
+    futuro, así que un flujo congelado a mitad de camino retoma después por
+    donde iba.
+
+    No toca lo que está corriendo en este instante (`_action_*` no se
+    interrumpe a mitad de envío, mismo criterio que `delete_automation_rule`);
+    de eso se encarga `_persist_visual_execution`, que congela la ejecución
+    cuando llega a su siguiente espera. Tampoco toca los flujos manuales del
+    vendedor (`start_source == "manual"`), que pidió a propósito y puede
+    cancelar uno por uno desde el chat."""
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         result = await session.execute(update(AutomationExecution).where(
@@ -486,13 +501,46 @@ async def cancel_scheduled_system_executions(lead_id: str) -> int:
             AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
             AutomationExecution.start_source != "manual",
         ).values(
-            status=AutomationExecutionStatus.SKIPPED,
-            error="Automatización pausada para este chat",
-            finished_at=now,
+            status=AutomationExecutionStatus.PAUSED,
+            paused_at=now,
+            error=None,
         ))
         await session.commit()
     if result.rowcount:
         await manager.broadcast({"type": "automations_updated"})
+    return result.rowcount or 0
+
+
+async def resume_lead_executions(lead_id: str) -> int:
+    """Devuelve a la cola lo que quedó congelado por la pausa del lead,
+    corriendo `scheduled_for` por lo que duró la pausa: una espera de 2 horas
+    a la que le faltaban 20 minutos vuelve a tener 20 minutos por delante, no
+    dispara de golpe por haber vencido durante la pausa.
+
+    `waiting_since` de los bloques Pausa/Pregunta no se corre a propósito: si
+    el cliente escribió mientras el vendedor atendía a mano, esa respuesta es
+    real y el flujo debe seguir por la rama del mensaje."""
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.lead_id == lead_id,
+            AutomationExecution.status == AutomationExecutionStatus.PAUSED,
+        ).values(
+            status=AutomationExecutionStatus.SCHEDULED,
+            # El literal va tipado: sin el tipo explícito, `$1 - timestamptz`
+            # le deja a Postgres un parámetro sin tipo que resolver contra dos
+            # firmas del operador `-`.
+            scheduled_for=AutomationExecution.scheduled_for + (
+                literal(now, DateTime(timezone=True))
+                - func.coalesce(AutomationExecution.paused_at, now)
+            ),
+            paused_at=None,
+            error=None,
+        ))
+        await session.commit()
+    if result.rowcount:
+        await manager.broadcast({"type": "automations_updated"})
+        _wake.set()
     return result.rowcount or 0
 
 
@@ -501,11 +549,16 @@ async def cancel_automation_execution(execution_id: int) -> dict | None:
         result = await session.execute(update(AutomationExecution).where(
             AutomationExecution.id == execution_id,
             AutomationExecution.status.in_([
-                AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.RUNNING,
+                AutomationExecutionStatus.SCHEDULED,
+                AutomationExecutionStatus.RUNNING,
+                # Una congelada también se puede descartar: es lo que hace el
+                # vendedor cuando no quiere que ese flujo retome al reanudar.
+                AutomationExecutionStatus.PAUSED,
             ]),
         ).values(
             status=AutomationExecutionStatus.SKIPPED,
             error="Cancelada manualmente",
+            paused_at=None,
             finished_at=datetime.now(timezone.utc),
         ))
         await session.commit()
@@ -3197,6 +3250,25 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
 async def process_due_automation_executions(limit: int = 20) -> int:
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
+        # Antes de reclamar nada, congela lo que venció con el lead pausado.
+        # `pause_lead_executions` solo alcanza a lo que ya estaba esperando en
+        # ese momento; esto atrapa además a la ejecución que estaba corriendo
+        # cuando el vendedor pausó y volvió a la cola al llegar a su siguiente
+        # espera — sin esto seguiría viva atravesando el flujo entero con el
+        # lead pausado. Va en la misma transacción que el SELECT de abajo, así
+        # que las congeladas ya no se ven como reclamables.
+        frozen = (await session.execute(update(AutomationExecution).where(
+            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+            AutomationExecution.scheduled_for <= now,
+            AutomationExecution.start_source != "manual",
+            AutomationExecution.lead_id.in_(
+                select(Lead.id).where(Lead.automatizacion_pausada.is_(True))
+            ),
+        ).values(
+            status=AutomationExecutionStatus.PAUSED,
+            paused_at=now,
+            error=None,
+        ).returning(AutomationExecution.id))).scalars().all()
         ids = (await session.execute(
             select(AutomationExecution.id).where(
                 AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
@@ -3212,6 +3284,8 @@ async def process_due_automation_executions(limit: int = 20) -> int:
                 error=None,
             ))
         await session.commit()
+    if frozen:
+        await manager.broadcast({"type": "automations_updated"})
     if not ids:
         return 0
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXECUTIONS)
@@ -3511,6 +3585,68 @@ async def _backfill_customer_response_deadlines(rule_id: int) -> int:
     return scheduled
 
 
+def _auto_close_hours(raw: str) -> int:
+    """Horas configuradas para el cierre automático. 0 = desactivado, que es
+    también lo que devuelve cualquier valor inválido: un ajuste mal tipeado no
+    puede terminar cerrando conversaciones cada minuto."""
+    try:
+        hours = int(float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return 0
+    return hours if hours > 0 else 0
+
+
+async def _auto_close_idle_conversations() -> int:
+    """Cierra las conversaciones que llevan N horas sin ningún mensaje.
+
+    Cuenta el último mensaje de cualquiera de los dos lados: un seguimiento del
+    vendedor reinicia el reloj igual que una respuesta del cliente. Si el chat
+    todavía no tiene mensajes se mide desde que la conversación se abrió.
+
+    Respeta la pausa del lead, igual que el resto de lo que hace el sistema:
+    si el vendedor pausó la automatización para atenderlo a mano, es él quien
+    decide cuándo cerrar.
+
+    El cierre pasa por `update_lead` en vez de un UPDATE directo para que
+    quede la actividad `conversation_closed` en el historial y se complete
+    `conversacion_cerrada_at`, igual que cuando lo cierra una persona.
+    """
+    hours = _auto_close_hours(await get_effective("conversation_auto_close_hours"))
+    if not hours:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    last_message_at = (
+        select(func.max(WspMessage.sent_at))
+        .where(WspMessage.chat_id == Lead.id)
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+    async with get_sessionmaker()() as session:
+        lead_ids = (await session.execute(
+            select(Lead.id).where(
+                Lead.conversacion_abierta.is_(True),
+                Lead.automatizacion_pausada.is_(False),
+                func.coalesce(last_message_at, Lead.conversacion_abierta_at) <= cutoff,
+            ).limit(MAX_AUTO_CLOSE_PER_SWEEP)
+        )).scalars().all()
+    closed = 0
+    for lead_id in lead_ids:
+        try:
+            await update_lead(lead_id, {"conversacion_abierta": False}, "system", None)
+        except Exception:
+            logger.exception("No se pudo cerrar por inactividad la conversación de %s", lead_id)
+            continue
+        closed += 1
+        await manager.broadcast({
+            "type": "chats_updated",
+            "chat_id": lead_id,
+            "reason": "conversation_closed",
+        })
+    if closed:
+        logger.info("Cerradas %s conversaciones tras %s horas sin mensajes", closed, hours)
+    return closed
+
+
 async def _release_stale_executions() -> None:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(minutes=STALE_EXECUTION_MINUTES)
@@ -3631,6 +3767,7 @@ async def watch_automations() -> None:
                 await _discover_recent_inbound_messages()
                 await _discover_timed_events()
                 await _discover_wait_any_replies()
+                await _auto_close_idle_conversations()
                 next_housekeeping_at = now_mono + 60.0
             await process_due_automation_executions()
         except asyncio.CancelledError:

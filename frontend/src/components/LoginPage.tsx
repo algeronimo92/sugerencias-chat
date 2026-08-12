@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { useLogin, usePinLogin, usePinStatus } from '../hooks/useAuth'
+import { PIN_LENGTH, useLogin, usePinLogin, usePinStatus } from '../hooks/useAuth'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 import { Checkbox } from './ui/Checkbox'
@@ -50,7 +50,7 @@ export function LoginPage() {
           <form
             onSubmit={(event) => {
               event.preventDefault()
-              if (/^\d{6}$/.test(pin)) pinLogin(pin)
+              if (pin.length === PIN_LENGTH) pinLogin(pin)
             }}
             className="space-y-4 px-6 pb-6"
           >
@@ -60,17 +60,17 @@ export function LoginPage() {
               <Input
                 id="login-pin"
                 value={pin}
-                onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, PIN_LENGTH))}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 autoFocus
-                maxLength={6}
+                maxLength={PIN_LENGTH}
                 className="text-center text-xl tracking-[0.45em]"
-                aria-label="PIN de seis dígitos"
+                aria-label={`PIN de ${PIN_LENGTH} dígitos`}
               />
               <p className="mt-1 text-center text-[11px] text-wa-muted">{pinStatus?.masked_email}</p>
             </div>
-            <Button type="submit" disabled={isPinPending || pin.length !== 6} className="h-10 w-full">
+            <Button type="submit" disabled={isPinPending || pin.length !== PIN_LENGTH} className="h-10 w-full">
               {isPinPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Entrar con PIN
             </Button>

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Reparte por turnos (round robin) los leads nuevos que llegan por WhatsApp
     # entre los vendedores activos. Editable desde Configuración.
     auto_assign_leads_enabled: str = "false"
+    # Horas sin ningún mensaje tras las cuales una conversación abierta se
+    # cierra sola. Vacío o 0 lo desactiva. Editable desde Configuración.
+    conversation_auto_close_hours: str = ""
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Almacenamiento multimedia. "local" conserva el comportamiento anterior;

@@ -710,6 +710,10 @@ class AutomationExecution(Base):
     )
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Momento en que la ejecución quedó congelada por la pausa del lead. Con
+    # scheduled_for intacto alcanza para devolverle al reanudar exactamente el
+    # tiempo que le faltaba: scheduled_for += (ahora - paused_at).
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     action_results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")

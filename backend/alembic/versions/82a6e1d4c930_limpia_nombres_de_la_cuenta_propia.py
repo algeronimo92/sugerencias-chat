@@ -23,7 +23,7 @@ def upgrade() -> None:
         UPDATE leads
         SET nombre = NULL,
             updated_at = now()
-        WHERE lower(trim(nombre)) IN ('você', 'voce', 'dermicapro', 'dermica pro', 'DérmicaPRO)
+        WHERE lower(trim(nombre)) IN ('você', 'voce', 'dermicapro', 'dermica pro', 'dérmicapro')
         """
     )
 

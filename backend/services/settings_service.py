@@ -65,6 +65,13 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
         boolean=True,
     ),
+    SettingDef(
+        "conversation_auto_close_hours",
+        "Cerrar la conversación tras N horas sin mensajes (vacío o 0 = nunca)",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
+    ),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0

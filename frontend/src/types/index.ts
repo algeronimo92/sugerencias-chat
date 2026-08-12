@@ -707,11 +707,21 @@ export type AutomationExecutionStartSource = 'system' | 'manual' | 'flow'
 
 export interface AutomationActionResult {
   position?: number
-  type?: AutomationActionType
+  /** En una regla simple es el tipo de acción; en un flujo visual, el tipo de
+   *  nodo (`wait`, `wait_any`, `question`, `condition`, `end`…). */
+  type?: AutomationActionType | FlowNodeTypeValue
   status?: string
   error?: string
   flow_rule_id?: number
   child_execution_id?: number
+  /** Solo en flujos visuales. */
+  node_id?: string | null
+  /** Segundos de espera de un bloque Pausa clásico (`wait`). */
+  seconds?: number
+  /** Salida por la que resolvió un bloque Pausa/Pregunta. */
+  branch?: string
+  conditions?: WaitAnyCondition[]
+  message_ids?: number[]
 }
 
 export interface AutomationExecution {
@@ -723,7 +733,11 @@ export interface AutomationExecution {
   lead_name: string | null
   trigger_type: AutomationTrigger
   status: AutomationExecutionStatusValue
+  /** Cuándo le toca correr al paso pendiente. Mientras está `paused`, sigue
+   *  siendo el vencimiento de antes de congelarse: lo que falta se mide
+   *  contra `paused_at`, no contra ahora. */
   scheduled_for: string
+  paused_at: string | null
   started_at: string | null
   finished_at: string | null
   action_results: AutomationActionResult[]

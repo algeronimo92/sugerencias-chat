@@ -162,7 +162,11 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !send.isPending && !openMedia) onClose()
+      if (event.key !== 'Escape' || send.isPending || openMedia) return
+      // Corta acá: sin esto el mismo Escape seguía hasta el listener global y
+      // cerraba también el lead que quedaba detrás de la vista previa.
+      event.stopPropagation()
+      onClose()
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => {

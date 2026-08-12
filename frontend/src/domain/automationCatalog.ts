@@ -96,6 +96,16 @@ export const FLOW_NODE_LABELS = {
   [FlowNodeType.End]: 'Fin',
 } satisfies Record<FlowNodeTypeValue, string>
 
+/** Etiqueta de un paso de `action_results`. Una regla simple guarda ahí el
+ *  tipo de acción; un flujo visual, el tipo de nodo — el mismo campo lleva las
+ *  dos cosas, así que la búsqueda va contra los dos catálogos. */
+export function automationStepLabel(type: string | null | undefined): string {
+  if (!type) return 'Paso'
+  if (type in AUTOMATION_ACTION_LABELS) return AUTOMATION_ACTION_LABELS[type as AutomationActionTypeValue]
+  if (type in FLOW_NODE_LABELS) return FLOW_NODE_LABELS[type as FlowNodeTypeValue]
+  return type
+}
+
 /** Tope de salidas de un bloque Round robin (mismo valor que valida el
  *  backend en MAX_ROUND_ROBIN_OUTPUTS). */
 export const MAX_ROUND_ROBIN_OUTPUTS = 10
@@ -171,6 +181,9 @@ export type AutomationBuilderModeValue = ValueOf<typeof AutomationBuilderMode>
 export const AutomationExecutionStatus = {
   Scheduled: 'scheduled',
   Running: 'running',
+  // Congelada por la pausa del lead: no es terminal, conserva lo que le
+  // faltaba y retoma cuando el vendedor reanuda.
+  Paused: 'paused',
   Completed: 'completed',
   Failed: 'failed',
   Skipped: 'skipped',

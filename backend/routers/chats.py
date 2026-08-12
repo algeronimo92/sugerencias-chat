@@ -101,7 +101,8 @@ from services.message_outbox import (
 )
 from services.productivity_service import list_templates, record_template_use
 from services.automation_service import (
-    cancel_scheduled_system_executions,
+    pause_lead_executions,
+    resume_lead_executions,
     trigger_lead_created,
     trigger_stage_changed,
 )
@@ -428,11 +429,19 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
+    # La pausa congela y la reanudación descongela: lo que quedó a medias sigue
+    # después por donde iba, con el tiempo que le faltaba (ver
+    # pause_lead_executions / resume_lead_executions).
     if values.get("automatizacion_pausada") is True:
         try:
-            await cancel_scheduled_system_executions(chat_id)
+            await pause_lead_executions(chat_id)
         except Exception:
-            logger.exception("No se pudieron cancelar las automatizaciones programadas al pausar %s", chat_id)
+            logger.exception("No se pudieron congelar las automatizaciones programadas al pausar %s", chat_id)
+    elif values.get("automatizacion_pausada") is False:
+        try:
+            await resume_lead_executions(chat_id)
+        except Exception:
+            logger.exception("No se pudieron reanudar las automatizaciones congeladas de %s", chat_id)
 
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
     return lead

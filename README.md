@@ -18,7 +18,7 @@ cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 El login ofrece **Recordar este dispositivo**. La sesión se renueva por actividad
 durante 30 días, tiene un máximo absoluto de 90 días y puede revocarse por
 dispositivo desde el escudo **Acceso y seguridad**. Allí cada usuario puede
-crear un PIN de 6 dígitos: el PIN sólo funciona junto con el token secreto de
+crear un PIN de 4 dígitos: el PIN sólo funciona junto con el token secreto de
 ese navegador, se bloquea temporalmente después de 5 intentos fallidos y nunca
 reemplaza la contraseña para registrar un dispositivo nuevo. Restablecer la
 contraseña o desactivar un usuario revoca todas sus sesiones y dispositivos.
@@ -192,12 +192,28 @@ Para revertir de urgencia sin el script: cambiar el puerto de la línea `url` en
 docker compose up -d --build
 ```
 
-Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales (frontend `5174`, backend `8000`). Solo levanta backend y frontend; la base es siempre la de producción, según `backend/.env`.
+Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales:
 
-**A qué base apunta el backend** se elige en `backend/.env` — las dos opciones están comentadas en `backend/.env.example`, listas para des/comentar:
+- frontend: `http://localhost:5174`;
+- backend: `http://localhost:8000`;
+- PostgreSQL: `127.0.0.1:5433` para herramientas del host, y
+  `postgres:5432` para el backend.
 
-1. Producción en el servidor (red interna, `postgres:5432`, `require`) — la del despliegue.
-2. **La base de producción desde tu laptop** — cambia `DATABASE_URL` a la IP pública y `DATABASE_SSL=require` (el servidor rechaza conexiones sin TLS). Tras editar `backend/.env`, reinicia el backend (`docker compose restart backend`). ⚠ Datos reales: sin red de seguridad ante un `UPDATE`/`DELETE`.
+La base local guarda sus datos en el volumen `sugerencias-chat_pgdata-local` y
+no se elimina al recrear los contenedores. El backend espera el healthcheck de
+PostgreSQL y ejecuta `python -m scripts.migrate` antes de iniciar Uvicorn, por
+lo que también prepara automáticamente una base vacía.
+
+`db/.env` define `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`.
+`backend/.env` debe usar esos mismos valores en:
+
+```
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@postgres:5432/<db>
+```
+
+Compose fuerza `DATABASE_SSL=disable` únicamente para este entorno local. Los
+despliegues con `compose.prod.yml` conservan `DATABASE_SSL=require` y la base
+separada descrita arriba.
 
 ### Mensajes leídos de WhatsApp (n8n + Evolution API)
 

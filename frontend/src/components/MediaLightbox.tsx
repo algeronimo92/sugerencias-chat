@@ -153,6 +153,9 @@ export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt || 'Visor de multimedia'}
       className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center overflow-hidden"
       onClick={onClose}
     >

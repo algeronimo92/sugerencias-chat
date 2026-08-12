@@ -18,8 +18,10 @@ export function FlowPicker({ chatId }: Props) {
   const [open, setOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
   const { data: flows = [], isLoading } = useManualFlows(chatId)
-  // Mismo hook que usa FlowRunStatus: react-query cachea por chatId, así que
-  // esto no duplica el pedido de red mientras el banner esté montado. Es solo
+  // Mismo hook que usa LeadAutomationPanel: react-query cachea por chatId, así
+  // que esto no duplica el pedido de red mientras el panel esté montado. La
+  // lista trae también las ejecuciones de sistema del lead, por eso el filtro
+  // por start_source de abajo: solo un flujo del vendedor bloquea. Es solo
   // UX (deshabilita el botón y avisa "Ya en curso") — la guarda real contra
   // dos ejecuciones simultáneas es el índice único del backend, que sigue
   // respondiendo 400 aunque este chequeo llegue a estar desactualizado por

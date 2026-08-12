@@ -239,7 +239,7 @@ async def post_start_manual_flow(
 async def get_executions(
     rule_id: int | None = None,
     chat_id: str | None = None,
-    status: str | None = Query(default=None, pattern="^(scheduled|running|completed|failed|skipped)$"),
+    status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped)$"),
     exclude_skipped: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     user: User = Depends(get_current_user),
@@ -248,7 +248,7 @@ async def get_executions(
     if not is_admin and not chat_id:
         # El historial completo (todas las reglas, todos los leads) sigue
         # siendo admin-only; un vendedor solo puede consultar el de un chat
-        # puntual — es lo que usa el pill "Flujo en curso" del chat.
+        # puntual — es lo que alimenta el panel "Automatizaciones" del chat.
         raise HTTPException(400, "Los vendedores deben indicar chat_id")
     return await list_automation_executions(
         rule_id,
@@ -256,10 +256,9 @@ async def get_executions(
         limit,
         exclude_skipped=exclude_skipped,
         lead_id=chat_id,
-        # Un vendedor solo ve las ejecuciones manuales de ese chat (las suyas y
-        # las de otros vendedores sobre el mismo lead), no el historial de
-        # triggers de sistema del admin (vencimientos, etc.) para ese lead.
-        include_seller_flow_children=not is_admin,
+        # Dentro de un chat el vendedor ve todo lo que corre sobre ese lead,
+        # también los triggers de sistema: es lo que necesita para entender por
+        # qué el sistema le va a escribir al cliente y para frenarlo a tiempo.
     )
 
 
@@ -275,13 +274,13 @@ async def post_retry_execution(execution_id: int, _admin: User = Depends(require
 async def post_cancel_execution(execution_id: int, user: User = Depends(get_current_user)):
     if user.role != "admin":
         execution = await get_automation_execution(execution_id)
-        if (
-            execution is None
-            or execution["start_source"] not in {"manual", "flow"}
-            or execution["started_by_user_id"] != user.id
-        ):
+        # Un vendedor cancela cualquier ejecución que corra sobre un lead,
+        # incluidas las de sistema: ya puede frenarlas todas de golpe pausando
+        # el lead, así que cancelar una sola es estrictamente menos drástico.
+        # Lo único fuera de su alcance son las ejecuciones sin lead.
+        if execution is None or execution["lead_id"] is None:
             raise HTTPException(403, "No podés cancelar esta ejecución")
     item = await cancel_automation_execution(execution_id)
     if item is None:
-        raise HTTPException(409, "Solo se pueden cancelar ejecuciones programadas o en curso")
+        raise HTTPException(409, "Solo se pueden cancelar ejecuciones programadas, en curso o pausadas")
     return item

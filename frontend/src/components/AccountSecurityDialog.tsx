@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { KeyRound, Laptop, Loader2, LogOut, ShieldCheck, Trash2, X } from 'lucide-react'
-import { useLogoutAll, usePinStatus, useRemovePin, useRevokeSession, useSessions, useSetupPin } from '../hooks/useAuth'
+import { PIN_LENGTH, useLogoutAll, usePinStatus, useRemovePin, useRevokeSession, useSessions, useSetupPin } from '../hooks/useAuth'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
@@ -28,13 +28,32 @@ export function AccountSecurityDialog({ onClose }: Props) {
   const [confirmPin, setConfirmPin] = useState('')
   const [password, setPassword] = useState('')
   const [saved, setSaved] = useState(false)
+  const [invalid, setInvalid] = useState<string | null>(null)
 
-  function submitPin(event: React.FormEvent) {
+  /** Por qué no se puede enviar todavía, en palabras. Antes esto solo apagaba
+   *  el botón: con el gestor de contraseñas del navegador rellenando el campo
+   *  sin disparar el evento de React, el formulario quedaba mudo y el usuario
+   *  solo veía un botón que no respondía. */
+  function whyNotReady(currentPassword: string) {
+    if (pin.length !== PIN_LENGTH || !/^\d+$/.test(pin)) return `El PIN debe tener exactamente ${PIN_LENGTH} dígitos.`
+    if (pin !== confirmPin) return 'Los dos PIN no coinciden.'
+    if (!currentPassword) return 'Escribí tu contraseña actual para confirmar el cambio.'
+    return null
+  }
+
+  function submitPin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaved(false)
-    if (pin !== confirmPin || !/^\d{6}$/.test(pin)) return
+    // El valor se lee del DOM y no del estado: un gestor de contraseñas puede
+    // rellenar el campo sin disparar el onChange de React, y entonces el
+    // estado queda vacío aunque el usuario vea la contraseña puesta.
+    const field = new FormData(event.currentTarget).get('current_password')
+    const currentPassword = typeof field === 'string' && field ? field : password
+    const problem = whyNotReady(currentPassword)
+    setInvalid(problem)
+    if (problem) return
     setupPin.mutate(
-      { pin, currentPassword: password },
+      { pin, currentPassword },
       {
         onSuccess: () => {
           setPin('')
@@ -71,18 +90,19 @@ export function AccountSecurityDialog({ onClose }: Props) {
 
               {isLoadingPin ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" /> : (
                 <form onSubmit={submitPin} className="space-y-3 rounded-lg bg-wa-hover p-3 dark:bg-wa-head-dark/60">
+                  {invalid && <p className="text-xs text-red-500">{invalid}</p>}
                   {setupPin.error && <p className="text-xs text-red-500">{extractErrorMessage(setupPin.error)}</p>}
                   {removePin.error && <p className="text-xs text-red-500">{extractErrorMessage(removePin.error)}</p>}
                   {saved && <p className="text-xs text-green-600 dark:text-green-400">PIN configurado correctamente.</p>}
                   <div className="grid grid-cols-2 gap-2">
-                    <div><label htmlFor="security-pin" className={labelClass}>{pinStatus?.available ? 'Nuevo PIN' : 'PIN'}</label><Input id="security-pin" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" maxLength={6} placeholder="6 dígitos" /></div>
-                    <div><label htmlFor="security-pin-confirm" className={labelClass}>Repetir PIN</label><Input id="security-pin-confirm" value={confirmPin} onChange={event => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" maxLength={6} placeholder="6 dígitos" /></div>
+                    <div><label htmlFor="security-pin" className={labelClass}>{pinStatus?.available ? 'Nuevo PIN' : 'PIN'}</label><Input id="security-pin" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, '').slice(0, PIN_LENGTH))} inputMode="numeric" autoComplete="new-password" maxLength={PIN_LENGTH} placeholder={`${PIN_LENGTH} dígitos`} /></div>
+                    <div><label htmlFor="security-pin-confirm" className={labelClass}>Repetir PIN</label><Input id="security-pin-confirm" value={confirmPin} onChange={event => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, PIN_LENGTH))} inputMode="numeric" autoComplete="new-password" maxLength={PIN_LENGTH} placeholder={`${PIN_LENGTH} dígitos`} /></div>
                   </div>
                   {confirmPin && pin !== confirmPin && <p className="text-[11px] text-red-500">Los PIN no coinciden.</p>}
-                  <div><label htmlFor="security-password" className={labelClass}>Contraseña actual para confirmar</label><Input id="security-password" type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" /></div>
+                  <div><label htmlFor="security-password" className={labelClass}>Contraseña actual para confirmar</label><Input id="security-password" name="current_password" type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" /></div>
                   <div className="flex items-center justify-between gap-2">
                     {pinStatus?.available ? <button type="button" disabled={removePin.isPending} onClick={() => removePin.mutate()} className="text-xs text-red-600 hover:underline dark:text-red-400">Quitar PIN</button> : <span />}
-                    <Button type="submit" disabled={setupPin.isPending || pin.length !== 6 || pin !== confirmPin || !password}>
+                    <Button type="submit" disabled={setupPin.isPending}>
                       {setupPin.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       {pinStatus?.available ? 'Cambiar PIN' : 'Crear PIN'}
                     </Button>

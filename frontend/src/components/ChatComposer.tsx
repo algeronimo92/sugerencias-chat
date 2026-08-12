@@ -20,6 +20,7 @@ import { VoiceRecorder } from './VoiceRecorder'
 const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
 const MEDIA_ACCEPT = 'image/*,video/*'
 const AUDIO_ACCEPT = 'audio/*'
+const COMPOSER_MAX_HEIGHT = 128
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -121,6 +122,18 @@ export function ChatComposer({
       el.setSelectionRange(caretRef.current, caretRef.current)
     }
     caretRef.current = null
+  }, [draft])
+
+  // `rows={1}` conserva el compositor compacto cuando está vacío. A medida
+  // que entra texto (también al insertar una plantilla) se adapta al contenido
+  // hasta el límite; recién entonces aparece el scroll interno.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [draft])
 
   const { mutate: sendAudio } = useSendAudio(chat.chat_id)
@@ -464,7 +477,7 @@ export function ChatComposer({
                 onPaste={handlePaste}
                 placeholder="Escribí un mensaje... (/ para usar una plantilla)"
                 rows={1}
-                className="w-full resize-none text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow max-h-32"
+                className="w-full max-h-32 resize-none overflow-y-hidden text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
               />
             </div>
           )}

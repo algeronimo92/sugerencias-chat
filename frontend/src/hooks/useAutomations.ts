@@ -55,7 +55,12 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
     refetchInterval: (query) => {
       if (chatId) {
         const hasActiveExecution = query.state.data?.some(
-          (execution) => execution.status === 'scheduled' || execution.status === 'running'
+          (execution) => execution.status === 'scheduled'
+            || execution.status === 'running'
+            // Una congelada no cambia sola, pero sí cuando el vendedor reanuda
+            // el lead: sin el poll, el panel se quedaría mostrando "en pausa"
+            // hasta el próximo evento si el WebSocket está caído.
+            || execution.status === 'paused'
         )
         if (hasActiveExecution) return ACTIVE_EXECUTION_POLL_MS
         return false

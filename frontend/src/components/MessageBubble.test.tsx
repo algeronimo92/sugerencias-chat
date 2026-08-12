@@ -121,6 +121,34 @@ describe('MessageBubble', () => {
     expect(screen.getByLabelText('Eliminar este mensaje para todos')).toBeInTheDocument()
   })
 
+  it('deja descargar un audio del chat con un nombre fechado', () => {
+    renderBubble({
+      sender: 'cliente',
+      message_type: 'audio',
+      media_url: '/media/nota.ogg',
+      content: null,
+      sent_at: '2026-08-06T12:05:00.000Z',
+    })
+
+    // Sin nombre propio (una nota de voz no lo trae), la fecha evita que dos
+    // descargas se pisen en la carpeta del vendedor.
+    const link = screen.getByLabelText('Descargar audio-2026-08-06_12-05.ogg')
+    expect(link).toHaveAttribute('download', 'audio-2026-08-06_12-05.ogg')
+    expect(link.getAttribute('href')).toMatch(/\/media\/nota\.ogg$/)
+  })
+
+  it('conserva el nombre original del audio cuando el mensaje lo trae', () => {
+    renderBubble({
+      sender: 'cliente',
+      message_type: 'audio',
+      media_url: '/media/abc123.mp3',
+      content: null,
+      payload: { filename: 'promo-hifu.mp3' },
+    })
+
+    expect(screen.getByLabelText('Descargar promo-hifu.mp3')).toHaveAttribute('download', 'promo-hifu.mp3')
+  })
+
   it('no ofrece ni editar ni eliminar un mensaje del cliente', () => {
     renderBubble({ sender: 'cliente', content: 'Hola' })
 

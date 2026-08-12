@@ -656,6 +656,7 @@ class AutomationExecutionItem(BaseModel):
     trigger_type: AutomationTrigger
     status: AutomationExecutionStatus
     scheduled_for: str
+    paused_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
     action_results: list[dict]

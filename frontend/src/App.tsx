@@ -24,6 +24,7 @@ import { Spinner } from './components/ui/Spinner'
 import { AppToaster } from './components/ui/Toaster'
 import { Tooltip } from './components/ui/Tooltip'
 import { queryClient } from './queryClient'
+import { hasOpenOverlay } from './utils/overlay'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -263,8 +264,11 @@ function MainLayout() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
-      // El panel de sugerencias está por encima del chat: se cierra primero,
-      // si no un Escape cerraría las dos cosas de un saque.
+      // Una pulsación cierra una sola capa, la de más arriba. Con un diálogo
+      // encima (la vista previa de una plantilla, el visor de multimedia, un
+      // confirmar…) el Escape es de ese diálogo y el lead de atrás no se toca.
+      if (hasOpenOverlay()) return
+      // El panel de sugerencias no es un diálogo pero también tapa el chat.
       if (isSuggestionsOpen) {
         setIsSuggestionsOpen(false)
         return

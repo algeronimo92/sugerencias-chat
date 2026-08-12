@@ -16,6 +16,7 @@ from services.auth_service import (
 )
 from services.db_service import get_user_by_email
 from services.session_service import (
+    PIN_LENGTH,
     PinInvalidError,
     PinLockedError,
     authenticate_pin,
@@ -164,7 +165,9 @@ async def setup_pin(
     user: User = Depends(get_current_user),
 ):
     if not valid_pin(body.pin):
-        raise HTTPException(status_code=400, detail="El PIN debe tener exactamente 6 dígitos")
+        raise HTTPException(
+            status_code=400, detail=f"El PIN debe tener exactamente {PIN_LENGTH} dígitos"
+        )
     if not verify_password(body.current_password, user.password_hash):
         # 400, no 401: la sesión sigue siendo válida. El interceptor global
         # interpreta 401 como "sesión vencida" y mandaría al usuario al login.

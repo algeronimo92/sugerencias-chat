@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PropsWithChildren } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -142,6 +142,21 @@ describe('ChatThread', () => {
 
     expect(textarea).toHaveValue('Gracias')
     expect(screen.getByLabelText('Enviar mensaje')).toBeInTheDocument()
+  })
+
+  it('adapta el compositor al contenido hasta un máximo y luego activa el scroll', () => {
+    renderThread()
+    const textarea = screen.getByPlaceholderText(/Escribí un mensaje/) as HTMLTextAreaElement
+
+    Object.defineProperty(textarea, 'scrollHeight', { value: 84, configurable: true })
+    fireEvent.change(textarea, { target: { value: 'Una plantilla de varias líneas' } })
+    expect(textarea.style.height).toBe('84px')
+    expect(textarea.style.overflowY).toBe('hidden')
+
+    Object.defineProperty(textarea, 'scrollHeight', { value: 240, configurable: true })
+    fireEvent.change(textarea, { target: { value: 'Una plantilla mucho más extensa' } })
+    expect(textarea.style.height).toBe('128px')
+    expect(textarea.style.overflowY).toBe('auto')
   })
 
   it('al responder una burbuja, la cita aparece en el compositor y se puede cancelar', async () => {

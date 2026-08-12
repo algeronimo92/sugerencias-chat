@@ -70,7 +70,7 @@ function AssetPreview({ asset, onPreview }: { asset: MediaAsset; onPreview: () =
     return (
       <div className="flex h-36 flex-col items-center justify-center gap-3 bg-violet-50 px-3 dark:bg-violet-950/20">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">Archivo de audio</span>
-        <AudioPlayer src={url} className="w-full" />
+        <AudioPlayer src={url} className="w-full" downloadName={asset.filename} />
       </div>
     )
   }

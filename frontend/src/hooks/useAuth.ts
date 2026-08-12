@@ -3,6 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { AuthSession, AuthUser, PinStatus } from '../types'
 
+/** Largo del PIN de acceso rápido. Tiene que coincidir con PIN_LENGTH del
+ *  backend (services/session_service.py), que es quien lo valida de verdad. */
+export const PIN_LENGTH = 4
+
 async function fetchMe(): Promise<AuthUser | null> {
   try {
     const { data } = await client.get<AuthUser>('/api/auth/me')

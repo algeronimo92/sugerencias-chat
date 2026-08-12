@@ -29,6 +29,7 @@ import { Select } from './ui/Input'
 import {
   AUTOMATION_ACTION_LABELS as ACTION_LABELS,
   AUTOMATION_TRIGGERS as TRIGGERS,
+  automationStepLabel,
   AutomationExecutionStatus,
   type AutomationExecutionStatusValue,
   AutomationActionType as ActionType,
@@ -102,7 +103,7 @@ function triggerLabel(value: AutomationTrigger) {
 }
 
 function actionLabel(value: AutomationActionResult['type']) {
-  return value ? ACTION_LABELS[value] : ''
+  return automationStepLabel(value)
 }
 
 function formatDate(value: string | null) {
@@ -113,12 +114,14 @@ function executionTone(status: string) {
   if (status === AutomationExecutionStatus.Completed) return 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'
   if (status === AutomationExecutionStatus.Failed) return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
   if (status === AutomationExecutionStatus.Skipped) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+  if (status === AutomationExecutionStatus.Paused) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
   return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
 }
 
 const EXECUTION_STATUS_LABELS: Record<AutomationExecutionStatusValue, string> = {
   [AutomationExecutionStatus.Scheduled]: 'Programada',
   [AutomationExecutionStatus.Running]: 'En curso',
+  [AutomationExecutionStatus.Paused]: 'Pausada',
   [AutomationExecutionStatus.Completed]: 'Completada',
   [AutomationExecutionStatus.Failed]: 'Fallida',
   [AutomationExecutionStatus.Skipped]: 'Omitida',
@@ -384,7 +387,7 @@ export function AutomationsPage() {
                       {retryExecution.isPending && retryExecution.variables === execution.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
                       {retryExecution.isPending && retryExecution.variables === execution.id ? 'Reintentando…' : 'Reintentar'}
                     </button>}
-                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Scheduled || execution.status === AutomationExecutionStatus.Running) && <button
+                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Scheduled || execution.status === AutomationExecutionStatus.Running || execution.status === AutomationExecutionStatus.Paused) && <button
                       type="button"
                       disabled={cancelExecution.isPending}
                       aria-busy={cancelExecution.isPending && cancelExecution.variables === execution.id}

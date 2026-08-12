@@ -105,7 +105,7 @@ def test_pin_status_is_public_but_only_uses_http_only_device_cookie(monkeypatch)
     lookup.assert_awaited_once_with(device_token)
 
 
-def test_setup_pin_rejects_non_six_digit_value_before_storage(monkeypatch) -> None:
+def test_setup_pin_rejects_a_wrong_length_value_before_storage(monkeypatch) -> None:
     app = FastAPI()
     app.include_router(auth.router)
     app.dependency_overrides[auth.get_current_user] = _user
@@ -114,7 +114,7 @@ def test_setup_pin_rejects_non_six_digit_value_before_storage(monkeypatch) -> No
 
     response = TestClient(app).post(
         "/api/auth/pin/setup",
-        json={"pin": "12345", "current_password": "secret"},
+        json={"pin": "123", "current_password": "secret"},
     )
 
     assert response.status_code == 400

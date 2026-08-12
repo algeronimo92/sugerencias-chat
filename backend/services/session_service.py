@@ -84,8 +84,24 @@ def valid_token(token: str) -> bool:
     return bool(TOKEN_PATTERN.fullmatch(token))
 
 
+PIN_LENGTH = 4
+# Los PIN viejos eran de 6 dígitos. Al configurar uno nuevo se exige el largo
+# actual, pero al entrar se aceptan los dos: si no, un dispositivo que ya tenía
+# PIN de 6 quedaba sin poder entrar con él hasta volver a configurarlo desde
+# otra sesión — y para eso hay que entrar primero.
+LEGACY_PIN_LENGTHS = frozenset({4, 6})
+
+
 def valid_pin(pin: str) -> bool:
-    return len(pin) == 6 and pin.isascii() and pin.isdigit()
+    """Largo exigido al configurar un PIN nuevo."""
+    return len(pin) == PIN_LENGTH and pin.isascii() and pin.isdigit()
+
+
+def valid_login_pin(pin: str) -> bool:
+    """Largo aceptado al entrar. Más permisivo que `valid_pin` a propósito: es
+    solo un filtro barato antes de tocar la base, quien decide sigue siendo el
+    bcrypt del PIN guardado."""
+    return len(pin) in LEGACY_PIN_LENGTHS and pin.isascii() and pin.isdigit()
 
 
 def invalidate_session_cache(*, user_id: int | None = None, session_id: str | None = None) -> None:
@@ -379,7 +395,7 @@ async def configure_pin(
     device_name: str,
 ) -> TrustedDeviceResult:
     if not valid_pin(pin):
-        raise ValueError("El PIN debe tener exactamente 6 dígitos")
+        raise ValueError(f"El PIN debe tener exactamente {PIN_LENGTH} dígitos")
     device = await register_trusted_device(
         user_id, current_token=device_token, device_name=device_name
     )
@@ -429,7 +445,7 @@ async def pin_status(device_token: str | None) -> dict:
 
 
 async def authenticate_pin(device_token: str | None, pin: str) -> tuple[User, TrustedDeviceResult]:
-    if not device_token or not valid_token(device_token) or not valid_pin(pin):
+    if not device_token or not valid_token(device_token) or not valid_login_pin(pin):
         raise PinInvalidError()
     now = utcnow()
     digest = hash_token(device_token)

@@ -26,7 +26,7 @@ import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
-import { FlowRunStatus } from './FlowRunStatus'
+import { LeadAutomationPanel } from './LeadAutomationPanel'
 
 interface Props {
   chat: Chat
@@ -107,7 +107,11 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     updateLead(
       { automatizacion_pausada: next },
       {
-        onSuccess: () => toast.success(next ? 'Automatización pausada para este chat' : 'Automatización reactivada'),
+        onSuccess: () => toast.success(
+          next
+            ? 'Automatización en pausa: lo pendiente queda congelado'
+            : 'Automatización reanudada desde donde había quedado'
+        ),
         onError: (err) => toast.error(extractErrorMessage(err)),
       }
     )
@@ -379,8 +383,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             type="button"
             onClick={toggleAutomation}
             disabled={isUpdatingLead}
-            aria-label={chat.automatizacion_pausada ? 'Reactivar automatización para este chat' : 'Pausar automatización para este chat'}
-            title={chat.automatizacion_pausada ? 'Automatización pausada — tocá para reactivarla' : 'Automatización activa — tocá para pausarla en este chat'}
+            aria-label={chat.automatizacion_pausada ? 'Reanudar automatización de este chat' : 'Pausar automatización de este chat'}
+            title={chat.automatizacion_pausada
+              ? 'En pausa — tocá para reanudar: lo congelado sigue desde donde quedó'
+              : 'Automatización activa — tocá para congelar lo pendiente de este chat'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.automatizacion_pausada
                 ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
@@ -603,7 +609,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       </div>
 
       {/* Compose */}
-      <FlowRunStatus chatId={chat.chat_id} />
+      <LeadAutomationPanel chatId={chat.chat_id} />
       {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
       {isNoteMode ? (
         <InternalNoteComposer

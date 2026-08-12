@@ -48,16 +48,47 @@ class _ClaimResult:
 @pytest.mark.asyncio
 async def test_claiming_due_executions_does_not_increment_attempts(monkeypatch):
     session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[_ClaimResult([777]), SimpleNamespace()])
+    # Tres statements por ciclo: congelar lo vencido de leads pausados,
+    # seleccionar lo reclamable y marcarlo running.
+    session.execute = AsyncMock(side_effect=[
+        _ClaimResult([]), _ClaimResult([777]), SimpleNamespace(),
+    ])
     monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
     monkeypatch.setattr(automation_service, "_run_execution", AsyncMock())
     monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await automation_service.process_due_automation_executions(limit=5)
 
-    claim_sql = _compile(session.execute.await_args_list[1].args[0])
+    claim_sql = _compile(session.execute.await_args_list[2].args[0])
     assert "attempts" not in claim_sql
     assert "'running'" in claim_sql
+
+
+@pytest.mark.asyncio
+async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(monkeypatch):
+    """Atrapa a la ejecución que estaba corriendo cuando el vendedor pausó y
+    volvió a la cola al llegar a su siguiente espera: sin este congelado
+    seguiría recorriendo el flujo entero con el lead pausado."""
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[
+        _ClaimResult([42]), _ClaimResult([]), SimpleNamespace(),
+    ])
+    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    run_execution = AsyncMock()
+    monkeypatch.setattr(automation_service, "_run_execution", run_execution)
+    broadcast = AsyncMock()
+    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+
+    processed = await automation_service.process_due_automation_executions(limit=5)
+
+    assert processed == 0
+    run_execution.assert_not_awaited()
+    freeze_sql = _compile(session.execute.await_args_list[0].args[0])
+    assert "'paused'" in freeze_sql
+    assert "automatizacion_pausada" in freeze_sql
+    # Un flujo manual del vendedor nunca lo congela la pausa del lead.
+    assert "start_source != 'manual'" in freeze_sql
+    broadcast.assert_awaited_once()
 
 
 @pytest.mark.asyncio

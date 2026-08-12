@@ -1,20 +1,49 @@
-# Desarrollo local: backend con hot-reload + frontend. No hay base de datos
-# aquí — el backend se conecta a la de producción según backend/.env.
+# Desarrollo local autocontenido: PostgreSQL persistente, backend con
+# hot-reload y frontend. Las credenciales de la base salen de db/.env; deben
+# coincidir con las de DATABASE_URL en backend/.env.
 
 services:
+  postgres:
+    image: postgres:16.14-alpine
+    env_file:
+      - ./db/.env
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    # Sólo loopback y en 5433 para no chocar con otro PostgreSQL instalado.
+    # Los contenedores usan postgres:5432 por la red interna de Compose.
+    ports:
+      - "127.0.0.1:5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # En desarrollo la migración es parte del arranque: una base nueva queda
+    # lista sola y una existente avanza bajo el advisory lock de migrate.py.
+    command: >-
+      sh -c "python -m scripts.migrate &&
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./backend:/app
     env_file:
       - ./backend/.env
     environment:
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:3000"]
+      # La conexión no sale de la red Docker local. Producción conserva
+      # DATABASE_SSL=require desde backend/.env y compose.prod.yml.
+      - DATABASE_SSL=disable
     ports:
       - "8000:8000"
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
       interval: 15s
@@ -34,4 +63,12 @@ services:
     ports:
       - "5174:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata-dev:
+    # Nombre nuevo para no reutilizar volúmenes antiguos que puedan contener
+    # app_settings cifrados con otra SETTINGS_ENCRYPTION_KEY. Los volúmenes
+    # anteriores no se eliminan y pueden respaldarse o inspeccionarse aparte.
+    name: sugerencias-chat_pgdata-local
