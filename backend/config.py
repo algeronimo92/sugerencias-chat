@@ -76,12 +76,27 @@ class Settings(BaseSettings):
     # `Secure` en producción. Poner COOKIE_SECURE=true la fuerza.
     cookie_secure: bool | None = None
 
-    # Firma de los JWT de sesión — cambiarla invalida todas las sesiones activas.
+    # Secreto maestro de la aplicación. Las sesiones opacas no se firman con
+    # él; se conserva como respaldo para derivar SETTINGS_ENCRYPTION_KEY.
     secret_key: str
     # Clave maestra opcional para cifrar secretos guardados en app_settings.
     # Debe ser base64-url de 32 bytes. Si falta, se deriva de SECRET_KEY para
     # poder migrar instalaciones existentes sin bloquear el arranque.
     settings_encryption_key: str = ""
+    # Sesiones de navegador. Las persistentes se renuevan mientras haya uso,
+    # pero nunca superan el límite absoluto. Las no persistentes desaparecen
+    # al cerrar el navegador y tienen límites mucho más cortos en servidor.
+    session_idle_hours: int = 24 * 30
+    session_absolute_hours: int = 24 * 90
+    session_ephemeral_idle_hours: int = 12
+    session_ephemeral_absolute_hours: int = 24
+    session_rotation_hours: int = 24
+    session_previous_token_grace_seconds: int = 90
+    trusted_device_expire_hours: int = 24 * 90
+    pin_max_attempts: int = 5
+    pin_lock_minutes: int = 15
+    # Se conserva para que despliegues con la variable histórica sigan
+    # arrancando; las sesiones opacas ya no usan JWT ni este valor.
     access_token_expire_hours: int = 24
     auth_user_cache_ttl_seconds: float = 15.0
     # Solo se usan para crear el primer admin cuando la tabla users está

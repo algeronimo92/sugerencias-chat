@@ -1,21 +1,18 @@
 import axios from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
-import type { AuthUser } from '../types'
+import type { AuthSession, AuthUser, PinStatus } from '../types'
 
 async function fetchMe(): Promise<AuthUser | null> {
   try {
     const { data } = await client.get<AuthUser>('/api/auth/me')
     return data
   } catch (err) {
-    // 401 significa "no hay sesión" — es el estado normal antes de loguearse,
-    // no un error a mostrar.
     if (axios.isAxiosError(err) && err.response?.status === 401) return null
     throw err
   }
 }
 
-/** Única fuente de verdad de la sesión: null = no logueado, undefined = todavía cargando. */
 export function useMe() {
   return useQuery({
     queryKey: ['auth', 'me'],
@@ -28,6 +25,7 @@ export function useMe() {
 interface LoginPayload {
   email: string
   password: string
+  remember_device: boolean
 }
 
 async function login(payload: LoginPayload): Promise<AuthUser> {
@@ -35,13 +33,69 @@ async function login(payload: LoginPayload): Promise<AuthUser> {
   return data
 }
 
+function useSuccessfulLogin() {
+  const queryClient = useQueryClient()
+  return (user: AuthUser) => {
+    queryClient.setQueryData(['auth', 'me'], user)
+    void queryClient.invalidateQueries({ queryKey: ['auth', 'pin-status'] })
+  }
+}
+
 export function useLogin() {
+  const onSuccess = useSuccessfulLogin()
+  return useMutation({ mutationFn: login, onSuccess })
+}
+
+export function usePinLogin() {
+  const onSuccess = useSuccessfulLogin()
+  return useMutation({
+    mutationFn: async (pin: string) => (
+      await client.post<AuthUser>('/api/auth/pin/login', { pin })
+    ).data,
+    onSuccess,
+  })
+}
+
+export function usePinStatus() {
+  return useQuery({
+    queryKey: ['auth', 'pin-status'],
+    queryFn: async () => (await client.get<PinStatus>('/api/auth/pin/status')).data,
+    staleTime: 30_000,
+    retry: false,
+  })
+}
+
+export function useSetupPin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: login,
-    onSuccess: (user) => {
-      queryClient.setQueryData(['auth', 'me'], user)
-    },
+    mutationFn: async ({ pin, currentPassword }: { pin: string; currentPassword: string }) => (
+      await client.post<PinStatus>('/api/auth/pin/setup', { pin, current_password: currentPassword })
+    ).data,
+    onSuccess: (status) => queryClient.setQueryData(['auth', 'pin-status'], status),
+  })
+}
+
+export function useRemovePin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => { await client.delete('/api/auth/pin') },
+    onSuccess: () => queryClient.setQueryData(['auth', 'pin-status'], { available: false, locked_seconds: 0 }),
+  })
+}
+
+export function useSessions(enabled = true) {
+  return useQuery({
+    queryKey: ['auth', 'sessions'],
+    queryFn: async () => (await client.get<AuthSession[]>('/api/auth/sessions')).data,
+    enabled,
+  })
+}
+
+export function useRevokeSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (sessionId: string) => { await client.delete(`/api/auth/sessions/${sessionId}`) },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
   })
 }
 
@@ -54,8 +108,19 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: () => {
-      queryClient.setQueryData(['auth', 'me'], null)
       queryClient.clear()
+      queryClient.setQueryData(['auth', 'me'], null)
+    },
+  })
+}
+
+export function useLogoutAll() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => { await client.post('/api/auth/logout-all') },
+    onSuccess: () => {
+      queryClient.clear()
+      queryClient.setQueryData(['auth', 'me'], null)
     },
   })
 }

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, Sparkles, Moon, Sun, X } from 'lucide-react'
+import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Moon, Sun, X } from 'lucide-react'
 import { EMPTY_CHAT_FILTERS, type Chat, type ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatThread } from './components/ChatThread'
@@ -65,6 +65,9 @@ const AutomationsPage = lazy(() =>
 const SettingsDialog = lazy(() =>
   import('./components/SettingsDialog').then(module => ({ default: module.SettingsDialog })),
 )
+const AccountSecurityDialog = lazy(() =>
+  import('./components/AccountSecurityDialog').then(module => ({ default: module.AccountSecurityDialog })),
+)
 const SuggestionPanel = lazy(() =>
   import('./components/SuggestionPanel').then(module => ({ default: module.SuggestionPanel })),
 )
@@ -101,6 +104,7 @@ function MainLayout() {
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<'claves' | 'whatsapp' | 'usuarios'>('claves')
 
   function openSettings(tab: 'claves' | 'whatsapp' | 'usuarios' = 'claves') {
@@ -329,6 +333,11 @@ function MainLayout() {
             </button>
           </Tooltip>
         )}
+        <Tooltip content="Acceso y seguridad">
+          <button type="button" onClick={() => setIsAccountSecurityOpen(true)} aria-label="Acceso y seguridad" className={headerIconButtonClass}>
+            <ShieldCheck className="h-4 w-4" />
+          </button>
+        </Tooltip>
         <NotificationCenter
           browserPermission={notificationPermission}
           onRequestBrowserPermission={requestNotificationPermission}
@@ -349,6 +358,11 @@ function MainLayout() {
       {isSettingsOpen && (
         <Suspense fallback={null}>
           <SettingsDialog onClose={() => setIsSettingsOpen(false)} initialTab={settingsInitialTab} />
+        </Suspense>
+      )}
+      {isAccountSecurityOpen && (
+        <Suspense fallback={null}>
+          <AccountSecurityDialog onClose={() => setIsAccountSecurityOpen(false)} />
         </Suspense>
       )}
 

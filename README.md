@@ -15,6 +15,14 @@ cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 
 **Primer login:** la app requiere iniciar sesión. Para crear la primera cuenta (admin), completá `SECRET_KEY` (generarla con `openssl rand -hex 32`), `ADMIN_EMAIL` y `ADMIN_PASSWORD` en `backend/.env` antes de levantar el backend por primera vez — se crea automáticamente al arrancar si la tabla `users` está vacía. Después de loguearte podés borrar `ADMIN_PASSWORD` del archivo (no se vuelve a leer una vez que existe algún usuario). Desde "Configuración → Usuarios" el admin da de alta al resto del equipo (vendedores).
 
+El login ofrece **Recordar este dispositivo**. La sesión se renueva por actividad
+durante 30 días, tiene un máximo absoluto de 90 días y puede revocarse por
+dispositivo desde el escudo **Acceso y seguridad**. Allí cada usuario puede
+crear un PIN de 6 dígitos: el PIN sólo funciona junto con el token secreto de
+ese navegador, se bloquea temporalmente después de 5 intentos fallidos y nunca
+reemplaza la contraseña para registrar un dispositivo nuevo. Restablecer la
+contraseña o desactivar un usuario revoca todas sus sesiones y dispositivos.
+
 **Cifrado de configuración:** definí también `SETTINGS_ENCRYPTION_KEY` con una
 clave base64-url aleatoria de 32 bytes (el comando de generación está en
 `backend/.env.example`). Los tokens y API keys escritos en `app_settings` se

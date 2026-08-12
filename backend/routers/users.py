@@ -11,6 +11,7 @@ from services.db_service import (
     set_user_password,
     update_user,
 )
+from services.session_service import revoke_all_for_user
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
@@ -81,6 +82,8 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     invalidate_user_cache(user_id)
+    if body.is_active is False:
+        await revoke_all_for_user(user_id, include_devices=True)
     return user
 
 
@@ -93,4 +96,5 @@ async def reset_password(user_id: int, body: ResetPasswordRequest):
     if not ok:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     invalidate_user_cache(user_id)
+    await revoke_all_for_user(user_id, include_devices=True)
     return {"status": "ok"}

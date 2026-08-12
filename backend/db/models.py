@@ -337,6 +337,64 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class TrustedDevice(Base):
+    """Dispositivo que puede volver a autenticarse con un PIN local.
+
+    El navegador conserva el token original en una cookie HttpOnly; la base
+    guarda únicamente su SHA-256. El PIN también se guarda con bcrypt y nunca
+    funciona sin el token aleatorio de este dispositivo.
+    """
+
+    __tablename__ = "trusted_devices"
+
+    id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    pin_hash: Mapped[str | None] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    failed_pin_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_trusted_devices_user", user_id, revoked_at),
+        Index("idx_trusted_devices_expires", expires_at),
+    )
+
+
+class AuthSession(Base):
+    """Sesión opaca, renovable y revocable de un navegador."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    trusted_device_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("trusted_devices.id", ondelete="SET NULL")
+    )
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    previous_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    previous_token_valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auth_method: Mapped[str] = mapped_column(Text)  # password | pin
+    persistent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rotated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    device_name: Mapped[str] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("idx_auth_sessions_user", user_id, revoked_at),
+        Index("idx_auth_sessions_expires", idle_expires_at, absolute_expires_at),
+        Index("idx_auth_sessions_device", trusted_device_id),
+    )
+
+
 class LeadTag(Base):
     """Catálogo administrable de etiquetas comerciales."""
 

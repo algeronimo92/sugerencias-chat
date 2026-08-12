@@ -9,7 +9,6 @@ alembic==1.18.5
 python-dotenv==1.0.1
 pydantic-settings==2.5.2
 bcrypt==4.2.1
-PyJWT==2.9.0
 cryptography==49.0.0
 minio==7.2.20
 # Dimensiones de imágenes recibidas: el frontend reserva el espacio exacto

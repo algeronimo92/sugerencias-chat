@@ -42,7 +42,7 @@ def _decode_explicit_key(value: str) -> bytes:
 
 
 def _fallback_key() -> bytes:
-    # La separación de dominio evita reutilizar directamente la clave JWT.
+    # La separación de dominio evita reutilizar directamente el secreto maestro.
     return hashlib.sha256(_KEY_CONTEXT + settings.secret_key.encode("utf-8")).digest()
 
 
