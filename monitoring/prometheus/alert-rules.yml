@@ -98,6 +98,37 @@ groups:
           summary: "{{ $labels.queue }} acumula {{ $value }} mensajes sin procesar"
           description: "Hay consumidor conectado pero el ritmo no alcanza, o el workflow falla y reencola. Mirar q.wsp.retry.30s y q.wsp.dlq para distinguir un caso del otro."
 
+      # Una cola vacía con consumidor puede significar tanto "no habló ningún
+      # cliente" como "Evolution dejó de publicar": profundidad y consumidores
+      # no distinguen esos casos. Este contador mide entradas reales a la cola.
+      #
+      # Prometheus evalúa hour()/day_of_week() en UTC. Lima es UTC-5 y no usa
+      # horario de verano: 15:00–22:59 UTC equivale a 10:00–17:59 local. Se
+      # empieza a las 10 para que toda la ventana de 2h caiga dentro del horario
+      # laboral de la app (lunes a viernes, 08:00–18:00), sin heredar el silencio
+      # de la noche ni del fin de semana.
+      - alert: IngestaSinMensajes
+        expr: >
+          (
+            (
+              sum(increase(rabbitmq_detailed_queue_exchange_messages_published_total{vhost="dermicapro", queue="q.wsp.inbound", exchange="evolution_exchange"}[2h]))
+              or vector(0)
+            ) == 0
+          )
+          and on() (up{job="rabbitmq"} == 1)
+          and on() (up{job="rabbitmq-detailed"} == 1)
+          and on() (rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound"} > 0)
+          and on() (day_of_week() >= 1)
+          and on() (day_of_week() <= 5)
+          and on() (hour() >= 15)
+          and on() (hour() < 23)
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "No entró ningún mensaje de WhatsApp en las últimas 2 horas"
+          description: "q.wsp.inbound conserva su consumidor, pero Evolution no publicó mensajes hacia ella durante 2 horas laborales. Puede ser un corte silencioso entre Evolution y RabbitMQ; comprobar la instancia y evolution_exchange."
+
       - alert: RabbitMQCaido
         expr: up{job="rabbitmq"} == 0
         for: 2m
@@ -106,21 +137,6 @@ groups:
         annotations:
           summary: "El broker de la ingesta de WhatsApp no responde"
           description: "Mientras esté caído, Evolution no puede publicar y el resto de las alertas de mensajería se quedan sin datos (sus series desaparecen). Revisar con `docker compose -f compose.mq.yml --env-file mq/.env ps`."
-
-      # Guarda del cambio que apagó el modo global de Evolution. Si alguien lo
-      # reactiva en la otra VPS, estas colas vuelven a aparecer y a recibir una
-      # copia de cada mensaje que nadie consume. La política evolution-huerfanas
-      # les pone techo, así que esto no es urgente: es para enterarse en vez de
-      # descubrirlo el día que el disco se llene y el broker bloquee a TODOS los
-      # publicadores.
-      - alert: ColasHuerfanasDeEvolution
-        expr: count(rabbitmq_queue_messages{vhost="dermicapro", queue=~"evolution\\..+"}) > 0
-        for: 15m
-        labels:
-          severity: medium
-        annotations:
-          summary: "Volvieron a aparecer colas evolution.* en el broker"
-          description: "Alguien reactivó RABBITMQ_GLOBAL_ENABLED en Evolution. No rompe la ingesta, pero acumulan copias que nadie lee. La política evolution-huerfanas las contiene mientras tanto."
 
   - name: infraestructura
     rules:

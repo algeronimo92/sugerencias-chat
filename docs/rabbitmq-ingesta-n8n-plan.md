@@ -566,8 +566,10 @@ Los cuatro puntos que quedaban de infraestructura del broker:
 - **La alerta.** Grupo `mensajeria` en `monitoring/prometheus/alert-rules.yml`,
   con cinco reglas: `DlqConMensajes` (`> 0`, que es el umbral correcto porque
   en reposo está vacía), `IngestaSinConsumidor`, `IngestaAcumulandose`,
-  `RabbitMQCaido` y `ColasHuerfanasDeEvolution`. Sale por el Alertmanager que
-  ya estaba montado; **no** hay ningún workflow que consuma la DLQ y mande un
+  `IngestaSinMensajes` y `RabbitMQCaido`. La de silencio usa el contador
+  detallado de publicaciones hacia `q.wsp.inbound`: avisa tras dos horas sin
+  entradas, de lunes a viernes entre las 10:00 y las 18:00 de Lima. Sale por
+  el Alertmanager que ya estaba montado; **no** hay ningún workflow que consuma la DLQ y mande un
   WhatsApp por mensaje muerto, que con la base caída manda cientos: acá una DLQ
   con 1 mensaje y con 500 producen una sola notificación. Si algún día la
   notificación sale por WhatsApp, tiene que ir por Evolution directo y no por el
@@ -593,7 +595,8 @@ Los cuatro puntos que quedaban de infraestructura del broker:
   entero. Son inseparables del modo global en esta versión, así que la
   política `evolution-huerfanas` deja de ser una red de seguridad y pasa a ser
   el mecanismo: una hora de TTL y tope de 10 000 mensajes.
-  `ColasHuerfanasDeEvolution` sigue avisando si crecen fuera de eso.
+  No se alerta por la mera existencia de estas colas porque son parte normal
+  del modo global requerido por esta versión de Evolution.
 
   Si hay que vaciarlas a mano: `rabbitmqctl delete_queue -p dermicapro <cola>`
   **sin** `--if-unused`. Son quorum queues y RabbitMQ rechaza esa bandera sobre

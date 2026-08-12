@@ -52,6 +52,19 @@ scrape_configs:
       - targets: ["127.0.0.1:15692"]
         labels: {instance: dermicapro-mq-rabbitmq-1}
 
+  # Ritmo de publicación por cola. El endpoint /metrics normal expone
+  # profundidad y consumidores, pero no el contador que permite distinguir
+  # una cola vacía y sana de una cola que dejó de recibir eventos. Se pide
+  # únicamente queue_exchange_metrics para no habilitar todas las familias
+  # detalladas (las métricas por canal son mucho más costosas).
+  - job_name: rabbitmq-detailed
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_exchange_metrics]
+    static_configs:
+      - targets: ["127.0.0.1:15692"]
+        labels: {instance: dermicapro-mq-rabbitmq-1}
+
   # blue y green: en cada momento uno de los dos targets está "down" (el
   # color que deploy-bluegreen.sh apagó) — es normal, no dispara la alerta
   # BackendCaido (esa exige que caigan LOS DOS). Ver

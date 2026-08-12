@@ -97,6 +97,82 @@ tests:
               summary: "q.wsp.inbound acumula 150 mensajes sin procesar"
               description: "Hay consumidor conectado pero el ritmo no alcanza, o el workflow falla y reencola. Mirar q.wsp.retry.30s y q.wsp.dlq para distinguir un caso del otro."
 
+  # Lunes 1970-01-05 a las 10:06 de Lima (15:06 UTC): la ventana completa
+  # 08:06–10:06 ya es laboral. Con broker y consumidor sanos, cinco minutos
+  # sostenidos sin publicaciones deben disparar la alerta de corte silencioso.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_exchange_messages_published_total{vhost="dermicapro", queue="q.wsp.inbound", exchange="evolution_exchange", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq-detailed"}'
+        values: "0x6670"
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq"}'
+        values: "1x6670"
+      - series: 'up{job="rabbitmq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x6670"
+      - series: 'up{job="rabbitmq-detailed", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x6670"
+    alert_rule_test:
+      - eval_time: 4d15h4m
+        alertname: IngestaSinMensajes
+        exp_alerts: []
+      - eval_time: 4d15h6m
+        alertname: IngestaSinMensajes
+        exp_alerts:
+          - exp_labels:
+              severity: high
+            exp_annotations:
+              summary: "No entró ningún mensaje de WhatsApp en las últimas 2 horas"
+              description: "q.wsp.inbound conserva su consumidor, pero Evolution no publicó mensajes hacia ella durante 2 horas laborales. Puede ser un corte silencioso entre Evolution y RabbitMQ; comprobar la instancia y evolution_exchange."
+
+  # Con tráfico continuo no avisa bajo las mismas condiciones y hora.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_exchange_messages_published_total{vhost="dermicapro", queue="q.wsp.inbound", exchange="evolution_exchange", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq-detailed"}'
+        values: "0+1x6670"
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq"}'
+        values: "1x6670"
+      - series: 'up{job="rabbitmq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x6670"
+      - series: 'up{job="rabbitmq-detailed", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x6670"
+    alert_rule_test:
+      - eval_time: 4d15h6m
+        alertname: IngestaSinMensajes
+        exp_alerts: []
+
+  # El mismo silencio un domingo queda fuera de horario y no avisa.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_exchange_messages_published_total{vhost="dermicapro", queue="q.wsp.inbound", exchange="evolution_exchange", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq-detailed"}'
+        values: "0x5230"
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq"}'
+        values: "1x5230"
+      - series: 'up{job="rabbitmq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x5230"
+      - series: 'up{job="rabbitmq-detailed", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x5230"
+    alert_rule_test:
+      - eval_time: 3d15h6m
+        alertname: IngestaSinMensajes
+        exp_alerts: []
+
+  # La ausencia de publicaciones no se interpreta como corte silencioso si
+  # falta el consumidor o el scrape detallado está caído: esos escenarios
+  # tienen diagnóstico propio y no deben producir una alerta engañosa.
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_exchange_messages_published_total{vhost="dermicapro", queue="q.wsp.inbound", exchange="evolution_exchange", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq-detailed"}'
+        values: "0x6670"
+      - series: 'rabbitmq_queue_consumers{vhost="dermicapro", queue="q.wsp.inbound", instance="dermicapro-mq-rabbitmq-1", job="rabbitmq"}'
+        values: "0x6670"
+      - series: 'up{job="rabbitmq", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "1x6670"
+      - series: 'up{job="rabbitmq-detailed", instance="dermicapro-mq-rabbitmq-1"}'
+        values: "0x6670"
+    alert_rule_test:
+      - eval_time: 4d15h6m
+        alertname: IngestaSinMensajes
+        exp_alerts: []
+
   # Con el broker caído desaparecen todas sus series. Lo que se afirma acá es
   # que en ese escenario avisa RabbitMQCaido y NO las reglas de cola: si
   # dispararan por ausencia de datos, un corte del broker mandaría cuatro
@@ -122,22 +198,3 @@ tests:
       - eval_time: 6m
         alertname: DlqConMensajes
         exp_alerts: []
-
-  # Alguien reactivó el modo global en la otra VPS y las colas huérfanas
-  # volvieron. `count()` colapsa las etiquetas: una sola notificación sin
-  # importar cuántas colas aparezcan.
-  - interval: 1m
-    input_series:
-      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="evolution.messages.upsert", instance="dermicapro-mq-rabbitmq-1"}'
-        values: "0+10x20"
-      - series: 'rabbitmq_queue_messages{vhost="dermicapro", queue="evolution.send.message", instance="dermicapro-mq-rabbitmq-1"}'
-        values: "0+5x20"
-    alert_rule_test:
-      - eval_time: 16m
-        alertname: ColasHuerfanasDeEvolution
-        exp_alerts:
-          - exp_labels:
-              severity: medium
-            exp_annotations:
-              summary: "Volvieron a aparecer colas evolution.* en el broker"
-              description: "Alguien reactivó RABBITMQ_GLOBAL_ENABLED en Evolution. No rompe la ingesta, pero acumulan copias que nadie lee. La política evolution-huerfanas las contiene mientras tanto."
