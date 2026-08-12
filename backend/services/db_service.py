@@ -8,14 +8,17 @@ from sqlalchemy.exc import IntegrityError
 from domain_types import AutomationTrigger
 from db.models import (
     AutomationExecution,
+    AutomationRule,
     Lead,
     LeadActivity,
     LeadNote,
+    LeadService,
     LeadStage,
     LeadTag,
     LeadTagAssignment,
     LeadTask,
     MessageOutbox,
+    MessageTemplate,
     ScheduledMessage,
     User,
     UserNotification,
@@ -41,6 +44,10 @@ class EmailAlreadyExistsError(Exception):
 
 
 class TagAlreadyExistsError(Exception):
+    pass
+
+
+class LeadServiceAlreadyExistsError(Exception):
     pass
 
 
@@ -2010,6 +2017,153 @@ async def list_tags(include_inactive: bool = False) -> list[dict]:
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [dict(row) for row in rows]
+
+
+async def list_lead_services(include_inactive: bool = False) -> list[dict]:
+    stmt = select(LeadService.id, LeadService.name, LeadService.is_active).order_by(
+        func.lower(LeadService.name).asc()
+    )
+    if not include_inactive:
+        stmt = stmt.where(LeadService.is_active == true())
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+async def create_lead_service(name: str, user_id: int) -> dict:
+    stmt = (
+        insert(LeadService)
+        .values(
+            name=name,
+            is_active=True,
+            created_by=user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        .returning(LeadService.id, LeadService.name, LeadService.is_active)
+    )
+    async with get_sessionmaker()() as session:
+        try:
+            row = (await session.execute(stmt)).mappings().one()
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise LeadServiceAlreadyExistsError(name)
+    return dict(row)
+
+
+def _rename_service_references(value, old_name: str, new_name: str):
+    """Renombra referencias exactas dentro del JSON de automatizaciones.
+
+    No reemplaza texto libre ni mensajes: solo acciones ``change_service`` y
+    condiciones ``service_contains`` cuyo valor completo era el nombre viejo.
+    """
+    if isinstance(value, list):
+        changed = False
+        result = []
+        for item in value:
+            next_item, item_changed = _rename_service_references(item, old_name, new_name)
+            result.append(next_item)
+            changed = changed or item_changed
+        return result, changed
+    if not isinstance(value, dict):
+        return value, False
+
+    changed = False
+    result = {}
+    for key, item in value.items():
+        next_item, item_changed = _rename_service_references(item, old_name, new_name)
+        result[key] = next_item
+        changed = changed or item_changed
+
+    service = result.get("service")
+    if (
+        result.get("type") == "change_service"
+        and isinstance(service, str)
+        and service.casefold() == old_name.casefold()
+    ):
+        result["service"] = new_name
+        changed = True
+    condition = result.get("service_contains")
+    if isinstance(condition, str) and condition.casefold() == old_name.casefold():
+        result["service_contains"] = new_name
+        changed = True
+    return result, changed
+
+
+async def update_lead_service(service_id: int, values: dict) -> dict | None:
+    async with get_sessionmaker()() as session:
+        current = (
+            await session.execute(
+                select(LeadService.id, LeadService.name, LeadService.is_active).where(
+                    LeadService.id == service_id
+                )
+            )
+        ).mappings().first()
+        if current is None:
+            return None
+        if not values:
+            return dict(current)
+
+        try:
+            row = (
+                await session.execute(
+                    update(LeadService)
+                    .where(LeadService.id == service_id)
+                    .values(**values)
+                    .returning(LeadService.id, LeadService.name, LeadService.is_active)
+                )
+            ).mappings().one()
+
+            old_name = current["name"]
+            new_name = values.get("name")
+            if new_name and new_name != old_name:
+                old_match = old_name.lower()
+                await session.execute(
+                    update(Lead)
+                    .where(func.lower(func.btrim(Lead.servicio_interes)) == old_match)
+                    .values(servicio_interes=new_name)
+                )
+                await session.execute(
+                    update(MessageTemplate)
+                    .where(func.lower(func.btrim(MessageTemplate.service)) == old_match)
+                    .values(service=new_name)
+                )
+
+                rules = (
+                    await session.execute(
+                        select(
+                            AutomationRule.id,
+                            AutomationRule.conditions,
+                            AutomationRule.actions,
+                            AutomationRule.flow_definition,
+                            AutomationRule.published_flow_definition,
+                        )
+                    )
+                ).mappings().all()
+                for rule in rules:
+                    rule_values = {}
+                    for field in (
+                        "conditions",
+                        "actions",
+                        "flow_definition",
+                        "published_flow_definition",
+                    ):
+                        next_value, changed = _rename_service_references(
+                            rule[field], old_name, new_name
+                        )
+                        if changed:
+                            rule_values[field] = next_value
+                    if rule_values:
+                        await session.execute(
+                            update(AutomationRule)
+                            .where(AutomationRule.id == rule["id"])
+                            .values(**rule_values)
+                        )
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise LeadServiceAlreadyExistsError(values.get("name", ""))
+    return dict(row)
 
 
 async def create_tag(name: str, color: str, user_id: int) -> dict:

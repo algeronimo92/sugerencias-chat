@@ -16,6 +16,12 @@ async def get_tags(_user: User = Depends(get_current_user)):
     return await list_tags()
 
 
+@router.get("/all", response_model=list[Tag])
+async def get_all_tags(_admin: User = Depends(require_admin)):
+    """Catálogo completo para administración, incluidas las desactivadas."""
+    return await list_tags(include_inactive=True)
+
+
 @router.post("", response_model=Tag, status_code=201)
 async def post_tag(body: TagCreate, admin: User = Depends(require_admin)):
     name = body.name.strip()

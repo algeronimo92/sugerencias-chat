@@ -25,6 +25,7 @@ import {
 } from '../hooks/useAutomations'
 import { useUsers } from '../hooks/useUsers'
 import { useTags } from '../hooks/useLeadMeta'
+import { useLeadServices } from '../hooks/useLeadServices'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
@@ -283,6 +284,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const { data: automationRules = [] } = useAutomationRules()
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
+  const { data: leadServices = [] } = useLeadServices()
   const { data: templates = [] } = useTemplates(true)
   const { data: mediaAssets = [] } = useMediaLibrary()
   const [ruleId, setRuleId] = useState<number | null>(rule?.id ?? null)
@@ -746,7 +748,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span><strong className="block text-xs">Cerrar conversación al finalizar</strong><span className="mt-0.5 block text-wa-muted">Marca el chat como cerrado cuando la ejecución llega a esta salida.</span></span></label></div>}
-          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} templates={automaticTemplates} mediaAssets={mediaAssets} />}
+          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} />}
           <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
       </aside>
@@ -1072,6 +1074,7 @@ interface ActionEditorProps {
   updateAction: (action: AutomationAction) => void
   users: Array<{ id: number; name: string }>
   tags: Array<{ id: number; name: string }>
+  leadServices: Array<{ id: number; name: string }>
   templates: MessageTemplate[]
   mediaAssets: MediaAsset[]
 }
@@ -1085,7 +1088,7 @@ function TemplatePreview({ template }: { template: MessageTemplate }) {
   </div>
 }
 
-function ActionEditor({ action, updateAction, users, tags, templates, mediaAssets }: ActionEditorProps) {
+function ActionEditor({ action, updateAction, users, tags, leadServices, templates, mediaAssets }: ActionEditorProps) {
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const selectedTemplate = action.type === ActionType.SendTemplate
     ? templates.find(template => template.id === action.template_id) ?? null
@@ -1095,7 +1098,7 @@ function ActionEditor({ action, updateAction, users, tags, templates, mediaAsset
     {action.type === ActionType.AssignSeller && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
     {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
     {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => { const value = event.target.value; if (isLeadStage(value)) updateAction({ ...action, stage: value }) }} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
-    {action.type === ActionType.ChangeService && <><input value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} placeholder="Nombre del servicio" className={fieldClass} /><p className="text-[10px] text-wa-muted">Dejar vacío para quitar el servicio de interés actual del lead.</p></>}
+    {action.type === ActionType.ChangeService && <><Select value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} className={fieldClass}><option value="">Quitar servicio de interés</option>{action.service && !leadServices.some(service => service.name === action.service) && <option value={action.service}>{action.service} (valor actual)</option>}{leadServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</Select><p className="text-[10px] text-wa-muted">Selecciona un servicio del catálogo o deja vacío para quitar el actual.</p></>}
     {action.type === ActionType.SetConversationState && <><Select value={action.state} onChange={event => updateAction({ ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className={fieldClass}><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select><p className="text-[10px] text-wa-muted">No dispara “Conversación nueva”; ese evento queda reservado para mensajes entrantes del cliente.</p></>}
     {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => updateAction({ ...action, media_asset_id: id })} />}
     {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => updateAction({ ...action, media_asset_id: id })} />}

@@ -38,6 +38,13 @@ export interface Tag {
   id: number
   name: string
   color: string
+  is_active?: boolean
+}
+
+export interface LeadService {
+  id: number
+  name: string
+  is_active?: boolean
 }
 
 export interface ChatFilters {

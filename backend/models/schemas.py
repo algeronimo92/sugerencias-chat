@@ -78,6 +78,7 @@ class Tag(BaseModel):
     id: int
     name: str
     color: str
+    is_active: bool = True
 
 
 class TagCreate(BaseModel):
@@ -88,6 +89,21 @@ class TagCreate(BaseModel):
 class TagUpdate(BaseModel):
     name: str | None = None
     color: str | None = None
+    is_active: bool | None = None
+
+
+class LeadServiceItem(BaseModel):
+    id: int
+    name: str
+    is_active: bool = True
+
+
+class LeadServiceCreate(BaseModel):
+    name: str = Field(max_length=120)
+
+
+class LeadServiceUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
 
 
