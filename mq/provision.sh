@@ -137,6 +137,13 @@ echo "Permisos (configure / write / read)"
 #   RABBITMQ_EXCHANGE_NAME=evolution_exchange   (antes decía `evolution`)
 #   RABBITMQ_GLOBAL_ENABLED=true
 #
+# Y un tercer ajuste que NO es variable de entorno, sino un setting de la
+# instancia que se cambia por la API: `groupsIgnore` tiene que estar en `true`.
+# Sin eso entran eventos de grupos de WhatsApp, que el pipeline no sabe
+# representar (no hay lead al que colgarlos) y terminan todos en q.wsp.dlq.
+# Pasó el 2026-08-12 con 92 mensajes. El detalle está en
+# docs/rabbitmq-ingesta-n8n-plan.md, sección "Evolution API".
+#
 # El modo global tiene que quedarse en `true`, y esto se pagó con una caída de
 # la ingesta el 2026-08-12. Apagarlo NO es "dejá de crear las colas huérfanas":
 # el modo global es "un exchange compartido, el tenant en el campo `instance`
