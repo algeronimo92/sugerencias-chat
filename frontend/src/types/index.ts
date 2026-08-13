@@ -235,6 +235,8 @@ export type MessageType =
   | 'interactive'
   | 'template'
   | 'order'
+  | 'product'
+  | 'payment'
   | 'unsupported'
 
 /** Enriquecimiento generado con IA para un adjunto: descripción de imagen/video,

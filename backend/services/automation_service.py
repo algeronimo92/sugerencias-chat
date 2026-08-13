@@ -98,6 +98,12 @@ RATE_LIMIT_RETRY_MINUTES = 10
 # minutos configurados más esta gracia (3 días): activar una regla no debe
 # disparar contra todo el historial de conversaciones viejas.
 OVERDUE_LOOKBACK_GRACE_MINUTES = 4320
+# Quién congeló una ejecución (columna pause_scope): pausar el lead entero o el
+# vendedor pausando esa sola desde el panel del chat. Reanudar el lead solo
+# descongela las primeras; NULL (pausas anteriores a la columna) cuenta como
+# LEAD. Ver pause_lead_executions / pause_automation_execution.
+PAUSE_SCOPE_LEAD = "lead"
+PAUSE_SCOPE_EXECUTION = "execution"
 TRIGGER_TYPES = frozenset(AutomationTrigger)
 ACTION_TYPES = frozenset(AutomationActionType)
 FLOW_NODE_TYPES = frozenset(FlowNodeType)
@@ -183,6 +189,7 @@ def _execution_dict(row) -> dict:
         "status": row["status"],
         "scheduled_for": _ts(row["scheduled_for"]),
         "paused_at": _ts(row["paused_at"]),
+        "pause_scope": row["pause_scope"],
         "started_at": _ts(row["started_at"]),
         "finished_at": _ts(row["finished_at"]),
         "action_results": row["action_results"] or [],
@@ -405,6 +412,7 @@ async def list_automation_executions(
         AutomationExecution.status,
         AutomationExecution.scheduled_for,
         AutomationExecution.paused_at,
+        AutomationExecution.pause_scope,
         AutomationExecution.started_at,
         AutomationExecution.finished_at,
         AutomationExecution.action_results,
@@ -497,7 +505,7 @@ async def pause_lead_executions(lead_id: str) -> int:
     de eso se encarga `_persist_visual_execution`, que congela la ejecución
     cuando llega a su siguiente espera. Tampoco toca los flujos manuales del
     vendedor (`start_source == "manual"`), que pidió a propósito y puede
-    cancelar uno por uno desde el chat."""
+    pausar o cancelar uno por uno desde el chat."""
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         result = await session.execute(update(AutomationExecution).where(
@@ -507,6 +515,7 @@ async def pause_lead_executions(lead_id: str) -> int:
         ).values(
             status=AutomationExecutionStatus.PAUSED,
             paused_at=now,
+            pause_scope=PAUSE_SCOPE_LEAD,
             error=None,
         ))
         await session.commit()

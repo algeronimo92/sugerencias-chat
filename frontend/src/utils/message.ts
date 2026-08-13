@@ -1,6 +1,7 @@
 import {
   BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
-  Paperclip, ReceiptText, SmilePlus, Sticker, User, Video, FileText, type LucideIcon,
+  CreditCard, Paperclip, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
+  Video, FileText, type LucideIcon,
 } from 'lucide-react'
 import type { JsonObject, JsonValue, MessageType, MessageAnalysis } from '../types'
 
@@ -23,6 +24,8 @@ const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }>
   interactive: { icon: List, label: 'Interactivo' },
   template: { icon: Megaphone, label: 'Plantilla' },
   order: { icon: ReceiptText, label: 'Pedido' },
+  product: { icon: ShoppingBag, label: 'Producto' },
+  payment: { icon: CreditCard, label: 'Pago' },
   unsupported: { icon: Paperclip, label: 'No soportado' },
 }
 
@@ -169,9 +172,15 @@ export function parseTemplateData(root: JsonObject | null): TemplateMessage | nu
   }
   // Botones de respuesta rápida: no abren nada, los toca el cliente.
   for (const button of Array.isArray(data.buttons) ? data.buttons : []) {
-    const text = asString(asObject(asObject(button).buttonText).displayText)
+    const buttonData = asObject(button)
+    const text = asString(asObject(buttonData.buttonText).displayText) || asString(buttonData.text)
     if (!text) continue
-    buttons.push({ text, url: null })
+    buttons.push({ text, url: safeUrl(buttonData.url) })
+  }
+  for (const option of Array.isArray(data.options) ? data.options : []) {
+    const optionData = asObject(option)
+    const text = asString(optionData.text) || asString(optionData.title)
+    if (text) buttons.push({ text, url: null })
   }
 
   // Respuesta a un botón: el texto elegido es el mensaje, y el original viene
@@ -183,11 +192,12 @@ export function parseTemplateData(root: JsonObject | null): TemplateMessage | nu
     asString(asObject(quoted.extendedTextMessage).text)
 
   const parsed: TemplateMessage = {
-    title: asString(header.title) || asString(target.title),
+    title: asString(header.title) || asString(target.title) || asString(data.title),
     description: asString(target.description),
     domain: asString(target.domain) || asString(target.canonical_url),
-    body: asString(body.text) || asString(data.contentText) || asString(data.selectedDisplayText),
-    footer: asString(footer.text) || asString(data.footerText),
+    body: asString(body.text) || asString(data.body) || asString(data.contentText) ||
+      asString(data.selectedDisplayText) || asString(data.selected_text) || asString(data.description),
+    footer: asString(footer.text) || asString(data.footer) || asString(data.footerText),
     buttons,
     answeredQuestion,
   }

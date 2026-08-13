@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, Download, FileText, ReceiptText, Sparkles } from 'lucide-react'
+import { ChevronDown, CreditCard, Download, ExternalLink, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
 import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
@@ -265,17 +265,31 @@ function PollBody({ parsed }: MessageBodyContext) {
   const values = Array.isArray(parsed.payload?.values)
     ? parsed.payload.values.map(String)
     : []
+  const results = Array.isArray(parsed.payload?.results)
+    ? parsed.payload.results.filter(isJsonObject)
+    : []
+  const counts = new Map(results.map(result => [String(result.option || ''), Number(result.count) || 0]))
+  const options = values.length ? values : results.map(result => String(result.option || '')).filter(Boolean)
+  const totalVotes = Array.from(counts.values()).reduce((total, count) => total + count, 0)
   return (
     <div className="flex flex-col gap-1.5">
       {parsed.text && <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">{parsed.text}</p>}
-      {values.map((value, index) => (
+      {options.map((value, index) => {
+        const count = counts.get(value) || 0
+        const percent = totalVotes ? Math.round((count / totalVotes) * 100) : 0
+        return (
         <div
           key={index}
-          className="rounded-lg border border-black/10 px-3 py-1.5 text-sm text-wa-text dark:border-white/15 dark:text-wa-text-dark"
+          className="relative overflow-hidden rounded-lg border border-black/10 px-3 py-1.5 text-sm text-wa-text dark:border-white/15 dark:text-wa-text-dark"
         >
-          {value}
+          {totalVotes > 0 && <span className="absolute inset-y-0 left-0 bg-wa-primary/10" style={{ width: `${percent}%` }} />}
+          <span className="relative flex items-center justify-between gap-3">
+            <span>{value}</span>
+            {totalVotes > 0 && <span className="text-xs tabular-nums text-wa-muted">{count}</span>}
+          </span>
         </div>
-      ))}
+      )})}
+      {totalVotes > 0 && <p className="text-right text-[11px] text-wa-muted">{totalVotes} {totalVotes === 1 ? 'voto' : 'votos'}</p>}
     </div>
   )
 }
@@ -339,6 +353,109 @@ function OrderBody({ parsed }: MessageBodyContext) {
   )
 }
 
+function PtvBody(ctx: MessageBodyContext) {
+  const { parsed, mediaSrc, onMediaError, onOpenMedia, onDownloadMedia, videoFooter } = ctx
+  const alt = parsed.text || 'Video circular'
+  if (!mediaSrc) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
+  return (
+    <>
+      <div className="relative h-56 w-56 max-w-full">
+        <ChatVideoMessage
+          src={mediaSrc}
+          alt={alt}
+          onError={onMediaError}
+          className="h-56 w-56 max-w-full !rounded-full border-4 border-white/20"
+          onOpenGallery={() => onOpenMedia({ src: mediaSrc, kind: 'video', alt, filename: messageMediaFilename(ctx.message) })}
+          footer={videoFooter}
+        />
+        <span className="absolute right-2 top-4 z-10 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+          <MediaDownloadButton onClick={onDownloadMedia} label="Descargar video circular" />
+        </span>
+      </div>
+      <Caption parsed={parsed} />
+    </>
+  )
+}
+
+function money(amount1000: number | null, currency: string): string {
+  if (amount1000 == null) return ''
+  return `${currency || 'PEN'} ${(amount1000 / 1000).toLocaleString('es-PE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function ProductBody({ parsed }: MessageBodyContext) {
+  const payload = parsed.payload
+  const title = orderText(payload?.title) || parsed.text || 'Producto de WhatsApp'
+  const description = orderText(payload?.description) || orderText(payload?.body)
+  const currency = orderText(payload?.currency)
+  const regularPrice = money(orderNumber(payload?.price_amount_1000), currency)
+  const salePrice = money(orderNumber(payload?.sale_price_amount_1000), currency)
+  const rawImageUrl = orderText(payload?.image_url)
+  const imageUrl = /^(?:https?:\/\/|\/media\/)/i.test(rawImageUrl) ? rawImageUrl : ''
+  const productUrl = orderText(payload?.url)
+
+  const content = (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+      {imageUrl && <img src={imageUrl} alt={title} className="max-h-44 w-full object-cover" />}
+      <div className="space-y-1.5 px-3 py-2.5">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-wa-primary-strong dark:text-wa-primary">
+          <ShoppingBag className="h-4 w-4" /> Producto
+        </div>
+        <p className="font-medium not-italic">{title}</p>
+        {description && description !== title && (
+          <p className="line-clamp-3 text-sm not-italic text-wa-muted dark:text-wa-text-dark/70">{description}</p>
+        )}
+        {(salePrice || regularPrice) && (
+          <div className="flex items-baseline gap-2 pt-1">
+            <span className="font-semibold tabular-nums">{salePrice || regularPrice}</span>
+            {salePrice && regularPrice && salePrice !== regularPrice && (
+              <span className="text-xs tabular-nums text-wa-muted line-through">{regularPrice}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (!/^https?:\/\//i.test(productUrl)) return content
+  return <a href={productUrl} target="_blank" rel="noopener noreferrer" className="relative block hover:opacity-90">{content}<ExternalLink className="absolute bottom-3 right-3 h-3.5 w-3.5 text-wa-muted" /></a>
+}
+
+const PAYMENT_LABELS: Record<string, string> = {
+  invoice: 'Factura',
+  requestPayment: 'Solicitud de pago',
+  sendPayment: 'Pago enviado',
+  paymentInvite: 'Invitación de pago',
+  cancelPaymentRequest: 'Solicitud cancelada',
+  declinePaymentRequest: 'Solicitud rechazada',
+}
+
+function PaymentBody({ parsed }: MessageBodyContext) {
+  const payload = parsed.payload
+  const kind = orderText(payload?.payment_kind)
+  const label = PAYMENT_LABELS[kind] || 'Pago de WhatsApp'
+  const amount = money(orderNumber(payload?.amount_1000), orderText(payload?.currency))
+  const note = orderText(payload?.note) || parsed.text
+  const status = orderText(payload?.status).replaceAll('_', ' ')
+  const transactionId = orderText(payload?.transaction_id)
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+      <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
+        <CreditCard className="h-4 w-4 shrink-0 text-wa-primary" />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">{label}</p>
+        {status && <span className="max-w-28 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-wa-primary-strong dark:text-wa-primary">{status.toLocaleLowerCase('es-PE')}</span>}
+      </div>
+      <div className="space-y-1.5 px-3 py-2.5">
+        {amount && <p className="text-lg font-semibold tabular-nums not-italic">{amount}</p>}
+        {note && note !== label && <p className="whitespace-pre-wrap text-sm not-italic"><RichText text={note} /></p>}
+        {transactionId && <p className="truncate text-[10px] text-wa-muted dark:text-wa-text-dark/60">ID: {transactionId}</p>}
+      </div>
+    </div>
+  )
+}
+
 /** Fallback para tipos que se muestran como texto renderizado + chip del tipo:
  * reacciones y lo no soportado. */
 function TextualBody(ctx: MessageBodyContext) {
@@ -373,7 +490,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   text: TextBody,
   image: ImageBody,
   video: VideoBody,
-  ptv: VideoBody,
+  ptv: PtvBody,
   audio: AudioBody,
   sticker: StickerBody,
   document: DocumentBody,
@@ -383,6 +500,8 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   interactive: TemplateBody,
   template: TemplateBody,
   order: OrderBody,
+  product: ProductBody,
+  payment: PaymentBody,
   reaction: TextualBody,
   unsupported: TextualBody,
 }

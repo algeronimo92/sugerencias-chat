@@ -223,6 +223,8 @@ MessageType = Literal[
     "interactive",
     "template",
     "order",
+    "product",
+    "payment",
     "unsupported",
 ]
 

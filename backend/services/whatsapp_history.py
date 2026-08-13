@@ -10,6 +10,7 @@ La forma de la respuesta de `chat/findMessages` cambió entre versiones de
 Evolution, así que todo lo que se lee de ahí se trata como no confiable.
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -152,6 +153,10 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
     if isinstance(video, dict):
         return _caption(video) or None, "video", None
 
+    ptv = message.get("ptvMessage")
+    if isinstance(ptv, dict):
+        return _caption(ptv) or None, "ptv", None
+
     audio = message.get("audioMessage")
     if isinstance(audio, dict):
         return None, "audio", None
@@ -187,7 +192,14 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
         ] if isinstance(entries, list) else []
         return None, "contact", {"contacts": contacts} if contacts else None
 
-    poll = message.get("pollCreationMessage") or message.get("pollCreationMessageV3")
+    poll = next((
+        message.get(key)
+        for key in (
+            "pollCreationMessage", "pollCreationMessageV2", "pollCreationMessageV3",
+            "pollCreationMessageV4", "pollCreationMessageV5",
+        )
+        if isinstance(message.get(key), dict)
+    ), None)
     if isinstance(poll, dict):
         options = poll.get("options")
         values = [
@@ -198,11 +210,40 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
         question = poll.get("name") if isinstance(poll.get("name"), str) else None
         return question, "poll", {"values": values} if values else None
 
+    poll_snapshot = message.get("pollResultSnapshotMessage") or message.get(
+        "pollResultSnapshotMessageV3"
+    )
+    if isinstance(poll_snapshot, dict):
+        name = _first_text(poll_snapshot.get("name")) or "Resultados de encuesta"
+        return name, "poll", {
+            "original_type": "pollResultSnapshotMessage",
+            "results": _poll_snapshot_results(poll_snapshot.get("pollVotes")),
+        }
+
     order = message.get("orderMessage")
     if isinstance(order, dict):
         payload = _order_payload(order)
         content = _first_text(order.get("message"), order.get("orderTitle"))
         return content or "Pedido de WhatsApp", "order", payload
+
+    product = message.get("productMessage")
+    if isinstance(product, dict):
+        payload = _product_payload(product)
+        content = _first_text(payload.get("title"), product.get("body"))
+        return content or "Producto de WhatsApp", "product", payload
+
+    payment_type, payment = next((
+        (key, message.get(key))
+        for key in (
+            "invoiceMessage", "requestPaymentMessage", "sendPaymentMessage",
+            "paymentInviteMessage", "cancelPaymentRequestMessage",
+            "declinePaymentRequestMessage",
+        )
+        if isinstance(message.get(key), dict)
+    ), (None, None))
+    if payment_type and isinstance(payment, dict):
+        payload = _payment_payload(payment_type, payment)
+        return _first_text(payload.get("note"), payload.get("status")) or "Pago de WhatsApp", "payment", payload
 
     interactive = _interactive_content(message)
     if interactive is not None:
@@ -241,11 +282,36 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
             {"selected_id": selected_id, "selected_text": text} if selected_id or text else None,
         )
 
+    native_response = message.get("interactiveResponseMessage")
+    if isinstance(native_response, dict):
+        native = native_response.get("nativeFlowResponseMessage")
+        params: dict = {}
+        if isinstance(native, dict):
+            raw = native.get("paramsJson")
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                    params = parsed if isinstance(parsed, dict) else {}
+                except (TypeError, ValueError):
+                    pass
+        selected_text = _first_text(
+            params.get("display_text"), params.get("title"),
+            (native_response.get("body") or {}).get("text")
+                if isinstance(native_response.get("body"), dict) else None,
+        )
+        selected_id = params.get("id") or params.get("selected_id")
+        return selected_text, "interactive", {
+            "original_type": "interactiveResponseMessage",
+            "selected_id": selected_id,
+            "selected_text": selected_text,
+        }
+
     for key in ("buttonsMessage", "listMessage", "interactiveMessage"):
         node = message.get(key)
         if isinstance(node, dict):
-            title = node.get("title") or node.get("contentText")
-            return title if isinstance(title, str) else None, "interactive", None
+            payload = _interactive_payload(key, node)
+            content = _first_text(payload.get("body"), payload.get("title"))
+            return content, "interactive", payload
 
     return None
 
@@ -253,6 +319,33 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
 def _caption(media: dict) -> str:
     caption = media.get("caption")
     return caption if isinstance(caption, str) else ""
+
+
+def _interactive_payload(message_type: str, node: dict) -> dict:
+    body = node.get("body") if isinstance(node.get("body"), dict) else {}
+    header = node.get("header") if isinstance(node.get("header"), dict) else {}
+    footer = node.get("footer") if isinstance(node.get("footer"), dict) else {}
+    options = []
+    sections = node.get("sections") if isinstance(node.get("sections"), list) else []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        rows = section.get("rows") if isinstance(section.get("rows"), list) else []
+        for row in rows:
+            if isinstance(row, dict):
+                options.append({
+                    "id": row.get("rowId") or row.get("id"),
+                    "text": row.get("title") or row.get("name"),
+                    "description": row.get("description"),
+                })
+    result = {
+        "original_type": message_type,
+        "title": node.get("title") or header.get("title"),
+        "body": body.get("text") or node.get("contentText") or node.get("description"),
+        "footer": footer.get("text") or node.get("footerText"),
+        "options": options,
+    }
+    return {key: value for key, value in result.items() if value not in (None, [], "")}
 
 
 def _first_text(*values: Any) -> str | None:
@@ -289,6 +382,56 @@ def _order_payload(order: dict) -> dict:
         "surface": order.get("surface"),
         "total_amount_1000": _long_value(order.get("totalAmount1000")),
         "currency": order.get("totalCurrencyCode"),
+    }
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def _poll_snapshot_results(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    results = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        voters = item.get("voters") if isinstance(item.get("voters"), list) else []
+        option = _first_text(item.get("optionName"), item.get("option"), item.get("name"))
+        if option:
+            results.append({"option": option, "count": len(voters), "voters": voters})
+    return results
+
+
+def _product_payload(message: dict) -> dict:
+    product = message.get("product") if isinstance(message.get("product"), dict) else {}
+    result = {
+        "original_type": "productMessage",
+        "product_id": product.get("productId"),
+        "retailer_id": product.get("retailerId"),
+        "title": product.get("title"),
+        "description": product.get("description"),
+        "body": message.get("body"),
+        "footer": message.get("footer"),
+        "price_amount_1000": _long_value(product.get("priceAmount1000")),
+        "sale_price_amount_1000": _long_value(product.get("salePriceAmount1000")),
+        "currency": product.get("currencyCode"),
+        "url": product.get("url") or product.get("signedUrl"),
+        "image_url": (product.get("productImage") or {}).get("url")
+            if isinstance(product.get("productImage"), dict) else None,
+    }
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def _payment_payload(message_type: str, payment: dict) -> dict:
+    amount = payment.get("amount1000") or payment.get("amount")
+    currency = payment.get("currencyCode") or payment.get("currency")
+    result = {
+        "original_type": message_type,
+        "payment_kind": message_type.removesuffix("Message"),
+        "transaction_id": payment.get("transactionId") or payment.get("paymentRequestId"),
+        "amount_1000": _long_value(amount),
+        "currency": currency,
+        "note": payment.get("noteMessage") or payment.get("note") or payment.get("message"),
+        "status": payment.get("status") or payment.get("serviceType"),
+        "expiry_timestamp": _long_value(payment.get("expiryTimestamp")),
     }
     return {key: value for key, value in result.items() if value is not None}
 

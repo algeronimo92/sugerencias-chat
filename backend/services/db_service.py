@@ -1785,6 +1785,62 @@ async def set_message_reaction(
         return _message_payload(row)
 
 
+def merge_poll_results_payload(
+    current: dict | None,
+    results: list[dict],
+    *,
+    voter_id: str | None = None,
+    mode: str = "snapshot",
+) -> dict:
+    """Merge puro e idempotente de snapshot o voto individual."""
+    payload = dict(current or {})
+    if mode == "delta" and voter_id:
+        votes = dict(payload.get("votes_by_voter") or {})
+        selected = [str(result.get("option")) for result in results if result.get("option")]
+        if selected:
+            votes[voter_id] = selected
+        else:
+            votes.pop(voter_id, None)
+        counts: dict[str, int] = {}
+        for options in votes.values():
+            if not isinstance(options, list):
+                continue
+            for option in set(map(str, options)):
+                counts[option] = counts.get(option, 0) + 1
+        payload["votes_by_voter"] = votes
+        payload["results"] = [
+            {"option": option, "count": count}
+            for option, count in counts.items()
+        ]
+    else:
+        payload["results"] = results
+    if voter_id:
+        payload["last_voter_id"] = voter_id
+    payload["results_updated_at"] = _fmt_ts(datetime.now(timezone.utc))
+    return payload
+
+
+async def update_poll_results(
+    chat_id: str,
+    target_wa_message_id: str,
+    results: list[dict],
+    *,
+    voter_id: str | None = None,
+    mode: str = "snapshot",
+) -> dict | None:
+    """Actualiza la encuesta original; nunca crea una fila para el voto."""
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_wa_id(session, chat_id, target_wa_message_id)
+        if row is None or row.message_type != "poll" or row.deleted_at is not None:
+            return None
+
+        row.payload = merge_poll_results_payload(
+            row.payload, results, voter_id=voter_id, mode=mode
+        )
+        await session.commit()
+        return _message_payload(row)
+
+
 async def _load_message_by_wa_id(session, chat_id: str, wa_message_id: str) -> WspMessage | None:
     return (await session.execute(
         select(WspMessage).where(

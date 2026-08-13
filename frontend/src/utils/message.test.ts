@@ -16,6 +16,20 @@ describe('parseContent', () => {
     expect(parseContent({ content: 'pregunta', message_type: 'poll' })).toMatchObject({ kind: 'poll', text: 'pregunta' })
     expect(parseContent({ content: 'Pago: Realizado', message_type: 'order' }))
       .toMatchObject({ kind: 'order', label: 'Pedido', text: 'Pago: Realizado' })
+    expect(parseContent({ content: 'HIFU 12D', message_type: 'product' }))
+      .toMatchObject({ kind: 'product', label: 'Producto' })
+    expect(parseContent({ content: 'Separación', message_type: 'payment' }))
+      .toMatchObject({ kind: 'payment', label: 'Pago' })
+  })
+
+  it('normaliza listas modernas como mensajes interactivos', () => {
+    const parsed = parseContent({
+      content: 'Elige un servicio',
+      message_type: 'interactive',
+      payload: { title: 'Servicios', body: 'Elige un servicio', options: [{ id: 'hifu', text: 'HIFU' }] },
+    })
+    expect(parsed.template).toMatchObject({ title: 'Servicios', body: 'Elige un servicio' })
+    expect(parsed.template?.buttons).toEqual([{ text: 'HIFU', url: null }])
   })
 
   it('separa el análisis IA del caption y no lo mezcla en el texto', () => {

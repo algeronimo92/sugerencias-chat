@@ -72,6 +72,7 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
         ({"imageMessage": {"caption": "mirá esto"}}, "mirá esto", "image", None),
         ({"imageMessage": {}}, None, "image", None),
         ({"videoMessage": {"caption": "v"}}, "v", "video", None),
+        ({"ptvMessage": {"caption": "circular"}}, "circular", "ptv", None),
         ({"audioMessage": {"seconds": 3}}, None, "audio", None),
         ({"documentMessage": {"fileName": "factura.pdf"}}, None, "document", {"filename": "factura.pdf"}),
         (
@@ -87,6 +88,47 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
             "¿Horario?",
             "poll",
             {"values": ["AM", "PM"]},
+        ),
+        (
+            {"pollCreationMessageV5": {"name": "¿Día?", "options": [{"optionName": "Lunes"}]}},
+            "¿Día?",
+            "poll",
+            {"values": ["Lunes"]},
+        ),
+        (
+            {"pollResultSnapshotMessage": {
+                "name": "¿Horario?",
+                "pollVotes": [{"optionName": "AM", "voters": ["uno", "dos"]}],
+            }},
+            "¿Horario?",
+            "poll",
+            {
+                "original_type": "pollResultSnapshotMessage",
+                "results": [{"option": "AM", "count": 2, "voters": ["uno", "dos"]}],
+            },
+        ),
+        (
+            {"listMessage": {
+                "title": "Servicios",
+                "description": "Elige uno",
+                "sections": [{"rows": [{"rowId": "hifu", "title": "HIFU", "description": "Facial"}]}],
+            }},
+            "Elige uno",
+            "interactive",
+            {
+                "original_type": "listMessage",
+                "title": "Servicios",
+                "body": "Elige uno",
+                "options": [{"id": "hifu", "text": "HIFU", "description": "Facial"}],
+            },
+        ),
+        (
+            {"interactiveResponseMessage": {
+                "nativeFlowResponseMessage": {"paramsJson": '{"id":"hifu","display_text":"HIFU"}'},
+            }},
+            "HIFU",
+            "interactive",
+            {"original_type": "interactiveResponseMessage", "selected_id": "hifu", "selected_text": "HIFU"},
         ),
         (
             {"orderMessage": {
@@ -110,6 +152,34 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
                 "status": "INQUIRY",
                 "total_amount_1000": 50000,
                 "currency": "PEN",
+            },
+        ),
+        (
+            {"productMessage": {"body": "Mira este tratamiento", "product": {
+                "productId": "prod-1", "retailerId": "hifu-12d", "title": "HIFU 12D",
+                "description": "Tratamiento facial", "priceAmount1000": 150000,
+                "salePriceAmount1000": 120000, "currencyCode": "PEN", "url": "https://example.com/hifu",
+            }}},
+            "HIFU 12D",
+            "product",
+            {
+                "original_type": "productMessage", "product_id": "prod-1", "retailer_id": "hifu-12d",
+                "title": "HIFU 12D", "description": "Tratamiento facial", "body": "Mira este tratamiento",
+                "price_amount_1000": 150000, "sale_price_amount_1000": 120000,
+                "currency": "PEN", "url": "https://example.com/hifu",
+            },
+        ),
+        (
+            {"requestPaymentMessage": {
+                "paymentRequestId": "pay-1", "amount1000": 50000,
+                "currencyCode": "PEN", "noteMessage": "Separación de cita",
+            }},
+            "Separación de cita",
+            "payment",
+            {
+                "original_type": "requestPaymentMessage", "payment_kind": "requestPayment",
+                "transaction_id": "pay-1", "amount_1000": 50000,
+                "currency": "PEN", "note": "Separación de cita",
             },
         ),
         ({"algoNuevo": {}}, None, "unsupported", {"original_type": "algoNuevo"}),

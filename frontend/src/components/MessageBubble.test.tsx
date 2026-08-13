@@ -101,6 +101,45 @@ describe('MessageBubble', () => {
     expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
   })
 
+  it('muestra un producto con precio normal y precio de oferta', () => {
+    renderBubble({
+      content: 'HIFU 12D',
+      message_type: 'product',
+      payload: {
+        title: 'HIFU 12D', description: 'Tratamiento facial',
+        price_amount_1000: 150000, sale_price_amount_1000: 120000, currency: 'PEN',
+      },
+    })
+    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
+    expect(screen.getByText('Tratamiento facial')).toBeInTheDocument()
+    expect(screen.getByText('PEN 120.00')).toBeInTheDocument()
+    expect(screen.getByText('PEN 150.00')).toHaveClass('line-through')
+  })
+
+  it('muestra una solicitud de pago con monto e identificador', () => {
+    renderBubble({
+      content: 'Separación de cita',
+      message_type: 'payment',
+      payload: {
+        payment_kind: 'requestPayment', amount_1000: 50000, currency: 'PEN',
+        note: 'Separación de cita', transaction_id: 'pay-1',
+      },
+    })
+    expect(screen.getByText('Solicitud de pago')).toBeInTheDocument()
+    expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
+    expect(screen.getByText('ID: pay-1')).toBeInTheDocument()
+  })
+
+  it('muestra resultados agregados de una encuesta', () => {
+    renderBubble({
+      sender: 'cliente', content: '¿Horario?', message_type: 'poll',
+      payload: { values: ['AM', 'PM'], results: [{ option: 'AM', count: 2 }, { option: 'PM', count: 1 }] },
+    })
+    expect(screen.getByText('3 votos')).toBeInTheDocument()
+    expect(screen.getByText('AM')).toBeInTheDocument()
+    expect(screen.getByText('PM')).toBeInTheDocument()
+  })
+
   it('ofrece editar y eliminar un mensaje propio de texto recién enviado', async () => {
     const user = userEvent.setup()
     const { onEdit } = renderBubble()

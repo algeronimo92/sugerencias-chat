@@ -46,3 +46,44 @@ async def test_own_echo_is_skipped_without_broadcast(monkeypatch):
 
     broadcast.assert_not_awaited()
     assert result == {"status": "ok", "matched": True}
+
+
+@pytest.mark.asyncio
+async def test_poll_results_update_original_message(monkeypatch):
+    update = AsyncMock(return_value={"id": 7})
+    monkeypatch.setattr(webhooks, "update_poll_results", update)
+    broadcast = AsyncMock()
+    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+
+    result = await webhooks.poll_results_webhook(
+        webhooks.PollResultsWebhookBody(
+            chat_id=LEAD_ID,
+            target_wa_message_id="POLL-1",
+            results=[{"option": "AM", "count": 2, "voters": []}],
+            voter_id="cliente-1",
+            mode="snapshot",
+        )
+    )
+
+    update.assert_awaited_once_with(
+        LEAD_ID, "POLL-1", [{"option": "AM", "count": 2, "voters": []}],
+        voter_id="cliente-1",
+        mode="snapshot",
+    )
+    broadcast.assert_awaited_once()
+    assert result == {"status": "ok", "matched": True}
+
+
+@pytest.mark.asyncio
+async def test_encrypted_poll_update_is_ignored_without_erasing_results(monkeypatch):
+    update = AsyncMock()
+    monkeypatch.setattr(webhooks, "update_poll_results", update)
+
+    result = await webhooks.poll_results_webhook(
+        webhooks.PollResultsWebhookBody(
+            chat_id=LEAD_ID, target_wa_message_id="POLL-1", results=[], decrypted=False
+        )
+    )
+
+    update.assert_not_awaited()
+    assert result == {"status": "ok", "matched": False, "ignored": "encrypted_or_empty"}

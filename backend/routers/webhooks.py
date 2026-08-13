@@ -11,6 +11,7 @@ from services.db_service import (
     mark_message_deleted,
     reconcile_outgoing_message,
     set_message_reaction,
+    update_poll_results,
     update_lead_stage,
     update_message_content,
     update_message_status,
@@ -184,6 +185,41 @@ async def message_edited_webhook(
     if matched:
         await manager.broadcast(
             {"type": "chats_updated", "chat_id": body.chat_id, "reason": "message_edited"}
+        )
+    return {"status": "ok", "matched": matched}
+
+
+class PollResultsWebhookBody(BaseModel):
+    chat_id: str
+    target_wa_message_id: str
+    # Snapshot normalizado: [{option, voters, count}]. Nunca se reciben aquí
+    # encPayload/encIv del voto cifrado.
+    results: list[dict[str, Any]]
+    voter_id: str | None = None
+    mode: str = "snapshot"
+    decrypted: bool = True
+
+
+@router.post("/poll-results")
+async def poll_results_webhook(body: PollResultsWebhookBody):
+    """Actualiza la encuesta original sin crear una burbuja para cada voto."""
+    if not body.decrypted:
+        # Un pollUpdateMessage crudo lleva opciones cifradas. Solo Evolution
+        # puede descifrarlas; no se pisa un snapshot previo con una lista vacía.
+        return {"status": "ok", "matched": False, "ignored": "encrypted_or_empty"}
+    if body.mode == "delta" and not body.voter_id:
+        return {"status": "ok", "matched": False, "ignored": "missing_voter"}
+    message = await update_poll_results(
+        body.chat_id,
+        body.target_wa_message_id,
+        body.results,
+        voter_id=body.voter_id,
+        mode=body.mode,
+    )
+    matched = message is not None
+    if matched:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "poll_results"}
         )
     return {"status": "ok", "matched": matched}
 
