@@ -74,6 +74,27 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
         ({"videoMessage": {"caption": "v"}}, "v", "video", None),
         ({"ptvMessage": {"caption": "circular"}}, "circular", "ptv", None),
         ({"audioMessage": {"seconds": 3}}, None, "audio", None),
+        (
+            {"viewOnceMessage": {"message": {"imageMessage": {
+                "caption": "Comprobante", "url": "https://privado.example/archivo",
+                "mediaKey": "no-debe-persistirse",
+            }}}},
+            "Comprobante",
+            "view_once",
+            {"original_type": "viewOnceMessage", "inner_type": "image"},
+        ),
+        (
+            {"viewOnceMessageV2": {"message": {"videoMessage": {"seconds": 5}}}},
+            None,
+            "view_once",
+            {"original_type": "viewOnceMessageV2", "inner_type": "video"},
+        ),
+        (
+            {"viewOnceMessageV2Extension": {"message": {"audioMessage": {"ptt": True}}}},
+            None,
+            "view_once",
+            {"original_type": "viewOnceMessageV2Extension", "inner_type": "audio"},
+        ),
         ({"documentMessage": {"fileName": "factura.pdf"}}, None, "document", {"filename": "factura.pdf"}),
         (
             {"locationMessage": {"degreesLatitude": -34.6, "degreesLongitude": -58.4}},
@@ -196,6 +217,20 @@ def test_normalize_unwraps_ephemeral_messages():
     message = {"ephemeralMessage": {"message": {"conversation": "efímero"}}}
 
     assert _normalize_record(_record("A1", 1_700_000_000, message=message))["content"] == "efímero"
+
+
+def test_normalize_preserves_view_once_inside_ephemeral_without_media_secrets():
+    message = {"ephemeralMessage": {"message": {"viewOnceMessageV2": {
+        "message": {"imageMessage": {
+            "caption": "Solo una vez", "directPath": "/privado", "mediaKey": "secreto",
+        }},
+    }}}}
+
+    row = _normalize_record(_record("A1", 1_700_000_000, message=message))
+
+    assert row["message_type"] == "view_once"
+    assert row["content"] == "Solo una vez"
+    assert row["payload"] == {"original_type": "viewOnceMessageV2", "inner_type": "image"}
 
 
 @pytest.mark.parametrize(

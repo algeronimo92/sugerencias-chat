@@ -143,6 +143,23 @@ export function useCancelExecution() {
   })
 }
 
+/** Congela una sola ejecución sin frenar el resto de lo que corre sobre el
+ *  lead. A diferencia de cancelar, conserva lo que el flujo ya avanzó y el
+ *  tiempo que le faltaba para su próximo paso. */
+export function usePauseExecution() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/pause`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
+export function useResumeExecution() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/resume`)).data,
+    onSuccess: invalidateAutomations,
+  })
+}
+
 export function useCreateVisualFlow() {
   return useMutation({
     mutationFn: async (input: { name: string; flow_definition: AutomationFlowDefinition }) =>

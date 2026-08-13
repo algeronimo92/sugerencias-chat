@@ -130,6 +130,22 @@ describe('MessageBubble', () => {
     expect(screen.getByText('ID: pay-1')).toBeInTheDocument()
   })
 
+  it('muestra view-once como aviso y nunca permite descargarlo', () => {
+    renderBubble({
+      sender: 'cliente',
+      content: 'Solo para ti',
+      message_type: 'view_once',
+      payload: { original_type: 'viewOnceMessageV2', inner_type: 'image' },
+      // Defensa ante una integración defectuosa: ni con URL debe descargarse.
+      media_url: '/media/no-debe-descargarse.jpg',
+    })
+
+    expect(screen.getByText('Imagen de visualización única')).toBeInTheDocument()
+    expect(screen.getByText(/Solo puede abrirse en WhatsApp/)).toBeInTheDocument()
+    expect(screen.getByText('Solo para ti')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Descargar/)).not.toBeInTheDocument()
+  })
+
   it('muestra resultados agregados de una encuesta', () => {
     renderBubble({
       sender: 'cliente', content: '¿Horario?', message_type: 'poll',

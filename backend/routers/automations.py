@@ -26,8 +26,10 @@ from services.automation_service import (
     list_automation_rules,
     list_flow_versions,
     list_manual_flows,
+    pause_automation_execution,
     publish_visual_flow,
     restore_flow_version,
+    resume_automation_execution,
     retry_automation_execution,
     save_visual_flow,
     simulate_visual_flow,
@@ -270,17 +272,47 @@ async def post_retry_execution(execution_id: int, _admin: User = Depends(require
     return item
 
 
+async def _require_execution_access(execution_id: int, user: User, action: str) -> None:
+    """Un vendedor puede frenar cualquier ejecución que corra sobre un lead,
+    incluidas las de sistema: ya puede frenarlas todas de golpe pausando el
+    lead, así que actuar sobre una sola es estrictamente menos drástico. Lo
+    único fuera de su alcance son las ejecuciones sin lead."""
+    if user.role == "admin":
+        return
+    execution = await get_automation_execution(execution_id)
+    if execution is None or execution["lead_id"] is None:
+        raise HTTPException(403, f"No podés {action} esta ejecución")
+
+
 @router.post("/executions/{execution_id}/cancel", response_model=AutomationExecutionItem)
 async def post_cancel_execution(execution_id: int, user: User = Depends(get_current_user)):
-    if user.role != "admin":
-        execution = await get_automation_execution(execution_id)
-        # Un vendedor cancela cualquier ejecución que corra sobre un lead,
-        # incluidas las de sistema: ya puede frenarlas todas de golpe pausando
-        # el lead, así que cancelar una sola es estrictamente menos drástico.
-        # Lo único fuera de su alcance son las ejecuciones sin lead.
-        if execution is None or execution["lead_id"] is None:
-            raise HTTPException(403, "No podés cancelar esta ejecución")
+    await _require_execution_access(execution_id, user, "cancelar")
     item = await cancel_automation_execution(execution_id)
     if item is None:
         raise HTTPException(409, "Solo se pueden cancelar ejecuciones programadas, en curso o pausadas")
+    return item
+
+
+@router.post("/executions/{execution_id}/pause", response_model=AutomationExecutionItem)
+async def post_pause_execution(execution_id: int, user: User = Depends(get_current_user)):
+    await _require_execution_access(execution_id, user, "pausar")
+    item = await pause_automation_execution(execution_id)
+    if item is None:
+        raise HTTPException(
+            409,
+            "Solo se puede pausar una ejecución programada: si está ejecutando un paso, "
+            "esperá a que llegue a su próxima espera.",
+        )
+    return item
+
+
+@router.post("/executions/{execution_id}/resume", response_model=AutomationExecutionItem)
+async def post_resume_execution(execution_id: int, user: User = Depends(get_current_user)):
+    await _require_execution_access(execution_id, user, "reanudar")
+    try:
+        item = await resume_automation_execution(execution_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    if item is None:
+        raise HTTPException(409, "Solo se pueden reanudar ejecuciones pausadas")
     return item

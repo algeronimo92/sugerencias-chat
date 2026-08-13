@@ -241,7 +241,9 @@ export function MessageBubble({
   // Reenviar y seleccionar solo necesitan que el mensaje exista en la base con
   // su contenido: se manda una copia nueva, no se toca el original en WhatsApp.
   const canForward = m.id > 0 && !isDeleted
-  const canDownload = mediaSrc != null && !isDeleted
+  // Defensa adicional: aunque una integración futura mande media_url por
+  // error, un view-once nunca ofrece una copia descargable.
+  const canDownload = mediaSrc != null && kind !== 'view_once' && !isDeleted
   // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
   // además, solo texto y dentro de los 15 minutos.
   const canDelete = canReply && isVendedor

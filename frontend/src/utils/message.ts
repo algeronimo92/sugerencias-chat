@@ -1,7 +1,7 @@
 import {
   BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
   CreditCard, Paperclip, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
-  Video, FileText, type LucideIcon,
+  Video, FileText, EyeOff, type LucideIcon,
 } from 'lucide-react'
 import type { JsonObject, JsonValue, MessageType, MessageAnalysis } from '../types'
 
@@ -26,6 +26,7 @@ const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }>
   order: { icon: ReceiptText, label: 'Pedido' },
   product: { icon: ShoppingBag, label: 'Producto' },
   payment: { icon: CreditCard, label: 'Pago' },
+  view_once: { icon: EyeOff, label: 'Ver una vez' },
   unsupported: { icon: Paperclip, label: 'No soportado' },
 }
 

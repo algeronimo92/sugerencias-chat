@@ -383,6 +383,7 @@ async def delete_automation_rule(rule_id: int) -> dict | None:
             status=AutomationExecutionStatus.SKIPPED,
             error="La automatización fue eliminada",
             paused_at=None,
+            pause_scope=None,
             finished_at=now,
         ))
         await session.execute(update(AutomationRule).where(
@@ -524,6 +525,25 @@ async def pause_lead_executions(lead_id: str) -> int:
     return result.rowcount or 0
 
 
+def _resume_values(now: datetime) -> dict:
+    """Cómo vuelve a la cola una ejecución congelada: `scheduled_for` corrido
+    por lo que duró la pausa, así recupera el tiempo que le faltaba en vez de
+    disparar de golpe por haber vencido mientras estaba detenida."""
+    return {
+        "status": AutomationExecutionStatus.SCHEDULED,
+        # El literal va tipado: sin el tipo explícito, `$1 - timestamptz`
+        # le deja a Postgres un parámetro sin tipo que resolver contra dos
+        # firmas del operador `-`.
+        "scheduled_for": AutomationExecution.scheduled_for + (
+            literal(now, DateTime(timezone=True))
+            - func.coalesce(AutomationExecution.paused_at, now)
+        ),
+        "paused_at": None,
+        "pause_scope": None,
+        "error": None,
+    }
+
+
 async def resume_lead_executions(lead_id: str) -> int:
     """Devuelve a la cola lo que quedó congelado por la pausa del lead,
     corriendo `scheduled_for` por lo que duró la pausa: una espera de 2 horas
@@ -532,29 +552,88 @@ async def resume_lead_executions(lead_id: str) -> int:
 
     `waiting_since` de los bloques Pausa/Pregunta no se corre a propósito: si
     el cliente escribió mientras el vendedor atendía a mano, esa respuesta es
-    real y el flujo debe seguir por la rama del mensaje."""
+    real y el flujo debe seguir por la rama del mensaje.
+
+    Solo descongela lo que congeló la pausa del lead: una ejecución que el
+    vendedor pausó puntualmente (`pause_scope == 'execution'`) sigue detenida
+    hasta que la reanude con su propio botón. NULL son las pausas anteriores a
+    la columna, todas de alcance lead."""
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         result = await session.execute(update(AutomationExecution).where(
             AutomationExecution.lead_id == lead_id,
             AutomationExecution.status == AutomationExecutionStatus.PAUSED,
-        ).values(
-            status=AutomationExecutionStatus.SCHEDULED,
-            # El literal va tipado: sin el tipo explícito, `$1 - timestamptz`
-            # le deja a Postgres un parámetro sin tipo que resolver contra dos
-            # firmas del operador `-`.
-            scheduled_for=AutomationExecution.scheduled_for + (
-                literal(now, DateTime(timezone=True))
-                - func.coalesce(AutomationExecution.paused_at, now)
-            ),
-            paused_at=None,
-            error=None,
-        ))
+            AutomationExecution.pause_scope.is_distinct_from(PAUSE_SCOPE_EXECUTION),
+        ).values(**_resume_values(now)))
         await session.commit()
     if result.rowcount:
         await manager.broadcast({"type": "automations_updated"})
         _wake.set()
     return result.rowcount or 0
+
+
+async def pause_automation_execution(execution_id: int) -> dict | None:
+    """Congela una sola ejecución, sin tocar el resto de lo que el sistema
+    tenga en marcha sobre el lead: el botón de pausa que el vendedor tiene al
+    lado de "Cancelar" en el panel de automatizaciones del chat.
+
+    A diferencia de la pausa del lead, acá sí entran los flujos manuales: es la
+    forma de frenar un flujo que el propio vendedor arrancó sin perder lo que
+    ya avanzó (cancelar es terminal y obliga a repetirlo desde el principio).
+
+    Solo aplica a una ejecución `scheduled` — que es todo flujo detenido en una
+    espera, un bloque Pausa o una Pregunta. Una `running` está enviando un paso
+    en este instante y no se interrumpe a mitad de camino (mismo criterio que
+    `pause_lead_executions`); devuelve None para que el caller lo explique."""
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id,
+            AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+        ).values(
+            status=AutomationExecutionStatus.PAUSED,
+            paused_at=now,
+            pause_scope=PAUSE_SCOPE_EXECUTION,
+            error=None,
+        ))
+        await session.commit()
+    if not result.rowcount:
+        return None
+    await manager.broadcast({"type": "automations_updated"})
+    return await get_automation_execution(execution_id)
+
+
+async def resume_automation_execution(execution_id: int) -> dict | None:
+    """Devuelve a la cola una ejecución congelada, con el tiempo que le
+    faltaba. Sirve para las dos pausas: la puntual del vendedor y la que dejó
+    la pausa del lead (reanudar una sola es menos drástico que reanudarlo todo).
+
+    Con el lead todavía pausado no tiene sentido: `process_due_automation_
+    executions` la volvería a congelar al vencer. Eso se corta acá con un error
+    claro en vez de dejar un botón que aparenta no hacer nada — salvo en los
+    flujos manuales, que la pausa del lead nunca frena."""
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        execution = await session.get(AutomationExecution, execution_id)
+        if execution is None or execution.status != AutomationExecutionStatus.PAUSED:
+            return None
+        if execution.start_source != "manual" and execution.lead_id:
+            lead = await session.get(Lead, execution.lead_id)
+            if lead is not None and lead.automatizacion_pausada:
+                raise ValueError(
+                    "Este chat tiene la automatización pausada: reanudala con el botón "
+                    "del bot en la cabecera para que el flujo siga."
+                )
+        result = await session.execute(update(AutomationExecution).where(
+            AutomationExecution.id == execution_id,
+            AutomationExecution.status == AutomationExecutionStatus.PAUSED,
+        ).values(**_resume_values(now)))
+        await session.commit()
+    if not result.rowcount:
+        return None
+    await manager.broadcast({"type": "automations_updated"})
+    _wake.set()
+    return await get_automation_execution(execution_id)
 
 
 async def cancel_automation_execution(execution_id: int) -> dict | None:
@@ -572,6 +651,7 @@ async def cancel_automation_execution(execution_id: int) -> dict | None:
             status=AutomationExecutionStatus.SKIPPED,
             error="Cancelada manualmente",
             paused_at=None,
+            pause_scope=None,
             finished_at=datetime.now(timezone.utc),
         ))
         await session.commit()
@@ -3297,6 +3377,7 @@ async def process_due_automation_executions(limit: int = 20) -> int:
         ).values(
             status=AutomationExecutionStatus.PAUSED,
             paused_at=now,
+            pause_scope=PAUSE_SCOPE_LEAD,
             error=None,
         ).returning(AutomationExecution.id))).scalars().all()
         ids = (await session.execute(

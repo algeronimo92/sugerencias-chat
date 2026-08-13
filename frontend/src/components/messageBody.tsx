@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, CreditCard, Download, ExternalLink, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
+import { ChevronDown, CreditCard, Download, ExternalLink, EyeOff, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
 import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
@@ -456,6 +456,41 @@ function PaymentBody({ parsed }: MessageBodyContext) {
   )
 }
 
+const VIEW_ONCE_LABELS: Record<string, string> = {
+  image: 'Imagen de visualización única',
+  video: 'Video de visualización única',
+  ptv: 'Video circular de visualización única',
+  audio: 'Audio de visualización única',
+  document: 'Documento de visualización única',
+}
+
+/** WhatsApp no permite conservar ni volver a abrir este adjunto desde el CRM.
+ * La tarjeta informa qué llegó, pero deliberadamente no recibe mediaSrc. */
+function ViewOnceBody({ parsed }: MessageBodyContext) {
+  const innerType = orderText(parsed.payload?.inner_type)
+  const label = VIEW_ONCE_LABELS[innerType] || 'Multimedia de visualización única'
+  return (
+    <div className="min-w-0 max-w-full rounded-lg border border-black/5 bg-black/5 px-3 py-2.5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary">
+          <EyeOff className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium not-italic">{label}</p>
+          <p className="mt-0.5 text-xs not-italic text-wa-muted dark:text-wa-text-dark/65">
+            Solo puede abrirse en WhatsApp. No se guarda ni se puede descargar desde el CRM.
+          </p>
+        </div>
+      </div>
+      {parsed.text && (
+        <p className="mt-2 whitespace-pre-wrap border-t border-black/5 pt-2 text-sm not-italic dark:border-white/10">
+          <RichText text={parsed.text} />
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** Fallback para tipos que se muestran como texto renderizado + chip del tipo:
  * reacciones y lo no soportado. */
 function TextualBody(ctx: MessageBodyContext) {
@@ -502,6 +537,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   order: OrderBody,
   product: ProductBody,
   payment: PaymentBody,
+  view_once: ViewOnceBody,
   reaction: TextualBody,
   unsupported: TextualBody,
 }

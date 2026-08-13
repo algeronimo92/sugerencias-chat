@@ -202,10 +202,12 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const deletableSelection = selectedMessages.filter(
     message => message.sender === 'vendedor' && !!message.wa_message_id && !message.deleted_at,
   )
-  const downloadableSelection = selectedMessages.filter(message => !!message.media_url && !message.deleted_at)
+  const downloadableSelection = selectedMessages.filter(
+    message => !!message.media_url && message.message_type !== 'view_once' && !message.deleted_at,
+  )
 
   function downloadMessageMedia(message: Message) {
-    if (!message.media_url || message.deleted_at) return
+    if (!message.media_url || message.message_type === 'view_once' || message.deleted_at) return
     triggerMediaDownload(message.media_url, messageMediaFilename(message))
     toast.success('Descarga iniciada')
   }

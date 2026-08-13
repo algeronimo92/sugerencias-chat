@@ -20,6 +20,8 @@ describe('parseContent', () => {
       .toMatchObject({ kind: 'product', label: 'Producto' })
     expect(parseContent({ content: 'Separación', message_type: 'payment' }))
       .toMatchObject({ kind: 'payment', label: 'Pago' })
+    expect(parseContent({ content: 'Mira esto', message_type: 'view_once', payload: { inner_type: 'image' } }))
+      .toMatchObject({ kind: 'view_once', label: 'Ver una vez', text: 'Mira esto' })
   })
 
   it('normaliza listas modernas como mensajes interactivos', () => {

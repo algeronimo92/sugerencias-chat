@@ -237,6 +237,7 @@ export type MessageType =
   | 'order'
   | 'product'
   | 'payment'
+  | 'view_once'
   | 'unsupported'
 
 /** Enriquecimiento generado con IA para un adjunto: descripción de imagen/video,
@@ -766,6 +767,10 @@ export interface AutomationExecution {
    *  contra `paused_at`, no contra ahora. */
   scheduled_for: string
   paused_at: string | null
+  /** Quién la congeló: 'lead' si fue pausar el chat entero (botón del bot en la
+   *  cabecera), 'execution' si el vendedor pausó solo esta desde el panel.
+   *  Una de alcance 'lead' no se puede reanudar sola: la reanuda el chat. */
+  pause_scope: 'lead' | 'execution' | null
   started_at: string | null
   finished_at: string | null
   action_results: AutomationActionResult[]

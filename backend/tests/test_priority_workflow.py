@@ -27,6 +27,7 @@ def test_priority_types_have_routes_and_fallback_stays_last():
         "pollResultSnapshotMessage", "pollUpdateMessage", "productMessage",
         "invoiceMessage", "requestPaymentMessage", "sendPaymentMessage",
         "paymentInviteMessage", "cancelPaymentRequestMessage", "declinePaymentRequestMessage",
+        "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
     }
     assert required <= routed
     assert len(outputs) == len(rules) + 1
@@ -41,3 +42,18 @@ def test_ptv_chain_and_poll_update_are_connected():
     assert workflow["connections"]["ptv content"]["main"][0][0]["node"] == "chat input"
     poll_webhook = next(node for node in workflow["nodes"] if node["name"] == "poll results webhook")
     assert poll_webhook["parameters"]["url"].endswith("/api/webhooks/poll-results")
+
+
+def test_view_once_keeps_only_metadata_and_skips_media_download_chain():
+    assert WORKFLOW is not None
+    workflow = json.loads(WORKFLOW.read_text(encoding="utf-8"))
+    node = next(node for node in workflow["nodes"] if node["name"] == "view once content")
+    assignments = {
+        item["name"]: item["value"]
+        for item in node["parameters"]["assignments"]["assignments"]
+    }
+    assert assignments["message_type"] == "view_once"
+    assert assignments["media_url"] == "="
+    assert "mediaKey" not in assignments["payload"]
+    assert "directPath" not in assignments["payload"]
+    assert workflow["connections"]["view once content"]["main"][0][0]["node"] == "chat input"

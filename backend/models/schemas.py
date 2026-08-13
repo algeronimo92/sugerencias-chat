@@ -225,6 +225,7 @@ MessageType = Literal[
     "order",
     "product",
     "payment",
+    "view_once",
     "unsupported",
 ]
 
@@ -703,6 +704,9 @@ class AutomationExecutionItem(BaseModel):
     status: AutomationExecutionStatus
     scheduled_for: str
     paused_at: str | None = None
+    # 'lead' si la congeló pausar el lead entero, 'execution' si el vendedor
+    # pausó solo esta ejecución. None cuando no está congelada.
+    pause_scope: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
     action_results: list[dict]

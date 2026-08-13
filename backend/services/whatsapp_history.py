@@ -29,13 +29,26 @@ MAX_EVOLUTION_CALLS = 10
 # lo que haya (ver `_estimate_start_page`).
 MAX_PAGE_CORRECTIONS = 3
 
-# Envoltorios que WhatsApp pone alrededor del mensaje real.
+# Envoltorios transparentes que WhatsApp pone alrededor del mensaje real.
+# Los de visualización única se tratan aparte: no deben desarmarse como una
+# imagen/video común porque eso haría parecer que el archivo es persistente.
 _WRAPPERS = (
     "ephemeralMessage",
+    "documentWithCaptionMessage",
+)
+
+_VIEW_ONCE_WRAPPERS = (
     "viewOnceMessage",
     "viewOnceMessageV2",
     "viewOnceMessageV2Extension",
-    "documentWithCaptionMessage",
+)
+
+_VIEW_ONCE_MEDIA = (
+    ("imageMessage", "image"),
+    ("videoMessage", "video"),
+    ("ptvMessage", "ptv"),
+    ("audioMessage", "audio"),
+    ("documentMessage", "document"),
 )
 
 # Tipos sin representación en el hilo: reacciones, borrados, claves de cifrado.
@@ -82,7 +95,7 @@ def _extract_records(payload: Any) -> tuple[list[dict], int | None, int | None]:
 
 
 def _unwrap_message(message: dict) -> dict:
-    """Desanida los envoltorios de mensajes efímeros / de una sola vista."""
+    """Desanida envoltorios transparentes; nunca los de visualización única."""
     for _ in range(5):
         for wrapper in _WRAPPERS:
             inner = message.get(wrapper)
@@ -93,6 +106,53 @@ def _unwrap_message(message: dict) -> dict:
         else:
             return message
     return message
+
+
+def _view_once_media(message: dict, depth: int = 0) -> tuple[str, dict] | None:
+    """Encuentra el adjunto interno sin devolver URLs, claves ni bytes.
+
+    Evolution ha serializado estos wrappers con uno o dos niveles ``message``
+    según la versión. El límite evita recorrer estructuras externas sin fin.
+    """
+    if depth >= 7 or not isinstance(message, dict):
+        return None
+    for key, kind in _VIEW_ONCE_MEDIA:
+        media = message.get(key)
+        if isinstance(media, dict):
+            return kind, media
+    for key in ("message", *_WRAPPERS, *_VIEW_ONCE_WRAPPERS):
+        nested = message.get(key)
+        if isinstance(nested, dict):
+            found = _view_once_media(nested, depth + 1)
+            if found is not None:
+                return found
+    return None
+
+
+def _view_once_content(
+    message: dict, depth: int = 0,
+) -> tuple[str | None, str, dict | None] | None:
+    """Reconoce view-once, conservando solo tipo y caption no sensibles."""
+    if depth >= 7 or not isinstance(message, dict):
+        return None
+    for wrapper in _VIEW_ONCE_WRAPPERS:
+        node = message.get(wrapper)
+        if not isinstance(node, dict):
+            continue
+        found = _view_once_media(node)
+        inner_type, media = found if found is not None else ("unknown", {})
+        caption = _caption(media) or None
+        return caption, "view_once", {
+            "original_type": wrapper,
+            "inner_type": inner_type,
+        }
+    for wrapper in ("message", *_WRAPPERS):
+        node = message.get(wrapper)
+        if isinstance(node, dict):
+            found = _view_once_content(node, depth + 1)
+            if found is not None:
+                return found
+    return None
 
 
 def _parse_timestamp(raw: Any) -> datetime | None:
@@ -128,6 +188,10 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
     """
     if not isinstance(message, dict):
         return None
+
+    view_once = _view_once_content(message)
+    if view_once is not None:
+        return view_once
 
     message = _unwrap_message(message)
 

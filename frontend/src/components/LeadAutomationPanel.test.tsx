@@ -2,7 +2,10 @@
  * El panel de automatizaciones del chat: que muestre también las que dispara
  * el sistema (no solo los flujos manuales del vendedor), que cuente cuánto
  * falta para el próximo paso, que una congelada informe el tiempo que la pausa
- * le está guardando, y que cancelar dispare la mutación con esa ejecución.
+ * le está guardando, y que pausar, reanudar o cancelar disparen la mutación con
+ * esa ejecución — con el botón de pausa deshabilitado en los dos casos que no
+ * se pueden operar desde acá (la que está ejecutando un paso y la congelada
+ * junto con el chat entero).
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -15,12 +18,16 @@ import { LeadAutomationPanel } from './LeadAutomationPanel'
 import type { AutomationExecution } from '../types'
 
 const mutate = vi.fn()
+const pauseMutate = vi.fn()
+const resumeMutate = vi.fn()
 const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 const NOW = new Date('2026-07-20T15:00:00Z')
 
 vi.mock('../hooks/useAutomations', () => ({
   useAutomationExecutions: vi.fn(),
   useCancelExecution: () => ({ mutate, isPending: false, variables: undefined }),
+  usePauseExecution: () => ({ mutate: pauseMutate, isPending: false }),
+  useResumeExecution: () => ({ mutate: resumeMutate, isPending: false }),
 }))
 
 import { useAutomationExecutions } from '../hooks/useAutomations'
@@ -37,6 +44,7 @@ function execution(overrides: Partial<AutomationExecution>): AutomationExecution
     status: 'scheduled',
     scheduled_for: '2026-07-20T15:30:00Z',
     paused_at: null,
+    pause_scope: null,
     started_at: null,
     finished_at: null,
     action_results: [],
@@ -58,6 +66,8 @@ function wrapper({ children }: PropsWithChildren) {
 describe('LeadAutomationPanel', () => {
   beforeEach(() => {
     mutate.mockClear()
+    pauseMutate.mockClear()
+    resumeMutate.mockClear()
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(NOW)
   })
@@ -153,5 +163,58 @@ describe('LeadAutomationPanel', () => {
       77,
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
     )
+  })
+
+  it('congela la ejecución elegida sin cancelarla', async () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ id: 77 })],
+    } as never)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+    await user.click(screen.getByRole('button', { name: 'Pausar Cliente sin responder' }))
+
+    expect(pauseMutate).toHaveBeenCalledWith(77, expect.anything())
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('reanuda la que el vendedor congeló a mano', async () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ id: 77, status: 'paused', pause_scope: 'execution', paused_at: '2026-07-20T15:10:00Z' })],
+    } as never)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+    await user.click(screen.getByRole('button', { name: 'Reanudar Cliente sin responder' }))
+
+    expect(resumeMutate).toHaveBeenCalledWith(77, expect.anything())
+  })
+
+  it('no deja reanudar sola a una congelada junto con el chat entero', async () => {
+    // La reanuda el botón del bot de la cabecera: hacerlo desde acá la
+    // devolvería a la cola para que el scheduler la congele otra vez.
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ status: 'paused', pause_scope: 'lead', paused_at: '2026-07-20T15:10:00Z' })],
+    } as never)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+
+    expect(screen.getByRole('button', { name: 'Reanudar Cliente sin responder' })).toBeDisabled()
+  })
+
+  it('no deja pausar mientras está ejecutando un paso', async () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ status: 'running' })],
+    } as never)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+
+    expect(screen.getByRole('button', { name: 'Pausar Cliente sin responder' })).toBeDisabled()
   })
 })

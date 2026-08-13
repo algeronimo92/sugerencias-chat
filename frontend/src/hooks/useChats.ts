@@ -34,7 +34,7 @@ const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
 const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
   'text', 'image', 'video', 'ptv', 'audio', 'document', 'location', 'sticker',
   'contact', 'poll', 'reaction', 'interactive', 'template', 'order', 'product',
-  'payment', 'unsupported',
+  'payment', 'view_once', 'unsupported',
 ])
 
 function isMessageStatus(value: string): value is Exclude<MessageStatus, null> {

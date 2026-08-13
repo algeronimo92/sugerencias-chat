@@ -1,8 +1,8 @@
 """Añade a un workflow n8n los mensajes prioritarios de WhatsApp Business.
 
 Incluye interactivos/listas, PTV, encuestas V2-V5 y snapshots, productos,
-pagos y actualizaciones de voto. Es idempotente y conserva el fallback como
-última salida del Switch.
+pagos, visualización única y actualizaciones de voto. Es idempotente y
+conserva el fallback como última salida del Switch.
 """
 
 from __future__ import annotations
@@ -103,6 +103,9 @@ PAYMENT_TYPES = [
     "invoiceMessage", "requestPaymentMessage", "sendPaymentMessage",
     "paymentInviteMessage", "cancelPaymentRequestMessage", "declinePaymentRequestMessage",
 ]
+VIEW_ONCE_TYPES = [
+    "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
+]
 
 
 INTERACTIVE_CONTENT = "={{ (() => { const data=(($json.body||{}).data||{}); const m=data.message||{}; const t=data.messageType; const v=m[t]||{}; const parse=x=>{try{return typeof x==='string'?JSON.parse(x):x||{}}catch{return {}}}; const response=parse((v.nativeFlowResponseMessage||{}).paramsJson); const single=v.singleSelectReply||{}; return v.selectedDisplayText||v.selected_text||v.title||(v.body||{}).text||response.display_text||response.title||single.selectedRowId||'Mensaje interactivo'; })() }}"
@@ -119,6 +122,12 @@ POLL_PAYLOAD = "={{ (() => { const data=(($json.body||{}).data||{}); const m=dat
 
 SNAPSHOT_CONTENT = "={{ (() => { const data=(($json.body||{}).data||{}); const s=(data.message||{})[data.messageType]||{}; return s.name||'Resultados de encuesta'; })() }}"
 SNAPSHOT_PAYLOAD = "={{ (() => { const data=(($json.body||{}).data||{}); const s=(data.message||{})[data.messageType]||{}; return {original_type:data.messageType,results:(s.pollVotes||[]).map(v=>({option:v.optionName||v.option||v.name||'',count:Array.isArray(v.voters)?v.voters.length:Number(v.count)||0,voters:Array.isArray(v.voters)?v.voters:[]})).filter(v=>v.option)}; })() }}"
+
+# No se copian URL, directPath, claves ni bytes del adjunto view-once. El CRM
+# solo conserva su subtipo y caption para poder explicarle al agente qué llegó.
+VIEW_ONCE_CONTENT = "={{ (() => { const data=(($json.body||{}).data||{}); const root=((data.message||{})[data.messageType]||{}); const keys=['imageMessage','videoMessage','ptvMessage','audioMessage','documentMessage']; const find=(node,depth=0)=>{if(!node||typeof node!=='object'||depth>6)return null; for(const key of keys){if(node[key]&&typeof node[key]==='object')return node[key];} for(const key of ['message','ephemeralMessage','documentWithCaptionMessage']){const found=find(node[key],depth+1);if(found)return found;} return null;}; const media=find(root)||{}; return typeof media.caption==='string'&&media.caption.trim()?media.caption.trim():null; })() }}"
+VIEW_ONCE_PAYLOAD = "={{ (() => { const data=(($json.body||{}).data||{}); const root=((data.message||{})[data.messageType]||{}); const kinds={imageMessage:'image',videoMessage:'video',ptvMessage:'ptv',audioMessage:'audio',documentMessage:'document'}; const find=(node,depth=0)=>{if(!node||typeof node!=='object'||depth>6)return 'unknown'; for(const [key,kind] of Object.entries(kinds)){if(node[key]&&typeof node[key]==='object')return kind;} for(const key of ['message','ephemeralMessage','documentWithCaptionMessage']){const found=find(node[key],depth+1);if(found!=='unknown')return found;} return 'unknown';}; return {original_type:data.messageType,inner_type:find(root)}; })() }}"
+VIEW_ONCE_QUOTE = "={{ (() => { const data=(($json.body||{}).data||{}); const root=((data.message||{})[data.messageType]||{}); const find=(node,depth=0)=>{if(!node||typeof node!=='object'||depth>6)return null; if(node.contextInfo&&node.contextInfo.stanzaId)return node.contextInfo.stanzaId; for(const key of ['message','imageMessage','videoMessage','ptvMessage','audioMessage','documentMessage']){const found=find(node[key],depth+1);if(found)return found;} return null;}; return find(root); })() }}"
 
 
 def _configure_content_node(node: dict[str, Any], message_type: str, content: str, payload: str, quote: str) -> None:
@@ -206,6 +215,11 @@ def update_workflow(workflow: dict[str, Any]) -> bool:
     _configure_content_node(payment, "payment", PAYMENT_CONTENT, PAYMENT_PAYLOAD, "={{ (() => { const data=$json.body.data; const p=(data.message||{})[data.messageType]||{}; return ((p.contextInfo||{}).stanzaId)||null; })() }}")
     snapshot = _content_node(workflow, "poll snapshot content", 960)
     _configure_content_node(snapshot, "poll", SNAPSHOT_CONTENT, SNAPSHOT_PAYLOAD, "={{ (() => { const data=$json.body.data; const s=(data.message||{})[data.messageType]||{}; return ((s.contextInfo||{}).stanzaId)||null; })() }}")
+    view_once = _content_node(workflow, "view once content", 1152)
+    _configure_content_node(
+        view_once, "view_once", VIEW_ONCE_CONTENT, VIEW_ONCE_PAYLOAD,
+        VIEW_ONCE_QUOTE,
+    )
 
     poll = _node(workflow, "poll content")
     _set(poll, "content", POLL_CONTENT, "string")
@@ -221,6 +235,7 @@ def update_workflow(workflow: dict[str, Any]) -> bool:
     _upsert_rule(workflow, "pollUpdate", ["pollUpdateMessage"], "poll results webhook")
     _upsert_rule(workflow, "product", ["productMessage"], "product content")
     _upsert_rule(workflow, "payment", PAYMENT_TYPES, "payment content")
+    _upsert_rule(workflow, "viewOnce", VIEW_ONCE_TYPES, "view once content")
 
     return before != json.dumps(workflow, sort_keys=True, ensure_ascii=False)
 

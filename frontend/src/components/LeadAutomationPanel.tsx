@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
-  AlertTriangle, Ban, CheckCircle2, ChevronDown, Clock3, Loader2, PauseCircle, Workflow,
+  AlertTriangle, Ban, CheckCircle2, ChevronDown, Clock3, Loader2, Pause, PauseCircle, Play,
+  Workflow,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useAutomationExecutions, useCancelExecution } from '../hooks/useAutomations'
+import {
+  useAutomationExecutions, useCancelExecution, usePauseExecution, useResumeExecution,
+} from '../hooks/useAutomations'
 import {
   AUTOMATION_TRIGGERS, AutomationExecutionStatus, automationStepLabel,
 } from '../domain/automationCatalog'
@@ -85,6 +88,57 @@ function stepDetail(step: AutomationActionResult) {
   return ''
 }
 
+/** Congela o reanuda esta ejecución sola, sin tocar el resto de lo que el
+ *  sistema tiene en marcha sobre el lead. No es lo mismo que cancelar: guarda
+ *  lo que el flujo ya avanzó y el tiempo que le faltaba para el próximo paso.
+ *
+ *  Hay dos situaciones que no se pueden operar desde acá, y el botón las
+ *  explica en vez de fallar: una ejecución que está enviando un paso en este
+ *  instante (se pausa cuando llegue a su próxima espera) y una congelada junto
+ *  con el chat entero, que reanuda el botón del bot de la cabecera. */
+function PauseToggleButton({ execution }: { execution: AutomationExecution }) {
+  const pause = usePauseExecution()
+  const resume = useResumeExecution()
+  const isPaused = execution.status === AutomationExecutionStatus.Paused
+  const isRunning = execution.status === AutomationExecutionStatus.Running
+  const pausedWithChat = isPaused && execution.pause_scope === 'lead'
+  const isPending = pause.isPending || resume.isPending
+  const label = isPaused ? 'Reanudar' : 'Pausar'
+
+  return (
+    <button
+      type="button"
+      title={isPaused
+        ? pausedWithChat
+          ? 'Pausada junto con todo el chat — reanudala con el botón del bot de la cabecera'
+          : 'Reanudar: sigue con el tiempo que le faltaba'
+        : isRunning
+          ? 'Está ejecutando un paso; se puede pausar cuando llegue a su próxima espera'
+          : 'Pausar sin perder lo que ya avanzó'}
+      aria-label={`${label} ${execution.rule_name}`}
+      disabled={isPending || isRunning || pausedWithChat}
+      onClick={() => (isPaused ? resume : pause).mutate(execution.id, {
+        onSuccess: () => toast.success(
+          isPaused ? 'Automatización reanudada' : 'Automatización pausada para este chat'
+        ),
+        onError: error => toast.error(extractErrorMessage(error)),
+      })}
+      className={`flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        isPaused
+          ? 'border-wa-primary-strong text-wa-primary-strong hover:bg-green-50 dark:border-wa-primary dark:text-wa-primary dark:hover:bg-green-950/30'
+          : 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+      }`}
+    >
+      {isPending
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : isPaused
+          ? <Play className="h-3 w-3" />
+          : <Pause className="h-3 w-3" />}
+      {label}
+    </button>
+  )
+}
+
 function StepIcon({ status }: { status?: string }) {
   if (status === AutomationExecutionStatus.Failed) {
     return <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
@@ -99,8 +153,8 @@ function StepIcon({ status }: { status?: string }) {
  * Lo que el sistema tiene en marcha sobre este lead, dentro del propio chat:
  * cada automatización activa (las que dispara el sistema y las que arranca el
  * vendedor), los pasos que ya dio, en qué espera está parada y cuánto le falta
- * para seguir — con un botón para cancelarla antes de que le escriba al
- * cliente.
+ * para seguir — con botones para congelarla o cancelarla antes de que le
+ * escriba al cliente.
  *
  * Sin esto el vendedor solo veía sus propios flujos manuales y su única forma
  * de frenar al sistema era pausar el lead entero.
@@ -153,6 +207,7 @@ export function LeadAutomationPanel({ chatId }: Props) {
                     {executionSourceLabel(execution)} · {triggerLabel(execution.trigger_type)}
                   </span>
                 </span>
+                <PauseToggleButton execution={execution} />
                 <button
                   type="button"
                   title="Cancelar esta automatización"
