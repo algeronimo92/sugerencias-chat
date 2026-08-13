@@ -57,3 +57,15 @@ def test_view_once_keeps_only_metadata_and_skips_media_download_chain():
     assert "mediaKey" not in assignments["payload"]
     assert "directPath" not in assignments["payload"]
     assert workflow["connections"]["view once content"]["main"][0][0]["node"] == "chat input"
+
+
+def test_interactive_expressions_are_compatible_with_n8n_2_31_parser():
+    assert WORKFLOW is not None
+    workflow = json.loads(WORKFLOW.read_text(encoding="utf-8"))
+    node = next(node for node in workflow["nodes"] if node["name"] == "priority interactive content")
+    values = [
+        item["value"]
+        for item in node["parameters"]["assignments"]["assignments"]
+        if item["name"] in {"content", "payload"}
+    ]
+    assert all("catch{" not in value and "catch (" in value for value in values)
