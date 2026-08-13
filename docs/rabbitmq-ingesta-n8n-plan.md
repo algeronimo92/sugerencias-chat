@@ -440,7 +440,41 @@ broker dejó de tolerar la alternativa.
   `q.wsp.inbound` no recibe nada y no se cae nada: simplemente no entra un solo
   WhatsApp. Pasó el 2026-08-12 y cortó la ingesta.
 
-Si alguna de las dos queda mal, Evolution autentica bien y falla al declarar:
+Hay una tercera condición que **no es una variable de entorno** y por eso se
+escapa de la lista de arriba: el ajuste `groupsIgnore` de la instancia tiene que
+estar en `true`. Se consulta y se cambia por la API, no por el `.env`:
+
+```
+curl -H "apikey: <clave>" https://evolution.dermicapro.online/settings/find/dermicapro
+```
+
+El motivo es que **el pipeline no tiene forma de representar un chat de grupo**.
+`whatsapp_identities.kind` sólo admite `'phone'` o `'lid'` por check constraint,
+así que un `@g.us` no cabe; y `wsp_messages.chat_id` es `NOT NULL` con FK a
+`leads(id)`, así que sin lead resuelto no hay INSERT posible. Un evento de grupo
+no puede terminar en la base: n8n revienta al resolver el lead, agota sus cinco
+reintentos y cae en `q.wsp.dlq`.
+
+Pasó el 2026-08-12: la instancia empezó a recibir eventos del grupo interno del
+equipo y 92 mensajes murieron en la DLQ, disparando `DlqConMensajes`. Se corrigió
+poniendo `groupsIgnore: true`, que corta en el origen — Evolution deja de emitir
+esos eventos y no llegan siquiera al exchange.
+
+Dos avisos para cuando toque tocarlo:
+
+- `POST /settings/set/<instancia>` **reemplaza el objeto de settings entero**. Si
+  mandas sólo `groupsIgnore`, los demás campos vuelven a su default y se pierde
+  `alwaysOnline` sin que nada lo diga. Hay que reenviar los siete.
+- No se puede filtrar grupos en RabbitMQ. La routing key es `messages.upsert`
+  igual para un grupo que para un chat directo; lo que los distingue está en el
+  cuerpo (`data.key.remoteJid`), y Evolution no manda headers. El broker no
+  puede verlo.
+
+Y una pista de diagnóstico que ahorra una tarde: si la DLQ se llena pero el log
+de Postgres está limpio, el workflow está fallando **antes** del INSERT — en la
+resolución del lead, no en la base.
+
+Si alguna de las dos primeras queda mal, Evolution autentica bien y falla al declarar:
 registra el error y deja de publicar sin caerse. El síntoma es "no entran
 mensajes" con todo verde, y ninguna alerta lo cubre — las de mensajería vigilan
 la cola llena o sin consumidor, y acá la cola queda vacía y con su consumidor
