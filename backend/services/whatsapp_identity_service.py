@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError
 
 from db.models import Lead, WhatsAppIdentity
@@ -296,6 +296,20 @@ async def resolve_whatsapp_destination(chat_id: str) -> str:
     raise InvalidWhatsAppIdentityError(
         f"El lead {chat_id} no tiene una identidad de WhatsApp asociada"
     )
+
+
+async def is_known_alias(jid: str) -> bool:
+    """Si ese JID ya está asociado a algún lead.
+
+    Sirve para saltear los rescates caros —preguntarle los contactos a
+    Evolution— en los mensajes de una conversación que ya tiene ficha, que son
+    la enorme mayoría: sin este corte se gasta una llamada HTTP por cada
+    mensaje entrante de todo chat direccionado por LID.
+    """
+    async with get_sessionmaker()() as session:
+        return bool(
+            await session.scalar(select(exists().where(WhatsAppIdentity.jid == jid)))
+        )
 
 
 async def resolve_history_jid(chat_id: str) -> str:

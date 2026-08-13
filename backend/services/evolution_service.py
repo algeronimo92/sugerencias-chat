@@ -201,12 +201,25 @@ async def find_phone_jid_for_lid(lid_jid: str) -> str | None:
     Es una ayuda best-effort: algunas versiones conservan contactos incompletos
     o desactualizados. Solo se acepta ``number`` como teléfono; nunca se usan
     los dígitos del propio LID.
+
+    El filtro va por ``remoteJid``, que es donde vive el JID: el campo ``id`` de
+    un contacto es una clave interna de Evolution (un cuid, no un JID), así que
+    filtrar por ahí no devuelve nunca nada.
+
+    Comprobado en Evolution 2.3.7 con direccionamiento por LID: el contacto de
+    un ``@lid`` trae solo ``remoteJid``, ``pushName`` y la foto — ningún
+    teléfono. Ahí esta función devuelve None y el lead nace sin número; la vía
+    que sí resuelve la equivalencia es ``learn_send_aliases``, que la lee de la
+    respuesta de un envío. Se conserva porque sigue sirviendo en instancias sin
+    LID, donde el contacto sí trae ``number``.
     """
     if not lid_jid.endswith("@lid"):
         return None
     api_url, api_key, instance = await _config()
     url = f"{api_url.rstrip('/')}/chat/findContacts/{instance}"
-    result = await _post(url, api_key, {"where": {"id": lid_jid}, "take": 5}, timeout=10.0)
+    result = await _post(
+        url, api_key, {"where": {"remoteJid": lid_jid}, "take": 5}, timeout=10.0
+    )
     if isinstance(result, dict):
         rows = result.get("records") or result.get("data") or result.get("contacts") or []
     else:

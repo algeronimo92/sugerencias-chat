@@ -73,12 +73,42 @@ async def test_find_phone_jid_for_lid_uses_contact_number(monkeypatch):
     result = await evolution_service.find_phone_jid_for_lid("267692862898397@lid")
 
     assert result == "51943663225@s.whatsapp.net"
+    # Se filtra por remoteJid: el `id` de un contacto es una clave interna de
+    # Evolution (un cuid), así que filtrar por ahí no devuelve nada nunca.
     post.assert_awaited_once_with(
         "https://evolution.test/chat/findContacts/dermica",
         "secret",
-        {"where": {"id": "267692862898397@lid"}, "take": 5},
+        {"where": {"remoteJid": "267692862898397@lid"}, "take": 5},
         timeout=10.0,
     )
+
+
+@pytest.mark.asyncio
+async def test_find_phone_jid_for_lid_gives_up_on_a_contact_without_a_number(
+    monkeypatch,
+):
+    """Forma real de un contacto @lid en Evolution 2.3.7: no trae teléfono.
+
+    Ahí el lead nace sin número y la equivalencia solo aparece después, en la
+    respuesta de un envío (learn_send_aliases).
+    """
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(
+        evolution_service,
+        "_post",
+        AsyncMock(return_value=[{
+            "id": "cmsrnuel205dumn54rorvb8c9",
+            "remoteJid": "267692862898397@lid",
+            "pushName": "Dani 🌷",
+            "profilePicUrl": None,
+        }]),
+    )
+
+    assert await evolution_service.find_phone_jid_for_lid("267692862898397@lid") is None
 
 
 @pytest.mark.asyncio

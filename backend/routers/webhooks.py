@@ -22,6 +22,7 @@ from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
     WhatsAppIdentityConflictError,
     add_phone_jid,
+    is_known_alias,
     parse_evolution_identity,
     resolve_whatsapp_identity,
 )
@@ -51,7 +52,11 @@ async def resolve_whatsapp_identity_webhook(
     except InvalidWhatsAppIdentityError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    if identity.lid_jid and not identity.phone_jid:
+    # Solo vale preguntarle a Evolution por un LID que todavía no conocemos: si
+    # ya es alias de un lead, el mensaje resuelve igual y el teléfono llega por
+    # otra vía (learn_send_aliases, al enviarle). Sin este corte se gastaría una
+    # llamada HTTP por cada mensaje entrante de todo chat con LID.
+    if identity.lid_jid and not identity.phone_jid and not await is_known_alias(identity.lid_jid):
         try:
             phone_jid = await find_phone_jid_for_lid(identity.lid_jid)
         except EvolutionApiError:
