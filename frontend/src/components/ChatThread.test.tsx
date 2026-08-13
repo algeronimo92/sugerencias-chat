@@ -48,6 +48,7 @@ const MESSAGES: Message[] = [
     quoted_sender: 'cliente',
     quoted_content: 'Hola, quiero información del tratamiento',
   }),
+  message({ id: 4, message_type: 'image', media_url: '/media/resultado.jpg', content: 'Resultado' }),
 ]
 
 vi.mock('../hooks/useMessages', async () => {
@@ -195,5 +196,15 @@ describe('ChatThread', () => {
     renderThread({ onBack, onOpenSuggestions: vi.fn() })
     expect(screen.getByLabelText('Volver a la lista de chats')).toBeInTheDocument()
     expect(screen.getByLabelText('Ver sugerencias del lead')).toBeInTheDocument()
+  })
+
+  it('habilita descargar en la barra al seleccionar un mensaje multimedia', async () => {
+    const user = userEvent.setup()
+    renderThread()
+
+    const selectButtons = screen.getAllByLabelText('Seleccionar este mensaje')
+    await user.click(selectButtons.at(-1) as HTMLElement)
+
+    expect(screen.getByLabelText('Descargar multimedia seleccionada')).toBeEnabled()
   })
 })

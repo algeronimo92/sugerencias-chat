@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, FileText, Sparkles } from 'lucide-react'
+import { ChevronDown, Download, FileText, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
 import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
+import { messageMediaFilename } from '../utils/media'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { MapPreview } from './MapPreview'
@@ -46,7 +47,9 @@ export interface MessageBodyContext {
   /** Dimensiones ya calculadas para reservar el espacio de imagen/video. */
   mediaBox: { width?: number; height?: number; style?: { width: number; height: number } }
   onMediaError: () => void
-  onOpenMedia: (item: { src: string; kind: 'image' | 'video'; alt: string }) => void
+  onOpenMedia: (item: { src: string; kind: 'image' | 'video'; alt: string; filename?: string }) => void
+  /** Descarga directa del adjunto; permanece accesible con pantalla táctil. */
+  onDownloadMedia: () => void
   /** Abre la previsualización del sticker (para verlo grande y agregarlo). */
   onPreviewSticker: (item: { src: string; mediaUrl: string }) => void
   /** Pie del video (hora + estado), que va embebido dentro del reproductor. */
@@ -89,57 +92,69 @@ function TextBody({ parsed }: MessageBodyContext) {
   return <Caption parsed={parsed} />
 }
 
+function MediaDownloadButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onClick() }}
+      aria-label={label}
+      title="Descargar"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/55 text-white shadow-sm transition-colors hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:h-8 sm:w-8"
+    >
+      <Download className="h-4 w-4" />
+    </button>
+  )
+}
+
 function ImageBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, mediaBox, onMediaError, onOpenMedia } = ctx
+  const { parsed, mediaSrc, mediaBox, onMediaError, onOpenMedia, onDownloadMedia } = ctx
   const alt = parsed.text || 'Imagen'
   if (!mediaSrc) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   return (
     <>
-      <img
-        src={mediaSrc}
-        alt={alt}
-        width={mediaBox.width}
-        height={mediaBox.height}
-        style={mediaBox.style}
-        onClick={() => onOpenMedia({ src: mediaSrc, kind: 'image', alt })}
-        onError={onMediaError}
-        className="rounded-lg max-w-full max-h-80 object-contain mb-1.5 cursor-zoom-in"
-      />
+      <div className="relative mb-1.5 w-fit max-w-full">
+        <img
+          src={mediaSrc}
+          alt={alt}
+          width={mediaBox.width}
+          height={mediaBox.height}
+          style={mediaBox.style}
+          onClick={() => onOpenMedia({ src: mediaSrc, kind: 'image', alt, filename: messageMediaFilename(ctx.message) })}
+          onError={onMediaError}
+          className="max-h-80 max-w-full cursor-zoom-in rounded-lg object-contain"
+        />
+        <span className="absolute right-2 top-2 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+          <MediaDownloadButton onClick={onDownloadMedia} label="Descargar imagen" />
+        </span>
+      </div>
       <Caption parsed={parsed} />
     </>
   )
 }
 
 function VideoBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, mediaBox, onMediaError, onOpenMedia, videoFooter } = ctx
+  const { parsed, mediaSrc, mediaBox, onMediaError, onOpenMedia, onDownloadMedia, videoFooter } = ctx
   const alt = parsed.text || 'Video'
   if (!mediaSrc) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   return (
     <>
-      <ChatVideoMessage
-        src={mediaSrc}
-        alt={alt}
-        onError={onMediaError}
-        style={mediaBox.style}
-        className={`max-w-full ${mediaBox.style ? '' : 'h-56 w-[min(100%,360px)]'}`}
-        onOpenGallery={() => onOpenMedia({ src: mediaSrc, kind: 'video', alt })}
-        footer={videoFooter}
-      />
+      <div className="relative max-w-full">
+        <ChatVideoMessage
+          src={mediaSrc}
+          alt={alt}
+          onError={onMediaError}
+          style={mediaBox.style}
+          className={`max-w-full ${mediaBox.style ? '' : 'h-56 w-[min(100%,360px)]'}`}
+          onOpenGallery={() => onOpenMedia({ src: mediaSrc, kind: 'video', alt, filename: messageMediaFilename(ctx.message) })}
+          footer={videoFooter}
+        />
+        <span className="absolute right-2 top-2 z-10 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+          <MediaDownloadButton onClick={onDownloadMedia} label="Descargar video" />
+        </span>
+      </div>
       <Caption parsed={parsed} />
     </>
   )
-}
-
-/** Nombre con el que se guarda un audio del chat. Las notas de voz no traen
- *  filename, así que se arma uno con la fecha para que varias descargas no
- *  terminen todas como "audio.ogg" y se pisen en la carpeta de descargas. */
-function audioFilename(message: Message, parsed: ParsedContent): string {
-  const original = String(parsed.payload?.filename ?? '').trim()
-  if (original) return original
-  const extension = message.media_url?.split(/[?#]/)[0].split('.').pop()
-  const safeExtension = extension && /^[a-z0-9]{1,5}$/i.test(extension) ? extension.toLowerCase() : 'ogg'
-  const stamp = (message.sent_at ?? '').slice(0, 16).replace('T', '_').replace(/:/g, '-')
-  return stamp ? `audio-${stamp}.${safeExtension}` : `audio.${safeExtension}`
 }
 
 function AudioBody(ctx: MessageBodyContext) {
@@ -151,46 +166,54 @@ function AudioBody(ctx: MessageBodyContext) {
       onError={onMediaError}
       variant="bubble"
       className="mb-1.5 min-w-[min(16rem,100%)] max-w-full"
-      downloadName={audioFilename(message, parsed)}
+      downloadName={messageMediaFilename(message)}
     />
   )
 }
 
 function StickerBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, message, onMediaError, onPreviewSticker } = ctx
+  const { parsed, mediaSrc, message, onMediaError, onPreviewSticker, onDownloadMedia } = ctx
   if (!mediaSrc) return <AttachmentChip parsed={parsed} />
   return (
-    <button
-      type="button"
-      onClick={() => message.media_url && onPreviewSticker({ src: mediaSrc, mediaUrl: message.media_url })}
-      className="block cursor-pointer transition-transform active:scale-95"
-      title="Ver sticker"
-    >
-      <img src={mediaSrc} alt="Sticker" onError={onMediaError} className="max-h-32 max-w-[8rem] object-contain" />
-    </button>
+    <div className="relative w-fit max-w-full">
+      <button
+        type="button"
+        onClick={() => message.media_url && onPreviewSticker({ src: mediaSrc, mediaUrl: message.media_url })}
+        className="block cursor-pointer transition-transform active:scale-95"
+        title="Ver sticker"
+      >
+        <img src={mediaSrc} alt="Sticker" onError={onMediaError} className="max-h-32 max-w-[8rem] object-contain" />
+      </button>
+      <span className="absolute right-0 top-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+        <MediaDownloadButton onClick={onDownloadMedia} label="Descargar sticker" />
+      </span>
+    </div>
   )
 }
 
 function DocumentBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc } = ctx
+  const { parsed, mediaSrc, onDownloadMedia } = ctx
   const name = String((parsed.payload?.filename as string | undefined) || parsed.text || 'Documento')
   if (!mediaSrc) return <AttachmentChip parsed={parsed} />
   return (
-    <a
-      href={mediaSrc}
-      {...(isPdfFilename(name)
-        ? { target: '_blank', rel: 'noopener noreferrer' }
-        : { download: name || true })}
-      className="flex items-center gap-3 bg-black/5 dark:bg-white/10 rounded-lg px-3 py-2.5 hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-    >
-      <span className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${documentColor(name)}`}>
-        <FileText className="w-4 h-4" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm text-wa-text dark:text-wa-text-dark truncate not-italic font-medium">{name}</p>
-        <p className="text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">{documentExtension(name)}</p>
-      </div>
-    </a>
+    <div className="flex items-center gap-1 rounded-lg bg-black/5 p-1 transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15">
+      <a
+        href={mediaSrc}
+        {...(isPdfFilename(name)
+          ? { target: '_blank', rel: 'noopener noreferrer' }
+          : { download: name || true })}
+        className="flex min-w-0 flex-1 items-center gap-3 px-2 py-1.5"
+      >
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${documentColor(name)}`}>
+          <FileText className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium not-italic text-wa-text dark:text-wa-text-dark">{name}</p>
+          <p className="text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{documentExtension(name)}</p>
+        </div>
+      </a>
+      <MediaDownloadButton onClick={onDownloadMedia} label={`Descargar ${name}`} />
+    </div>
   )
 }
 

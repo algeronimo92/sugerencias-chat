@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { HistoryMessage, InternalNote, LeadActivity, Message } from '../types'
 import { groupByDay, parseContent, resolveMediaUrl } from '../utils/message'
+import { messageMediaFilename } from '../utils/media'
 import type { MediaLightboxItem } from '../components/MediaLightbox'
 import { useMessages } from './useMessages'
 import { useEvolutionHistory, useEvolutionHistoryAvailability } from './useEvolutionHistory'
@@ -138,13 +139,14 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
   // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
   const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
     const parsed = parseContent(message)
-    if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
+    if (parsed.kind !== 'image' && parsed.kind !== 'video' && parsed.kind !== 'ptv') return []
     const src = resolveMediaUrl(message.media_url)
     if (!src) return []
     return [{
       src,
-      kind: parsed.kind,
+      kind: parsed.kind === 'image' ? 'image' : 'video',
       alt: parsed.text || (parsed.kind === 'image' ? 'Imagen' : 'Video'),
+      filename: messageMediaFilename(message),
     }]
   }), [messages])
 

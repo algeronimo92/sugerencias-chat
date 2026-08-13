@@ -1,10 +1,12 @@
 import asyncio
 import base64
 import mimetypes
+import re
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -158,8 +160,24 @@ def _requested_range(value: str | None, size: int) -> tuple[int, int, int]:
     return start, end - start + 1, 206
 
 
+def _content_disposition(filename: str) -> str:
+    """Cabecera segura y UTF-8 para guardar un archivo con nombre humano."""
+    # El nombre viene de un query param: nunca debe poder inyectar cabeceras ni
+    # convertirse en una ruta. ``filename*`` conserva tildes y emojis, mientras
+    # el fallback ASCII cubre navegadores antiguos.
+    cleaned = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = re.sub(r'[\x00-\x1f\x7f"]', "_", cleaned).strip()[:180] or "archivo"
+    fallback = cleaned.encode("ascii", "ignore").decode() or "archivo"
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(cleaned)}'
+
+
 @files_router.api_route("/media/{filename}", methods=["GET", "HEAD"])
-def get_media_file(filename: str, request: Request, range_header: str | None = Header(default=None, alias="Range")):
+def get_media_file(
+    filename: str,
+    request: Request,
+    range_header: str | None = Header(default=None, alias="Range"),
+    download: str | None = Query(default=None, max_length=255),
+):
     """Entrega archivos locales o privados de MinIO conservando URLs históricas."""
     media_url = f"/media/{filename}"
     try:
@@ -176,6 +194,11 @@ def get_media_file(filename: str, request: Request, range_header: str | None = H
         "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff",
     }
+    if download:
+        # Content-Disposition hace que la descarga también funcione en Safari
+        # móvil y cuando frontend/backend están en orígenes distintos (donde
+        # el atributo HTML ``download`` por sí solo se ignora).
+        headers["Content-Disposition"] = _content_disposition(download)
     if status_code == 206:
         headers["Content-Range"] = f"bytes {start}-{start + length - 1}/{info.size}"
     if request.method == "HEAD":

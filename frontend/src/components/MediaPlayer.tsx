@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, Expand, Loader2, Pause, Play, Volume2, VolumeX } from 'lucide-react'
+import { mediaDownloadUrl } from '../utils/media'
 
 type PlayerVariant = 'default' | 'bubble' | 'minimal'
 
@@ -155,12 +156,10 @@ export function AudioPlayer({ src, className = '', onError, autoPlay = false, ar
       </button>
       {downloadName && (
         <a
-          href={src}
+          href={mediaDownloadUrl(src, downloadName)}
           download={downloadName}
-          // El audio se sirve desde el mismo origen que la app, que es lo que
-          // hace que `download` guarde el archivo en vez de abrirlo en otra
-          // pestaña. En desarrollo, con el backend en otro puerto, el atributo
-          // se ignora y el navegador lo abre.
+          // La URL suma Content-Disposition desde el backend: así descarga
+          // también con la API en otro puerto y en navegadores móviles.
           aria-label={`Descargar ${downloadName}`}
           title="Descargar audio"
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-wa-field hover:text-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-active-dark dark:hover:text-wa-primary"

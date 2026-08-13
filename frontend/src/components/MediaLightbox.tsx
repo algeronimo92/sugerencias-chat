@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Video, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Video, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { triggerMediaDownload } from '../utils/media'
 import { VideoPlayer } from './MediaPlayer'
 
 export interface MediaLightboxItem {
   src: string
   kind: 'image' | 'video'
   alt: string
+  filename?: string
 }
 
 interface Props {
   src: string
   kind: 'image' | 'video'
   alt?: string
+  filename?: string
   onClose: () => void
   items?: MediaLightboxItem[]
 }
@@ -21,7 +25,7 @@ const MAX_SCALE = 4
 const WHEEL_ZOOM_STEP = 0.4
 const CLICK_ZOOM_SCALE = 2.5
 
-export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
+export function MediaLightbox({ src, kind, alt, filename, onClose, items }: Props) {
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -29,7 +33,7 @@ export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
   const movedRef = useRef(false)
   const lastPosRef = useRef({ x: 0, y: 0 })
   const imgRef = useRef<HTMLImageElement>(null)
-  const mediaItems = items?.length ? items : [{ src, kind, alt: alt || (kind === 'image' ? 'Imagen' : 'Video') }]
+  const mediaItems = items?.length ? items : [{ src, kind, alt: alt || (kind === 'image' ? 'Imagen' : 'Video'), filename }]
   const initialIndex = Math.max(0, mediaItems.findIndex(item => item.src === src && item.kind === kind))
   const [activeIndex, setActiveIndex] = useState(initialIndex)
   const activeMedia = mediaItems[activeIndex] ?? mediaItems[0]
@@ -159,16 +163,31 @@ export function MediaLightbox({ src, kind, alt, onClose, items }: Props) {
       className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center overflow-hidden"
       onClick={onClose}
     >
-      <button type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClose()
-        }}
-        aria-label="Cerrar"
-        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-      >
-        <X className="w-5 h-5" />
-      </button>
+      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-center gap-1.5 sm:right-4">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            triggerMediaDownload(activeMedia.src, activeMedia.filename || (activeMedia.kind === 'image' ? 'imagen.jpg' : 'video.mp4'))
+            toast.success('Descarga iniciada')
+          }}
+          aria-label="Descargar multimedia"
+          title="Descargar"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <Download className="h-5 w-5" />
+        </button>
+        <button type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
+          aria-label="Cerrar"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
       {activeMedia.kind === 'image' ? (
         <img

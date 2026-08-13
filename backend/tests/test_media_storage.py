@@ -236,3 +236,11 @@ def test_minio_http_client_verifies_certificates_by_default():
 def test_minio_http_client_can_disable_verification(monkeypatch):
     monkeypatch.setattr(storage.settings, "minio_verify_tls", False)
     assert storage._minio_http_client().connection_pool_kw["cert_reqs"] == "CERT_NONE"
+
+
+def test_download_content_disposition_preserves_utf8_and_removes_paths():
+    header = media._content_disposition('../fólder\\resultado final.jpg')
+
+    assert header.startswith('attachment; filename="resultado final.jpg";')
+    assert "filename*=UTF-8''resultado%20final.jpg" in header
+    assert "folder" not in header

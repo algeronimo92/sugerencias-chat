@@ -37,6 +37,7 @@ interface Options {
   onToggleSelect?: () => void
   onRetry?: () => void
   onDiscard?: () => void
+  onDownload?: () => void
   selectionMode?: boolean
   isSelected?: boolean
 }
@@ -47,6 +48,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onToggleSelect = options.onToggleSelect ?? vi.fn()
   const onRetry = options.onRetry ?? vi.fn()
   const onDiscard = options.onDiscard ?? vi.fn()
+  const onDownload = options.onDownload ?? vi.fn()
   render(
     <MessageBubble
       chat={CHAT}
@@ -66,6 +68,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onEdit={onEdit}
       onDelete={vi.fn()}
       onForward={onForward}
+      onDownload={onDownload}
       isDeleting={false}
       onSaveTemplate={vi.fn()}
       selectionMode={options.selectionMode ?? false}
@@ -73,7 +76,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onToggleSelect={onToggleSelect}
     />,
   )
-  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard }
+  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onDownload }
 }
 
 describe('MessageBubble', () => {
@@ -134,7 +137,7 @@ describe('MessageBubble', () => {
     // descargas se pisen en la carpeta del vendedor.
     const link = screen.getByLabelText('Descargar audio-2026-08-06_12-05.ogg')
     expect(link).toHaveAttribute('download', 'audio-2026-08-06_12-05.ogg')
-    expect(link.getAttribute('href')).toMatch(/\/media\/nota\.ogg$/)
+    expect(link.getAttribute('href')).toMatch(/\/media\/nota\.ogg\?download=audio-2026-08-06_12-05\.ogg$/)
   })
 
   it('conserva el nombre original del audio cuando el mensaje lo trae', () => {
@@ -147,6 +150,16 @@ describe('MessageBubble', () => {
     })
 
     expect(screen.getByLabelText('Descargar promo-hifu.mp3')).toHaveAttribute('download', 'promo-hifu.mp3')
+  })
+
+  it('ofrece descargar desde las acciones de cada multimedia', async () => {
+    const user = userEvent.setup()
+    const onDownload = vi.fn()
+    renderBubble({ message_type: 'image', media_url: '/media/foto.jpg', content: 'Mirá' }, { onDownload })
+
+    await user.click(screen.getByLabelText('Descargar multimedia de este mensaje'))
+
+    expect(onDownload).toHaveBeenCalledOnce()
   })
 
   it('no ofrece ni editar ni eliminar un mensaje del cliente', () => {

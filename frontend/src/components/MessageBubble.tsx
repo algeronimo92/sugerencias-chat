@@ -1,5 +1,5 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
-import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Forward, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
@@ -25,6 +25,7 @@ export interface OpenMedia {
   src: string
   kind: 'image' | 'video'
   alt: string
+  filename?: string
 }
 
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
@@ -88,6 +89,8 @@ interface Props {
   onEdit: () => void
   onDelete: () => void
   onForward: () => void
+  /** Guarda el adjunto de este mensaje. Solo se ofrece cuando hay media. */
+  onDownload: () => void
   /** El borrado en WhatsApp está en curso: el botón queda en espera. */
   isDeleting: boolean
   onSaveTemplate: (content: string) => void
@@ -138,6 +141,7 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onForward,
+  onDownload,
   isDeleting,
   onSaveTemplate,
   selectionMode,
@@ -237,6 +241,7 @@ export function MessageBubble({
   // Reenviar y seleccionar solo necesitan que el mensaje exista en la base con
   // su contenido: se manda una copia nueva, no se toca el original en WhatsApp.
   const canForward = m.id > 0 && !isDeleted
+  const canDownload = mediaSrc != null && !isDeleted
   // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
   // además, solo texto y dentro de los 15 minutos.
   const canDelete = canReply && isVendedor
@@ -244,7 +249,7 @@ export function MessageBubble({
   const canEdit = canDelete && (kind === 'text') && sentAgo < EDIT_WINDOW_MS
   const isForwarded = m.payload?.forwarded === true && !isDeleted
   const actionButtonClass = 'rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark'
-  const messageActions = canForward && !selectionMode && (
+  const messageActions = (canForward || canDownload) && !selectionMode && (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
       {canReply && (
         <button
@@ -264,24 +269,33 @@ export function MessageBubble({
           side={isVendedor ? 'left' : 'right'}
         />
       )}
-      <button
-        type="button"
-        onClick={onForward}
-        aria-label="Reenviar este mensaje"
-        title="Reenviar"
-        className={actionButtonClass}
-      >
-        <Forward aria-hidden="true" className="h-3.5 w-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleSelect}
-        aria-label="Seleccionar este mensaje"
-        title="Seleccionar"
-        className={actionButtonClass}
-      >
-        <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
-      </button>
+      {canForward && <button
+          type="button"
+          onClick={onForward}
+          aria-label="Reenviar este mensaje"
+          title="Reenviar"
+          className={actionButtonClass}
+        >
+          <Forward aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>}
+      {canDownload && <button
+          type="button"
+          onClick={onDownload}
+          aria-label="Descargar multimedia de este mensaje"
+          title="Descargar"
+          className={actionButtonClass}
+        >
+          <Download aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>}
+      {canForward && <button
+          type="button"
+          onClick={onToggleSelect}
+          aria-label="Seleccionar este mensaje"
+          title="Seleccionar"
+          className={actionButtonClass}
+        >
+          <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>}
       {canEdit && (
         <button
           type="button"
@@ -406,6 +420,7 @@ export function MessageBubble({
                 mediaBox={mediaBoxDimensions()}
                 onMediaError={onMediaFailed}
                 onOpenMedia={onOpenMedia}
+                onDownloadMedia={onDownload}
                 onPreviewSticker={onPreviewSticker}
                 videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} onDiscard={onDiscard} />}</>}
                 hasQuote={m.quoted_message_id != null}

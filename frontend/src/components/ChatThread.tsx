@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Download, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
@@ -10,6 +10,7 @@ import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { formatDayLabel, formatMessageTime, parseContent } from '../utils/message'
+import { messageMediaFilename, triggerMediaDownload } from '../utils/media'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { MediaLightbox } from './MediaLightbox'
 import { StickerPreviewDialog } from './StickerPreviewDialog'
@@ -201,6 +202,24 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const deletableSelection = selectedMessages.filter(
     message => message.sender === 'vendedor' && !!message.wa_message_id && !message.deleted_at,
   )
+  const downloadableSelection = selectedMessages.filter(message => !!message.media_url && !message.deleted_at)
+
+  function downloadMessageMedia(message: Message) {
+    if (!message.media_url || message.deleted_at) return
+    triggerMediaDownload(message.media_url, messageMediaFilename(message))
+    toast.success('Descarga iniciada')
+  }
+
+  function downloadSelection() {
+    if (!downloadableSelection.length) return
+    downloadableSelection.forEach(message => {
+      triggerMediaDownload(message.media_url as string, messageMediaFilename(message))
+    })
+    toast.success(downloadableSelection.length === 1
+      ? 'Descarga iniciada'
+      : `${downloadableSelection.length} descargas iniciadas`)
+    clearSelection()
+  }
 
   function removeMessage(message: Message) {
     deleteMessage.mutate(message.id, {
@@ -283,13 +302,13 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       {/* Barra de selección: reemplaza al header mientras hay mensajes
           tildados, igual que WhatsApp. */}
       {isSelecting ? (
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-wa-border bg-wa-head px-2 py-2.5 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-16 shrink-0 items-center justify-between gap-1 border-b border-wa-border bg-wa-head px-1.5 py-2.5 sm:gap-2 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               onClick={clearSelection}
               aria-label="Cancelar selección"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
               <X className="h-5 w-5" />
             </button>
@@ -297,22 +316,32 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               type="button"
               onClick={() => void copySelection()}
               aria-label="Copiar mensajes seleccionados"
               title="Copiar"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
               <Copy className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={downloadSelection}
+              disabled={!downloadableSelection.length}
+              aria-label="Descargar multimedia seleccionada"
+              title={downloadableSelection.length ? 'Descargar multimedia' : 'La selección no contiene multimedia'}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5"
+            >
+              <Download className="h-5 w-5" />
             </button>
             <button
               type="button"
               onClick={() => setMessageIdsToForward(selectedMessages.map(message => message.id))}
               aria-label="Reenviar mensajes seleccionados"
               title="Reenviar"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
               <Forward className="h-5 w-5" />
             </button>
@@ -333,7 +362,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                 aria-busy={deleteMessages.isPending}
                 aria-label="Eliminar mensajes seleccionados para todos"
                 title={deletableSelection.length ? 'Eliminar para todos' : 'Ninguno de los mensajes seleccionados se puede eliminar'}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-red-400"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-red-400"
               >
                 {deleteMessages.isPending
                   ? <Loader2 className="h-5 w-5 animate-spin" />
@@ -572,6 +601,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onEdit={() => setMessageToEdit(item.message)}
                     onDelete={() => removeMessage(item.message)}
                     onForward={() => setMessageIdsToForward([item.message.id])}
+                    onDownload={() => downloadMessageMedia(item.message)}
                     isDeleting={deleteMessage.isPending && deleteMessage.variables === item.message.id}
                     onSaveTemplate={setTemplateContentToSave}
                     selectionMode={isSelecting}
@@ -637,6 +667,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           src={openMedia.src}
           kind={openMedia.kind}
           alt={openMedia.alt}
+          filename={openMedia.filename}
           items={chatMediaItems}
           onClose={() => setOpenMedia(null)}
         />

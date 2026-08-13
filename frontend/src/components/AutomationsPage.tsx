@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Activity, AlertTriangle, Ban, Bot, CheckCircle2, ChevronDown, Clock3, Copy,
-  GitBranch, History, Loader2, Pencil, Plus, Power, RotateCcw, Save, Trash2, XCircle,
+  GitBranch, History, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, Trash2, XCircle,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution, AutomationRule,
@@ -166,6 +167,7 @@ function validateForm(form: RuleForm) {
 }
 
 export function AutomationsPage() {
+  const navigate = useNavigate()
   const { data: rules = [], isLoading } = useAutomationRules()
   const [historyRuleId, setHistoryRuleId] = useState<number | null>(null)
   const [historyStatus, setHistoryStatus] = useState<AutomationExecutionStatusValue | null>(null)
@@ -211,6 +213,10 @@ export function AutomationsPage() {
     setHistoryRuleId(null)
     setHistoryStatus(null)
     setHideSkipped(true)
+  }
+
+  function openExecutionChat(leadId: string | null) {
+    if (leadId) navigate(`/chat/${encodeURIComponent(leadId)}`)
   }
 
   function openCreate() {
@@ -385,7 +391,15 @@ export function AutomationsPage() {
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
                   {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{execution.error}</p>}
                   <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{String(result.status ?? '')}{result.error ? ` · ${String(result.error)}` : ''}</span></div>)}</div>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {execution.lead_id && <button
+                      type="button"
+                      onClick={() => openExecutionChat(execution.lead_id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-wa-primary-strong px-3 py-1.5 text-[11px] font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Ir al chat
+                    </button>}
                     {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
                       type="button"
                       disabled={retryExecution.isPending}
