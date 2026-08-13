@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, Download, FileText, Sparkles } from 'lucide-react'
+import { ChevronDown, Download, FileText, ReceiptText, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
 import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
@@ -280,6 +280,65 @@ function PollBody({ parsed }: MessageBodyContext) {
   )
 }
 
+function orderText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function orderNumber(value: unknown): number | null {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function OrderBody({ parsed }: MessageBodyContext) {
+  const payload = parsed.payload
+  const orderId = orderText(payload?.order_id)
+  const title = orderText(payload?.title) || 'Pedido de WhatsApp'
+  const detail = orderText(payload?.message) || parsed.text
+  const itemCount = orderNumber(payload?.item_count)
+  const amount1000 = orderNumber(payload?.total_amount_1000)
+  const currency = orderText(payload?.currency)
+  const status = orderText(payload?.status).replaceAll('_', ' ')
+  const total = amount1000 != null
+    ? `${currency || 'PEN'} ${(amount1000 / 1000).toLocaleString('es-PE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`
+    : ''
+
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+      <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
+        <ReceiptText className="h-4 w-4 shrink-0 text-wa-primary" />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
+          {orderId ? `Pedido N.º ${orderId}` : 'Pedido de WhatsApp'}
+        </p>
+        {status && !/^\d+$/.test(status) && (
+          <span className="max-w-28 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-wa-primary-strong dark:text-wa-primary">
+            {status.toLocaleLowerCase('es-PE')}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2 px-3 py-2.5">
+        <p className="font-medium not-italic">{title}</p>
+        {detail && detail !== title && (
+          <p className="whitespace-pre-wrap text-sm not-italic text-wa-muted dark:text-wa-text-dark/75">
+            <RichText text={detail} />
+          </p>
+        )}
+        {(itemCount != null || total) && (
+          <div className="flex items-end justify-between gap-4 border-t border-black/5 pt-2 text-sm dark:border-white/10">
+            <span className="text-wa-muted dark:text-wa-text-dark/65">
+              {itemCount != null ? `Cantidad ${itemCount}` : 'Total'}
+            </span>
+            {total && <span className="font-semibold tabular-nums">{total}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Fallback para tipos que se muestran como texto renderizado + chip del tipo:
  * reacciones y lo no soportado. */
 function TextualBody(ctx: MessageBodyContext) {
@@ -323,6 +382,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   poll: PollBody,
   interactive: TemplateBody,
   template: TemplateBody,
+  order: OrderBody,
   reaction: TextualBody,
   unsupported: TextualBody,
 }

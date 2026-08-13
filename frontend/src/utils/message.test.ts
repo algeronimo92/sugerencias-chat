@@ -14,6 +14,8 @@ describe('parseContent', () => {
       .toMatchObject({ kind: 'document', label: 'Documento' })
     expect(parseContent({ content: null, message_type: 'sticker' }).kind).toBe('sticker')
     expect(parseContent({ content: 'pregunta', message_type: 'poll' })).toMatchObject({ kind: 'poll', text: 'pregunta' })
+    expect(parseContent({ content: 'Pago: Realizado', message_type: 'order' }))
+      .toMatchObject({ kind: 'order', label: 'Pedido', text: 'Pago: Realizado' })
   })
 
   it('separa el análisis IA del caption y no lo mezcla en el texto', () => {

@@ -222,6 +222,7 @@ MessageType = Literal[
     "reaction",
     "interactive",
     "template",
+    "order",
     "unsupported",
 ]
 

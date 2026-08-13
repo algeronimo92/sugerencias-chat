@@ -1910,6 +1910,27 @@ async def attach_outgoing_analysis(
 
 OUTGOING_RECONCILE_WINDOW = timedelta(minutes=5)
 
+# Solo estos tipos pueden ser enviados por la aplicación y luego regresar con
+# otro wa_message_id en el eco de Evolution. Los mensajes estructurados que se
+# originan exclusivamente en WhatsApp (por ejemplo orderMessage) no deben
+# conciliarse por similitud: dos cambios del mismo pedido pueden compartir tipo
+# y texto vacío y, aun así, ser eventos distintos que hay que conservar.
+OUTGOING_FUZZY_RECONCILE_TYPES = frozenset({
+    "text",
+    "image",
+    "video",
+    "ptv",
+    "audio",
+    "document",
+    "location",
+    "sticker",
+    "contact",
+    "poll",
+    "reaction",
+    "interactive",
+    "template",
+})
+
 
 async def reconcile_outgoing_message(
     chat_id: str,
@@ -1928,21 +1949,32 @@ async def reconcile_outgoing_message(
     la app —el auto-reply de una herramienta externa (Kommo), o un mensaje
     escrito desde el teléfono— solo llegan por este eco y hay que conservarlos.
 
-    Dedup: si ya existe un mensaje del vendedor en el chat con el mismo tipo y
-    contenido dentro de la ventana, se asume que es el gemelo (nuestro envío o un
-    eco repetido) y se descarta. Si no, es externo y se inserta. No se puede
-    casar por wa_message_id porque el del envío y el del eco no coinciden."""
+    Dedup: primero se casa el identificador exacto. Solo para tipos que la app
+    puede enviar se permite además una conciliación difusa por tipo/contenido
+    dentro de la ventana, porque el ID del envío y el del eco pueden diferir.
+    Tipos externos/estructurados (order, unsupported) se insertan siempre que
+    su ID sea nuevo, para no perder eventos sucesivos con contenido vacío."""
     async with get_sessionmaker()() as session:
-        window_start = datetime.now(timezone.utc) - OUTGOING_RECONCILE_WINDOW
-        existing = (await session.execute(
-            select(WspMessage.id).where(
-                WspMessage.chat_id == chat_id,
-                WspMessage.sender == "vendedor",
-                WspMessage.message_type == message_type,
-                WspMessage.content.is_not_distinct_from(content),
-                WspMessage.sent_at >= window_start,
-            ).limit(1)
-        )).first()
+        existing = None
+        if wa_message_id:
+            existing = (await session.execute(
+                select(WspMessage.id).where(
+                    WspMessage.chat_id == chat_id,
+                    WspMessage.wa_message_id == wa_message_id,
+                ).limit(1)
+            )).first()
+
+        if existing is None and message_type in OUTGOING_FUZZY_RECONCILE_TYPES:
+            window_start = datetime.now(timezone.utc) - OUTGOING_RECONCILE_WINDOW
+            existing = (await session.execute(
+                select(WspMessage.id).where(
+                    WspMessage.chat_id == chat_id,
+                    WspMessage.sender == "vendedor",
+                    WspMessage.message_type == message_type,
+                    WspMessage.content.is_not_distinct_from(content),
+                    WspMessage.sent_at >= window_start,
+                ).limit(1)
+            )).first()
         if existing is not None:
             return {"matched": True}
 

@@ -20,6 +20,7 @@ CONTENT_NODES = {
     "location content",
     "contact content",
     "poll content",
+    "order content",
     "unsupported content",
     "audio content",
     "image content",

@@ -234,6 +234,7 @@ export type MessageType =
   | 'reaction'
   | 'interactive'
   | 'template'
+  | 'order'
   | 'unsupported'
 
 /** Enriquecimiento generado con IA para un adjunto: descripción de imagen/video,

@@ -80,6 +80,27 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
 }
 
 describe('MessageBubble', () => {
+  it('muestra un pedido de WhatsApp con su estado, cantidad y total', () => {
+    renderBubble({
+      content: 'Pago: Realizado',
+      message_type: 'order',
+      payload: {
+        order_id: '4VX5SPITUZD',
+        title: 'Separación de cita',
+        message: 'Pago: Realizado',
+        item_count: 1,
+        total_amount_1000: 50000,
+        currency: 'PEN',
+      },
+    })
+
+    expect(screen.getByText('Pedido N.º 4VX5SPITUZD')).toBeInTheDocument()
+    expect(screen.getByText('Separación de cita')).toBeInTheDocument()
+    expect(screen.getByText('Pago: Realizado')).toBeInTheDocument()
+    expect(screen.getByText('Cantidad 1')).toBeInTheDocument()
+    expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
+  })
+
   it('ofrece editar y eliminar un mensaje propio de texto recién enviado', async () => {
     const user = userEvent.setup()
     const { onEdit } = renderBubble()

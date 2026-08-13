@@ -1,6 +1,6 @@
 import {
   BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
-  Paperclip, SmilePlus, Sticker, User, Video, FileText, type LucideIcon,
+  Paperclip, ReceiptText, SmilePlus, Sticker, User, Video, FileText, type LucideIcon,
 } from 'lucide-react'
 import type { JsonObject, JsonValue, MessageType, MessageAnalysis } from '../types'
 
@@ -22,6 +22,7 @@ const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }>
   reaction: { icon: SmilePlus, label: 'Reacción' },
   interactive: { icon: List, label: 'Interactivo' },
   template: { icon: Megaphone, label: 'Plantilla' },
+  order: { icon: ReceiptText, label: 'Pedido' },
   unsupported: { icon: Paperclip, label: 'No soportado' },
 }
 

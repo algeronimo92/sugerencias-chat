@@ -1,0 +1,71 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from services import db_service
+
+
+class _Result:
+    def __init__(self, row=None):
+        self.row = row
+
+    def first(self):
+        return self.row
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *_args):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_order_events_only_deduplicate_by_exact_whatsapp_id(monkeypatch):
+    session = AsyncMock()
+    session.execute.return_value = _Result()
+    monkeypatch.setattr(
+        db_service,
+        "get_sessionmaker",
+        lambda: lambda: _SessionContext(session),
+    )
+    insert = AsyncMock(return_value={"id": 81})
+    monkeypatch.setattr(db_service, "insert_message", insert)
+
+    result = await db_service.reconcile_outgoing_message(
+        "lead-1",
+        "order",
+        "Pago: Realizado",
+        wa_message_id="ORDER-STATUS-2",
+        payload={"order_id": "4VX5SPITUZD", "message": "Pago: Realizado"},
+    )
+
+    # Una consulta por ID exacto; no hace la segunda consulta difusa que antes
+    # confundía varios estados orderMessage ocurridos en la misma ventana.
+    assert session.execute.await_count == 1
+    insert.assert_awaited_once()
+    assert result == {"matched": False, "message_id": 81}
+
+
+@pytest.mark.asyncio
+async def test_repeated_exact_order_event_is_not_inserted(monkeypatch):
+    session = AsyncMock()
+    session.execute.return_value = _Result((81,))
+    monkeypatch.setattr(
+        db_service,
+        "get_sessionmaker",
+        lambda: lambda: _SessionContext(session),
+    )
+    insert = AsyncMock()
+    monkeypatch.setattr(db_service, "insert_message", insert)
+
+    result = await db_service.reconcile_outgoing_message(
+        "lead-1", "order", "Pago: Realizado", wa_message_id="ORDER-STATUS-2"
+    )
+
+    assert result == {"matched": True}
+    insert.assert_not_awaited()

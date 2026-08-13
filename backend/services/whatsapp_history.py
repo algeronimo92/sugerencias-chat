@@ -198,6 +198,12 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
         question = poll.get("name") if isinstance(poll.get("name"), str) else None
         return question, "poll", {"values": values} if values else None
 
+    order = message.get("orderMessage")
+    if isinstance(order, dict):
+        payload = _order_payload(order)
+        content = _first_text(order.get("message"), order.get("orderTitle"))
+        return content or "Pedido de WhatsApp", "order", payload
+
     interactive = _interactive_content(message)
     if interactive is not None:
         return interactive
@@ -247,6 +253,44 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
 def _caption(media: dict) -> str:
     caption = media.get("caption")
     return caption if isinstance(caption, str) else ""
+
+
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _long_value(value: Any) -> int | str | None:
+    """Normaliza los Long de protobuf que Evolution serializa de varias formas."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, str)):
+        return value
+    if isinstance(value, dict):
+        low = value.get("low")
+        high = value.get("high", 0)
+        if isinstance(low, int) and isinstance(high, int):
+            # Reconstrucción con signo equivalente a Long de protobuf.
+            return (high << 32) + (low & 0xFFFFFFFF)
+    return None
+
+
+def _order_payload(order: dict) -> dict:
+    """Datos estables de orderMessage; omite token y demás campos sensibles."""
+    result = {
+        "original_type": "orderMessage",
+        "order_id": order.get("orderId"),
+        "title": order.get("orderTitle"),
+        "message": order.get("message"),
+        "item_count": _long_value(order.get("itemCount")),
+        "status": order.get("status"),
+        "surface": order.get("surface"),
+        "total_amount_1000": _long_value(order.get("totalAmount1000")),
+        "currency": order.get("totalCurrencyCode"),
+    }
+    return {key: value for key, value in result.items() if value is not None}
 
 
 def _normalize_record(record: dict) -> dict | None:
