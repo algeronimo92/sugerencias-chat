@@ -111,9 +111,10 @@ async def test_find_chat_messages_consulta_el_historial_del_chat(monkeypatch):
     )
     post = AsyncMock(return_value={"messages": {"records": []}})
     monkeypatch.setattr(evolution_service, "_post", post)
+    # El historial se pide por el JID que Evolution indexa, no por el de envío.
     monkeypatch.setattr(
         evolution_service,
-        "resolve_whatsapp_destination",
+        "resolve_history_jid",
         AsyncMock(return_value=destination),
     )
 

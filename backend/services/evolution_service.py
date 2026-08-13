@@ -6,7 +6,11 @@ import httpx
 from time import monotonic, perf_counter
 from services.performance import record_external_duration
 from services.settings_service import get_effective_many
-from services.whatsapp_identity_service import resolve_whatsapp_destination
+from services.whatsapp_identity_service import (
+    learn_send_aliases,
+    resolve_history_jid,
+    resolve_whatsapp_destination,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +115,31 @@ async def _post(url: str, api_key: str, payload: dict, timeout: float) -> Any:
     return await _request("POST", url, api_key, payload, timeout)
 
 
+async def _post_to_chat(
+    chat_id: str, url: str, api_key: str, payload: dict, timeout: float
+) -> Any:
+    """Envía a un chat y aprende, de la respuesta, cómo lo direcciona WhatsApp.
+
+    La ``key`` que devuelve Evolution trae el JID real del chat —con el
+    direccionamiento por LID, casi siempre un ``@lid``— junto al teléfono en
+    ``remoteJidAlt``. Registrar ese par es lo que evita que el mismo contacto
+    quede partido en dos leads (uno creado por el entrante con el LID, otro por
+    el saliente con el teléfono) y lo que permite pedirle el historial a
+    Evolution con el JID bajo el que realmente lo indexa.
+
+    Va acá y no en cada llamador porque todos los caminos de envío —outbox,
+    automatizaciones, plantillas— pasan por estas funciones.
+    """
+    result = await _post(url, api_key, payload, timeout)
+    try:
+        await learn_send_aliases(chat_id, result)
+    except Exception:
+        # El mensaje ya salió: un fallo anotando alias no puede convertir un
+        # envío exitoso en un error para el vendedor.
+        logger.exception("No se pudieron registrar los alias del envío a %s", chat_id)
+    return result
+
+
 async def get_template_capabilities() -> dict:
     """Detecta si la instancia usa la integración Meta de Evolution.
 
@@ -210,10 +239,13 @@ async def find_chat_messages(chat_id: str, page: int, limit: int = HISTORY_PAGE_
     Evolution devuelve los mensajes del más nuevo al más viejo. La forma de la
     respuesta cambió entre versiones (lista plana vs. objeto paginado), así que
     acá se devuelve sin tocar y la normalización queda en `whatsapp_history`.
+
+    El JID de consulta no es el de envío: WhatsApp indexa por LID aunque se le
+    escriba al teléfono (ver `resolve_history_jid`).
     """
     api_url, api_key, instance = await _config()
     url = f"{api_url.rstrip('/')}/chat/findMessages/{instance}"
-    destination = await resolve_whatsapp_destination(chat_id)
+    destination = await resolve_history_jid(chat_id)
     payload = {"where": {"key": {"remoteJid": destination}}, "page": page, "offset": limit}
     return await _post(url, api_key, payload, timeout=30.0)
 
@@ -236,7 +268,7 @@ async def send_whatsapp_template(
         "language": language,
         "components": components,
     }
-    return await _post(url, api_key, payload, timeout=30.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_buttons(
@@ -256,7 +288,7 @@ async def send_whatsapp_buttons(
         "buttons": buttons,
     }
     payload["footer"] = footer.strip() or "DermicaPro"
-    return await _post(url, api_key, payload, timeout=30.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_list(
@@ -278,7 +310,7 @@ async def send_whatsapp_list(
         "buttonText": button_text,
         "sections": sections,
     }
-    return await _post(url, api_key, payload, timeout=30.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=30.0)
 
 
 def _with_quoted(payload: dict, quoted: dict | None, destination: str) -> dict:
@@ -306,7 +338,7 @@ async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None
     url = f"{api_url.rstrip('/')}/message/sendText/{instance}"
     # El CRM opera con lead.id; Evolution recibe el mejor JID externo asociado.
     payload = _with_quoted({"number": destination, "text": text}, quoted, destination)
-    return await _post(url, api_key, payload, timeout=30.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_audio(
@@ -319,7 +351,7 @@ async def send_whatsapp_audio(
 
     url = f"{api_url.rstrip('/')}/message/sendWhatsAppAudio/{instance}"
     payload = _with_quoted({"number": destination, "audio": audio_base64}, quoted, destination)
-    return await _post(url, api_key, payload, timeout=60.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=60.0)
 
 
 async def send_whatsapp_location(
@@ -346,7 +378,7 @@ async def send_whatsapp_location(
         "name": name or "",
         "address": address or "",
     }, quoted, destination)
-    return await _post(url, api_key, payload, timeout=30.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=30.0)
 
 
 async def send_whatsapp_media(
@@ -372,7 +404,9 @@ async def send_whatsapp_media(
         payload["fileName"] = filename
     if caption:
         payload["caption"] = caption
-    return await _post(url, api_key, _with_quoted(payload, quoted, destination), timeout=60.0)
+    return await _post_to_chat(
+        chat_id, url, api_key, _with_quoted(payload, quoted, destination), timeout=60.0
+    )
 
 
 async def send_whatsapp_sticker(chat_id: str, sticker_base64: str) -> dict:
@@ -383,7 +417,7 @@ async def send_whatsapp_sticker(chat_id: str, sticker_base64: str) -> dict:
 
     url = f"{api_url.rstrip('/')}/message/sendSticker/{instance}"
     payload = {"number": destination, "sticker": sticker_base64}
-    return await _post(url, api_key, payload, timeout=60.0)
+    return await _post_to_chat(chat_id, url, api_key, payload, timeout=60.0)
 
 
 async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict:

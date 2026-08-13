@@ -7,6 +7,7 @@ No intenta interpretar los dígitos de un LID como teléfono.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from db.session import get_sessionmaker
 from services.lead_assignment import pick_next_vendedor_id
 from services.settings_service import get_effective
 
+
+logger = logging.getLogger(__name__)
 
 PHONE_SUFFIX = "@s.whatsapp.net"
 LID_SUFFIX = "@lid"
@@ -293,3 +296,114 @@ async def resolve_whatsapp_destination(chat_id: str) -> str:
     raise InvalidWhatsAppIdentityError(
         f"El lead {chat_id} no tiene una identidad de WhatsApp asociada"
     )
+
+
+async def resolve_history_jid(chat_id: str) -> str:
+    """JID bajo el que Evolution indexa los mensajes del chat.
+
+    No siempre coincide con el de envío. Con el direccionamiento por LID,
+    WhatsApp guarda toda la conversación bajo el ``@lid`` aunque los envíos se
+    dirijan al teléfono, así que pedir el historial por el JID telefónico
+    devuelve cero registros con HTTP 200 — indistinguible de un chat sin
+    historial. Se prefiere el LID; el teléfono queda de respaldo para los chats
+    que nunca fueron direccionados así.
+    """
+    async with get_sessionmaker()() as session:
+        lid_jid = await session.scalar(
+            select(WhatsAppIdentity.jid)
+            .where(
+                WhatsAppIdentity.lead_id == chat_id,
+                WhatsAppIdentity.kind == "lid",
+            )
+            .order_by(WhatsAppIdentity.updated_at.desc())
+            .limit(1)
+        )
+    return lid_jid or await resolve_whatsapp_destination(chat_id)
+
+
+def aliases_from_send_key(key: Any) -> tuple[str, ...]:
+    """JIDs aprovechables de la ``key`` que Evolution devuelve al enviar.
+
+    Es la única fuente que empareja el ``@lid`` de un contacto con su teléfono.
+    Con el direccionamiento por LID de WhatsApp, los mensajes entrantes llegan
+    solo con ``remoteJid`` en formato ``@lid`` y sin ``remoteJidAlt``, y los
+    contactos de Evolution no exponen el número. En cambio, al enviar al JID
+    telefónico Baileys resuelve el direccionamiento y responde con el JID real
+    del chat en ``remoteJid`` y su equivalente en ``remoteJidAlt``.
+    """
+    if not isinstance(key, dict):
+        return ()
+    return _unique([_clean_jid(key.get("remoteJid")), _clean_jid(key.get("remoteJidAlt"))])
+
+
+async def learn_send_aliases(chat_id: str, response: Any) -> tuple[str, ...]:
+    """Registra como alias del lead los JID con los que WhatsApp direccionó el envío.
+
+    Cierra el agujero por el que un mismo contacto termina partido en dos
+    leads: el entrante crea uno con el LID y el saliente usa otro con el
+    teléfono. Además es lo que permite que el historial se pida con el JID que
+    Evolution efectivamente indexa (ver ``evolution_service.find_chat_messages``).
+
+    Solo agrega alias libres. Si el JID ya pertenece a otro lead se deja como
+    está y se registra en el log: fusionar dos historiales es una decisión con
+    datos de por medio, no algo que deba resolver un envío.
+
+    Devuelve los alias efectivamente aprendidos.
+    """
+    jids = aliases_from_send_key(response.get("key") if isinstance(response, dict) else None)
+    if not jids:
+        return ()
+
+    instance = (await get_effective("evolution_instance")).strip() or "*"
+    learned: list[str] = []
+    try:
+        async with get_sessionmaker()() as session:
+            async with session.begin():
+                owners = dict(
+                    (
+                        await session.execute(
+                            select(WhatsAppIdentity.jid, WhatsAppIdentity.lead_id).where(
+                                WhatsAppIdentity.jid.in_(jids)
+                            )
+                        )
+                    ).all()
+                )
+
+                for jid in jids:
+                    owner = owners.get(jid)
+                    if owner == chat_id:
+                        continue
+                    if owner is not None:
+                        logger.warning(
+                            "El alias %s ya pertenece al lead %s y no a %s: "
+                            "la conversación está duplicada en dos leads",
+                            jid, owner, chat_id,
+                        )
+                        continue
+                    session.add(
+                        WhatsAppIdentity(
+                            instance=instance,
+                            jid=jid,
+                            kind="phone" if jid.endswith(PHONE_SUFFIX) else "lid",
+                            lead_id=chat_id,
+                        )
+                    )
+                    learned.append(jid)
+
+                # Un lead nacido de un LID no tiene teléfono: este envío es la
+                # primera vez que se lo conoce. Mismo criterio que _resolve_once.
+                phone_jid = next(
+                    (jid for jid in learned if jid.endswith(PHONE_SUFFIX)), None
+                )
+                if phone_jid is not None:
+                    lead = await session.get(Lead, chat_id, with_for_update=True)
+                    if lead is not None and not lead.telefono:
+                        lead.telefono = _phone_from_jid(phone_jid)
+                        lead.updated_at = datetime.now(timezone.utc)
+    except IntegrityError:
+        # Otro worker registró el mismo alias entre el SELECT y el INSERT. El
+        # resultado buscado ya está en la base, así que no hay nada que rehacer.
+        logger.info("Los alias del envío a %s ya habían sido registrados", chat_id)
+        return ()
+
+    return tuple(learned)
