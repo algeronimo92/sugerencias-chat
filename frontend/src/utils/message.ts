@@ -423,6 +423,55 @@ export function messageAdReferral(payload: JsonObject | null): AdReferral | null
   }
 }
 
+/** Un contacto compartido en un mensaje, ya desarmado para pintarlo y para
+ * poder abrirle (o crearle) su lead. */
+export interface SharedContact {
+  fullName: string
+  /** Solo dígitos, en formato internacional: con esto se busca o se crea el
+   * lead. null cuando el contacto vino sin número usable. */
+  phone: string | null
+  /** El número tal como lo mandó el remitente, para mostrarlo tal cual. */
+  phoneLabel: string
+}
+
+/** Lee un campo del vCard ("TEL;waid=51999...:+51 999 ...", "FN:Lidia"). */
+function vcardField(vcard: string, field: string): string {
+  const match = vcard.match(new RegExp(`^${field}[^:\\r\\n]*:(.*)$`, 'im'))
+  return match ? match[1].trim() : ''
+}
+
+/**
+ * Contactos compartidos en un mensaje `contact`.
+ *
+ * El teléfono puede venir ya desarmado en el payload (`phoneNumber`) o solo
+ * dentro del vCard crudo, según quién haya normalizado el mensaje. Del vCard se
+ * prefiere el `waid`, que es el número de WhatsApp en formato internacional; el
+ * valor visible del `TEL` suele venir en formato local y sin país.
+ */
+export function messageContacts(payload: JsonObject | null): SharedContact[] {
+  const entries = Array.isArray(payload?.contacts) ? payload.contacts : []
+  const contacts: SharedContact[] = []
+  for (const entry of entries) {
+    if (!isJsonObject(entry)) continue
+    const vcard = asString(entry.vcard) || asString(entry.vCard)
+    const label =
+      asString(entry.phoneNumber) || asString(entry.phone) || asString(entry.number) ||
+      vcardField(vcard, 'TEL')
+    const waid = vcard.match(/waid=(\d+)/i)?.[1] ?? ''
+    const digits = (waid || label).replace(/\D/g, '')
+    const fullName =
+      asString(entry.fullName) || asString(entry.displayName) || vcardField(vcard, 'FN')
+    if (!fullName && !digits) continue
+    contacts.push({
+      fullName,
+      // Menos de 8 dígitos no es un número marcable (ver normalizePhone).
+      phone: digits.length >= 8 ? digits : null,
+      phoneLabel: label,
+    })
+  }
+  return contacts
+}
+
 /** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
  * "lat,lon" que vivía en content (respaldo legado). null si no hay. */
 export function messageCoords(

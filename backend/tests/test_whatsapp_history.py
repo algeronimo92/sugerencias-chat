@@ -103,7 +103,33 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
             {"latitude": -34.6, "longitude": -58.4},
         ),
         ({"stickerMessage": {"url": "x"}}, None, "sticker", None),
-        ({"contactMessage": {"displayName": "Ana"}}, None, "contact", {"contacts": [{"fullName": "Ana"}]}),
+        (
+            {"contactMessage": {"displayName": "Ana"}},
+            None,
+            "contact",
+            {"contacts": [{"fullName": "Ana", "phoneNumber": None}]},
+        ),
+        (
+            {"contactMessage": {
+                "displayName": "Ana",
+                "vcard": (
+                    "BEGIN:VCARD\nVERSION:3.0\nFN:Ana\n"
+                    "TEL;type=CELL;type=VOICE;waid=51987654321:+51 987 654 321\nEND:VCARD"
+                ),
+            }},
+            None,
+            "contact",
+            {"contacts": [{"fullName": "Ana", "phoneNumber": "51987654321"}]},
+        ),
+        (
+            # Sin waid (contacto que no está en WhatsApp): queda el TEL visible.
+            {"contactsArrayMessage": {"contacts": [
+                {"displayName": "Ana", "vcard": "BEGIN:VCARD\nTEL;type=CELL:987 654 321\nEND:VCARD"},
+            ]}},
+            None,
+            "contact",
+            {"contacts": [{"fullName": "Ana", "phoneNumber": "987 654 321"}]},
+        ),
         (
             {"pollCreationMessage": {"name": "¿Horario?", "options": [{"optionName": "AM"}, {"optionName": "PM"}]}},
             "¿Horario?",

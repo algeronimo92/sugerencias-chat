@@ -58,6 +58,28 @@ Nodos Set nuevos (una por salida agregada en el Switch):
 - **contact**: `content` = null; `message_type = 'contact'`;
   `payload = { "contacts": [ { "fullName": …displayName, "phoneNumber": … } ] }`
   (para `contactsArrayMessage`, mapear el array `contacts`).
+
+  El número **no** viene suelto en el mensaje: hay que sacarlo del `vcard`, prefiriendo el `waid`
+  (formato internacional) sobre el valor visible del `TEL` (que suele ser local). Sin `phoneNumber`
+  el CRM pinta el contacto pero no puede ofrecer abrirle el chat. El nodo `contact content` de hoy
+  solo mapea `displayName`; el mapeo de contactos queda así:
+
+  ```js
+  const phoneOf = (c) => {
+    const vcard = c.vcard || '';
+    const waid = (vcard.match(/waid=(\d+)/i) || [])[1];
+    const tel = (vcard.match(/^TEL[^:\r\n]*:(.*)$/im) || [])[1];
+    return waid || (tel ? tel.trim() : null);
+  };
+  const entry = (c) => ({ fullName: c.displayName || 'sin nombre', phoneNumber: phoneOf(c) });
+  const msg = $json.body.data.message || {};
+  const base = msg.contactsArrayMessage
+    ? { contacts: (msg.contactsArrayMessage.contacts || []).map(entry) }
+    : { contacts: [entry(msg.contactMessage || {})] };
+  ```
+
+  (El frontend igual lee el `vcard` crudo si el payload lo trae, así que mandar el vCard tal cual
+  dentro de cada contacto también sirve.)
 - **poll**: `content` = `{{ …pollCreationMessage.name }}` (la pregunta); `message_type = 'poll'`;
   `payload = { "values": […options[].optionName], "selectableCount": …selectableOptionsCount }`.
 - **reaction**: `content` = `{{ …reactionMessage.text }}` (el emoji); `message_type = 'reaction'`;

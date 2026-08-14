@@ -12,6 +12,7 @@ Evolution, así que todo lo que se lee de ahí se trata como no confiable.
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -176,6 +177,29 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return None
 
 
+_VCARD_WAID = re.compile(r"waid=(\d+)", re.IGNORECASE)
+_VCARD_TEL = re.compile(r"^TEL[^:\r\n]*:(.*)$", re.IGNORECASE | re.MULTILINE)
+
+
+def _contact_entry(contact: dict) -> dict:
+    """Un contacto compartido, con el teléfono sacado del vCard.
+
+    El número solo viaja dentro del vCard: ``waid`` lo trae en formato
+    internacional (es el JID sin dominio) y el valor visible del ``TEL`` suele
+    venir en formato local. Sin él el frontend no puede ofrecer abrirle el
+    chat, que es lo único que se hace con un contacto compartido.
+    """
+    vcard = contact.get("vcard")
+    vcard = vcard if isinstance(vcard, str) else ""
+    tel = _VCARD_TEL.search(vcard)
+    waid = _VCARD_WAID.search(vcard)
+    phone = waid.group(1) if waid else (tel.group(1).strip() if tel else None)
+    return {
+        "fullName": contact.get("displayName") or "sin nombre",
+        "phoneNumber": phone,
+    }
+
+
 def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] | None:
     """Traduce el mensaje de WhatsApp al modelo normalizado del hilo.
 
@@ -243,16 +267,13 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
 
     contact = message.get("contactMessage")
     if isinstance(contact, dict):
-        name = contact.get("displayName") or "sin nombre"
-        return None, "contact", {"contacts": [{"fullName": name}]}
+        return None, "contact", {"contacts": [_contact_entry(contact)]}
 
     contacts_array = message.get("contactsArrayMessage")
     if isinstance(contacts_array, dict):
         entries = contacts_array.get("contacts")
         contacts = [
-            {"fullName": c.get("displayName") or "sin nombre"}
-            for c in entries
-            if isinstance(c, dict)
+            _contact_entry(c) for c in entries if isinstance(c, dict)
         ] if isinstance(entries, list) else []
         return None, "contact", {"contacts": contacts} if contacts else None
 

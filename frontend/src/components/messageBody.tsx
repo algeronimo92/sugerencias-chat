@@ -2,10 +2,11 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown, CreditCard, Download, ExternalLink, EyeOff, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
-import { isJsonObject, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
+import { isJsonObject, messageContacts, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
 import { messageMediaFilename } from '../utils/media'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
+import { ContactCard } from './ContactCard'
 import { MapPreview } from './MapPreview'
 import { RichText } from './RichText'
 import { TemplateMessagePreview } from './TemplateMessageCard'
@@ -234,31 +235,9 @@ function LocationBody({ parsed }: MessageBodyContext) {
 }
 
 function ContactBody({ parsed }: MessageBodyContext) {
-  const contacts = Array.isArray(parsed.payload?.contacts)
-    ? parsed.payload.contacts.filter(isJsonObject)
-    : []
+  const contacts = messageContacts(parsed.payload)
   if (contacts.length === 0) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
-  return (
-    <div className="flex flex-col gap-1">
-      {contacts.map((contact, index) => (
-        <div key={index} className="flex items-center gap-2 rounded-lg bg-black/5 px-3 py-2 dark:bg-white/10">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary/20 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
-            {String(contact.fullName || '?').slice(0, 1).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-wa-text dark:text-wa-text-dark not-italic">
-              {String(contact.fullName || 'Contacto')}
-            </p>
-            {contact.phoneNumber != null && (
-              <p className="truncate text-[11px] text-wa-muted dark:text-wa-text-dark/60 not-italic">
-                {String(contact.phoneNumber)}
-              </p>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+  return <ContactCard contacts={contacts} />
 }
 
 function PollBody({ parsed }: MessageBodyContext) {

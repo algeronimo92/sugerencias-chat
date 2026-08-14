@@ -597,16 +597,30 @@ export function usePhoneConfig() {
 
 /** Busca si ya existe un lead con exactamente ese número (match por JID; la
  * búsqueda del servidor es por substring, el filtro fino se hace acá). */
+async function fetchLeadByPhone(digits: string): Promise<Chat | null> {
+  const { data } = await client.get<ChatsPage>('/api/chats', { params: { search: digits } })
+  return data.items.find((chat) => (chat.phone ?? '').replace(/\D/g, '').endsWith(digits)) ?? null
+}
+
 export function useDuplicateLead(digits: string | null) {
   return useQuery({
     queryKey: ['duplicate-lead', digits],
-    queryFn: async () => {
-      const { data } = await client.get<ChatsPage>('/api/chats', { params: { search: digits } })
-      return data.items.find((chat) => (chat.phone ?? '').replace(/\D/g, '').endsWith(digits ?? '')) ?? null
-    },
+    queryFn: () => fetchLeadByPhone(digits ?? ''),
     enabled: !!digits && digits.length >= 8,
     staleTime: 15_000,
   })
+}
+
+/** Igual que `useDuplicateLead` pero bajo demanda (al tocar un contacto
+ * compartido), compartiendo caché con él para no repetir la búsqueda. */
+export function useFindLeadByPhone() {
+  const queryClient = useQueryClient()
+  return (digits: string) =>
+    queryClient.fetchQuery({
+      queryKey: ['duplicate-lead', digits],
+      queryFn: () => fetchLeadByPhone(digits),
+      staleTime: 15_000,
+    })
 }
 
 async function createLead(payload: LeadInput): Promise<Chat> {

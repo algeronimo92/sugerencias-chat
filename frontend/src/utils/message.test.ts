@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDayLabel, groupByDay, messageAdReferral, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
+import { formatDayLabel, groupByDay, messageAdReferral, messageContacts, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
 
 describe('parseContent', () => {
   it('trata el texto suelto como texto', () => {
@@ -264,6 +264,32 @@ describe('messageAdReferral', () => {
   it('descarta miniaturas con esquemas que no sean http ni /media', () => {
     expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: 'javascript:alert(1)' } })?.thumbnailUrl)
       .toBeNull()
+  })
+})
+
+describe('messageContacts', () => {
+  it('devuelve vacío si el mensaje no trae contactos', () => {
+    expect(messageContacts(null)).toEqual([])
+    expect(messageContacts({ contacts: 'Ana' })).toEqual([])
+    expect(messageContacts({ contacts: [{}] })).toEqual([])
+  })
+
+  it('lee el nombre y el teléfono ya desarmados por el backend', () => {
+    expect(messageContacts({ contacts: [{ fullName: 'Ana', phoneNumber: '+51 987 654 321' }] }))
+      .toEqual([{ fullName: 'Ana', phone: '51987654321', phoneLabel: '+51 987 654 321' }])
+  })
+
+  it('saca el número del vCard, prefiriendo el waid sobre el TEL visible', () => {
+    const vcard =
+      'BEGIN:VCARD\nVERSION:3.0\nFN:Lidia Mimbela\n' +
+      'TEL;type=CELL;waid=51987654321:987 654 321\nEND:VCARD'
+    expect(messageContacts({ contacts: [{ vcard }] }))
+      .toEqual([{ fullName: 'Lidia Mimbela', phone: '51987654321', phoneLabel: '987 654 321' }])
+  })
+
+  it('deja el contacto sin teléfono cuando el vCard no trae uno marcable', () => {
+    expect(messageContacts({ contacts: [{ fullName: 'Ana', vcard: 'BEGIN:VCARD\nTEL:123\nEND:VCARD' }] }))
+      .toEqual([{ fullName: 'Ana', phone: null, phoneLabel: '123' }])
   })
 })
 
