@@ -63,9 +63,10 @@ def test_interactive_expressions_are_compatible_with_n8n_2_31_parser():
     assert WORKFLOW is not None
     workflow = json.loads(WORKFLOW.read_text(encoding="utf-8"))
     node = next(node for node in workflow["nodes"] if node["name"] == "priority interactive content")
-    values = [
-        item["value"]
-        for item in node["parameters"]["assignments"]["assignments"]
-        if item["name"] in {"content", "payload"}
-    ]
-    assert all("catch{" not in value and "catch (" in value for value in values)
+    assert node["type"] == "n8n-nodes-base.code"
+    assert node["typeVersion"] == 2
+    code = node["parameters"]["jsCode"]
+    assert "safeJson" in code
+    assert "message_type: 'interactive'" in code
+    assert "pairedItem: { item: 0 }" in code
+    assert "={{" not in code

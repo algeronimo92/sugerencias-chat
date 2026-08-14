@@ -108,11 +108,88 @@ VIEW_ONCE_TYPES = [
 ]
 
 
-# n8n 2.31.6 ejecuta el nodo Set 3.4 con un parser que no admite el binding
-# opcional de ES2019 (`catch {}`). Se conserva el IIFE documentado por n8n,
-# pero se usa `catch (error)` para que la expresión compile en esa versión.
-INTERACTIVE_CONTENT = "={{ (() => { const data=(($json.body||{}).data||{}); const m=data.message||{}; const t=data.messageType; const v=m[t]||{}; const parse=x=>{try{return typeof x==='string'?JSON.parse(x):x||{}}catch (error){return {}}}; const response=parse((v.nativeFlowResponseMessage||{}).paramsJson); const single=v.singleSelectReply||{}; return v.selectedDisplayText||v.selected_text||v.title||(v.body||{}).text||response.display_text||response.title||single.selectedRowId||'Mensaje interactivo'; })() }}"
-INTERACTIVE_PAYLOAD = "={{ (() => { const data=(($json.body||{}).data||{}); const m=data.message||{}; const t=data.messageType; const v=m[t]||{}; const parse=x=>{try{return typeof x==='string'?JSON.parse(x):x||{}}catch (error){return {}}}; const response=parse((v.nativeFlowResponseMessage||{}).paramsJson); const rows=(v.sections||[]).flatMap(s=>(s.rows||[]).map(r=>({id:r.rowId||r.id||null,text:r.title||r.name||null,description:r.description||null}))); const buttons=((v.nativeFlowMessage||{}).buttons||v.buttons||[]).map(b=>{const p=parse(b.buttonParamsJson); return {id:b.buttonId||p.id||null,text:((b.buttonText||{}).displayText)||p.display_text||null,url:p.url||null}}); const single=v.singleSelectReply||{}; return {original_type:t,title:v.title||(v.header||{}).title||null,body:(v.body||{}).text||v.contentText||v.description||null,footer:(v.footer||{}).text||v.footerText||null,options:rows,buttons,selected_id:v.selectedButtonId||single.selectedRowId||response.id||response.selected_id||null,selected_text:v.selectedDisplayText||response.display_text||response.title||null}; })() }}"
+# Esta transformación es deliberadamente un Code node. El parser de
+# expresiones del Set 3.4 de n8n 2.31.6 rechaza construcciones válidas al
+# procesar payloads complejos; el Code node ejecuta JavaScript real y permite
+# tolerar paramsJson defectuosos sin tumbar el workflow.
+INTERACTIVE_CODE = r"""const input = $input.first().json;
+const data = ((input.body || {}).data || {});
+const message = data.message || {};
+const messageType = data.messageType || 'interactiveMessage';
+const value = message[messageType] || {};
+
+function safeJson(raw) {
+  if (raw && typeof raw === 'object') return raw;
+  if (typeof raw !== 'string' || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+const nativeResponse = value.nativeFlowResponseMessage || {};
+const response = safeJson(nativeResponse.paramsJson);
+const single = value.singleSelectReply || {};
+const rows = [];
+for (const section of Array.isArray(value.sections) ? value.sections : []) {
+  for (const row of Array.isArray(section.rows) ? section.rows : []) {
+    rows.push({
+      id: row.rowId || row.id || null,
+      text: row.title || row.name || null,
+      description: row.description || null,
+    });
+  }
+}
+
+const sourceButtons = ((value.nativeFlowMessage || {}).buttons || value.buttons || []);
+const buttons = [];
+for (const button of Array.isArray(sourceButtons) ? sourceButtons : []) {
+  const params = safeJson(button.buttonParamsJson);
+  buttons.push({
+    id: button.buttonId || button.id || params.id || null,
+    text: ((button.buttonText || {}).displayText) || button.text || params.display_text || null,
+    url: button.url || params.url || null,
+  });
+}
+
+const body = ((value.body || {}).text) || value.contentText || value.description || null;
+const title = value.title || ((value.header || {}).title) || null;
+const selectedText = value.selectedDisplayText || value.selected_text || response.display_text || response.title || null;
+const content = selectedText || title || body || single.selectedRowId || 'Mensaje interactivo';
+const rawTimestamp = Number(data.messageTimestamp);
+const timestampMillis = rawTimestamp > 1000000000000 ? rawTimestamp : rawTimestamp * 1000;
+const timestamp = Number.isFinite(timestampMillis) ? new Date(timestampMillis).toISOString() : null;
+const identity = $('Resolver identidad WhatsApp').first().json || {};
+const parsedInput = input.parsed || {};
+
+return [{
+  json: {
+    content,
+    message_type: 'interactive',
+    payload: {
+      original_type: messageType,
+      title,
+      body,
+      footer: ((value.footer || {}).text) || value.footerText || null,
+      options: rows,
+      buttons,
+      selected_id: value.selectedButtonId || single.selectedRowId || response.id || response.selected_id || null,
+      selected_text: selectedText,
+    },
+    timestamp,
+    media_url: null,
+    chat_id: identity.chat_id,
+    message_id: (data.key || {}).id || null,
+    status: data.status || null,
+    origen: 'WhatsApp',
+    last_sender: parsedInput.last_sender || null,
+    minutes_since_last_message: parsedInput.minutes_since_last_message ?? null,
+    quoted_wa_message_id: ((value.contextInfo || {}).stanzaId) || null,
+  },
+  pairedItem: { item: 0 },
+}];"""
 
 PRODUCT_CONTENT = "={{ (() => { const p=(((($json.body||{}).data||{}).message||{}).productMessage||{}); const x=p.product||{}; return x.title||p.body||'Producto de WhatsApp'; })() }}"
 PRODUCT_PAYLOAD = "={{ (() => { const p=(((($json.body||{}).data||{}).message||{}).productMessage||{}); const x=p.product||{}; const long=v=>v==null?null:(typeof v==='object'&&Number.isInteger(v.low)?String((Number.isInteger(v.high)?v.high:0)*4294967296+(v.low>>>0)):v); return {original_type:'productMessage',product_id:x.productId||null,retailer_id:x.retailerId||null,title:x.title||null,description:x.description||null,body:p.body||null,footer:p.footer||null,price_amount_1000:long(x.priceAmount1000),sale_price_amount_1000:long(x.salePriceAmount1000),currency:x.currencyCode||null,url:x.url||x.signedUrl||null,image_url:(x.productImage||{}).url||null}; })() }}"
@@ -139,6 +216,12 @@ def _configure_content_node(node: dict[str, Any], message_type: str, content: st
     _set(node, "payload", payload, "object")
     _set(node, "media_url", "=", "string")
     _set(node, "quoted_wa_message_id", quote, "string")
+
+
+def _configure_interactive_code_node(node: dict[str, Any]) -> None:
+    node["type"] = "n8n-nodes-base.code"
+    node["typeVersion"] = 2
+    node["parameters"] = {"jsCode": INTERACTIVE_CODE}
 
 
 def _replace_strings(value: Any, replacements: list[tuple[str, str]]) -> Any:
@@ -208,10 +291,7 @@ def update_workflow(workflow: dict[str, Any]) -> bool:
     before = json.dumps(workflow, sort_keys=True, ensure_ascii=False)
 
     interactive = _content_node(workflow, "priority interactive content", 384)
-    _configure_content_node(
-        interactive, "interactive", INTERACTIVE_CONTENT, INTERACTIVE_PAYLOAD,
-        "={{ (() => { const data=(($json.body||{}).data||{}); const v=(data.message||{})[data.messageType]||{}; return ((v.contextInfo||{}).stanzaId)||null; })() }}",
-    )
+    _configure_interactive_code_node(interactive)
     product = _content_node(workflow, "product content", 576)
     _configure_content_node(product, "product", PRODUCT_CONTENT, PRODUCT_PAYLOAD, "={{ (((($json.body.data.message||{}).productMessage||{}).contextInfo||{}).stanzaId)||null }}")
     payment = _content_node(workflow, "payment content", 768)
