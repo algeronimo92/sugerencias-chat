@@ -287,6 +287,15 @@ describe('messageContacts', () => {
       .toEqual([{ fullName: 'Lidia Mimbela', phone: '51987654321', phoneLabel: '987 654 321' }])
   })
 
+  it('lee el TEL agrupado ("item1.TEL") que manda WhatsApp desde Android', () => {
+    const vcard =
+      'BEGIN:VCARD\nVERSION:3.0\nN:;;;;\nFN:Alger Pier\n' +
+      'item1.TEL;waid=51906471403:+51 906 471 403\nitem1.X-ABLabel:Celular\n' +
+      'PHOTO;BASE64:/9j/4AAQSkZJRgABAQAAAQABAAD\nEND:VCARD'
+    expect(messageContacts({ contacts: [{ displayName: 'Alger Pier Nuevo 1', vcard }] }))
+      .toEqual([{ fullName: 'Alger Pier Nuevo 1', phone: '51906471403', phoneLabel: '+51 906 471 403' }])
+  })
+
   it('deja el contacto sin teléfono cuando el vCard no trae uno marcable', () => {
     expect(messageContacts({ contacts: [{ fullName: 'Ana', vcard: 'BEGIN:VCARD\nTEL:123\nEND:VCARD' }] }))
       .toEqual([{ fullName: 'Ana', phone: null, phoneLabel: '123' }])

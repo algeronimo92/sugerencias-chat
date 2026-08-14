@@ -122,6 +122,20 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
             {"contacts": [{"fullName": "Ana", "phoneNumber": "51987654321"}]},
         ),
         (
+            # vCard real de Android: el TEL viene agrupado ("item1.TEL").
+            {"contactMessage": {
+                "displayName": "Alger Pier Nuevo 1",
+                "vcard": (
+                    "BEGIN:VCARD\nVERSION:3.0\nN:;;;;\nFN:Alger Pier Nuevo 1\n"
+                    "item1.TEL;waid=51906471403:+51 906 471 403\nitem1.X-ABLabel:Celular\n"
+                    "PHOTO;BASE64:/9j/4AAQSkZJRgABAQAAAQABAAD\nEND:VCARD"
+                ),
+            }},
+            None,
+            "contact",
+            {"contacts": [{"fullName": "Alger Pier Nuevo 1", "phoneNumber": "51906471403"}]},
+        ),
+        (
             # Sin waid (contacto que no está en WhatsApp): queda el TEL visible.
             {"contactsArrayMessage": {"contacts": [
                 {"displayName": "Ana", "vcard": "BEGIN:VCARD\nTEL;type=CELL:987 654 321\nEND:VCARD"},

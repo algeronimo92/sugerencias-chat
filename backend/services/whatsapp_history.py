@@ -178,7 +178,9 @@ def _parse_timestamp(raw: Any) -> datetime | None:
 
 
 _VCARD_WAID = re.compile(r"waid=(\d+)", re.IGNORECASE)
-_VCARD_TEL = re.compile(r"^TEL[^:\r\n]*:(.*)$", re.IGNORECASE | re.MULTILINE)
+# El TEL puede venir agrupado con un prefijo ("item1.TEL"), que es como lo
+# manda WhatsApp desde Android.
+_VCARD_TEL = re.compile(r"^(?:[A-Za-z0-9-]+\.)?TEL[^:\r\n]*:(.*)$", re.IGNORECASE | re.MULTILINE)
 
 
 def _contact_entry(contact: dict) -> dict:

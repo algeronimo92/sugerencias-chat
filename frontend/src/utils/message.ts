@@ -434,9 +434,11 @@ export interface SharedContact {
   phoneLabel: string
 }
 
-/** Lee un campo del vCard ("TEL;waid=51999...:+51 999 ...", "FN:Lidia"). */
+/** Lee un campo del vCard ("TEL;waid=51999...:+51 999 ...", "FN:Lidia").
+ * Las propiedades pueden venir agrupadas con un prefijo ("item1.TEL"), que es
+ * como las manda WhatsApp desde Android. */
 function vcardField(vcard: string, field: string): string {
-  const match = vcard.match(new RegExp(`^${field}[^:\\r\\n]*:(.*)$`, 'im'))
+  const match = vcard.match(new RegExp(`^(?:[A-Za-z0-9-]+\\.)?${field}[^:\\r\\n]*:(.*)$`, 'im'))
   return match ? match[1].trim() : ''
 }
 

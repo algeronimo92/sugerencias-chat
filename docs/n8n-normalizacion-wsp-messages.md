@@ -68,7 +68,8 @@ Nodos Set nuevos (una por salida agregada en el Switch):
   const phoneOf = (c) => {
     const vcard = c.vcard || '';
     const waid = (vcard.match(/waid=(\d+)/i) || [])[1];
-    const tel = (vcard.match(/^TEL[^:\r\n]*:(.*)$/im) || [])[1];
+    // El TEL puede venir agrupado ("item1.TEL"), que es como lo manda Android.
+    const tel = (vcard.match(/^(?:[A-Za-z0-9-]+\.)?TEL[^:\r\n]*:(.*)$/im) || [])[1];
     return waid || (tel ? tel.trim() : null);
   };
   const entry = (c) => ({ fullName: c.displayName || 'sin nombre', phoneNumber: phoneOf(c) });
@@ -78,8 +79,9 @@ Nodos Set nuevos (una por salida agregada en el Switch):
     : { contacts: [entry(msg.contactMessage || {})] };
   ```
 
-  (El frontend igual lee el `vcard` crudo si el payload lo trae, así que mandar el vCard tal cual
-  dentro de cada contacto también sirve.)
+  El frontend igual lee el `vcard` crudo si el payload lo trae, pero **no conviene guardarlo**: el
+  vCard de Android incluye la foto del contacto en base64 (`PHOTO;BASE64:…`, decenas de KB) y eso
+  se replicaría en cada fila de `wsp_messages`. Mejor guardar solo `fullName` y `phoneNumber`.
 - **poll**: `content` = `{{ …pollCreationMessage.name }}` (la pregunta); `message_type = 'poll'`;
   `payload = { "values": […options[].optionName], "selectableCount": …selectableOptionsCount }`.
 - **reaction**: `content` = `{{ …reactionMessage.text }}` (el emoji); `message_type = 'reaction'`;
