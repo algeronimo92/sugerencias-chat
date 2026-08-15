@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, BellOff, BellRing, CheckCheck, Loader2, MessageSquareLock, X } from 'lucide-react'
+import { Bell, BellOff, BellRing, CheckCheck, Loader2, MessageSquareLock, ShieldCheck, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
+import { useRetryExecution } from '../hooks/useAutomations'
+import { useMe } from '../hooks/useAuth'
+import { SERVICE_WINDOW_ERROR_CODE } from '../domain/automationCatalog'
 import type { UserNotification } from '../types'
+import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 interface Props {
   browserPermission: NotificationPermissionState
@@ -14,6 +19,58 @@ interface Props {
     authorName: string
     content: string
   }) => void
+}
+
+/** Id de la ejecución que hay que reintentar, solo si la notificación es un
+ *  fallo por la ventana de 24 h cerrada. null en cualquier otro aviso. */
+function serviceWindowExecutionId(notification: UserNotification): number | null {
+  const metadata = notification.metadata
+  if (!metadata || metadata.error_code !== SERVICE_WINDOW_ERROR_CODE) return null
+  const executionId = metadata.automation_execution_id
+  return typeof executionId === 'number' ? executionId : null
+}
+
+/** Autorización del admin, en la alerta misma: la automatización no pudo
+ *  escribirle al cliente porque hacía más de 24 h que no respondía, y desde
+ *  acá se la habilita a salir igual. El permiso es de esta ejecución sola y el
+ *  backend guarda quién lo dio. */
+function ServiceWindowOverrideAction({ notification, isAdmin }: { notification: UserNotification; isAdmin: boolean }) {
+  const [authorized, setAuthorized] = useState(false)
+  const retryExecution = useRetryExecution()
+  const executionId = serviceWindowExecutionId(notification)
+  if (!isAdmin || executionId === null) return null
+
+  if (authorized) {
+    return (
+      <p className="flex items-center gap-1.5 px-4 pb-3 pl-16 text-[10px] font-medium text-wa-primary-strong dark:text-wa-primary">
+        <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+        Autorizada: se reintenta ignorando la ventana
+      </p>
+    )
+  }
+  return (
+    <div className="px-4 pb-3 pl-16">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={retryExecution.isPending}
+        onClick={() => retryExecution.mutate(
+          { id: executionId, ignoreServiceWindow: true },
+          {
+            onSuccess: () => { setAuthorized(true); toast.success('Automatización reprogramada con tu autorización') },
+            onError: reason => toast.error(extractErrorMessage(reason)),
+          },
+        )}
+        className="border-amber-500 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40"
+      >
+        {retryExecution.isPending
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+          : <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />}
+        Autorizar y reintentar
+      </Button>
+      <p className="mt-1 text-[10px] text-wa-muted">Envía aunque la ventana de 24 h esté cerrada. Solo para esta ejecución.</p>
+    </div>
+  )
 }
 
 function notificationTime(value: string) {
@@ -28,6 +85,8 @@ function notificationTime(value: string) {
 
 export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification }: Props) {
   const navigate = useNavigate()
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'admin'
   const [open, setOpen] = useState(false)
   const [unreadOnly, setUnreadOnly] = useState(false)
   const { data, isLoading, isError, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useNotificationHistory(unreadOnly)
@@ -131,22 +190,27 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
             ) : (
               <>
               {notifications.map(notification => (
-                <button
+                <div
                   key={notification.id}
-                  type="button"
-                  onClick={() => openNotification(notification)}
-                  className={`flex w-full gap-3 border-b border-wa-border px-4 py-3 text-left transition-colors last:border-b-0 dark:border-wa-border-dark ${notification.read_at ? 'hover:bg-wa-hover dark:hover:bg-wa-head-dark/60' : 'bg-violet-50/70 hover:bg-violet-100/70 dark:bg-violet-950/20 dark:hover:bg-violet-950/35'}`}
+                  className={`border-b border-wa-border transition-colors last:border-b-0 dark:border-wa-border-dark ${notification.read_at ? 'hover:bg-wa-hover dark:hover:bg-wa-head-dark/60' : 'bg-violet-50/70 hover:bg-violet-100/70 dark:bg-violet-950/20 dark:hover:bg-violet-950/35'}`}
                 >
-                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                    <MessageSquareLock className="h-4 w-4" />
-                    {!notification.read_at && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className={`block text-xs ${notification.read_at ? 'font-medium text-gray-700 dark:text-gray-300' : 'font-semibold text-wa-text dark:text-white'}`}>{notification.title}</span>
-                    <span className="mt-0.5 block line-clamp-2 text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark">{notification.body}</span>
-                    <span className="mt-1 block text-[10px] text-wa-muted">{notificationTime(notification.created_at)}</span>
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => openNotification(notification)}
+                    className="flex w-full gap-3 px-4 py-3 text-left"
+                  >
+                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      <MessageSquareLock className="h-4 w-4" />
+                      {!notification.read_at && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-xs ${notification.read_at ? 'font-medium text-gray-700 dark:text-gray-300' : 'font-semibold text-wa-text dark:text-white'}`}>{notification.title}</span>
+                      <span className="mt-0.5 block line-clamp-2 text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark">{notification.body}</span>
+                      <span className="mt-1 block text-[10px] text-wa-muted">{notificationTime(notification.created_at)}</span>
+                    </span>
+                  </button>
+                  <ServiceWindowOverrideAction notification={notification} isAdmin={isAdmin} />
+                </div>
               ))}
               {hasNextPage && (
                 <div className="p-3 text-center">

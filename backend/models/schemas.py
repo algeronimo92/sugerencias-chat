@@ -716,6 +716,18 @@ class AutomationExecutionItem(BaseModel):
     start_source: str = "system"
     started_by_user_id: int | None = None
     started_by_name: str | None = None
+    # Un admin autorizó a esta ejecución a enviar con la ventana de 24 h
+    # cerrada. None cuando corre con la regla de siempre.
+    window_override_at: str | None = None
+    window_override_by_name: str | None = None
+
+
+class AutomationExecutionRetryRequest(BaseModel):
+    """Reintento de una ejecución con error. `ignore_service_window` es la
+    autorización del admin para que los envíos salgan aunque la ventana de
+    atención de 24 h esté cerrada; vale solo para esta ejecución."""
+
+    ignore_service_window: bool = False
 
 
 class AutomationFlowCreate(BaseModel):

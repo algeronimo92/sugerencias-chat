@@ -129,9 +129,16 @@ export function useDeleteAutomation() {
   })
 }
 
+/** Reintenta una ejecución con error. `ignoreServiceWindow` es la autorización
+ *  del admin para que los envíos salgan aunque la ventana de 24 h esté
+ *  cerrada; vale solo para esa ejecución y el backend registra quién la dio. */
 export function useRetryExecution() {
   return useMutation({
-    mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/retry`)).data,
+    mutationFn: async ({ id, ignoreServiceWindow = false }: { id: number; ignoreServiceWindow?: boolean }) =>
+      (await client.post<AutomationExecution>(
+        `/api/automations/executions/${id}/retry`,
+        { ignore_service_window: ignoreServiceWindow },
+      )).data,
     onSuccess: invalidateAutomations,
   })
 }

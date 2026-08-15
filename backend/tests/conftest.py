@@ -92,6 +92,9 @@ def make_execution(**overrides):
         "status": "running",
         "attempts": 1,
         "started_by_user_id": None,
+        # Sin autorización del admin para saltarse la ventana de 24 h: es lo
+        # que trae cualquier ejecución que no vino de un reintento forzado.
+        "window_override_by_user_id": None,
     }
     return SimpleNamespace(**{**defaults, **overrides})
 

@@ -771,6 +771,11 @@ class AutomationExecution(Base):
     # caso manual. 'flow' identifica una ejecución creada por otro flujo.
     start_source: Mapped[str] = mapped_column(Text, default="system", server_default="system")
     started_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Un admin autorizó a ESTA ejecución a enviar con la ventana de atención
+    # de 24 h cerrada, desde la alerta del fallo. Es puntual y auditado: la
+    # próxima ejecución de la misma regla vuelve a respetar la ventana.
+    window_override_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    window_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),

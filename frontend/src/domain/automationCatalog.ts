@@ -110,6 +110,19 @@ export function automationStepLabel(type: string | null | undefined): string {
  *  backend en MAX_ROUND_ROBIN_OUTPUTS). */
 export const MAX_ROUND_ROBIN_OUTPUTS = 10
 
+/** Código con el que el backend marca la notificación de una ejecución que
+ *  falló porque la ventana de atención de 24 h estaba cerrada (espejo de
+ *  SERVICE_WINDOW_ERROR_CODE). Es lo único que habilita la autorización del
+ *  admin para reintentarla ignorando la ventana. */
+export const SERVICE_WINDOW_ERROR_CODE = 'service_window_closed'
+
+/** Un fallo de ejecución causado por la ventana cerrada. La notificación trae
+ *  el código en su metadata; el historial de ejecuciones solo guarda el texto
+ *  del error, así que ahí se reconoce por el mensaje del backend. */
+export function isServiceWindowError(error: string | null | undefined): boolean {
+  return !!error && error.includes('ventana de 24 horas está cerrada')
+}
+
 export const WaitAnyConditionKind = {
   Timer: 'timer',
   Message: 'message',

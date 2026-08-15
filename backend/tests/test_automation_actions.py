@@ -662,7 +662,7 @@ class TestResumeDoesNotRepeatEnqueuedActions:
                 "position": 1, "type": AutomationActionType.SEND_MESSAGE,
                 "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
             }],
-            event_payload={}, flow_state={},
+            event_payload={}, flow_state={}, window_override_by_user_id=None,
         )
         rule = make_rule(
             builder_mode="simple", max_executions_per_hour=None,

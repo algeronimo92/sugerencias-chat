@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Activity, AlertTriangle, Ban, Bot, CheckCircle2, ChevronDown, Clock3, Copy,
-  GitBranch, History, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, Trash2, XCircle,
+  GitBranch, History, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, ShieldCheck,
+  Trash2, XCircle,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution, AutomationRule,
@@ -45,6 +46,7 @@ import {
   assertNever,
   isAutomationActionType,
   isAutomationTrigger,
+  isServiceWindowError,
   isTaskPriority,
   isTaskType,
 } from '../domain/automationCatalog'
@@ -403,13 +405,30 @@ export function AutomationsPage() {
                     {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
                       type="button"
                       disabled={retryExecution.isPending}
-                      aria-busy={retryExecution.isPending && retryExecution.variables === execution.id}
-                      onClick={() => { setError(null); retryExecution.mutate(execution.id, { onSuccess: () => toast.success('Ejecución reprogramada'), onError: reason => setError(extractErrorMessage(reason)) }) }}
+                      aria-busy={retryExecution.isPending && retryExecution.variables?.id === execution.id}
+                      onClick={() => { setError(null); retryExecution.mutate({ id: execution.id }, { onSuccess: () => toast.success('Ejecución reprogramada'), onError: reason => setError(extractErrorMessage(reason)) }) }}
                       className="flex items-center gap-1.5 rounded-lg border border-wa-primary-strong px-3 py-1.5 text-[11px] font-semibold text-wa-primary-strong disabled:cursor-wait disabled:opacity-40 dark:text-wa-primary"
                     >
-                      {retryExecution.isPending && retryExecution.variables === execution.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                      {retryExecution.isPending && retryExecution.variables === execution.id ? 'Reintentando…' : 'Reintentar'}
+                      {retryExecution.isPending && retryExecution.variables?.id === execution.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                      {retryExecution.isPending && retryExecution.variables?.id === execution.id ? 'Reintentando…' : 'Reintentar'}
                     </button>}
+                    {/* Falló solo por la ventana de 24 h: el admin puede
+                        autorizar que esta ejecución la ignore y salga igual. */}
+                    {!execution.rule_deleted && execution.status === AutomationExecutionStatus.Failed && isServiceWindowError(execution.error) && <button
+                      type="button"
+                      disabled={retryExecution.isPending}
+                      onClick={() => { setError(null); retryExecution.mutate({ id: execution.id, ignoreServiceWindow: true }, { onSuccess: () => toast.success('Autorizada: se reintenta ignorando la ventana'), onError: reason => setError(extractErrorMessage(reason)) }) }}
+                      className="flex items-center gap-1.5 rounded-lg border border-amber-500 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 disabled:cursor-wait disabled:opacity-40 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Autorizar y reintentar
+                    </button>}
+                    {execution.window_override_at && (
+                      <span className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Autorizada por {execution.window_override_by_name ?? 'un admin'}
+                      </span>
+                    )}
                     {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Scheduled || execution.status === AutomationExecutionStatus.Running || execution.status === AutomationExecutionStatus.Paused) && <button
                       type="button"
                       disabled={cancelExecution.isPending}

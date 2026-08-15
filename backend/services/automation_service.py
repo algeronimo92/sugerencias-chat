@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy import DateTime, and_, func, insert, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 
 from domain_types import (
     AutomationActionType,
@@ -116,6 +117,11 @@ MAX_FLOW_NODES = 50
 MAX_FLOW_EDGES = 80
 MAX_WHATSAPP_TEXT_LENGTH = 4096
 MAX_MEDIA_CAPTION_LENGTH = MEDIA_CAPTION_MAX_LENGTH
+# Único texto del fallo por ventana cerrada. La notificación lo acompaña con
+# SERVICE_WINDOW_ERROR_CODE para que el frontend ofrezca la autorización sin
+# tener que reconocer la frase.
+SERVICE_WINDOW_CLOSED_ERROR = "No se envió WhatsApp porque la ventana de 24 horas está cerrada"
+SERVICE_WINDOW_ERROR_CODE = "service_window_closed"
 MAX_REACTION_LENGTH = 16
 CONVERSATION_STATES = frozenset({"open", "closed"})
 # Tope de conversaciones que cierra por inactividad cada barrido. Con el
@@ -199,6 +205,8 @@ def _execution_dict(row) -> dict:
         "start_source": row["start_source"] or "system",
         "started_by_user_id": row["started_by_user_id"],
         "started_by_name": row["started_by_name"],
+        "window_override_at": _ts(row["window_override_at"]),
+        "window_override_by_name": row["window_override_by_name"],
     }
 
 
@@ -402,6 +410,10 @@ async def list_automation_executions(
     lead_id: str | None = None,
     start_source: str | None = None,
 ) -> list[dict]:
+    # Alias propio: `User` ya está tomado por started_by_user_id y la fila
+    # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
+    # saltarse la ventana).
+    override_user = aliased(User)
     stmt = select(
         AutomationExecution.id,
         AutomationExecution.rule_id,
@@ -423,10 +435,14 @@ async def list_automation_executions(
         AutomationExecution.start_source,
         AutomationExecution.started_by_user_id,
         User.name.label("started_by_name"),
+        AutomationExecution.window_override_at,
+        override_user.name.label("window_override_by_name"),
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
         Lead, Lead.id == AutomationExecution.lead_id
     ).outerjoin(
         User, User.id == AutomationExecution.started_by_user_id
+    ).outerjoin(
+        override_user, override_user.id == AutomationExecution.window_override_by_user_id
     )
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
@@ -451,7 +467,12 @@ async def get_automation_execution(execution_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
-async def retry_automation_execution(execution_id: int) -> dict | None:
+async def retry_automation_execution(
+    execution_id: int,
+    *,
+    ignore_service_window: bool = False,
+    actor_user_id: int | None = None,
+) -> dict | None:
     """Reintenta una ejecución failed o skipped desde donde quedó — no repite
     acciones ya persistidas en action_results. Nunca aplica a completed: eso
     reiniciaría el flujo desde el disparador y reenviaría lo ya enviado.
@@ -459,7 +480,13 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
     Resetea attempts a 0: es un reinicio explícito del usuario, no debería
     heredar el contador de recuperaciones automáticas agotado que la llevó a
     failed (si no, una ejecución que se vuelve a atascar moriría en el primer
-    ciclo de _release_stale_executions sin darle ninguna chance)."""
+    ciclo de _release_stale_executions sin darle ninguna chance).
+
+    Con `ignore_service_window` el admin autoriza a esta ejecución (y solo a
+    esta) a enviar con la ventana de 24 h cerrada, y queda registrado quién lo
+    hizo. Cada reintento define el permiso de nuevo: uno común lo limpia, para
+    que una autorización vieja no se arrastre sin que nadie la pida."""
+    now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         execution = await session.get(AutomationExecution, execution_id)
         if execution is None or execution.status not in {
@@ -476,11 +503,13 @@ async def retry_automation_execution(execution_id: int) -> dict | None:
             ]),
         ).values(
             status=AutomationExecutionStatus.SCHEDULED,
-            scheduled_for=datetime.now(timezone.utc),
+            scheduled_for=now,
             started_at=None,
             finished_at=None,
             error=None,
             attempts=0,
+            window_override_by_user_id=actor_user_id if ignore_service_window else None,
+            window_override_at=now if ignore_service_window else None,
         ))
         await session.commit()
     if not result.rowcount:
@@ -2358,6 +2387,25 @@ async def _action_notify(action, chat, execution, rule, deps) -> dict:
     }
 
 
+async def _require_service_window(
+    chat: dict, execution: AutomationExecution, deps: AutomationDeps
+) -> None:
+    """Frena el envío si la ventana de atención de 24 h está cerrada.
+
+    La excepción es una ejecución que un admin autorizó a mano desde la alerta
+    del fallo: ese permiso ya está dado y vale hasta que la ejecución termina,
+    así un flujo con varios envíos no vuelve a pedirlo bloque por bloque. Las
+    condiciones que el admin escribió sobre la ventana (`require_open_window`
+    y el bloque "ventana abierta" del flujo) NO se saltean: ahí el usuario
+    pidió explícitamente ramificar según la ventana.
+    """
+    if execution.window_override_by_user_id is not None:
+        return
+    window = await deps.get_customer_service_window(chat["chat_id"])
+    if not window or not window["is_open"]:
+        raise ValueError(SERVICE_WINDOW_CLOSED_ERROR)
+
+
 async def _action_send_template(action, chat, execution, rule, deps) -> dict:
     async with deps.session() as session:
         template = await session.get(MessageTemplate, action["template_id"])
@@ -2372,9 +2420,7 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
         or template.interactive_type != InteractiveType.NONE
     ):
         raise ValueError("La plantilla automática dejó de ser una plantilla interna válida")
-    window = await deps.get_customer_service_window(chat["chat_id"])
-    if not window or not window["is_open"]:
-        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    await _require_service_window(chat, execution, deps)
     text = _render(template.content, chat).strip()
     if not text and not attachments:
         raise ValueError("La plantilla no tiene contenido para enviar")
@@ -2399,9 +2445,7 @@ async def _action_send_message(action, chat, execution, rule, deps) -> dict:
     """Envía texto libre sin pasar por una plantilla — para un mensaje de un
     solo uso dentro de un flujo puntual, cuando no vale la pena guardarlo
     como plantilla reutilizable."""
-    window = await deps.get_customer_service_window(chat["chat_id"])
-    if not window or not window["is_open"]:
-        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    await _require_service_window(chat, execution, deps)
     text = _render(action["text"], chat).strip()
     if not text:
         raise ValueError("El mensaje no tiene contenido para enviar")
@@ -2475,9 +2519,7 @@ async def _action_send_audio(action, chat, execution, rule, deps) -> dict:
     asset = await _fetch_media_asset(action, deps)
     if not asset.content_type.startswith("audio/"):
         raise ValueError("El archivo elegido ya no es un audio")
-    window = await deps.get_customer_service_window(chat["chat_id"])
-    if not window or not window["is_open"]:
-        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    await _require_service_window(chat, execution, deps)
     sent = await deps.enqueue_messages(chat["chat_id"], [{
         "media_url": asset.media_url,
         "payload": {"type": "audio", "media_url": asset.media_url},
@@ -2492,9 +2534,7 @@ async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
     `_action_send_template`, apuntando a un `MediaAsset` en vez de un
     `TemplateAttachment`."""
     asset = await _fetch_media_asset(action, deps)
-    window = await deps.get_customer_service_window(chat["chat_id"])
-    if not window or not window["is_open"]:
-        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    await _require_service_window(chat, execution, deps)
     mediatype = mediatype_from_content_type(asset.content_type)
     sent = await deps.enqueue_messages(chat["chat_id"], [{
         "media_url": asset.media_url,
@@ -2515,9 +2555,7 @@ async def _action_send_media(action, chat, execution, rule, deps) -> dict:
     envío como nota de voz y el texto se encola justo después.
     """
     asset = await _fetch_media_asset(action, deps)
-    window = await deps.get_customer_service_window(chat["chat_id"])
-    if not window or not window["is_open"]:
-        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+    await _require_service_window(chat, execution, deps)
     caption = _render(action.get("caption") or "", chat).strip()
     if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
         raise ValueError("El caption renderizado admite máximo 1024 caracteres")
@@ -2663,7 +2701,17 @@ async def _notify_execution_failure(
             (error or "La ejecución falló")[:1000],
             execution.lead_id,
             f"execution-failed:{execution.id}",
-            {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
+            {
+                "automation_rule_id": rule.id,
+                "automation_execution_id": execution.id,
+                # El frontend ofrece la autorización del admin por este código
+                # y no por el texto del error, que es para leer.
+                **(
+                    {"error_code": SERVICE_WINDOW_ERROR_CODE}
+                    if error == SERVICE_WINDOW_CLOSED_ERROR
+                    else {}
+                ),
+            },
         )
         await deps.send_to_user(
             rule.created_by_user_id, {"type": "notification_created", "notification": notification}
@@ -3030,9 +3078,7 @@ async def _run_visual_execution(
                     buttons_data = node["data"]["buttons"]
                     if not text:
                         raise ValueError("La pregunta no tiene contenido para enviar")
-                    window = await deps.get_customer_service_window(chat["chat_id"])
-                    if not window or not window["is_open"]:
-                        raise ValueError("No se envió WhatsApp porque la ventana de 24 horas está cerrada")
+                    await _require_service_window(chat, execution, deps)
                     buttons = [
                         {"type": "reply", "displayText": button["label"], "id": button["id"]}
                         for button in buttons_data

@@ -4,6 +4,7 @@ from domain_types import AutomationBuilderMode
 from db.models import User
 from models.schemas import (
     AutomationExecutionItem,
+    AutomationExecutionRetryRequest,
     AutomationFlowCreate,
     AutomationFlowSimulationRequest,
     AutomationFlowUpdate,
@@ -265,8 +266,20 @@ async def get_executions(
 
 
 @router.post("/executions/{execution_id}/retry", response_model=AutomationExecutionItem)
-async def post_retry_execution(execution_id: int, _admin: User = Depends(require_admin)):
-    item = await retry_automation_execution(execution_id)
+async def post_retry_execution(
+    execution_id: int,
+    body: AutomationExecutionRetryRequest | None = None,
+    admin: User = Depends(require_admin),
+):
+    """Reintenta una ejecución con error. Con `ignore_service_window` el admin
+    autoriza además a que los envíos de esta ejecución salgan con la ventana
+    de 24 h cerrada — es admin-only justamente por eso."""
+    body = body or AutomationExecutionRetryRequest()
+    item = await retry_automation_execution(
+        execution_id,
+        ignore_service_window=body.ignore_service_window,
+        actor_user_id=admin.id,
+    )
     if item is None:
         raise HTTPException(409, "Solo se pueden reintentar ejecuciones con error u omitidas")
     return item

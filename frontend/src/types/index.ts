@@ -787,6 +787,10 @@ export interface AutomationExecution {
   start_source: AutomationExecutionStartSource
   started_by_user_id: number | null
   started_by_name: string | null
+  /** Un admin autorizó a esta ejecución a enviar con la ventana de 24 h
+   *  cerrada. null cuando corre con la regla de siempre. */
+  window_override_at: string | null
+  window_override_by_name: string | null
 }
 
 export type MediaAssetKind = 'image' | 'video' | 'audio' | 'document'
