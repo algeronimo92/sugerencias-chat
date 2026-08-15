@@ -53,3 +53,6 @@ docs/rag-v2.json
 /webhooks-evolution*.json
 /FORM-*.json
 /Health-checks*.json
+
+# Cache de Python de los scripts de mantenimiento (los tests los importan).
+scripts/__pycache__/
