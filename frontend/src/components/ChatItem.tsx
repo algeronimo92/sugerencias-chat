@@ -1,6 +1,6 @@
 import type { Chat } from '../types'
 import { BotOff, LockKeyhole } from 'lucide-react'
-import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, waitingTier } from '../utils/chat'
+import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 
 interface Props {
@@ -70,6 +70,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
     ? new Date(chat.last_customer_message_at).getTime() + 24 * 60 * 60 * 1000
     : 0
   const isCustomerWindowOpen = customerWindowExpiresAt > Date.now()
+  const botAttended = isBotAttended(chat)
 
   return (
     <button type="button"
@@ -138,7 +139,12 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             </span>
           )}
           {chat.unread_count > 0 && (
-            <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-wa-primary text-white text-[11px] font-semibold flex items-center justify-center">
+            <span
+              title={botAttended ? 'Un bot ya respondió — nadie del equipo vio el mensaje del cliente todavía' : undefined}
+              className={`shrink-0 min-w-5 h-5 px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center ${
+                botAttended ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
+              }`}
+            >
               {chat.unread_count > 99 ? '99+' : chat.unread_count}
             </span>
           )}

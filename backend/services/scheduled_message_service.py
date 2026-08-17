@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select, update
 
 from db.models import Lead, MessageOutbox, ScheduledMessage, User, WspMessage
 from db.session import get_sessionmaker
-from services.db_service import CUSTOMER_SERVICE_WINDOW
+from services.db_service import CUSTOMER_SERVICE_WINDOW, _touch_automated_reply_stmt
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -211,6 +211,11 @@ async def _dispatch(scheduled_id: int) -> None:
             scheduled.queued_message_id = message.id
             scheduled.error = None
             scheduled.updated_at = now
+            # Un mensaje programado no tiene un vendedor mirando la app en
+            # ese momento: cuenta como "atendido por bot", no como que un
+            # humano vio la conversación (ver enqueue_messages para el
+            # criterio equivalente con actor_user_id).
+            await session.execute(_touch_automated_reply_stmt(scheduled.lead_id, now))
             await session.commit()
             status = "queued"
 

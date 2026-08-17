@@ -26,6 +26,16 @@ export function isAwaitingReply(chat: Chat): boolean {
   return chat.last_message_sender === 'cliente' && chat.timestamp !== null
 }
 
+/** Hay mensajes sin ver, pero un bot/automatización ya respondió después de
+ * la última vez que un vendedor vio el chat — badge de otro color en vez de
+ * "no leído" a secas, para no confundir "nadie contestó" con "ya contestó
+ * el bot, falta que un humano lo revise". */
+export function isBotAttended(chat: Chat): boolean {
+  if (chat.unread_count <= 0 || !chat.last_automated_reply_at) return false
+  if (!chat.last_read_at) return true
+  return new Date(chat.last_automated_reply_at).getTime() > new Date(chat.last_read_at).getTime()
+}
+
 export function waitingTier(elapsedMs: number): WaitingTier {
   if (elapsedMs >= URGENT_THRESHOLD_MS) return 'urgent'
   if (elapsedMs >= WARNING_THRESHOLD_MS) return 'warning'

@@ -425,6 +425,7 @@ async def message_status_webhook(
                 read_synced.append(read_update)
 
     if changed or read_synced:
+        read_synced_chat_ids = {item["chat_id"] for item in read_synced if item.get("chat_id")}
         chat_ids = {
             item["chat_id"]
             for item in [*changed, *read_synced]
@@ -437,11 +438,17 @@ async def message_status_webhook(
                     for item in changed
                     if item.get("chat_id") == chat_id
                 ]
+                # Si este chat tuvo un recibo de lectura nativo de WhatsApp,
+                # last_read_at ya avanzó en la base: hay que avisarle al
+                # frontend con "read" (igual que el POST /read manual) para
+                # que refresque el badge, no con "message_status" (que solo
+                # actualiza tiques y no invalida unread_count).
+                reason = "read" if chat_id in read_synced_chat_ids else "message_status"
                 await manager.broadcast(
                     {
                         "type": "chats_updated",
                         "chat_id": chat_id,
-                        "reason": "message_status",
+                        "reason": reason,
                         "message_statuses": status_updates,
                     }
                 )

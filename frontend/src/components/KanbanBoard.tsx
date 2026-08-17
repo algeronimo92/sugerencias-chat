@@ -12,7 +12,7 @@ import {
 } from '../hooks/useKanban'
 import { useTags } from '../hooks/useLeadMeta'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
-import { avatarInitial, displayName } from '../utils/chat'
+import { avatarInitial, displayName, isBotAttended } from '../utils/chat'
 import { parseContent } from '../utils/message'
 import { LostReasonDialog } from './LostReasonDialog'
 import { Select } from './ui/Input'
@@ -119,7 +119,12 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
           {PreviewIcon ? <PreviewIcon className="h-3.5 w-3.5 shrink-0" /> : <MessageCircle className="h-3.5 w-3.5 shrink-0" />}
           <span className="truncate">{previewText}</span>
           {chat.unread_count > 0 && (
-            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-wa-primary px-1.5 text-[10px] font-bold text-white">
+            <span
+              title={isBotAttended(chat) ? 'Un bot ya respondió — nadie del equipo vio el mensaje del cliente todavía' : undefined}
+              className={`ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${
+                isBotAttended(chat) ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
+              }`}
+            >
               {chat.unread_count > 99 ? '99+' : chat.unread_count}
             </span>
           )}

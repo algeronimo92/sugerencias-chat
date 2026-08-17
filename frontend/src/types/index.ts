@@ -178,6 +178,13 @@ export interface Chat {
   timestamp: string | null
   last_customer_message_at: string | null
   unread_count: number
+  /** Última vez que un vendedor vio la conversación (abrió el chat en la
+   * app, o WhatsApp mandó un recibo de lectura nativo). */
+  last_read_at: string | null
+  /** Última respuesta de un bot/automatización (sin vendedor detrás). Si es
+   * más nueva que last_read_at, el chat está "atendido" aunque nadie del
+   * equipo lo haya visto todavía — ver isBotAttended en utils/chat. */
+  last_automated_reply_at: string | null
   tags: Tag[]
   /** Solo con búsqueda activa: 2 = match por nombre/teléfono, 1 = por
    * campos CRM (vendedor/servicio/origen), 0 = solo por un mensaje. */
