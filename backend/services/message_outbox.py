@@ -8,6 +8,7 @@ from sqlalchemy.orm import aliased
 
 from db.models import MessageOutbox, ScheduledMessage, WspMessage
 from db.session import get_sessionmaker
+from services import db_service
 from services.evolution_service import (
     EvolutionApiError,
     get_template_capabilities,
@@ -205,6 +206,18 @@ async def enqueue_messages(
                 next_attempt_at=now,
             ))
             queued.append((message, reply_to))
+        # actor_user_id solo viene poblado cuando el envío lo dispara un
+        # vendedor logueado desde la app: eso cuenta como que un humano vio
+        # la conversación. Sin actor_user_id es una automatización — no
+        # implica que nadie del equipo haya visto el mensaje del cliente,
+        # así que solo se registra como "atendido por bot" (ver
+        # last_automated_reply_at en db_service._touch_automated_reply_stmt).
+        stmt = (
+            db_service._touch_last_read_stmt(chat_id, now)
+            if actor_user_id is not None
+            else db_service._touch_automated_reply_stmt(chat_id, now)
+        )
+        await session.execute(stmt)
         await session.commit()
     notify_new_work()
     return [_message_dict(message, reply_to) for message, reply_to in queued]

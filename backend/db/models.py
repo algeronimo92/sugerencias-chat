@@ -85,6 +85,12 @@ class Lead(Base):
     # wsp_messages.sent_at de los mensajes del cliente para saber cuántos
     # quedaron sin ver (ver services/db_service.py:_unread_count_subquery).
     last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Última vez que un bot/automatización (sin actor_user_id humano) le
+    # respondió al cliente. Si es más reciente que last_read_at, el chat
+    # está "atendido" aunque ningún vendedor lo haya visto todavía — el
+    # badge de no leídos lo distingue con otro color en vez de tratarlo
+    # igual que un mensaje sin ninguna respuesta.
+    last_automated_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Última respuesta de n8n para este lead (SuggestionResponse serializado)
     # y cuándo se generó. Se sirve directo mientras no llegue un mensaje
     # nuevo del cliente después de cached_suggestion_at — ver

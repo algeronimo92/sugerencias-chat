@@ -111,6 +111,11 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "timestamp": _fmt_ts(row["timestamp"]),
         "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),
         "unread_count": row["unread_count"],
+        # Crudos para que el frontend decida el color del badge: "no leído"
+        # a secas si nadie contestó, o "atendido por bot" si la última
+        # respuesta automática es más nueva que la última lectura humana.
+        "last_read_at": _fmt_ts(row["last_read_at"]),
+        "last_automated_reply_at": _fmt_ts(row["last_automated_reply_at"]),
         "tags": tags or [],
         # Presentes solo cuando la consulta llevaba búsqueda activa.
         "search_rank": row["search_rank"] if "search_rank" in row else 2,
@@ -398,6 +403,8 @@ def _chat_columns(last_message):
         last_message.c.sent_at.label("timestamp"),
         _last_customer_message_at_subquery().label("last_customer_message_at"),
         _unread_count_subquery().label("unread_count"),
+        Lead.last_read_at,
+        Lead.last_automated_reply_at,
     )
 
 
@@ -1142,6 +1149,13 @@ async def insert_message(
     async with get_sessionmaker()() as session:
         try:
             row = (await session.execute(stmt)).mappings().one()
+            if sender == "vendedor":
+                # Todo lo que pasa por acá es un envío directo (sticker desde
+                # la app, con usuario autenticado) o un eco de WhatsApp nativo
+                # (el vendedor respondió desde el teléfono): en ambos casos
+                # cuenta como que un humano vio la conversación hasta ahora,
+                # a diferencia de una automatización (ver enqueue_messages).
+                await session.execute(_touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -1213,10 +1227,22 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
     return {"id": row["id"], "chat_id": row["chat_id"], "status": status}
 
 
+def _touch_last_read_stmt(chat_id: str, when: datetime):
+    """Statement para marcar el chat visto por un humano. Se ejecuta dentro
+    de la transacción del llamador (insert_message, enqueue_messages) o de
+    la propia de mark_chat_read — no abre sesión, solo arma el UPDATE."""
+    return update(Lead).where(Lead.id == chat_id).values(last_read_at=when)
+
+
+def _touch_automated_reply_stmt(chat_id: str, when: datetime):
+    """Statement para registrar que un bot/automatización (sin actor_user_id
+    humano) le respondió al lead — no cuenta como que un vendedor lo vio."""
+    return update(Lead).where(Lead.id == chat_id).values(last_automated_reply_at=when)
+
+
 async def mark_chat_read(chat_id: str) -> None:
-    stmt = update(Lead).where(Lead.id == chat_id).values(last_read_at=datetime.now(timezone.utc))
     async with get_sessionmaker()() as session:
-        await session.execute(stmt)
+        await session.execute(_touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
         await session.commit()
 
 

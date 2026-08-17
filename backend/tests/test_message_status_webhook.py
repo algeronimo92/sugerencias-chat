@@ -23,10 +23,12 @@ async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypa
     })
 
     mark_read.assert_awaited_once_with("WA-INCOMING")
+    # "read" (no "message_status"): last_read_at avanzó de verdad, y el
+    # frontend necesita esta reason para invalidar unread_count/['chats'].
     broadcast.assert_awaited_once_with({
         "type": "chats_updated",
         "chat_id": "51999999999@s.whatsapp.net",
-        "reason": "message_status",
+        "reason": "read",
         "message_statuses": [],
     })
     assert result["matched"] is True
