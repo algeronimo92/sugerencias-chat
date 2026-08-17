@@ -62,10 +62,15 @@ import { Checkbox } from './ui/Checkbox'
 import { Select } from './ui/Input'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
 
+/** Condiciones que se comparan contra un texto libre que escribe el usuario.
+ *  `MediaAnalysisContains` entra acá aunque no mire el mensaje del cliente
+ *  sino la descripción que la IA generó del adjunto: la caja de texto es la
+ *  misma, sólo cambia contra qué se compara. */
 const MESSAGE_CONDITION_TYPES = new Set<AutomationFlowConditionType>([
   ConditionType.MessageContains,
   ConditionType.MessageEquals,
   ConditionType.MessageNotContains,
+  ConditionType.MediaAnalysisContains,
 ])
 
 function defaultConditionValue(type: AutomationFlowConditionType): string | null {
@@ -446,9 +451,12 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   }
 
   /** Mismo saneo que replaceWaitAnyConditions, para cuando se quita un botón
-   *  de una Pregunta: "other"/"timeout" siempre quedan válidos. */
+   *  de una Pregunta: "other"/"timeout"/"media" siempre quedan válidos. */
   function replaceQuestionButtons(node: Extract<AutomationFlowNode, { type: typeof NodeType.Question }>, buttons: QuestionButton[]) {
-    const validHandles = new Set<string>([...buttons.map(button => button.id), QuestionHandle.Other, QuestionHandle.Timeout])
+    const validHandles = new Set<string>([
+      ...buttons.map(button => button.id),
+      QuestionHandle.Other, QuestionHandle.Timeout, QuestionHandle.Media,
+    ])
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { ...node.data, buttons } } : item),
@@ -856,7 +864,7 @@ function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroup
               {condition.condition_type === ConditionType.StageEquals && <Select value={String(condition.value ?? 'nuevo')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
               {condition.condition_type === ConditionType.OriginContains && <label className="grid gap-1 text-[10px] text-wa-muted">Origen a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} /></label>}
               {condition.condition_type === ConditionType.ServiceContains && <label className="grid gap-1 text-[10px] text-wa-muted">Servicio a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} /></label>}
-              {MESSAGE_CONDITION_TYPES.has(condition.condition_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Contenido del mensaje<input maxLength={500} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Hollywood Peel" className={fieldClass} /></label>}
+              {MESSAGE_CONDITION_TYPES.has(condition.condition_type) && <label className="grid gap-1 text-[10px] text-wa-muted">{condition.condition_type === ConditionType.MediaAnalysisContains ? 'Texto en la descripción del archivo' : 'Contenido del mensaje'}<input maxLength={500} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder={condition.condition_type === ConditionType.MediaAnalysisContains ? 'Ej. comprobante de pago' : 'Ej. Hollywood Peel'} className={fieldClass} /></label>}
               {condition.condition_type === ConditionType.SellerEquals && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
               {condition.condition_type === ConditionType.TagPresent && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
             </div>
@@ -888,7 +896,8 @@ function WaitDurationEditor({ seconds, onChange }: { seconds: number; onChange: 
 }
 
 const WAIT_ANY_OPTIONAL_KINDS = [
-  WaitAnyConditionKind.Message, WaitAnyConditionKind.BusinessHours, WaitAnyConditionKind.MediaPlayed,
+  WaitAnyConditionKind.Message, WaitAnyConditionKind.MediaReceived,
+  WaitAnyConditionKind.BusinessHours, WaitAnyConditionKind.MediaPlayed,
 ] as const
 
 function WaitAnyEditor({ conditions, onChange }: { conditions: WaitAnyCondition[]; onChange: (conditions: WaitAnyCondition[]) => void }) {
@@ -977,6 +986,7 @@ function QuestionEditor({ text, buttons, timeoutSeconds, updateText, updateTimeo
       <WaitDurationEditor seconds={timeoutSeconds} onChange={updateTimeout} />
     </div>
     <p className="text-[10px] text-amber-600">Si la integración no admite botones nativos, se envía como texto numerado. Conecta cada botón, "Otra respuesta" y "Sin respuesta" a su propia salida.</p>
+    <p className="rounded-lg bg-emerald-50 p-2 text-[10px] leading-relaxed text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">"Mandó una foto" es opcional: conéctala si esta pregunta acompaña un pedido de foto. Sin conectar, una foto sigue saliendo por "Otra respuesta".</p>
   </div>
 }
 

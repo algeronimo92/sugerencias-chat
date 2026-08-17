@@ -644,11 +644,20 @@ export interface WaitAnyMediaPlayedCondition {
   kind: typeof WaitAnyConditionKind.MediaPlayed
 }
 
+/** El cliente nos mandó una foto o un archivo. Va aparte de
+ *  WaitAnyMessageCondition: si el bloque declara las dos, el texto sale por
+ *  "mensaje" y el adjunto por acá. */
+export interface WaitAnyMediaReceivedCondition {
+  id: typeof WaitAnyConditionKind.MediaReceived
+  kind: typeof WaitAnyConditionKind.MediaReceived
+}
+
 export type WaitAnyCondition =
   | WaitAnyTimerCondition
   | WaitAnyMessageCondition
   | WaitAnyBusinessHoursCondition
   | WaitAnyMediaPlayedCondition
+  | WaitAnyMediaReceivedCondition
 
 export interface QuestionButton {
   id: string
