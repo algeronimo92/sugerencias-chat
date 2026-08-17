@@ -85,6 +85,7 @@ from services.evolution_service import (
     send_whatsapp_sticker,
 )
 from services.whatsapp_history import fetch_whatsapp_history
+from services.whatsapp_identity_service import InvalidWhatsAppIdentityError
 from services.phone_utils import (
     PhoneValidationError,
     digits_to_jid,
@@ -523,6 +524,8 @@ async def get_whatsapp_history(
         return await fetch_whatsapp_history(chat_id, page, before_ts)
     except EvolutionApiError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    except InvalidWhatsAppIdentityError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{chat_id}/service-window", response_model=CustomerServiceWindow)
@@ -1032,7 +1035,7 @@ async def read_chat(chat_id: str):
     if wa_message_ids:
         try:
             await mark_messages_as_read(chat_id, wa_message_ids)
-        except (EvolutionApiError, httpx.HTTPError) as exc:
+        except (EvolutionApiError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
             # Best-effort: si Evolution falla (no configurada, mensaje ya no
             # existe del lado de WhatsApp, etc.) igual se marca como visto
             # de nuestro lado — no tiene sentido bloquear el badge interno
