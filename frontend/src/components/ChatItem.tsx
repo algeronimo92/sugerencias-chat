@@ -1,3 +1,4 @@
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Chat } from '../types'
 import { BotOff, LockKeyhole } from 'lucide-react'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
@@ -11,7 +12,11 @@ interface Props {
    * resalta cuando el chat matcheó por un mensaje del historial. */
   search?: string
   onClick: () => void
+  onPreview: () => void
 }
+
+const LONG_PRESS_MS = 450
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10
 
 function formatTime(timestamp: string | null): string {
   if (!timestamp) return ''
@@ -37,7 +42,48 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick }: Props) {
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick, onPreview }: Props) {
+  const longPressTimerRef = useRef<number | null>(null)
+  const suppressClickTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef({ x: 0, y: 0 })
+  const suppressClickRef = useRef(false)
+
+  function cancelLongPress() {
+    if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+  }
+
+  function clearClickSuppression() {
+    if (suppressClickTimerRef.current != null) window.clearTimeout(suppressClickTimerRef.current)
+    suppressClickTimerRef.current = null
+    suppressClickRef.current = false
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    cancelLongPress()
+    longPressStartRef.current = { x: event.clientX, y: event.clientY }
+    longPressTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true
+      // Algunos navegadores móviles no emiten click después del long press.
+      // El seguro caduca para no tragarse el siguiente toque normal.
+      suppressClickTimerRef.current = window.setTimeout(clearClickSuppression, 1_000)
+      onPreview()
+      longPressTimerRef.current = null
+    }, LONG_PRESS_MS)
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const movedX = Math.abs(event.clientX - longPressStartRef.current.x)
+    const movedY = Math.abs(event.clientY - longPressStartRef.current.y)
+    if (movedX > LONG_PRESS_MOVE_TOLERANCE_PX || movedY > LONG_PRESS_MOVE_TOLERANCE_PX) cancelLongPress()
+  }
+
+  useEffect(() => () => {
+    cancelLongPress()
+    clearClickSuppression()
+  }, [])
+
   // Como WhatsApp: si el chat entró al resultado de búsqueda solo por un
   // mensaje del historial, el preview muestra ese mensaje y no el último.
   const isMessageMatch = chat.search_rank === 0 && !!chat.matched_message
@@ -74,7 +120,31 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
 
   return (
     <button type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        if (suppressClickRef.current) {
+          event.preventDefault()
+          clearClickSuppression()
+          return
+        }
+        onClick()
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        cancelLongPress()
+        if (!suppressClickRef.current) onPreview()
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onKeyDown={(event) => {
+        if (event.shiftKey && event.key === 'Enter') {
+          event.preventDefault()
+          onPreview()
+        }
+      }}
+      title="Mantén pulsado o usa clic derecho para vista rápida"
       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200 ${
         isSelected
           ? 'bg-wa-active dark:bg-wa-active-dark'

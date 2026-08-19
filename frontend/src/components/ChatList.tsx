@@ -37,6 +37,7 @@ interface Props {
   onRefresh: () => Promise<void>
   selectedId: string | null
   onSelect: (chat: Chat) => void
+  onPreview: (chat: Chat) => void
   hasNextPage: boolean
   isFetchingNextPage: boolean
   hasNextPageError: boolean
@@ -100,6 +101,7 @@ export function ChatList({
   onRefresh,
   selectedId,
   onSelect,
+  onPreview,
   hasNextPage,
   isFetchingNextPage,
   hasNextPageError,
@@ -588,6 +590,7 @@ export function ChatList({
                       isHighlighted={chat.chat_id === highlightedId}
                       search={search}
                       onClick={() => onSelect(chat)}
+                      onPreview={() => onPreview(chat)}
                     />
                   ) : (
                     <LoadMoreRow

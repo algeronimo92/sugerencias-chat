@@ -5,6 +5,7 @@ import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Moon, Sun, X } from 'lucide-react'
 import { EMPTY_CHAT_FILTERS, type Chat, type ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
+import { ChatPeekDialog } from './components/ChatPeekDialog'
 import { ChatThread } from './components/ChatThread'
 import { LoginPage } from './components/LoginPage'
 import { MobileNavBar } from './components/MobileNavBar'
@@ -106,6 +107,7 @@ function MainLayout() {
   const isMobile = layout === 'mobile'
   const isDesktop = layout === 'desktop'
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false)
+  const [previewChat, setPreviewChat] = useState<Chat | null>(null)
 
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -437,6 +439,7 @@ function MainLayout() {
                 onRefresh={async () => { await refetch() }}
                 selectedId={selectedChat?.chat_id ?? null}
                 onSelect={handleSelectChat}
+                onPreview={setPreviewChat}
                 hasNextPage={!!hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 hasNextPageError={isFetchNextPageError}
@@ -495,6 +498,18 @@ function MainLayout() {
           </div>
         )}
       </Suspense>
+
+      {previewChat && (
+        <ChatPeekDialog
+          chat={previewChat}
+          onClose={() => setPreviewChat(null)}
+          onOpen={() => {
+            const chat = previewChat
+            setPreviewChat(null)
+            handleSelectChat(chat)
+          }}
+        />
+      )}
 
       {/* Sugerencias como panel deslizable en móvil y tablet. */}
       <AnimatePresence>
