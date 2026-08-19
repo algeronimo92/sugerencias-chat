@@ -29,9 +29,17 @@ export function isAwaitingReply(chat: Chat): boolean {
 /** Hay mensajes sin ver, pero un bot/automatización ya respondió después de
  * la última vez que un vendedor vio el chat — badge de otro color en vez de
  * "no leído" a secas, para no confundir "nadie contestó" con "ya contestó
- * el bot, falta que un humano lo revise". */
+ * el bot, falta que un humano lo revise". Si el cliente volvió a escribir
+ * después de esa respuesta automática, ya no está "atendido": hay un mensaje
+ * nuevo sin ninguna respuesta detrás, así que cuenta como no leído a secas. */
 export function isBotAttended(chat: Chat): boolean {
   if (chat.unread_count <= 0 || !chat.last_automated_reply_at) return false
+  if (
+    chat.last_customer_message_at &&
+    new Date(chat.last_customer_message_at).getTime() > new Date(chat.last_automated_reply_at).getTime()
+  ) {
+    return false
+  }
   if (!chat.last_read_at) return true
   return new Date(chat.last_automated_reply_at).getTime() > new Date(chat.last_read_at).getTime()
 }
