@@ -78,4 +78,24 @@ describe('MediaPreviewDialog', () => {
 
     expect(screen.queryByRole('button', { name: 'Recortar imagen' })).not.toBeInTheDocument()
   })
+
+  it('muestra nombre, tipo y tamaño antes de enviar un documento', () => {
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:documento"
+        kind="document"
+        filename="consentimiento.pdf"
+        contentType="application/pdf"
+        fileSize={1_572_864}
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText('consentimiento.pdf').length).toBeGreaterThan(0)
+    expect(screen.getByText('PDF · 1.5 MB')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Documento seleccionado' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Recortar imagen' })).not.toBeInTheDocument()
+  })
 })
