@@ -45,12 +45,21 @@ class WaitAnyConditionKind(StrEnum):
     TIMER = "timer"
     MESSAGE = "message"
     BUSINESS_HOURS = "business_hours"
+    # Lo que el cliente ve reproducido de lo que le mandamos nosotros.
     MEDIA_PLAYED = "media_played"
+    # Lo contrario: el cliente nos mandó a nosotros una foto o un archivo.
+    # Va aparte de MESSAGE porque un "ahorita te la mando" no es la foto, y
+    # el flujo que la pidió necesita distinguirlos.
+    MEDIA_RECEIVED = "media_received"
 
 
 class QuestionHandle(StrEnum):
     OTHER = "other"
     TIMEOUT = "timeout"
+    # Respondió con una foto o un archivo en vez de tocar un botón. Es la
+    # única salida opcional del nodo: si el flujo no la conecta, esa respuesta
+    # sigue cayendo en OTHER como antes de que existiera.
+    MEDIA = "media"
 
 
 class FlowConditionType(StrEnum):
@@ -60,6 +69,10 @@ class FlowConditionType(StrEnum):
     MESSAGE_CONTAINS = "message_contains"
     MESSAGE_EQUALS = "message_equals"
     MESSAGE_NOT_CONTAINS = "message_not_contains"
+    # Sobre la descripción que la IA genera para los adjuntos
+    # (wsp_messages.analysis->>'summary'), no sobre el texto del cliente: es
+    # lo que permite separar una foto de rostro de un comprobante de pago.
+    MEDIA_ANALYSIS_CONTAINS = "media_analysis_contains"
     SELLER_EQUALS = "seller_equals"
     TAG_PRESENT = "tag_present"
     WHATSAPP_WINDOW_OPEN = "whatsapp_window_open"

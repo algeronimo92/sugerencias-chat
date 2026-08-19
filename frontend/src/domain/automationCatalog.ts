@@ -128,6 +128,7 @@ export const WaitAnyConditionKind = {
   Message: 'message',
   BusinessHours: 'business_hours',
   MediaPlayed: 'media_played',
+  MediaReceived: 'media_received',
 } as const
 export type WaitAnyConditionKindValue = ValueOf<typeof WaitAnyConditionKind>
 
@@ -136,6 +137,7 @@ export const WAIT_ANY_CONDITION_LABELS = {
   [WaitAnyConditionKind.Message]: 'Hasta recibir mensaje',
   [WaitAnyConditionKind.BusinessHours]: 'Excepto horas laborales',
   [WaitAnyConditionKind.MediaPlayed]: 'Hasta que se reproduce lo enviado',
+  [WaitAnyConditionKind.MediaReceived]: 'Hasta que mande una foto o archivo',
 } satisfies Record<WaitAnyConditionKindValue, string>
 
 /** Handles fijos del nodo Pregunta que no dependen de los botones
@@ -143,12 +145,14 @@ export const WAIT_ANY_CONDITION_LABELS = {
 export const QuestionHandle = {
   Other: 'other',
   Timeout: 'timeout',
+  Media: 'media',
 } as const
 export type QuestionHandleValue = ValueOf<typeof QuestionHandle>
 
 export const QUESTION_HANDLE_LABELS = {
   [QuestionHandle.Other]: 'Otra respuesta',
   [QuestionHandle.Timeout]: 'Sin respuesta',
+  [QuestionHandle.Media]: 'Mandó una foto',
 } satisfies Record<QuestionHandleValue, string>
 
 export const FlowConditionType = {
@@ -158,6 +162,7 @@ export const FlowConditionType = {
   MessageContains: 'message_contains',
   MessageEquals: 'message_equals',
   MessageNotContains: 'message_not_contains',
+  MediaAnalysisContains: 'media_analysis_contains',
   SellerEquals: 'seller_equals',
   TagPresent: 'tag_present',
   WhatsAppWindowOpen: 'whatsapp_window_open',
@@ -172,6 +177,7 @@ export const FLOW_CONDITION_LABELS = {
   [FlowConditionType.MessageContains]: 'Mensaje contiene',
   [FlowConditionType.MessageEquals]: 'Mensaje es igual a',
   [FlowConditionType.MessageNotContains]: 'Mensaje no contiene',
+  [FlowConditionType.MediaAnalysisContains]: 'Descripción del archivo contiene',
   [FlowConditionType.SellerEquals]: 'Vendedor es',
   [FlowConditionType.TagPresent]: 'Tiene etiqueta',
   [FlowConditionType.WhatsAppWindowOpen]: 'Ventana WhatsApp abierta',

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from domain_types import AutomationExecutionStatus
+from services import automation_service
 from services.automation_service import (
     _match_question_button,
     _normalize_question,
@@ -64,6 +65,48 @@ def capturing_session(scalar_result=None):
             pass
 
     return FakeSession, calls
+
+
+class _Rows:
+    """Resultado de `session.execute()`: sirve tanto para `.all()` directo
+    (la consulta de ejecuciones en pausa) como para `.mappings().all()` (la
+    de mensajes del cliente) — `.mappings()` devuelve el mismo objeto."""
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+    def mappings(self):
+        return self
+
+
+class _DiscoverSession:
+    """FakeSession para `_discover_wait_any_replies`, que no usa `deps`: abre
+    su propia sesión llamando a `get_sessionmaker()()` directo, así que hay
+    que parchear esa función y no `deps.session_factory` como en el resto del
+    archivo. Una sola instancia se reutiliza en las dos consultas por
+    ejecución (la función abre `async with get_sessionmaker()()` más de una
+    vez): `results` se consume en orden a través de toda la llamada — primero
+    las ejecuciones en pausa, luego los mensajes candidatos por cada una, y el
+    UPDATE si encontró con qué reanudar."""
+
+    def __init__(self, results):
+        self._results = iter(results)
+        self.executed: list = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute(self, stmt):
+        self.executed.append(stmt)
+        return next(self._results)
+
+    async def commit(self):
+        pass
 
 
 def question_flow():
@@ -166,7 +209,7 @@ class TestRunVisualExecutionWaitAny:
         state = params["flow_state"]
         assert state["current_node_id"] == "w"
         assert state["waiting_at_node"] == "w"
-        assert state["awaiting_message"] is True
+        assert state["awaiting"] == ["message"]
         assert "waiting_since" in state
         now = datetime.now(timezone.utc)
         assert now < params["scheduled_for"] <= now + timedelta(seconds=11)
@@ -363,6 +406,23 @@ class TestMatchQuestionButton:
     def test_falls_back_to_other_when_nothing_matches(self):
         assert _match_question_button(self.BUTTONS, "text", "tal vez", None) == "other"
 
+    def test_a_photo_goes_to_its_own_branch_when_connected(self):
+        # 9 de cada 10 fotos llegan sin caption: por texto no matchearía
+        # ningún botón y caería en "otra respuesta" —la rama del cliente que
+        # NO mandó lo pedido— si no se resolviera antes por tipo.
+        assert _match_question_button(
+            self.BUTTONS, "image", None, None,
+            kind="media_received", has_media_handle=True,
+        ) == "media"
+
+    def test_a_photo_falls_back_to_other_when_the_flow_did_not_connect_media(self):
+        # Un flujo publicado antes de que existiera la salida "media" no debe
+        # cambiar de comportamiento: sigue siendo "otra respuesta".
+        assert _match_question_button(
+            self.BUTTONS, "image", None, None,
+            kind="media_received", has_media_handle=False,
+        ) == "other"
+
 
 class TestRunVisualExecutionQuestion:
     async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox):
@@ -393,7 +453,7 @@ class TestRunVisualExecutionQuestion:
         assert len(calls) == 1
         state = calls[0]["flow_state"]
         assert state["waiting_at_node"] == "q"
-        assert state["awaiting_message"] is True
+        assert state["awaiting"] == ["message"]
         assert state["question_buttons"] == [{"id": "btn_1", "label": "Sí"}, {"id": "btn_2", "label": "No"}]
 
     async def test_resumes_via_the_matched_button_branch(self, deps):
@@ -452,3 +512,97 @@ class TestRunVisualExecutionQuestion:
         final = calls[-1]
         result = next(r for r in final["action_results"] if r["type"] == "question")
         assert result["branch"] == "timeout"
+
+
+class TestDiscoverWaitAnyReplies:
+    """`_discover_wait_any_replies` corre cada minuto y decide, para cada
+    ejecución pausada, cuál de los mensajes que llegaron desde entonces es la
+    respuesta que la reanuda — a diferencia del resto del archivo, no pasa por
+    `_run_visual_execution` así que necesita su propia sesión falsa (ver
+    `_DiscoverSession` arriba)."""
+
+    async def test_album_envelope_is_skipped_and_the_photo_that_follows_resumes(self, monkeypatch):
+        # Un envío de varias fotos manda primero el sobre `albumMessage`
+        # (unsupported, sin media) y milisegundos después la imagen real. Sin
+        # filtrarlo, el sobre vacío sería el que reanuda el flujo.
+        session = _DiscoverSession([
+            _Rows([(100, "51999@s.whatsapp.net", {
+                "waiting_since": "2026-01-01T00:00:00+00:00",
+                "awaiting": ["media_received"],
+            })]),
+            _Rows([
+                {
+                    "id": 1, "wa_message_id": "ALBUM-1", "message_type": "unsupported",
+                    "content": None, "payload": {"original_type": "albumMessage"}, "analysis": None,
+                },
+                {
+                    "id": 2, "wa_message_id": "PHOTO-1", "message_type": "image",
+                    "content": None, "payload": None,
+                    "analysis": {"summary": "Primer plano de un rostro"},
+                },
+            ]),
+            None,
+        ])
+        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+
+        await automation_service._discover_wait_any_replies()
+
+        params = session.executed[-1].compile().params
+        assert params["flow_state"]["resume_reason"] == "media_received"
+        assert params["flow_state"]["message_context"]["message_id"] == "PHOTO-1"
+        assert params["flow_state"]["message_context"]["analysis_summary"] == "Primer plano de un rostro"
+
+    async def test_text_reply_is_skipped_when_only_awaiting_the_photo(self, monkeypatch):
+        # Un bloque que sólo espera la foto (sin rama "message") no debe
+        # despertarse con un "ahorita te la mando": sigue esperando hasta que
+        # llegue el adjunto de verdad, sin importar el orden de llegada.
+        session = _DiscoverSession([
+            _Rows([(100, "51999@s.whatsapp.net", {
+                "waiting_since": "2026-01-01T00:00:00+00:00",
+                "awaiting": ["media_received"],
+            })]),
+            _Rows([
+                {
+                    "id": 1, "wa_message_id": "TXT-1", "message_type": "text",
+                    "content": "ahorita te la mando", "payload": None, "analysis": None,
+                },
+                {
+                    "id": 2, "wa_message_id": "PHOTO-1", "message_type": "image",
+                    "content": None, "payload": None,
+                    "analysis": {"summary": "Comprobante de pago Yape"},
+                },
+            ]),
+            None,
+        ])
+        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+
+        await automation_service._discover_wait_any_replies()
+
+        params = session.executed[-1].compile().params
+        assert params["flow_state"]["resume_reason"] == "media_received"
+        assert params["flow_state"]["message_context"]["message_id"] == "PHOTO-1"
+
+    async def test_a_message_only_block_still_resumes_on_the_first_reply(self, monkeypatch):
+        # Contraste con el test anterior: cuando el bloque sí espera
+        # "message" (el caso de siempre), no cambia nada — resuelve con la
+        # primera respuesta, sea texto o foto.
+        session = _DiscoverSession([
+            _Rows([(100, "51999@s.whatsapp.net", {
+                "waiting_since": "2026-01-01T00:00:00+00:00",
+                "awaiting": ["message"],
+            })]),
+            _Rows([
+                {
+                    "id": 1, "wa_message_id": "TXT-1", "message_type": "text",
+                    "content": "ahorita te la mando", "payload": None, "analysis": None,
+                },
+            ]),
+            None,
+        ])
+        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+
+        await automation_service._discover_wait_any_replies()
+
+        params = session.executed[-1].compile().params
+        assert params["flow_state"]["resume_reason"] == "message"
+        assert params["flow_state"]["message_context"]["message_id"] == "TXT-1"

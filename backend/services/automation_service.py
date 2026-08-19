@@ -64,6 +64,7 @@ from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.settings_service import get_effective
 from services.automation_rules import (
     business_timezone,
+    classify_customer_reply,
     flow_indexes,
     is_business_hours,
     matches_static_conditions,
@@ -904,11 +905,12 @@ _normalize_flow_position = normalize_flow_position
 def _normalize_wait_any_conditions(data: dict, position: int) -> dict:
     """Condiciones de un bloque Pausa (`wait_any`): cada una es una salida
     propia del nodo. El `id` de cada condición es directamente su `kind`
-    ("timer"/"message") porque el diseño admite a lo sumo una de cada — no
-    hace falta que el usuario invente identificadores.
+    ("timer"/"message"/"media_received"/...) porque el diseño admite a lo sumo
+    una de cada — no hace falta que el usuario invente identificadores.
 
-    `timer` es obligatorio (nunca puede quedar esperando para siempre);
-    `message` es opcional.
+    `timer` es obligatorio (nunca puede quedar esperando para siempre); el
+    resto son opcionales. `message` y `media_received` conviven: con las dos,
+    el texto sale por una y la foto por la otra.
     """
     raw_conditions = data.get("conditions")
     if not isinstance(raw_conditions, list) or not raw_conditions:
@@ -1221,7 +1223,7 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
         if isinstance(output, dict) and isinstance(output.get("id"), str)
     }
     if any(node["type"] == FlowNodeType.QUESTION for node in nodes):
-        dynamic_handles |= {QuestionHandle.OTHER, QuestionHandle.TIMEOUT}
+        dynamic_handles |= {QuestionHandle.OTHER, QuestionHandle.TIMEOUT, QuestionHandle.MEDIA}
     edges = normalize_edges(raw_edges, ids, allow_duplicate_handles=False, extra_handles=dynamic_handles)
     trigger = next((node for node in nodes if node["type"] == FlowNodeType.TRIGGER), None)
     trigger_data = trigger["data"] if trigger else {}
@@ -1985,17 +1987,29 @@ async def _matches_conditions(
 
 
 def _execution_message_context(execution: AutomationExecution) -> dict:
+    """El mensaje del cliente que trajo la ejecución hasta el nodo actual: el
+    que la reanudó de una pausa si lo hubo, y si no el que la disparó.
+
+    `message_type` y `analysis_summary` sólo existen para las reanudaciones —
+    el disparador no los guarda— así que toda condición que dependa de ellos
+    tiene que tolerar que falten."""
     state = execution.flow_state or {}
     resumed_message = state.get("message_context")
     if isinstance(resumed_message, dict) and "content" in resumed_message:
         return {
             "message_id": resumed_message.get("message_id"),
             "content": resumed_message.get("content"),
+            "message_type": resumed_message.get("message_type"),
+            "analysis_summary": resumed_message.get("analysis_summary"),
         }
     payload = execution.event_payload or {}
     return {
         "message_id": payload.get("message_id"),
         "content": payload.get("content"),
+        # Un flujo invocado recibe el contexto del padre en su event_payload,
+        # así que la condición sobre el adjunto también funciona ahí dentro.
+        "message_type": payload.get("message_type"),
+        "analysis_summary": payload.get("analysis_summary"),
     }
 
 
@@ -2003,10 +2017,15 @@ async def _matches_flow_condition(
     data: dict,
     chat: dict,
     deps: AutomationDeps = DEFAULT_DEPS,
-    message_content: str | None = None,
+    message_context: dict | None = None,
 ) -> tuple[bool, str]:
+    """`message_context` es el mensaje del cliente que trajo la ejecución
+    hasta acá (ver `_execution_message_context`): su texto, su tipo y la
+    descripción que la IA generó si era un adjunto."""
     condition_type = data.get("condition_type")
     value = data.get("value")
+    context = message_context or {}
+    message_content = context.get("content")
     if condition_type == FlowConditionType.STAGE_EQUALS:
         matches = chat.get("stage") == value
         return matches, f"Etapa {'coincide' if matches else 'no coincide'} con {value}"
@@ -2035,6 +2054,14 @@ async def _matches_flow_condition(
             matches = normalized_value in normalized_message
             operation = "contiene"
         return matches, f"Mensaje {'cumple' if matches else 'no cumple'}: {operation} {value}"
+    if condition_type == FlowConditionType.MEDIA_ANALYSIS_CONTAINS:
+        summary = context.get("analysis_summary")
+        if not summary or not str(summary).strip():
+            # Sin descripción no se puede afirmar nada del adjunto, y un texto
+            # tampoco la tiene: la rama Sí exige evidencia, no ausencia de ella.
+            return False, "El mensaje no es un adjunto con descripción"
+        matches = _normalize_reply_text(str(value)) in _normalize_reply_text(str(summary))
+        return matches, f"La descripción del archivo {'contiene' if matches else 'no contiene'}: {value}"
     if condition_type == FlowConditionType.SELLER_EQUALS:
         matches = chat.get("vendedor_id") == value
         return matches, "Vendedor coincide" if matches else "Vendedor no coincide"
@@ -2053,7 +2080,7 @@ async def _matches_flow_condition_node(
     data: dict,
     chat: dict,
     deps: AutomationDeps = DEFAULT_DEPS,
-    message_content: str | None = None,
+    message_context: dict | None = None,
 ) -> tuple[bool, str, str]:
     """OR entre grupos y AND dentro de cada grupo.
 
@@ -2062,7 +2089,7 @@ async def _matches_flow_condition_node(
     """
     groups = data.get("condition_groups")
     if not isinstance(groups, list):
-        matches, detail = await _matches_flow_condition(data, chat, deps, message_content)
+        matches, detail = await _matches_flow_condition(data, chat, deps, message_context)
         return matches, (FlowHandle.YES if matches else FlowHandle.NO), detail
     failed_groups: list[str] = []
     for group_position, group in enumerate(groups, start=1):
@@ -2070,7 +2097,7 @@ async def _matches_flow_condition_node(
         group_matches = True
         for condition in group.get("conditions") or []:
             matches, detail = await _matches_flow_condition(
-                condition, chat, deps, message_content,
+                condition, chat, deps, message_context,
             )
             details.append(detail)
             if not matches:
@@ -2125,7 +2152,7 @@ async def simulate_visual_flow(rule_id: int, lead_id: str) -> dict:
                 else None
             )
             matches, branch, detail = await _matches_flow_condition_node(
-                node["data"], chat, message_content=simulation_message,
+                node["data"], chat, message_context={"content": simulation_message},
             )
             path.append({
                 "node_id": current_id,
@@ -2889,7 +2916,7 @@ async def _run_visual_execution(
                 continue
             if node["type"] == FlowNodeType.CONDITION:
                 matches, branch, detail = await _matches_flow_condition_node(
-                    node["data"], chat, deps, message_context.get("content"),
+                    node["data"], chat, deps, message_context,
                 )
                 results.append({
                     "position": len(results) + 1, "node_id": node["id"],
@@ -2984,7 +3011,10 @@ async def _run_visual_execution(
                     # cumple, llega un mensaje o se reproduce lo último que
                     # se le mandó, según qué condiciones estén configuradas).
                     timer = next(c for c in conditions if c["kind"] == WaitAnyConditionKind.TIMER)
-                    has_message = any(c["kind"] == WaitAnyConditionKind.MESSAGE for c in conditions)
+                    awaiting = [
+                        c["kind"] for c in conditions
+                        if c["kind"] in {WaitAnyConditionKind.MESSAGE, WaitAnyConditionKind.MEDIA_RECEIVED}
+                    ]
                     has_media_played = any(c["kind"] == WaitAnyConditionKind.MEDIA_PLAYED for c in conditions)
                     watching_message_id = (
                         await _last_outbound_media_message_id(chat["chat_id"], deps) if has_media_played else None
@@ -3010,7 +3040,7 @@ async def _run_visual_execution(
                             # parsear con datetime.fromisoformat, no un campo
                             # que sirva la API al frontend.
                             "waiting_since": datetime.now(timezone.utc).isoformat(),
-                            "awaiting_message": has_message,
+                            "awaiting": awaiting,
                             "watching_message_id": watching_message_id,
                         },
                     deps=deps,
@@ -3102,7 +3132,13 @@ async def _run_visual_execution(
                         wait_any_state={
                             "waiting_at_node": current_id,
                             "waiting_since": datetime.now(timezone.utc).isoformat(),
-                            "awaiting_message": True,
+                            # La salida "mandó la foto" es opcional: sólo se
+                            # espera como rama propia si el flujo la conectó.
+                            "awaiting": (
+                                [WaitAnyConditionKind.MESSAGE, WaitAnyConditionKind.MEDIA_RECEIVED]
+                                if (current_id, QuestionHandle.MEDIA) in edges
+                                else [WaitAnyConditionKind.MESSAGE]
+                            ),
                             "question_buttons": buttons_data,
                         },
                     deps=deps,
@@ -3524,11 +3560,27 @@ def _normalize_reply_text(value: str) -> str:
     return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
-def _match_question_button(buttons: list[dict], message_type: str | None, content: str | None, payload: dict | None) -> str:
+def _match_question_button(
+    buttons: list[dict],
+    message_type: str | None,
+    content: str | None,
+    payload: dict | None,
+    kind: str | None = None,
+    has_media_handle: bool = False,
+) -> str:
     """Resuelve a qué botón corresponde la respuesta del cliente: por
     `selected_id` si tocó un botón nativo, si no por número de posición o por
     el texto del botón (el fallback de texto numerado usa exactamente ese
-    esquema); si no matchea nada, "otra respuesta"."""
+    esquema); si no matchea nada, "otra respuesta".
+
+    Una foto se resuelve antes de mirar texto y sale por su propia salida:
+    9 de cada 10 llegan sin caption, así que por texto no matchea nada y
+    terminaría en "otra respuesta" — que es justamente la rama del cliente
+    que NO mandó lo que se le pidió. Si el flujo no conectó esa salida,
+    conserva el comportamiento anterior.
+    """
+    if kind == WaitAnyConditionKind.MEDIA_RECEIVED and has_media_handle:
+        return QuestionHandle.MEDIA
     if message_type == "interactive" and isinstance(payload, dict):
         selected_id = payload.get("selected_id")
         if selected_id and any(button["id"] == selected_id for button in buttons):
@@ -3542,6 +3594,44 @@ def _match_question_button(buttons: list[dict], message_type: str | None, conten
         if _normalize_reply_text(button["label"]) == normalized:
             return button["id"]
     return QuestionHandle.OTHER
+
+
+# Cuántos mensajes del cliente se miran por ejecución al buscar el que reanuda.
+# Sólo se necesita mirar más de uno cuando los primeros son ruido (el sobre de
+# un álbum) o no satisfacen ninguna rama declarada (un "ahorita te la mando"
+# en un bloque que espera únicamente la foto).
+MAX_REPLIES_SCANNED = 20
+
+
+def _awaiting_kinds(flow_state: dict) -> set[str]:
+    """Qué clases de respuesta reanudan este bloque.
+
+    `awaiting_message: true` es el formato anterior y equivale a "cualquier
+    mensaje": se sigue leyendo para que las ejecuciones que ya estaban
+    esperando cuando se desplegó esto terminen sin quedarse colgadas.
+    """
+    awaiting = flow_state.get("awaiting")
+    if isinstance(awaiting, list):
+        return {kind for kind in awaiting if isinstance(kind, str)}
+    return {WaitAnyConditionKind.MESSAGE} if flow_state.get("awaiting_message") else set()
+
+
+def _resume_branch(kind: str, awaiting: set[str]) -> str | None:
+    """Por qué rama sale una respuesta ya clasificada, o None si el bloque no
+    declaró ninguna que la acepte y hay que seguir esperando.
+
+    `message` sigue siendo el cajón de sastre —una foto también es un mensaje,
+    y un bloque que sólo espera "mensaje" tiene que reanudar con ella igual que
+    antes—, pero pierde contra `media_received` cuando el flujo se tomó el
+    trabajo de dibujar esa rama. Al revés no: un bloque que espera únicamente
+    la foto NO se despierta con un "ahorita te la mando", que es justo el
+    motivo por el que existe.
+    """
+    if kind == WaitAnyConditionKind.MEDIA_RECEIVED and WaitAnyConditionKind.MEDIA_RECEIVED in awaiting:
+        return WaitAnyConditionKind.MEDIA_RECEIVED
+    if WaitAnyConditionKind.MESSAGE in awaiting:
+        return WaitAnyConditionKind.MESSAGE
+    return None
 
 
 async def _discover_wait_any_replies() -> None:
@@ -3559,6 +3649,7 @@ async def _discover_wait_any_replies() -> None:
             .where(
                 AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
                 or_(
+                    AutomationExecution.flow_state.has_key("awaiting"),
                     AutomationExecution.flow_state["awaiting_message"].astext == "true",
                     AutomationExecution.flow_state["watching_message_id"].astext.isnot(None),
                 ),
@@ -3573,32 +3664,55 @@ async def _discover_wait_any_replies() -> None:
         since = datetime.fromisoformat(waiting_since)
         resume_reason = None
         reply_context = None
+        awaiting = _awaiting_kinds(flow_state)
         async with get_sessionmaker()() as session:
-            if flow_state.get("awaiting_message"):
-                reply = (await session.execute(
+            if awaiting:
+                replies = (await session.execute(
                     select(
                         WspMessage.id,
                         WspMessage.wa_message_id,
                         WspMessage.message_type,
                         WspMessage.content,
                         WspMessage.payload,
+                        WspMessage.analysis,
                     ).where(
                         WspMessage.chat_id == lead_id,
                         WspMessage.sender == "cliente",
                         WspMessage.sent_at > since,
-                    ).order_by(WspMessage.sent_at.asc(), WspMessage.id.asc()).limit(1)
-                )).mappings().first()
-                if reply:
+                    ).order_by(WspMessage.sent_at.asc(), WspMessage.id.asc())
+                    .limit(MAX_REPLIES_SCANNED)
+                )).mappings().all()
+                question_buttons = flow_state.get("question_buttons")
+                for reply in replies:
+                    kind = classify_customer_reply(reply["message_type"], reply["payload"])
+                    if kind is None:
+                        # Ruido de WhatsApp (el sobre de un álbum, una acción
+                        # cifrada): no es una respuesta, se sigue esperando.
+                        continue
+                    if question_buttons:
+                        branch = _match_question_button(
+                            question_buttons,
+                            reply["message_type"],
+                            reply["content"],
+                            reply["payload"],
+                            kind,
+                            WaitAnyConditionKind.MEDIA_RECEIVED in awaiting,
+                        )
+                    else:
+                        branch = _resume_branch(kind, awaiting)
+                        if branch is None:
+                            continue
+                    analysis = reply["analysis"] if isinstance(reply["analysis"], dict) else {}
                     reply_context = {
                         "message_id": str(reply["wa_message_id"] or reply["id"]),
                         "content": reply["content"],
+                        "message_type": reply["message_type"],
+                        # La descripción que la IA generó del adjunto, que es
+                        # sobre lo que puede condicionar el flujo más adelante.
+                        "analysis_summary": analysis.get("summary"),
                     }
-                    question_buttons = flow_state.get("question_buttons")
-                    resume_reason = (
-                        _match_question_button(question_buttons, reply["message_type"], reply["content"], reply["payload"])
-                        if question_buttons
-                        else WaitAnyConditionKind.MESSAGE
-                    )
+                    resume_reason = branch
+                    break
             watching_message_id = flow_state.get("watching_message_id")
             if resume_reason is None and watching_message_id:
                 status = await session.scalar(

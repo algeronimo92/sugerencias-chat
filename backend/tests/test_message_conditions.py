@@ -114,19 +114,19 @@ class TestMatchMessageCondition:
             {"condition_type": FlowConditionType.MESSAGE_CONTAINS, "value": "Hollywood peel"},
             make_chat(),
             deps,
-            "  QUIERO   HÓLLYWOOD PEEL, por favor ",
+            {"content": "  QUIERO   HÓLLYWOOD PEEL, por favor "},
         )
         assert matches is True
 
     async def test_equals_uses_the_normalized_complete_message(self, deps):
         data = {"condition_type": FlowConditionType.MESSAGE_EQUALS, "value": "sí, deseo información"}
-        assert (await _matches_flow_condition(data, make_chat(), deps, " SI,  deseo información "))[0] is True
-        assert (await _matches_flow_condition(data, make_chat(), deps, "Sí, deseo información adicional"))[0] is False
+        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": " SI,  deseo información "}))[0] is True
+        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Sí, deseo información adicional"}))[0] is False
 
     async def test_not_contains_inverts_the_contains_result(self, deps):
         data = {"condition_type": FlowConditionType.MESSAGE_NOT_CONTAINS, "value": "tatuaje"}
-        assert (await _matches_flow_condition(data, make_chat(), deps, "Quiero HIFU"))[0] is True
-        assert (await _matches_flow_condition(data, make_chat(), deps, "Borrado de tatuaje"))[0] is False
+        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Quiero HIFU"}))[0] is True
+        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Borrado de tatuaje"}))[0] is False
 
     @pytest.mark.parametrize("condition_type", [
         FlowConditionType.MESSAGE_CONTAINS,
@@ -139,6 +139,39 @@ class TestMatchMessageCondition:
         )
         assert matches is False
         assert "No hay" in detail
+
+
+class TestMatchMediaAnalysisCondition:
+    """Es lo que separa un comprobante de pago de una selfie de rostro: mira
+    `analysis_summary` (la descripción que la IA generó del adjunto), no el
+    texto que mandó el cliente."""
+
+    async def test_matches_when_the_ai_description_mentions_it(self, deps):
+        matches, detail = await _matches_flow_condition(
+            {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante de pago"},
+            make_chat(), deps,
+            {"content": None, "analysis_summary": "La imagen es un COMPROBANTE DE PAGO de Yape por S/ 50.00"},
+        )
+        assert matches is True
+
+    async def test_does_not_match_a_different_description(self, deps):
+        matches, _ = await _matches_flow_condition(
+            {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante de pago"},
+            make_chat(), deps,
+            {"content": None, "analysis_summary": "Primer plano del rostro de una persona, con pecas y ojeras"},
+        )
+        assert matches is False
+
+    async def test_a_plain_text_reply_never_matches_since_it_has_no_analysis(self, deps):
+        # Un texto no tiene analysis_summary: la rama Sí exige evidencia de
+        # que era un adjunto, no ausencia de coincidencia en texto.
+        matches, detail = await _matches_flow_condition(
+            {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante"},
+            make_chat(), deps,
+            {"content": "ahorita te mando la captura", "analysis_summary": None},
+        )
+        assert matches is False
+        assert "adjunto" in detail
 
 
 class TestMatchConditionGroups:
@@ -156,7 +189,7 @@ class TestMatchConditionGroups:
 
     async def test_all_conditions_inside_a_group_must_match(self, deps):
         matches, branch, detail = await _matches_flow_condition_node(
-            self.GROUPED, make_chat(origen="Instagram"), deps, "Quiero Hollywood",
+            self.GROUPED, make_chat(origen="Instagram"), deps, {"content": "Quiero Hollywood"},
         )
         assert matches is False
         assert branch == "no"
@@ -164,7 +197,7 @@ class TestMatchConditionGroups:
 
     async def test_groups_are_or_and_return_the_matching_output(self, deps):
         matches, branch, _ = await _matches_flow_condition_node(
-            self.GROUPED, make_chat(origen="Instagram"), deps, "SEMANA DE LA MUJER",
+            self.GROUPED, make_chat(origen="Instagram"), deps, {"content": "SEMANA DE LA MUJER"},
         )
         assert matches is True
         assert branch == "women_week"
@@ -179,7 +212,7 @@ class TestMatchConditionGroups:
             ]},
         ]}
         assert (await _matches_flow_condition_node(
-            data, make_chat(), deps, "Hollywood Peel",
+            data, make_chat(), deps, {"content": "Hollywood Peel"},
         ))[1] == "first"
 
 
@@ -191,6 +224,7 @@ class TestMessageContext:
         )
         assert _execution_message_context(execution) == {
             "message_id": "reply", "content": "respuesta nueva",
+            "message_type": None, "analysis_summary": None,
         }
 
     def test_non_text_reply_clears_the_previous_text_context(self):
@@ -200,6 +234,7 @@ class TestMessageContext:
         )
         assert _execution_message_context(execution) == {
             "message_id": "reply", "content": None,
+            "message_type": None, "analysis_summary": None,
         }
 
     async def test_visual_condition_routes_using_trigger_message(self, deps):

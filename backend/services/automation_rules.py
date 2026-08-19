@@ -55,6 +55,49 @@ def is_business_hours(now: datetime) -> bool:
     return now.weekday() < 5 and BUSINESS_START_HOUR <= now.hour < BUSINESS_END_HOUR
 
 
+# Tipos de `wsp_messages` que cuentan como "el cliente mandó una foto o un
+# archivo". El sticker queda fuera a propósito: es una reacción, nadie
+# responde con uno a un "mandame una foto de la zona".
+MEDIA_MESSAGE_TYPES = frozenset({"image", "video", "ptv", "document", "view_once"})
+
+# Eventos que WhatsApp emite alrededor de un mensaje pero que no son una
+# respuesta del cliente, y que hoy llegan como `unsupported` (el tipo original
+# queda en `payload.original_type`):
+#
+# - `albumMessage` y `associatedChildMessage` son el sobre de un envío de
+#   varias fotos juntas. Medido sobre 39 casos, el 100% viene acompañado de la
+#   imagen real dentro de ±60 s — pero el sobre llega ANTES, así que sin este
+#   filtro es el sobre vacío el que despierta la pausa y el flujo avanza
+#   creyendo que ya vio la foto.
+# - `secretEncryptedMessage` es una acción cifrada sobre un mensaje nuestro
+#   (`targetMessageKey.fromMe: true`) que Evolution no descifra: no hay
+#   contenido del cliente que leer, ni ahora ni arreglando el normalizador.
+#
+# Cualquier otro `unsupported` sí cuenta como respuesta: es un tipo que
+# todavía no sabemos leer, no ruido conocido.
+IGNORED_ORIGINAL_TYPES = frozenset({
+    "albumMessage", "associatedChildMessage", "secretEncryptedMessage",
+})
+
+
+def classify_customer_reply(
+    message_type: str | None, payload: object = None,
+) -> str | None:
+    """Qué clase de respuesta es un mensaje del cliente, para decidir por qué
+    rama sigue un bloque que está esperando.
+
+    Devuelve el `kind` de la condición que satisface —`media_received` o
+    `message`— o None si el evento no es una respuesta y hay que seguir
+    esperando como si no hubiera llegado.
+    """
+    if message_type in MEDIA_MESSAGE_TYPES:
+        return WaitAnyConditionKind.MEDIA_RECEIVED
+    original_type = payload.get("original_type") if isinstance(payload, dict) else None
+    if message_type == "unsupported" and original_type in IGNORED_ORIGINAL_TYPES:
+        return None
+    return WaitAnyConditionKind.MESSAGE
+
+
 def normalize_conditions(raw_conditions: object) -> dict:
     conditions = raw_conditions if isinstance(raw_conditions, dict) else {}
     normalized = {
@@ -192,11 +235,15 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             if len(handles) != len(set(handles)) or not set(handles) <= expected or not required <= set(handles):
                 raise ValueError("Cada condición de la pausa debe tener su propia salida (el temporizador es opcional)")
         elif node["type"] == FlowNodeType.QUESTION:
-            expected = {button["id"] for button in node["data"].get("buttons", [])} | {
+            required = {button["id"] for button in node["data"].get("buttons", [])} | {
                 QuestionHandle.OTHER, QuestionHandle.TIMEOUT,
             }
+            # "Mandó la foto" es la única salida opcional: sin conectar, esas
+            # respuestas caen en "otra respuesta" como antes de que la salida
+            # existiera — así los flujos ya publicados se siguen validando.
+            allowed = required | {QuestionHandle.MEDIA}
             handles = [edge["source_handle"] for edge in node_edges]
-            if len(handles) != len(expected) or set(handles) != expected:
+            if len(handles) != len(set(handles)) or not set(handles) <= allowed or not required <= set(handles):
                 raise ValueError("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida")
         elif node["type"] == FlowNodeType.ROUND_ROBIN:
             expected = {output["id"] for output in node["data"].get("outputs", [])}
