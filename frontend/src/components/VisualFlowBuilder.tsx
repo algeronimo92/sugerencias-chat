@@ -784,14 +784,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         </div>
       </div>
     </div>}
-    {jsonViewOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setJsonViewOpen(false) }}>
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-wa-panel-dark">
+    {jsonViewOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="absolute inset-0 cursor-default" />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-wa-panel-dark">
         <div className="flex items-start justify-between p-5 pb-0">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Braces className="h-4 w-4 text-wa-primary-strong" />JSON del flujo</h2>
             <p className="mt-1 text-[11px] text-wa-muted">Estructura de nodos y conexiones tal como se guarda.</p>
           </div>
-          <button type="button" onClick={() => setJsonViewOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button>
+          <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-3 flex items-center gap-2 px-5">
           <button type="button" onClick={() => setJsonViewTab('draft')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${jsonViewTab === 'draft' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Borrador actual</button>
