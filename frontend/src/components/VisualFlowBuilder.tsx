@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
   Activity, ArrowRight, Beaker, Braces, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
-  Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, UserRound, X, Zap,
+  Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, Upload, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { CreateTemplateDialog } from './CreateTemplateDialog'
+import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { AttachmentPreview, MediaAssetField } from './MediaAssetField'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import client from '../api/client'
@@ -330,6 +332,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const [searching, setSearching] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
   const [jsonViewOpen, setJsonViewOpen] = useState(false)
+  const [importJsonOpen, setImportJsonOpen] = useState(false)
   const [jsonViewTab, setJsonViewTab] = useState<'draft' | 'published'>('draft')
   const [jsonCopied, setJsonCopied] = useState(false)
   const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false)
@@ -604,6 +607,23 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     }
   }
 
+  async function importFlowJson(flowDefinition: AutomationFlowDefinition) {
+    setError(null); setNotice(null)
+    const saved = ruleId == null
+      ? await createFlow.mutateAsync({ name, flow_definition: flowDefinition })
+      : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flowDefinition })
+    setRuleId(saved.id)
+    if (isFlowDefinition(saved.flow_definition)) {
+      const normalized = withDefaultConditions(saved.flow_definition)
+      syncFlow(normalized)
+      setSavedDefinition(normalized)
+    }
+    setName(saved.name)
+    setSavedName(saved.name)
+    setSelectedId(null)
+    toast.success('Flujo reemplazado desde JSON.')
+  }
+
   function commitMaxPerHour(value: number | null) {
     setMaxPerHour(value)
     if (ruleId == null || value === (rule?.max_executions_per_hour ?? null)) return
@@ -697,7 +717,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       <button type="button" onClick={autoLayout} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => setVersionsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-wa-border-dark dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
       <button type="button" onClick={() => { setSimulationOpen(true); setSimulation(null) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
-      <button type="button" title="Ver el JSON del flujo" onClick={() => { setJsonViewOpen(true); setJsonViewTab('draft'); setJsonCopied(false) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><Braces className="h-4 w-4" />Ver JSON</button>
+      <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-wa-border-dark" role="group" aria-label="JSON del flujo">
+        <button type="button" title="Ver el JSON del flujo" onClick={() => { setJsonViewOpen(true); setJsonViewTab('draft'); setJsonCopied(false) }} className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Braces className="h-4 w-4" /></button>
+        <button type="button" title="Reemplazar todos los bloques y conexiones con un JSON" onClick={() => setImportJsonOpen(true)} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-wa-head-dark"><Upload className="h-4 w-4" /></button>
+      </div>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-primary-strong px-3 py-2 text-xs font-semibold text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Save className="h-4 w-4" />Guardar borrador</button>
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
@@ -811,6 +834,14 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         <pre className="m-5 mt-3 min-h-0 flex-1 overflow-auto rounded-xl bg-wa-hover p-3 text-[11px] leading-relaxed text-gray-800 dark:bg-wa-head-dark dark:text-gray-200"><code>{JSON.stringify(jsonViewTab === 'published' ? (publishedDefinition ?? flow) : flow, null, 2)}</code></pre>
       </div>
     </div>}
+    {importJsonOpen && <ImportFlowJsonDialog
+      title="Reemplazar flujo con JSON"
+      description="Pega el JSON de un flow_definition o sube un archivo .json. Se guarda de inmediato como el nuevo borrador de este flujo."
+      confirmLabel="Reemplazar flujo"
+      destructiveNotice="Esto reemplaza TODOS los bloques y conexiones actuales del flujo por los del JSON. No se pierde nada del lado del servidor hasta que confirmes, pero el lienzo actual se descarta."
+      onClose={() => setImportJsonOpen(false)}
+      onImport={importFlowJson}
+    />}
     {exitConfirmationOpen && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setExitConfirmationOpen(false) }}>
       <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-flow-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
         <h2 id="unsaved-flow-title" className="text-sm font-semibold text-wa-text dark:text-white">Hay cambios sin guardar</h2>
