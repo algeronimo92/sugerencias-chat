@@ -12,7 +12,7 @@ import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { FlowPicker } from './FlowPicker'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
-import { MediaPreviewDialog, type MediaPreviewKind } from './MediaPreviewDialog'
+import { MediaPreviewDialog } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplatePicker } from './TemplatePicker'
 import { VoiceRecorder } from './VoiceRecorder'
@@ -93,9 +93,9 @@ export function ChatComposer({
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
-  // Imagen, video o documento elegido, a la espera de confirmar el envío con epígrafe
+  // Imagen/video elegido o pegado, a la espera de confirmar el envío con epígrafe
   // (la pantalla de preview de WhatsApp).
-  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: MediaPreviewKind } | null>(null)
+  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' | 'document' } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -225,15 +225,10 @@ export function ChatComposer({
 
   function openMediaPreview(file: File) {
     setMediaError(null)
-    const kind: MediaPreviewKind = file.type.startsWith('image/')
-      ? 'image'
-      : file.type.startsWith('video/')
-        ? 'video'
-        : 'document'
     setPendingMedia({
       file,
       previewUrl: URL.createObjectURL(file),
-      kind,
+      kind: file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document',
     })
   }
 
@@ -284,8 +279,10 @@ export function ChatComposer({
       return
     }
 
-    // Imagen, video y documento: pantalla de preview con epígrafe, como WhatsApp.
-    // El audio conserva el envío directo y la grabación tiene su propio flujo.
+    // Imagen, video y documento: pantalla de preview con epígrafe, como
+    // WhatsApp. El audio elegido desde el selector de archivos se manda
+    // directo, sin preview visual (a diferencia de la nota de voz grabada,
+    // que tiene su propia previsualización en VoiceRecorder).
     if (!file.type.startsWith('audio/')) {
       openMediaPreview(file)
       return
