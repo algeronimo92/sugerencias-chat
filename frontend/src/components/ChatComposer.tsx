@@ -525,6 +525,7 @@ export function ChatComposer({
           previewUrl={pendingMedia.previewUrl}
           kind={pendingMedia.kind}
           filename={pendingMedia.file.name}
+          contentType={pendingMedia.file.type}
           fileSize={pendingMedia.file.size}
           isSending={isSendingMedia}
           onSend={confirmPendingMedia}
