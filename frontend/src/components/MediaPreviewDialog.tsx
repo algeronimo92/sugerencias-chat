@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Crop, Loader2, Send, X } from 'lucide-react'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
+import { DialogPrimitive as Dialog, dialogOverlayClass } from './ui/Dialog'
 import { ImageCropDialog } from './ImageCropDialog'
 
 /** Pantalla de previsualización antes de enviar una imagen/video, como WhatsApp:
@@ -45,18 +45,27 @@ export function MediaPreviewDialog({
     <>
       <Dialog.Root open onOpenChange={(open) => { if (!open && !isSending) onClose() }}>
         <Dialog.Portal>
-          <Dialog.Overlay className={dialogOverlayClass} />
+          <Dialog.Overlay className={`${dialogOverlayClass} bg-black/80 backdrop-blur-none`} />
           <Dialog.Content
             aria-describedby={undefined}
             onEscapeKeyDown={(e) => { if (isSending) e.preventDefault() }}
             onPointerDownOutside={(e) => { if (isSending) e.preventDefault() }}
-            className={`${dialogContentPositionClass} flex w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-wa-border bg-wa-chat shadow-xl dark:border-wa-border-dark dark:bg-wa-chat-dark`}
+            className="fixed inset-0 z-[51] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[#0b141a] text-[#e9edef] outline-none"
           >
-            <div className="flex items-center justify-between px-3 py-2">
-              <Dialog.Title className="truncate text-sm font-medium text-wa-text dark:text-wa-text-dark">
+            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 bg-[#111b21] px-3 sm:h-16 sm:px-5">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSending}
+                aria-label="Cerrar"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#aebac1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+              >
+                <X className="h-6 w-6" />
+              </button>
+              <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-medium text-[#e9edef] sm:text-base">
                 {filename || 'Vista previa'}
               </Dialog.Title>
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 {kind === 'image' && (
                   <button
                     type="button"
@@ -64,52 +73,59 @@ export function MediaPreviewDialog({
                     disabled={isSending}
                     aria-label="Recortar imagen"
                     title="Recortar"
-                    className="shrink-0 rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text disabled:opacity-50 dark:text-wa-muted-dark dark:hover:bg-white/10"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[#aebac1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
                   >
-                    <Crop className="h-4 w-4" />
+                    <Crop className="h-5 w-5" />
                   </button>
                 )}
+              </div>
+            </header>
+
+            <main className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#0b141a] px-4 py-5 sm:px-10 sm:py-8">
+              {kind === 'image' ? (
+                <img
+                  src={previewUrl}
+                  alt="Vista previa"
+                  className="max-h-full max-w-full select-none object-contain shadow-2xl"
+                />
+              ) : (
+                <video src={previewUrl} controls className="max-h-full max-w-full bg-black object-contain shadow-2xl" />
+              )}
+            </main>
+
+            <footer className="shrink-0 border-t border-white/10 bg-[#111b21] px-3 pb-safe pt-3 sm:px-6">
+              <div className="mx-auto flex w-full max-w-3xl items-end gap-3">
+                <textarea
+                  ref={textareaRef}
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  rows={1}
+                  autoFocus
+                  placeholder="Escribe un mensaje"
+                  className="max-h-24 min-h-12 flex-1 resize-none rounded-xl border border-transparent bg-[#202c33] px-4 py-3 text-sm text-[#e9edef] outline-none transition-shadow placeholder:text-[#8696a0] focus:border-[#00a884]/60 focus:ring-1 focus:ring-[#00a884]/50 sm:text-base"
+                />
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={submit}
                   disabled={isSending}
-                  aria-label="Cerrar"
-                  className="shrink-0 rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text disabled:opacity-50 dark:text-wa-muted-dark dark:hover:bg-white/10"
+                  aria-label="Enviar"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white shadow-lg transition-colors hover:bg-[#06cf9c] disabled:cursor-wait disabled:opacity-60 sm:h-14 sm:w-14"
                 >
-                  <X className="h-4 w-4" />
+                  {isSending ? <Loader2 className="h-6 w-6 animate-spin" /> : <Send className="h-6 w-6 fill-current" />}
                 </button>
               </div>
-            </div>
 
-            <div className="flex min-h-[12rem] items-center justify-center px-4 py-2">
-              {kind === 'image' ? (
-                <img src={previewUrl} alt="Vista previa" className="max-h-[55vh] max-w-full rounded-lg object-contain" />
-              ) : (
-                <video src={previewUrl} controls className="max-h-[55vh] max-w-full rounded-lg" />
-              )}
-            </div>
-
-            <div className="flex items-end gap-2 p-3">
-              <textarea
-                ref={textareaRef}
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                onKeyDown={onKeyDown}
-                rows={1}
-                autoFocus
-                placeholder="Escribe algo..."
-                className="max-h-24 flex-1 resize-none rounded-lg border border-transparent bg-white px-3.5 py-2 text-sm text-wa-text outline-none transition-shadow placeholder:text-wa-muted focus:ring-2 focus:ring-wa-primary/60 dark:bg-wa-field-dark dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark"
-              />
-              <button
-                type="button"
-                onClick={submit}
-                disabled={isSending}
-                aria-label="Enviar"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white transition-colors hover:bg-wa-primary-strong disabled:opacity-60"
-              >
-                {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-              </button>
-            </div>
+              <div className="mx-auto flex h-20 w-full max-w-3xl items-center justify-center sm:h-24">
+                <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border-2 border-[#00a884] bg-black sm:h-16 sm:w-16">
+                  {kind === 'image' ? (
+                    <img src={previewUrl} alt="Adjunto seleccionado" className="h-full w-full object-cover" />
+                  ) : (
+                    <video src={previewUrl} muted aria-label="Video seleccionado" className="h-full w-full object-cover" />
+                  )}
+                </div>
+              </div>
+            </footer>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
