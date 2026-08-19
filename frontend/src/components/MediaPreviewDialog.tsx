@@ -1,9 +1,26 @@
 import { useRef, useState } from 'react'
-import { Crop, Loader2, Send, X } from 'lucide-react'
+import { Crop, FileText, Loader2, Send, X } from 'lucide-react'
 import { DialogPrimitive as Dialog, dialogOverlayClass } from './ui/Dialog'
 import { ImageCropDialog } from './ImageCropDialog'
 
-/** Pantalla de previsualización antes de enviar una imagen/video, como WhatsApp:
+export type MediaPreviewKind = 'image' | 'video' | 'document'
+
+function formatFileSize(bytes?: number): string | null {
+  if (bytes == null) return null
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+}
+
+function documentDetails(filename?: string, contentType?: string, fileSize?: number): string {
+  const extension = filename?.split('.').pop()?.toUpperCase()
+  const type = extension && extension !== filename?.toUpperCase()
+    ? extension
+    : contentType?.split('/').pop()?.toUpperCase() || 'DOCUMENTO'
+  return [type, formatFileSize(fileSize)].filter(Boolean).join(' · ')
+}
+
+/** Pantalla de previsualización antes de enviar una imagen, video o documento, como WhatsApp:
  * muestra el adjunto grande y deja escribir un epígrafe (caption) y confirmar el
  * envío con Enter o el botón. Para imágenes, un botón abre además la pantalla
  * de recorte (arrastrar/zoom detrás de un marco fijo, con rotación). */
@@ -11,14 +28,18 @@ export function MediaPreviewDialog({
   previewUrl,
   kind,
   filename,
+  contentType,
+  fileSize,
   isSending = false,
   onSend,
   onCropped,
   onClose,
 }: {
   previewUrl: string
-  kind: 'image' | 'video'
+  kind: MediaPreviewKind
   filename?: string
+  contentType?: string
+  fileSize?: number
   isSending?: boolean
   onSend: (caption: string) => void
   /** Reemplaza el archivo/preview pendientes en el padre por la versión recortada. */
@@ -88,8 +109,20 @@ export function MediaPreviewDialog({
                   alt="Vista previa"
                   className="max-h-full max-w-full select-none object-contain shadow-2xl"
                 />
-              ) : (
+              ) : kind === 'video' ? (
                 <video src={previewUrl} controls className="max-h-full max-w-full bg-black object-contain shadow-2xl" />
+              ) : (
+                <div className="flex w-full max-w-md flex-col items-center rounded-2xl border border-white/10 bg-[#111b21] px-6 py-10 text-center shadow-2xl sm:px-10 sm:py-14">
+                  <span className="mb-5 flex h-24 w-24 items-center justify-center rounded-2xl bg-[#7c3aed] text-white shadow-lg sm:h-28 sm:w-28">
+                    <FileText className="h-12 w-12 sm:h-14 sm:w-14" />
+                  </span>
+                  <p className="max-w-full break-words text-base font-medium text-[#e9edef] sm:text-lg">
+                    {filename || 'Documento'}
+                  </p>
+                  <p className="mt-2 text-sm text-[#8696a0]">
+                    {documentDetails(filename, contentType, fileSize)}
+                  </p>
+                </div>
               )}
             </main>
 
@@ -120,8 +153,16 @@ export function MediaPreviewDialog({
                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border-2 border-[#00a884] bg-black sm:h-16 sm:w-16">
                   {kind === 'image' ? (
                     <img src={previewUrl} alt="Adjunto seleccionado" className="h-full w-full object-cover" />
-                  ) : (
+                  ) : kind === 'video' ? (
                     <video src={previewUrl} muted aria-label="Video seleccionado" className="h-full w-full object-cover" />
+                  ) : (
+                    <span
+                      role="img"
+                      aria-label="Documento seleccionado"
+                      className="flex h-full w-full items-center justify-center bg-[#7c3aed] text-white"
+                    >
+                      <FileText className="h-7 w-7" />
+                    </span>
                   )}
                 </div>
               </div>

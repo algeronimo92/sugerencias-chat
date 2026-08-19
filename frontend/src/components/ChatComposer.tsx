@@ -12,7 +12,7 @@ import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { FlowPicker } from './FlowPicker'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
-import { MediaPreviewDialog } from './MediaPreviewDialog'
+import { MediaPreviewDialog, type MediaPreviewKind } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplatePicker } from './TemplatePicker'
 import { VoiceRecorder } from './VoiceRecorder'
@@ -93,9 +93,9 @@ export function ChatComposer({
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
-  // Imagen/video elegido o pegado, a la espera de confirmar el envío con epígrafe
+  // Imagen, video o documento elegido, a la espera de confirmar el envío con epígrafe
   // (la pantalla de preview de WhatsApp).
-  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' } | null>(null)
+  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: MediaPreviewKind } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -225,10 +225,15 @@ export function ChatComposer({
 
   function openMediaPreview(file: File) {
     setMediaError(null)
+    const kind: MediaPreviewKind = file.type.startsWith('image/')
+      ? 'image'
+      : file.type.startsWith('video/')
+        ? 'video'
+        : 'document'
     setPendingMedia({
       file,
       previewUrl: URL.createObjectURL(file),
-      kind: file.type.startsWith('video/') ? 'video' : 'image',
+      kind,
     })
   }
 
@@ -279,9 +284,9 @@ export function ChatComposer({
       return
     }
 
-    // Imagen y video: pantalla de preview con epígrafe, como WhatsApp. El resto
-    // (documentos, audio) se manda directo, sin preview visual.
-    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    // Imagen, video y documento: pantalla de preview con epígrafe, como WhatsApp.
+    // El audio conserva el envío directo y la grabación tiene su propio flujo.
+    if (!file.type.startsWith('audio/')) {
       openMediaPreview(file)
       return
     }
@@ -523,6 +528,8 @@ export function ChatComposer({
           previewUrl={pendingMedia.previewUrl}
           kind={pendingMedia.kind}
           filename={pendingMedia.file.name}
+          contentType={pendingMedia.file.type}
+          fileSize={pendingMedia.file.size}
           isSending={isSendingMedia}
           onSend={confirmPendingMedia}
           onCropped={applyCroppedMedia}
