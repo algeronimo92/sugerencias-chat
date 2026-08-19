@@ -300,7 +300,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   }
 
   return (
-    <div className="flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
+    <div className="relative flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
       {/* Barra de selección: reemplaza al header mientras hay mensajes
           tildados, igual que WhatsApp. */}
       {isSelecting ? (

@@ -95,7 +95,7 @@ export function ChatComposer({
   const [locationError, setLocationError] = useState<string | null>(null)
   // Imagen/video elegido o pegado, a la espera de confirmar el envío con epígrafe
   // (la pantalla de preview de WhatsApp).
-  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' } | null>(null)
+  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' | 'document' } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -228,7 +228,7 @@ export function ChatComposer({
     setPendingMedia({
       file,
       previewUrl: URL.createObjectURL(file),
-      kind: file.type.startsWith('video/') ? 'video' : 'image',
+      kind: file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document',
     })
   }
 
@@ -279,9 +279,11 @@ export function ChatComposer({
       return
     }
 
-    // Imagen y video: pantalla de preview con epígrafe, como WhatsApp. El resto
-    // (documentos, audio) se manda directo, sin preview visual.
-    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    // Imagen, video y documento: pantalla de preview con epígrafe, como
+    // WhatsApp. El audio elegido desde el selector de archivos se manda
+    // directo, sin preview visual (a diferencia de la nota de voz grabada,
+    // que tiene su propia previsualización en VoiceRecorder).
+    if (!file.type.startsWith('audio/')) {
       openMediaPreview(file)
       return
     }
@@ -523,6 +525,7 @@ export function ChatComposer({
           previewUrl={pendingMedia.previewUrl}
           kind={pendingMedia.kind}
           filename={pendingMedia.file.name}
+          fileSize={pendingMedia.file.size}
           isSending={isSendingMedia}
           onSend={confirmPendingMedia}
           onCropped={applyCroppedMedia}
