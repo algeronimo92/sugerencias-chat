@@ -4,7 +4,7 @@
   "tags": ["dermicapro", "crm"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
@@ -354,6 +354,56 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{ "expr": "sum by (queue) (rate(rabbitmq_detailed_queue_exchange_messages_published_total{vhost=\"dermicapro\"}[5m]))", "refId": "A", "legendFormat": "{{queue}}" }],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    { "id": 80, "type": "row", "title": "Logs (Loki)", "gridPos": { "x": 0, "y": 68, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 81, "type": "logs", "title": "Logs en vivo — backend (blue/green)",
+      "description": "JSON estructurado (backend/logging_config.py): timestamp, level, logger, message, request_id, exception. El parser `| json` habilita el detector de nivel de Grafana (colorea por level) y expone los campos como \"detected fields\" filtrables desde el panel.",
+      "gridPos": { "x": 0, "y": 69, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{container=~\".*backend.*\"} | json", "refId": "A" }],
+      "options": {
+        "showTime": true, "showLabels": false, "showCommonLabels": false,
+        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
+        "dedupStrategy": "none", "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 82, "type": "logs", "title": "Errores del backend (level=ERROR/CRITICAL)",
+      "description": "Filtra por el campo level del JSON, no por texto — sin falsos positivos de palabras como \"error\" dentro de un mensaje normal.",
+      "gridPos": { "x": 0, "y": 79, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\"", "refId": "A" }],
+      "options": {
+        "showTime": true, "showLabels": true, "showCommonLabels": false,
+        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
+        "dedupStrategy": "none", "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 84, "type": "logs", "title": "Errores en otros contenedores (postgres/rabbitmq/frontend)",
+      "description": "Estos contenedores no emiten JSON estructurado (solo el backend lo hace), así que se busca por texto sobre la línea cruda.",
+      "gridPos": { "x": 0, "y": 87, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`", "refId": "A" }],
+      "options": {
+        "showTime": true, "showLabels": true, "showCommonLabels": false,
+        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
+        "dedupStrategy": "none", "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 83, "type": "timeseries", "title": "Tasa de errores por contenedor (líneas/min)",
+      "gridPos": { "x": 0, "y": 95, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "sum by (container) (count_over_time(({container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\")[1m]))", "refId": "A", "legendFormat": "{{container}}" },
+        { "expr": "sum by (container) (count_over_time(({container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`)[1m]))", "refId": "B", "legendFormat": "{{container}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     }
   ]

@@ -45,8 +45,9 @@ async def get_suggestions(body: SuggestionRequest):
             refresh=body.force,
             instruction=body.instruction,
         )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error llamando n8n: {str(e)}")
+    except Exception:
+        logger.exception("Error llamando a n8n para el chat %s", body.chat_id)
+        raise HTTPException(status_code=502, detail="Error llamando al workflow de n8n")
 
     # Si el workflow manda `output.estado`, esa decisión es la única fuente
     # de verdad para la etapa: se persiste al terminar la ejecución y luego

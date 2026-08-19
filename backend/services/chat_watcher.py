@@ -52,4 +52,4 @@ async def watch_chats() -> None:
         try:
             cursor = await process_chat_changes(cursor)
         except Exception:
-            logger.exception("Error watching chats for changes")
+            logger.exception("Error al vigilar cambios en los chats")

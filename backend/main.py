@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import uuid
 from time import perf_counter
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -9,6 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+# Debe ejecutarse antes que cualquier otro import registre un logger con la
+# configuración por defecto de logging (texto plano sin estructura): esto
+# reemplaza esa configuración por JSON estructurado a stdout, lo que
+# lee Loki (ver logging_config.py). Va antes incluso de `from config import
+# settings` para cubrir cualquier log que se dispare a nivel de import.
+from logging_config import configure_logging
+
+configure_logging()
+
 from config import settings
 from db.session import close_engine, get_engine
 from routers import auth, automations, chats, dashboard, internal_notes, lead_services, media, media_library, notifications, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
@@ -25,6 +36,7 @@ from services.message_outbox import watch_message_outbox
 from services.queue_metrics import watch_queue_metrics
 from services.scheduled_message_service import watch_scheduled_messages
 from services.performance import begin_request_metrics, finish_request_metrics
+from request_context import reset_request_id, set_request_id
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
 from services.settings_service import get_effective, migrate_settings_encryption
 
@@ -46,13 +58,13 @@ async def _wait_for_database() -> None:
             async with get_engine().connect() as connection:
                 await connection.execute(text("SELECT 1"))
             if attempt > 1:
-                logger.info("Database connection recovered after %s attempts", attempt)
+                logger.info("Conexión a la base de datos recuperada tras %s intentos", attempt)
             return
         except (OSError, SQLAlchemyError) as exc:
             await close_engine()
             delay = min(2 ** (attempt - 1), DATABASE_RETRY_MAX_SECONDS)
             logger.warning(
-                "Database unavailable during startup (attempt %s, %s); retrying in %ss",
+                "Base de datos no disponible durante el arranque (intento %s, %s); reintentando en %ss",
                 attempt,
                 type(exc).__name__,
                 delay,
@@ -238,8 +250,8 @@ async def lifespan(app: FastAPI):
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
     if encrypted_settings or decrypted_settings:
         logger.info(
-            "Normalized persisted application settings: encrypted_secrets=%s "
-            "decrypted_public=%s",
+            "Configuración persistida normalizada: secretos_cifrados=%s "
+            "públicos_descifrados=%s",
             encrypted_settings,
             decrypted_settings,
         )
@@ -295,12 +307,21 @@ Instrumentator().instrument(app).expose(app)
 
 @app.middleware("http")
 async def add_performance_headers(request, call_next):
+    # request_id: uuid4 por request, guardado en un contextvar para que
+    # logging_config.RequestIdFilter lo agregue a cada línea de log emitida
+    # durante esta request (incluidas las de tareas de fondo que la request
+    # dispare mientras el contextvar sigue vigente, p.ej. automatizaciones
+    # encoladas de forma síncrona). También se devuelve como header para que
+    # el cliente (o un ticket de soporte) pueda referenciarlo.
+    request_id = str(uuid.uuid4())
+    request_id_token = set_request_id(request_id)
     tokens = begin_request_metrics()
     started_at = perf_counter()
     try:
         response = await call_next(request)
     except BaseException:
         finish_request_metrics(tokens)
+        reset_request_id(request_id_token)
         raise
     total_ms = (perf_counter() - started_at) * 1000
     metrics = finish_request_metrics(tokens)
@@ -308,12 +329,14 @@ async def add_performance_headers(request, call_next):
     timings.extend(f"{name};dur={duration:.1f}" for name, duration in metrics.external_ms.items())
     response.headers["Server-Timing"] = ", ".join(timings)
     response.headers["X-DB-Queries"] = str(metrics.query_count)
+    response.headers["X-Request-Id"] = request_id
     if total_ms >= 1000:
         logger.info(
-            "Slow request %s %s total=%.1fms db=%.1fms queries=%s external=%s",
+            "Petición lenta %s %s total=%.1fms db=%.1fms queries=%s external=%s",
             request.method, request.url.path, total_ms, metrics.database_ms,
             metrics.query_count, metrics.external_ms,
         )
+    reset_request_id(request_id_token)
     return response
 
 app.add_middleware(
@@ -364,10 +387,10 @@ async def readiness():
             await connection.execute(text("SELECT 1"))
         storage = await asyncio.to_thread(check_media_storage)
     except MediaStorageError as exc:
-        logger.warning("Storage health check failed: %s", exc)
+        logger.warning("Falló la verificación de salud del almacenamiento: %s", exc)
         raise HTTPException(status_code=503, detail="Media storage unavailable") from exc
     except (OSError, SQLAlchemyError) as exc:
-        logger.warning("Health check failed: %s", type(exc).__name__)
+        logger.warning("Falló la verificación de salud: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     return {"status": "ok", "database": "ok", "media_storage": storage["backend"]}
 
