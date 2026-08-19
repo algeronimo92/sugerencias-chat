@@ -5,15 +5,15 @@ import { toast } from 'sonner'
 import {
   Activity, AlertTriangle, Ban, Bot, CheckCircle2, ChevronDown, Clock3, Copy,
   GitBranch, History, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, ShieldCheck,
-  Trash2, XCircle,
+  Trash2, Upload, XCircle,
 } from 'lucide-react'
 import type {
-  AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution, AutomationRule,
-  AutomationTrigger,
+  AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution,
+  AutomationFlowDefinition, AutomationRule, AutomationTrigger,
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import {
-  useAutomationExecutions, useAutomationRules, useCancelExecution, useCreateAutomation,
+  useAutomationExecutions, useAutomationRules, useCancelExecution, useCreateAutomation, useCreateVisualFlow,
   useDeleteAutomation, useDuplicateAutomation, useRetryExecution, useUpdateAutomation,
 } from '../hooks/useAutomations'
 import { useUsers } from '../hooks/useUsers'
@@ -24,6 +24,7 @@ import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
+import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { MediaAssetField } from './MediaAssetField'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { Checkbox } from './ui/Checkbox'
@@ -186,6 +187,7 @@ export function AutomationsPage() {
   const { data: templates = [] } = useTemplates(true)
   const { data: mediaAssets = [] } = useMediaLibrary()
   const create = useCreateAutomation()
+  const createVisualFlow = useCreateVisualFlow()
   const update = useUpdateAutomation()
   const duplicate = useDuplicateAutomation()
   const deleteAutomation = useDeleteAutomation()
@@ -196,6 +198,7 @@ export function AutomationsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule } | null>(null)
+  const [importFlowOpen, setImportFlowOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const activeUsers = users.filter(user => user.is_active)
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
@@ -243,6 +246,12 @@ export function AutomationsPage() {
   function closeForm() {
     if (isSaving) return
     setFormOpen(false); setEditingId(null); setError(null)
+  }
+
+  async function importFlow(flowDefinition: AutomationFlowDefinition, name: string) {
+    const created = await createVisualFlow.mutateAsync({ name, flow_definition: flowDefinition })
+    toast.success('Flujo importado')
+    setFlowBuilder({ rule: created })
   }
 
   function setAction(index: number, nextAction: AutomationAction) {
@@ -334,7 +343,10 @@ export function AutomationsPage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div><div className="flex items-center gap-2"><Bot className="h-5 w-5 text-wa-primary-strong" /><h1 className="text-xl font-semibold text-wa-text dark:text-white">Automatizaciones</h1></div><p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">Reglas simples, seguras y auditables para el trabajo comercial.</p></div>
-          <button type="button" onClick={() => tab === 'flows' ? setFlowBuilder({}) : openCreate()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-sm font-semibold text-white hover:bg-wa-primary-strong"><Plus className="h-4 w-4" />{tab === 'flows' ? 'Nuevo flujo visual' : 'Nueva automatización'}</button>
+          <div className="flex items-center gap-2">
+            {tab === 'flows' && <button type="button" onClick={() => setImportFlowOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Upload className="h-4 w-4" />Importar JSON</button>}
+            <button type="button" onClick={() => tab === 'flows' ? setFlowBuilder({}) : openCreate()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-sm font-semibold text-white hover:bg-wa-primary-strong"><Plus className="h-4 w-4" />{tab === 'flows' ? 'Nuevo flujo visual' : 'Nueva automatización'}</button>
+          </div>
         </div>
 
         <div className="mb-4 flex w-fit rounded-lg bg-wa-border p-1 dark:bg-wa-head-dark">
@@ -476,6 +488,14 @@ export function AutomationsPage() {
         <footer className="flex items-center justify-between gap-3 border-t border-wa-border px-5 py-3.5 dark:border-wa-border-dark"><label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Checkbox checked={form.isActive} onChange={event => setForm(current => ({ ...current, isActive: event.target.checked }))} />Activar al guardar</label><div className="flex gap-2"><button type="button" onClick={closeForm} className="rounded-lg px-3 py-2 text-sm text-wa-muted">Cancelar</button><button type="submit" disabled={isSaving} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar regla</button></div></footer>
       </form></div>}
       {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} onClose={() => setFlowBuilder(null)} />}
+      {importFlowOpen && <ImportFlowJsonDialog
+        title="Importar flujo desde JSON"
+        description="Pega el JSON de un flow_definition o sube un archivo .json. Se creará como un flujo visual nuevo en modo borrador; podrás revisarlo y publicarlo desde el constructor."
+        confirmLabel="Crear flujo"
+        requireNameField
+        onClose={() => setImportFlowOpen(false)}
+        onImport={importFlow}
+      />}
     </div>
   )
 }
