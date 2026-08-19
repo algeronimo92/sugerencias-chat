@@ -6,6 +6,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+import logging
+
 from db.models import User
 from models.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from routers.media import normalize_media_content_type, save_media_file
@@ -13,6 +15,8 @@ from services.auth_service import get_current_user, require_admin
 from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets, rename_media_asset
 from services.media_storage import MediaNotFoundError, MediaStorageError, delete_media, media_size, read_media_bytes
 from services.ws_manager import manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/media-library", tags=["media-library"])
 
@@ -54,6 +58,7 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
             pass
         raise HTTPException(503, str(exc))
     except Exception:
+        logger.exception("Error inesperado al crear el asset de media; se intentará limpiar el archivo subido")
         try:
             await asyncio.to_thread(delete_media, media_url)
         except MediaStorageError:
@@ -100,6 +105,7 @@ async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(re
             uploaded_by_user_id=admin.id,
         )
     except Exception:
+        logger.exception("Error inesperado al importar el sticker como asset de media; se intentará limpiar el archivo copiado")
         try:
             await asyncio.to_thread(delete_media, media_url)
         except MediaStorageError:

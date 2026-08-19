@@ -3249,7 +3249,7 @@ async def _run_visual_execution(
         )
         await _notify_execution_failure(rule, execution, str(exc), deps)
     except Exception as exc:
-        logger.exception("Unexpected error running visual automation execution %s", execution.id)
+        logger.exception("Error inesperado al ejecutar la automatización visual %s", execution.id)
         await _persist_visual_execution(
             execution.id,
             AutomationExecutionStatus.FAILED,
@@ -3426,7 +3426,7 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
         )
         await _notify_execution_failure(rule, execution, str(exc), deps)
     except Exception as exc:
-        logger.exception("Unexpected error running automation execution %s", execution_id)
+        logger.exception("Error inesperado al ejecutar la automatización %s", execution_id)
         await _save_execution(
             execution_id, deps,
             status=AutomationExecutionStatus.FAILED, action_results=results, error=str(exc),
@@ -4044,7 +4044,7 @@ async def watch_automations() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Error processing automations")
+            logger.exception("Error al procesar automatizaciones")
         # Duerme hasta el próximo ciclo o hasta que un trigger active _wake —
         # así los eventos de los routers se procesan al instante sin que la
         # request HTTP tenga que esperar a las acciones.

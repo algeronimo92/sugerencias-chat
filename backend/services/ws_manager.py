@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -26,6 +29,12 @@ class ConnectionManager:
                 await asyncio.wait_for(websocket.send_json(message), timeout=2.0)
                 return None
             except Exception:
+                # Rutina esperada: el cliente cerró la pestaña, perdió red o
+                # backgrounding móvil cortó el socket. No es un error de la
+                # app -- pasa en cada broadcast con clientes desconectados --
+                # así que se registra en debug, no como excepción a nivel
+                # ERROR (eso saturaría el panel de errores de Grafana).
+                logger.debug("Envío por WebSocket falló; se marca la conexión como caída", exc_info=True)
                 return websocket
 
         dead = [item for item in await asyncio.gather(*(deliver(ws) for ws in connections)) if item]
@@ -40,7 +49,9 @@ class ConnectionManager:
                 try:
                     await websocket.close()
                 except Exception:
-                    pass
+                    # Misma razón que arriba: cerrar un socket ya muerto
+                    # falla de forma rutinaria, no es un error de la app.
+                    logger.debug("No se pudo cerrar una conexión WebSocket ya marcada como caída", exc_info=True)
 
     async def connection_count(self) -> int:
         async with self._lock:

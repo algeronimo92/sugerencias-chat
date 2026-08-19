@@ -586,7 +586,7 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
             config["title"], description,
             config.get("footerText") or "DermicaPro", config["sections"],
         )
-        logger.warning("Evolution could not serialize a list; using numbered text fallback")
+        logger.warning("Evolution no pudo serializar una lista; se usa una alternativa de texto numerado")
         return await send_whatsapp_text(chat_id, fallback), fallback
 
 
@@ -597,14 +597,14 @@ async def _process_job(job: dict) -> None:
         response, delivered_content = await _send_payload(job["chat_id"], payload)
         await _mark_sent(job, response, delivered_content)
         logger.info(
-            "Outbox %s message %s sent via Evolution in %.0fms",
-            payload.get("type"), job["message_id"],
+            "Mensaje %s del outbox (%s) enviado vía Evolution en %.0fms",
+            job["message_id"], payload.get("type"),
             (perf_counter() - started_at) * 1000,
         )
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        logger.warning("Outbox message %s failed: %s", job["message_id"], exc)
+        logger.warning("Falló el mensaje %s del outbox: %s", job["message_id"], exc)
         await _mark_failed(job, exc)
 
 
@@ -619,5 +619,5 @@ async def watch_message_outbox() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Error processing message outbox")
+            logger.exception("Error al procesar el outbox de mensajes")
         await _wait_for_work()

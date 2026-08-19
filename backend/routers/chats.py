@@ -275,8 +275,9 @@ async def get_chats(
         )
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Filtros inválidos")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error inesperado al listar chats")
+        raise HTTPException(status_code=500, detail="Error interno al listar chats")
 
 
 @router.get("/unread-count")
@@ -502,8 +503,9 @@ async def get_messages(
         return await fetch_messages(chat_id, cursor_ts, cursor_id, limit, until_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error inesperado al obtener mensajes del chat %s", chat_id)
+        raise HTTPException(status_code=500, detail="Error interno al obtener mensajes")
 
 
 @router.get("/history/availability")

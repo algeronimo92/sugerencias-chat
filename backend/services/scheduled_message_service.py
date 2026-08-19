@@ -250,5 +250,5 @@ async def watch_scheduled_messages() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Error processing scheduled messages")
+            logger.exception("Error al procesar mensajes programados")
         await asyncio.sleep(POLL_SECONDS)
