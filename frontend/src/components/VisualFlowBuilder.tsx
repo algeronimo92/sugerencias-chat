@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Activity, ArrowRight, Beaker, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
+  Activity, ArrowRight, Beaker, Braces, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
   Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, UserRound, X, Zap,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
@@ -329,6 +329,9 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const [simulation, setSimulation] = useState<AutomationFlowSimulation | null>(null)
   const [searching, setSearching] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
+  const [jsonViewOpen, setJsonViewOpen] = useState(false)
+  const [jsonViewTab, setJsonViewTab] = useState<'draft' | 'published'>('draft')
+  const [jsonCopied, setJsonCopied] = useState(false)
   const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false)
   const copiedNodeRef = useRef<AutomationFlowNode | null>(null)
   const { data: versions = [], isLoading: versionsLoading } = useFlowVersions(versionsOpen ? ruleId : null)
@@ -694,6 +697,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       <button type="button" onClick={autoLayout} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => setVersionsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-wa-border-dark dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
       <button type="button" onClick={() => { setSimulationOpen(true); setSimulation(null) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
+      <button type="button" title="Ver el JSON del flujo" onClick={() => { setJsonViewOpen(true); setJsonViewTab('draft'); setJsonCopied(false) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-wa-border-dark dark:text-gray-300"><Braces className="h-4 w-4" />Ver JSON</button>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-primary-strong px-3 py-2 text-xs font-semibold text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Save className="h-4 w-4" />Guardar borrador</button>
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
@@ -712,13 +716,6 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           [NodeType.RoundRobin, FLOW_NODE_LABELS[NodeType.RoundRobin], Repeat, 'Reparte los leads por turnos entre N salidas'],
           [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
         ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-wa-primary-strong" />{label}</div><p className="mt-1 text-[10px] text-wa-muted">{description}</p></div>)}
-        <div className="mt-4 space-y-2 rounded-xl bg-blue-50 p-3 text-[10px] leading-relaxed text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-          <p><strong>Cómo moverte:</strong> desliza dos dedos para recorrer el lienzo en cualquier dirección. Mantén Ctrl mientras deslizas para acercar o alejar.</p>
-          <p><strong>Cómo seleccionar varios:</strong> arrastra un rectángulo con el botón izquierdo; solo contará los bloques cubiertos por completo. Usa Ctrl/Cmd + clic para sumar o quitar bloques.</p>
-          <p><strong>Cómo seguir una conexión:</strong> las líneas se resaltan levemente al pasar sobre ellas. Activa el botón del ojo para marcar además su origen, destino y recorrido completo.</p>
-          <p><strong>Cómo conectar:</strong> arrastra desde el punto derecho de un bloque hasta el punto izquierdo del siguiente. Para borrar, pasa el mouse por la conexión y usa el tachito, o selecciónala y pulsa Supr.</p>
-          <p><strong>Cómo copiar:</strong> selecciona un bloque y usa Ctrl/Cmd+C y Ctrl/Cmd+V, o Ctrl/Cmd+D para duplicarlo directamente.</p>
-        </div>
       </aside>
 
       <main className="min-w-0 flex-1 bg-wa-field dark:bg-wa-app-dark">
@@ -785,6 +782,33 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
               </div>
             ))}
         </div>
+      </div>
+    </div>}
+    {jsonViewOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="absolute inset-0 cursor-default" />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-wa-panel-dark">
+        <div className="flex items-start justify-between p-5 pb-0">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Braces className="h-4 w-4 text-wa-primary-strong" />JSON del flujo</h2>
+            <p className="mt-1 text-[11px] text-wa-muted">Estructura de nodos y conexiones tal como se guarda.</p>
+          </div>
+          <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mt-3 flex items-center gap-2 px-5">
+          <button type="button" onClick={() => setJsonViewTab('draft')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${jsonViewTab === 'draft' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Borrador actual</button>
+          <button type="button" disabled={!publishedDefinition} title={!publishedDefinition ? 'Este flujo aún no se publicó' : undefined} onClick={() => setJsonViewTab('published')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${jsonViewTab === 'published' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Publicado{rule?.flow_version ? ` (v${rule.flow_version})` : ''}</button>
+          <button
+            type="button"
+            onClick={() => {
+              const text = JSON.stringify(jsonViewTab === 'published' ? (publishedDefinition ?? flow) : flow, null, 2)
+              void navigator.clipboard.writeText(text)
+              setJsonCopied(true)
+              window.setTimeout(() => setJsonCopied(false), 1500)
+            }}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"
+          ><Copy className="h-3.5 w-3.5" />{jsonCopied ? 'Copiado' : 'Copiar'}</button>
+        </div>
+        <pre className="m-5 mt-3 min-h-0 flex-1 overflow-auto rounded-xl bg-wa-hover p-3 text-[11px] leading-relaxed text-gray-800 dark:bg-wa-head-dark dark:text-gray-200"><code>{JSON.stringify(jsonViewTab === 'published' ? (publishedDefinition ?? flow) : flow, null, 2)}</code></pre>
       </div>
     </div>}
     {exitConfirmationOpen && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setExitConfirmationOpen(false) }}>
