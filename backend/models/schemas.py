@@ -65,6 +65,10 @@ class Chat(BaseModel):
     timestamp: str | None = None
     last_customer_message_at: str | None = None
     unread_count: int = 0
+    # Crudos para que el frontend decida el color del badge de no leídos:
+    # "atendido por bot" si last_automated_reply_at es más nuevo que last_read_at.
+    last_read_at: str | None = None
+    last_automated_reply_at: str | None = None
     tags: list["Tag"] = Field(default_factory=list)
     # Solo significativos con búsqueda activa. search_rank: 2 = match por
     # nombre/teléfono, 1 = por campos CRM, 0 = solo por un mensaje (en ese
