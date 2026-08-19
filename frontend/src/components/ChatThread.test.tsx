@@ -136,7 +136,7 @@ describe('ChatThread', () => {
     const user = userEvent.setup()
     renderThread()
 
-    const textarea = screen.getByPlaceholderText(/Escribí un mensaje/)
+    const textarea = screen.getByPlaceholderText(/Escribe un mensaje/)
     expect(screen.queryByLabelText('Enviar mensaje')).not.toBeInTheDocument()
 
     await user.type(textarea, 'Gracias')
@@ -147,7 +147,7 @@ describe('ChatThread', () => {
 
   it('adapta el compositor al contenido hasta un máximo y luego activa el scroll', () => {
     renderThread()
-    const textarea = screen.getByPlaceholderText(/Escribí un mensaje/) as HTMLTextAreaElement
+    const textarea = screen.getByPlaceholderText(/Escribe un mensaje/) as HTMLTextAreaElement
 
     Object.defineProperty(textarea, 'scrollHeight', { value: 84, configurable: true })
     fireEvent.change(textarea, { target: { value: 'Una plantilla de varias líneas' } })

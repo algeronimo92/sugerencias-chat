@@ -240,6 +240,13 @@ export function ChatComposer({
     setIsSendingMedia(false)
   }
 
+  function applyCroppedMedia(file: File) {
+    setPendingMedia((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl)
+      return { file, previewUrl: URL.createObjectURL(file), kind: 'image' }
+    })
+  }
+
   async function sendMediaFile(file: File, caption: string) {
     const target = replyTo
     onReplyChange(null)
@@ -475,7 +482,7 @@ export function ChatComposer({
                 }}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="Escribí un mensaje... (/ para usar una plantilla)"
+                placeholder="Escribe un mensaje..."
                 rows={1}
                 className="w-full max-h-32 resize-none overflow-y-hidden text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
               />
@@ -518,6 +525,7 @@ export function ChatComposer({
           filename={pendingMedia.file.name}
           isSending={isSendingMedia}
           onSend={confirmPendingMedia}
+          onCropped={applyCroppedMedia}
           onClose={closeMediaPreview}
         />
       )}
