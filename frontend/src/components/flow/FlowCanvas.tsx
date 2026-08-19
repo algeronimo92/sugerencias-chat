@@ -19,7 +19,7 @@ import type {
 import {
   AUTOMATION_ACTION_LABELS, AUTOMATION_TRIGGERS, AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
   FlowHandle, FlowNodeType, formatWaitDuration, isAutomationActionType, isFlowConditionType,
-  QuestionHandle, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
+  QuestionHandle, QUESTION_HANDLE_LABELS, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
 } from '../../domain/automationCatalog'
 import { resolveMediaUrl } from '../../utils/message'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
@@ -95,8 +95,10 @@ function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
     const conditions = data.conditions ?? []
     const timer = conditions.find(c => c.kind === WaitAnyConditionKind.Timer)
     const hasMessage = conditions.some(c => c.kind === WaitAnyConditionKind.Message)
+    const hasMedia = conditions.some(c => c.kind === WaitAnyConditionKind.MediaReceived)
     const timerLabel = timer ? formatWaitDuration(timer.seconds) : ''
-    return hasMessage ? `${timerLabel} o mensaje` : timerLabel
+    const waitedFor = [hasMessage && 'mensaje', hasMedia && 'foto'].filter(Boolean).join(' o ')
+    return waitedFor ? `${timerLabel} o ${waitedFor}` : timerLabel
   }
   if (type === FlowNodeType.Question) {
     const buttons = data.buttons ?? []
@@ -394,6 +396,7 @@ const WAIT_ANY_HANDLE_COLORS: Record<string, string> = {
   [WaitAnyConditionKind.Message]: '#7c3aed',
   [WaitAnyConditionKind.BusinessHours]: '#f59e0b',
   [WaitAnyConditionKind.MediaPlayed]: '#db2777',
+  [WaitAnyConditionKind.MediaReceived]: '#059669',
 }
 
 /** Una fila por condición, cada una con su propia salida — el "id" de cada
@@ -433,6 +436,10 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
   const buttons = data.buttons ?? []
   const rows: Array<{ handle: string; label: string; color: string }> = [
     ...buttons.map((button, index) => ({ handle: button.id, label: button.label, color: BUTTON_COLORS[index % BUTTON_COLORS.length] })),
+    // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
+    // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
+    // botón y termina en la rama del que no mandó nada.
+    { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: '#059669' },
     { handle: QuestionHandle.Other, label: 'Otra respuesta', color: '#6b7280' },
     { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: '#ef4444' },
   ]

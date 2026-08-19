@@ -8,6 +8,7 @@ import pytest
 from domain_types import FlowHandle, FlowNodeType
 from services.automation_rules import (
     FLOW_COORDINATE_LIMIT,
+    classify_customer_reply,
     is_business_hours,
     matches_static_conditions,
     normalize_conditions,
@@ -135,6 +136,35 @@ class TestMatchesStaticConditions:
         chat = {"tags": [{"id": 1}, {"id": 5}]}
         assert matches_static_conditions({"tag_id": 5}, chat)[0] is True
         assert matches_static_conditions({"tag_id": 9}, chat)[0] is False
+
+
+class TestClassifyCustomerReply:
+    @pytest.mark.parametrize("message_type", ["image", "video", "ptv", "document", "view_once"])
+    def test_media_types_are_media_received(self, message_type):
+        assert classify_customer_reply(message_type, None) == "media_received"
+
+    def test_text_is_message(self):
+        assert classify_customer_reply("text", None) == "message"
+
+    def test_sticker_is_message_not_media(self):
+        # Nadie responde con un sticker a "mandame una foto de la zona": no
+        # cuenta como el adjunto que el flujo está esperando.
+        assert classify_customer_reply("sticker", None) == "message"
+
+    @pytest.mark.parametrize("original_type", [
+        "albumMessage", "associatedChildMessage", "secretEncryptedMessage",
+    ])
+    def test_known_whatsapp_envelopes_are_ignored(self, original_type):
+        # El sobre de un álbum o una acción cifrada sobre un mensaje propio:
+        # no es una respuesta del cliente, hay que seguir esperando.
+        assert classify_customer_reply("unsupported", {"original_type": original_type}) is None
+
+    def test_unknown_unsupported_still_counts_as_a_message(self):
+        # Un tipo que todavía no sabemos leer es señal real, no ruido conocido.
+        assert classify_customer_reply("unsupported", {"original_type": "liveLocationMessage"}) == "message"
+
+    def test_unsupported_without_payload_counts_as_a_message(self):
+        assert classify_customer_reply("unsupported", None) == "message"
 
 
 class TestNormalizeEdges:
@@ -328,3 +358,46 @@ class TestValidateGraphTopology:
             validate_graph_topology(nodes, edges, "t")
         edges += [edge("q", "e3", "other"), edge("q", "e4", "timeout")]
         validate_graph_topology(nodes, edges, "t")
+
+    def test_question_media_handle_is_optional_but_accepted_when_connected(self):
+        # "Mandó una foto" es la única salida opcional del nodo: un flujo
+        # publicado antes de que existiera sigue validando sin ella (arriba),
+        # y uno que sí la conecta también es válido.
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "q", "type": FlowNodeType.QUESTION, "data": {
+                "text": "¿Enviaste la foto?", "timeout_seconds": 60,
+                "buttons": [{"id": "btn_1", "label": "Sí"}],
+            }},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+            node("e3", FlowNodeType.END),
+            node("e4", FlowNodeType.END),
+        ]
+        edges = [
+            edge("t", "q"), edge("q", "e1", "btn_1"), edge("q", "e2", "other"),
+            edge("q", "e3", "timeout"), edge("q", "e4", "media"),
+        ]
+        validate_graph_topology(nodes, edges, "t")
+
+    def test_question_rejects_unknown_handle(self):
+        nodes = [
+            node("t", FlowNodeType.TRIGGER),
+            {"id": "q", "type": FlowNodeType.QUESTION, "data": {
+                "text": "¿Todo bien?", "timeout_seconds": 60,
+                "buttons": [{"id": "btn_1", "label": "Sí"}],
+            }},
+            node("e1", FlowNodeType.END),
+            node("e2", FlowNodeType.END),
+            node("e3", FlowNodeType.END),
+            node("e4", FlowNodeType.END),
+        ]
+        # Todas las salidas requeridas conectadas, más una que no existe: el
+        # extra hace que sobre un handle y falle igual, aislando el caso de
+        # "handle desconocido" del de "falta una obligatoria".
+        edges = [
+            edge("t", "q"), edge("q", "e1", "btn_1"), edge("q", "e2", "other"),
+            edge("q", "e3", "timeout"), edge("q", "e4", "video_visto"),
+        ]
+        with pytest.raises(ValueError, match="propia salida"):
+            validate_graph_topology(nodes, edges, "t")
