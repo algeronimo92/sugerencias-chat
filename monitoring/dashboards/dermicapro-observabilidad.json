@@ -272,6 +272,89 @@
       "targets": [{ "expr": "container_memory_usage_bytes{name=~\"sugerencias-chat-.*-(backend|frontend)-1\"}", "refId": "A", "legendFormat": "{{name}}" }],
       "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    { "id": 70, "type": "row", "title": "RabbitMQ (ingesta WhatsApp)", "gridPos": { "x": 0, "y": 55, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 71, "type": "stat", "title": "Broker",
+      "description": "Alerta RabbitMQCaido dispara con up == 0 sostenido 2m",
+      "gridPos": { "x": 0, "y": 56, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "up{job=\"rabbitmq\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": {
+        "unit": "short", "noValue": "sin dato",
+        "mappings": [
+          { "type": "value", "options": { "0": { "text": "Caído" }, "1": { "text": "Activo" } } }
+        ],
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 1 }
+        ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+    {
+      "id": 72, "type": "stat", "title": "Mensajes en DLQ (q.wsp.dlq)",
+      "description": "Alerta DlqConMensajes dispara con > 0 sostenido 5m",
+      "gridPos": { "x": 6, "y": 56, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rabbitmq_queue_messages{vhost=\"dermicapro\", queue=\"q.wsp.dlq\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 1 }
+        ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 73, "type": "stat", "title": "Consumidores — q.wsp.inbound",
+      "description": "Alerta IngestaSinConsumidor dispara con == 0 sostenido 5m",
+      "gridPos": { "x": 12, "y": 56, "w": 3, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rabbitmq_queue_consumers{vhost=\"dermicapro\", queue=\"q.wsp.inbound\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 1 }
+        ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 74, "type": "stat", "title": "Consumidores — q.wsp.status",
+      "description": "Alerta IngestaSinConsumidor dispara con == 0 sostenido 5m",
+      "gridPos": { "x": 15, "y": 56, "w": 3, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rabbitmq_queue_consumers{vhost=\"dermicapro\", queue=\"q.wsp.status\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 1 }
+        ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 75, "type": "stat", "title": "Conexiones al broker",
+      "gridPos": { "x": 18, "y": 56, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rabbitmq_connections", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 76, "type": "timeseries", "title": "Profundidad de colas en el tiempo",
+      "description": "Alerta IngestaAcumulandose dispara con > 100 en inbound/status sostenido 10m",
+      "gridPos": { "x": 0, "y": 60, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rabbitmq_queue_messages{vhost=\"dermicapro\"}", "refId": "A", "legendFormat": "{{queue}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 77, "type": "timeseries", "title": "Tasa de publicación por cola (mensajes/s)",
+      "description": "Misma métrica que usa IngestaSinMensajes para detectar silencio de Evolution en horario laboral",
+      "gridPos": { "x": 12, "y": 60, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (queue) (rate(rabbitmq_detailed_queue_exchange_messages_published_total{vhost=\"dermicapro\"}[5m]))", "refId": "A", "legendFormat": "{{queue}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     }
   ]
 }
