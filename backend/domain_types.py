@@ -106,6 +106,21 @@ class AutomationExecutionStatus(StrEnum):
 class NotificationType(StrEnum):
     INTERNAL_NOTE_MENTION = "internal_note_mention"
     AUTOMATION = "automation"
+    ISSUE_REPORT = "issue_report"
+
+
+class IssueReportStatus(StrEnum):
+    NEW = "new"
+    IN_REVIEW = "in_review"
+    NEEDS_INFO = "needs_info"
+    RESOLVED = "resolved"
+
+
+class IssueReportPriority(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
 
 
 class AutomationRecipient(StrEnum):

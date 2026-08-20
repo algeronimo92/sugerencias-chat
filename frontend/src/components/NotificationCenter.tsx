@@ -130,7 +130,13 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   function openNotification(notification: UserNotification) {
     if (!notification.read_at) markRead.mutate(notification.id)
     setOpen(false)
-    if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
+    if (notification.notification_type === 'issue_report') {
+      const reportId = typeof notification.metadata?.issue_report_id === 'number'
+        ? notification.metadata.issue_report_id
+        : null
+      navigate(reportId ? `/reports?report=${reportId}` : '/reports')
+    }
+    else if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
   }
 
   return (

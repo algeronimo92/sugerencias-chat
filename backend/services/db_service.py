@@ -1129,6 +1129,7 @@ async def insert_message(
     message_type: str | None = None,
     analysis: dict | None = None,
     payload: dict | None = None,
+    human_outbound: bool | None = None,
 ) -> dict:
     stmt = (
         insert(WspMessage)
@@ -1150,12 +1151,16 @@ async def insert_message(
         try:
             row = (await session.execute(stmt)).mappings().one()
             if sender == "vendedor":
-                # Todo lo que pasa por acá es un envío directo (sticker desde
-                # la app, con usuario autenticado) o un eco de WhatsApp nativo
-                # (el vendedor respondió desde el teléfono): en ambos casos
-                # cuenta como que un humano vio la conversación hasta ahora,
-                # a diferencia de una automatización (ver enqueue_messages).
-                await session.execute(_touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
+                # Los ecos externos pueden ser de un dispositivo humano o de
+                # otra automatización. El llamador lo indica explícitamente;
+                # None conserva el comportamiento de los envíos directos
+                # autenticados que ya pasan por este helper (p. ej. sticker).
+                touch = (
+                    _touch_automated_reply_stmt
+                    if human_outbound is False
+                    else _touch_last_read_stmt
+                )
+                await session.execute(touch(chat_id, datetime.now(timezone.utc)))
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -1244,6 +1249,27 @@ async def mark_chat_read(chat_id: str) -> None:
     async with get_sessionmaker()() as session:
         await session.execute(_touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
         await session.commit()
+
+
+async def mark_chat_unread(chat_id: str) -> bool:
+    """Retrocede la marca de lectura hasta justo antes del último mensaje del
+    cliente. Así el chat queda pendiente con un solo mensaje lógico, sin
+    alterar los recibos de lectura que ya se enviaron a WhatsApp."""
+    latest_stmt = select(func.max(WspMessage.sent_at)).where(
+        WspMessage.chat_id == chat_id,
+        WspMessage.sender == "cliente",
+    )
+    async with get_sessionmaker()() as session:
+        latest_customer_message_at = await session.scalar(latest_stmt)
+        if latest_customer_message_at is None:
+            return False
+        result = await session.execute(
+            update(Lead)
+            .where(Lead.id == chat_id)
+            .values(last_read_at=latest_customer_message_at - timedelta(microseconds=1))
+        )
+        await session.commit()
+    return result.rowcount > 0
 
 
 async def mark_chat_read_from_whatsapp_receipt(wa_message_id: str) -> dict | None:
@@ -2022,6 +2048,7 @@ async def reconcile_outgoing_message(
     wa_message_id: str | None = None,
     media_url: str | None = None,
     payload: dict | None = None,
+    human_reply: bool = False,
 ) -> dict:
     """Guarda un mensaje SALIENTE (fromMe) que llega por el eco de Evolution,
     salvo que sea un duplicado de algo que ya mandó nuestra app.
@@ -2069,6 +2096,7 @@ async def reconcile_outgoing_message(
         status="SERVER_ACK",
         message_type=message_type,
         payload=payload,
+        human_outbound=human_reply,
     )
     return {"matched": False, "message_id": inserted["id"]}
 

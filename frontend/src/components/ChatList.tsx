@@ -38,6 +38,8 @@ interface Props {
   selectedId: string | null
   onSelect: (chat: Chat) => void
   onPreview: (chat: Chat) => void
+  onMarkUnread: (chat: Chat) => void
+  markingUnreadId?: string | null
   hasNextPage: boolean
   isFetchingNextPage: boolean
   hasNextPageError: boolean
@@ -102,6 +104,8 @@ export function ChatList({
   selectedId,
   onSelect,
   onPreview,
+  onMarkUnread,
+  markingUnreadId = null,
   hasNextPage,
   isFetchingNextPage,
   hasNextPageError,
@@ -591,6 +595,8 @@ export function ChatList({
                       search={search}
                       onClick={() => onSelect(chat)}
                       onPreview={() => onPreview(chat)}
+                      onMarkUnread={() => onMarkUnread(chat)}
+                      isMarkingUnread={markingUnreadId === chat.chat_id}
                     />
                   ) : (
                     <LoadMoreRow

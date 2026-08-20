@@ -143,11 +143,11 @@ interface CreatedNotification {
   title: string
   body: string
   lead_id: string | null
-  metadata: { author_name?: string } | null
+  metadata: { author_name?: string; issue_report_id?: number } | null
 }
 
 type ChatSocketEvent =
-  | { type: 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' }
+  | { type: 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' | 'issue_reports_updated' }
   | { type: 'scheduled_messages_updated'; chat_id?: string }
   | { type: 'internal_notes_updated'; lead_id: string }
   | { type: 'notification_created'; notification: CreatedNotification }
@@ -175,6 +175,7 @@ function parseChatSocketEvent(data: string): ChatSocketEvent | null {
     case 'media_library_updated':
     case 'notifications_updated':
     case 'automations_updated':
+    case 'issue_reports_updated':
       return { type: parsed.type }
     case 'scheduled_messages_updated':
       return {
@@ -194,7 +195,10 @@ function parseChatSocketEvent(data: string): ChatSocketEvent | null {
         || !isNullableString(notification.lead_id)
       ) return null
       const metadata = isJsonObject(notification.metadata)
-        ? { author_name: typeof notification.metadata.author_name === 'string' ? notification.metadata.author_name : undefined }
+        ? {
+            author_name: typeof notification.metadata.author_name === 'string' ? notification.metadata.author_name : undefined,
+            issue_report_id: typeof notification.metadata.issue_report_id === 'number' ? notification.metadata.issue_report_id : undefined,
+          }
         : null
       return {
         type: parsed.type,
@@ -333,7 +337,7 @@ export function useChatUpdates(
     // enviaron a un socket muerto), así que hay que refetchear para no quedar
     // desactualizado hasta el próximo broadcast o un F5.
     function resync() {
-      for (const key of [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat']]) {
+      for (const key of [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat'], ['issue-reports']]) {
         queryClient.invalidateQueries({ queryKey: key })
       }
     }
@@ -389,13 +393,21 @@ export function useChatUpdates(
             queryClient.invalidateQueries({ queryKey: ['automations'] })
             queryClient.invalidateQueries({ queryKey: ['automation-executions'] })
           }
+          if (payload.type === 'issue_reports_updated') {
+            queryClient.invalidateQueries({ queryKey: ['issue-reports'] })
+          }
           if (payload.type === 'notification_created') {
             const notification = payload.notification
             queryClient.invalidateQueries({ queryKey: ['notifications'] })
             notifyRef.current(
               notification.title,
               notification.body.length > 140 ? `${notification.body.slice(0, 137)}...` : notification.body,
-              () => { if (notification.lead_id) navigate(`/chat/${notification.lead_id}`) },
+              () => {
+                if (notification.notification_type === NotificationType.IssueReport) {
+                  navigate(notification.metadata?.issue_report_id ? `/reports?report=${notification.metadata.issue_report_id}` : '/reports')
+                }
+                else if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
+              },
               { force: true, tag: `notification-${notification.id}` },
             )
             if (notification.notification_type === NotificationType.InternalNoteMention && notification.lead_id) {
@@ -664,6 +676,22 @@ export function useMarkChatRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: markChatRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+    },
+  })
+}
+
+async function markChatUnread(chatId: string): Promise<void> {
+  await client.post(`/api/chats/${encodeURIComponent(chatId)}/unread`)
+}
+
+/** Marca manualmente un chat como pendiente sin cambiar los recibos de WhatsApp. */
+export function useMarkChatUnread() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: markChatUnread,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['unread-count'] })

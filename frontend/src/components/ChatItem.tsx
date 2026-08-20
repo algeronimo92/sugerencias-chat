@@ -1,6 +1,7 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { Chat } from '../types'
-import { BotOff, LockKeyhole } from 'lucide-react'
+import { BotOff, Eye, Loader2, LockKeyhole, Mail } from 'lucide-react'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 
@@ -13,6 +14,8 @@ interface Props {
   search?: string
   onClick: () => void
   onPreview: () => void
+  onMarkUnread: () => void
+  isMarkingUnread?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -42,11 +45,28 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick, onPreview }: Props) {
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick, onPreview, onMarkUnread, isMarkingUnread = false }: Props) {
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef({ x: 0, y: 0 })
   const suppressClickRef = useRef(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('keydown', closeOnEscape)
+    document.addEventListener('pointerdown', close)
+    return () => {
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('keydown', closeOnEscape)
+      document.removeEventListener('pointerdown', close)
+    }
+  }, [contextMenu])
 
   function cancelLongPress() {
     if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current)
@@ -118,7 +138,17 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   const isCustomerWindowOpen = customerWindowExpiresAt > Date.now()
   const botAttended = isBotAttended(chat)
 
+  function openContextMenu(event: ReactMouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    cancelLongPress()
+    setContextMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 116)),
+    })
+  }
+
   return (
+    <>
     <button type="button"
       onClick={(event) => {
         if (suppressClickRef.current) {
@@ -128,11 +158,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
         }
         onClick()
       }}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        cancelLongPress()
-        if (!suppressClickRef.current) onPreview()
-      }}
+      onContextMenu={openContextMenu}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={cancelLongPress}
@@ -210,13 +236,12 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
           )}
           {chat.unread_count > 0 && (
             <span
-              title={botAttended ? 'Un bot ya respondió — nadie del equipo vio el mensaje del cliente todavía' : undefined}
-              className={`shrink-0 min-w-5 h-5 px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center ${
+              title={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'}
+              aria-label="Chat no leído"
+              className={`h-3 w-3 shrink-0 rounded-full ring-2 ring-white dark:ring-wa-panel-dark ${
                 botAttended ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
               }`}
-            >
-              {chat.unread_count > 99 ? '99+' : chat.unread_count}
-            </span>
+            />
           )}
         </div>
         {chat.tags.length > 0 && (
@@ -237,5 +262,37 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
         )}
       </div>
     </button>
+    {contextMenu && createPortal(
+      <div
+        role="menu"
+        aria-label={`Acciones para ${displayName(chat)}`}
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        className="fixed z-[100] w-52 overflow-hidden rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-wa-border-dark dark:bg-wa-head-dark"
+        onPointerDown={event => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { setContextMenu(null); onPreview() }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-wa-text hover:bg-wa-hover dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
+        >
+          <Eye className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" /> Vista rápida
+        </button>
+        {chat.unread_count === 0 && chat.last_customer_message_at && (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isMarkingUnread}
+            onClick={() => { setContextMenu(null); onMarkUnread() }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-wa-text hover:bg-wa-hover disabled:opacity-50 dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
+          >
+            {isMarkingUnread ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" /> : <Mail className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" />}
+            Marcar como no leído
+          </button>
+        )}
+      </div>,
+      document.body,
+    )}
+    </>
   )
 }

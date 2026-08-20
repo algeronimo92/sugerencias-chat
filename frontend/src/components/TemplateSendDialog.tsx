@@ -206,10 +206,23 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     }, { onSuccess: onClose })
   }
 
+  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (
+      event.key !== 'Enter'
+      || event.shiftKey
+      || event.nativeEvent.isComposing
+      || openMedia
+      || (event.target as HTMLElement).closest('button, a')
+    ) return
+    event.preventDefault()
+    event.stopPropagation()
+    confirmSend()
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-[1px]" onMouseDown={event => { if (event.target === event.currentTarget) closeDialog() }}>
-        <div role="dialog" aria-modal="true" aria-labelledby="template-preview-title" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <div role="dialog" aria-modal="true" aria-labelledby="template-preview-title" onKeyDown={handleDialogKeyDown} className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
           <header className="flex items-center justify-between gap-4 border-b border-wa-border px-5 py-4 dark:border-wa-border-dark">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -228,7 +241,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                   <label htmlFor="template-preview-text" className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">{isOfficial ? 'Texto oficial aprobado' : isInteractive ? 'Descripción del mensaje interactivo' : 'Texto del mensaje'}</label>
                   <span className="text-[10px] text-wa-muted">{text.length} caracteres</span>
                 </div>
-                <textarea id="template-preview-text" rows={7} value={text} onChange={event => setInternalText(event.target.value)} readOnly={isOfficial} disabled={send.isPending} className="w-full resize-y rounded-xl border border-wa-border bg-white px-3.5 py-3 text-sm text-wa-text outline-none focus:border-transparent focus:ring-2 focus:ring-wa-primary/60 read-only:bg-wa-hover disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark dark:read-only:bg-wa-head-dark/60" />
+                <textarea id="template-preview-text" rows={7} value={text} onChange={event => setInternalText(event.target.value)} readOnly={isOfficial} disabled={send.isPending} autoFocus className="w-full resize-y rounded-xl border border-wa-border bg-white px-3.5 py-3 text-sm text-wa-text outline-none focus:border-transparent focus:ring-2 focus:ring-wa-primary/60 read-only:bg-wa-hover disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark dark:read-only:bg-wa-head-dark/60" />
                 <p className="mt-1.5 text-[11px] text-wa-muted">{isOfficial ? 'El cuerpo aprobado no puede editarse. Ajusta únicamente los valores de sus variables.' : 'Las variables ya fueron reemplazadas. Puedes hacer ajustes solo para este envío.'}</p>
               </div>
 

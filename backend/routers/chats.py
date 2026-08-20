@@ -64,6 +64,7 @@ from services.db_service import (
     fetch_unread_wa_message_ids,
     lead_exists,
     mark_chat_read,
+    mark_chat_unread,
     list_active_sellers,
     get_customer_service_window,
     rekey_lead_phone,
@@ -1051,4 +1052,14 @@ async def read_chat(chat_id: str):
 
     await mark_chat_read(chat_id)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "read"})
+    return {"status": "ok"}
+
+
+@router.post("/{chat_id}/unread")
+async def unread_chat(chat_id: str):
+    """Marca el chat como pendiente dentro del CRM. No revierte los recibos
+    de lectura ya enviados a WhatsApp."""
+    if not await mark_chat_unread(chat_id):
+        raise HTTPException(404, "El chat no tiene mensajes del cliente para marcar")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "unread"})
     return {"status": "ok"}
