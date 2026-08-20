@@ -18,6 +18,7 @@ from services.db_service import (
 )
 from services.ad_referral_service import rehost_ad_thumbnail
 from services.message_status_service import parse_message_status_events
+from services.productivity_service import complete_assigned_seller_reply_tasks
 from services.evolution_service import EvolutionApiError, find_phone_jid_for_lid
 from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
@@ -35,6 +36,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+
+# Evolution usa ``unknown`` para mensajes creados mediante su API. Los que una
+# persona escribe desde un dispositivo vinculado conservan la plataforma real.
+HUMAN_WHATSAPP_SOURCES = frozenset({"android", "ios", "web"})
 
 
 @router.post("/resolve-whatsapp-identity")
@@ -291,6 +296,7 @@ class OutgoingWebhookBody(BaseModel):
     wa_message_id: str | None = None
     media_url: str | None = None
     payload: dict | None = None
+    source: str | None = None
 
 
 @router.post("/outgoing")
@@ -302,13 +308,25 @@ async def outgoing_webhook(
     Reconcilia: descarta el eco de nuestros propios envíos (ya guardados por la
     app) pero conserva los salientes externos —auto-reply de Kommo, mensajes
     escritos desde el teléfono— que solo llegan por acá."""
+    source = (body.source or "").strip().lower()
+    human_reply = source in HUMAN_WHATSAPP_SOURCES
+    message_payload = body.payload
+    if source:
+        message_payload = {**(message_payload or {}), "source": source}
+
     result = await reconcile_outgoing_message(
         body.chat_id,
         body.message_type,
         body.content,
         wa_message_id=body.wa_message_id,
         media_url=body.media_url,
-        payload=body.payload,
+        payload=message_payload,
+        human_reply=human_reply,
+    )
+    completed_tasks = (
+        await complete_assigned_seller_reply_tasks(body.chat_id)
+        if human_reply
+        else 0
     )
     # Solo avisamos cuando se insertó algo nuevo (un saliente externo); el eco de
     # nuestros propios envíos ya está en pantalla.
@@ -316,6 +334,8 @@ async def outgoing_webhook(
         await manager.broadcast(
             {"type": "chats_updated", "chat_id": body.chat_id, "reason": "outbound_message"}
         )
+    if completed_tasks:
+        await manager.broadcast({"type": "tasks_updated"})
     return {"status": "ok", **result}
 
 

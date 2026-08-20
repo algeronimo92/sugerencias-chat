@@ -48,6 +48,30 @@ async def test_reply_completion_only_targets_sellers_follow_up_tasks(monkeypatch
     session.commit.assert_awaited_once()
 
 
+async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatch):
+    statements = []
+    session = AsyncMock()
+
+    async def execute(statement):
+        statements.append(statement)
+        return SimpleNamespace(rowcount=1)
+
+    session.execute = execute
+    monkeypatch.setattr(productivity_service, "get_sessionmaker", _sessionmaker(session))
+
+    completed = await productivity_service.complete_assigned_seller_reply_tasks("lead-1")
+
+    assert completed == 1
+    sql = str(statements[0].compile())
+    params = statements[0].compile().params
+    assert "leads.vendedor_id" in sql
+    assert "users.role" in sql
+    assert "lead-1" in params.values()
+    assert "vendedor" in params.values()
+    assert any(value == ["seguimiento", "whatsapp"] for value in params.values())
+    session.commit.assert_awaited_once()
+
+
 async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(side_effect=[

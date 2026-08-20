@@ -69,3 +69,43 @@ async def test_repeated_exact_order_event_is_not_inserted(monkeypatch):
 
     assert result == {"matched": True}
     insert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_external_automation_is_recorded_as_automated(monkeypatch):
+    session = AsyncMock()
+    session.execute.return_value = _Result()
+    monkeypatch.setattr(
+        db_service,
+        "get_sessionmaker",
+        lambda: lambda: _SessionContext(session),
+    )
+    insert = AsyncMock(return_value={"id": 82})
+    monkeypatch.setattr(db_service, "insert_message", insert)
+
+    await db_service.reconcile_outgoing_message(
+        "lead-1", "text", "Respuesta del bot", wa_message_id="BOT-1",
+        payload={"source": "unknown"}, human_reply=False,
+    )
+
+    assert insert.await_args.kwargs["human_outbound"] is False
+
+
+@pytest.mark.asyncio
+async def test_linked_device_message_is_recorded_as_human(monkeypatch):
+    session = AsyncMock()
+    session.execute.return_value = _Result()
+    monkeypatch.setattr(
+        db_service,
+        "get_sessionmaker",
+        lambda: lambda: _SessionContext(session),
+    )
+    insert = AsyncMock(return_value={"id": 83})
+    monkeypatch.setattr(db_service, "insert_message", insert)
+
+    await db_service.reconcile_outgoing_message(
+        "lead-1", "text", "Respuesta humana", wa_message_id="PHONE-1",
+        payload={"source": "web"}, human_reply=True,
+    )
+
+    assert insert.await_args.kwargs["human_outbound"] is True

@@ -141,6 +141,42 @@ async def complete_reply_tasks(lead_id: str, user_id: int) -> int:
     return result.rowcount
 
 
+async def complete_assigned_seller_reply_tasks(lead_id: str) -> int:
+    """Completa seguimientos cuando la respuesta humana llegó desde WhatsApp.
+
+    Un mensaje enviado desde un dispositivo vinculado no trae el usuario del
+    CRM que lo escribió. En ese caso la atribución segura es el vendedor que
+    tiene asignado el lead. Si el lead no tiene vendedor, o el usuario asignado
+    no tiene rol de vendedor, no se completa ninguna tarea.
+    """
+    now = datetime.now(timezone.utc)
+    seller_id = (
+        select(Lead.vendedor_id)
+        .join(User, User.id == Lead.vendedor_id)
+        .where(Lead.id == lead_id, User.role == "vendedor")
+        .scalar_subquery()
+    )
+    stmt = (
+        update(LeadTask)
+        .where(
+            LeadTask.lead_id == lead_id,
+            LeadTask.assigned_user_id == seller_id,
+            LeadTask.status == TaskStatus.PENDING,
+            LeadTask.task_type.in_([TaskType.FOLLOW_UP, TaskType.WHATSAPP]),
+        )
+        .values(
+            status=TaskStatus.COMPLETED,
+            completed_at=now,
+            completed_by_user_id=seller_id,
+            updated_at=now,
+        )
+    )
+    async with get_sessionmaker()() as session:
+        result = await session.execute(stmt)
+        await session.commit()
+    return result.rowcount
+
+
 async def complete_pending_tasks(
     user_id: int,
     is_admin: bool,
