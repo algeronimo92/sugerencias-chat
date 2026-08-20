@@ -1246,6 +1246,27 @@ async def mark_chat_read(chat_id: str) -> None:
         await session.commit()
 
 
+async def mark_chat_unread(chat_id: str) -> bool:
+    """Retrocede la marca de lectura hasta justo antes del último mensaje del
+    cliente. Así el chat queda pendiente con un solo mensaje lógico, sin
+    alterar los recibos de lectura que ya se enviaron a WhatsApp."""
+    latest_stmt = select(func.max(WspMessage.sent_at)).where(
+        WspMessage.chat_id == chat_id,
+        WspMessage.sender == "cliente",
+    )
+    async with get_sessionmaker()() as session:
+        latest_customer_message_at = await session.scalar(latest_stmt)
+        if latest_customer_message_at is None:
+            return False
+        result = await session.execute(
+            update(Lead)
+            .where(Lead.id == chat_id)
+            .values(last_read_at=latest_customer_message_at - timedelta(microseconds=1))
+        )
+        await session.commit()
+    return result.rowcount > 0
+
+
 async def mark_chat_read_from_whatsapp_receipt(wa_message_id: str) -> dict | None:
     """Avanza la lectura interna hasta un mensaje del cliente leído en WhatsApp.
 

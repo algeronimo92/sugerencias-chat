@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -7,6 +8,7 @@ from domain_types import (
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
+    IssueReportStatus,
     NotificationType,
     TaskPriority,
     TaskStatus,
@@ -521,6 +523,51 @@ class TaskItem(BaseModel):
     assigned_user_name: str
     is_overdue: bool
     created_at: str
+
+
+class IssueReportAttachmentCreate(BaseModel):
+    content_type: str = Field(min_length=1, max_length=100)
+    data_base64: str = Field(min_length=1)
+    filename: str = Field(min_length=1, max_length=255)
+
+
+class IssueReportCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=2000)
+    current_path: str = Field(default="/", min_length=1, max_length=500)
+    lead_id: UUID | None = None
+    technical_context: dict = Field(default_factory=dict)
+    attachments: list[IssueReportAttachmentCreate] = Field(default_factory=list, max_length=3)
+
+
+class IssueReportUpdate(BaseModel):
+    status: IssueReportStatus
+
+
+class IssueReportAttachmentItem(BaseModel):
+    id: int
+    media_url: str
+    filename: str
+    content_type: str
+    size_bytes: int
+
+
+class IssueReportItem(BaseModel):
+    id: int
+    public_code: str
+    reporter_user_id: int
+    reporter_name: str
+    title: str
+    description: str
+    status: IssueReportStatus
+    current_path: str
+    lead_id: str | None = None
+    technical_context: dict
+    attachments: list[IssueReportAttachmentItem] = Field(default_factory=list)
+    resolved_at: str | None = None
+    resolved_by_name: str | None = None
+    created_at: str
+    updated_at: str
 
 
 class TemplateCreate(BaseModel):

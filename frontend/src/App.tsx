@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { AlertTriangle, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Moon, Sun, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { AlertTriangle, Bug, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Moon, Sun, X } from 'lucide-react'
 import { EMPTY_CHAT_FILTERS, type Chat, type ChatFilters } from './types'
 import { ChatList } from './components/ChatList'
 import { ChatPeekDialog } from './components/ChatPeekDialog'
@@ -14,7 +15,7 @@ import { PwaUpdatePrompt } from './components/PwaUpdatePrompt'
 import { isNavItemActive, visibleNavItems } from './domain/navigation'
 import { useLayout } from './hooks/useBreakpoint'
 import { useLogout, useMe } from './hooks/useAuth'
-import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useUnreadCount } from './hooks/useChats'
+import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useMarkChatUnread, useUnreadCount } from './hooks/useChats'
 import type { InternalMentionAlert } from './hooks/useChats'
 import { useNotifications } from './hooks/useNotifications'
 import { useSuggestionStatus, useGenerateSuggestions } from './hooks/useSuggestions'
@@ -26,6 +27,7 @@ import { AppToaster } from './components/ui/Toaster'
 import { Tooltip } from './components/ui/Tooltip'
 import { queryClient } from './queryClient'
 import { hasOpenOverlay } from './utils/overlay'
+import { extractErrorMessage } from './utils/errors'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -73,6 +75,12 @@ const SettingsDialog = lazy(() =>
 const AccountSecurityDialog = lazy(() =>
   import('./components/AccountSecurityDialog').then(module => ({ default: module.AccountSecurityDialog })),
 )
+const IssueReportDialog = lazy(() =>
+  import('./components/IssueReportDialog').then(module => ({ default: module.IssueReportDialog })),
+)
+const IssueReportsPage = lazy(() =>
+  import('./components/IssueReportsPage').then(module => ({ default: module.IssueReportsPage })),
+)
 const SuggestionPanel = lazy(() =>
   import('./components/SuggestionPanel').then(module => ({ default: module.SuggestionPanel })),
 )
@@ -99,6 +107,7 @@ function MainLayout() {
   const isDashboard = location.pathname === '/dashboard'
   const isAutomations = location.pathname === '/automations'
   const isCatalogs = location.pathname === '/catalogs'
+  const isIssueReports = location.pathname === '/reports'
 
   // 'mobile' = una vista a la vez + navegación inferior; 'tablet' = lista y
   // conversación, con las sugerencias en un panel deslizable; 'desktop' = las
@@ -112,6 +121,7 @@ function MainLayout() {
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false)
+  const [isIssueReportOpen, setIsIssueReportOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<'claves' | 'whatsapp' | 'usuarios'>('claves')
 
   function openSettings(tab: 'claves' | 'whatsapp' | 'usuarios' = 'claves') {
@@ -200,6 +210,7 @@ function MainLayout() {
       : null
 
   const { mutate: markChatRead } = useMarkChatRead()
+  const markChatUnread = useMarkChatUnread()
 
   // Marca el chat como visto solo cuando realmente está visible. Si queda
   // seleccionado mientras la ventana está en segundo plano, sus mensajes
@@ -234,6 +245,14 @@ function MainLayout() {
 
   function handleCloseChat() {
     navigate('/')
+  }
+
+  function handleMarkChatUnread(chat: Chat) {
+    if (chat.chat_id === chatId) handleCloseChat()
+    markChatUnread.mutate(chat.chat_id, {
+      onSuccess: () => toast.success(`${chat.name || chat.phone || 'Chat'} marcado como no leído`),
+      onError: error => toast.error(extractErrorMessage(error)),
+    })
   }
 
   // Fuera de escritorio las sugerencias son un panel superpuesto: al saltar a
@@ -295,7 +314,7 @@ function MainLayout() {
     'flex items-center justify-center w-7 h-7 rounded-md text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark transition-colors'
 
   return (
-    <div className="flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
+    <div data-issue-capture-root className="flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
       {/* Barra superior — nivel global, más profundo que los headers locales. */}
       {/* min-h-12 y no h-12: con pt-safe la barra crece lo que mida el notch
           para que su verde llegue hasta el borde de la pantalla. */}
@@ -343,6 +362,11 @@ function MainLayout() {
             </button>
           </Tooltip>
         )}
+        <Tooltip content="Reportar un problema">
+          <button type="button" onClick={() => setIsIssueReportOpen(true)} aria-label="Reportar un problema" className={headerIconButtonClass}>
+            <Bug className="h-4 w-4" />
+          </button>
+        </Tooltip>
         <Tooltip content="Acceso y seguridad">
           <button type="button" onClick={() => setIsAccountSecurityOpen(true)} aria-label="Acceso y seguridad" className={headerIconButtonClass}>
             <ShieldCheck className="h-4 w-4" />
@@ -375,6 +399,16 @@ function MainLayout() {
           <AccountSecurityDialog onClose={() => setIsAccountSecurityOpen(false)} />
         </Suspense>
       )}
+      {isIssueReportOpen && (
+        <Suspense fallback={null}>
+          <IssueReportDialog
+            open
+            currentPath={`${location.pathname}${location.search}`}
+            leadId={chatId}
+            onClose={() => setIsIssueReportOpen(false)}
+          />
+        </Suspense>
+      )}
 
       <AnimatePresence>
       {internalMention && (
@@ -400,6 +434,8 @@ function MainLayout() {
       <Suspense fallback={<PageLoader />}>
         {isTasks ? (
           <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
+        ) : isIssueReports ? (
+          <IssueReportsPage onCreate={() => setIsIssueReportOpen(true)} />
         ) : isDashboard && me?.role === 'admin' ? (
           <DashboardPage
             onOpenTasks={() => navigate('/tasks')}
@@ -440,6 +476,8 @@ function MainLayout() {
                 selectedId={selectedChat?.chat_id ?? null}
                 onSelect={handleSelectChat}
                 onPreview={setPreviewChat}
+                onMarkUnread={handleMarkChatUnread}
+                markingUnreadId={markChatUnread.isPending ? markChatUnread.variables : null}
                 hasNextPage={!!hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 hasNextPageError={isFetchNextPageError}
@@ -614,6 +652,7 @@ function AuthGate() {
         <Route path="/chat/:chatId" element={<MainLayout />} />
         <Route path="/kanban" element={<MainLayout />} />
         <Route path="/tasks" element={<MainLayout />} />
+        <Route path="/reports" element={<MainLayout />} />
         <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />

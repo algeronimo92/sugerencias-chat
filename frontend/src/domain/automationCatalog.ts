@@ -212,6 +212,7 @@ export type AutomationExecutionStatusValue = ValueOf<typeof AutomationExecutionS
 export const NotificationType = {
   InternalNoteMention: 'internal_note_mention',
   Automation: 'automation',
+  IssueReport: 'issue_report',
 } as const
 export type NotificationTypeValue = ValueOf<typeof NotificationType>
 

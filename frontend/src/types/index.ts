@@ -138,6 +138,34 @@ export interface NotificationPage {
   has_more: boolean
 }
 
+export type IssueReportStatus = 'new' | 'in_review' | 'resolved'
+
+export interface IssueReportAttachment {
+  id: number
+  media_url: string
+  filename: string
+  content_type: string
+  size_bytes: number
+}
+
+export interface IssueReport {
+  id: number
+  public_code: string
+  reporter_user_id: number
+  reporter_name: string
+  title: string
+  description: string
+  status: IssueReportStatus
+  current_path: string
+  lead_id: string | null
+  technical_context: JsonObject
+  attachments: IssueReportAttachment[]
+  resolved_at: string | null
+  resolved_by_name: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Chat {
   chat_id: string
   phone: string | null
