@@ -7,16 +7,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from db.models import User
-from domain_types import IssueReportStatus, NotificationType
-from models.schemas import IssueReportCreate, IssueReportItem, IssueReportUpdate
+from domain_types import IssueReportPriority, IssueReportStatus, NotificationType
+from models.schemas import (
+    IssueReportCommentCreate,
+    IssueReportCommentItem,
+    IssueReportCreate,
+    IssueReportDetail,
+    IssueReportItem,
+    IssueReportUpdate,
+)
 from routers.media import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user
 from services.issue_report_service import (
     create_issue_report,
+    create_issue_report_comment,
     get_issue_report,
+    get_issue_report_detail,
     list_active_admin_ids,
     list_issue_reports,
-    update_issue_report_status,
+    update_issue_report,
 )
 from services.media_storage import MediaStorageError, delete_media
 from services.notification_service import create_system_notification
@@ -39,9 +48,10 @@ async def _delete_saved(urls: list[str]) -> None:
 @router.get("", response_model=list[IssueReportItem])
 async def get_reports(
     status: IssueReportStatus | None = None,
+    priority: IssueReportPriority | None = None,
     user: User = Depends(get_current_user),
 ):
-    return await list_issue_reports(user.id, user.role == "admin", status)
+    return await list_issue_reports(user.id, user.role == "admin", status, priority)
 
 
 @router.post("", response_model=IssueReportItem, status_code=201)
@@ -131,9 +141,9 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
     return report
 
 
-@router.get("/{report_id}", response_model=IssueReportItem)
+@router.get("/{report_id}", response_model=IssueReportDetail)
 async def get_report(report_id: int, user: User = Depends(get_current_user)):
-    report = await get_issue_report(report_id)
+    report = await get_issue_report_detail(report_id)
     if report is None:
         raise HTTPException(404, "Reporte no encontrado")
     if user.role != "admin" and report["reporter_user_id"] != user.id:
@@ -152,19 +162,20 @@ async def patch_report(
     previous = await get_issue_report(report_id)
     if previous is None:
         raise HTTPException(404, "Reporte no encontrado")
-    report = await update_issue_report_status(report_id, body.status, user.id)
+    report = await update_issue_report(report_id, body.status, body.priority, user.id)
     assert report is not None
     if report["reporter_user_id"] != user.id and previous["status"] != report["status"]:
         labels = {
-            IssueReportStatus.NEW: "Nuevo",
-            IssueReportStatus.IN_REVIEW: "En revisión",
-            IssueReportStatus.RESOLVED: "Resuelto",
+            IssueReportStatus.NEW.value: "Nuevo",
+            IssueReportStatus.IN_REVIEW.value: "En revisión",
+            IssueReportStatus.NEEDS_INFO.value: "Necesita información",
+            IssueReportStatus.RESOLVED.value: "Resuelto",
         }
         try:
             notification = await create_system_notification(
                 report["reporter_user_id"],
                 NotificationType.ISSUE_REPORT,
-                f"{report['public_code']} · {labels[body.status]}",
+                f"{report['public_code']} · {labels[report['status']]}",
                 report["title"],
                 source_id=str(report["id"]),
                 metadata={"issue_report_id": report["id"]},
@@ -177,3 +188,46 @@ async def patch_report(
             logger.exception("No se pudo avisar al autor del reporte %s", report["id"])
     await manager.broadcast({"type": "issue_reports_updated"})
     return report
+
+
+@router.post("/{report_id}/comments", response_model=IssueReportCommentItem, status_code=201)
+async def post_report_comment(
+    report_id: int,
+    body: IssueReportCommentCreate,
+    user: User = Depends(get_current_user),
+):
+    report = await get_issue_report(report_id)
+    if report is None:
+        raise HTTPException(404, "Reporte no encontrado")
+    if user.role != "admin" and report["reporter_user_id"] != user.id:
+        raise HTTPException(403, "No puedes comentar el reporte de otro usuario")
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(400, "El comentario no puede estar vacío")
+    comment = await create_issue_report_comment(report_id, user.id, content)
+
+    recipient_ids = (
+        [report["reporter_user_id"]]
+        if user.role == "admin"
+        else await list_active_admin_ids()
+    )
+    try:
+        for recipient_id in dict.fromkeys(recipient_ids):
+            if recipient_id == user.id:
+                continue
+            notification = await create_system_notification(
+                recipient_id,
+                NotificationType.ISSUE_REPORT,
+                f"Nuevo comentario en {report['public_code']}",
+                f"{user.name}: {content}",
+                source_id=str(report_id),
+                metadata={"issue_report_id": report_id},
+            )
+            await manager.send_to_user(recipient_id, {
+                "type": "notification_created",
+                "notification": notification,
+            })
+    except Exception:
+        logger.exception("No se pudo avisar del comentario en el reporte %s", report_id)
+    await manager.broadcast({"type": "issue_reports_updated"})
+    return comment

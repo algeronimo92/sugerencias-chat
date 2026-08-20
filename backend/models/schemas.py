@@ -2,12 +2,13 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from domain_types import (
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
+    IssueReportPriority,
     IssueReportStatus,
     NotificationType,
     TaskPriority,
@@ -541,7 +542,18 @@ class IssueReportCreate(BaseModel):
 
 
 class IssueReportUpdate(BaseModel):
-    status: IssueReportStatus
+    status: IssueReportStatus | None = None
+    priority: IssueReportPriority | None = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.status is None and self.priority is None:
+            raise ValueError("Debe indicar un estado o una prioridad")
+        return self
+
+
+class IssueReportCommentCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
 
 
 class IssueReportAttachmentItem(BaseModel):
@@ -560,14 +572,39 @@ class IssueReportItem(BaseModel):
     title: str
     description: str
     status: IssueReportStatus
+    priority: IssueReportPriority
     current_path: str
     lead_id: str | None = None
     technical_context: dict
     attachments: list[IssueReportAttachmentItem] = Field(default_factory=list)
+    comment_count: int = 0
     resolved_at: str | None = None
     resolved_by_name: str | None = None
     created_at: str
     updated_at: str
+
+
+class IssueReportCommentItem(BaseModel):
+    id: int
+    author_user_id: int
+    author_name: str
+    author_role: str
+    content: str
+    created_at: str
+
+
+class IssueReportEventItem(BaseModel):
+    id: int
+    actor_name: str | None = None
+    event_type: str
+    previous_value: str | None = None
+    new_value: str | None = None
+    created_at: str
+
+
+class IssueReportDetail(IssueReportItem):
+    comments: list[IssueReportCommentItem] = Field(default_factory=list)
+    events: list[IssueReportEventItem] = Field(default_factory=list)
 
 
 class TemplateCreate(BaseModel):

@@ -138,7 +138,8 @@ export interface NotificationPage {
   has_more: boolean
 }
 
-export type IssueReportStatus = 'new' | 'in_review' | 'resolved'
+export type IssueReportStatus = 'new' | 'in_review' | 'needs_info' | 'resolved'
+export type IssueReportPriority = 'low' | 'normal' | 'high' | 'critical'
 
 export interface IssueReportAttachment {
   id: number
@@ -156,14 +157,39 @@ export interface IssueReport {
   title: string
   description: string
   status: IssueReportStatus
+  priority: IssueReportPriority
   current_path: string
   lead_id: string | null
   technical_context: JsonObject
   attachments: IssueReportAttachment[]
+  comment_count: number
   resolved_at: string | null
   resolved_by_name: string | null
   created_at: string
   updated_at: string
+}
+
+export interface IssueReportComment {
+  id: number
+  author_user_id: number
+  author_name: string
+  author_role: UserRole
+  content: string
+  created_at: string
+}
+
+export interface IssueReportEvent {
+  id: number
+  actor_name: string | null
+  event_type: 'created' | 'status_changed' | 'priority_changed'
+  previous_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
+export interface IssueReportDetail extends IssueReport {
+  comments: IssueReportComment[]
+  events: IssueReportEvent[]
 }
 
 export interface Chat {

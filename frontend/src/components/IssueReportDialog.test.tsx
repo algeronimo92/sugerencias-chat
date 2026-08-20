@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   capture: vi.fn(),
 }))
 
-vi.mock('html2canvas', () => ({ default: mocks.capture }))
+vi.mock('html2canvas-pro', () => ({ default: mocks.capture }))
 vi.mock('../hooks/useIssueReports', () => ({
   useCreateIssueReport: () => ({ mutate: mocks.mutate, isPending: false }),
 }))
@@ -58,6 +58,10 @@ describe('IssueReportDialog', () => {
     expect(upload).not.toBeNull()
     fireEvent.change(upload!, { target: { files: [file] } })
     await screen.findByAltText('captura.png')
+
+    await user.click(screen.getByRole('button', { name: 'Ver captura.png' }))
+    expect(screen.getByRole('img', { name: 'Vista previa ampliada de captura.png' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cerrar vista previa' }))
 
     await user.click(screen.getByRole('button', { name: 'Enviar reporte' }))
 

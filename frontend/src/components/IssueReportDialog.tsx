@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import html2canvas from 'html2canvas'
-import { Bug, Camera, ImagePlus, Loader2, MonitorDown, ShieldCheck, X } from 'lucide-react'
+import html2canvas from 'html2canvas-pro'
+import { Bug, Camera, Eye, ImagePlus, Loader2, MonitorDown, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { useCreateIssueReport } from '../hooks/useIssueReports'
@@ -57,6 +57,7 @@ export function IssueReportDialog({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [evidence, setEvidence] = useState<LocalEvidence[]>([])
+  const [previewEvidence, setPreviewEvidence] = useState<LocalEvidence | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCapturing, setIsCapturing] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
@@ -73,6 +74,7 @@ export function IssueReportDialog({
     if (createReport.isPending || isCapturing) return
     evidence.forEach(item => URL.revokeObjectURL(item.previewUrl))
     setEvidence([])
+    setPreviewEvidence(null)
     setTitle('')
     setDescription('')
     setError(null)
@@ -119,6 +121,7 @@ export function IssueReportDialog({
       if (removed) URL.revokeObjectURL(removed.previewUrl)
       return current.filter(item => item.id !== id)
     })
+    setPreviewEvidence(current => current?.id === id ? null : current)
   }
 
   async function captureCurrentView() {
@@ -144,7 +147,8 @@ export function IssueReportDialog({
         height: target.clientHeight,
       })
       await addFiles([await canvasToFile(canvas)])
-    } catch {
+    } catch (captureError) {
+      console.error('No se pudo capturar la vista actual', captureError)
       setError('No pudimos capturar esta pantalla. Puedes tomar una foto o subir una imagen.')
     } finally {
       setIsCapturing(false)
@@ -264,8 +268,13 @@ export function IssueReportDialog({
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {evidence.map(item => (
                       <div key={item.id} className="group relative aspect-video overflow-hidden rounded-lg border border-wa-border bg-wa-field dark:border-wa-border-dark dark:bg-wa-field-dark">
-                        <img src={item.previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
-                        <button type="button" onClick={() => removeEvidence(item.id)} disabled={createReport.isPending} aria-label={`Quitar ${item.file.name}`} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white hover:bg-red-600 disabled:opacity-40">
+                        <button type="button" onClick={() => setPreviewEvidence(item)} aria-label={`Ver ${item.file.name}`} className="h-full w-full cursor-zoom-in">
+                          <img src={item.previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100 group-focus-within:bg-black/35 group-focus-within:opacity-100">
+                            <span className="flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1.5 text-[10px] font-semibold"><Eye className="h-3.5 w-3.5" />Vista previa</span>
+                          </span>
+                        </button>
+                        <button type="button" onClick={() => removeEvidence(item.id)} disabled={createReport.isPending} aria-label={`Quitar ${item.file.name}`} className="absolute right-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white hover:bg-red-600 disabled:opacity-40">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -292,6 +301,27 @@ export function IssueReportDialog({
           </form>
         </Dialog.Content>
       </Dialog.Portal>
+
+      <Dialog.Root open={previewEvidence != null} onOpenChange={next => { if (!next) setPreviewEvidence(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[85] bg-black/85 backdrop-blur-sm" />
+          <Dialog.Content className="fixed inset-0 z-[86] flex flex-col overflow-hidden outline-none">
+            <Dialog.Title className="sr-only">Vista previa de {previewEvidence?.file.name}</Dialog.Title>
+            <Dialog.Description className="sr-only">Imagen adjunta al reporte antes de enviarlo.</Dialog.Description>
+            <header className="flex shrink-0 items-center justify-between gap-3 bg-black/45 px-4 py-3 text-white">
+              <span className="min-w-0 truncate text-sm font-medium">{previewEvidence?.file.name}</span>
+              <Dialog.Close asChild>
+                <button type="button" aria-label="Cerrar vista previa" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20">
+                  <X className="h-5 w-5" />
+                </button>
+              </Dialog.Close>
+            </header>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+              {previewEvidence && <img src={previewEvidence.previewUrl} alt={`Vista previa ampliada de ${previewEvidence.file.name}`} className="max-h-full max-w-full select-none object-contain shadow-2xl" />}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </Dialog.Root>
   )
 }

@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from domain_types import IssueReportStatus
-from models.schemas import IssueReportCreate, IssueReportUpdate
+from domain_types import IssueReportPriority, IssueReportStatus
+from models.schemas import IssueReportCommentCreate, IssueReportCreate, IssueReportUpdate
 from routers import issue_reports
 
 
@@ -18,6 +18,8 @@ def report_item(**overrides):
         "title": "No puedo enviar mensajes",
         "description": "El botón permanece cargando y no envía.",
         "status": "new",
+        "priority": "normal",
+        "comment_count": 0,
         "current_path": "/chat/9cc06f7e-105f-45a6-8bc8-88223051355e",
         "lead_id": "9cc06f7e-105f-45a6-8bc8-88223051355e",
         "technical_context": {},
@@ -34,15 +36,19 @@ def report_item(**overrides):
 async def test_seller_lists_only_their_reports(monkeypatch):
     received = None
 
-    async def fake_list(user_id, is_admin, status):
+    async def fake_list(user_id, is_admin, status, priority):
         nonlocal received
-        received = (user_id, is_admin, status)
+        received = (user_id, is_admin, status, priority)
         return []
 
     monkeypatch.setattr(issue_reports, "list_issue_reports", fake_list)
-    await issue_reports.get_reports(IssueReportStatus.NEW, SimpleNamespace(id=11, role="vendedor"))
+    await issue_reports.get_reports(
+        IssueReportStatus.NEW,
+        IssueReportPriority.HIGH,
+        SimpleNamespace(id=11, role="vendedor"),
+    )
 
-    assert received == (11, False, IssueReportStatus.NEW)
+    assert received == (11, False, IssueReportStatus.NEW, IssueReportPriority.HIGH)
 
 
 @pytest.mark.asyncio
@@ -61,9 +67,55 @@ async def test_seller_cannot_view_another_users_report(monkeypatch):
     async def fake_get(_report_id):
         return report_item(reporter_user_id=99)
 
-    monkeypatch.setattr(issue_reports, "get_issue_report", fake_get)
+    monkeypatch.setattr(issue_reports, "get_issue_report_detail", fake_get)
     with pytest.raises(HTTPException) as exc:
         await issue_reports.get_report(7, SimpleNamespace(id=11, role="vendedor"))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_changes_priority_and_records_actor(monkeypatch):
+    received = None
+
+    async def fake_get(_report_id):
+        return report_item()
+
+    async def fake_update(report_id, status, priority, actor_user_id):
+        nonlocal received
+        received = (report_id, status, priority, actor_user_id)
+        return report_item(priority=priority.value)
+
+    async def no_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(issue_reports, "get_issue_report", fake_get)
+    monkeypatch.setattr(issue_reports, "update_issue_report", fake_update)
+    monkeypatch.setattr(issue_reports.manager, "broadcast", no_broadcast)
+
+    result = await issue_reports.patch_report(
+        7,
+        IssueReportUpdate(priority=IssueReportPriority.CRITICAL),
+        SimpleNamespace(id=11, role="admin"),
+    )
+
+    assert result["priority"] == "critical"
+    assert received == (7, None, IssueReportPriority.CRITICAL, 11)
+
+
+@pytest.mark.asyncio
+async def test_seller_cannot_comment_another_users_report(monkeypatch):
+    async def fake_get(_report_id):
+        return report_item(reporter_user_id=99)
+
+    monkeypatch.setattr(issue_reports, "get_issue_report", fake_get)
+
+    with pytest.raises(HTTPException) as exc:
+        await issue_reports.post_report_comment(
+            7,
+            IssueReportCommentCreate(content="¿Alguna novedad?"),
+            SimpleNamespace(id=11, role="vendedor"),
+        )
+
     assert exc.value.status_code == 403
 
 

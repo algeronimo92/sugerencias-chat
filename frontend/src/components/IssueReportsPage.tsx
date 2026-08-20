@@ -1,26 +1,16 @@
-import { Bug, CheckCircle2, Clock3, ExternalLink, Image as ImageIcon, Loader2, Plus, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Bug, CheckCircle2, Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Plus, Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import type { IssueReportStatus } from '../types'
+import type { IssueReportPriority, IssueReportStatus } from '../types'
 import { useMe } from '../hooks/useAuth'
-import { useIssueReports, useUpdateIssueReportStatus } from '../hooks/useIssueReports'
+import { useIssueReports, useUpdateIssueReport } from '../hooks/useIssueReports'
+import { ISSUE_PRIORITY_COLORS, ISSUE_PRIORITY_LABELS, ISSUE_STATUS_COLORS, ISSUE_STATUS_LABELS } from '../domain/issueReports'
 import { extractErrorMessage } from '../utils/errors'
 import { resolveMediaUrl } from '../utils/message'
 import { Button } from './ui/Button'
 import { Input, Select } from './ui/Input'
-
-
-const STATUS_LABELS: Record<IssueReportStatus, string> = {
-  new: 'Nuevo',
-  in_review: 'En revisión',
-  resolved: 'Resuelto',
-}
-
-const STATUS_COLORS: Record<IssueReportStatus, string> = {
-  new: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-  in_review: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
-  resolved: 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300',
-}
+import { IssueReportDetailDialog } from './IssueReportDetailDialog'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-PE', {
@@ -30,12 +20,20 @@ function formatDate(value: string) {
 }
 
 export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
   const [status, setStatus] = useState<IssueReportStatus | ''>('')
+  const [priority, setPriority] = useState<IssueReportPriority | ''>('')
   const [search, setSearch] = useState('')
-  const { data = [], isLoading, isError, refetch } = useIssueReports(status)
-  const updateStatus = useUpdateIssueReportStatus()
+  const reportFromUrl = Number(searchParams.get('report'))
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(Number.isInteger(reportFromUrl) && reportFromUrl > 0 ? reportFromUrl : null)
+
+  useEffect(() => {
+    setSelectedReportId(Number.isInteger(reportFromUrl) && reportFromUrl > 0 ? reportFromUrl : null)
+  }, [reportFromUrl])
+  const { data = [], isLoading, isError, refetch } = useIssueReports(status, priority)
+  const updateReport = useUpdateIssueReport()
   const visibleReports = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es')
     if (!query) return data
@@ -47,10 +45,24 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
   }, [data, search])
 
   function changeStatus(id: number, nextStatus: IssueReportStatus) {
-    updateStatus.mutate({ id, status: nextStatus }, {
-      onSuccess: report => toast.success(`${report.public_code} · ${STATUS_LABELS[report.status]}`),
+    updateReport.mutate({ id, status: nextStatus }, {
+      onSuccess: report => toast.success(`${report.public_code} · ${ISSUE_STATUS_LABELS[report.status]}`),
       onError: error => toast.error(extractErrorMessage(error)),
     })
+  }
+
+  function openReport(id: number) {
+    setSelectedReportId(id)
+    const next = new URLSearchParams(searchParams)
+    next.set('report', String(id))
+    setSearchParams(next, { replace: true })
+  }
+
+  function closeReport() {
+    setSelectedReportId(null)
+    const next = new URLSearchParams(searchParams)
+    next.delete('report')
+    setSearchParams(next, { replace: true })
   }
 
   return (
@@ -69,7 +81,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
           <Button onClick={onCreate}><Plus className="h-4 w-4" /> Nuevo reporte</Button>
         </header>
 
-        <div className="mb-5 grid gap-2 rounded-xl border border-wa-border bg-white p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_13rem] dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <div className="mb-5 grid gap-2 rounded-xl border border-wa-border bg-white p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_13rem_11rem] dark:border-wa-border-dark dark:bg-wa-panel-dark">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" />
             <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por código, título o vendedor" className="pl-9" />
@@ -78,7 +90,15 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
             <option value="">Todos los estados</option>
             <option value="new">Nuevos</option>
             <option value="in_review">En revisión</option>
+            <option value="needs_info">Necesita información</option>
             <option value="resolved">Resueltos</option>
+          </Select>
+          <Select value={priority} onChange={event => setPriority(event.target.value as IssueReportPriority | '')} aria-label="Filtrar por prioridad">
+            <option value="">Toda prioridad</option>
+            <option value="low">Baja</option>
+            <option value="normal">Normal</option>
+            <option value="high">Alta</option>
+            <option value="critical">Crítica</option>
           </Select>
         </div>
 
@@ -98,14 +118,15 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
         ) : (
           <div className="space-y-3">
             {visibleReports.map(report => {
-              const changing = updateStatus.isPending && updateStatus.variables?.id === report.id
+              const changing = updateReport.isPending && updateReport.variables?.id === report.id
               return (
                 <article key={report.id} className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm transition-opacity dark:border-wa-border-dark dark:bg-wa-panel-dark ${changing ? 'opacity-65' : ''}`}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-[11px] font-semibold text-wa-primary-strong dark:text-wa-primary">{report.public_code}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_COLORS[report.status]}`}>{STATUS_LABELS[report.status]}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ISSUE_STATUS_COLORS[report.status]}`}>{ISSUE_STATUS_LABELS[report.status]}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ISSUE_PRIORITY_COLORS[report.priority]}`}>{ISSUE_PRIORITY_LABELS[report.priority]}</span>
                       </div>
                       <h2 className="mt-1 text-base font-semibold text-wa-text dark:text-white">{report.title}</h2>
                       <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-wa-muted dark:text-wa-muted-dark">{report.description}</p>
@@ -114,6 +135,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
                       <Select value={report.status} onChange={event => changeStatus(report.id, event.target.value as IssueReportStatus)} disabled={changing} aria-label={`Estado de ${report.public_code}`} className="w-full shrink-0 sm:w-40">
                         <option value="new">Nuevo</option>
                         <option value="in_review">En revisión</option>
+                        <option value="needs_info">Necesita información</option>
                         <option value="resolved">Resuelto</option>
                       </Select>
                     )}
@@ -141,6 +163,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
                     <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" />{formatDate(report.created_at)}</span>
                     <span className="max-w-xs truncate" title={report.current_path}>{report.current_path}</span>
                     {report.resolved_at && <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400"><CheckCircle2 className="h-3 w-3" />Resuelto {formatDate(report.resolved_at)}</span>}
+                    <button type="button" onClick={() => openReport(report.id)} className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30"><MessageSquare className="h-3.5 w-3.5" />{report.comment_count ? `${report.comment_count} comentarios` : 'Ver seguimiento'}</button>
                   </footer>
                 </article>
               )
@@ -148,6 +171,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
           </div>
         )}
       </div>
+      {selectedReportId != null && <IssueReportDetailDialog reportId={selectedReportId} onClose={closeReport} />}
     </div>
   )
 }

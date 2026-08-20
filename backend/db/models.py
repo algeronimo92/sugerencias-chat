@@ -23,6 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from domain_types import (
     AutomationBuilderMode,
     AutomationExecutionStatus,
+    IssueReportPriority,
     IssueReportStatus,
     TaskPriority,
     TaskStatus,
@@ -555,6 +556,7 @@ class IssueReport(Base):
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, default=IssueReportStatus.NEW)
+    priority: Mapped[str] = mapped_column(Text, default=IssueReportPriority.NORMAL)
     current_path: Mapped[str] = mapped_column(Text)
     lead_id: Mapped[str | None] = mapped_column(
         PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
@@ -569,8 +571,12 @@ class IssueReport(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('new', 'in_review', 'resolved')",
+            "status IN ('new', 'in_review', 'needs_info', 'resolved')",
             name="ck_issue_reports_status",
+        ),
+        CheckConstraint(
+            "priority IN ('low', 'normal', 'high', 'critical')",
+            name="ck_issue_reports_priority",
         ),
         Index("idx_issue_reports_status_created", status, created_at.desc()),
         Index("idx_issue_reports_reporter_created", reporter_user_id, created_at.desc()),
@@ -591,6 +597,32 @@ class IssueReportAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("idx_issue_report_attachments_report", report_id),)
+
+
+class IssueReportComment(Base):
+    __tablename__ = "issue_report_comments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("issue_reports.id", ondelete="CASCADE"))
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_issue_report_comments_report_created", report_id, created_at),)
+
+
+class IssueReportEvent(Base):
+    __tablename__ = "issue_report_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("issue_reports.id", ondelete="CASCADE"))
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    event_type: Mapped[str] = mapped_column(Text)
+    previous_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_issue_report_events_report_created", report_id, created_at),)
 
 
 class LeadTask(Base):

@@ -363,7 +363,12 @@ function MainLayout() {
           </Tooltip>
         )}
         <Tooltip content="Reportar un problema">
-          <button type="button" onClick={() => setIsIssueReportOpen(true)} aria-label="Reportar un problema" className={headerIconButtonClass}>
+          <button
+            type="button"
+            onClick={() => setIsIssueReportOpen(true)}
+            aria-label="Reportar un problema"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-[#7a1f36] text-white shadow-sm transition-colors hover:bg-[#922744] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/80 focus-visible:ring-offset-1 focus-visible:ring-offset-wa-deep-dark dark:border-rose-300/15 dark:bg-[#681a2e] dark:hover:bg-[#81213a]"
+          >
             <Bug className="h-4 w-4" />
           </button>
         </Tooltip>

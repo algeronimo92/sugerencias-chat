@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
-import type { IssueReport, IssueReportStatus, JsonObject } from '../types'
+import type { IssueReport, IssueReportComment, IssueReportDetail, IssueReportPriority, IssueReportStatus, JsonObject } from '../types'
 
 
 export interface IssueEvidenceInput {
@@ -19,12 +19,20 @@ export interface CreateIssueReportInput {
   attachments: IssueEvidenceInput[]
 }
 
-export function useIssueReports(status: IssueReportStatus | '' = '') {
+export function useIssueReports(status: IssueReportStatus | '' = '', priority: IssueReportPriority | '' = '') {
   return useQuery({
-    queryKey: ['issue-reports', status],
+    queryKey: ['issue-reports', status, priority],
     queryFn: async () => (await client.get<IssueReport[]>('/api/issue-reports', {
-      params: { status: status || undefined },
+      params: { status: status || undefined, priority: priority || undefined },
     })).data,
+  })
+}
+
+export function useIssueReport(reportId: number | null) {
+  return useQuery({
+    queryKey: ['issue-reports', 'detail', reportId],
+    queryFn: async () => (await client.get<IssueReportDetail>(`/api/issue-reports/${reportId}`)).data,
+    enabled: reportId != null,
   })
 }
 
@@ -46,10 +54,24 @@ export function useCreateIssueReport() {
   })
 }
 
-export function useUpdateIssueReportStatus() {
+export function useUpdateIssueReport() {
   return useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: IssueReportStatus }) =>
-      (await client.patch<IssueReport>(`/api/issue-reports/${id}`, { status })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['issue-reports'] }),
+    mutationFn: async ({ id, status, priority }: { id: number; status?: IssueReportStatus; priority?: IssueReportPriority }) =>
+      (await client.patch<IssueReport>(`/api/issue-reports/${id}`, { status, priority })).data,
+    onSuccess: report => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['issue-reports'] }),
+      queryClient.invalidateQueries({ queryKey: ['issue-reports', 'detail', report.id] }),
+    ]),
+  })
+}
+
+export function useAddIssueReportComment() {
+  return useMutation({
+    mutationFn: async ({ reportId, content }: { reportId: number; content: string }) =>
+      (await client.post<IssueReportComment>(`/api/issue-reports/${reportId}/comments`, { content })).data,
+    onSuccess: (_comment, input) => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['issue-reports'] }),
+      queryClient.invalidateQueries({ queryKey: ['issue-reports', 'detail', input.reportId] }),
+    ]),
   })
 }

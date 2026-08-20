@@ -143,7 +143,7 @@ interface CreatedNotification {
   title: string
   body: string
   lead_id: string | null
-  metadata: { author_name?: string } | null
+  metadata: { author_name?: string; issue_report_id?: number } | null
 }
 
 type ChatSocketEvent =
@@ -195,7 +195,10 @@ function parseChatSocketEvent(data: string): ChatSocketEvent | null {
         || !isNullableString(notification.lead_id)
       ) return null
       const metadata = isJsonObject(notification.metadata)
-        ? { author_name: typeof notification.metadata.author_name === 'string' ? notification.metadata.author_name : undefined }
+        ? {
+            author_name: typeof notification.metadata.author_name === 'string' ? notification.metadata.author_name : undefined,
+            issue_report_id: typeof notification.metadata.issue_report_id === 'number' ? notification.metadata.issue_report_id : undefined,
+          }
         : null
       return {
         type: parsed.type,
@@ -400,7 +403,9 @@ export function useChatUpdates(
               notification.title,
               notification.body.length > 140 ? `${notification.body.slice(0, 137)}...` : notification.body,
               () => {
-                if (notification.notification_type === NotificationType.IssueReport) navigate('/reports')
+                if (notification.notification_type === NotificationType.IssueReport) {
+                  navigate(notification.metadata?.issue_report_id ? `/reports?report=${notification.metadata.issue_report_id}` : '/reports')
+                }
                 else if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
               },
               { force: true, tag: `notification-${notification.id}` },
