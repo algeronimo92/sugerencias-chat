@@ -209,25 +209,25 @@ export function IssueReportDialog({
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlayClassElevated} />
         <Dialog.Content
-          className={`${dialogContentPositionClassElevated} flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:rounded-2xl dark:bg-wa-panel-dark`}
+          className={`${dialogContentPositionClassElevated} flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl dark:bg-wa-panel-dark`}
           onEscapeKeyDown={event => { if (busy) event.preventDefault() }}
           onPointerDownOutside={event => { if (busy) event.preventDefault() }}
         >
-          <header className="flex shrink-0 items-center gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          <header className="flex shrink-0 items-center gap-2.5 border-b border-wa-border px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 dark:border-wa-border-dark">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 sm:h-9 sm:w-9 dark:bg-amber-950 dark:text-amber-300">
               <Bug className="h-4.5 w-4.5" />
             </span>
             <div className="min-w-0 flex-1">
               <Dialog.Title className="text-base font-semibold text-wa-text dark:text-white">Reportar un problema</Dialog.Title>
-              <Dialog.Description className="text-xs text-wa-muted dark:text-wa-muted-dark">Cuéntanos qué ocurrió sin salir de esta pantalla.</Dialog.Description>
+              <Dialog.Description className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">Cuéntanos qué ocurrió sin salir de esta pantalla.</Dialog.Description>
             </div>
-            <button type="button" onClick={resetAndClose} disabled={busy} aria-label="Cerrar reporte" className="flex h-10 w-10 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-hover disabled:opacity-40 dark:text-wa-muted-dark dark:hover:bg-wa-head-dark">
+            <button type="button" onClick={resetAndClose} disabled={busy} aria-label="Cerrar reporte" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-hover disabled:opacity-40 sm:h-10 sm:w-10 dark:text-wa-muted-dark dark:hover:bg-wa-head-dark">
               <X className="h-5 w-5" />
             </button>
           </header>
 
           <form onSubmit={submit} className="min-h-0 flex-1 overflow-y-auto">
-            <div className="space-y-5 p-4 sm:p-5">
+            <div className="space-y-3 p-3 sm:space-y-5 sm:p-5">
               <div>
                 <label htmlFor="issue-title" className={labelClass}>Título *</label>
                 <Input id="issue-title" value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="Ej. No puedo enviar un mensaje" disabled={createReport.isPending} autoFocus />
@@ -236,7 +236,7 @@ export function IssueReportDialog({
 
               <div>
                 <label htmlFor="issue-description" className={labelClass}>Descripción *</label>
-                <Textarea id="issue-description" value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} rows={5} disabled={createReport.isPending} placeholder={'¿Qué estabas intentando hacer?\n¿Qué ocurrió?\n¿Qué esperabas que ocurriera?'} className="resize-none" />
+                <Textarea id="issue-description" value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} rows={5} disabled={createReport.isPending} placeholder={'¿Qué estabas intentando hacer?\n¿Qué ocurrió?\n¿Qué esperabas que ocurriera?'} className="h-24 resize-none sm:h-auto" />
                 <p className="mt-1 text-right text-[10px] text-wa-muted">{description.length}/2000</p>
               </div>
 
@@ -249,16 +249,17 @@ export function IssueReportDialog({
                   <span className="text-[10px] font-medium text-wa-muted">{evidence.length}/{MAX_EVIDENCE}</span>
                 </div>
 
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <button type="button" onClick={() => void captureCurrentView()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-16 items-center justify-center gap-2 rounded-xl border border-wa-border bg-wa-hover px-3 py-2 text-xs font-semibold text-wa-text hover:border-wa-primary/40 hover:bg-green-50 disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark dark:hover:bg-green-950/30">
+                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:gap-2">
+                  <button type="button" aria-label="Capturar pantalla" onClick={() => void captureCurrentView()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-wa-border bg-wa-hover px-1 py-2 text-[11px] font-semibold leading-tight text-wa-text hover:border-wa-primary/40 hover:bg-green-50 disabled:opacity-40 sm:min-h-16 sm:flex-row sm:gap-2 sm:px-3 sm:text-xs dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark dark:hover:bg-green-950/30">
                     {isCapturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorDown className="h-4 w-4 text-wa-primary-strong dark:text-wa-primary" />}
-                    {isCapturing ? 'Capturando…' : 'Capturar pantalla'}
+                    <span className="sm:hidden">{isCapturing ? 'Capturando…' : 'Capturar'}</span>
+                    <span className="hidden sm:inline">{isCapturing ? 'Capturando…' : 'Capturar pantalla'}</span>
                   </button>
-                  <button type="button" onClick={() => cameraRef.current?.click()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-16 items-center justify-center gap-2 rounded-xl border border-wa-border px-3 py-2 text-xs font-semibold text-wa-text hover:bg-wa-hover disabled:opacity-40 dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark">
-                    <Camera className="h-4 w-4" /> Tomar foto
+                  <button type="button" onClick={() => cameraRef.current?.click()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-wa-border px-1 py-2 text-[11px] font-semibold leading-tight text-wa-text hover:bg-wa-hover disabled:opacity-40 sm:min-h-16 sm:flex-row sm:gap-2 sm:px-3 sm:text-xs dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark">
+                    <Camera className="h-4 w-4" /> <span>Tomar foto</span>
                   </button>
-                  <button type="button" onClick={() => uploadRef.current?.click()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-16 items-center justify-center gap-2 rounded-xl border border-wa-border px-3 py-2 text-xs font-semibold text-wa-text hover:bg-wa-hover disabled:opacity-40 dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark">
-                    <ImagePlus className="h-4 w-4" /> Subir imagen
+                  <button type="button" onClick={() => uploadRef.current?.click()} disabled={busy || evidence.length >= MAX_EVIDENCE} className="flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-wa-border px-1 py-2 text-[11px] font-semibold leading-tight text-wa-text hover:bg-wa-hover disabled:opacity-40 sm:min-h-16 sm:flex-row sm:gap-2 sm:px-3 sm:text-xs dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark">
+                    <ImagePlus className="h-4 w-4" /> <span>Subir imagen</span>
                   </button>
                   <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleFiles} className="hidden" />
                   <input ref={uploadRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleFiles} className="hidden" />
@@ -283,17 +284,17 @@ export function IssueReportDialog({
                 )}
               </section>
 
-              <div className="flex items-start gap-2 rounded-xl bg-blue-50 px-3 py-2.5 text-[11px] leading-relaxed text-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+              <div className="flex items-start gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[11px] leading-relaxed text-blue-800 sm:py-2.5 dark:bg-blue-950/30 dark:text-blue-200">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>La captura incluye solo DermicaPro. Revísala antes de enviar si contiene información innecesaria.</span>
+                <span>La captura solo incluye DermicaPro. Revísala para evitar información innecesaria.</span>
               </div>
 
               {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
             </div>
 
-            <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-wa-border bg-white px-4 py-3 pb-safe dark:border-wa-border-dark dark:bg-wa-panel-dark">
-              <Button type="button" variant="ghost" onClick={resetAndClose} disabled={busy}>Cancelar</Button>
-              <Button type="submit" disabled={busy || title.trim().length < 3 || description.trim().length < 10}>
+            <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-wa-border bg-white px-3 py-2.5 pb-safe sm:px-4 sm:py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+              <Button type="button" variant="ghost" onClick={resetAndClose} disabled={busy} className="flex-1 sm:flex-none">Cancelar</Button>
+              <Button type="submit" disabled={busy || title.trim().length < 3 || description.trim().length < 10} className="flex-1 sm:flex-none">
                 {createReport.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {createReport.isPending ? 'Enviando…' : 'Enviar reporte'}
               </Button>
