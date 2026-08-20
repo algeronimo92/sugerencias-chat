@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { Crop, FileText, Loader2, Send, X } from 'lucide-react'
+import { Crop, FileText, Loader2, Pencil, Send, X } from 'lucide-react'
 import { DialogPrimitive as Dialog } from './ui/Dialog'
 import { ImageCropDialog } from './ImageCropDialog'
+import { ImageDrawDialog } from './ImageDrawDialog'
 
 function fileExtensionLabel(filename: string, contentType?: string): string {
   const fromName = /\.([a-z0-9]+)$/i.exec(filename)
@@ -53,6 +54,7 @@ export function MediaPreviewDialog({
 }) {
   const [caption, setCaption] = useState('')
   const [isCropping, setIsCropping] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function submit() {
@@ -92,16 +94,28 @@ export function MediaPreviewDialog({
             </Dialog.Title>
             <div className="flex shrink-0 items-center gap-1">
               {kind === 'image' && (
-                <button
-                  type="button"
-                  onClick={() => setIsCropping(true)}
-                  disabled={isSending}
-                  aria-label="Recortar imagen"
-                  title="Recortar"
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[#aebac1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
-                >
-                  <Crop className="h-5 w-5" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsCropping(true)}
+                    disabled={isSending}
+                    aria-label="Recortar imagen"
+                    title="Recortar"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[#aebac1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+                  >
+                    <Crop className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsDrawing(true)}
+                    disabled={isSending}
+                    aria-label="Dibujar sobre la imagen"
+                    title="Dibujar"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[#aebac1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+                  >
+                    <Pencil className="h-5 w-5" />
+                  </button>
+                </>
               )}
             </div>
           </header>
@@ -178,6 +192,18 @@ export function MediaPreviewDialog({
           onCancel={() => setIsCropping(false)}
           onConfirm={(file) => {
             setIsCropping(false)
+            onCropped(file)
+          }}
+        />
+      )}
+
+      {isDrawing && (
+        <ImageDrawDialog
+          imageUrl={previewUrl}
+          filename={filename || 'imagen.jpg'}
+          onCancel={() => setIsDrawing(false)}
+          onConfirm={(file) => {
+            setIsDrawing(false)
             onCropped(file)
           }}
         />

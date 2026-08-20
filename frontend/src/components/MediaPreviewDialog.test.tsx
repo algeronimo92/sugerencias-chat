@@ -77,6 +77,30 @@ describe('MediaPreviewDialog', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Recortar imagen' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dibujar sobre la imagen' })).not.toBeInTheDocument()
+  })
+
+  it('abre las herramientas para dibujar sobre una imagen', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:original"
+        kind="image"
+        filename="foto.png"
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Dibujar sobre la imagen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Dibujar en la foto' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Lienzo para dibujar sobre la imagen')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Color Rojo' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Grosor Medio' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Deshacer último trazo' })).toBeDisabled()
   })
 
   it('muestra nombre, tipo y tamaño antes de enviar un documento', () => {
@@ -97,5 +121,6 @@ describe('MediaPreviewDialog', () => {
     expect(screen.getByText('PDF · 1.5 MB')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Documento seleccionado' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Recortar imagen' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dibujar sobre la imagen' })).not.toBeInTheDocument()
   })
 })
