@@ -51,9 +51,11 @@ describe('ImageDrawDialog', () => {
   })
 
   afterEach(() => {
+    Object.values(context).forEach((value) => {
+      if (vi.isMockFunction(value)) value.mockClear()
+    })
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
-    Object.values(context).forEach((mock) => mock.mockClear())
   })
 
   it('dibuja, permite deshacer y entrega un JPEG compuesto', async () => {
