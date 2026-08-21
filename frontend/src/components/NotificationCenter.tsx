@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
+import { usePushSubscription } from '../hooks/usePushSubscription'
 import { useRetryExecution } from '../hooks/useAutomations'
 import { useMe } from '../hooks/useAuth'
 import { SERVICE_WINDOW_ERROR_CODE } from '../domain/automationCatalog'
@@ -87,6 +88,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const navigate = useNavigate()
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
+  const { subscribed: pushSubscribed, subscribe: subscribeToPush } = usePushSubscription()
   const [open, setOpen] = useState(false)
   const [unreadOnly, setUnreadOnly] = useState(false)
   const { data, isLoading, isError, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useNotificationHistory(unreadOnly)
@@ -110,6 +112,16 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
       content: latestUnread.body,
     })
   }, [latestUnread, onNewNotification])
+
+  // El permiso de `Notification` es el mismo que gobierna Push, así que
+  // cualquier momento en que quede en 'granted' es una oportunidad de
+  // suscribirse: cubre tanto el click en "Activar avisos" como a quienes ya
+  // habían aceptado el permiso antes de que existiera Push (para esos, el
+  // botón de abajo ni siquiera se muestra, porque ya está en 'granted').
+  useEffect(() => {
+    if (browserPermission !== 'granted' || pushSubscribed) return
+    subscribeToPush().catch(() => toast.error('No se pudo activar el envío de notificaciones push'))
+  }, [browserPermission, pushSubscribed, subscribeToPush])
 
   useEffect(() => {
     if (!open) return

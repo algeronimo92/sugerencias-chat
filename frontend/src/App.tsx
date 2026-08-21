@@ -99,6 +99,25 @@ function MainLayout() {
   const { chatId: chatIdParam } = useParams<{ chatId: string }>()
   const chatId = chatIdParam ?? null
   const navigate = useNavigate()
+
+  // Cuando se hace clic en una notificación push con la app ya abierta en
+  // otra pestaña, push-sw.js (frontend/public/push-sw.js) enfoca esa pestaña
+  // y le manda la URL destino por postMessage en vez de navegar directo,
+  // porque el service worker no tiene acceso al router de React. El
+  // registro del SW vive en PwaUpdatePrompt, pero ese componente se monta
+  // fuera del BrowserRouter (a propósito, para registrar el SW aunque la
+  // sesión no esté resuelta) y no tiene `navigate`; por eso el listener del
+  // mensaje vive acá, donde sí lo hay.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === 'push-navigate' && typeof event.data.url === 'string') {
+        navigate(event.data.url)
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', handleMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', handleMessage)
+  }, [navigate])
   const location = useLocation()
   const isKanban = location.pathname === '/kanban'
   const isTasks = location.pathname === '/tasks'

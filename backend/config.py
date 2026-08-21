@@ -108,6 +108,16 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
+    # Par de claves VAPID (EC P-256) para firmar los envíos de Web Push. Se
+    # generan una sola vez (CLI `vapid` de pywebpush o `web-push
+    # generate-vapid-keys`) y no cambian salvo rotación deliberada — rotarlas
+    # invalida todas las suscripciones existentes en los navegadores. Default
+    # vacío para no romper arranques que aún no las configuraron; el envío de
+    # push se desactiva solo (sin crashear) mientras falten.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:soporte@dermicapro.com"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

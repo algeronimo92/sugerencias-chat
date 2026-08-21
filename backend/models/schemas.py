@@ -842,3 +842,21 @@ class AutomationFlowVersionItem(BaseModel):
     node_count: int
     edge_count: int
     is_current: bool
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+class VapidPublicKeyResponse(BaseModel):
+    public_key: str

@@ -28,6 +28,11 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/media\//, /^\/ws\//],
         cleanupOutdatedCaches: true,
+        // Los listeners de `push` / `notificationclick` viven en un archivo
+        // plano aparte (push-sw.js) e importados dentro del SW que genera
+        // Workbox, en vez de migrar a `injectManifest` para no perder el
+        // precacheo ni la denylist ya afinados acá arriba.
+        importScripts: ['push-sw.js'],
       },
       // El multimedia de los clientes es contenido privado: no se cachea en
       // el SW a propósito, queda solo en la caché HTTP del navegador.

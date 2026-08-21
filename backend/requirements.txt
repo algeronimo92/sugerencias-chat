@@ -23,3 +23,6 @@ tzdata==2024.2
 # emitiendo Server-Timing para devtools.
 prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==7.0.0
+# Firma y envía el payload de Web Push (VAPID) contra los endpoints de
+# Chrome/Firefox/Edge cuando llega un reporte de incidencia o una mención.
+pywebpush==2.0.0
