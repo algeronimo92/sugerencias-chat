@@ -109,12 +109,17 @@ async function logout(): Promise<void> {
 
 export function useLogout() {
   const queryClient = useQueryClient()
+  // La sesión se limpia también si la llamada falla (sin red, cookie ya
+  // vencida, etc.): del lado del cliente el resultado deseado es el mismo,
+  // volver al login, igual que hace el interceptor 401 en api/client.ts.
+  const clearSession = () => {
+    queryClient.clear()
+    queryClient.setQueryData(['auth', 'me'], null)
+  }
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => {
-      queryClient.clear()
-      queryClient.setQueryData(['auth', 'me'], null)
-    },
+    onSuccess: clearSession,
+    onError: clearSession,
   })
 }
 

@@ -407,7 +407,12 @@ function MainLayout() {
           </button>
         </Tooltip>
         <Tooltip content="Cerrar sesión">
-          <button type="button" onClick={() => logout()} aria-label="Cerrar sesión" className={headerIconButtonClass}>
+          <button
+            type="button"
+            onClick={() => logout(undefined, { onSettled: () => navigate('/') })}
+            aria-label="Cerrar sesión"
+            className={headerIconButtonClass}
+          >
             <LogOut className="w-4 h-4" />
           </button>
         </Tooltip>
