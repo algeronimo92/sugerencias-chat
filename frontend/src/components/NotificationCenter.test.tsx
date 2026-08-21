@@ -5,7 +5,7 @@
  * con ese permiso. El resto de los avisos no ofrecen nada.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   role: 'admin',
   items: [] as UserNotification[],
+  pushSubscribed: true,
+  pushSubscribe: vi.fn().mockResolvedValue(undefined),
+  pushUnsubscribe: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
@@ -23,6 +26,13 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('../hooks/useAuth', () => ({ useMe: () => ({ data: { id: 1, role: mocks.role } }) }))
 vi.mock('../hooks/useAutomations', () => ({
   useRetryExecution: () => ({ mutate: mocks.retry, isPending: false }),
+}))
+vi.mock('../hooks/usePushSubscription', () => ({
+  usePushSubscription: () => ({
+    subscribed: mocks.pushSubscribed,
+    subscribe: mocks.pushSubscribe,
+    unsubscribe: mocks.pushUnsubscribe,
+  }),
 }))
 vi.mock('../hooks/useNotificationHistory', () => ({
   useNotificationHistory: () => ({
@@ -71,6 +81,9 @@ describe('autorización de la ventana de 24 h', () => {
     mocks.retry.mockReset()
     mocks.role = 'admin'
     mocks.items = []
+    mocks.pushSubscribed = true
+    mocks.pushSubscribe.mockClear()
+    mocks.pushUnsubscribe.mockClear()
   })
 
   it('reintenta la ejecución con la autorización del admin', async () => {
@@ -109,5 +122,63 @@ describe('autorización de la ventana de 24 h', () => {
     await open()
 
     expect(screen.queryByRole('button', { name: /Autorizar y reintentar/ })).toBeNull()
+  })
+})
+
+describe('suscripción a Web Push', () => {
+  beforeEach(() => {
+    mocks.role = 'admin'
+    mocks.items = []
+    mocks.pushSubscribed = true
+    mocks.pushSubscribe.mockClear()
+    mocks.pushUnsubscribe.mockClear()
+  })
+
+  it('pide el permiso del navegador al tocar el botón, sin suscribirse todavía si no está concedido', async () => {
+    const onRequestBrowserPermission = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <NotificationCenter
+        browserPermission="default"
+        onRequestBrowserPermission={onRequestBrowserPermission}
+        onNewNotification={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Centro de notificaciones' }))
+
+    await user.click(screen.getByRole('button', { name: /Activar también avisos del navegador/ }))
+
+    expect(onRequestBrowserPermission).toHaveBeenCalledTimes(1)
+    expect(mocks.pushSubscribe).not.toHaveBeenCalled()
+  })
+
+  it('se suscribe a Push apenas el permiso del navegador está concedido', async () => {
+    mocks.pushSubscribed = false
+    const user = userEvent.setup()
+    render(
+      <NotificationCenter
+        browserPermission="granted"
+        onRequestBrowserPermission={vi.fn()}
+        onNewNotification={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Centro de notificaciones' }))
+
+    await waitFor(() => expect(mocks.pushSubscribe).toHaveBeenCalledTimes(1))
+  })
+
+  it('no vuelve a suscribirse si ya hay una suscripción activa', async () => {
+    mocks.pushSubscribed = true
+    const user = userEvent.setup()
+    render(
+      <NotificationCenter
+        browserPermission="granted"
+        onRequestBrowserPermission={vi.fn()}
+        onNewNotification={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Centro de notificaciones' }))
+
+    expect(mocks.pushSubscribe).not.toHaveBeenCalled()
   })
 })

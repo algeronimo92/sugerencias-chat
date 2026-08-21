@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from db.models import User
@@ -12,9 +14,11 @@ from services.internal_notes_service import (
     update_internal_note,
 )
 from services.notification_service import create_mention_notifications
+from services.push_service import send_push_to_user
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/chats/{chat_id}/notes", tags=["internal-notes"])
+logger = logging.getLogger(__name__)
 
 
 async def _notify_mentions(note: dict, user_ids: list[int], actor: User) -> None:
@@ -23,6 +27,18 @@ async def _notify_mentions(note: dict, user_ids: list[int], actor: User) -> None
         await manager.send_to_user(user_id, {
             "type": "notification_created", "notification": notification,
         })
+        try:
+            await send_push_to_user(
+                user_id,
+                notification["title"],
+                notification["body"],
+                f"/chat/{note['lead_id']}",
+                tag=f"note-mention-{note['id']}",
+            )
+        except Exception:
+            # La nota y su notificación ya quedaron persistidas; un fallo de
+            # push no puede tumbar la respuesta HTTP de crear/editar la nota.
+            logger.exception("No se pudo enviar push de mención a user %s", user_id)
 
 
 async def _mark_note_views(chat_id: str, user_id: int) -> None:

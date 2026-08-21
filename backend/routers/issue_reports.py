@@ -29,6 +29,7 @@ from services.issue_report_service import (
 )
 from services.media_storage import MediaStorageError, delete_media
 from services.notification_service import create_system_notification
+from services.push_service import send_push_to_user
 from services.ws_manager import manager
 
 
@@ -133,6 +134,13 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
                 "type": "notification_created",
                 "notification": notification,
             })
+            await send_push_to_user(
+                admin_id,
+                f"Nuevo reporte {report['public_code']}",
+                f"{user.name}: {report['title']}",
+                f"/reports?report={report['id']}",
+                tag=f"issue-report-{report['id']}",
+            )
     except Exception:
         # El reporte ya quedó persistido; un aviso no puede convertir ese éxito
         # en un 500 que invite al vendedor a enviarlo otra vez.
@@ -184,6 +192,13 @@ async def patch_report(
                 "type": "notification_created",
                 "notification": notification,
             })
+            await send_push_to_user(
+                report["reporter_user_id"],
+                f"{report['public_code']} · {labels[report['status']]}",
+                report["title"],
+                f"/reports?report={report['id']}",
+                tag=f"issue-report-{report['id']}",
+            )
         except Exception:
             logger.exception("No se pudo avisar al autor del reporte %s", report["id"])
     await manager.broadcast({"type": "issue_reports_updated"})
@@ -227,6 +242,13 @@ async def post_report_comment(
                 "type": "notification_created",
                 "notification": notification,
             })
+            await send_push_to_user(
+                recipient_id,
+                f"Nuevo comentario en {report['public_code']}",
+                f"{user.name}: {content}",
+                f"/reports?report={report_id}",
+                tag=f"issue-report-{report_id}",
+            )
     except Exception:
         logger.exception("No se pudo avisar del comentario en el reporte %s", report_id)
     await manager.broadcast({"type": "issue_reports_updated"})
