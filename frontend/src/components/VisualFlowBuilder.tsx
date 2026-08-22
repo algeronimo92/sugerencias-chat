@@ -747,6 +747,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           templates={automaticTemplates}
           mediaAssets={mediaAssets}
           flowRules={automationRules}
+          tags={tags}
           selectedId={selectedId}
           onSelect={id => { setSelectedId(id); if (id) setShowEntryConditions(false) }}
           onMoveNodes={moveNodes}

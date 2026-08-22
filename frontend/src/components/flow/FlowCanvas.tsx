@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, RoundRobinOutput, WaitAnyCondition,
+  AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, RoundRobinOutput, Tag as TagRecord, WaitAnyCondition,
 } from '../../types'
 import {
   AUTOMATION_ACTION_LABELS, AUTOMATION_TRIGGERS, AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
@@ -53,6 +53,7 @@ interface CanvasNodeData {
   isSelected?: boolean
   previewTemplate?: MessageTemplate
   previewAsset?: MediaAsset
+  previewTagName?: string
   connectionRole?: 'source' | 'target' | 'both'
   connectionDimmed?: boolean
 }
@@ -64,6 +65,7 @@ const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
 const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
 const EMPTY_FLOW_RULES: AutomationRule[] = []
+const EMPTY_TAGS: TagRecord[] = []
 
 function storedConnectionHighlightPreference(): boolean {
   try {
@@ -285,7 +287,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   const detail = action.type === AutomationActionType.ChangeStage ? action.stage
     : action.type === AutomationActionType.ChangeService ? (action.service || 'Quitar servicio')
     : action.type === AutomationActionType.AssignSeller ? (action.user_id ? `Usuario #${action.user_id}` : 'Vendedor del lead')
-    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? `Etiqueta #${action.tag_id}` : 'Sin etiqueta')
+    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Sin etiqueta')
     : null
   const DetailIcon = action.type === AutomationActionType.AssignSeller ? UserRound
     : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? Tag
@@ -555,6 +557,7 @@ interface FlowCanvasProps {
   templates?: MessageTemplate[]
   mediaAssets?: MediaAsset[]
   flowRules?: AutomationRule[]
+  tags?: TagRecord[]
   selectedId: string | null
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
@@ -565,7 +568,7 @@ interface FlowCanvasProps {
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
@@ -613,6 +616,9 @@ function Canvas({
     const invokedFlowName = node.type === FlowNodeType.InvokeFlow
       ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
       : undefined
+    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
+      ? tags.find(tag => tag.id === action.tag_id)?.name
+      : undefined
     return {
       id: node.id,
       type: node.type,
@@ -623,10 +629,11 @@ function Canvas({
         previewTemplate,
         previewAsset,
         invokedFlowName,
+        previewTagName,
         onDelete: id => onDeleteNodes([id]),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, flowRules, selectedId, onDeleteNodes])
+  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, onDeleteNodes])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
