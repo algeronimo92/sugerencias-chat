@@ -56,3 +56,6 @@ docs/rag-v2.json
 
 # Cache de Python de los scripts de mantenimiento (los tests los importan).
 scripts/__pycache__/
+
+# Capturas y snapshots que deja el MCP de Playwright al testear localmente.
+.playwright-mcp/

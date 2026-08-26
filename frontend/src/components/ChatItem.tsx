@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -58,6 +58,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   const longPressStartRef = useRef({ x: 0, y: 0 })
   const suppressClickRef = useRef(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showMergeDialog, setShowMergeDialog] = useState(false)
   const navigate = useNavigate()
@@ -103,6 +104,21 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
       window.removeEventListener('scroll', close, true)
       window.removeEventListener('keydown', closeOnEscape)
       document.removeEventListener('pointerdown', close)
+    }
+  }, [contextMenu])
+
+  // El menú creció (copiar teléfono, no-show, fusionar, eliminar): con un
+  // lead abierto cerca del borde inferior, la altura fija de antes dejaba
+  // las últimas opciones tapadas por el borde de la ventana. Se mide el
+  // tamaño real ya renderizado y se reubica antes del primer paint, así que
+  // no se ve el salto.
+  useLayoutEffect(() => {
+    if (!contextMenu || !menuRef.current) return
+    const rect = menuRef.current.getBoundingClientRect()
+    const clampedX = Math.max(8, Math.min(contextMenu.x, window.innerWidth - rect.width - 8))
+    const clampedY = Math.max(8, Math.min(contextMenu.y, window.innerHeight - rect.height - 8))
+    if (clampedX !== contextMenu.x || clampedY !== contextMenu.y) {
+      setContextMenu({ x: clampedX, y: clampedY })
     }
   }, [contextMenu])
 
@@ -179,10 +195,9 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   function openContextMenu(event: ReactMouseEvent<HTMLButtonElement>) {
     event.preventDefault()
     cancelLongPress()
-    setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 116)),
-    })
+    // Posición cruda del clic: el efecto de arriba la corrige contra el
+    // tamaño real del menú apenas se monta, antes de pintar.
+    setContextMenu({ x: event.clientX, y: event.clientY })
   }
 
   return (
@@ -304,10 +319,11 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
     </button>
     {contextMenu && createPortal(
       <div
+        ref={menuRef}
         role="menu"
         aria-label={`Acciones para ${displayName(chat)}`}
         style={{ left: contextMenu.x, top: contextMenu.y }}
-        className="fixed z-[100] w-52 overflow-hidden rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-wa-border-dark dark:bg-wa-head-dark"
+        className="fixed z-[100] max-h-[calc(100vh-16px)] w-52 overflow-y-auto rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-wa-border-dark dark:bg-wa-head-dark"
         onPointerDown={event => event.stopPropagation()}
       >
         <button
