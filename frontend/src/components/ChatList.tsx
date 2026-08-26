@@ -277,14 +277,21 @@ export function ChatList({
   }
 
   useLayoutEffect(() => {
-    if (pendingAnchorIndexRef.current !== null) {
+    // Un elemento con display:none (la lista oculta detrás del chat, en
+    // móvil) no tiene layout: su scrollHeight/clientHeight son 0 sin
+    // importar cuánto contenido tenga. scrollToIndex() ahí adentro no hace
+    // nada (no hay "dónde" ubicar el scroll), así que si el reordenamiento
+    // pasó con el panel oculto, la corrección queda pendiente en vez de
+    // descartarse; recién se aplica cuando el panel vuelve a ser visible.
+    const el = scrollRef.current
+    const visible = !!el && el.clientHeight > 0
+    if (visible && pendingAnchorIndexRef.current !== null) {
       rowVirtualizer.scrollToIndex(pendingAnchorIndexRef.current, { align: 'start' })
       pendingAnchorIndexRef.current = null
     }
-    // No se actualiza el ancla mientras el panel está oculto: ahí
-    // clientHeight es 0 y "lo primero visible" ya no significa nada.
-    const el = scrollRef.current
-    if (el && el.clientHeight > 0) {
+    // Tampoco se actualiza el ancla mientras está oculto: "lo primero
+    // visible" no significa nada contra un viewport de 0px.
+    if (visible) {
       const first = rowVirtualizer.getVirtualItems()[0]
       if (first && first.index < chats.length) {
         anchorChatIdRef.current = chats[first.index].chat_id
