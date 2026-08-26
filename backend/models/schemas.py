@@ -215,6 +215,12 @@ class LeadStageUpdate(BaseModel):
     razon_perdido: str | None = Field(default=None, max_length=500)
 
 
+class LeadMergeRequest(BaseModel):
+    # El lead de la URL es el destino (se conserva); este es el origen, que se
+    # borra tras mover todo su historial al destino.
+    other_id: str
+
+
 MessageType = Literal[
     "text",
     "image",

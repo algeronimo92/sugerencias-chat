@@ -17,6 +17,7 @@ from models.schemas import (
     KanbanPage,
     KanbanSnapshot,
     LeadCreate,
+    LeadMergeRequest,
     LeadStage,
     LeadStageUpdate,
     LeadUpdate,
@@ -46,6 +47,7 @@ from services.db_service import (
     LeadAlreadyExistsError,
     create_lead,
     assign_tag,
+    delete_lead,
     fetch_chat,
     fetch_chats,
     fetch_messages_to_forward,
@@ -73,7 +75,8 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, require_admin
+from services.lead_merge import LeadMergeError, merge_leads
 from services.productivity_service import complete_reply_tasks
 from services.evolution_service import (
     EvolutionApiError,
@@ -479,6 +482,30 @@ async def register_no_show(chat_id: str, user: User = Depends(get_current_user))
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
+    return lead
+
+
+@router.delete("/{chat_id}", status_code=204)
+async def delete_chat(chat_id: str, _admin: User = Depends(require_admin)):
+    """Borra el lead y todo su historial (mensajes, tareas, notas). No se
+    puede deshacer: sin soft-delete, es admin-only a propósito."""
+    if not await delete_lead(chat_id):
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_deleted"})
+
+
+@router.post("/{chat_id}/merge", response_model=Chat)
+async def merge_chat(chat_id: str, body: LeadMergeRequest, _admin: User = Depends(require_admin)):
+    """Fusiona `other_id` (se borra) dentro de `chat_id` (se conserva)."""
+    try:
+        await merge_leads(body.other_id, chat_id, apply=True)
+    except LeadMergeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    lead = await fetch_chat(chat_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": body.other_id, "reason": "lead_deleted"})
     return lead
 
 

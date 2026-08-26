@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import type { Chat } from '../types'
-import { BotOff, Eye, Loader2, LockKeyhole, Mail } from 'lucide-react'
+import { BotOff, CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2 } from 'lucide-react'
+import { useMe } from '../hooks/useAuth'
+import { useDeleteLead, useMarkNoShow } from '../hooks/useChats'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
+import { extractErrorMessage } from '../utils/errors'
 import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { MergeLeadDialog } from './MergeLeadDialog'
 
 interface Props {
   chat: Chat
@@ -51,6 +58,37 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   const longPressStartRef = useRef({ x: 0, y: 0 })
   const suppressClickRef = useRef(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showMergeDialog, setShowMergeDialog] = useState(false)
+  const navigate = useNavigate()
+  const { chatId: openChatId } = useParams<{ chatId?: string }>()
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'admin'
+  const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
+  const { mutate: deleteLead, isPending: isDeleting } = useDeleteLead()
+
+  function handleCopyPhone() {
+    if (!chat.phone) return
+    void navigator.clipboard.writeText(chat.phone).then(
+      () => toast.success('Teléfono copiado'),
+      () => toast.error('No se pudo copiar el teléfono'),
+    )
+  }
+
+  function handleMarkNoShow() {
+    if (isMarkingNoShow) return
+    markNoShow(undefined, { onError: (err) => toast.error(extractErrorMessage(err)) })
+  }
+
+  function handleDelete() {
+    deleteLead(chat.chat_id, {
+      onSuccess: () => {
+        toast.success(`${displayName(chat)} eliminado`)
+        if (openChatId === chat.chat_id) navigate('/')
+      },
+      onError: (err) => toast.error(extractErrorMessage(err)),
+    })
+  }
 
   useEffect(() => {
     if (!contextMenu) return
@@ -292,8 +330,64 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             Marcar como no leído
           </button>
         )}
+        {chat.phone && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setContextMenu(null); handleCopyPhone() }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-wa-text hover:bg-wa-hover dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
+          >
+            <Copy className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" /> Copiar teléfono
+          </button>
+        )}
+        {chat.proxima_cita && (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isMarkingNoShow}
+            onClick={() => { setContextMenu(null); handleMarkNoShow() }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-wa-text hover:bg-wa-hover disabled:opacity-50 dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
+          >
+            {isMarkingNoShow ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" /> : <CalendarX className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" />}
+            Marcar no-show
+          </button>
+        )}
+        {isAdmin && (
+          <>
+            <div className="my-1.5 border-t border-wa-border dark:border-wa-border-dark" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setContextMenu(null); setShowMergeDialog(true) }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-wa-text hover:bg-wa-hover dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
+            >
+              <GitMerge className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" /> Fusionar con...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isDeleting}
+              onClick={() => { setContextMenu(null); setShowDeleteConfirm(true) }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Eliminar lead
+            </button>
+          </>
+        )}
       </div>,
       document.body,
+    )}
+    <ConfirmDialog
+      open={showDeleteConfirm}
+      onOpenChange={setShowDeleteConfirm}
+      title="Eliminar lead"
+      description={`Se borra ${displayName(chat)} junto con todo su historial de mensajes, tareas y notas. No se puede deshacer.`}
+      confirmLabel="Eliminar"
+      onConfirm={handleDelete}
+    />
+    {showMergeDialog && (
+      <MergeLeadDialog chat={chat} onClose={() => setShowMergeDialog(false)} />
     )}
     </>
   )

@@ -684,6 +684,42 @@ export function useMarkNoShow(chatId: string) {
   })
 }
 
+async function deleteLead(chatId: string): Promise<void> {
+  await client.delete(`/api/chats/${encodeURIComponent(chatId)}`)
+}
+
+/** Borra el lead entero (mensajes, tareas, notas incluidos). Irreversible. */
+export function useDeleteLead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteLead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+      queryClient.invalidateQueries({ queryKey: ['kanban'] })
+    },
+  })
+}
+
+async function mergeLead(chatId: string, otherId: string): Promise<Chat> {
+  const { data } = await client.post<Chat>(`/api/chats/${encodeURIComponent(chatId)}/merge`, { other_id: otherId })
+  return data
+}
+
+/** Fusiona `otherId` (se borra) dentro de `chatId` (se conserva su etapa e identidad). */
+export function useMergeLead(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (otherId: string) => mergeLead(chatId, otherId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+      queryClient.invalidateQueries({ queryKey: ['kanban'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+    },
+  })
+}
+
 async function markChatRead(chatId: string): Promise<void> {
   await client.post(`/api/chats/${encodeURIComponent(chatId)}/read`)
 }

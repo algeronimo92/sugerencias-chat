@@ -1,7 +1,35 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import type { PropsWithChildren } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Chat } from '../types'
 import { ChatItem } from './ChatItem'
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
+const markNoShowMutate = vi.fn()
+const deleteLeadMutate = vi.fn()
+
+vi.mock('../hooks/useChats', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useChats')>()
+  return {
+    ...actual,
+    useMarkNoShow: () => ({ mutate: markNoShowMutate, isPending: false }),
+    useDeleteLead: () => ({ mutate: deleteLeadMutate, isPending: false }),
+  }
+})
+
+// Objeto mutable en vez de una constante: cada test elige el rol antes de
+// renderizar, y el mock lee el valor vigente en cada llamada.
+const currentUser = { role: 'vendedor' as 'vendedor' | 'admin' }
+vi.mock('../hooks/useAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useAuth')>()
+  return {
+    ...actual,
+    useMe: () => ({ data: currentUser }),
+  }
+})
 
 const CHAT = {
   chat_id: 'chat-1',
@@ -15,6 +43,15 @@ const CHAT = {
   tags: [],
 } as unknown as Chat
 
+function wrapper({ children }: PropsWithChildren) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
 function renderItem(onClick = vi.fn(), onPreview = vi.fn(), onMarkUnread = vi.fn(), chat: Chat = CHAT) {
   render(
     <ChatItem
@@ -25,9 +62,17 @@ function renderItem(onClick = vi.fn(), onPreview = vi.fn(), onMarkUnread = vi.fn
       onPreview={onPreview}
       onMarkUnread={onMarkUnread}
     />,
+    { wrapper },
   )
   return { onClick, onPreview, onMarkUnread }
 }
+
+beforeEach(() => {
+  currentUser.role = 'vendedor'
+  markNoShowMutate.mockReset()
+  deleteLeadMutate.mockReset()
+  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+})
 
 describe('ChatItem vista rápida', () => {
   it('muestra las acciones del lead con clic derecho', () => {
@@ -70,5 +115,64 @@ describe('ChatItem vista rápida', () => {
 
     expect(onPreview).toHaveBeenCalledOnce()
     expect(onClick).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})
+
+describe('ChatItem menú contextual — copiar, no-show, eliminar y fusionar', () => {
+  it('copia el teléfono', () => {
+    renderItem()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar teléfono' }))
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('51999999999')
+  })
+
+  it('marca no-show cuando el lead tiene una próxima cita agendada', () => {
+    const chat = { ...CHAT, proxima_cita: '2026-08-20T15:00:00Z' } as Chat
+    renderItem(vi.fn(), vi.fn(), vi.fn(), chat)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Marcar no-show' }))
+
+    expect(markNoShowMutate).toHaveBeenCalledOnce()
+  })
+
+  it('no ofrece marcar no-show sin una cita programada', () => {
+    renderItem()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+
+    expect(screen.queryByRole('menuitem', { name: 'Marcar no-show' })).not.toBeInTheDocument()
+  })
+
+  it('oculta fusionar y eliminar para un vendedor', () => {
+    renderItem()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+
+    expect(screen.queryByRole('menuitem', { name: 'Fusionar con...' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Eliminar lead' })).not.toBeInTheDocument()
+  })
+
+  it('un admin puede eliminar el lead tras confirmar', async () => {
+    currentUser.role = 'admin'
+    renderItem()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar lead' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar' }))
+
+    expect(deleteLeadMutate).toHaveBeenCalledWith('chat-1', expect.anything())
+  })
+
+  it('un admin ve la opción de fusionar', () => {
+    currentUser.role = 'admin'
+    renderItem()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Ana Torres/ }))
+
+    expect(screen.getByRole('menuitem', { name: 'Fusionar con...' })).toBeInTheDocument()
   })
 })

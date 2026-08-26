@@ -863,6 +863,20 @@ async def mark_lead_no_show(chat_id: str, actor_user_id: int) -> dict | None:
     return await fetch_chat(chat_id)
 
 
+async def delete_lead(chat_id: str) -> bool:
+    """Borra un lead entero: mensajes, tareas, notas, todo lo que cuelga de
+    él por FK en CASCADE. No hay soft-delete para leads, así que esto no se
+    puede deshacer.
+    """
+    async with get_sessionmaker()() as session:
+        lead = await session.get(Lead, chat_id)
+        if lead is None:
+            return False
+        await session.delete(lead)
+        await session.commit()
+    return True
+
+
 async def get_cached_suggestion(chat_id: str) -> dict | None:
     """Devuelve la última sugerencia de n8n guardada para este lead, siempre
     que siga vigente: tiene que existir Y no haber llegado ningún mensaje del
