@@ -671,13 +671,33 @@ async function markChatRead(chatId: string): Promise<void> {
   await client.post(`/api/chats/${encodeURIComponent(chatId)}/read`)
 }
 
-/** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo. */
+/** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo.
+ *
+ * Parchea la caché en vez de invalidar ['chats']: invalidar reordena la
+ * lista completa (por actividad/no-leídos) mientras en móvil sigue montada
+ * pero oculta detrás del chat abierto. Como esto se dispara en casi cada
+ * entrada a un lead, el usuario volvía a la lista con el scroll "saltado"
+ * a leads distintos de los que había dejado en esa posición. */
 export function useMarkChatRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: markChatRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
+    onSuccess: (_data, chatId) => {
+      queryClient.setQueriesData<InfiniteData<ChatsPage>>(
+        { queryKey: ['chats', 'list'] },
+        (current) => {
+          if (!current) return current
+          return {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.map((item) =>
+                item.chat_id === chatId ? { ...item, unread_count: 0 } : item
+              ),
+            })),
+          }
+        }
+      )
       queryClient.invalidateQueries({ queryKey: ['unread-count'] })
     },
   })

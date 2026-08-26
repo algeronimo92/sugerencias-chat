@@ -240,6 +240,11 @@ export function ChatList({
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
+    // Clave estable por chat_id (no por índice): si la lista se reordena
+    // mientras está oculta en móvil (display:none, sin medidas reales), el
+    // virtualizador no debe reutilizar la fila de un chat para otro chat
+    // distinto que cayó en el mismo índice.
+    getItemKey: (index) => (index < chats.length ? chats[index].chat_id : `loader-${index}`),
     estimateSize: () => ROW_ESTIMATE_PX,
     overscan: 6,
   })
