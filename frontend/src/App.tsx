@@ -485,11 +485,17 @@ function MainLayout() {
         ) : isKanban ? (
           <KanbanBoard onOpenChat={handleSelectChat} />
         ) : (
-          <div className="flex min-w-0 flex-1 overflow-hidden">
+          <div className="relative flex min-w-0 flex-1 overflow-hidden">
             {/* Panel izquierdo — Lista de chats.
                 En móvil ocupa la pantalla entera y se retira al abrir un chat:
-                no hay lugar para las dos cosas a la vez. */}
-            <div className={`h-full overflow-hidden ${isMobile ? (chatId ? 'hidden' : 'w-full') : 'w-72 shrink-0 xl:w-80'}`}>
+                no hay lugar para las dos cosas a la vez. Se oculta con
+                invisible + absolute (no display:none): un contenedor con
+                display:none pierde el scroll del todo al ocultarse -no hay
+                forma de restaurarlo después, ni con JS-, mientras que
+                visibility:hidden conserva el layout y con él la posición de
+                scroll: absolute lo saca del flujo para que el chat pueda
+                ocupar el ancho completo. */}
+            <div className={`h-full overflow-hidden ${isMobile ? (chatId ? 'invisible pointer-events-none absolute inset-0' : 'w-full') : 'w-72 shrink-0 xl:w-80'}`}>
               <ChatList
                 chats={chats}
                 isLoading={isLoading}

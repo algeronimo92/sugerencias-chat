@@ -241,9 +241,8 @@ export function ChatList({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
     // Clave estable por chat_id (no por índice): si la lista se reordena
-    // mientras está oculta en móvil (display:none, sin medidas reales), el
-    // virtualizador no debe reutilizar la fila de un chat para otro chat
-    // distinto que cayó en el mismo índice.
+    // (llega un mensaje a otro lead), el virtualizador no debe reutilizar
+    // la fila de un chat para otro chat distinto que cayó en el mismo índice.
     getItemKey: (index) => (index < chats.length ? chats[index].chat_id : `loader-${index}`),
     estimateSize: () => ROW_ESTIMATE_PX,
     overscan: 6,
@@ -251,15 +250,14 @@ export function ChatList({
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
-  // Ancla de scroll: recuerda qué lead está arriba de la pantalla. Marcar
-  // como leído ya no reordena la lista (ver useMarkChatRead), pero cualquier
-  // mensaje real que llegue a OTRO lead sigue reordenando por actividad —y
-  // eso puede pasar mientras el usuario está adentro de un chat, con esta
-  // lista oculta (display:none) de fondo en móvil. Sin esto, el scrollTop en
-  // píxeles queda fijo pero el lead que quedaba ahí cambia, así que al volver
-  // la lista "se ve" scrolleada aunque el scrollTop no se haya tocado. Con el
-  // ancla, si el lead-referencia cambia de posición, reubicamos el scroll
-  // para que siga apareciendo donde el usuario lo dejó.
+  // Ancla de scroll: recuerda qué lead está arriba de la pantalla. Si llega
+  // un mensaje a OTRO lead mientras el usuario está adentro de un chat (la
+  // lista sigue montada, oculta con visibility:hidden detrás), ese lead
+  // puede saltar de posición y reordenar toda la lista. El scrollTop en
+  // píxeles no cambia, pero el lead que quedaba ahí sí — así que al volver
+  // la lista "se ve" scrolleada aunque nadie tocó el scroll. Con el ancla,
+  // si el lead-referencia cambia de posición, reubicamos el scroll para que
+  // siga apareciendo donde el usuario lo dejó.
   const anchorChatIdRef = useRef<string | null>(null)
   const prevChatsRef = useRef<Chat[]>(chats)
   const pendingAnchorIndexRef = useRef<number | null>(null)
@@ -277,27 +275,37 @@ export function ChatList({
   }
 
   useLayoutEffect(() => {
-    // Un elemento con display:none (la lista oculta detrás del chat, en
-    // móvil) no tiene layout: su scrollHeight/clientHeight son 0 sin
-    // importar cuánto contenido tenga. scrollToIndex() ahí adentro no hace
-    // nada (no hay "dónde" ubicar el scroll), así que si el reordenamiento
-    // pasó con el panel oculto, la corrección queda pendiente en vez de
-    // descartarse; recién se aplica cuando el panel vuelve a ser visible.
-    const el = scrollRef.current
-    const visible = !!el && el.clientHeight > 0
-    if (visible && pendingAnchorIndexRef.current !== null) {
+    if (pendingAnchorIndexRef.current !== null) {
       rowVirtualizer.scrollToIndex(pendingAnchorIndexRef.current, { align: 'start' })
       pendingAnchorIndexRef.current = null
     }
-    // Tampoco se actualiza el ancla mientras está oculto: "lo primero
-    // visible" no significa nada contra un viewport de 0px.
-    if (visible) {
-      const first = rowVirtualizer.getVirtualItems()[0]
-      if (first && first.index < chats.length) {
-        anchorChatIdRef.current = chats[first.index].chat_id
+  })
+
+  // Mantiene el ancla al día mientras el usuario scrollea. rowVirtualizer no
+  // vuelve a renderizar el componente en cada pixel de scroll (con pocos
+  // leads todos caben dentro del overscan, así que ni siquiera cambia qué
+  // filas están montadas), así que se lee la posición real de las filas en
+  // el DOM (data-index) directamente en el evento de scroll.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    function updateAnchor() {
+      if (!el) return
+      const containerTop = el.getBoundingClientRect().top
+      let bestIndex: number | null = null
+      for (const row of el.querySelectorAll<HTMLElement>('[data-index]')) {
+        const index = Number(row.dataset.index)
+        if (row.getBoundingClientRect().bottom <= containerTop) continue
+        if (bestIndex === null || index < bestIndex) bestIndex = index
+      }
+      if (bestIndex !== null && bestIndex < chats.length) {
+        anchorChatIdRef.current = chats[bestIndex].chat_id
       }
     }
-  })
+    updateAnchor()
+    el.addEventListener('scroll', updateAnchor, { passive: true })
+    return () => el.removeEventListener('scroll', updateAnchor)
+  }, [chats, rowVirtualizer])
 
   // Lock síncrono aparte de isFetchingNextPage: el array de virtualItems
   // cambia de referencia en re-renders muy seguidos (por ejemplo, el propio
