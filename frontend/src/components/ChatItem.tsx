@@ -237,11 +237,13 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
           {chat.unread_count > 0 && (
             <span
               title={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'}
-              aria-label="Chat no leído"
-              className={`h-3 w-3 shrink-0 rounded-full ring-2 ring-white dark:ring-wa-panel-dark ${
+              aria-label={`${chat.unread_count} mensaje${chat.unread_count === 1 ? '' : 's'} sin leer`}
+              className={`shrink-0 min-w-5 h-5 px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center ${
                 botAttended ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
               }`}
-            />
+            >
+              {chat.unread_count > 99 ? '99+' : chat.unread_count}
+            </span>
           )}
         </div>
         {chat.tags.length > 0 && (

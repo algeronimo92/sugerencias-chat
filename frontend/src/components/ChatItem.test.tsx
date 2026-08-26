@@ -51,11 +51,11 @@ describe('ChatItem vista rápida', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  it('muestra un punto de color sin número para chats no leídos', () => {
+  it('muestra la cantidad de mensajes sin leer', () => {
     renderItem()
 
-    expect(screen.getByLabelText('Chat no leído')).toBeInTheDocument()
-    expect(screen.queryByText('2')).toBeNull()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByLabelText('2 mensajes sin leer')).toBeInTheDocument()
   })
 
   it('abre la vista rápida tras una pulsación prolongada', () => {
