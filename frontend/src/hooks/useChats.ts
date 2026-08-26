@@ -667,6 +667,23 @@ export function useUpdateLead(chatId: string) {
   })
 }
 
+async function markNoShow(chatId: string): Promise<Chat> {
+  const { data } = await client.post<Chat>(`/api/chats/${encodeURIComponent(chatId)}/no-show`)
+  return data
+}
+
+/** El vendedor confirma que el cliente no llegó a una cita agendada. */
+export function useMarkNoShow(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => markNoShow(chatId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+    },
+  })
+}
+
 async function markChatRead(chatId: string): Promise<void> {
   await client.post(`/api/chats/${encodeURIComponent(chatId)}/read`)
 }

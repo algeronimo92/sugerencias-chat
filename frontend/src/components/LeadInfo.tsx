@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, MessageCircle, MessageCircleOff, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
-import { useUpdateLead } from '../hooks/useChats'
+import { useMarkNoShow, useUpdateLead } from '../hooks/useChats'
 import { displayPhone } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { LeadFormDialog } from './LeadFormDialog'
@@ -45,9 +45,17 @@ function formatDateTime(value: string | null): string | null {
 export function LeadInfo({ chat }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const [noShowError, setNoShowError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
+  const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
   const stageMeta = LEAD_STAGE_META[chat.stage]
+
+  function handleMarkNoShow() {
+    if (isMarkingNoShow) return
+    setNoShowError(null)
+    markNoShow(undefined, { onError: (err) => setNoShowError(extractErrorMessage(err)) })
+  }
 
   // Ojo con el .filter(f => f.value) de abajo: descarta cualquier valor falsy,
   // así que los números se formatean a string acá (un 0 tiene que verse) y los
@@ -75,7 +83,9 @@ export function LeadInfo({ chat }: Props) {
     { label: 'Recontacto', value: formatDate(chat.fecha_recontacto), icon: CalendarDays },
     { label: 'Razón de pérdida', value: chat.razon_perdido, icon: XCircle },
     { label: 'Especialista', value: chat.con_especialista ? 'Derivado' : null, icon: UserRound },
-    // Los lleva el sistema, no se editan desde el CRM.
+    // No-shows y toques de seguimiento los lleva el sistema (el primero se
+    // confirma a mano abajo, el segundo lo incrementan los recordatorios
+    // automáticos de citas); último toque también es automático.
     { label: 'No-shows', value: chat.contador_noshow != null ? String(chat.contador_noshow) : null, icon: CalendarX },
     { label: 'Toques de seguimiento', value: chat.toques_seguimiento != null ? String(chat.toques_seguimiento) : null, icon: Repeat },
     { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque), icon: CalendarClock },
@@ -126,6 +136,22 @@ export function LeadInfo({ chat }: Props) {
             </div>
           ))}
         </dl>
+      )}
+
+      {chat.proxima_cita && (
+        <div className="mt-3 pt-3 border-t border-wa-border dark:border-wa-border-dark">
+          <button type="button"
+            onClick={handleMarkNoShow}
+            disabled={isMarkingNoShow}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 transition-colors"
+          >
+            <CalendarX className="w-3.5 h-3.5" />
+            {isMarkingNoShow ? 'Registrando…' : 'Marcar no-show'}
+          </button>
+          {noShowError && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{noShowError}</p>
+          )}
+        </div>
       )}
 
       {isEditing && (

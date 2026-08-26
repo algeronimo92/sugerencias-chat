@@ -26,6 +26,7 @@ from db.models import (
     WspMessage,
 )
 from db.session import get_sessionmaker
+from services.settings_service import get_effective
 
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
@@ -217,6 +218,30 @@ def _has_tag_condition(tag_id: int):
             LeadTagAssignment.lead_id == Lead.id,
             LeadTagAssignment.tag_id == tag_id,
             LeadTag.is_active == true(),
+        )
+        .correlate(Lead)
+    )
+
+
+async def _visible_lead_condition():
+    """Un lead solo se lista si tiene un alias de la instancia de WhatsApp
+    activa (o el `"*"` sintético de los leads creados a mano).
+
+    Al migrar de instancia (nuevo número/reconexión), `_resolve_once` crea
+    leads nuevos a propósito en vez de fusionarlos con los de la instancia
+    anterior — ver `services.whatsapp_identity_service`. Sin este filtro esos
+    leads viejos quedan mezclados para siempre con los de la instancia en
+    uso. Si no hay ninguna instancia configurada no se filtra nada: no hay
+    forma de saber cuál es "la activa".
+    """
+    active_instance = await get_effective("evolution_instance")
+    if not active_instance:
+        return true()
+    return exists(
+        select(WhatsAppIdentity.id)
+        .where(
+            WhatsAppIdentity.lead_id == Lead.id,
+            WhatsAppIdentity.instance.in_((active_instance, "*")),
         )
         .correlate(Lead)
     )
@@ -458,6 +483,7 @@ async def fetch_chats(
     stmt = (
         select(*columns)
         .join(last_message, true(), isouter=True)
+        .where(await _visible_lead_condition())
     )
 
     if search:
@@ -591,6 +617,7 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
     stmt = (
         select(Lead.estado, func.count(Lead.id))
         .join(last_message, true(), isouter=True)
+        .where(await _visible_lead_condition())
         .group_by(Lead.estado)
     )
     if search:
@@ -636,6 +663,7 @@ async def fetch_kanban_snapshot(
             ).label("stage_rank"),
         )
         .join(last_message, true(), isouter=True)
+        .where(await _visible_lead_condition())
     )
     if search:
         ranked_stmt = ranked_stmt.where(_chat_search_condition(search))
@@ -692,7 +720,7 @@ async def fetch_kanban_stage(
     stmt = (
         select(*columns)
         .join(last_message, true(), isouter=True)
-        .where(Lead.estado == stage)
+        .where(Lead.estado == stage, await _visible_lead_condition())
     )
     if search:
         stmt = stmt.where(_chat_search_condition(search))
@@ -806,6 +834,32 @@ async def update_lead_stage(
 
     if not include_chat:
         return {"chat_id": chat_id, "stage": stage.value, "changed": changed}
+    return await fetch_chat(chat_id)
+
+
+async def mark_lead_no_show(chat_id: str, actor_user_id: int) -> dict | None:
+    """El vendedor confirma que el cliente no llegó a la cita agendada.
+
+    Es una acción humana a propósito: el sistema no tiene forma de saber por
+    sí solo si alguien asistió físicamente a la clínica.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        lead = await session.get(Lead, chat_id, with_for_update=True)
+        if lead is None:
+            return None
+        lead.contador_noshow = (lead.contador_noshow or 0) + 1
+        lead.updated_at = now
+        await _record_activity(
+            session,
+            chat_id,
+            "no_show_registered",
+            "user",
+            actor_user_id,
+            None,
+            {"contador_noshow": lead.contador_noshow},
+        )
+        await session.commit()
     return await fetch_chat(chat_id)
 
 
@@ -1267,6 +1321,26 @@ async def mark_chat_unread(chat_id: str) -> bool:
             update(Lead)
             .where(Lead.id == chat_id)
             .values(last_read_at=latest_customer_message_at - timedelta(microseconds=1))
+        )
+        await session.commit()
+    return result.rowcount > 0
+
+
+async def record_lead_touch(chat_id: str) -> bool:
+    """Registra un toque de seguimiento (recordatorio de cita, cadencia de
+    n8n, etc.) que ya salió por WhatsApp — lo llama el cron correspondiente
+    justo después de mandar el mensaje. Ver `POST /api/webhooks/lead-touch`.
+    """
+    now = datetime.now(timezone.utc)
+    async with get_sessionmaker()() as session:
+        result = await session.execute(
+            update(Lead)
+            .where(Lead.id == chat_id)
+            .values(
+                toques_seguimiento=func.coalesce(Lead.toques_seguimiento, 0) + 1,
+                fecha_ultimo_toque=now,
+                updated_at=now,
+            )
         )
         await session.commit()
     return result.rowcount > 0

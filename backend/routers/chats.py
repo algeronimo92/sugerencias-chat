@@ -65,6 +65,7 @@ from services.db_service import (
     lead_exists,
     mark_chat_read,
     mark_chat_unread,
+    mark_lead_no_show,
     list_active_sellers,
     get_customer_service_window,
     rekey_lead_phone,
@@ -469,6 +470,16 @@ async def get_chat(chat_id: str):
     if chat is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     return chat
+
+
+@router.post("/{chat_id}/no-show", response_model=Chat)
+async def register_no_show(chat_id: str, user: User = Depends(get_current_user)):
+    """El vendedor confirma que el cliente no llegó a la cita agendada."""
+    lead = await mark_lead_no_show(chat_id, user.id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
+    return lead
 
 
 @router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)

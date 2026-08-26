@@ -10,6 +10,7 @@ from services.db_service import (
     mark_chat_read_from_whatsapp_receipt,
     mark_message_deleted,
     reconcile_outgoing_message,
+    record_lead_touch,
     set_message_reaction,
     update_poll_results,
     update_lead_stage,
@@ -25,6 +26,7 @@ from services.whatsapp_identity_service import (
     WhatsAppIdentityConflictError,
     add_phone_jid,
     is_known_alias,
+    lead_id_for_jid,
     parse_evolution_identity,
     resolve_whatsapp_identity,
 )
@@ -88,6 +90,23 @@ async def resolve_whatsapp_identity_webhook(
         ) from exc
 
     return {"status": "ok", **result.to_dict()}
+
+
+class LeadTouchWebhookBody(BaseModel):
+    jid: str
+
+
+@router.post("/lead-touch")
+async def lead_touch_webhook(body: LeadTouchWebhookBody):
+    """Llamado por un cron de n8n justo después de mandarle al cliente un
+    mensaje de seguimiento (recordatorio de cita, cadencia de nutrición,
+    etc.) — incrementa `leads.toques_seguimiento` y actualiza
+    `fecha_ultimo_toque`."""
+    lead_id = await lead_id_for_jid(body.jid)
+    if lead_id is None or not await record_lead_touch(lead_id):
+        raise HTTPException(status_code=404, detail="No hay un lead asociado a ese JID")
+    await manager.broadcast({"type": "chats_updated", "chat_id": lead_id, "reason": "lead_updated"})
+    return {"status": "ok", "chat_id": lead_id}
 
 
 class NewMessageWebhookBody(BaseModel):

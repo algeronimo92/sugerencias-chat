@@ -220,9 +220,10 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                 lead.nombre = identity.push_name
                 lead.updated_at = now
 
-            known_aliases = {(alias.instance, alias.jid) for alias in aliases}
+            known_aliases = {(alias.instance, alias.jid): alias for alias in aliases}
             for jid in identity.jids:
-                if (identity.instance, jid) not in known_aliases:
+                existing = known_aliases.get((identity.instance, jid)) or known_aliases.get(("*", jid))
+                if existing is None:
                     session.add(
                         WhatsAppIdentity(
                             instance=identity.instance,
@@ -231,6 +232,13 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                             lead_id=chat_id,
                         )
                     )
+                elif existing.instance == "*" and identity.instance != "*":
+                    # Nace de create_lead/rekey_lead_phone sin instancia real;
+                    # ahora que llega un webhook con la instancia verdadera se
+                    # normaliza en vez de sumar una fila redundante (dejaba
+                    # dos alias del mismo jid y ensuciaba el order_by de envío).
+                    existing.instance = identity.instance
+                    existing.updated_at = now
             await session.flush()
 
             send_jid = identity.phone_jid
@@ -272,30 +280,53 @@ async def resolve_whatsapp_identity(
 
 
 async def resolve_whatsapp_destination(chat_id: str) -> str:
-    """Devuelve el mejor JID conocido para enviar a un lead interno."""
+    """Devuelve el mejor JID conocido para enviar a un lead interno.
+
+    Se limita a la instancia de Evolution activa (más el ``"*"`` sintético de
+    los alias creados sin webhook, ver ``db_service.create_lead`` /
+    ``rekey_lead_phone``). Un lead con alias de más de una instancia real
+    —por ejemplo durante una migración— podía elegir el más reciente sin
+    importar si esa instancia seguía conectada; con el filtro solo se
+    considera la que está en uso. Sin instancia configurada no se filtra: no
+    hay forma de saber cuál es la activa.
+    """
+    active_instance = await get_effective("evolution_instance")
+    instances = (active_instance, "*") if active_instance else None
+
     async with get_sessionmaker()() as session:
-        phone_jid = await session.scalar(
+        phone_stmt = (
             select(WhatsAppIdentity.jid)
-            .where(
-                WhatsAppIdentity.lead_id == chat_id,
-                WhatsAppIdentity.kind == "phone",
-            )
+            .where(WhatsAppIdentity.lead_id == chat_id, WhatsAppIdentity.kind == "phone")
             .order_by(WhatsAppIdentity.updated_at.desc())
             .limit(1)
         )
-        if phone_jid:
-            return phone_jid
-        any_jid = await session.scalar(
+        any_stmt = (
             select(WhatsAppIdentity.jid)
             .where(WhatsAppIdentity.lead_id == chat_id)
             .order_by(WhatsAppIdentity.updated_at.desc())
             .limit(1)
         )
+        if instances is not None:
+            phone_stmt = phone_stmt.where(WhatsAppIdentity.instance.in_(instances))
+            any_stmt = any_stmt.where(WhatsAppIdentity.instance.in_(instances))
+
+        phone_jid = await session.scalar(phone_stmt)
+        if phone_jid:
+            return phone_jid
+        any_jid = await session.scalar(any_stmt)
     if any_jid:
         return any_jid
     raise InvalidWhatsAppIdentityError(
         f"El lead {chat_id} no tiene una identidad de WhatsApp asociada"
     )
+
+
+async def lead_id_for_jid(jid: str) -> str | None:
+    """El lead dueño de ese JID, o None si no está registrado como alias."""
+    async with get_sessionmaker()() as session:
+        return await session.scalar(
+            select(WhatsAppIdentity.lead_id).where(WhatsAppIdentity.jid == jid).limit(1)
+        )
 
 
 async def is_known_alias(jid: str) -> bool:
