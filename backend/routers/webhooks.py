@@ -361,6 +361,9 @@ class OutgoingWebhookBody(BaseModel):
     media_url: str | None = None
     payload: dict | None = None
     source: str | None = None
+    # base64 de messageContextInfo.messageSecret del eco (ver
+    # services/message_edit_crypto.py) — solo viaja en mensajes de texto.
+    message_secret: str | None = None
 
 
 @router.post("/outgoing")
@@ -378,6 +381,13 @@ async def outgoing_webhook(
     if source:
         message_payload = {**(message_payload or {}), "source": source}
 
+    message_secret: bytes | None = None
+    if body.message_secret:
+        try:
+            message_secret = base64.b64decode(body.message_secret, validate=True)
+        except (binascii.Error, ValueError):
+            message_secret = None
+
     result = await reconcile_outgoing_message(
         body.chat_id,
         body.message_type,
@@ -386,6 +396,7 @@ async def outgoing_webhook(
         media_url=body.media_url,
         payload=message_payload,
         human_reply=human_reply,
+        message_secret=message_secret,
     )
     completed_tasks = (
         await complete_assigned_seller_reply_tasks(body.chat_id)

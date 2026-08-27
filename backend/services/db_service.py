@@ -1199,6 +1199,7 @@ async def insert_message(
     analysis: dict | None = None,
     payload: dict | None = None,
     human_outbound: bool | None = None,
+    message_secret: bytes | None = None,
 ) -> dict:
     stmt = (
         insert(WspMessage)
@@ -1213,6 +1214,7 @@ async def insert_message(
             message_type=message_type,
             analysis=analysis,
             payload=payload,
+            message_secret=message_secret,
         )
         .returning(*_INSERT_MESSAGE_COLUMNS)
     )
@@ -2175,6 +2177,7 @@ async def reconcile_outgoing_message(
     media_url: str | None = None,
     payload: dict | None = None,
     human_reply: bool = False,
+    message_secret: bytes | None = None,
 ) -> dict:
     """Guarda un mensaje SALIENTE (fromMe) que llega por el eco de Evolution,
     salvo que sea un duplicado de algo que ya mandó nuestra app.
@@ -2188,7 +2191,12 @@ async def reconcile_outgoing_message(
     puede enviar se permite además una conciliación difusa por tipo/contenido
     dentro de la ventana, porque el ID del envío y el del eco pueden diferir.
     Tipos externos/estructurados (order, unsupported) se insertan siempre que
-    su ID sea nuevo, para no perder eventos sucesivos con contenido vacío."""
+    su ID sea nuevo, para no perder eventos sucesivos con contenido vacío.
+
+    `message_secret` (ver services/message_edit_crypto.py) solo lo trae el eco,
+    nunca el insert original de la app —que no sabe todavía qué le va a
+    contestar Evolution—, así que cuando hay match se escribe acá encima de la
+    fila ya existente en vez de perderse."""
     async with get_sessionmaker()() as session:
         existing = None
         if wa_message_id:
@@ -2211,6 +2219,13 @@ async def reconcile_outgoing_message(
                 ).limit(1)
             )).first()
         if existing is not None:
+            if message_secret is not None:
+                await session.execute(
+                    update(WspMessage)
+                    .where(WspMessage.id == existing.id)
+                    .values(message_secret=message_secret)
+                )
+                await session.commit()
             return {"matched": True}
 
     inserted = await insert_message(
@@ -2223,6 +2238,7 @@ async def reconcile_outgoing_message(
         message_type=message_type,
         payload=payload,
         human_outbound=human_reply,
+        message_secret=message_secret,
     )
     return {"matched": False, "message_id": inserted["id"]}
 

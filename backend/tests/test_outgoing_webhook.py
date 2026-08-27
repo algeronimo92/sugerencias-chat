@@ -30,6 +30,7 @@ async def test_external_outgoing_is_inserted_and_broadcast(monkeypatch):
     reconcile.assert_awaited_once_with(
         LEAD_ID, "text", "En un momento se conecta un asesor para ayudarlo.",
         wa_message_id="EXT-1", media_url=None, payload=None, human_reply=False,
+        message_secret=None,
     )
     complete.assert_not_awaited()
     broadcast.assert_awaited_once()
@@ -73,7 +74,7 @@ async def test_linked_device_reply_completes_assigned_seller_tasks(monkeypatch):
     reconcile.assert_awaited_once_with(
         LEAD_ID, "text", "Respuesta escrita por la vendedora",
         wa_message_id="PHONE-1", media_url=None, payload={"source": "ios"},
-        human_reply=True,
+        human_reply=True, message_secret=None,
     )
     complete.assert_awaited_once_with(LEAD_ID)
     assert {"type": "tasks_updated"} in [call.args[0] for call in broadcast.await_args_list]
@@ -98,7 +99,7 @@ async def test_external_automation_does_not_complete_tasks(monkeypatch):
     reconcile.assert_awaited_once_with(
         LEAD_ID, "text", "Respuesta del bot",
         wa_message_id="BOT-1", media_url=None, payload={"source": "unknown"},
-        human_reply=False,
+        human_reply=False, message_secret=None,
     )
     complete.assert_not_awaited()
 
