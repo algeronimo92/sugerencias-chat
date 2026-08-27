@@ -491,22 +491,29 @@ def _flow_buttons_payload(node: dict) -> tuple[list[dict], str | None]:
         items = order.get("items") if isinstance(order.get("items"), list) else []
         total_amount = params.get("total_amount") if isinstance(params.get("total_amount"), dict) else {}
         amount = None
-        value, offset = total_amount.get("value"), total_amount.get("offset")
-        if isinstance(value, (int, float)) and isinstance(offset, (int, float)) and offset:
-            amount = value / offset
-        item_name = items[0].get("name") if items and isinstance(items[0], dict) else None
-        item_name = item_name or params.get("additional_note")
+        total_value, total_offset = total_amount.get("value"), total_amount.get("offset")
+        if isinstance(total_value, (int, float)) and isinstance(total_offset, (int, float)) and total_offset:
+            amount = total_value / total_offset
+        subtotal_amount = order.get("subtotal") if isinstance(order.get("subtotal"), dict) else {}
+        subtotal = None
+        subtotal_value, subtotal_offset = subtotal_amount.get("value"), subtotal_amount.get("offset")
+        if isinstance(subtotal_value, (int, float)) and isinstance(subtotal_offset, (int, float)) and subtotal_offset:
+            subtotal = subtotal_value / subtotal_offset
+        item = items[0] if items and isinstance(items[0], dict) else {}
+        item_name = item.get("name") or params.get("additional_note")
         button_text = button.get("buttonText")
         entry = {
             "id": button.get("buttonId") or button.get("id") or params.get("id"),
             "text": button_text.get("displayText") if isinstance(button_text, dict) else None,
             "name": button.get("name") or params.get("type"),
             "amount": amount,
+            "subtotal": subtotal,
             "currency": params.get("currency"),
             "reference_id": params.get("reference_id"),
             "order_status": order.get("status"),
             "payment_status": params.get("payment_status"),
             "item_name": item_name.strip() if isinstance(item_name, str) else item_name,
+            "quantity": item.get("quantity"),
         }
         buttons.append({key: value for key, value in entry.items() if value not in (None, "")})
         if flow_text is None:
