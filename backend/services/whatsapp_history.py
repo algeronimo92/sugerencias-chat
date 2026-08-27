@@ -397,7 +397,7 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
         node = message.get(key)
         if isinstance(node, dict):
             payload = _interactive_payload(key, node)
-            content = _first_text(payload.get("body"), payload.get("title"))
+            content = _first_text(payload.get("body"), payload.get("title"), payload.get("payment_text"))
             return content, "interactive", payload
 
     return None
@@ -406,6 +406,68 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
 def _caption(media: dict) -> str:
     caption = media.get("caption")
     return caption if isinstance(caption, str) else ""
+
+
+_CURRENCY_SYMBOLS = {"PEN": "S/", "USD": "$"}
+
+
+def _format_payment_text(button: dict) -> str | None:
+    amount = button.get("amount")
+    if amount is None:
+        return None
+    currency = button.get("currency")
+    symbol = _CURRENCY_SYMBOLS.get(currency, f"{currency} " if currency else "")
+    amount_text = f"{symbol}{amount:.2f}"
+    label = button.get("item_name")
+    if label:
+        return f"Solicitud de pago: {label} - {amount_text}"
+    return f"Solicitud de pago - {amount_text}"
+
+
+def _flow_buttons_payload(node: dict) -> tuple[list[dict], str | None]:
+    """Botones de `nativeFlowMessage` (ej. solicitudes de pago vía WhatsApp
+    Flow). `buttonParamsJson` trae campos propios por tipo de botón (pago,
+    cita, etc.) que no calzan con el resto de mensajes interactivos, por eso
+    se procesan aparte."""
+    native_flow = node.get("nativeFlowMessage") if isinstance(node.get("nativeFlowMessage"), dict) else {}
+    raw_buttons = native_flow.get("buttons") if isinstance(native_flow.get("buttons"), list) else []
+    buttons = []
+    payment_text = None
+    for button in raw_buttons:
+        if not isinstance(button, dict):
+            continue
+        params = {}
+        raw_params = button.get("buttonParamsJson")
+        if isinstance(raw_params, str):
+            try:
+                parsed = json.loads(raw_params)
+                params = parsed if isinstance(parsed, dict) else {}
+            except (TypeError, ValueError):
+                pass
+        order = params.get("order") if isinstance(params.get("order"), dict) else {}
+        items = order.get("items") if isinstance(order.get("items"), list) else []
+        total_amount = params.get("total_amount") if isinstance(params.get("total_amount"), dict) else {}
+        amount = None
+        value, offset = total_amount.get("value"), total_amount.get("offset")
+        if isinstance(value, (int, float)) and isinstance(offset, (int, float)) and offset:
+            amount = value / offset
+        item_name = items[0].get("name") if items and isinstance(items[0], dict) else None
+        item_name = item_name or params.get("additional_note")
+        button_text = button.get("buttonText")
+        entry = {
+            "id": button.get("buttonId") or button.get("id") or params.get("id"),
+            "text": button_text.get("displayText") if isinstance(button_text, dict) else None,
+            "name": button.get("name") or params.get("type"),
+            "amount": amount,
+            "currency": params.get("currency"),
+            "reference_id": params.get("reference_id"),
+            "order_status": order.get("status"),
+            "item_name": item_name.strip() if isinstance(item_name, str) else item_name,
+        }
+        buttons.append({key: value for key, value in entry.items() if value not in (None, "")})
+        if amount is not None and payment_text is None:
+            payment_text = _format_payment_text(entry)
+    return buttons, payment_text
 
 
 def _interactive_payload(message_type: str, node: dict) -> dict:
@@ -425,12 +487,15 @@ def _interactive_payload(message_type: str, node: dict) -> dict:
                     "text": row.get("title") or row.get("name"),
                     "description": row.get("description"),
                 })
+    buttons, payment_text = _flow_buttons_payload(node)
     result = {
         "original_type": message_type,
         "title": node.get("title") or header.get("title"),
         "body": body.get("text") or node.get("contentText") or node.get("description"),
         "footer": footer.get("text") or node.get("footerText"),
         "options": options,
+        "buttons": buttons,
+        "payment_text": payment_text,
     }
     return {key: value for key, value in result.items() if value not in (None, [], "")}
 
