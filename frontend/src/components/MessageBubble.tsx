@@ -69,6 +69,11 @@ export function MessageStatusTicks({ status, isAudio = false, onRetry, onDiscard
 interface Props {
   chat: Chat
   message: Message
+  /** Mensajes ya cargados del chat, para correlacionar los pedidos de
+   * WhatsApp Flow que llegan repartidos en 3 mensajes con el mismo
+   * `reference_id` (ver `flowOrderGroup` en utils/message). Opcional: sin
+   * esto la tarjeta de pedido solo ve su propio mensaje. */
+  chatMessages?: Message[]
   /** Primero de una tanda del mismo autor: lleva la "colita" y más margen. */
   isFirstOfGroup: boolean
   /** Resaltado temporal tras saltar a este mensaje desde una búsqueda o cita. */
@@ -126,6 +131,7 @@ function DeletedBody({ isVendedor }: { isVendedor: boolean }) {
 export function MessageBubble({
   chat,
   message: m,
+  chatMessages,
   isFirstOfGroup,
   isFlashing,
   threadWidth,
@@ -417,6 +423,7 @@ export function MessageBubble({
               <MessageBody
                 message={m}
                 parsed={parsed}
+                chatMessages={chatMessages}
                 mediaSrc={mediaSrc}
                 isVendedor={isVendedor}
                 mediaBox={mediaBoxDimensions()}

@@ -2,11 +2,16 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown, CreditCard, Download, ExternalLink, EyeOff, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
 
 import type { Message } from '../types'
-import { isJsonObject, messageContacts, messageCoords, type MessageKind, type ParsedContent } from '../utils/message'
+import {
+  flowOrderGroup, flowStatusLabel, formatFlowAmount, isJsonObject, messageContacts, messageCoords,
+  messageFlowOrder, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS,
+  type FlowOrderButton, type FlowOrderGroup, type MessageKind, type ParsedContent,
+} from '../utils/message'
 import { messageMediaFilename } from '../utils/media'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { ContactCard } from './ContactCard'
+import { FlowOrderDetailDialog } from './FlowOrderDetailDialog'
 import { MapPreview } from './MapPreview'
 import { RichText } from './RichText'
 import { TemplateMessagePreview } from './TemplateMessageCard'
@@ -57,6 +62,11 @@ export interface MessageBodyContext {
   videoFooter: ReactNode
   /** El mensaje lleva un recuadro de cita arriba (ajusta el preview de plantilla). */
   hasQuote: boolean
+  /** Mensajes ya cargados del mismo chat, para correlacionar los pedidos de
+   * WhatsApp Flow que llegan repartidos en 3 mensajes `interactive` con el
+   * mismo `reference_id` (ver `flowOrderGroup`). Si falta, la correlación
+   * cae a usar solo este mensaje. */
+  chatMessages?: Pick<Message, 'message_type' | 'payload' | 'sent_at'>[]
 }
 
 type BodyRenderer = (ctx: MessageBodyContext) => ReactNode
@@ -481,6 +491,119 @@ function TextualBody(ctx: MessageBodyContext) {
   )
 }
 
+/** Verde para lo confirmado (pago realizado, pedido completado), rojo para lo
+ * que no va a seguir (cancelado/fallido/rechazado), gris neutro para lo que
+ * sigue en curso (pendiente, procesando). No hay un tono de alerta propio en
+ * la paleta del proyecto, así que se usa el rojo que ya usan otras acciones
+ * destructivas de la burbuja (ej. "Eliminar para todos"). */
+function flowStatusColor(positive: boolean, negative: boolean): string {
+  if (positive) return 'text-wa-primary-strong dark:text-wa-primary'
+  if (negative) return 'text-red-600 dark:text-red-400'
+  return 'text-wa-muted dark:text-wa-text-dark/70'
+}
+
+/** Tarjeta del pedido en sí (evento `review_and_pay`): título, ítem, cantidad
+ * y total, con acceso al detalle completo. El badge de estado usa el agregado
+ * del grupo, no el `order_status` propio del mensaje (que siempre dice
+ * "Pendiente de pago", ver `flowOrderGroup`). */
+function FlowOrderCard({ button, group }: { button: FlowOrderButton; group: FlowOrderGroup }) {
+  const [detailOpen, setDetailOpen] = useState(false)
+  const statusLabel = flowStatusLabel(group.orderStatus, ORDER_STATUS_LABELS)
+  const amountText = formatFlowAmount(button.amount, button.currency)
+
+  return (
+    <>
+      <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+        <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
+          <ReceiptText className="h-4 w-4 shrink-0 text-wa-primary" />
+          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
+            Pedido N.° {button.reference_id}
+          </p>
+          {statusLabel && (
+            <span className="max-w-28 shrink-0 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold text-wa-primary-strong dark:text-wa-primary">
+              {statusLabel}
+            </span>
+          )}
+        </div>
+        <div className="space-y-2 px-3 py-2.5">
+          {button.item_name && <p className="font-medium not-italic">{button.item_name}</p>}
+          {button.quantity != null && (
+            <p className="text-sm not-italic text-wa-muted dark:text-wa-text-dark/70">Cantidad: {button.quantity}</p>
+          )}
+          {amountText && (
+            <div className="flex items-end justify-between gap-4 border-t border-black/5 pt-2 text-sm dark:border-white/10">
+              <span className="text-wa-muted dark:text-wa-text-dark/65">Total</span>
+              <span className="font-semibold tabular-nums">{amountText}</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="text-sm font-medium not-italic text-wa-primary-strong hover:underline dark:text-wa-primary"
+          >
+            Ver detalles
+          </button>
+        </div>
+      </div>
+      {detailOpen && (
+        <FlowOrderDetailDialog button={button} group={group} onClose={() => setDetailOpen(false)} />
+      )}
+    </>
+  )
+}
+
+/** Tarjeta compacta de una actualización del pedido (`payment_status` o
+ * `review_order`): el propio mensaje solo trae el nuevo estado, así que el
+ * ítem/cantidad/monto se completan con lo que sí trajo el resto del grupo. */
+function FlowOrderUpdateCard({ button, group }: { button: FlowOrderButton; group: FlowOrderGroup }) {
+  const isPayment = button.name === 'payment_status'
+  const status = isPayment ? group.paymentStatus : group.orderStatus
+  const label = isPayment
+    ? `Pago: ${flowStatusLabel(status, PAYMENT_STATUS_LABELS)}`
+    : `Estado: ${flowStatusLabel(status, ORDER_STATUS_LABELS)}`
+  const positive = isPayment ? status === 'captured' : status === 'completed'
+  const negative = status === 'canceled' || status === 'cancelled' || status === 'declined' || status === 'failed'
+  const amountText = formatFlowAmount(group.amount, group.currency)
+  const detailLine = [group.quantity != null ? `Cantidad ${group.quantity}` : null, amountText || null]
+    .filter(Boolean)
+    .join(' · ')
+  const Icon = isPayment ? CreditCard : ReceiptText
+
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 px-3 py-2.5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-56">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary">
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          {group.itemName && <p className="truncate font-medium not-italic">{group.itemName}</p>}
+          {detailLine && (
+            <p className="truncate text-xs not-italic text-wa-muted dark:text-wa-text-dark/65">{detailLine}</p>
+          )}
+          <p className={`text-sm font-medium not-italic ${flowStatusColor(positive, negative)}`}>{label}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Pedido de "Separación de cita" de WhatsApp Flow: llega como 3 mensajes
+ * `interactive` independientes (creación, estado de pago, estado del pedido)
+ * que comparten `reference_id`. Se intercepta ANTES del fallback genérico de
+ * `TemplateBody` cuando el payload calza esa forma; el resto de mensajes
+ * `interactive` (listas, botones de respuesta rápida) sigue su camino normal. */
+function InteractiveBody(ctx: MessageBodyContext) {
+  const flowOrder = messageFlowOrder(ctx.parsed.payload)
+  if (!flowOrder) return TemplateBody(ctx)
+
+  const group = flowOrderGroup(
+    ctx.chatMessages?.length ? ctx.chatMessages : [ctx.message],
+    flowOrder.reference_id,
+  )
+  if (flowOrder.name === 'review_and_pay') return <FlowOrderCard button={flowOrder} group={group} />
+  return <FlowOrderUpdateCard button={flowOrder} group={group} />
+}
+
 /** Plantillas y mensajes con botones: preview del enlace (si el JSON trajo
  * uno), el cuerpo como texto normal y el pie. Los botones en sí van FUERA de
  * la burbuja (los pinta MessageBubble debajo), como en WhatsApp. */
@@ -511,7 +634,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   location: LocationBody,
   contact: ContactBody,
   poll: PollBody,
-  interactive: TemplateBody,
+  interactive: InteractiveBody,
   template: TemplateBody,
   order: OrderBody,
   product: ProductBody,

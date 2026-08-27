@@ -583,6 +583,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   <MessageBubble
                     chat={chat}
                     message={item.message}
+                    chatMessages={messages}
                     isFirstOfGroup={
                       isFirstOfSection ||
                       !prevItem ||

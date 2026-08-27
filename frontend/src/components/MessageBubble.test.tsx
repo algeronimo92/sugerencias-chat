@@ -7,7 +7,7 @@
  * si se ofrece.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -40,6 +40,9 @@ interface Options {
   onDownload?: () => void
   selectionMode?: boolean
   isSelected?: boolean
+  /** Otros mensajes del chat, para correlacionar pedidos de WhatsApp Flow
+   * repartidos en varios mensajes. Por defecto, solo el propio mensaje. */
+  chatMessages?: Message[]
 }
 
 function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
@@ -49,10 +52,12 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onRetry = options.onRetry ?? vi.fn()
   const onDiscard = options.onDiscard ?? vi.fn()
   const onDownload = options.onDownload ?? vi.fn()
+  const m = message(overrides)
   render(
     <MessageBubble
       chat={CHAT}
-      message={message(overrides)}
+      message={m}
+      chatMessages={options.chatMessages ?? [m]}
       isFirstOfGroup
       isFlashing={false}
       threadWidth={600}
@@ -99,6 +104,97 @@ describe('MessageBubble', () => {
     expect(screen.getByText('Pago: Realizado')).toBeInTheDocument()
     expect(screen.getByText('Cantidad 1')).toBeInTheDocument()
     expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
+  })
+
+  it('muestra un pedido de WhatsApp Flow como tarjeta, con el estado agregado del grupo', async () => {
+    const user = userEvent.setup()
+    const referenceId = '4W1G98HRIFB'
+    const created = message({
+      id: 1,
+      content: 'Solicitud de pago: HIFU 12D - S/50.00',
+      message_type: 'interactive',
+      sent_at: '2026-08-01T10:00:00.000Z',
+      payload: {
+        buttons: [{
+          name: 'review_and_pay', amount: 50, subtotal: 50, currency: 'PEN',
+          reference_id: referenceId, order_status: 'payment_requested',
+          item_name: 'HIFU 12D', quantity: 1,
+        }],
+      },
+    })
+    const paymentUpdate = message({
+      id: 2,
+      content: 'Pago: Realizado',
+      message_type: 'interactive',
+      sent_at: '2026-08-01T10:01:00.000Z',
+      payload: { buttons: [{ name: 'payment_status', payment_status: 'captured', reference_id: referenceId }] },
+    })
+    const orderUpdate = message({
+      id: 3,
+      content: 'Estado: Completado',
+      message_type: 'interactive',
+      sent_at: '2026-08-01T10:02:00.000Z',
+      payload: { buttons: [{ name: 'review_order', order_status: 'completed', reference_id: referenceId }] },
+    })
+
+    renderBubble(created, { chatMessages: [created, paymentUpdate, orderUpdate] })
+
+    // No debe caer al chip "INTERACTIVO" + texto en cursiva del fallback genérico.
+    expect(screen.queryByText('Interactivo')).not.toBeInTheDocument()
+    expect(screen.getByText(`Pedido N.° ${referenceId}`)).toBeInTheDocument()
+    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
+    expect(screen.getByText('Cantidad: 1')).toBeInTheDocument()
+    expect(screen.getByText('S/50.00')).toBeInTheDocument()
+    // El badge usa el estado más reciente del grupo ("Completado"), no el
+    // "Pendiente de pago" que trae su propio mensaje.
+    expect(screen.getByText('Completado')).toBeInTheDocument()
+    expect(screen.queryByText('Pendiente de pago')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Ver detalles' }))
+    const dialog = screen.getByRole('dialog', { name: 'Detalles del pedido' })
+    expect(within(dialog).getByText('Subtotal')).toBeInTheDocument()
+    expect(within(dialog).getByText('Total')).toBeInTheDocument()
+  })
+
+  it('muestra una actualización de pago del pedido como tarjeta compacta, sin "Ver detalles"', () => {
+    const referenceId = '4W1G98HRIFB'
+    const created = message({
+      id: 1,
+      message_type: 'interactive',
+      sent_at: '2026-08-01T10:00:00.000Z',
+      payload: {
+        buttons: [{
+          name: 'review_and_pay', amount: 50, currency: 'PEN', reference_id: referenceId,
+          order_status: 'payment_requested', item_name: 'HIFU 12D', quantity: 1,
+        }],
+      },
+    })
+    const paymentUpdate = message({
+      id: 2,
+      content: 'Pago: Fallido',
+      message_type: 'interactive',
+      sent_at: '2026-08-01T10:01:00.000Z',
+      payload: { buttons: [{ name: 'payment_status', payment_status: 'failed', reference_id: referenceId }] },
+    })
+
+    renderBubble(paymentUpdate, { chatMessages: [created, paymentUpdate] })
+
+    // El propio mensaje no trae item_name/cantidad: se completan con el grupo.
+    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
+    expect(screen.getByText(/Cantidad 1/)).toBeInTheDocument()
+    expect(screen.getByText('Pago: Fallido')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ver detalles' })).not.toBeInTheDocument()
+  })
+
+  it('un mensaje interactivo que no calza con un pedido de WhatsApp Flow sigue el fallback de plantilla', () => {
+    renderBubble({
+      content: 'Elige un servicio',
+      message_type: 'interactive',
+      payload: { title: 'Servicios', body: 'Elige un servicio', options: [{ id: 'hifu', text: 'HIFU' }] },
+    })
+
+    expect(screen.getByText('Elige un servicio')).toBeInTheDocument()
+    expect(screen.queryByText(/^Pedido N/)).not.toBeInTheDocument()
   })
 
   it('muestra un producto con precio normal y precio de oferta', () => {

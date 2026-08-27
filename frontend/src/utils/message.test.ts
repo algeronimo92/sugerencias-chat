@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDayLabel, groupByDay, messageAdReferral, messageContacts, parseContent, resolveMediaUrl, searchSnippet, splitOnMatch } from './message'
+import {
+  flowOrderGroup, flowStatusLabel, formatDayLabel, formatFlowAmount, groupByDay, messageAdReferral,
+  messageContacts, messageFlowOrder, ORDER_STATUS_LABELS, parseContent, PAYMENT_STATUS_LABELS,
+  resolveMediaUrl, searchSnippet, splitOnMatch,
+} from './message'
 
 describe('parseContent', () => {
   it('trata el texto suelto como texto', () => {
@@ -401,5 +405,142 @@ describe('groupByDay', () => {
 
   it('sin ítems no arma ninguna sección', () => {
     expect(groupByDay([])).toEqual([])
+  })
+})
+
+// Payload real (recortado) de un pedido de "Separación de cita" de WhatsApp
+// Flow: llega como 3 mensajes `interactive` independientes que comparten
+// `reference_id` dentro de `payload.buttons[0]`.
+describe('messageFlowOrder', () => {
+  it('lee el botón de creación del pedido (review_and_pay)', () => {
+    const button = messageFlowOrder({
+      buttons: [{
+        name: 'review_and_pay',
+        amount: 50,
+        subtotal: 50,
+        currency: 'PEN',
+        reference_id: '4W1G98HRIFB',
+        order_status: 'payment_requested',
+        item_name: 'HIFU 12D',
+        quantity: 1,
+      }],
+    })
+    expect(button).toMatchObject({
+      name: 'review_and_pay',
+      amount: 50,
+      currency: 'PEN',
+      reference_id: '4W1G98HRIFB',
+      order_status: 'payment_requested',
+      item_name: 'HIFU 12D',
+      quantity: 1,
+    })
+  })
+
+  it('lee una actualización de estado de pago sin los datos del ítem', () => {
+    const button = messageFlowOrder({
+      buttons: [{ name: 'payment_status', payment_status: 'captured', reference_id: '4W1G98HRIFB' }],
+    })
+    expect(button).toMatchObject({ name: 'payment_status', payment_status: 'captured', amount: null, item_name: null })
+  })
+
+  it('devuelve null si no hay botones (mensaje interactivo sin forma de pedido)', () => {
+    expect(messageFlowOrder({ title: 'Servicios', options: [{ id: 'hifu', text: 'HIFU' }] })).toBeNull()
+    expect(messageFlowOrder(null)).toBeNull()
+    expect(messageFlowOrder({ buttons: [] })).toBeNull()
+  })
+
+  it('devuelve null cuando el botón no es de pedido de WhatsApp Flow ni trae reference_id', () => {
+    expect(messageFlowOrder({ buttons: [{ name: 'quick_reply', text: 'Sí' }] })).toBeNull()
+    expect(messageFlowOrder({ buttons: [{ name: 'review_and_pay' }] })).toBeNull()
+  })
+})
+
+describe('flowOrderGroup', () => {
+  const referenceId = '4W1G98HRIFB'
+  function interactiveMessage(sentAt: string, buttonOverrides: Record<string, unknown>) {
+    return {
+      message_type: 'interactive' as const,
+      sent_at: sentAt,
+      payload: { buttons: [{ reference_id: referenceId, ...buttonOverrides }] },
+    }
+  }
+
+  it('usa el order_status del último mensaje del grupo, no el "payment_requested" original', () => {
+    const messages = [
+      interactiveMessage('2026-08-01T10:00:00.000Z', {
+        name: 'review_and_pay', order_status: 'payment_requested', item_name: 'HIFU 12D', quantity: 1,
+        amount: 50, subtotal: 50, currency: 'PEN',
+      }),
+      interactiveMessage('2026-08-01T10:01:00.000Z', { name: 'payment_status', payment_status: 'captured' }),
+      interactiveMessage('2026-08-01T10:02:00.000Z', { name: 'review_order', order_status: 'completed' }),
+    ]
+
+    const group = flowOrderGroup(messages, referenceId)
+    expect(group).toMatchObject({
+      orderStatus: 'completed',
+      paymentStatus: 'captured',
+      itemName: 'HIFU 12D',
+      quantity: 1,
+      amount: 50,
+      subtotal: 50,
+      currency: 'PEN',
+    })
+  })
+
+  it('no depende del orden de llegada: ordena por sent_at antes de agregar', () => {
+    // Los mismos 3 mensajes, pero llegando desordenados a la función.
+    const messages = [
+      interactiveMessage('2026-08-01T10:02:00.000Z', { name: 'review_order', order_status: 'canceled' }),
+      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
+      interactiveMessage('2026-08-01T10:01:00.000Z', { name: 'payment_status', payment_status: 'declined' }),
+    ]
+
+    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'canceled', paymentStatus: 'declined' })
+  })
+
+  it('si ningún mensaje posterior trae order_status, queda el original', () => {
+    const messages = [
+      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
+    ]
+    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'payment_requested', paymentStatus: null })
+  })
+
+  it('ignora mensajes de otro reference_id y los que no son interactive', () => {
+    const messages = [
+      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
+      interactiveMessage('2026-08-01T10:01:00.000Z', { reference_id: 'OTRO-PEDIDO', name: 'review_order', order_status: 'completed' } as never),
+      { message_type: 'text' as const, sent_at: '2026-08-01T10:02:00.000Z', payload: null },
+    ]
+    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'payment_requested' })
+  })
+})
+
+describe('flowStatusLabel', () => {
+  it('usa la etiqueta del mapa cuando existe', () => {
+    expect(flowStatusLabel('captured', PAYMENT_STATUS_LABELS)).toBe('Realizado')
+    expect(flowStatusLabel('completed', ORDER_STATUS_LABELS)).toBe('Completado')
+  })
+
+  it('capitaliza y reemplaza guiones bajos como respaldo', () => {
+    expect(flowStatusLabel('some_weird_status', ORDER_STATUS_LABELS)).toBe('Some weird status')
+  })
+
+  it('devuelve vacío sin estado', () => {
+    expect(flowStatusLabel(null, ORDER_STATUS_LABELS)).toBe('')
+  })
+})
+
+describe('formatFlowAmount', () => {
+  it('usa el símbolo pegado al monto para PEN y USD, como el backend', () => {
+    expect(formatFlowAmount(50, 'PEN')).toBe('S/50.00')
+    expect(formatFlowAmount(19.9, 'USD')).toBe('$19.90')
+  })
+
+  it('cae al código de moneda con espacio cuando no es PEN/USD', () => {
+    expect(formatFlowAmount(30, 'EUR')).toBe('EUR 30.00')
+  })
+
+  it('sin monto no arma texto (la fila se oculta, no se inventa un 0)', () => {
+    expect(formatFlowAmount(null, 'PEN')).toBe('')
   })
 })

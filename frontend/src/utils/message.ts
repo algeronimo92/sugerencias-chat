@@ -3,7 +3,7 @@ import {
   CreditCard, Paperclip, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
   Video, FileText, EyeOff, type LucideIcon,
 } from 'lucide-react'
-import type { JsonObject, JsonValue, MessageType, MessageAnalysis } from '../types'
+import type { JsonObject, JsonValue, Message, MessageType, MessageAnalysis } from '../types'
 
 /** Clase de render de un mensaje: coincide con la taxonomía del backend
  * (MessageType). El frontend elige ícono/burbuja por acá. */
@@ -421,6 +421,162 @@ export function messageAdReferral(payload: JsonObject | null): AdReferral | null
     thumbnailUrl: thumb.startsWith('/media/') || safeUrl(thumb) ? resolveMediaUrl(thumb) : null,
     ctwaClid: asString(ad.ctwa_clid) || null,
   }
+}
+
+function asNumber(value: JsonValue | undefined): number | null {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** Los 3 nombres de botón que manda un pedido de "Separación de cita" de
+ * WhatsApp Flow, en el orden cronológico en que llegan. Cualquier otro
+ * `interactive` (listas, botones de respuesta rápida) no calza acá. */
+const FLOW_ORDER_BUTTON_NAMES = new Set(['review_and_pay', 'payment_status', 'review_order'])
+
+/** Un botón de pedido de WhatsApp Flow, ya leído del payload. Los 3 eventos
+ * del mismo pedido (creación, estado de pago, estado del pedido) comparten
+ * `reference_id`; cada uno trae solo el subconjunto de campos de su momento. */
+export interface FlowOrderButton {
+  name: 'review_and_pay' | 'payment_status' | 'review_order'
+  amount: number | null
+  subtotal: number | null
+  currency: string | null
+  reference_id: string
+  order_status: string | null
+  payment_status: string | null
+  item_name: string | null
+  quantity: number | null
+}
+
+/** Lee el botón de pedido de WhatsApp Flow del payload de un mensaje
+ * `interactive`, o null si no calza esa forma (mensaje interactivo común:
+ * lista, botones de respuesta rápida, etc. — sigue su camino a TemplateBody). */
+export function messageFlowOrder(payload: JsonObject | null): FlowOrderButton | null {
+  const buttons = payload?.buttons
+  if (!Array.isArray(buttons) || buttons.length === 0) return null
+  const button = buttons[0]
+  if (!isJsonObject(button)) return null
+  const name = asString(button.name)
+  const referenceId = asString(button.reference_id)
+  if (!referenceId || !FLOW_ORDER_BUTTON_NAMES.has(name)) return null
+  return {
+    name: name as FlowOrderButton['name'],
+    amount: asNumber(button.amount),
+    subtotal: asNumber(button.subtotal),
+    currency: asString(button.currency) || null,
+    reference_id: referenceId,
+    order_status: asString(button.order_status) || null,
+    payment_status: asString(button.payment_status) || null,
+    item_name: asString(button.item_name) || null,
+    quantity: asNumber(button.quantity),
+  }
+}
+
+/** Debe coincidir exacto con `_PAYMENT_STATUS_LABELS` en
+ * backend/services/whatsapp_history.py para no divergir entre lo que arma el
+ * backend en `content` y lo que pinta esta tarjeta. */
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  captured: 'Realizado',
+  pending: 'Pendiente',
+  failed: 'Fallido',
+  canceled: 'Cancelado',
+  cancelled: 'Cancelado',
+  declined: 'Rechazado',
+  refunded: 'Reembolsado',
+}
+
+/** Debe coincidir exacto con `_ORDER_STATUS_LABELS` en
+ * backend/services/whatsapp_history.py. */
+export const ORDER_STATUS_LABELS: Record<string, string> = {
+  completed: 'Completado',
+  payment_requested: 'Pendiente de pago',
+  canceled: 'Cancelado',
+  cancelled: 'Cancelado',
+  declined: 'Rechazado',
+  processing: 'En proceso',
+}
+
+function humanizeStatus(status: string): string {
+  const text = status.replaceAll('_', ' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** Etiqueta legible de un estado de pedido/pago; cae a "Palabra suelta" si el
+ * valor no está en el mapa (mismo respaldo que `_humanize` en el backend). */
+export function flowStatusLabel(status: string | null, map: Record<string, string>): string {
+  if (!status) return ''
+  return map[status] ?? humanizeStatus(status)
+}
+
+/** Debe coincidir exacto con `_CURRENCY_SYMBOLS` en
+ * backend/services/whatsapp_history.py. */
+const FLOW_CURRENCY_SYMBOLS: Record<string, string> = { PEN: 'S/', USD: '$' }
+
+/** Mismo formato que arma el backend para el texto de "Solicitud de pago":
+ * símbolo pegado al monto para PEN/USD, o el código de moneda con un espacio
+ * como respaldo (`_format_payment_text`). */
+export function formatFlowAmount(amount: number | null, currency: string | null): string {
+  if (amount == null) return ''
+  const code = currency?.toUpperCase() ?? ''
+  const prefix = code ? (FLOW_CURRENCY_SYMBOLS[code] ?? `${code} `) : ''
+  return `${prefix}${amount.toFixed(2)}`
+}
+
+/** Estado agregado de un pedido de WhatsApp Flow, correlacionado entre los 3
+ * mensajes `interactive` que comparten `reference_id` en el mismo chat. */
+export interface FlowOrderGroup {
+  referenceId: string
+  orderStatus: string | null
+  paymentStatus: string | null
+  itemName: string | null
+  quantity: number | null
+  amount: number | null
+  subtotal: number | null
+  currency: string | null
+}
+
+/**
+ * Correlaciona los 3 mensajes de un pedido de WhatsApp Flow (creación, estado
+ * de pago, estado del pedido) para calcular su estado más reciente.
+ *
+ * El mensaje `review_and_pay` siempre trae `order_status: "payment_requested"`
+ * aunque el pedido ya haya avanzado — ese campo nunca se actualiza en ese
+ * mensaje. El estado real hay que leerlo del último mensaje del grupo
+ * (ordenado por fecha de envío) que sí traiga `order_status`/`payment_status`
+ * definidos; si ninguno más allá del original lo trae, queda el original.
+ */
+export function flowOrderGroup(
+  messages: Pick<Message, 'message_type' | 'payload' | 'sent_at'>[],
+  referenceId: string,
+): FlowOrderGroup {
+  const entries = messages
+    .filter(message => message.message_type === 'interactive')
+    .map(message => ({ button: messageFlowOrder(message.payload ?? null), sentAt: message.sent_at }))
+    .filter((entry): entry is { button: FlowOrderButton; sentAt: string | null } =>
+      entry.button != null && entry.button.reference_id === referenceId)
+    .sort((a, b) => new Date(a.sentAt ?? 0).getTime() - new Date(b.sentAt ?? 0).getTime())
+
+  const group: FlowOrderGroup = {
+    referenceId,
+    orderStatus: null,
+    paymentStatus: null,
+    itemName: null,
+    quantity: null,
+    amount: null,
+    subtotal: null,
+    currency: null,
+  }
+  for (const { button } of entries) {
+    if (button.order_status != null) group.orderStatus = button.order_status
+    if (button.payment_status != null) group.paymentStatus = button.payment_status
+    if (button.item_name != null) group.itemName = button.item_name
+    if (button.quantity != null) group.quantity = button.quantity
+    if (button.amount != null) group.amount = button.amount
+    if (button.subtotal != null) group.subtotal = button.subtotal
+    if (button.currency != null) group.currency = button.currency
+  }
+  return group
 }
 
 /** Un contacto compartido en un mensaje, ya desarmado para pintarlo y para
