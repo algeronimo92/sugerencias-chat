@@ -397,7 +397,7 @@ def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] |
         node = message.get(key)
         if isinstance(node, dict):
             payload = _interactive_payload(key, node)
-            content = _first_text(payload.get("body"), payload.get("title"), payload.get("payment_text"))
+            content = _first_text(payload.get("body"), payload.get("title"), payload.get("flow_text"))
             return content, "interactive", payload
 
     return None
@@ -409,6 +409,32 @@ def _caption(media: dict) -> str:
 
 
 _CURRENCY_SYMBOLS = {"PEN": "S/", "USD": "$"}
+
+_PAYMENT_STATUS_LABELS = {
+    "captured": "Realizado",
+    "pending": "Pendiente",
+    "failed": "Fallido",
+    "canceled": "Cancelado",
+    "cancelled": "Cancelado",
+    "declined": "Rechazado",
+    "refunded": "Reembolsado",
+}
+
+_ORDER_STATUS_LABELS = {
+    "completed": "Completado",
+    "payment_requested": "Pendiente de pago",
+    "canceled": "Cancelado",
+    "cancelled": "Cancelado",
+    "declined": "Rechazado",
+    "processing": "En proceso",
+}
+
+
+def _humanize(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    text = raw.replace("_", " ")
+    return text[:1].upper() + text[1:]
 
 
 def _format_payment_text(button: dict) -> str | None:
@@ -424,6 +450,23 @@ def _format_payment_text(button: dict) -> str | None:
     return f"Solicitud de pago - {amount_text}"
 
 
+def _format_flow_text(button: dict) -> str | None:
+    """Texto legible para las actualizaciones de un pedido de WhatsApp Flow
+    (creación, cambio de estado de pago, cambio de estado del pedido).
+    Cada una llega como un botón distinto de `nativeFlowMessage` con su
+    propio `name`, por eso se resuelve por ese campo."""
+    name = button.get("name")
+    if name == "payment_status" and button.get("payment_status"):
+        status = button["payment_status"]
+        return f"Pago: {_PAYMENT_STATUS_LABELS.get(status) or _humanize(status)}"
+    if name == "review_order" and button.get("order_status"):
+        status = button["order_status"]
+        return f"Estado: {_ORDER_STATUS_LABELS.get(status) or _humanize(status)}"
+    if name == "review_and_pay":
+        return _format_payment_text(button)
+    return None
+
+
 def _flow_buttons_payload(node: dict) -> tuple[list[dict], str | None]:
     """Botones de `nativeFlowMessage` (ej. solicitudes de pago vía WhatsApp
     Flow). `buttonParamsJson` trae campos propios por tipo de botón (pago,
@@ -432,7 +475,7 @@ def _flow_buttons_payload(node: dict) -> tuple[list[dict], str | None]:
     native_flow = node.get("nativeFlowMessage") if isinstance(node.get("nativeFlowMessage"), dict) else {}
     raw_buttons = native_flow.get("buttons") if isinstance(native_flow.get("buttons"), list) else []
     buttons = []
-    payment_text = None
+    flow_text = None
     for button in raw_buttons:
         if not isinstance(button, dict):
             continue
@@ -462,12 +505,13 @@ def _flow_buttons_payload(node: dict) -> tuple[list[dict], str | None]:
             "currency": params.get("currency"),
             "reference_id": params.get("reference_id"),
             "order_status": order.get("status"),
+            "payment_status": params.get("payment_status"),
             "item_name": item_name.strip() if isinstance(item_name, str) else item_name,
         }
         buttons.append({key: value for key, value in entry.items() if value not in (None, "")})
-        if amount is not None and payment_text is None:
-            payment_text = _format_payment_text(entry)
-    return buttons, payment_text
+        if flow_text is None:
+            flow_text = _format_flow_text(entry)
+    return buttons, flow_text
 
 
 def _interactive_payload(message_type: str, node: dict) -> dict:
@@ -487,7 +531,7 @@ def _interactive_payload(message_type: str, node: dict) -> dict:
                     "text": row.get("title") or row.get("name"),
                     "description": row.get("description"),
                 })
-    buttons, payment_text = _flow_buttons_payload(node)
+    buttons, flow_text = _flow_buttons_payload(node)
     result = {
         "original_type": message_type,
         "title": node.get("title") or header.get("title"),
@@ -495,7 +539,7 @@ def _interactive_payload(message_type: str, node: dict) -> dict:
         "footer": footer.get("text") or node.get("footerText"),
         "options": options,
         "buttons": buttons,
-        "payment_text": payment_text,
+        "flow_text": flow_text,
     }
     return {key: value for key, value in result.items() if value not in (None, [], "")}
 
