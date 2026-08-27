@@ -1,3 +1,5 @@
+import base64
+import binascii
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
@@ -15,6 +17,7 @@ from services.db_service import (
     update_poll_results,
     update_lead_stage,
     update_message_content,
+    update_message_content_from_secret,
     update_message_status,
 )
 from services.ad_referral_service import rehost_ad_thumbnail
@@ -205,6 +208,48 @@ async def message_edited_webhook(
     message = await update_message_content(body.chat_id, body.wa_message_id, body.text)
     # None cuando el editado no está en nuestra base (histórico anterior a la
     # integración) o ya fue eliminado: no hay burbuja que corregir.
+    matched = message is not None
+    if matched:
+        await manager.broadcast(
+            {"type": "chats_updated", "chat_id": body.chat_id, "reason": "message_edited"}
+        )
+    return {"status": "ok", "matched": matched}
+
+
+class MessageEditedSecretWebhookBody(BaseModel):
+    chat_id: str
+    # wa_message_id del mensaje editado (targetMessageKey.id del evento).
+    wa_message_id: str
+    # Candidatos de JID de quien mandó la edición: puede venir como @lid o
+    # @s.whatsapp.net y no hay forma de confirmar cuál usó WhatsApp para
+    # derivar la clave en el cliente. Se prueban todos.
+    sender_candidates: list[str]
+    enc_payload: str  # base64
+    enc_iv: str  # base64
+
+
+@router.post("/message-edited-secret")
+async def message_edited_secret_webhook(
+    body: MessageEditedSecretWebhookBody,
+):
+    """Llamado por n8n cuando WhatsApp avisa una edición nativa como
+    `secretEncryptedMessage` (protocolo cifrado desde ~mayo 2026, ver
+    services/message_edit_crypto.py). Intenta descifrarla reusando el
+    `message_secret` guardado del mensaje original.
+
+    Un fallo de descifrado (secreto no guardado, ningún candidato de sender
+    válido) es un resultado esperado, no un error de servidor: nunca 500,
+    igual que el webhook hermano de texto plano.
+    """
+    try:
+        enc_payload = base64.b64decode(body.enc_payload, validate=True)
+        enc_iv = base64.b64decode(body.enc_iv, validate=True)
+    except (binascii.Error, ValueError, UnicodeEncodeError):
+        return {"status": "ok", "matched": False}
+
+    message = await update_message_content_from_secret(
+        body.chat_id, body.wa_message_id, body.sender_candidates, enc_payload, enc_iv
+    )
     matched = message is not None
     if matched:
         await manager.broadcast(

@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     Text,
     func,
@@ -222,6 +223,11 @@ class WspMessage(Base):
     # CRM, pero la API deja de servir contenido y adjunto (ver _mask_deleted en
     # db_service) y el hilo pinta la lápida, igual que WhatsApp.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # messageContextInfo.messageSecret del mensaje ORIGINAL (crudo, sin API que
+    # lo exponga): permite descifrar una edición nativa futura de WhatsApp, que
+    # desde ~mayo 2026 llega cifrada (secretEncryptedMessage) en vez de en texto
+    # plano. Ver services/message_edit_crypto.py. NULL si Evolution no lo mandó.
+    message_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
 
     __table_args__ = (
         Index(

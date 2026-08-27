@@ -92,3 +92,17 @@ teléfono— WhatsApp manda un `protocolMessage` que apunta al mensaje original.
 n8n los reenvía a `POST /api/webhooks/message-edited` y
 `POST /api/webhooks/message-deleted` (ver el README) para que el CRM refleje lo
 mismo que el teléfono.
+
+### Edición nativa cifrada (`secretEncryptedMessage`)
+
+Desde ~mayo 2026 WhatsApp dejó de mandar la edición hecha desde la app nativa
+como `protocolMessage` en texto plano y ahora la manda cifrada
+(`secretEncryptedMessage`); Evolution API no la descifra y la reenvía tal
+cual. `POST /api/webhooks/message-edited-secret` recibe ese evento —
+`{chat_id, wa_message_id, sender_candidates, enc_payload, enc_iv}` (los dos
+últimos en base64) — y la descifra en el backend reusando el
+`message_secret` que se guardó del mensaje original al insertarlo. Si el
+secreto no está guardado o ningún candidato de `sender_candidates` valida,
+responde `{"status": "ok", "matched": false}` igual que el webhook hermano:
+nunca 404 ni 500. El algoritmo de descifrado vive en
+`backend/services/message_edit_crypto.py`.

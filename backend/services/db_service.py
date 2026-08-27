@@ -26,6 +26,7 @@ from db.models import (
     WspMessage,
 )
 from db.session import get_sessionmaker
+from services.message_edit_crypto import decrypt_edited_text
 from services.settings_service import get_effective
 
 CHATS_PAGE_SIZE = 30
@@ -2005,6 +2006,43 @@ async def update_message_content(chat_id: str, wa_message_id: str, text: str) ->
     async with get_sessionmaker()() as session:
         row = await _load_message_by_wa_id(session, chat_id, wa_message_id)
         if row is None or row.deleted_at is not None:
+            return None
+
+        row.content = text
+        row.edited_at = datetime.now(timezone.utc)
+        await session.commit()
+        return _message_payload(row)
+
+
+async def update_message_content_from_secret(
+    chat_id: str,
+    wa_message_id: str,
+    sender_candidates: list[str],
+    enc_payload: bytes,
+    enc_iv: bytes,
+) -> dict | None:
+    """Versión de `update_message_content` para la edición nativa cifrada
+    (`secretEncryptedMessage`): descifra con el `message_secret` guardado del
+    mensaje original y, si se pudo, aplica el mismo cambio.
+
+    Devuelve None —sin tocar la fila— tanto si el mensaje no está en la base
+    como si el descifrado falla (secreto no guardado porque el mensaje es
+    anterior a esta migración, o ningún candidato de sender valida): un
+    intento fallido nunca debe corromper `content` con basura.
+    """
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_wa_id(session, chat_id, wa_message_id)
+        if row is None or row.deleted_at is not None or row.message_secret is None:
+            return None
+
+        text = decrypt_edited_text(
+            secret=row.message_secret,
+            message_id=wa_message_id,
+            sender_candidates=sender_candidates,
+            enc_payload=enc_payload,
+            enc_iv=enc_iv,
+        )
+        if text is None:
             return None
 
         row.content = text
