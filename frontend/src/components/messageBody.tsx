@@ -93,7 +93,7 @@ function Caption({ parsed }: { parsed: ParsedContent }) {
   // adjunto: se pinta como un mensaje normal.
   const plain = kind === 'text' || template != null
   return (
-    <p className={`whitespace-pre-wrap ${plain ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
+    <p className={`whitespace-pre-wrap break-words ${plain ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
       <RichText text={text} />
     </p>
   )
