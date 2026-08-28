@@ -122,6 +122,20 @@ LIMIT ...
 Así el agente sigue "viendo" la descripción de la imagen o la transcripción del audio, ahora
 marcada explícitamente como análisis IA en vez de mezclada con el mensaje del cliente.
 
+## 5. Tipos agregados por `scripts/add_priority_message_support.py`
+
+Además de lo documentado arriba, el script agrega (idempotente, correr contra `rag.json`):
+
+- **`liveLocationMessage`**: comparte la salida y el nodo `location content` con `locationMessage`
+  (mismos campos `degreesLatitude`/`degreesLongitude`); `payload.live = true` para que el frontend
+  muestre el badge "En vivo". No trae `name`/`address`.
+- **`lottieStickerMessage`** (sticker animado): comparte la salida y el nodo `get sticker1` con
+  `stickerMessage`; se descarga y guarda igual, `message_type = 'sticker'`.
+- **`pinInChatMessage`**: salida y nodo `pin content` propios. `content` = "Fijó un mensaje" /
+  "Desfijó un mensaje" según `type` (1 = PIN_FOR_ALL, 2 = UNPIN_FOR_ALL); `message_type = 'pin'`;
+  `payload = { action: 'pin'|'unpin', target_wa_message_id }`; el mensaje fijado se cita
+  (`quoted_wa_message_id`) para que se vea a cuál se refiere.
+
 ## Verificación
 
 Tras aplicar los cambios, mandar por WhatsApp a la instancia: un texto, una imagen con caption, un

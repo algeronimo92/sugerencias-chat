@@ -233,6 +233,7 @@ MessageType = Literal[
     "contact",
     "poll",
     "reaction",
+    "pin",
     "interactive",
     "template",
     "order",
@@ -350,6 +351,11 @@ class SendMediaRequest(BaseModel):
     # Epígrafe (el texto que va debajo de la imagen/video), como en WhatsApp.
     caption: str | None = None
     reply_to_message_id: int | None = Field(default=None, ge=1)
+    # Id opaco (lo genera el frontend) que comparten varias fotos/videos
+    # elegidos juntos en el mismo picker: agrupa el hilo del CRM en grilla sin
+    # depender del heurístico de tiempo, ver mediaGroups.ts. Solo se guarda,
+    # no lo interpreta el backend — WhatsApp no tiene noción de álbum saliente.
+    album_id: str | None = Field(default=None, max_length=64)
 
 
 class SendLocationRequest(BaseModel):

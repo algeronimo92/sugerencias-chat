@@ -1,7 +1,8 @@
 """Añade a un workflow n8n los mensajes prioritarios de WhatsApp Business.
 
 Incluye interactivos/listas, PTV, encuestas V2-V5 y snapshots, productos,
-pagos, visualización única y actualizaciones de voto. Es idempotente y
+pagos, visualización única, actualizaciones de voto, ubicación en vivo,
+stickers animados (Lottie) y fijar/desfijar mensaje. Es idempotente y
 conserva el fallback como última salida del Switch.
 """
 
@@ -106,6 +107,9 @@ PAYMENT_TYPES = [
 VIEW_ONCE_TYPES = [
     "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
 ]
+LOCATION_TYPES = ["locationMessage", "liveLocationMessage"]
+STICKER_TYPES = ["stickerMessage", "lottieStickerMessage"]
+PIN_TYPES = ["pinInChatMessage"]
 
 
 # Esta transformación es deliberadamente un Code node. El parser de
@@ -210,6 +214,34 @@ VIEW_ONCE_PAYLOAD = "={{ (() => { const data=(($json.body||{}).data||{}); const 
 VIEW_ONCE_QUOTE = "={{ (() => { const data=(($json.body||{}).data||{}); const root=((data.message||{})[data.messageType]||{}); const find=(node,depth=0)=>{if(!node||typeof node!=='object'||depth>6)return null; if(node.contextInfo&&node.contextInfo.stanzaId)return node.contextInfo.stanzaId; for(const key of ['message','imageMessage','videoMessage','ptvMessage','audioMessage','documentMessage']){const found=find(node[key],depth+1);if(found)return found;} return null;}; return find(root); })() }}"
 
 
+# `locationMessage` y `liveLocationMessage` comparten los campos de coordenadas;
+# la variante en vivo no trae `name`/`address` pero sí hay que marcarla para
+# que el frontend muestre el badge "En vivo".
+LOCATION_PAYLOAD = "={{ (() => { /*ADREF*/ const data=(($json.body||{}).data||{}); const t=data.messageType; const src=((data.message||{})[t])||{}; const live=t==='liveLocationMessage'; const base={ latitude: src.degreesLatitude, longitude: src.degreesLongitude, name: live?null:(src.name||null), address: live?null:(src.address||null) }; if (live) base.live=true; let ad = null; (function find(o){ if (!o || typeof o !== 'object' || ad) return; if (o.externalAdReply) { ad = o.externalAdReply; return; } for (const k in o) find(o[k]); })(data); const adref = ad ? { ad_referral: { title: ad.title || null, body: ad.body || null, source_url: ad.sourceUrl || null, source_id: ad.sourceId || null, source_type: ad.sourceType || null, source_app: ad.sourceApp || null, media_type: ad.mediaType != null ? ad.mediaType : null, media_url: ad.mediaUrl || null, thumbnail_url: ad.thumbnailUrl || null, ctwa_clid: ad.ctwaClid || null } } : null; return Object.assign({}, base, adref || {}); })() }}"
+
+# `pinInChatMessage.type` llega como 1 (PIN_FOR_ALL) o 2 (UNPIN_FOR_ALL); a
+# veces Evolution lo serializa como el nombre del enum en vez del número.
+PIN_CONTENT = "={{ (() => { const p=((($json.body||{}).data||{}).message||{}).pinInChatMessage||{}; return (p.type===2||p.type==='UNPIN_FOR_ALL')?'Desfijó un mensaje':'Fijó un mensaje'; })() }}"
+PIN_PAYLOAD = "={{ (() => { const p=((($json.body||{}).data||{}).message||{}).pinInChatMessage||{}; const action=(p.type===2||p.type==='UNPIN_FOR_ALL')?'unpin':'pin'; return {action, target_wa_message_id: ((p.key||{}).id)||null}; })() }}"
+# El mensaje que se fijó/desfijó se muestra citado arriba, igual que una
+# respuesta normal: así se ve a qué mensaje se refiere sin duplicar su texto.
+PIN_QUOTE = "={{ (() => { const p=((($json.body||{}).data||{}).message||{}).pinInChatMessage||{}; return ((p.key||{}).id)||null; })() }}"
+
+# `secretEncType` distingue qué acción cifrada trae un `secretEncryptedMessage`
+# (2 = edición, ya ruteada aparte por la regla `editedSecret`). WhatsApp no
+# publica ese enum: esto solo deja el valor crudo en el fallback para poder
+# ver en la base, con el tiempo, qué otros valores manda esta cuenta.
+UNSUPPORTED_BASE_OLD = "const base = ({ original_type: $json.body.data.messageType });"
+UNSUPPORTED_BASE_NEW = (
+    "const t = $json.body.data.messageType; "
+    "const base = { original_type: t }; "
+    "if (t === 'secretEncryptedMessage') { "
+    "const s = ((($json.body.data.message || {}).secretEncryptedMessage) || {}); "
+    "if ('secretEncType' in s) base.secret_enc_type = s.secretEncType; "
+    "}"
+)
+
+
 def _configure_content_node(node: dict[str, Any], message_type: str, content: str, payload: str, quote: str) -> None:
     _set(node, "content", content, "string")
     _set(node, "message_type", message_type, "string")
@@ -287,6 +319,15 @@ def _add_poll_update_webhook(workflow: dict[str, Any]) -> None:
     workflow["connections"][name] = {"main": [[]]}
 
 
+def _enrich_unsupported_fallback(workflow: dict[str, Any]) -> None:
+    node = _node(workflow, FALLBACK)
+    payload_item = next(
+        item for item in _assignments(node) if item.get("name") == "payload"
+    )
+    if UNSUPPORTED_BASE_OLD in payload_item["value"]:
+        payload_item["value"] = payload_item["value"].replace(UNSUPPORTED_BASE_OLD, UNSUPPORTED_BASE_NEW)
+
+
 def update_workflow(workflow: dict[str, Any]) -> bool:
     before = json.dumps(workflow, sort_keys=True, ensure_ascii=False)
 
@@ -303,13 +344,22 @@ def update_workflow(workflow: dict[str, Any]) -> bool:
         view_once, "view_once", VIEW_ONCE_CONTENT, VIEW_ONCE_PAYLOAD,
         VIEW_ONCE_QUOTE,
     )
+    pin = _content_node(workflow, "pin content", 1344)
+    _configure_content_node(pin, "pin", PIN_CONTENT, PIN_PAYLOAD, PIN_QUOTE)
 
     poll = _node(workflow, "poll content")
     _set(poll, "content", POLL_CONTENT, "string")
     _set(poll, "payload", POLL_PAYLOAD, "object")
 
+    # location content y get sticker1/sticker content ya existen en el export
+    # crudo de n8n (rutean locationMessage/stickerMessage); acá solo se suma
+    # la variante en vivo / animada a la misma regla y target.
+    location = _node(workflow, "location content")
+    _set(location, "payload", LOCATION_PAYLOAD, "object")
+
     _add_ptv_chain(workflow)
     _add_poll_update_webhook(workflow)
+    _enrich_unsupported_fallback(workflow)
 
     _upsert_rule(workflow, "poll", POLL_CREATION_TYPES, "poll content")
     _upsert_rule(workflow, "priorityInteractive", INTERACTIVE_TYPES, "priority interactive content")
@@ -319,6 +369,9 @@ def update_workflow(workflow: dict[str, Any]) -> bool:
     _upsert_rule(workflow, "product", ["productMessage"], "product content")
     _upsert_rule(workflow, "payment", PAYMENT_TYPES, "payment content")
     _upsert_rule(workflow, "viewOnce", VIEW_ONCE_TYPES, "view once content")
+    _upsert_rule(workflow, "location", LOCATION_TYPES, "location content")
+    _upsert_rule(workflow, "sticker", STICKER_TYPES, "get sticker1")
+    _upsert_rule(workflow, "pin", PIN_TYPES, "pin content")
 
     return before != json.dumps(workflow, sort_keys=True, ensure_ascii=False)
 
