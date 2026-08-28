@@ -33,7 +33,7 @@ const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
 
 const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
   'text', 'image', 'video', 'ptv', 'audio', 'document', 'location', 'sticker',
-  'contact', 'poll', 'reaction', 'interactive', 'template', 'order', 'product',
+  'contact', 'poll', 'reaction', 'pin', 'interactive', 'template', 'order', 'product',
   'payment', 'view_once', 'unsupported',
 ])
 

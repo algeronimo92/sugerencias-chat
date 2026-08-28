@@ -232,13 +232,19 @@ function LocationBody({ parsed }: MessageBodyContext) {
   const coords = messageCoords(parsed.payload, parsed.text)
   if (!coords) return <AttachmentChip parsed={parsed} />
   const [lat, lon] = coords
+  const isLive = parsed.payload?.live === true
   return (
     <a
       href={`https://www.google.com/maps?q=${lat},${lon}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
+      className="relative block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
     >
+      {isLive && (
+        <span className="absolute left-1.5 top-1.5 z-10 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          En vivo
+        </span>
+      )}
       <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
     </a>
   )
@@ -641,6 +647,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   payment: PaymentBody,
   view_once: ViewOnceBody,
   reaction: TextualBody,
+  pin: TextualBody,
   unsupported: TextualBody,
 }
 

@@ -93,9 +93,14 @@ export function ChatComposer({
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
-  // Imagen/video elegido o pegado, a la espera de confirmar el envío con epígrafe
-  // (la pantalla de preview de WhatsApp).
-  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; kind: 'image' | 'video' | 'document' } | null>(null)
+  // Imagen/video/documento elegido o pegado, a la espera de confirmar el envío
+  // con epígrafe (la pantalla de preview de WhatsApp). Puede traer varios ítems
+  // cuando se eligieron varias fotos/videos juntos: se mandan como mensajes
+  // separados (Evolution API no tiene forma de mandar un álbum nativo agrupado
+  // del lado del cliente, ver docs/n8n-normalizacion-wsp-messages.md), pero el
+  // propio hilo del CRM los agrupa en grilla igual que a los que llegan así.
+  interface PendingMediaItem { file: File; previewUrl: string; kind: 'image' | 'video' | 'document' }
+  const [pendingMedia, setPendingMedia] = useState<{ items: PendingMediaItem[]; activeIndex: number } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -216,38 +221,67 @@ export function ChatComposer({
     )
   }
 
-  function openFilePicker(accept: string) {
+  function openFilePicker(accept: string, multiple = false) {
     const input = fileInputRef.current
     if (!input) return
     input.accept = accept
+    input.multiple = multiple
     input.click()
+  }
+
+  function toPendingItem(file: File): PendingMediaItem {
+    return {
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind: file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document',
+    }
   }
 
   function openMediaPreview(file: File) {
     setMediaError(null)
-    setPendingMedia({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      kind: file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document',
-    })
+    setPendingMedia({ items: [toPendingItem(file)], activeIndex: 0 })
+  }
+
+  /** Varias fotos/videos elegidos juntos: se van a mandar como mensajes
+   * separados (ver el comentario de `pendingMedia`), pero en una sola pasada
+   * de preview — como el selector múltiple de WhatsApp. */
+  function openMediaPreviewMulti(files: File[]) {
+    if (!files.length) return
+    setMediaError(null)
+    setPendingMedia({ items: files.map(toPendingItem), activeIndex: 0 })
   }
 
   function closeMediaPreview() {
     setPendingMedia((current) => {
-      if (current) URL.revokeObjectURL(current.previewUrl)
+      current?.items.forEach((item) => URL.revokeObjectURL(item.previewUrl))
       return null
     })
     setIsSendingMedia(false)
   }
 
-  function applyCroppedMedia(file: File) {
+  /** Saca un ítem del lote (la X de su miniatura en la tira). Si era el
+   * último, cierra la preview entera — igual que cancelar. */
+  function removePendingItem(index: number) {
     setPendingMedia((current) => {
-      if (current) URL.revokeObjectURL(current.previewUrl)
-      return { file, previewUrl: URL.createObjectURL(file), kind: 'image' }
+      if (!current) return current
+      URL.revokeObjectURL(current.items[index].previewUrl)
+      const items = current.items.filter((_, i) => i !== index)
+      if (!items.length) return null
+      return { items, activeIndex: Math.min(current.activeIndex, items.length - 1) }
     })
   }
 
-  async function sendMediaFile(file: File, caption: string) {
+  function applyCroppedMedia(file: File) {
+    setPendingMedia((current) => {
+      if (!current) return current
+      URL.revokeObjectURL(current.items[current.activeIndex].previewUrl)
+      const items = [...current.items]
+      items[current.activeIndex] = { file, previewUrl: URL.createObjectURL(file), kind: 'image' }
+      return { ...current, items }
+    })
+  }
+
+  async function sendMediaFile(file: File, caption: string, albumId?: string) {
     const target = replyTo
     onReplyChange(null)
     // Las imágenes grandes se comprimen en el navegador (como WhatsApp) para no
@@ -255,7 +289,7 @@ export function ChatComposer({
     const toSend = await compressImage(file)
     const dataBase64 = await blobToBase64(toSend)
     sendMedia(
-      { contentType: toSend.type, dataBase64, filename: toSend.name, caption, replyTo: target },
+      { contentType: toSend.type, dataBase64, filename: toSend.name, caption, replyTo: target, albumId },
       { onError: (err) => setMediaError(extractErrorMessage(err)) }
     )
   }
@@ -263,22 +297,38 @@ export function ChatComposer({
   async function confirmPendingMedia(caption: string) {
     if (!pendingMedia) return
     setIsSendingMedia(true)
-    await sendMediaFile(pendingMedia.file, caption)
+    const { items } = pendingMedia
+    // Con 2+ archivos, todos comparten un id de álbum: como WhatsApp no deja
+    // mandar un álbum nativo agrupado del lado del cliente (no lo expone
+    // Evolution API), esto es lo que deja agrupar el lote en grilla dentro
+    // del propio hilo del CRM sin depender de adivinar por tiempo.
+    const albumId = items.length > 1 ? crypto.randomUUID() : undefined
+    // El epígrafe va solo en el último de la tanda, como en WhatsApp: ahí es
+    // donde se ve al agruparse en el hilo.
+    for (let i = 0; i < items.length; i++) {
+      await sendMediaFile(items[i].file, i === items.length - 1 ? caption : '', albumId)
+    }
     closeMediaPreview()
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = '' // permite volver a elegir el mismo archivo después
-    if (!file) return
+    if (!files.length) return
 
     // El backend valida el tipo real permitido; acá solo evitamos un
     // roundtrip para el caso obvio de un archivo sin tipo reconocible.
-    if (!file.type) {
+    if (files.some((file) => !file.type)) {
       setMediaError('No se pudo determinar el tipo de archivo')
       return
     }
 
+    if (files.length > 1) {
+      openMediaPreviewMulti(files)
+      return
+    }
+
+    const file = files[0]
     // Imagen, video y documento: pantalla de preview con epígrafe, como
     // WhatsApp. El audio elegido desde el selector de archivos se manda
     // directo, sin preview visual (a diferencia de la nota de voz grabada,
@@ -432,7 +482,7 @@ export function ChatComposer({
               disabled={isLocating}
               isSending={isLocating}
               onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
-              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT)}
+              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT, true)}
               onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
               onSelectLocation={handleSendLocation}
             />
@@ -522,11 +572,17 @@ export function ChatComposer({
 
       {pendingMedia && (
         <MediaPreviewDialog
-          previewUrl={pendingMedia.previewUrl}
-          kind={pendingMedia.kind}
-          filename={pendingMedia.file.name}
-          contentType={pendingMedia.file.type}
-          fileSize={pendingMedia.file.size}
+          previewUrl={pendingMedia.items[pendingMedia.activeIndex].previewUrl}
+          kind={pendingMedia.items[pendingMedia.activeIndex].kind}
+          filename={pendingMedia.items[pendingMedia.activeIndex].file.name}
+          contentType={pendingMedia.items[pendingMedia.activeIndex].file.type}
+          fileSize={pendingMedia.items[pendingMedia.activeIndex].file.size}
+          thumbnails={pendingMedia.items.length > 1
+            ? pendingMedia.items.map((item) => ({ previewUrl: item.previewUrl, kind: item.kind }))
+            : undefined}
+          activeIndex={pendingMedia.activeIndex}
+          onSelectThumbnail={(index) => setPendingMedia((current) => current && { ...current, activeIndex: index })}
+          onRemoveThumbnail={removePendingItem}
           isSending={isSendingMedia}
           onSend={confirmPendingMedia}
           onCropped={applyCroppedMedia}

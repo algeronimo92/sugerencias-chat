@@ -1,6 +1,6 @@
 import {
   BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
-  CreditCard, Paperclip, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
+  CreditCard, Paperclip, Pin, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
   Video, FileText, EyeOff, type LucideIcon,
 } from 'lucide-react'
 import type { JsonObject, JsonValue, Message, MessageType, MessageAnalysis } from '../types'
@@ -21,6 +21,7 @@ const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }>
   contact: { icon: User, label: 'Contacto' },
   poll: { icon: BarChart3, label: 'Encuesta' },
   reaction: { icon: SmilePlus, label: 'Reacción' },
+  pin: { icon: Pin, label: 'Mensaje fijado' },
   interactive: { icon: List, label: 'Interactivo' },
   template: { icon: Megaphone, label: 'Plantilla' },
   order: { icon: ReceiptText, label: 'Pedido' },

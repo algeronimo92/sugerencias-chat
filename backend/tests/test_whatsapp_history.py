@@ -103,6 +103,35 @@ def test_normalize_accepts_millisecond_and_string_timestamps():
             {"latitude": -34.6, "longitude": -58.4},
         ),
         ({"stickerMessage": {"url": "x"}}, None, "sticker", None),
+        ({"lottieStickerMessage": {"url": "x"}}, None, "sticker", None),
+        (
+            {"liveLocationMessage": {"degreesLatitude": -34.6, "degreesLongitude": -58.4}},
+            None,
+            "location",
+            {"latitude": -34.6, "longitude": -58.4, "live": True},
+        ),
+        ({"liveLocationMessage": {}}, None, "location", {"live": True}),
+        (
+            {"pinInChatMessage": {"type": 1, "key": {"id": "WA_PINNED"}}},
+            "Fijó un mensaje",
+            "pin",
+            {"action": "pin", "target_wa_message_id": "WA_PINNED"},
+        ),
+        (
+            {"pinInChatMessage": {"type": 2, "key": {"id": "WA_PINNED"}}},
+            "Desfijó un mensaje",
+            "pin",
+            {"action": "unpin", "target_wa_message_id": "WA_PINNED"},
+        ),
+        (
+            # secretEncType != 2 (edición, manejada aparte en webhooks.py): se
+            # guarda el valor crudo para poder ver en la base qué otras
+            # acciones cifradas manda esta cuenta.
+            {"secretEncryptedMessage": {"secretEncType": 5, "encPayload": "x", "encIv": "y"}},
+            None,
+            "unsupported",
+            {"original_type": "secretEncryptedMessage", "secret_enc_type": 5},
+        ),
         (
             {"contactMessage": {"displayName": "Ana"}},
             None,

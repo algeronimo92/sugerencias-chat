@@ -114,7 +114,7 @@ def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
     pseudo-tags que antes se armaban en ``content`` en cada call site."""
     kind = payload.get("type")
     if kind == "media":
-        return media_message_fields(payload["mediatype"], payload.get("filename"))
+        return media_message_fields(payload["mediatype"], payload.get("filename"), payload.get("album_id"))
     if kind == "location":
         return "location", {"latitude": payload["latitude"], "longitude": payload["longitude"]}
     if kind == "official_template":

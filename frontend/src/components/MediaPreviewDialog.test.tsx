@@ -123,4 +123,93 @@ describe('MediaPreviewDialog', () => {
     expect(screen.queryByRole('button', { name: 'Recortar imagen' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Dibujar sobre la imagen' })).not.toBeInTheDocument()
   })
+
+  it('con varios archivos, muestra la tira de miniaturas y "N archivos" en el título', () => {
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:foto-1"
+        kind="image"
+        thumbnails={[
+          { previewUrl: 'blob:foto-1', kind: 'image' },
+          { previewUrl: 'blob:foto-2', kind: 'image' },
+          { previewUrl: 'blob:video-1', kind: 'video' },
+        ]}
+        activeIndex={0}
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('3 archivos')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ver archivo 1 de 3' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: 'Ver archivo 2 de 3' })).not.toHaveAttribute('aria-current')
+    expect(screen.getAllByRole('button', { name: /Sacar archivo \d del envío/ })).toHaveLength(3)
+  })
+
+  it('tocar una miniatura de la tira avisa al padre cuál está activa', async () => {
+    const user = userEvent.setup()
+    const onSelectThumbnail = vi.fn()
+
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:foto-1"
+        kind="image"
+        thumbnails={[
+          { previewUrl: 'blob:foto-1', kind: 'image' },
+          { previewUrl: 'blob:foto-2', kind: 'image' },
+        ]}
+        activeIndex={0}
+        onSelectThumbnail={onSelectThumbnail}
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Ver archivo 2 de 2' }))
+    expect(onSelectThumbnail).toHaveBeenCalledWith(1)
+  })
+
+  it('la X de una miniatura avisa al padre que la saque del lote', async () => {
+    const user = userEvent.setup()
+    const onRemoveThumbnail = vi.fn()
+
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:foto-1"
+        kind="image"
+        thumbnails={[
+          { previewUrl: 'blob:foto-1', kind: 'image' },
+          { previewUrl: 'blob:foto-2', kind: 'image' },
+        ]}
+        activeIndex={0}
+        onRemoveThumbnail={onRemoveThumbnail}
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Sacar archivo 2 del envío' }))
+    expect(onRemoveThumbnail).toHaveBeenCalledWith(1)
+  })
+
+  it('con un solo ítem en thumbnails, se comporta como el preview simple (sin tira)', () => {
+    render(
+      <MediaPreviewDialog
+        previewUrl="blob:foto-1"
+        kind="image"
+        filename="foto.png"
+        thumbnails={[{ previewUrl: 'blob:foto-1', kind: 'image' }]}
+        activeIndex={0}
+        onSend={vi.fn()}
+        onCropped={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('foto.png')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Ver archivo/ })).not.toBeInTheDocument()
+  })
 })

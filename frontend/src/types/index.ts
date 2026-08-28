@@ -293,6 +293,7 @@ export type MessageType =
   | 'contact'
   | 'poll'
   | 'reaction'
+  | 'pin'
   | 'interactive'
   | 'template'
   | 'order'

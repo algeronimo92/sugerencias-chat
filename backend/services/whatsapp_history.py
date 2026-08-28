@@ -257,15 +257,25 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
         return None, "document", {"filename": name}
 
     location = message.get("locationMessage")
-    if isinstance(location, dict):
-        lat = location.get("degreesLatitude")
-        lon = location.get("degreesLongitude")
+    live_location = message.get("liveLocationMessage")
+    if isinstance(location, dict) or isinstance(live_location, dict):
+        node = location if isinstance(location, dict) else live_location
+        lat = node.get("degreesLatitude")
+        lon = node.get("degreesLongitude")
+        payload = {"live": True} if live_location is not None else None
         if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
-            return None, "location", {"latitude": lat, "longitude": lon}
-        return None, "location", None
+            payload = {**(payload or {}), "latitude": lat, "longitude": lon}
+        return None, "location", payload
 
-    if isinstance(message.get("stickerMessage"), dict):
+    if isinstance(message.get("stickerMessage"), dict) or isinstance(message.get("lottieStickerMessage"), dict):
         return None, "sticker", None
+
+    pin = message.get("pinInChatMessage")
+    if isinstance(pin, dict):
+        target = pin.get("key") if isinstance(pin.get("key"), dict) else {}
+        action = "unpin" if pin.get("type") in (2, "UNPIN_FOR_ALL") else "pin"
+        content = "Desfijó un mensaje" if action == "unpin" else "Fijó un mensaje"
+        return content, "pin", {"action": action, "target_wa_message_id": target.get("id")}
 
     contact = message.get("contactMessage")
     if isinstance(contact, dict):
@@ -342,7 +352,17 @@ def _content_from_message(message: dict) -> tuple[str | None, str, dict | None] 
     if not message:
         return None
 
-    return None, "unsupported", {"original_type": next(iter(message), "unknown")}
+    original_type = next(iter(message), "unknown")
+    payload = {"original_type": original_type}
+    # `secretEncType` distingue qué acción cifrada es (2 = edición, ya
+    # manejada aparte vía /message-edited-secret). Cualquier otro valor cae
+    # acá sin descifrar — se guarda para poder ver en la base qué otros tipos
+    # manda esta cuenta, ya que WhatsApp no publica este enum.
+    if original_type == "secretEncryptedMessage":
+        secret = message.get("secretEncryptedMessage")
+        if isinstance(secret, dict) and "secretEncType" in secret:
+            payload["secret_enc_type"] = secret.get("secretEncType")
+    return None, "unsupported", payload
 
 
 def _interactive_content(message: dict) -> tuple[str | None, str, dict | None] | None:
