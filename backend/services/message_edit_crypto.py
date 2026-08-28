@@ -34,12 +34,24 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _HKDF_ZERO_SALT = b"\x00" * 32
 _INFO_SUFFIX = b"Message Edit\x01"
+
+# El wire format trae el remoteJid y el wa_message_id de la MessageKey ANTES
+# que el texto editado — ambos son strings UTF-8 tan "razonables" como el
+# texto real, así que sin este filtro extract_text devuelve el JID en vez de
+# lo que el usuario escribió.
+_JID_PATTERN = re.compile(r"^\d+@[a-z.]+$")
+_HEX_ID_PATTERN = re.compile(r"^[0-9A-F]{10,}$")
+
+
+def _looks_like_identifier(text: str) -> bool:
+    return bool(_JID_PATTERN.match(text) or _HEX_ID_PATTERN.match(text))
 
 
 def derive_edit_key(secret: bytes, message_id: str, sender: str) -> bytes:
@@ -126,19 +138,29 @@ def _as_reasonable_text(raw: bytes) -> str | None:
     return stripped
 
 
+# Un mensaje de edición real capturado en producción trae el texto nuevo
+# anidado 4 niveles adentro del protobuf descifrado (ProtocolMessage.key es
+# un hermano, pero editedMessage cuelga varios niveles de mensajes intermedios
+# antes de llegar al string plano) — el límite es generoso a propósito porque
+# no conocemos el .proto completo y no vale la pena tratar de predecir cuántos
+# niveles trae cada variante futura.
+MAX_EXTRACT_DEPTH = 8
+
+
 def extract_text(data: bytes, *, _depth: int = 0) -> str | None:
     """Primer string UTF-8 "razonable" en el wire format de `data`, buscando
-    tanto a nivel superior (`conversation`) como un nivel adentro de un
-    mensaje anidado (`extendedTextMessage.text`). Ver docstring del módulo:
-    evita depender de números de campo exactos del .proto de WhatsApp."""
+    recursivamente en mensajes anidados hasta `MAX_EXTRACT_DEPTH` niveles. Ver
+    docstring del módulo: evita depender de números de campo exactos del
+    .proto de WhatsApp."""
+    if _depth > MAX_EXTRACT_DEPTH:
+        return None
     for _field_no, value in _iter_length_delimited_fields(data):
         candidate = _as_reasonable_text(value)
-        if candidate is not None:
+        if candidate is not None and not _looks_like_identifier(candidate):
             return candidate
-        if _depth == 0:
-            nested = extract_text(value, _depth=1)
-            if nested is not None:
-                return nested
+        nested = extract_text(value, _depth=_depth + 1)
+        if nested is not None:
+            return nested
     return None
 
 

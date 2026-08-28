@@ -1,11 +1,16 @@
 """Descifrado de la edición nativa (`secretEncryptedMessage`).
 
-No hay ningún `messageSecret` real capturado todavía (nunca se guardó antes
-de esta migración), así que lo único que se puede validar de verdad es un
-round-trip sintético: cifrar acá, con el mismo algoritmo, y comprobar que
-`decrypt_edited_text` lo recupera.
+La mayoría de los casos se validan con un round-trip sintético: cifrar acá,
+con el mismo algoritmo, y comprobar que `decrypt_edited_text` lo recupera.
+`TestRealCapturedMessage` usa un evento real capturado en producción (editar
+"hola" -> "hola8") — reveló dos bugs que el round-trip sintético no detectaba
+porque generaba protobufs más simples que los reales: el texto real queda
+anidado más de un nivel (`MAX_EXTRACT_DEPTH`), y el wire format trae el
+remoteJid/wa_message_id de la MessageKey ANTES que el texto, así que sin
+filtrar esos patrones `extract_text` devolvía el JID en vez de lo escrito.
 """
 
+import base64
 import os
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -56,6 +61,29 @@ class TestExtractText:
 
     def test_empty_message_yields_no_text(self):
         assert extract_text(b"") is None
+
+    def test_skips_jid_and_message_id_in_favor_of_deeper_real_text(self):
+        # Reproduce el orden real: MessageKey (remoteJid, luego el id del
+        # mensaje) aparece ANTES que el texto editado, y ambos son strings
+        # UTF-8 tan "razonables" como el texto real.
+        key = (
+            _length_delimited_field(1, "164291709825075@lid".encode())
+            + _length_delimited_field(3, "3EB0FFFBD8FCB1091B3E45".encode())
+        )
+        edited_text = _length_delimited_field(1, "hola8".encode())
+        proto = (
+            _length_delimited_field(1, key)
+            + _length_delimited_field(14, edited_text)
+        )
+        assert extract_text(proto) == "hola8"
+
+    def test_only_identifiers_present_yields_no_text(self):
+        key = (
+            _length_delimited_field(1, "164291709825075@lid".encode())
+            + _length_delimited_field(3, "3EB0FFFBD8FCB1091B3E45".encode())
+        )
+        proto = _length_delimited_field(1, key)
+        assert extract_text(proto) is None
 
 
 class TestDecryptEditedText:
@@ -145,3 +173,33 @@ class TestDecryptEditedText:
         )
 
         assert result is None
+
+
+class TestRealCapturedMessage:
+    """Evento real: editar el mensaje "hola" (wa_message_id
+    3EB0FFFBD8FCB1091B3E45) a "hola8", capturado en producción vía pinData de
+    n8n. `message_secret` es el guardado en `wsp_messages` para ese mensaje;
+    `enc_payload`/`enc_iv` son los del evento `secretEncryptedMessage`
+    correspondiente."""
+
+    SECRET = bytes.fromhex(
+        "22f92d465628eeaad2903683bca260c5be12dcc2516e72ada9890c1ad7fb0378"
+    )
+    MESSAGE_ID = "3EB0FFFBD8FCB1091B3E45"
+    SENDER_CANDIDATES = ["267692862898397@lid"]
+    ENC_PAYLOAD = base64.b64decode(
+        "zLfn3/EejLBNhZuC3N6/Iq3wq1Vf61WGwhwH5vy8xCEzJpHq99jGwLz3cNMpWRwl"
+        "RVQSnX7vL8xh+pPG8cHq4Hz3hVc/6SKIpt77o2dQAMU4RNBNNdVY"
+    )
+    ENC_IV = base64.b64decode("eNaUNf8WilpAF3rV")
+
+    def test_recovers_the_edited_text(self):
+        result = decrypt_edited_text(
+            secret=self.SECRET,
+            message_id=self.MESSAGE_ID,
+            sender_candidates=self.SENDER_CANDIDATES,
+            enc_payload=self.ENC_PAYLOAD,
+            enc_iv=self.ENC_IV,
+        )
+
+        assert result == "hola8"
