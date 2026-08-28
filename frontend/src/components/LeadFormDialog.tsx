@@ -52,6 +52,7 @@ export function LeadFormDialog({
   onOpenExisting,
 }: Props) {
   const [phone, setPhone] = useState(initial?.phone ?? '')
+  const [secondaryPhone, setSecondaryPhone] = useState(initial?.secondary_phone ?? '')
   const [name, setName] = useState(initial?.name ?? '')
   const [servicioInteres, setServicioInteres] = useState(initial?.servicio_interes ?? '')
   const [isAddingService, setIsAddingService] = useState(false)
@@ -148,6 +149,7 @@ export function LeadFormDialog({
         ? { phone: phoneCheck.status === 'valid' ? phoneCheck.digits : emptyToNull(phone) }
         : {}),
       name: requirePhoneAndName ? name.trim() : emptyToNull(name),
+      secondary_phone: emptyToNull(secondaryPhone),
       servicio_interes: emptyToNull(servicioInteres),
       ...(canEditSeller && (requirePhoneAndName || sellerChanged) ? { vendedor_id: vendedorId } : {}),
       origen: emptyToNull(origen),
@@ -277,6 +279,22 @@ export function LeadFormDialog({
                 )}
               </div>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="lead-secondary-phone" className={LABEL_CLASS}>Teléfono secundario</label>
+            <input
+              id="lead-secondary-phone"
+              type="text"
+              inputMode="tel"
+              value={secondaryPhone}
+              onChange={(e) => setSecondaryPhone(e.target.value)}
+              placeholder="Otro número (llamadas, WhatsApp de otra persona, etc.)"
+              className={FIELD_CLASS}
+            />
+            <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
+              Solo para referencia — los mensajes de WhatsApp siempre van al teléfono de arriba.
+            </p>
           </div>
 
           <div>

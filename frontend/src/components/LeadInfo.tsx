@@ -63,6 +63,7 @@ export function LeadInfo({ chat }: Props) {
   const fields: LeadInfoField[] = [
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
+    { label: 'Teléfono secundario', value: chat.secondary_phone, icon: Phone },
     { label: 'Estado', value: stageMeta.label, icon: CircleDot, iconClassName: stageMeta.accent, valueClassName: stageMeta.badge },
     {
       label: 'Conversación',
@@ -161,6 +162,7 @@ export function LeadInfo({ chat }: Props) {
           canEditPhone={chat.last_message == null}
           initial={{
             phone: chat.phone,
+            secondary_phone: chat.secondary_phone,
             name: chat.name,
             servicio_interes: chat.servicio_interes,
             vendedor_id: chat.vendedor_id,

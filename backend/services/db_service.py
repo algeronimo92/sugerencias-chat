@@ -85,6 +85,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
     return {
         "chat_id": row["chat_id"],
         "phone": row["phone"],
+        "secondary_phone": row["secondary_phone"] if "secondary_phone" in row else None,
         "name": row["name"],
         "servicio_interes": row["servicio_interes"],
         "vendedor_id": row["vendedor_id"],
@@ -282,6 +283,7 @@ def _identity_conditions(search: str) -> list:
             WhatsAppIdentity.jid.ilike(pattern, escape="\\"),
         )),
         Lead.telefono.ilike(pattern, escape="\\"),
+        Lead.telefono_secundario.ilike(pattern, escape="\\"),
         _unaccent_ilike(Lead.nombre, pattern),
     ]
 
@@ -292,6 +294,9 @@ def _identity_conditions(search: str) -> list:
         digits_pattern = f"%{digits}%"
         conditions.append(
             func.regexp_replace(Lead.telefono, r"\D", "", "g").like(digits_pattern)
+        )
+        conditions.append(
+            func.regexp_replace(Lead.telefono_secundario, r"\D", "", "g").like(digits_pattern)
         )
         conditions.append(exists(select(WhatsAppIdentity.id).where(
             WhatsAppIdentity.lead_id == Lead.id,
@@ -403,6 +408,7 @@ def _chat_columns(last_message):
     return (
         Lead.id.label("chat_id"),
         Lead.telefono.label("phone"),
+        Lead.telefono_secundario.label("secondary_phone"),
         Lead.nombre.label("name"),
         Lead.servicio_interes,
         Lead.vendedor_id,
@@ -960,6 +966,7 @@ async def create_lead(
     vendedor_id: int | None = None,
     origen: str | None = None,
     notas: str | None = None,
+    secondary_phone: str | None = None,
     actor_user_id: int | None = None,
     remote_jid: str | None = None,
 ) -> dict:
@@ -978,6 +985,7 @@ async def create_lead(
     stmt = insert(Lead).values(
         legacy_remote_jid=external_jid,
         telefono=f"+{digits}",
+        telefono_secundario=secondary_phone,
         nombre=name,
         servicio_interes=servicio_interes,
         vendedor_id=vendedor_id,

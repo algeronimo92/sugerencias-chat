@@ -37,6 +37,10 @@ LeadStage = Literal[
 class Chat(BaseModel):
     chat_id: str
     phone: str | None = None
+    # Número informativo (llamadas, contacto alternativo), distinto del que
+    # WhatsApp usa para enrutar mensajes. Texto libre, sin verificación contra
+    # WhatsApp: puede ser un fijo, un celular de otra red, lo que sea.
+    secondary_phone: str | None = None
     name: str | None = None
     servicio_interes: str | None = None
     vendedor_id: int | None = None
@@ -420,10 +424,12 @@ class LeadCreate(BaseModel):
     vendedor_id: int | None = None
     origen: str | None = None
     notas: str | None = None
+    secondary_phone: str | None = None
 
 
 class LeadUpdate(BaseModel):
     phone: str | None = None
+    secondary_phone: str | None = None
     name: str | None = None
     servicio_interes: str | None = None
     vendedor_id: int | None = None

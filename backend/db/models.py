@@ -67,6 +67,11 @@ class Lead(Base):
     # despliegue coordinado con n8n. Ya no participa en relaciones internas.
     legacy_remote_jid: Mapped[str | None] = mapped_column("remote_jid", Text, unique=True)
     telefono: Mapped[str | None] = mapped_column(Text)
+    # Número informativo (llamadas, contacto alternativo) distinto del que usa
+    # WhatsApp para enrutar mensajes. A diferencia de `telefono`, no pasa por
+    # whatsapp_identities ni por los triggers de la migración 028 — es un dato
+    # de texto libre que se muestra en el CRM, sin efecto sobre el envío.
+    telefono_secundario: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str | None] = mapped_column(Text)
     servicio_interes: Mapped[str | None] = mapped_column(Text)
     vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

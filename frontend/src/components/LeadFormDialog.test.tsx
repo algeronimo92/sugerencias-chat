@@ -69,3 +69,44 @@ describe('LeadFormDialog service catalog', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })
+
+describe('LeadFormDialog teléfono secundario', () => {
+  it('se puede editar aunque el teléfono principal esté bloqueado', async () => {
+    const user = userEvent.setup()
+    const onSubmit = renderDialog()
+
+    await user.type(screen.getByLabelText('Teléfono secundario'), '987 654 321')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      secondary_phone: '987 654 321',
+    }))
+  })
+
+  it('precarga el valor existente al editar', () => {
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana', secondary_phone: '+51900111222' }}
+        canEditPhone={false}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('Teléfono secundario')).toHaveValue('+51900111222')
+  })
+
+  it('manda null cuando se lo deja vacío', async () => {
+    const user = userEvent.setup()
+    const onSubmit = renderDialog()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      secondary_phone: null,
+    }))
+  })
+})

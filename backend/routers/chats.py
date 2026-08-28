@@ -202,6 +202,7 @@ def _validate_rendered_interactive_message(interactive_type: str, description: s
 # la tabla leads (db.models.Lead) para armar el dict de `update_lead`.
 _LEAD_FIELD_TO_COLUMN = {
     "phone": "telefono",
+    "secondary_phone": "telefono_secundario",
     "name": "nombre",
     "servicio_interes": "servicio_interes",
     "vendedor_id": "vendedor_id",
@@ -383,6 +384,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
             vendedor_id=body.vendedor_id,
             origen=body.origen,
             notas=body.notas,
+            secondary_phone=body.secondary_phone,
             actor_user_id=user.id,
             remote_jid=canonical_jid,
         )

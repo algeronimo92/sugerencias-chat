@@ -195,6 +195,9 @@ export interface IssueReportDetail extends IssueReport {
 export interface Chat {
   chat_id: string
   phone: string | null
+  /** Número informativo (llamadas, contacto alternativo), distinto del que
+   * WhatsApp usa para mandar mensajes. Texto libre, sin verificación. */
+  secondary_phone: string | null
   name: string | null
   servicio_interes: string | null
   vendedor_id: number | null
@@ -260,6 +263,7 @@ export interface LeadInput {
 
 export interface LeadUpdateInput {
   phone?: string | null
+  secondary_phone?: string | null
   name?: string | null
   servicio_interes?: string | null
   vendedor_id?: number | null
