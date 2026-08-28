@@ -67,6 +67,9 @@ vi.mock('../hooks/useMessages', async () => {
     useSendAudio: () => ({ mutate: vi.fn() }),
     useSendMedia: () => ({ mutate: vi.fn() }),
     useSendLocation: () => ({ mutate: vi.fn() }),
+    usePinnedMessages: () => ({ data: [] }),
+    usePinMessage: () => ({ mutate: vi.fn() }),
+    useUnpinMessage: () => ({ mutate: vi.fn() }),
   }
 })
 
@@ -202,8 +205,11 @@ describe('ChatThread', () => {
     const user = userEvent.setup()
     renderThread()
 
-    const selectButtons = screen.getAllByLabelText('Seleccionar este mensaje')
-    await user.click(selectButtons.at(-1) as HTMLElement)
+    // "Seleccionar" vive detrás del "⋮" de cada burbuja; se abre el de la
+    // última (el mensaje con imagen) y se toca el ítem del menú.
+    const moreButtons = screen.getAllByLabelText('Más acciones')
+    await user.click(moreButtons.at(-1) as HTMLElement)
+    await user.click(screen.getByRole('menuitem', { name: 'Seleccionar' }))
 
     expect(screen.getByLabelText('Descargar multimedia seleccionada')).toBeEnabled()
   })

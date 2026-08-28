@@ -483,6 +483,9 @@ export function useChatUpdates(
               if (reason === 'inbound_message') {
                 queryClient.invalidateQueries({ queryKey: ['customer-service-window', changedChatId] })
               }
+              if (reason === 'message_pinned') {
+                queryClient.invalidateQueries({ queryKey: ['pinned-messages', changedChatId] })
+              }
             } else {
               queryClient.invalidateQueries({ queryKey: ['messages'] })
               queryClient.invalidateQueries({ queryKey: ['lead-activity'] })

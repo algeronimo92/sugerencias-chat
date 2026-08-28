@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
 import type { JsonObject, Message, MessageReaction, MessageType } from '../types'
 
@@ -506,6 +506,46 @@ export function useDeleteMessages(chatId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['chats'] })
       void queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    },
+  })
+}
+
+/** Hasta 3 mensajes fijados del chat — WhatsApp no tiene forma de mandar un
+ * fijado hacia el otro lado (ni Evolution API ni Baileys lo exponen), así que
+ * esto es un fijado nativo del CRM y vive en su propio endpoint: un mensaje
+ * fijado puede estar fuera de la página del hilo que está cargada. */
+export function usePinnedMessages(chatId: string | null) {
+  return useQuery({
+    queryKey: ['pinned-messages', chatId],
+    queryFn: async () => (await client.get<{ items: Message[] }>(
+      `/api/chats/${encodeURIComponent(chatId as string)}/pinned-messages`,
+    )).data.items,
+    enabled: !!chatId,
+  })
+}
+
+export function usePinMessage(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, number>({
+    mutationFn: async messageId => (await client.post<Message>(
+      `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/pin`,
+    )).data,
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+      void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
+    },
+  })
+}
+
+export function useUnpinMessage(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, number>({
+    mutationFn: async messageId => (await client.post<Message>(
+      `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/unpin`,
+    )).data,
+    onSuccess: message => {
+      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+      void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
     },
   })
 }

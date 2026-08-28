@@ -279,11 +279,18 @@ class Message(BaseModel):
     quoted_message_id: int | None = None
     quoted_sender: str | None = None
     quoted_content: str | None = None
+    # Fijado nativo del CRM (no existe forma de replicarlo hacia WhatsApp, ver
+    # pin_message en db_service). None = no está fijado.
+    pinned_at: str | None = None
 
 
 class MessagePage(BaseModel):
     items: list[Message]
     has_more: bool
+
+
+class PinnedMessagesResponse(BaseModel):
+    items: list[Message]
 
 
 class HistoryMessage(BaseModel):
