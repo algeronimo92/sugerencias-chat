@@ -110,3 +110,56 @@ describe('LeadFormDialog teléfono secundario', () => {
     }))
   })
 })
+
+describe('LeadFormDialog teléfono principal sin resolver', () => {
+  it('avisa que un número mal tipeado redirige la conversación a otra persona', () => {
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana' }}
+        canEditPhone
+        phoneEditIsRisky
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/los próximos mensajes se le van a mandar a otra persona/)).toBeInTheDocument()
+  })
+
+  it('no avisa cuando el teléfono ya está resuelto (edición normal)', () => {
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana', phone: '+51900111222' }}
+        canEditPhone
+        phoneEditIsRisky={false}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/los próximos mensajes se le van a mandar a otra persona/)).not.toBeInTheDocument()
+  })
+
+  it('no avisa cuando el teléfono sigue bloqueado', () => {
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana' }}
+        canEditPhone={false}
+        phoneEditIsRisky
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/los próximos mensajes se le van a mandar a otra persona/)).not.toBeInTheDocument()
+  })
+})

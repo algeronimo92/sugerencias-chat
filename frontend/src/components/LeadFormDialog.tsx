@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, MessageCircle, Plus, X } from 'lucide-react'
+import { AlertTriangle, Loader2, MessageCircle, Plus, X } from 'lucide-react'
 import type { Chat, LeadService, LeadUpdateInput } from '../types'
 import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
@@ -19,9 +19,15 @@ interface Props {
   submitLabel: string
   initial?: LeadUpdateInput
   requirePhoneAndName?: boolean
-  /** false cuando el lead ya tiene conversación: el número es la identidad
-   * del chat en WhatsApp y el backend rechaza cambiarlo. */
+  /** false cuando el lead ya tiene conversación Y teléfono resuelto: el
+   * número es la identidad del chat en WhatsApp y cambiarlo lo redirigiría.
+   * Sigue en true con conversación activa si el teléfono está en null (un
+   * @lid sin resolver) — no hay nada resuelto que se pueda pisar. */
   canEditPhone?: boolean
+  /** true solo en ese segundo caso: hay conversación activa pero nunca se
+   * resolvió el teléfono. Muestra la advertencia de que un número mal
+   * tipeado redirige los próximos mensajes a otra persona. */
+  phoneEditIsRisky?: boolean
   isSubmitting: boolean
   error?: string | null
   onSubmit: (values: LeadUpdateInput) => void
@@ -45,6 +51,7 @@ export function LeadFormDialog({
   initial,
   requirePhoneAndName,
   canEditPhone = true,
+  phoneEditIsRisky = false,
   isSubmitting,
   error,
   onSubmit,
@@ -242,6 +249,17 @@ export function LeadFormDialog({
               <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
                 No se puede cambiar el teléfono porque ya hay conversación en WhatsApp.
               </p>
+            )}
+            {canEditPhone && phoneEditIsRisky && (
+              <div className="mt-2 flex gap-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Este chat ya tiene conversación, pero WhatsApp todavía no reveló el teléfono
+                  real detrás de él. Si el número que cargás es incorrecto, los próximos mensajes
+                  se le van a mandar a otra persona, mientras este chat sigue mostrando la
+                  conversación anterior. Confirmalo con el cliente antes de guardar.
+                </p>
+              </div>
             )}
             {canEditPhone && noWhatsappError && (
               <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>

@@ -159,7 +159,12 @@ export function LeadInfo({ chat }: Props) {
         <LeadFormDialog
           title="Editar lead"
           submitLabel="Guardar"
-          canEditPhone={chat.last_message == null}
+          // El teléfono se bloquea solo cuando ya hay algo resuelto que
+          // cambiarlo podría redirigir sin querer. Con telefono en null (un
+          // @lid del que WhatsApp nunca reveló el número) no hay nada que
+          // proteger, aunque ya haya conversación — se deja completar a mano.
+          canEditPhone={chat.last_message == null || chat.phone == null}
+          phoneEditIsRisky={chat.last_message != null && chat.phone == null}
           initial={{
             phone: chat.phone,
             secondary_phone: chat.secondary_phone,
