@@ -2,7 +2,7 @@ import asyncio
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, or_, select, true, update
+from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, not_, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
@@ -1612,6 +1612,13 @@ async def count_wa_messages(chat_id: str) -> int:
 # gigante entera si el match está muy atrás en el historial.
 JUMP_TO_MESSAGE_MAX = 1000
 
+# Envoltorios de un álbum de WhatsApp sin contenido propio (ver
+# automation_rules.IGNORED_ORIGINAL_TYPES, que además excluye
+# `secretEncryptedMessage` de las automatizaciones pero no del hilo: ese sí se
+# deja visible para poder notar qué otras acciones cifradas manda esta
+# cuenta).
+ALBUM_ENVELOPE_TYPES = frozenset({"albumMessage", "associatedChildMessage"})
+
 
 async def fetch_messages(
     chat_id: str,
@@ -1678,6 +1685,17 @@ async def fetch_messages(
             # quedan fuera del hilo. is_distinct_from trata bien el NULL de las
             # filas todavía sin backfillear (message_type NULL sigue entrando).
             .where(WspMessage.message_type.is_distinct_from("reaction"))
+            # El "sobre" de un álbum (`albumMessage`/`associatedChildMessage`) no
+            # aporta nada que mostrar: las fotos reales llegan aparte como sus
+            # propios `imageMessage`/`videoMessage` y sí se ven. A diferencia de
+            # `automation_rules.IGNORED_ORIGINAL_TYPES` (que también excluye
+            # `secretEncryptedMessage`), ese tipo se deja visible acá a propósito:
+            # es la única forma de notar en el hilo qué otras acciones cifradas
+            # manda esta cuenta además de la edición ya soportada.
+            .where(not_(and_(
+                WspMessage.message_type == "unsupported",
+                WspMessage.payload["original_type"].astext.in_(ALBUM_ENVELOPE_TYPES),
+            )))
             .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
             .limit(limit + 1)
         )
