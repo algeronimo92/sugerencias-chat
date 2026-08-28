@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Download, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
@@ -10,7 +10,9 @@ import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { formatDayLabel, formatMessageTime, parseContent } from '../utils/message'
+import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
 import { messageMediaFilename, triggerMediaDownload } from '../utils/media'
+import { AlbumBubble } from './AlbumBubble'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { MediaLightbox } from './MediaLightbox'
 import { StickerPreviewDialog } from './StickerPreviewDialog'
@@ -189,6 +191,26 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       return next
     })
   }
+
+  /** Tildar/destildar un álbum entero de una sola vez: si ya está completo se
+   * destilda entero, si no se completa — nunca queda "a medias" con un toque. */
+  function toggleSelectedGroup(messageIds: number[]) {
+    setSelectedIds(current => {
+      const next = new Set(current)
+      const allSelected = messageIds.every(id => next.has(id))
+      for (const id of messageIds) {
+        if (allSelected) next.delete(id)
+        else next.add(id)
+      }
+      return next
+    })
+  }
+
+  // Fotos/videos consecutivos del mismo remitente enviados como un lote
+  // (álbum de WhatsApp): se pintan como una sola grilla en vez de burbujas
+  // separadas. Ver utils/mediaGroups para el heurístico.
+  const albumGroups = useMemo(() => groupAlbumMessages(messages), [messages])
+  const albumMembers = useMemo(() => albumMemberIds(albumGroups), [albumGroups])
 
   function clearSelection() {
     setSelectedIds(new Set())
@@ -542,6 +564,11 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               // El primer ítem registrado después del historial de WhatsApp es
               // justo donde arranca lo que guarda el sistema.
               const showDbBoundary = item.kind !== 'history' && prevItem?.kind === 'history'
+              // Miembro de un álbum que no es el primero: ya lo pinta la
+              // grilla de AlbumBubble más arriba, esta burbuja se salta.
+              if (item.kind === 'message' && albumMembers.has(item.message.id) && !albumGroups.has(item.message.id)) {
+                return null
+              }
               if (item.kind === 'history') {
                 return (
                   <HistoryMessageBubble
@@ -574,6 +601,34 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                         canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
                       />
                     </div>
+                  </Fragment>
+                )
+              }
+              const group = albumGroups.get(item.message.id)
+              if (group) {
+                const groupIds = group.map(m => m.id)
+                return (
+                  <Fragment key={item.key}>
+                    {showDbBoundary && <DbRecordSeparator />}
+                    <AlbumBubble
+                      messages={group}
+                      isFirstOfGroup={
+                        isFirstOfSection ||
+                        !prevItem ||
+                        prevItem.kind !== 'message' ||
+                        prevItem.message.sender !== item.message.sender
+                      }
+                      failedMediaIds={failedMediaIds}
+                      onMediaFailed={(id) => setFailedMediaIds((prev) => new Set(prev).add(id))}
+                      onOpenMedia={setOpenMedia}
+                      onRetry={() => handleRetryMessage(group[group.length - 1])}
+                      onDiscard={() => discardMessage(group[group.length - 1])}
+                      onForwardAll={() => setMessageIdsToForward(groupIds)}
+                      onDownloadAll={() => group.forEach(downloadMessageMedia)}
+                      selectionMode={isSelecting}
+                      isSelected={groupIds.every(id => selectedIds.has(id))}
+                      onToggleSelect={() => toggleSelectedGroup(groupIds)}
+                    />
                   </Fragment>
                 )
               }

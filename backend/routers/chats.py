@@ -657,6 +657,7 @@ async def send_media(
             "mediatype": mediatype,
             "filename": body.filename,
             "caption": caption,
+            "album_id": body.album_id,
         },
         "reply_to": reply_to,
     }], actor_user_id=user.id))[0]

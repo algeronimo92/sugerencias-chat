@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Crop, FileText, Loader2, Pencil, Send, X } from 'lucide-react'
+import { Crop, FileText, Loader2, Pencil, Send, Video, X } from 'lucide-react'
 import { DialogPrimitive as Dialog } from './ui/Dialog'
 import { ImageCropDialog } from './ImageCropDialog'
 import { ImageDrawDialog } from './ImageDrawDialog'
@@ -27,12 +27,21 @@ function formatFileSize(bytes: number): string {
  * Se dibuja dentro del panel de conversación (sin Dialog.Portal) para que, en
  * escritorio, la lista de chats y el panel de sugerencias sigan visibles al
  * costado — igual que en WhatsApp Desktop — en vez de tapar toda la ventana. */
+export interface MediaPreviewThumbnail {
+  previewUrl: string
+  kind: 'image' | 'video' | 'document'
+}
+
 export function MediaPreviewDialog({
   previewUrl,
   kind,
   filename,
   contentType,
   fileSize,
+  thumbnails,
+  activeIndex = 0,
+  onSelectThumbnail,
+  onRemoveThumbnail,
   isSending = false,
   onSend,
   onCropped,
@@ -46,6 +55,16 @@ export function MediaPreviewDialog({
   contentType?: string
   /** Tamaño en bytes del archivo, para el subtítulo de la tarjeta de documento. */
   fileSize?: number
+  /** Varias fotos/videos elegidos juntos: se pintan como tira de miniaturas
+   * en vez de una sola, y el título pasa a "N archivos". undefined o un solo
+   * ítem deja el preview de siempre (una miniatura, sin tira). Cada uno se
+   * manda como su propio mensaje al confirmar — no hay álbum nativo de
+   * WhatsApp del lado de Evolution API. */
+  thumbnails?: MediaPreviewThumbnail[]
+  activeIndex?: number
+  onSelectThumbnail?: (index: number) => void
+  /** Saca un archivo del lote antes de mandar. */
+  onRemoveThumbnail?: (index: number) => void
   isSending?: boolean
   onSend: (caption: string) => void
   /** Reemplaza el archivo/preview pendientes en el padre por la versión recortada. */
@@ -90,7 +109,7 @@ export function MediaPreviewDialog({
               <X className="h-6 w-6" />
             </button>
             <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-medium text-[#e9edef] sm:text-base">
-              {filename || 'Vista previa'}
+              {thumbnails && thumbnails.length > 1 ? `${thumbnails.length} archivos` : filename || 'Vista previa'}
             </Dialog.Title>
             <div className="flex shrink-0 items-center gap-1">
               {kind === 'image' && (
@@ -168,19 +187,60 @@ export function MediaPreviewDialog({
               </button>
             </div>
 
-            <div className="mx-auto flex h-20 w-full max-w-3xl items-center justify-center sm:h-24">
-              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border-2 border-[#00a884] bg-black sm:h-16 sm:w-16">
-                {kind === 'image' ? (
-                  <img src={previewUrl} alt="Adjunto seleccionado" className="h-full w-full object-cover" />
-                ) : kind === 'video' ? (
-                  <video src={previewUrl} muted aria-label="Video seleccionado" className="h-full w-full object-cover" />
-                ) : (
-                  <span role="img" aria-label="Documento seleccionado" className="flex h-full w-full items-center justify-center bg-[#7c5cff]">
-                    <FileText className="h-6 w-6 text-white" />
-                  </span>
-                )}
+            {thumbnails && thumbnails.length > 1 ? (
+              <div className="mx-auto flex h-20 w-full max-w-3xl items-center gap-2 overflow-x-auto px-1 sm:h-24">
+                {thumbnails.map((thumb, index) => (
+                  <div key={index} className="relative h-14 w-14 shrink-0 sm:h-16 sm:w-16">
+                    <button
+                      type="button"
+                      onClick={() => onSelectThumbnail?.(index)}
+                      aria-label={`Ver archivo ${index + 1} de ${thumbnails.length}`}
+                      aria-current={index === activeIndex ? 'true' : undefined}
+                      className={`h-full w-full overflow-hidden rounded-md border-2 bg-black transition-opacity ${
+                        index === activeIndex ? 'border-[#00a884]' : 'border-transparent opacity-60 hover:opacity-90'
+                      }`}
+                    >
+                      {thumb.kind === 'image' ? (
+                        <img src={thumb.previewUrl} alt="" className="h-full w-full object-cover" />
+                      ) : thumb.kind === 'video' ? (
+                        <span className="relative flex h-full w-full items-center justify-center bg-black">
+                          <video src={thumb.previewUrl} muted className="h-full w-full object-cover" />
+                          <Video className="absolute h-4 w-4 fill-white text-white" />
+                        </span>
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center bg-[#7c5cff]">
+                          <FileText className="h-5 w-5 text-white" />
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveThumbnail?.(index)}
+                      disabled={isSending}
+                      aria-label={`Sacar archivo ${index + 1} del envío`}
+                      title="Sacar del envío"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#111b21] text-white shadow ring-1 ring-white/20 transition-colors hover:bg-red-600 disabled:opacity-50"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            </div>
+            ) : (
+              <div className="mx-auto flex h-20 w-full max-w-3xl items-center justify-center sm:h-24">
+                <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border-2 border-[#00a884] bg-black sm:h-16 sm:w-16">
+                  {kind === 'image' ? (
+                    <img src={previewUrl} alt="Adjunto seleccionado" className="h-full w-full object-cover" />
+                  ) : kind === 'video' ? (
+                    <video src={previewUrl} muted aria-label="Video seleccionado" className="h-full w-full object-cover" />
+                  ) : (
+                    <span role="img" aria-label="Documento seleccionado" className="flex h-full w-full items-center justify-center bg-[#7c5cff]">
+                      <FileText className="h-6 w-6 text-white" />
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </footer>
         </Dialog.Content>
       </Dialog.Root>

@@ -312,15 +312,21 @@ interface MediaPayload {
   /** Epígrafe opcional (el texto debajo de la imagen/video), como en WhatsApp. */
   caption?: string
   replyTo?: ReplyTarget | null
+  /** Comparten este id las fotos/videos elegidos juntos en el mismo picker
+   * (ver ChatComposer): agrupa el hilo en grilla sin depender de adivinar por
+   * tiempo — WhatsApp no tiene noción de álbum saliente que Evolution API
+   * pueda usar, así que esto es puramente para la vista del propio CRM. */
+  albumId?: string
 }
 
-async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo }: MediaPayload): Promise<Message> {
+async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo, albumId }: MediaPayload): Promise<Message> {
   const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
     content_type: contentType,
     data_base64: dataBase64,
     filename,
     caption: caption || null,
     reply_to_message_id: replyTo?.id ?? null,
+    album_id: albumId || null,
   })
   return data
 }
@@ -335,10 +341,16 @@ export function useSendMedia(chatId: string) {
       const messageType: MessageType = payload.contentType.startsWith('image/') ? 'image'
         : payload.contentType.startsWith('video/') ? 'video'
           : payload.contentType.startsWith('audio/') ? 'audio' : 'document'
+      // Repite acá lo que arma media_message_fields en el backend: si el
+      // mensaje real ya trae album_id en el payload, el optimista también,
+      // para que la grilla no "salte" al confirmarse el envío.
+      const mediaPayload: { filename?: string; album_id?: string } =
+        messageType === 'document' ? { filename: payload.filename ?? 'Archivo' } : {}
+      if (payload.albumId) mediaPayload.album_id = payload.albumId
       return appendOptimisticMessages(queryClient, chatId, [{
         content: payload.caption || null,
         message_type: messageType,
-        payload: messageType === 'document' ? { filename: payload.filename ?? 'Archivo' } : null,
+        payload: Object.keys(mediaPayload).length ? mediaPayload : null,
         media_url: `data:${payload.contentType};base64,${payload.dataBase64}`,
         reply_to: payload.replyTo,
       }])
