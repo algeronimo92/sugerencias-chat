@@ -3,7 +3,10 @@ import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Download, Forward,
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
-import { useDeleteMessage, useDeleteMessages, useReactToMessage, useSendMessage, type ReplyTarget } from '../hooks/useMessages'
+import {
+  useDeleteMessage, useDeleteMessages, usePinMessage, usePinnedMessages, useReactToMessage,
+  useSendMessage, useUnpinMessage, type ReplyTarget,
+} from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
 import { ForwardMessageDialog } from './ForwardMessageDialog'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
@@ -29,6 +32,7 @@ import { StageChangeCard } from './StageChangeCard'
 import { useMe } from '../hooks/useAuth'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
+import { PinnedMessagesBar } from './PinnedMessagesBar'
 import { LeadAutomationPanel } from './LeadAutomationPanel'
 
 interface Props {
@@ -211,6 +215,20 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // separadas. Ver utils/mediaGroups para el heurístico.
   const albumGroups = useMemo(() => groupAlbumMessages(messages), [messages])
   const albumMembers = useMemo(() => albumMemberIds(albumGroups), [albumGroups])
+
+  // Fijado nativo del CRM: no hay forma de mandarlo hacia WhatsApp (ni
+  // Evolution API ni Baileys lo exponen), así que vive en su propio endpoint
+  // — un fijado puede estar fuera de la página del hilo que está cargada.
+  const { data: pinnedMessages = [] } = usePinnedMessages(chat.chat_id)
+  const [pinnedIndex, setPinnedIndex] = useState(0)
+  const { mutate: pinMessage } = usePinMessage(chat.chat_id)
+  const { mutate: unpinMessage } = useUnpinMessage(chat.chat_id)
+
+  function handlePin(messageId: number) {
+    pinMessage(messageId, {
+      onError: (err) => toast.error(extractErrorMessage(err)),
+    })
+  }
 
   function clearSelection() {
     setSelectedIds(new Set())
@@ -462,6 +480,16 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       </div>
       )}
 
+      {!isNoteMode && pinnedMessages.length > 0 && (
+        <PinnedMessagesBar
+          pinned={pinnedMessages}
+          activeIndex={pinnedIndex}
+          onSelectIndex={setPinnedIndex}
+          onJump={goToQuotedMessage}
+          onUnpin={(messageId) => unpinMessage(messageId)}
+        />
+      )}
+
       {/* Thread — el wrapper relativo permite flotar el botón "ir al final"
           por fuera del scroll, así no se desplaza con el contenido. */}
       <div className="relative flex-1 min-h-0">
@@ -661,6 +689,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onForward={() => setMessageIdsToForward([item.message.id])}
                     onDownload={() => downloadMessageMedia(item.message)}
                     isDeleting={deleteMessage.isPending && deleteMessage.variables === item.message.id}
+                    onPin={() => handlePin(item.message.id)}
+                    onUnpin={() => unpinMessage(item.message.id)}
                     onSaveTemplate={setTemplateContentToSave}
                     selectionMode={isSelecting}
                     isSelected={selectedIds.has(item.message.id)}

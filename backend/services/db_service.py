@@ -1678,6 +1678,7 @@ async def fetch_messages(
                 WspMessage.reactions,
                 WspMessage.edited_at,
                 WspMessage.deleted_at,
+                WspMessage.pinned_at,
             )
             .where(WspMessage.chat_id == chat_id)
             # Las reacciones no son burbujas: viven como badge sobre el mensaje
@@ -1730,6 +1731,7 @@ async def fetch_messages(
             "reactions": r["reactions"],
             "edited_at": _fmt_ts(r["edited_at"]),
             "deleted_at": _fmt_ts(r["deleted_at"]),
+            "pinned_at": _fmt_ts(r["pinned_at"]),
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
@@ -1910,6 +1912,7 @@ def _message_payload(row: WspMessage) -> dict:
         "reactions": row.reactions,
         "edited_at": _fmt_ts(row.edited_at),
         "deleted_at": _fmt_ts(row.deleted_at),
+        "pinned_at": _fmt_ts(row.pinned_at),
         "media_width": row.media_width or None,
         "media_height": row.media_height or None,
     })
@@ -2009,6 +2012,73 @@ async def _load_message_by_wa_id(session, chat_id: str, wa_message_id: str) -> W
             WspMessage.wa_message_id == wa_message_id,
         )
     )).scalar_one_or_none()
+
+
+async def _load_message_by_id(session, chat_id: str, message_id: int) -> WspMessage | None:
+    return (await session.execute(
+        select(WspMessage).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
+    )).scalar_one_or_none()
+
+
+# WhatsApp nativo deja fijar hasta 3 mensajes por chat (y pide desfijar uno
+# para agregar un cuarto); se replica el mismo límite acá aunque el fijado en
+# sí no se pueda mandar hacia WhatsApp (ver el comentario en db/models.py).
+MAX_PINNED_MESSAGES = 3
+
+
+class PinLimitReachedError(Exception):
+    """Ya hay MAX_PINNED_MESSAGES mensajes fijados en el chat."""
+
+
+async def fetch_pinned_messages(chat_id: str) -> list[dict]:
+    """Los mensajes fijados del chat (a lo sumo MAX_PINNED_MESSAGES), del más
+    viejo al más nuevo — mismo orden en que se navega el carrusel de fijados."""
+    stmt = (
+        select(WspMessage)
+        .where(WspMessage.chat_id == chat_id, WspMessage.pinned_at.isnot(None))
+        .order_by(WspMessage.pinned_at.asc())
+        .limit(MAX_PINNED_MESSAGES)
+    )
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).scalars().all()
+    return [_message_payload(row) for row in rows]
+
+
+async def pin_message(chat_id: str, message_id: int, user_id: int) -> dict | None:
+    """Fija un mensaje (fijado nativo del CRM, no se manda a WhatsApp — no hay
+    forma de hacerlo, ver db/models.py). None si el mensaje no existe en el
+    chat o ya está eliminado. Levanta PinLimitReachedError si el chat ya tiene
+    MAX_PINNED_MESSAGES fijados y este no es uno de ellos. Idempotente: fijar
+    uno ya fijado no cambia su lugar en el carrusel."""
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_id(session, chat_id, message_id)
+        if row is None or row.deleted_at is not None:
+            return None
+        if row.pinned_at is None:
+            count = await session.scalar(
+                select(func.count()).where(
+                    WspMessage.chat_id == chat_id, WspMessage.pinned_at.isnot(None),
+                )
+            )
+            if count >= MAX_PINNED_MESSAGES:
+                raise PinLimitReachedError()
+            row.pinned_at = datetime.now(timezone.utc)
+            row.pinned_by_user_id = user_id
+            await session.commit()
+        return _message_payload(row)
+
+
+async def unpin_message(chat_id: str, message_id: int) -> dict | None:
+    """Desfija un mensaje. None si no existe en el chat. Idempotente."""
+    async with get_sessionmaker()() as session:
+        row = await _load_message_by_id(session, chat_id, message_id)
+        if row is None:
+            return None
+        if row.pinned_at is not None:
+            row.pinned_at = None
+            row.pinned_by_user_id = None
+            await session.commit()
+        return _message_payload(row)
 
 
 async def update_message_content(chat_id: str, wa_message_id: str, text: str) -> dict | None:

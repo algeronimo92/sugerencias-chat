@@ -24,6 +24,7 @@ from models.schemas import (
     Message,
     MessagePage,
     LeadActivityItem,
+    PinnedMessagesResponse,
     ReactionRequest,
     StickerRequest,
     SendLocationRequest,
@@ -56,10 +57,15 @@ from services.db_service import (
     fetch_kanban_snapshot,
     fetch_kanban_stage,
     fetch_messages,
+    fetch_pinned_messages,
     fetch_reply_target,
     insert_message,
     mark_message_deleted,
+    MAX_PINNED_MESSAGES,
+    pin_message,
+    PinLimitReachedError,
     set_message_reaction,
+    unpin_message,
     update_message_content,
     list_lead_activity,
     fetch_total_unread_chat_count,
@@ -1065,6 +1071,37 @@ async def delete_message(chat_id: str, message_id: int):
     if message is None:
         raise HTTPException(404, "El mensaje no existe en este chat")
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "message_deleted"})
+    return message
+
+
+@router.get("/{chat_id}/pinned-messages", response_model=PinnedMessagesResponse)
+async def get_pinned_messages(chat_id: str):
+    return {"items": await fetch_pinned_messages(chat_id)}
+
+
+@router.post("/{chat_id}/messages/{message_id}/pin", response_model=Message)
+async def pin_chat_message(chat_id: str, message_id: int, user: User = Depends(get_current_user)):
+    """Fija un mensaje, como el "Fijar" de WhatsApp — pero solo dentro del CRM:
+    ni Evolution API ni Baileys exponen forma de fijar un mensaje del lado de
+    quien envía, así que esto no se refleja en el WhatsApp del cliente."""
+    try:
+        message = await pin_message(chat_id, message_id, user.id)
+    except PinLimitReachedError:
+        raise HTTPException(
+            409, f"Ya hay {MAX_PINNED_MESSAGES} mensajes fijados en este chat. Desfijá uno primero."
+        )
+    if message is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "message_pinned"})
+    return message
+
+
+@router.post("/{chat_id}/messages/{message_id}/unpin", response_model=Message)
+async def unpin_chat_message(chat_id: str, message_id: int):
+    message = await unpin_message(chat_id, message_id)
+    if message is None:
+        raise HTTPException(404, "El mensaje no existe en este chat")
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "message_pinned"})
     return message
 
 

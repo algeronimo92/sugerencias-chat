@@ -228,6 +228,12 @@ class WspMessage(Base):
     # desde ~mayo 2026 llega cifrada (secretEncryptedMessage) en vez de en texto
     # plano. Ver services/message_edit_crypto.py. NULL si Evolution no lo mandó.
     message_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # Fijado nativo del CRM: WhatsApp no expone ningún endpoint para fijar un
+    # mensaje del lado de quien envía (ni Evolution API ni Baileys lo tienen),
+    # así que esto vive solo acá — no se replica hacia WhatsApp. Hasta 3 por
+    # chat, igual que el límite real de WhatsApp (se aplica en db_service).
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pinned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (
         Index(
@@ -235,6 +241,14 @@ class WspMessage(Base):
             chat_id,
             sent_at.desc(),
             id.desc(),
+        ),
+        # Hasta 3 filas con pinned_at no nulo por chat; se filtra por eso al
+        # armar la barra de fijados sin escanear el chat entero.
+        Index(
+            "idx_wsp_messages_pinned",
+            chat_id,
+            pinned_at,
+            postgresql_where=text("pinned_at IS NOT NULL"),
         ),
         # UNIQUE, no sólo índice: Evolution API reenvía el mismo webhook cuando
         # no recibe confirmación, y sin la restricción el reintento inserta el

@@ -1,9 +1,10 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
-import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
 import { AdReferralCard } from './AdReferralCard'
+import { MessageActionsMenu, type MessageMenuAction } from './MessageActionsMenu'
 import { MessageAnalysis, MessageBody } from './messageBody'
 import { QuotedMessage } from './QuotedMessage'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
@@ -98,6 +99,10 @@ interface Props {
   onDownload: () => void
   /** El borrado en WhatsApp está en curso: el botón queda en espera. */
   isDeleting: boolean
+  /** Fijado nativo del CRM: no hay forma de mandarlo hacia WhatsApp (ver
+   * MessageActionsMenu más abajo), así que solo pega contra la base propia. */
+  onPin: () => void
+  onUnpin: () => void
   onSaveTemplate: (content: string) => void
   /** El hilo está en modo selección (hay al menos un mensaje tildado): las
    * burbujas dejan de abrir media y pasan a tildarse al tocarlas. */
@@ -149,6 +154,8 @@ export function MessageBubble({
   onForward,
   onDownload,
   isDeleting,
+  onPin,
+  onUnpin,
   onSaveTemplate,
   selectionMode,
   isSelected,
@@ -255,9 +262,38 @@ export function MessageBubble({
   const canDelete = canReply && isVendedor
   const sentAgo = m.sent_at ? Date.now() - new Date(m.sent_at).getTime() : Infinity
   const canEdit = canDelete && (kind === 'text') && sentAgo < EDIT_WINDOW_MS
+  // Fijar es nativo del CRM (ver MessageActionsMenu): no depende de WhatsApp,
+  // así que alcanza con que el mensaje exista y no esté eliminado — a
+  // diferencia de responder/reenviar, no hace falta wa_message_id.
+  const canPin = m.id > 0 && !isDeleted
+  const isPinned = !!m.pinned_at
   const isForwarded = m.payload?.forwarded === true && !isDeleted
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const actionButtonClass = 'rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark'
-  const messageActions = (canForward || canDownload) && !selectionMode && (
+
+  // Solo Responder/Reaccionar/Reenviar quedan sueltas al pasar el mouse; el
+  // resto vive detrás del "⋮" de MessageActionsMenu para no llenar la burbuja
+  // de íconos — mismo criterio que ya usa WhatsApp Web para esto.
+  const menuActions: MessageMenuAction[] = []
+  if (canDownload) menuActions.push({ key: 'download', icon: Download, label: 'Descargar', onClick: onDownload })
+  if (canForward) menuActions.push({ key: 'select', icon: CircleCheck, label: 'Seleccionar', onClick: onToggleSelect })
+  if (canPin) menuActions.push({
+    key: 'pin',
+    icon: isPinned ? PinOff : Pin,
+    label: isPinned ? 'Desfijar mensaje' : 'Fijar mensaje',
+    onClick: isPinned ? onUnpin : onPin,
+  })
+  if (canEdit) menuActions.push({ key: 'edit', icon: Pencil, label: 'Editar', onClick: onEdit })
+  if (canDelete) menuActions.push({
+    key: 'delete',
+    icon: Trash2,
+    label: isDeleting ? 'Eliminando…' : 'Eliminar para todos',
+    danger: true,
+    disabled: isDeleting,
+    onClick: () => setShowDeleteConfirm(true),
+  })
+
+  const messageActions = (canReply || canForward) && !selectionMode && (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
       {canReply && (
         <button
@@ -286,61 +322,12 @@ export function MessageBubble({
         >
           <Forward aria-hidden="true" className="h-3.5 w-3.5" />
         </button>}
-      {canDownload && <button
-          type="button"
-          onClick={onDownload}
-          aria-label="Descargar multimedia de este mensaje"
-          title="Descargar"
-          className={actionButtonClass}
-        >
-          <Download aria-hidden="true" className="h-3.5 w-3.5" />
-        </button>}
-      {canForward && <button
-          type="button"
-          onClick={onToggleSelect}
-          aria-label="Seleccionar este mensaje"
-          title="Seleccionar"
-          className={actionButtonClass}
-        >
-          <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
-        </button>}
-      {canEdit && (
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label="Editar este mensaje"
-          title="Editar"
-          className={actionButtonClass}
-        >
-          <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
-        </button>
-      )}
-      {canDelete && (
-        <ConfirmDialog
-          title="Eliminar mensaje para todos"
-          description="El mensaje desaparecerá también del WhatsApp del cliente, que verá 'Se eliminó este mensaje'. No se puede deshacer."
-          confirmLabel="Eliminar para todos"
-          disabled={isDeleting}
-          onConfirm={onDelete}
-        >
-          <button
-            type="button"
-            disabled={isDeleting}
-            aria-busy={isDeleting}
-            aria-label="Eliminar este mensaje para todos"
-            title={isDeleting ? 'Eliminando…' : 'Eliminar para todos'}
-            className={`${actionButtonClass} hover:text-red-600 disabled:cursor-wait disabled:opacity-60 dark:hover:text-red-400`}
-          >
-            {isDeleting
-              ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
-              : <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
-          </button>
-        </ConfirmDialog>
-      )}
+      <MessageActionsMenu actions={menuActions} side={isVendedor ? 'left' : 'right'} />
     </div>
   )
 
   return (
+    <>
     <div
       className={`group flex items-center gap-1 ${isVendedor ? 'justify-end' : 'justify-start'} ${isFirstOfGroup ? 'mt-3' : 'mt-[3px]'} ${reactions.length > 0 ? 'mb-2.5' : ''} ${
         selectionMode
@@ -480,5 +467,17 @@ export function MessageBubble({
       </div>
       {!isVendedor && messageActions}
     </div>
+    {canDelete && (
+      <ConfirmDialog
+        title="Eliminar mensaje para todos"
+        description="El mensaje desaparecerá también del WhatsApp del cliente, que verá 'Se eliminó este mensaje'. No se puede deshacer."
+        confirmLabel="Eliminar para todos"
+        disabled={isDeleting}
+        onConfirm={onDelete}
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+      />
+    )}
+    </>
   )
 }

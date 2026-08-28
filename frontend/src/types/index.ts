@@ -355,6 +355,10 @@ export interface Message {
   /** Tipo del citado: deja mostrar "📷 Imagen" en la cita aunque su content
    * venga vacío (los adjuntos ya no llevan el tipo embebido en content). */
   quoted_message_type?: MessageType | null
+  /** Fijado nativo del CRM (no existe forma de fijar un mensaje del lado de
+   * quien envía en WhatsApp, así que esto no se refleja allá). null = no
+   * está fijado. */
+  pinned_at?: string | null
 }
 
 /** Mensaje leído de WhatsApp que no está registrado en la base: es anterior

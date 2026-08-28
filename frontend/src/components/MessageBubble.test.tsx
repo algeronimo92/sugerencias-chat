@@ -38,6 +38,8 @@ interface Options {
   onRetry?: () => void
   onDiscard?: () => void
   onDownload?: () => void
+  onPin?: () => void
+  onUnpin?: () => void
   selectionMode?: boolean
   isSelected?: boolean
   /** Otros mensajes del chat, para correlacionar pedidos de WhatsApp Flow
@@ -52,6 +54,8 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onRetry = options.onRetry ?? vi.fn()
   const onDiscard = options.onDiscard ?? vi.fn()
   const onDownload = options.onDownload ?? vi.fn()
+  const onPin = options.onPin ?? vi.fn()
+  const onUnpin = options.onUnpin ?? vi.fn()
   const m = message(overrides)
   render(
     <MessageBubble
@@ -75,13 +79,15 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onForward={onForward}
       onDownload={onDownload}
       isDeleting={false}
+      onPin={onPin}
+      onUnpin={onUnpin}
       onSaveTemplate={vi.fn()}
       selectionMode={options.selectionMode ?? false}
       isSelected={options.isSelected ?? false}
       onToggleSelect={onToggleSelect}
     />,
   )
-  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onDownload }
+  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onDownload, onPin, onUnpin }
 }
 
 describe('MessageBubble', () => {
@@ -256,8 +262,9 @@ describe('MessageBubble', () => {
     const user = userEvent.setup()
     const { onEdit } = renderBubble()
 
-    expect(screen.getByLabelText('Eliminar este mensaje para todos')).toBeInTheDocument()
-    await user.click(screen.getByLabelText('Editar este mensaje'))
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Editar' }))
 
     expect(onEdit).toHaveBeenCalledOnce()
   })
@@ -281,19 +288,60 @@ describe('MessageBubble', () => {
     expect(screen.queryByLabelText('Descartar el envío fallido')).not.toBeInTheDocument()
   })
 
-  it('no ofrece editar pasados los 15 minutos, pero sí eliminar', () => {
+  it('no ofrece editar pasados los 15 minutos, pero sí eliminar', async () => {
+    const user = userEvent.setup()
     const sixteenMinutesAgo = new Date(Date.now() - 16 * 60 * 1000).toISOString()
     renderBubble({ sent_at: sixteenMinutesAgo })
 
-    expect(screen.queryByLabelText('Editar este mensaje')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Eliminar este mensaje para todos')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
   })
 
-  it('no ofrece editar un adjunto propio: WhatsApp solo edita texto', () => {
+  it('no ofrece editar un adjunto propio: WhatsApp solo edita texto', async () => {
+    const user = userEvent.setup()
     renderBubble({ message_type: 'image', media_url: '/media/foto.jpg', content: 'Mirá' })
 
-    expect(screen.queryByLabelText('Editar este mensaje')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Eliminar este mensaje para todos')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
+  })
+
+  it('ofrece fijar un mensaje sin fijar', async () => {
+    const user = userEvent.setup()
+    const { onPin, onUnpin } = renderBubble()
+
+    await user.click(screen.getByLabelText('Más acciones'))
+    await user.click(screen.getByRole('menuitem', { name: 'Fijar mensaje' }))
+
+    expect(onPin).toHaveBeenCalledOnce()
+    expect(onUnpin).not.toHaveBeenCalled()
+  })
+
+  it('ofrece desfijar un mensaje ya fijado', async () => {
+    const user = userEvent.setup()
+    const { onPin, onUnpin } = renderBubble({ pinned_at: '2026-08-28T10:00:00.000Z' })
+
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Fijar mensaje' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Desfijar mensaje' }))
+
+    expect(onUnpin).toHaveBeenCalledOnce()
+    expect(onPin).not.toHaveBeenCalled()
+  })
+
+  it('deja fijar un mensaje del cliente aunque no se le pueda editar ni eliminar', async () => {
+    const user = userEvent.setup()
+    renderBubble({ sender: 'cliente', content: 'Hola' })
+
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.getByRole('menuitem', { name: 'Fijar mensaje' })).toBeInTheDocument()
+  })
+
+  it('no ofrece fijar un mensaje eliminado', () => {
+    renderBubble({ content: null, deleted_at: '2026-08-06T12:00:00.000Z' })
+
+    expect(screen.queryByLabelText('Más acciones')).not.toBeInTheDocument()
   })
 
   it('deja descargar un audio del chat con un nombre fechado', () => {
@@ -329,25 +377,32 @@ describe('MessageBubble', () => {
     const onDownload = vi.fn()
     renderBubble({ message_type: 'image', media_url: '/media/foto.jpg', content: 'Mirá' }, { onDownload })
 
-    await user.click(screen.getByLabelText('Descargar multimedia de este mensaje'))
+    await user.click(screen.getByLabelText('Más acciones'))
+    await user.click(screen.getByRole('menuitem', { name: 'Descargar' }))
 
     expect(onDownload).toHaveBeenCalledOnce()
   })
 
-  it('no ofrece ni editar ni eliminar un mensaje del cliente', () => {
+  it('no ofrece ni editar ni eliminar un mensaje del cliente', async () => {
+    const user = userEvent.setup()
     renderBubble({ sender: 'cliente', content: 'Hola' })
 
-    expect(screen.queryByLabelText('Editar este mensaje')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Eliminar este mensaje para todos')).not.toBeInTheDocument()
-    // Responder y reaccionar sí siguen disponibles.
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
+    // Fijar sí (no depende de quién mandó el mensaje).
+    expect(screen.getByRole('menuitem', { name: 'Fijar mensaje' })).toBeInTheDocument()
+    // Responder y reaccionar sí siguen disponibles, sueltas.
     expect(screen.getByLabelText('Responder a este mensaje')).toBeInTheDocument()
   })
 
-  it('no ofrece acciones sobre un mensaje todavía sin confirmar en WhatsApp', () => {
+  it('no ofrece editar ni eliminar sobre un mensaje todavía sin confirmar en WhatsApp', async () => {
+    const user = userEvent.setup()
     renderBubble({ wa_message_id: null, status: 'PENDING' })
 
-    expect(screen.queryByLabelText('Editar este mensaje')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Eliminar este mensaje para todos')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
   })
 
   it('muestra la lápida de un mensaje eliminado, sin su contenido ni acciones', () => {
@@ -357,7 +412,7 @@ describe('MessageBubble', () => {
     expect(screen.getByText('Eliminaste este mensaje')).toBeInTheDocument()
     expect(screen.queryByText('Te dejo el precio')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Responder a este mensaje')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Eliminar este mensaje para todos')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Más acciones')).not.toBeInTheDocument()
   })
 
   it('atribuye la lápida al cliente cuando el eliminado era suyo', () => {
@@ -394,7 +449,7 @@ describe('MessageBubble', () => {
     renderBubble({ content: null, deleted_at: '2026-08-06T12:00:00.000Z' })
 
     expect(screen.queryByLabelText('Reenviar este mensaje')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Seleccionar este mensaje')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Más acciones')).not.toBeInTheDocument()
   })
 
   it('marca como reenviado el mensaje que llegó de otro chat', () => {

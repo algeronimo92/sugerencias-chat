@@ -37,6 +37,7 @@ class _Row:
             reactions=None,
             edited_at=None,
             deleted_at=None,
+            pinned_at=None,
             media_width=None,
             media_height=None,
             message_secret=None,
