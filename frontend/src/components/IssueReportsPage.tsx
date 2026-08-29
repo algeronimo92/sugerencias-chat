@@ -1,4 +1,4 @@
-import { Bug, CheckCircle2, Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Plus, Search } from 'lucide-react'
+import { Bug, CheckCircle2, Clock3, Image as ImageIcon, Loader2, MessageSquare, Plus, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ import { resolveMediaUrl } from '../utils/message'
 import { Button } from './ui/Button'
 import { Input, Select } from './ui/Input'
 import { IssueReportDetailDialog } from './IssueReportDetailDialog'
+import { MediaLightbox, type MediaLightboxItem } from './MediaLightbox'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-PE', {
@@ -28,6 +29,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
   const [search, setSearch] = useState('')
   const reportFromUrl = Number(searchParams.get('report'))
   const [selectedReportId, setSelectedReportId] = useState<number | null>(Number.isInteger(reportFromUrl) && reportFromUrl > 0 ? reportFromUrl : null)
+  const [preview, setPreview] = useState<{ items: MediaLightboxItem[]; item: MediaLightboxItem } | null>(null)
 
   useEffect(() => {
     setSelectedReportId(Number.isInteger(reportFromUrl) && reportFromUrl > 0 ? reportFromUrl : null)
@@ -141,22 +143,26 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
                     )}
                   </div>
 
-                  {report.attachments.length > 0 && (
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:max-w-2xl">
-                      {report.attachments.map(attachment => {
-                        const url = resolveMediaUrl(attachment.media_url) ?? attachment.media_url
-                        return (
-                          <a key={attachment.id} href={url} target="_blank" rel="noopener noreferrer" className="group relative aspect-video overflow-hidden rounded-lg border border-wa-border bg-wa-field dark:border-wa-border-dark dark:bg-wa-field-dark">
-                            <img src={url} alt={attachment.filename} loading="lazy" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
-                            <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-black/60 px-2 py-1 text-[10px] text-white">
-                              <span className="truncate"><ImageIcon className="mr-1 inline h-3 w-3" />{attachment.filename}</span>
-                              <ExternalLink className="h-3 w-3 shrink-0" />
+                  {report.attachments.length > 0 && (() => {
+                    const items: MediaLightboxItem[] = report.attachments.map(attachment => ({
+                      src: resolveMediaUrl(attachment.media_url) ?? attachment.media_url,
+                      kind: 'image',
+                      alt: attachment.filename,
+                      filename: attachment.filename,
+                    }))
+                    return (
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:max-w-2xl">
+                        {items.map(item => (
+                          <button key={item.src} type="button" onClick={() => setPreview({ items, item })} aria-label={`Ver ${item.filename}`} className="group relative aspect-video overflow-hidden rounded-lg border border-wa-border bg-wa-field text-left dark:border-wa-border-dark dark:bg-wa-field-dark">
+                            <img src={item.src} alt={item.alt} loading="lazy" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                            <span className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-black/60 px-2 py-1 text-[10px] text-white">
+                              <span className="truncate"><ImageIcon className="mr-1 inline h-3 w-3" />{item.filename}</span>
                             </span>
-                          </a>
-                        )
-                      })}
-                    </div>
-                  )}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   <footer className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-wa-border pt-3 text-[11px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
                     <span className="font-medium text-wa-text dark:text-wa-text-dark">{report.reporter_name}</span>
@@ -172,6 +178,7 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
         )}
       </div>
       {selectedReportId != null && <IssueReportDetailDialog reportId={selectedReportId} onClose={closeReport} />}
+      {preview && <MediaLightbox src={preview.item.src} kind={preview.item.kind} alt={preview.item.alt} filename={preview.item.filename} items={preview.items} onClose={() => setPreview(null)} />}
     </div>
   )
 }

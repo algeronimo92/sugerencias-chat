@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Activity, Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Send, X } from 'lucide-react'
+import { Activity, Clock3, Image as ImageIcon, Loader2, MessageSquare, Send, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import type { IssueReportEvent, IssueReportPriority, IssueReportStatus } from '../types'
@@ -11,6 +11,7 @@ import { resolveMediaUrl } from '../utils/message'
 import { Button } from './ui/Button'
 import { Select, Textarea } from './ui/Input'
 import { dialogContentPositionClassElevated, dialogOverlayClassElevated } from './ui/Dialog'
+import { MediaLightbox, type MediaLightboxItem } from './MediaLightbox'
 
 
 function formatDate(value: string) {
@@ -32,6 +33,7 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
   const updateReport = useUpdateIssueReport()
   const addComment = useAddIssueReportComment()
   const [comment, setComment] = useState('')
+  const [preview, setPreview] = useState<{ items: MediaLightboxItem[]; item: MediaLightboxItem } | null>(null)
 
   function update(values: { status?: IssueReportStatus; priority?: IssueReportPriority }) {
     updateReport.mutate({ id: reportId, ...values }, {
@@ -76,15 +78,24 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
                     <span>·</span><span>{formatDate(report.created_at)}</span><span>·</span><span className="truncate">{report.current_path}</span>
                   </div>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-wa-text dark:text-wa-text-dark">{report.description}</p>
-                  {report.attachments.length > 0 && <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {report.attachments.map(attachment => {
-                      const url = resolveMediaUrl(attachment.media_url) ?? attachment.media_url
-                      return <a key={attachment.id} href={url} target="_blank" rel="noopener noreferrer" className="group relative aspect-video overflow-hidden rounded-lg border border-wa-border dark:border-wa-border-dark">
-                        <img src={url} alt={attachment.filename} className="h-full w-full object-cover" />
-                        <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/60 px-2 py-1 text-[10px] text-white"><span className="truncate"><ImageIcon className="mr-1 inline h-3 w-3" />{attachment.filename}</span><ExternalLink className="h-3 w-3" /></span>
-                      </a>
-                    })}
-                  </div>}
+                  {report.attachments.length > 0 && (() => {
+                    const items: MediaLightboxItem[] = report.attachments.map(attachment => ({
+                      src: resolveMediaUrl(attachment.media_url) ?? attachment.media_url,
+                      kind: 'image',
+                      alt: attachment.filename,
+                      filename: attachment.filename,
+                    }))
+                    return (
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {items.map(item => (
+                          <button key={item.src} type="button" onClick={() => setPreview({ items, item })} aria-label={`Ver ${item.filename}`} className="group relative aspect-video overflow-hidden rounded-lg border border-wa-border text-left dark:border-wa-border-dark">
+                            <img src={item.src} alt={item.alt} className="h-full w-full object-cover" />
+                            <span className="absolute inset-x-0 bottom-0 flex items-center bg-black/60 px-2 py-1 text-[10px] text-white"><span className="truncate"><ImageIcon className="mr-1 inline h-3 w-3" />{item.filename}</span></span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 <section className="mt-4 rounded-xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
@@ -120,6 +131,7 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
           )}
         </Dialog.Content>
       </Dialog.Portal>
+      {preview && <MediaLightbox src={preview.item.src} kind={preview.item.kind} alt={preview.item.alt} filename={preview.item.filename} items={preview.items} onClose={() => setPreview(null)} />}
     </Dialog.Root>
   )
 }
