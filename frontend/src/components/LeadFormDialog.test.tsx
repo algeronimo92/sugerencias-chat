@@ -134,7 +134,7 @@ describe('LeadFormDialog teléfono principal sin resolver', () => {
       <LeadFormDialog
         title="Editar lead"
         submitLabel="Guardar"
-        initial={{ name: 'Ana', phone: '+51900111222' }}
+        initial={{ name: 'Ana', phone: '51900111222' }}
         canEditPhone
         phoneEditIsRisky={false}
         isSubmitting={false}

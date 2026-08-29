@@ -33,7 +33,7 @@ def _lead(**campos) -> SimpleNamespace:
 
 def test_the_target_adopts_only_what_it_has_empty():
     source = _lead(nombre="Dani 🌷", notas="vino del anuncio", vendedor_id=7)
-    target = _lead(telefono="+51997511558", vendedor_id=3)
+    target = _lead(telefono="51997511558", vendedor_id=3)
 
     completados = _fill_empty_fields(source, target)
 
@@ -42,13 +42,13 @@ def test_the_target_adopts_only_what_it_has_empty():
     assert target.notas == "vino del anuncio"
     # El vendedor asignado en la ficha real no se toca.
     assert target.vendedor_id == 3
-    assert target.telefono == "+51997511558"
+    assert target.telefono == "51997511558"
     assert target.updated_at is not None
 
 
 def test_nothing_is_copied_when_the_target_is_complete():
-    source = _lead(nombre="Dani 🌷", telefono="+51900000000")
-    target = _lead(nombre="Daniela", telefono="+51997511558")
+    source = _lead(nombre="Dani 🌷", telefono="51900000000")
+    target = _lead(nombre="Daniela", telefono="51997511558")
 
     assert _fill_empty_fields(source, target) == ()
     assert target.nombre == "Daniela"
@@ -57,11 +57,11 @@ def test_nothing_is_copied_when_the_target_is_complete():
 
 def test_the_phone_of_a_lead_born_from_a_lid_is_adopted():
     """El caso inverso: el huérfano es el destino y aporta el historial."""
-    source = _lead(telefono="+51997511558")
+    source = _lead(telefono="51997511558")
     target = _lead(nombre="Dani 🌷")
 
     assert _fill_empty_fields(source, target) == ("telefono",)
-    assert target.telefono == "+51997511558"
+    assert target.telefono == "51997511558"
 
 
 @pytest.mark.asyncio

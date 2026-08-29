@@ -239,7 +239,7 @@ async def test_learn_fills_the_phone_of_a_lead_born_from_a_lid(monkeypatch):
     )
 
     assert learned == (PHONE_JID,)
-    assert lead.telefono == "+51997511558"
+    assert lead.telefono == "51997511558"
 
 
 @pytest.mark.asyncio
