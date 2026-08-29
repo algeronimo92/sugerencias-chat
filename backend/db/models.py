@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     SmallInteger,
     Text,
     func,
@@ -164,6 +166,57 @@ class WhatsAppIdentity(Base):
         CheckConstraint("kind IN ('phone', 'lid')", name="whatsapp_identities_kind_check"),
         Index("uq_whatsapp_identities_instance_jid", instance, jid, unique=True),
         Index("idx_whatsapp_identities_lead", lead_id),
+    )
+
+
+class WhatsappAdConversion(Base):
+    """Clic a un anuncio de WhatsApp (Click-to-WhatsApp) y, si el contacto
+    termina comprando, el resultado de esa venta. Llega vía webhook/n8n desde
+    la plataforma de anuncios; ctwaclid es la clave que la correlaciona con el
+    ad_referral embebido en el primer mensaje de wsp_messages.payload. lead_id
+    se resuelve por telefono contra whatsapp_identities al insertar, pero
+    puede quedar NULL si todavía no existe un lead con ese número.
+    """
+
+    __tablename__ = "wsp_ad"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
+    )
+    telefono: Mapped[str] = mapped_column(Text, nullable=False)
+    ctwaclid: Mapped[str | None] = mapped_column(Text)
+    id_transaccion: Mapped[str | None] = mapped_column(Text)
+    source_id: Mapped[int | None] = mapped_column(BigInteger)
+    nombre: Mapped[str | None] = mapped_column(Text)
+    apellido: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(Text)
+    ciudad: Mapped[str | None] = mapped_column(Text)
+    provincia: Mapped[str | None] = mapped_column(Text)
+    pais: Mapped[str | None] = mapped_column(Text)
+    moneda: Mapped[str | None] = mapped_column(Text)
+    valor_venta: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    item_id: Mapped[str | None] = mapped_column(Text)
+    item_nombre: Mapped[str | None] = mapped_column(Text)
+    mensaje: Mapped[str | None] = mapped_column(Text)
+    cta: Mapped[str | None] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text)
+    # Estado de la transacción tal como la reporta la plataforma de origen
+    # (ej. pendiente/aprobada/reembolsada). No es el estado del lead.
+    estado_transaccion: Mapped[str | None] = mapped_column(Text)
+    plataforma: Mapped[str | None] = mapped_column(Text)
+    # Si ya se aplicó al lead (attribution, notas, etc.) o sigue pendiente.
+    procesado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    fecha_interaccion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_wsp_ad_lead", lead_id),
+        Index("idx_wsp_ad_telefono", telefono),
+        Index("idx_wsp_ad_ctwaclid", ctwaclid),
     )
 
 
