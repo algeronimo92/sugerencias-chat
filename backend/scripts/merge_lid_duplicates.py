@@ -272,14 +272,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def _run_and_close(args: argparse.Namespace) -> int:
+    # El engine se crea perezosamente dentro de run() y sus conexiones quedan
+    # atadas al event loop de ese asyncio.run(): cerrarlo en un asyncio.run()
+    # separado deja el pool intentando cerrar conexiones de un loop ya
+    # destruido (RuntimeError: Event loop is closed). Un único run cubre todo.
+    try:
+        return await run(args)
+    finally:
+        await close_engine()
+
+
 def main() -> int:
     args = build_parser().parse_args()
     if args.source and not args.source.strip():
         raise ValueError("--source vacío")
-    try:
-        return asyncio.run(run(args))
-    finally:
-        asyncio.run(close_engine())
+    return asyncio.run(_run_and_close(args))
 
 
 if __name__ == "__main__":
