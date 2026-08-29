@@ -69,6 +69,9 @@ const AutomationsPage = lazy(() =>
 const CatalogsPage = lazy(() =>
   import('./components/CatalogsPage').then(module => ({ default: module.CatalogsPage })),
 )
+const NewAppointmentPage = lazy(() =>
+  import('./components/NewAppointmentPage').then(module => ({ default: module.NewAppointmentPage })),
+)
 const SettingsDialog = lazy(() =>
   import('./components/SettingsDialog').then(module => ({ default: module.SettingsDialog })),
 )
@@ -126,6 +129,7 @@ function MainLayout() {
   const isDashboard = location.pathname === '/dashboard'
   const isAutomations = location.pathname === '/automations'
   const isCatalogs = location.pathname === '/catalogs'
+  const isNuevaCita = location.pathname === '/citas/nueva'
   const isIssueReports = location.pathname === '/reports'
 
   // 'mobile' = una vista a la vez + navegación inferior; 'tablet' = lista y
@@ -480,6 +484,8 @@ function MainLayout() {
           <AutomationsPage />
         ) : isCatalogs && me?.role === 'admin' ? (
           <CatalogsPage />
+        ) : isNuevaCita ? (
+          <NewAppointmentPage />
         ) : isMediaLibrary && me?.role === 'admin' ? (
           <MediaLibraryPage />
         ) : isKanban ? (
@@ -693,6 +699,7 @@ function AuthGate() {
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/catalogs" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/citas/nueva" element={<MainLayout />} />
       </Routes>
     </BrowserRouter>
   )

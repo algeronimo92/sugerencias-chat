@@ -22,7 +22,7 @@ configure_logging()
 
 from config import settings
 from db.session import close_engine, get_engine
-from routers import auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
+from routers import appointments, auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
@@ -363,6 +363,7 @@ app.include_router(templates.router)
 app.include_router(media_library.router)
 app.include_router(internal_notes.router)
 app.include_router(issue_reports.router)
+app.include_router(appointments.router)
 app.include_router(notifications.router)
 app.include_router(push.router)
 app.include_router(dashboard.router)
