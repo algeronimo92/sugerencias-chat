@@ -18,6 +18,7 @@ export interface CreateAppointmentInput {
   vendedor: string
   adelanto: number
   comprobante: AppointmentAttachmentInput | null
+  testMode: boolean
 }
 
 export interface AppointmentResult {
@@ -46,6 +47,7 @@ export function useCreateAppointment() {
         data_base64: input.comprobante.dataBase64,
         filename: input.comprobante.filename,
       },
+      test_mode: input.testMode,
     })).data,
   })
 }

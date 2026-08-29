@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
     # el CRM). Distinto de n8n_webhook_url (sugerencias IA).
     n8n_citas_webhook_url: str = ""
+    # URL de prueba ("Listen for test event" en el editor de n8n). Solo la
+    # usan los admins desde el toggle "modo prueba" del formulario.
+    n8n_citas_webhook_test_url: str = ""
     evolution_api_url: str = ""
     evolution_api_key: str = ""
     evolution_instance: str = ""

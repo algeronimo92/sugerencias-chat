@@ -598,6 +598,10 @@ class AppointmentCreate(BaseModel):
     vendedor: str = Field(min_length=1, max_length=50)
     adelanto: float = Field(default=0, ge=0)
     comprobante: AppointmentAttachment | None = None
+    # Solo admins pueden activarlo (ver routers/appointments.py): manda
+    # formMode="test" en vez de "production" en el payload a n8n, igual que
+    # hacía el Form Trigger nativo al probarse desde su URL de test.
+    test_mode: bool = False
 
 
 class IssueReportAttachmentItem(BaseModel):

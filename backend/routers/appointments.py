@@ -29,16 +29,20 @@ def _normalize_phone(raw: str) -> str:
 
 
 @router.post("")
-async def post_appointment(body: AppointmentCreate, _user: User = Depends(get_current_user)):
+async def post_appointment(body: AppointmentCreate, user: User = Depends(get_current_user)):
     phone = _normalize_phone(body.telefono)
     if not re.fullmatch(r"9\d{8}", phone):
         raise HTTPException(400, "Teléfono peruano inválido")
     if body.vendedor not in ALLOWED_VENDEDORES:
         raise HTTPException(400, "Vendedor inválido")
+    if body.test_mode and user.role != "admin":
+        raise HTTPException(403, "Solo un administrador puede enviar en modo prueba")
 
-    webhook_url = await get_effective("n8n_citas_webhook_url")
+    setting_key = "n8n_citas_webhook_test_url" if body.test_mode else "n8n_citas_webhook_url"
+    webhook_url = await get_effective(setting_key)
     if not webhook_url:
-        raise HTTPException(503, "n8n no está configurado para citas (falta la URL del webhook)")
+        detail = " de prueba" if body.test_mode else ""
+        raise HTTPException(503, f"n8n no está configurado para citas (falta la URL del webhook{detail})")
 
     data = {
         "Nombre completo": body.nombre_completo,
@@ -50,6 +54,7 @@ async def post_appointment(body: AppointmentCreate, _user: User = Depends(get_cu
         "Hora": body.hora,
         "Vendedor": body.vendedor,
         "Adelanto": str(body.adelanto),
+        "formMode": "test" if body.test_mode else "production",
     }
 
     files = None
@@ -77,7 +82,7 @@ async def post_appointment(body: AppointmentCreate, _user: User = Depends(get_cu
         message = response.text
         try:
             payload = response.json()
-            message = payload.get("message") or payload.get("description") or message
+            message = payload.get("description") or payload.get("message") or message
         except ValueError:
             pass
         raise HTTPException(502, message or "n8n rechazó la cita")

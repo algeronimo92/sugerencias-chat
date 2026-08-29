@@ -1,6 +1,7 @@
-import { CalendarPlus, FileUp, Loader2, X } from 'lucide-react'
+import { CalendarPlus, FileUp, FlaskConical, Loader2, X } from 'lucide-react'
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { useMe } from '../hooks/useAuth'
 import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../hooks/useAppointments'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
@@ -68,8 +69,11 @@ function resultMessage(result: AppointmentResult): { text: string; tone: 'succes
 }
 
 export function NewAppointmentPage() {
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'admin'
   const [form, setForm] = useState(EMPTY_FORM)
   const [comprobante, setComprobante] = useState<File | null>(null)
+  const [testMode, setTestMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const createAppointment = useCreateAppointment()
@@ -138,6 +142,7 @@ export function NewAppointmentPage() {
       vendedor: form.vendedor,
       adelanto,
       comprobante: attachment,
+      testMode: isAdmin && testMode,
     }, {
       onSuccess: result => {
         const { text, tone } = resultMessage(result)
@@ -153,15 +158,34 @@ export function NewAppointmentPage() {
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
       <header className="shrink-0 border-b border-wa-border bg-white px-4 py-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-wa-primary">
-            <CalendarPlus className="h-4.5 w-4.5" />
-          </span>
-          <div>
-            <h1 className="text-lg font-semibold text-wa-text dark:text-wa-text-dark">Nueva cita</h1>
-            <p className="mt-0.5 text-xs text-wa-muted dark:text-wa-muted-dark">Registra una cita nueva: se crea en Calendar y se avisa por WhatsApp.</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-wa-primary">
+              <CalendarPlus className="h-4.5 w-4.5" />
+            </span>
+            <div>
+              <h1 className="text-lg font-semibold text-wa-text dark:text-wa-text-dark">Nueva cita</h1>
+              <p className="mt-0.5 text-xs text-wa-muted dark:text-wa-muted-dark">Registra una cita nueva: se crea en Calendar y se avisa por WhatsApp.</p>
+            </div>
           </div>
+          {isAdmin && (
+            <label className="flex shrink-0 items-center gap-2 rounded-lg border border-wa-border px-3 py-1.5 text-xs font-medium text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
+              <FlaskConical className="h-3.5 w-3.5" />
+              Modo prueba
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={e => setTestMode(e.target.checked)}
+                className="h-3.5 w-3.5 accent-wa-primary"
+              />
+            </label>
+          )}
         </div>
+        {isAdmin && testMode && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            Se enviará al webhook de prueba de n8n (formMode: test), no a producción.
+          </p>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">

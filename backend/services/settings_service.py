@@ -73,6 +73,13 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
     ),
     SettingDef("n8n_citas_webhook_url", "URL del webhook", "citas", "Citas (n8n)", secret=False),
+    SettingDef(
+        "n8n_citas_webhook_test_url",
+        "URL del webhook de prueba (modo test, solo admins)",
+        "citas",
+        "Citas (n8n)",
+        secret=False,
+    ),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0
