@@ -593,7 +593,7 @@ class AppointmentCreate(BaseModel):
     telefono: str = Field(min_length=1, max_length=30)
     tratamiento: str = Field(min_length=1, max_length=100)
     detalle: str = Field(default="", max_length=500)
-    fecha: str = Field(min_length=1, max_length=20)
+    fecha: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     hora: str = Field(min_length=1, max_length=10)
     vendedor: str = Field(min_length=1, max_length=50)
     adelanto: float = Field(default=0, ge=0)
@@ -602,6 +602,28 @@ class AppointmentCreate(BaseModel):
     # formMode="test" en vez de "production" en el payload a n8n, igual que
     # hacía el Form Trigger nativo al probarse desde su URL de test.
     test_mode: bool = False
+
+
+class AppointmentItem(BaseModel):
+    id: int
+    created_by_user_id: int
+    created_by_name: str
+    nombre_completo: str
+    dni: str
+    telefono: str
+    tratamiento: str
+    detalle: str
+    fecha: str
+    hora: str
+    vendedor: str
+    adelanto: float
+    comprobante_filename: str | None = None
+    test_mode: bool
+    status: Literal["created", "duplicate", "created_with_errors", "error"]
+    n8n_status: str | None = None
+    message: str | None = None
+    event_link: str | None = None
+    created_at: str
 
 
 class IssueReportAttachmentItem(BaseModel):

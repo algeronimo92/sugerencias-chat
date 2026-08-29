@@ -5,8 +5,9 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from db.models import User
-from models.schemas import AppointmentCreate
+from models.schemas import AppointmentCreate, AppointmentItem
 from routers.media import normalize_media_content_type
+from services.appointment_service import create_appointment_record, list_appointments
 from services.auth_service import get_current_user
 from services.settings_service import get_effective
 
@@ -26,6 +27,11 @@ def _normalize_phone(raw: str) -> str:
     if len(phone) == 11 and phone.startswith("51"):
         phone = phone[2:]
     return phone
+
+
+@router.get("", response_model=list[AppointmentItem])
+async def get_appointments(_user: User = Depends(get_current_user)):
+    return await list_appointments()
 
 
 @router.post("")
@@ -72,28 +78,61 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
             raise HTTPException(413, "El comprobante supera el máximo de 10 MB")
         files = {"Comprobante": (body.comprobante.filename, raw, content_type)}
 
+    async def record(status: str, n8n_status: str | None, message: str | None, event_link: str | None) -> None:
+        await create_appointment_record(
+            created_by_user_id=user.id,
+            nombre_completo=body.nombre_completo,
+            dni=body.dni,
+            telefono=body.telefono,
+            tratamiento=body.tratamiento,
+            detalle=body.detalle,
+            fecha=body.fecha,
+            hora=body.hora,
+            vendedor=body.vendedor,
+            adelanto=body.adelanto,
+            comprobante_filename=body.comprobante.filename if body.comprobante else None,
+            test_mode=body.test_mode,
+            status=status,
+            n8n_status=n8n_status,
+            message=message,
+            event_link=event_link,
+        )
+
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(webhook_url, data=data, files=files)
     except httpx.HTTPError as exc:
-        raise HTTPException(502, f"No se pudo contactar a n8n: {exc}")
+        message = f"No se pudo contactar a n8n: {exc}"
+        await record("error", None, message, None)
+        raise HTTPException(502, message)
 
     if response.status_code >= 400:
         message = response.text
         try:
-            payload = response.json()
-            message = payload.get("description") or payload.get("message") or message
+            error_payload = response.json()
+            message = error_payload.get("description") or error_payload.get("message") or message
         except ValueError:
             pass
-        raise HTTPException(502, message or "n8n rechazó la cita")
+        message = message or "n8n rechazó la cita"
+        await record("error", None, message, None)
+        raise HTTPException(502, message)
 
     try:
         payload = response.json()
     except ValueError:
-        return {"success": True, "message": "Cita enviada"}
+        payload = {"success": True, "message": "Cita enviada"}
     # n8n responde con un array de items cuando el último nodo produce uno
     # solo (nuestro caso: "Resumen creación y envíos" o el passthrough de
     # "Fin - cita duplicada").
     if isinstance(payload, list):
-        return payload[0] if payload else {"success": True, "message": "Cita enviada"}
+        payload = payload[0] if payload else {"success": True, "message": "Cita enviada"}
+
+    if payload.get("citaDuplicada"):
+        status = "duplicate"
+    elif payload.get("success") is False:
+        status = "created_with_errors"
+    else:
+        status = "created"
+    await record(status, payload.get("status"), payload.get("message"), payload.get("eventLink"))
+
     return payload

@@ -718,6 +718,42 @@ class IssueReportEvent(Base):
     __table_args__ = (Index("idx_issue_report_events_report_created", report_id, created_at),)
 
 
+class Appointment(Base):
+    """Registro de cada envío del formulario "Nueva Cita" del CRM (el que
+    reemplazó al Form Trigger de n8n), con el resultado real que devolvió
+    el workflow — se guarda incluso cuando n8n rechazó o duplicó la cita,
+    para poder revisar fallos desde el Historial."""
+
+    __tablename__ = "appointments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    nombre_completo: Mapped[str] = mapped_column(Text)
+    dni: Mapped[str] = mapped_column(Text, default="")
+    telefono: Mapped[str] = mapped_column(Text)
+    tratamiento: Mapped[str] = mapped_column(Text)
+    detalle: Mapped[str] = mapped_column(Text, default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    hora: Mapped[str] = mapped_column(Text)
+    vendedor: Mapped[str] = mapped_column(Text)
+    adelanto: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    comprobante_filename: Mapped[str | None] = mapped_column(Text)
+    test_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(Text)
+    n8n_status: Mapped[str | None] = mapped_column(Text)
+    message: Mapped[str | None] = mapped_column(Text)
+    event_link: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('created', 'duplicate', 'created_with_errors', 'error')",
+            name="ck_appointments_status",
+        ),
+        Index("idx_appointments_created", created_at.desc()),
+    )
+
+
 class LeadTask(Base):
     __tablename__ = "lead_tasks"
 
