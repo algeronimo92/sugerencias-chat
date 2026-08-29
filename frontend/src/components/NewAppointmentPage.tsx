@@ -1,5 +1,5 @@
-import { CalendarPlus, FileUp, FlaskConical, Loader2, X } from 'lucide-react'
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { CalendarPlus, FileText, FileUp, FlaskConical, Loader2, Save, X } from 'lucide-react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { useMe } from '../hooks/useAuth'
 import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../hooks/useAppointments'
@@ -49,6 +49,38 @@ const EMPTY_FORM = {
   adelanto: '0',
 }
 
+type AppointmentForm = typeof EMPTY_FORM
+
+// El comprobante (File) no se guarda: no se puede serializar a JSON, así que
+// el borrador solo recuerda los campos de texto y hay que volver a adjuntarlo.
+const DRAFT_KEY = 'nueva-cita-draft'
+
+function loadDraft(): AppointmentForm | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    return { ...EMPTY_FORM, ...JSON.parse(raw) }
+  } catch {
+    return null
+  }
+}
+
+function saveDraft(form: AppointmentForm) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+  } catch {
+    // Modo privado, cuota llena, etc. — el borrador no es crítico, se ignora.
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // Idem: si falla, no hay nada más que hacer.
+  }
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -75,8 +107,17 @@ export function NewAppointmentPage() {
   const [comprobante, setComprobante] = useState<File | null>(null)
   const [testMode, setTestMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [draftRestored, setDraftRestored] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const createAppointment = useCreateAppointment()
+
+  useEffect(() => {
+    const draft = loadDraft()
+    if (draft) {
+      setForm(draft)
+      setDraftRestored(true)
+    }
+  }, [])
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -101,6 +142,19 @@ export function NewAppointmentPage() {
   function resetForm() {
     setForm(EMPTY_FORM)
     setComprobante(null)
+    setDraftRestored(false)
+    clearDraft()
+  }
+
+  function handleSaveDraft() {
+    saveDraft(form)
+    setDraftRestored(true)
+    toast.success('Borrador guardado')
+  }
+
+  function discardDraft() {
+    resetForm()
+    toast.info('Borrador descartado')
   }
 
   async function submit(event: FormEvent) {
@@ -190,6 +244,18 @@ export function NewAppointmentPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <form onSubmit={submit} className="mx-auto max-w-2xl space-y-4">
+          {draftRestored && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-wa-border bg-wa-field px-3 py-2 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-field-dark dark:text-wa-muted-dark">
+              <span className="flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                Se restauró un borrador guardado (el comprobante no se guarda, hay que volver a adjuntarlo).
+              </span>
+              <button type="button" onClick={discardDraft} disabled={busy} className="shrink-0 font-medium text-wa-primary-strong hover:underline disabled:opacity-40 dark:text-wa-primary">
+                Descartar
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label htmlFor="nc-nombre" className={labelClass}>Nombre completo *</label>
@@ -265,7 +331,10 @@ export function NewAppointmentPage() {
 
           {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={busy}>
+              <Save className="h-4 w-4" /> Guardar borrador
+            </Button>
             <Button type="submit" disabled={busy}>
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
               {busy ? 'Enviando…' : 'Registrar cita'}
