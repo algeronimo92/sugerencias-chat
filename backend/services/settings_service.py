@@ -72,6 +72,7 @@ SETTING_DEFS: list[SettingDef] = [
         "Leads (CRM)",
         secret=False,
     ),
+    SettingDef("n8n_citas_webhook_url", "URL del webhook", "citas", "Citas (n8n)", secret=False),
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0

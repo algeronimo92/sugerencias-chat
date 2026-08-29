@@ -581,6 +581,25 @@ class IssueReportCommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
 
 
+class AppointmentAttachment(BaseModel):
+    content_type: str = Field(min_length=1, max_length=100)
+    data_base64: str = Field(min_length=1)
+    filename: str = Field(min_length=1, max_length=255)
+
+
+class AppointmentCreate(BaseModel):
+    nombre_completo: str = Field(min_length=1, max_length=200)
+    dni: str = Field(default="", max_length=20)
+    telefono: str = Field(min_length=1, max_length=30)
+    tratamiento: str = Field(min_length=1, max_length=100)
+    detalle: str = Field(default="", max_length=500)
+    fecha: str = Field(min_length=1, max_length=20)
+    hora: str = Field(min_length=1, max_length=10)
+    vendedor: str = Field(min_length=1, max_length=50)
+    adelanto: float = Field(default=0, ge=0)
+    comprobante: AppointmentAttachment | None = None
+
+
 class IssueReportAttachmentItem(BaseModel):
     id: int
     media_url: str

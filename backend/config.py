@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # la dirección opuesta) para que no se confundan al configurarlas.
     n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
+    # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
+    # el CRM). Distinto de n8n_webhook_url (sugerencias IA).
+    n8n_citas_webhook_url: str = ""
     evolution_api_url: str = ""
     evolution_api_key: str = ""
     evolution_instance: str = ""

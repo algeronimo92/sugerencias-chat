@@ -120,7 +120,7 @@ async def _lead_snapshot(chat_id: str | None, digits: str | None) -> dict | None
             )
             if lead_id is None:
                 lead_id = await session.scalar(
-                    select(Lead.id).where(Lead.telefono == f"+{digits}").limit(1)
+                    select(Lead.id).where(Lead.telefono == digits).limit(1)
                 )
         if lead_id is None:
             return None

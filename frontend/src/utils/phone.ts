@@ -59,10 +59,10 @@ export function normalizePhone(raw: string, defaultCountryCode: string): PhoneCh
   return { status: 'valid', digits, preview: formatPhonePreview(digits, cc) }
 }
 
-/** "+51 906 471 403" — código de país separado y el resto en grupos de 3. */
+/** "51 906 471 403" — código de país separado y el resto en grupos de 3. */
 export function formatPhonePreview(digits: string, cc: string): string {
   const rest = digits.startsWith(cc) ? digits.slice(cc.length) : digits
   const prefix = digits.startsWith(cc) ? cc : ''
   const groups = rest.match(/.{1,3}/g) ?? []
-  return `+${[prefix, ...groups].filter(Boolean).join(' ')}`
+  return [prefix, ...groups].filter(Boolean).join(' ')
 }

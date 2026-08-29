@@ -134,7 +134,7 @@ def add_phone_jid(
 
 
 def _phone_from_jid(phone_jid: str | None) -> str | None:
-    return f"+{phone_jid.removesuffix(PHONE_SUFFIX)}" if phone_jid else None
+    return phone_jid.removesuffix(PHONE_SUFFIX) if phone_jid else None
 
 
 async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIdentity:

@@ -984,7 +984,7 @@ async def create_lead(
             seller_name = seller.name
     stmt = insert(Lead).values(
         legacy_remote_jid=external_jid,
-        telefono=f"+{digits}",
+        telefono=digits,
         telefono_secundario=secondary_phone,
         nombre=name,
         servicio_interes=servicio_interes,
@@ -1005,7 +1005,7 @@ async def create_lead(
                 AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
-                new_value={"name": name, "phone": f"+{digits}"},
+                new_value={"name": name, "phone": digits},
             )
             await session.commit()
         except IntegrityError:
@@ -1165,7 +1165,7 @@ async def rekey_lead_phone(
                 instance="*", jid=target_jid, kind="phone", lead_id=lead_id,
             ))
         lead.legacy_remote_jid = target_jid
-        lead.telefono = f"+{new_digits}"
+        lead.telefono = new_digits
         lead.updated_at = datetime.now(timezone.utc)
 
         await _record_activity(
@@ -1175,7 +1175,7 @@ async def rekey_lead_phone(
             "user" if actor_user_id is not None else "system",
             actor_user_id,
             {"phone": old_phone},
-            {"phone": f"+{new_digits}"},
+            {"phone": new_digits},
         )
         await session.commit()
 

@@ -11,8 +11,8 @@ const chat = (values: Partial<Chat>): Chat => ({
 
 describe('identidad visible del contacto', () => {
   it('prioriza el nombre y luego el teléfono', () => {
-    expect(displayName(chat({ name: 'Briss', phone: '+51943663225' }))).toBe('Briss')
-    expect(displayName(chat({ phone: '+51943663225' }))).toBe('+51943663225')
+    expect(displayName(chat({ name: 'Briss', phone: '51943663225' }))).toBe('Briss')
+    expect(displayName(chat({ phone: '51943663225' }))).toBe('51943663225')
   })
 
   it('usa el UUID interno cuando tampoco existe teléfono', () => {
