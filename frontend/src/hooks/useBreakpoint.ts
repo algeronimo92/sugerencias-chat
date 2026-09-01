@@ -15,7 +15,8 @@ export type Layout = 'mobile' | 'tablet' | 'desktop'
  * - `desktop` (>= 1280px): las tres columnas clásicas.
  *
  * El corte de escritorio es 1280 y no 1024 porque las columnas laterales
- * suman 704px fijos: por debajo de eso la conversación queda inusable.
+ * suman ~760px fijos (barra lateral de navegación + lista de chats +
+ * sugerencias): por debajo de eso la conversación queda inusable.
  */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
