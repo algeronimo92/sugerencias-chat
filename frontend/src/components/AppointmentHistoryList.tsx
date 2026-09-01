@@ -1,10 +1,13 @@
 import { CalendarClock, ExternalLink, FlaskConical, Loader2, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppointments, type AppointmentListItem } from '../hooks/useAppointments'
-import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS } from '../domain/appointments'
+import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../domain/appointments'
 import { formatFlowAmount } from '../utils/message'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
+
+const ALL_STATUSES = Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]
+const FAILED_STATUSES: AppointmentStatus[] = ['error', 'created_with_errors']
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -24,18 +27,87 @@ function matches(item: AppointmentListItem, query: string): boolean {
 export function AppointmentHistoryList() {
   const { data = [], isLoading, isError, refetch } = useAppointments()
   const [search, setSearch] = useState('')
+  const [activeStatuses, setActiveStatuses] = useState<Set<AppointmentStatus>>(new Set(ALL_STATUSES))
+  const [hideTestMode, setHideTestMode] = useState(false)
+
+  const hidingFailed = FAILED_STATUSES.every(status => !activeStatuses.has(status))
+
+  function toggleStatus(status: AppointmentStatus) {
+    setActiveStatuses(prev => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return next
+    })
+  }
+
+  function toggleHideFailed() {
+    setActiveStatuses(prev => {
+      const next = new Set(prev)
+      if (hidingFailed) FAILED_STATUSES.forEach(status => next.add(status))
+      else FAILED_STATUSES.forEach(status => next.delete(status))
+      return next
+    })
+  }
 
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es')
-    if (!query) return data
-    return data.filter(item => matches(item, query))
-  }, [data, search])
+    return data.filter(item => {
+      if (!activeStatuses.has(item.status)) return false
+      if (hideTestMode && item.test_mode) return false
+      if (query && !matches(item, query)) return false
+      return true
+    })
+  }, [data, search, activeStatuses, hideTestMode])
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="relative mb-4">
+      <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" />
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre, DNI, teléfono o tratamiento" className="pl-9" />
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {ALL_STATUSES.map(status => {
+          const active = activeStatuses.has(status)
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => toggleStatus(status)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                active
+                  ? APPOINTMENT_STATUS_COLORS[status]
+                  : 'bg-wa-field text-wa-muted line-through dark:bg-wa-field-dark dark:text-wa-muted-dark'
+              }`}
+            >
+              {APPOINTMENT_STATUS_LABELS[status]}
+            </button>
+          )
+        })}
+        <span className="mx-1 h-4 w-px bg-wa-border dark:bg-wa-border-dark" />
+        <button
+          type="button"
+          onClick={toggleHideFailed}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            hidingFailed
+              ? 'bg-wa-primary text-white'
+              : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'
+          }`}
+        >
+          Ocultar fallidos
+        </button>
+        <button
+          type="button"
+          onClick={() => setHideTestMode(v => !v)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            hideTestMode
+              ? 'bg-wa-primary text-white'
+              : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'
+          }`}
+        >
+          Ocultar pruebas
+        </button>
       </div>
 
       {isLoading ? (
@@ -48,8 +120,17 @@ export function AppointmentHistoryList() {
       ) : visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-wa-border bg-white px-5 py-14 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark">
           <CalendarClock className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-600" strokeWidth={1.4} />
-          <p className="mt-3 text-sm font-medium text-wa-text dark:text-wa-text-dark">Todavía no hay citas registradas</p>
-          <p className="mt-1 text-xs text-wa-muted">Las que se envíen desde el formulario van a aparecer aquí.</p>
+          {data.length === 0 ? (
+            <>
+              <p className="mt-3 text-sm font-medium text-wa-text dark:text-wa-text-dark">Todavía no hay citas registradas</p>
+              <p className="mt-1 text-xs text-wa-muted">Las que se envíen desde el formulario van a aparecer aquí.</p>
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-sm font-medium text-wa-text dark:text-wa-text-dark">Ningún resultado con estos filtros</p>
+              <p className="mt-1 text-xs text-wa-muted">Prueba a cambiar la búsqueda o habilitar más estados.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
