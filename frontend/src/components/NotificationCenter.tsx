@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
 import { usePushSubscription } from '../hooks/usePushSubscription'
-import { useRetryExecution } from '../hooks/useAutomations'
+import { useAutomationExecution, useRetryExecution } from '../hooks/useAutomations'
 import { useMe } from '../hooks/useAuth'
 import { SERVICE_WINDOW_ERROR_CODE } from '../domain/automationCatalog'
 import type { UserNotification } from '../types'
@@ -36,16 +36,19 @@ function serviceWindowExecutionId(notification: UserNotification): number | null
  *  acá se la habilita a salir igual. El permiso es de esta ejecución sola y el
  *  backend guarda quién lo dio. */
 function ServiceWindowOverrideAction({ notification, isAdmin }: { notification: UserNotification; isAdmin: boolean }) {
-  const [authorized, setAuthorized] = useState(false)
   const retryExecution = useRetryExecution()
   const executionId = serviceWindowExecutionId(notification)
+  // Se consulta la ejecución en sí (no la notificación, que es una foto
+  // fija) porque ahí es donde el backend guarda quién autorizó saltarse la
+  // ventana. Así el botón no "olvida" la autorización al recargar la página.
+  const { data: execution } = useAutomationExecution(isAdmin ? executionId : null)
   if (!isAdmin || executionId === null) return null
 
-  if (authorized) {
+  if (execution?.window_override_at) {
     return (
       <p className="flex items-center gap-1.5 px-4 pb-3 pl-16 text-[10px] font-medium text-wa-primary-strong dark:text-wa-primary">
         <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-        Autorizada: se reintenta ignorando la ventana
+        Autorizada por {execution.window_override_by_name ?? 'un admin'}: se reintenta ignorando la ventana
       </p>
     )
   }
@@ -58,7 +61,7 @@ function ServiceWindowOverrideAction({ notification, isAdmin }: { notification: 
         onClick={() => retryExecution.mutate(
           { id: executionId, ignoreServiceWindow: true },
           {
-            onSuccess: () => { setAuthorized(true); toast.success('Automatización reprogramada con tu autorización') },
+            onSuccess: () => toast.success('Automatización reprogramada con tu autorización'),
             onError: reason => toast.error(extractErrorMessage(reason)),
           },
         )}

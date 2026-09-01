@@ -265,6 +265,18 @@ async def get_executions(
     )
 
 
+@router.get("/executions/{execution_id}", response_model=AutomationExecutionItem)
+async def get_execution(execution_id: int, admin: User = Depends(require_admin)):
+    """Estado puntual de una ejecución — lo usa el centro de notificaciones
+    para saber si una autorización de ventana de 24 h ya quedó registrada
+    (`window_override_at`), algo que la notificación en sí no guarda y que
+    de otro modo se perdía al recargar la página."""
+    execution = await get_automation_execution(execution_id)
+    if execution is None:
+        raise HTTPException(404, "Ejecución no encontrada")
+    return execution
+
+
 @router.post("/executions/{execution_id}/retry", response_model=AutomationExecutionItem)
 async def post_retry_execution(
     execution_id: int,
