@@ -15,18 +15,6 @@ export type NavItem = {
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-<<<<<<< Updated upstream
-  { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, primary: true, labelFrom: 'sm' },
-  { path: '/kanban', label: 'Kanban', icon: Columns3, adminOnly: false, primary: true, labelFrom: 'sm' },
-  { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, primary: true, labelFrom: 'md' },
-  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, primary: false, labelFrom: 'lg' },
-  { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, primary: false, labelFrom: 'xl' },
-  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: true, primary: false, labelFrom: 'lg' },
-  { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, primary: false, labelFrom: 'xl' },
-  { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false, labelFrom: 'lg' },
-  { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false, labelFrom: 'xl' },
-  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false, labelFrom: 'xl' },
-=======
   { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, primary: true },
   { path: '/kanban', label: 'Kanban', icon: Columns3, adminOnly: false, primary: false },
   { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, primary: true },
@@ -37,7 +25,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
   { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false },
   { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false },
->>>>>>> Stashed changes
 ]
 
 /** Los chats tienen su propia ruta de detalle, así que no basta con comparar. */
