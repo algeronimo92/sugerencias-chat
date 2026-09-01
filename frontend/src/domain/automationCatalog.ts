@@ -214,6 +214,7 @@ export const NotificationType = {
   Automation: 'automation',
   IssueReport: 'issue_report',
   Appointment: 'appointment',
+  ServiceWindowClosed: 'service_window_closed',
 } as const
 export type NotificationTypeValue = ValueOf<typeof NotificationType>
 

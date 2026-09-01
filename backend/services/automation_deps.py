@@ -32,6 +32,7 @@ from services.evolution_service import send_whatsapp_reaction
 from services.message_outbox import enqueue_messages
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
+from services.push_service import send_push_to_user
 from services.ws_manager import manager
 
 
@@ -64,6 +65,7 @@ class AutomationDeps:
     create_task: Callable[..., Awaitable[dict]] = create_task
     record_template_use: Callable[..., Awaitable[bool]] = record_template_use
     create_notification: Callable[..., Awaitable[dict]] = create_system_notification
+    send_push: Callable[..., Awaitable[None]] = send_push_to_user
 
     # Encola en message_outbox en vez de llamar a Evolution API directo: da a
     # las automatizaciones los mismos reintentos con backoff y la misma
