@@ -1,17 +1,24 @@
 import base64
+import logging
 import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from db.models import User
+from domain_types import NotificationType
 from models.schemas import AppointmentCreate, AppointmentItem
 from routers.media import normalize_media_content_type
 from services.appointment_service import create_appointment_record, list_appointments
 from services.auth_service import get_current_user
+from services.issue_report_service import list_active_admin_ids
+from services.notification_service import create_system_notification
+from services.push_service import send_push_to_user
 from services.settings_service import get_effective
+from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
+logger = logging.getLogger(__name__)
 
 # Mismas reglas que el nodo "Preparar cita y mensajes" del workflow de n8n
 # (FORM-NUEVAS-CITAS.json): esto solo adelanta el error con un 400 rápido, la
@@ -78,8 +85,8 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
             raise HTTPException(413, "El comprobante supera el máximo de 10 MB")
         files = {"Comprobante": (body.comprobante.filename, raw, content_type)}
 
-    async def record(status: str, n8n_status: str | None, message: str | None, event_link: str | None) -> None:
-        await create_appointment_record(
+    async def record(status: str, n8n_status: str | None, message: str | None, event_link: str | None) -> dict:
+        return await create_appointment_record(
             created_by_user_id=user.id,
             nombre_completo=body.nombre_completo,
             dni=body.dni,
@@ -133,6 +140,41 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
         status = "created_with_errors"
     else:
         status = "created"
-    await record(status, payload.get("status"), payload.get("message"), payload.get("eventLink"))
+    appointment = await record(status, payload.get("status"), payload.get("message"), payload.get("eventLink"))
+
+    if status in {"created", "created_with_errors"} and not body.test_mode:
+        await _notify_new_appointment(appointment, user)
 
     return payload
+
+
+async def _notify_new_appointment(appointment: dict, user: User) -> None:
+    title = f"Nueva cita: {appointment['nombre_completo']}"
+    text = f"{appointment['tratamiento']} · {appointment['fecha']} {appointment['hora']}"
+    try:
+        admin_ids = await list_active_admin_ids()
+        recipient_ids = {user.id, *admin_ids}
+        for recipient_id in recipient_ids:
+            notification = await create_system_notification(
+                recipient_id,
+                NotificationType.APPOINTMENT,
+                title,
+                text,
+                source_id=str(appointment["id"]),
+                metadata={"appointment_id": appointment["id"]},
+            )
+            await manager.send_to_user(recipient_id, {
+                "type": "notification_created",
+                "notification": notification,
+            })
+            await send_push_to_user(
+                recipient_id,
+                title,
+                text,
+                "/citas/nueva",
+                tag=f"appointment-{appointment['id']}",
+            )
+    except Exception:
+        # La cita ya quedó persistida; un aviso fallido no puede convertir ese
+        # éxito en un 500 que invite a reenviar el formulario.
+        logger.exception("No se pudo avisar de la nueva cita %s", appointment["id"])

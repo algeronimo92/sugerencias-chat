@@ -107,6 +107,7 @@ class NotificationType(StrEnum):
     INTERNAL_NOTE_MENTION = "internal_note_mention"
     AUTOMATION = "automation"
     ISSUE_REPORT = "issue_report"
+    APPOINTMENT = "appointment"
 
 
 class IssueReportStatus(StrEnum):

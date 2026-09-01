@@ -213,6 +213,7 @@ export const NotificationType = {
   InternalNoteMention: 'internal_note_mention',
   Automation: 'automation',
   IssueReport: 'issue_report',
+  Appointment: 'appointment',
 } as const
 export type NotificationTypeValue = ValueOf<typeof NotificationType>
 

@@ -406,6 +406,9 @@ export function useChatUpdates(
                 if (notification.notification_type === NotificationType.IssueReport) {
                   navigate(notification.metadata?.issue_report_id ? `/reports?report=${notification.metadata.issue_report_id}` : '/reports')
                 }
+                else if (notification.notification_type === NotificationType.Appointment) {
+                  navigate('/citas/nueva')
+                }
                 else if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
               },
               { force: true, tag: `notification-${notification.id}` },

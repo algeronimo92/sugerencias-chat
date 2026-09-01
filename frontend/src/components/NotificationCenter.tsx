@@ -148,6 +148,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
         : null
       navigate(reportId ? `/reports?report=${reportId}` : '/reports')
     }
+    else if (notification.notification_type === 'appointment') navigate('/citas/nueva')
     else if (notification.lead_id) navigate(`/chat/${notification.lead_id}`)
   }
 
