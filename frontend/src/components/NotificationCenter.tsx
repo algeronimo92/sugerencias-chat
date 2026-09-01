@@ -170,7 +170,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-[80] flex max-h-[min(620px,calc(100vh-5rem))] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark sm:absolute sm:inset-x-auto sm:right-0 sm:top-9 sm:w-96 sm:max-w-[calc(100vw-2rem)]">
           <header className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div>
               <h2 className="text-sm font-semibold text-wa-text dark:text-white">Notificaciones</h2>
