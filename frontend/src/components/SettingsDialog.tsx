@@ -119,28 +119,28 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlayClass} />
         <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="border-b border-wa-border dark:border-wa-border-dark shrink-0">
+          <div className="flex items-center justify-between px-4 py-3">
             <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Configuración</Dialog.Title>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setTab('claves')} className={TAB_CLASS(tab === 'claves')}>
-                Claves
-              </button>
-              <button type="button" onClick={() => setTab('whatsapp')} className={TAB_CLASS(tab === 'whatsapp')}>
-                WhatsApp
-              </button>
-              <button type="button" onClick={() => setTab('usuarios')} className={TAB_CLASS(tab === 'usuarios')}>
-                Usuarios
-              </button>
-            </div>
+            <button type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1 overflow-x-auto px-4 pb-3">
+            <button type="button" onClick={() => setTab('claves')} className={`${TAB_CLASS(tab === 'claves')} shrink-0`}>
+              Claves
+            </button>
+            <button type="button" onClick={() => setTab('whatsapp')} className={`${TAB_CLASS(tab === 'whatsapp')} shrink-0`}>
+              WhatsApp
+            </button>
+            <button type="button" onClick={() => setTab('usuarios')} className={`${TAB_CLASS(tab === 'usuarios')} shrink-0`}>
+              Usuarios
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
