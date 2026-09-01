@@ -2720,28 +2720,40 @@ async def _notify_execution_failure(
 ) -> None:
     """Avisa al admin que creó la regla cuando una ejecución queda en failed —
     sin esto los fallos solo se descubren entrando al historial a mirar."""
+    is_service_window_error = error == SERVICE_WINDOW_CLOSED_ERROR
+    title = f"Automatización con error: {rule.name}"[:160]
+    body = (error or "La ejecución falló")[:1000]
     try:
         notification = await deps.create_notification(
             rule.created_by_user_id,
-            NotificationType.AUTOMATION,
-            f"Automatización con error: {rule.name}"[:160],
-            (error or "La ejecución falló")[:1000],
+            # Ventana de 24 h cerrada es su propio evento, no un AUTOMATION
+            # genérico: así el frontend lo distingue por notification_type y
+            # no por leer la metadata.
+            NotificationType.SERVICE_WINDOW_CLOSED if is_service_window_error else NotificationType.AUTOMATION,
+            title,
+            body,
             execution.lead_id,
             f"execution-failed:{execution.id}",
             {
                 "automation_rule_id": rule.id,
                 "automation_execution_id": execution.id,
-                # El frontend ofrece la autorización del admin por este código
-                # y no por el texto del error, que es para leer.
-                **(
-                    {"error_code": SERVICE_WINDOW_ERROR_CODE}
-                    if error == SERVICE_WINDOW_CLOSED_ERROR
-                    else {}
-                ),
+                # Se conserva por compatibilidad con notificaciones ya creadas
+                # antes de que este caso tuviera su propio notification_type.
+                **({"error_code": SERVICE_WINDOW_ERROR_CODE} if is_service_window_error else {}),
             },
         )
         await deps.send_to_user(
             rule.created_by_user_id, {"type": "notification_created", "notification": notification}
+        )
+        # Antes esto solo quedaba en la campanita: si el admin no tenía el CRM
+        # abierto, se enteraba recién al volver a entrar. Va al lead si la
+        # ejecución tiene uno, y si no a la pantalla de automatizaciones.
+        await deps.send_push(
+            rule.created_by_user_id,
+            title,
+            body,
+            f"/chat/{execution.lead_id}" if execution.lead_id else "/automations",
+            tag=f"execution-failed-{execution.id}",
         )
     except Exception:
         logger.exception("No se pudo notificar el fallo de la ejecución %s", execution.id)

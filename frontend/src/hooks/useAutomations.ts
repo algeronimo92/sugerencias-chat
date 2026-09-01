@@ -143,6 +143,18 @@ export function useRetryExecution() {
   })
 }
 
+/** Estado puntual de una ejecución por id. Se usa para saber, incluso
+ *  después de recargar la página, si una autorización de ventana de 24 h
+ *  ya quedó registrada — la notificación que la disparó no guarda ese dato,
+ *  solo la ejecución lo tiene. */
+export function useAutomationExecution(executionId: number | null) {
+  return useQuery({
+    queryKey: ['automation-executions', 'by-id', executionId],
+    queryFn: async () => (await client.get<AutomationExecution>(`/api/automations/executions/${executionId}`)).data,
+    enabled: executionId !== null,
+  })
+}
+
 export function useCancelExecution() {
   return useMutation({
     mutationFn: async (id: number) => (await client.post<AutomationExecution>(`/api/automations/executions/${id}/cancel`)).data,

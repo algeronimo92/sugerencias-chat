@@ -134,28 +134,49 @@ class TestRetry:
 
 
 class TestNotification:
-    async def _notify(self, error: str) -> dict:
+    async def _notify(self, error: str, *, execution=None) -> tuple[dict, AsyncMock]:
         created: dict = {}
 
         async def create_notification(user_id, notification_type, title, body, lead_id, source_id, metadata):
             created.update(metadata=metadata, title=title, body=body, type=notification_type)
             return {"id": 1}
 
-        deps = SimpleNamespace(create_notification=create_notification, send_to_user=AsyncMock())
+        send_push = AsyncMock()
+        deps = SimpleNamespace(create_notification=create_notification, send_to_user=AsyncMock(), send_push=send_push)
         await _notify_execution_failure(
-            make_rule(name="Hollywood peel"),
-            make_execution(),
+            make_rule(name="Hollywood peel", created_by_user_id=10),
+            execution or make_execution(),
             error,
             deps,
         )
-        return created
+        return created, send_push
 
-    async def test_la_alerta_de_ventana_cerrada_lleva_el_codigo(self):
-        created = await self._notify(SERVICE_WINDOW_CLOSED_ERROR)
-        assert created["type"] == NotificationType.AUTOMATION
+    async def test_la_alerta_de_ventana_cerrada_es_su_propio_evento(self):
+        created, _ = await self._notify(SERVICE_WINDOW_CLOSED_ERROR)
+        assert created["type"] == NotificationType.SERVICE_WINDOW_CLOSED
+        # Se conserva por compatibilidad con notificaciones ya creadas antes
+        # de que este caso tuviera su propio notification_type.
         assert created["metadata"]["error_code"] == SERVICE_WINDOW_ERROR_CODE
         assert created["metadata"]["automation_execution_id"] == 100
 
     async def test_otro_fallo_no_ofrece_la_autorizacion(self):
-        created = await self._notify("La plantilla no tiene contenido para enviar")
+        created, _ = await self._notify("La plantilla no tiene contenido para enviar")
+        assert created["type"] == NotificationType.AUTOMATION
         assert "error_code" not in created["metadata"]
+
+    async def test_manda_push_al_admin_que_creo_la_regla(self):
+        """Antes esto solo quedaba en la campanita: si el admin no tenía el
+        CRM abierto, se enteraba recién al volver a entrar."""
+        _, send_push = await self._notify(SERVICE_WINDOW_CLOSED_ERROR)
+
+        send_push.assert_awaited_once_with(
+            10,
+            "Automatización con error: Hollywood peel",
+            SERVICE_WINDOW_CLOSED_ERROR,
+            "/chat/51999@s.whatsapp.net",
+            tag="execution-failed-100",
+        )
+
+    async def test_el_push_va_a_automatizaciones_si_la_ejecucion_no_tiene_lead(self):
+        _, send_push = await self._notify(SERVICE_WINDOW_CLOSED_ERROR, execution=make_execution(lead_id=None))
+        assert send_push.await_args.args[3] == "/automations"

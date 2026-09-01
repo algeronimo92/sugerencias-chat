@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   role: 'admin',
   items: [] as UserNotification[],
+  // Ejecuciones ya autorizadas, por id — así se simula lo que el backend
+  // guarda en `window_override_at` y que sobrevive a un recargado de página.
+  execution: {} as Record<number, { window_override_at: string | null; window_override_by_name: string | null }>,
   pushSubscribed: true,
   pushSubscribe: vi.fn().mockResolvedValue(undefined),
   pushUnsubscribe: vi.fn().mockResolvedValue(undefined),
@@ -26,6 +29,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('../hooks/useAuth', () => ({ useMe: () => ({ data: { id: 1, role: mocks.role } }) }))
 vi.mock('../hooks/useAutomations', () => ({
   useRetryExecution: () => ({ mutate: mocks.retry, isPending: false }),
+  useAutomationExecution: (executionId: number | null) => ({
+    data: executionId !== null ? mocks.execution[executionId] : undefined,
+  }),
 }))
 vi.mock('../hooks/usePushSubscription', () => ({
   usePushSubscription: () => ({
@@ -81,6 +87,7 @@ describe('autorización de la ventana de 24 h', () => {
     mocks.retry.mockReset()
     mocks.role = 'admin'
     mocks.items = []
+    mocks.execution = {}
     mocks.pushSubscribed = true
     mocks.pushSubscribe.mockClear()
     mocks.pushUnsubscribe.mockClear()
@@ -98,14 +105,15 @@ describe('autorización de la ventana de 24 h', () => {
     )
   })
 
-  it('confirma en la alerta que quedó autorizada', async () => {
+  it('mantiene la autorización visible aunque se recargue la página', async () => {
+    // La notificación en sí no guarda quién autorizó — eso vive en la
+    // ejecución (`window_override_at`), así que se consulta ahí. Esto es lo
+    // que hace que el botón no "olvide" la autorización al recargar.
     mocks.items = [notification({ error_code: 'service_window_closed', automation_execution_id: 42 })]
-    mocks.retry.mockImplementation((_vars, { onSuccess }) => onSuccess())
-    const user = await open()
+    mocks.execution[42] = { window_override_at: new Date().toISOString(), window_override_by_name: 'Ana' }
+    await open()
 
-    await user.click(screen.getByRole('button', { name: /Autorizar y reintentar/ }))
-
-    expect(screen.getByText(/se reintenta ignorando la ventana/)).toBeInTheDocument()
+    expect(screen.getByText(/Autorizada por Ana: se reintenta ignorando la ventana/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Autorizar y reintentar/ })).toBeNull()
   })
 
