@@ -12,7 +12,7 @@ import { LoginPage } from './components/LoginPage'
 import { MobileNavBar } from './components/MobileNavBar'
 import { NotificationCenter } from './components/NotificationCenter'
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt'
-import { isNavItemActive, visibleNavItems } from './domain/navigation'
+import { Sidebar } from './components/Sidebar'
 import { useLayout } from './hooks/useBreakpoint'
 import { useLogout, useMe } from './hooks/useAuth'
 import { useChat, useChatUpdates, useInfiniteChats, useMarkChatRead, useMarkChatUnread, useUnreadCount } from './hooks/useChats'
@@ -28,25 +28,6 @@ import { Tooltip } from './components/ui/Tooltip'
 import { queryClient } from './queryClient'
 import { hasOpenOverlay } from './utils/overlay'
 import { extractErrorMessage } from './utils/errors'
-
-// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
-// cada render, lo que además rompía la memoización de los hijos.
-const navTabClass = (active: boolean) =>
-  `flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-    active
-      ? 'bg-white/25 text-white shadow-sm dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
-      : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
-  }`
-
-// Las clases de Tailwind tienen que existir literales en el código para que el
-// compilador las detecte; de ahí el mapa en vez de armar el string a mano.
-const NAV_LABEL_VISIBILITY = {
-  sm: 'hidden sm:inline',
-  md: 'hidden md:inline',
-  lg: 'hidden lg:inline',
-  xl: 'hidden xl:inline',
-} as const
-
 
 const KanbanBoard = lazy(() =>
   import('./components/KanbanBoard').then(module => ({ default: module.KanbanBoard })),
@@ -347,31 +328,6 @@ function MainLayout() {
         </div>
         <span className="text-sm font-semibold text-white">DermicaPro</span>
         <span className="text-xs text-white/60 dark:text-wa-muted-dark ml-1 hidden sm:inline">CRM</span>
-        {/* En móvil estas pestañas se mudan a la barra inferior: siete vistas
-            no entran arriba, y a esa altura no son alcanzables con el pulgar. */}
-        <nav className="ml-3 hidden items-center rounded-lg bg-black/10 p-0.5 md:flex dark:border dark:border-white/[0.05] dark:bg-wa-app-dark/70" aria-label="Vista principal">
-          {visibleNavItems(me?.role === 'admin').map((item) => {
-            const Icon = item.icon
-            const active = isNavItemActive(item, location.pathname)
-            const showBadge = item.path === '/' && unreadCount > 0
-            return (
-              <button
-                key={item.path}
-                type="button"
-                onClick={() => navigate(item.path)}
-                className={`${showBadge ? 'relative ' : ''}${navTabClass(active)}`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span className={NAV_LABEL_VISIBILITY[item.labelFrom]}>{item.label}</span>
-                {showBadge && (
-                  <span className="flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-wa-primary-strong dark:bg-wa-primary dark:text-white">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </nav>
         <span className="flex-1" />
         {me && (
           <span className="text-xs text-white/70 dark:text-wa-muted-dark hidden lg:inline">
@@ -464,6 +420,9 @@ function MainLayout() {
       )}
       </AnimatePresence>
 
+      <div className="flex flex-1 min-h-0 min-w-0">
+        {!isMobile && <Sidebar isAdmin={me?.role === 'admin'} unreadCount={unreadCount} />}
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
       <Suspense fallback={<PageLoader />}>
         {isTasks ? (
           <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
@@ -577,6 +536,8 @@ function MainLayout() {
           </div>
         )}
       </Suspense>
+        </div>
+      </div>
 
       {previewChat && (
         <ChatPeekDialog
