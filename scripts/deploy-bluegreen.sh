@@ -121,6 +121,24 @@ serving_through_traefik() {
   [ "$direct" = "$via" ]
 }
 
+wait_serving_through_traefik() {
+  # traefik/dynamic/active.yml define healthCheck.interval: 10s en el
+  # loadBalancer. Cuando write_active cambia la URL del servidor (8082 -> 8081
+  # o viceversa), esa URL es nueva para el healthchecker interno de traefik:
+  # hasta que no la prueba y la marca sana, no le manda tráfico. Un sleep fijo
+  # de 2s por delante de serving_through_traefik no le alcanza casi nunca —no
+  # es una carrera esporádica, es estructural— y el despliegue revertía sin
+  # necesidad en cada intento. Se reintenta en vez de un chequeo único, mismo
+  # patrón que ya usa healthy() arriba.
+  local color="$1" attempts="${TRAEFIK_ATTEMPTS:-8}" interval="${TRAEFIK_INTERVAL:-3}" attempt=0
+  while [ "$attempt" -lt "$attempts" ]; do
+    serving_through_traefik "$color" && return 0
+    attempt=$((attempt + 1))
+    sleep "$interval"
+  done
+  return 1
+}
+
 routing_diagnostics() {
   echo "Lo que traefik está sirviendo ahora mismo:" >&2
   curl -sIk --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" 2>&1 | sed 's/^/  /' >&2 || true
@@ -158,8 +176,7 @@ cmd_rollback() {
   fi
   write_active "$target"
   stop_legacy_stack
-  sleep 2
-  if ! serving_through_traefik "$target"; then
+  if ! wait_serving_through_traefik "$target"; then
     echo "ERROR: traefik no está sirviendo $target pese a la reversión." >&2
     routing_diagnostics
     exit 1
@@ -195,9 +212,8 @@ cmd_deploy() {
   # Después de conmutar y antes de comprobar: mientras el heredado siga vivo,
   # active.yml no decide nada y la comprobación de abajo mediría a otro.
   stop_legacy_stack
-  sleep 2
 
-  if ! serving_through_traefik "$target"; then
+  if ! wait_serving_through_traefik "$target"; then
     echo "ERROR: traefik no sirve $target. Revirtiendo a $active." >&2
     routing_diagnostics
     write_active "$active"
