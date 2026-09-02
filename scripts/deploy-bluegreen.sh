@@ -26,7 +26,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTIVE_FILE="$ROOT/traefik/dynamic/active.yml"
-DOMAIN="${DEPLOY_DOMAIN:-chat.dermicapro.app}"
+DOMAIN="${DEPLOY_DOMAIN:-dermicapro.cliniventas.com}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-40}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 # Proyecto de compose del despliegue anterior a blue-green, el que enruta por

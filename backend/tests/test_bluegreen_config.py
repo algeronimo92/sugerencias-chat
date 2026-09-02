@@ -124,7 +124,7 @@ def test_active_file_is_valid_traefik_config() -> None:
 
     assert router["entryPoints"] == ["websecure"]
     assert router["tls"]["certResolver"] == "letsencrypt"
-    assert "chat.dermicapro.app" in router["rule"]
+    assert "dermicapro.cliniventas.com" in router["rule"]
     assert router["service"] == "sugerencias-chat"
 
     url = service["servers"][0]["url"]
@@ -162,7 +162,7 @@ def test_switching_preserves_the_routing_rule(tmp_path, color: str) -> None:
 
     assert url == f"http://127.0.0.1:{PORTS[color]}"
     assert router["tls"]["certResolver"] == "letsencrypt"
-    assert "chat.dermicapro.app" in router["rule"]
+    assert "dermicapro.cliniventas.com" in router["rule"]
 
 
 @requires_bash

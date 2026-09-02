@@ -10,12 +10,12 @@
 # otro color (blue 8081, green 8082) y guardar. Traefik conmuta en menos de
 # un segundo, sin reconstruir nada.
 #
-# ACTIVE_COLOR: blue
+# ACTIVE_COLOR: green
 
 http:
   routers:
     sugerencias-chat:
-      rule: "Host(`chat.dermicapro.app`)"
+      rule: "Host(`dermicapro.cliniventas.com`)"
       entryPoints:
         - websecure
       service: sugerencias-chat
@@ -29,7 +29,7 @@ http:
           # blue = 8081, green = 8082. Cada color publica su nginx sólo en
           # la interfaz de loopback, así que este puerto no es alcanzable
           # desde Internet: únicamente traefik llega a él.
-          - url: "http://127.0.0.1:8081"
+          - url: "http://127.0.0.1:8082"
         healthCheck:
           path: /
           interval: 10s

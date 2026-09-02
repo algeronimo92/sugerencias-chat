@@ -301,7 +301,7 @@ app = FastAPI(title="WSP Suggestions API", lifespan=lifespan)
 
 # Expone /metrics (histogramas por ruta/método) para Prometheus. Solo lo
 # alcanza nginx desde loopback (ver frontend/nginx.conf) — nunca queda
-# público a través de chat.dermicapro.app.
+# público a través de dermicapro.cliniventas.com.
 Instrumentator().instrument(app).expose(app)
 
 
