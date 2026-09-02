@@ -271,6 +271,36 @@ def test_traefik_check_accepts_the_color_it_just_deployed(tmp_path) -> None:
 
 
 @requires_bash
+def test_wait_serving_through_traefik_retries_before_giving_up(tmp_path) -> None:
+    """Regresión: traefik/dynamic/active.yml declara healthCheck.interval: 10s
+    en el loadBalancer. La URL que write_active acaba de escribir es nueva
+    para el healthchecker de traefik, que tarda hasta ese intervalo en
+    marcarla sana. Un sleep fijo de 2s antes de un único chequeo revertía casi
+    todos los despliegues sin necesidad — no era una carrera esporádica, era
+    estructural. Acá se simula que las dos primeras consultas fallan (como
+    pasaría dentro de esos 10s) y la tercera ya encuentra a traefik sirviendo
+    el color nuevo."""
+    stub = (
+        'attempt=0; curl() { attempt=$((attempt + 1)); '
+        'if [ "$attempt" -ge 3 ]; then echo color-nuevo; else return 1; fi; }; '
+    )
+    result = _run_bash(
+        _sandbox(tmp_path),
+        f'{stub} TRAEFIK_ATTEMPTS=5 TRAEFIK_INTERVAL=0 wait_serving_through_traefik green',
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@requires_bash
+def test_wait_serving_through_traefik_gives_up_eventually(tmp_path) -> None:
+    result = _run_bash(
+        _sandbox(tmp_path),
+        'curl() { return 1; }; TRAEFIK_ATTEMPTS=2 TRAEFIK_INTERVAL=0 wait_serving_through_traefik green',
+    )
+    assert result.returncode != 0, "tiene que rendirse en algún momento, no reintentar para siempre"
+
+
+@requires_bash
 @pytest.mark.parametrize("color", ["blue", "green"])
 def test_compose_for_embeds_color_port_for_every_subcommand(tmp_path, color: str) -> None:
     """Regresión: compose.bluegreen.yml exige COLOR_PORT para interpolar el
