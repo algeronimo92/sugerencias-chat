@@ -52,6 +52,35 @@
 
   /* Radio de burbuja (~WhatsApp) */
   --radius-bubble: 7.5px;
+
+  /* Editor visual de flujos (modo oscuro) — estética "pro" tipo n8n/Zapier,
+     carbón neutro en vez del azulado que usa el resto de la app. Solo se
+     consume con prefijo dark: en VisualFlowBuilder.tsx y flow/FlowCanvas.tsx. */
+  --color-flow-canvas-dark: #0a0b0d; /* lienzo: negro carbón */
+  --color-flow-panel-dark: #1c2027; /* header, sidebar y tarjetas de nodo */
+  --color-flow-row-dark: #262b33; /* filas internas dentro de una tarjeta (opciones, condiciones) */
+  --color-flow-border-dark: #383f4a; /* bordes neutros del editor */
+}
+
+/* ============================================================
+   Editor visual de flujos — tema oscuro de @xyflow/react
+   `.react-flow.dark` es la clase que la propia librería agrega cuando
+   colorMode resuelve a "dark" (ver flow/FlowCanvas.tsx); reemplaza su
+   paleta oscura por defecto (grises azulados) por los tokens carbón de
+   arriba, para que Background/Controls/MiniMap combinen con las tarjetas.
+   No afecta el modo claro.
+   ============================================================ */
+.react-flow.dark {
+  --xy-background-color-default: var(--color-flow-canvas-dark);
+  --xy-background-pattern-dots-color-default: #2a2f38;
+  --xy-minimap-background-color-default: var(--color-flow-panel-dark);
+  --xy-minimap-mask-background-color-default: rgba(10, 11, 13, 0.72);
+  --xy-minimap-node-background-color-default: #2a2f38;
+  --xy-controls-button-background-color-default: var(--color-flow-panel-dark);
+  --xy-controls-button-background-color-hover-default: #1c2027;
+  --xy-controls-button-color-default: #cbd5e1;
+  --xy-controls-button-color-hover-default: #ffffff;
+  --xy-controls-button-border-color-default: var(--color-flow-border-dark);
 }
 
 /* ============================================================
