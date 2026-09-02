@@ -67,6 +67,25 @@ const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
 const EMPTY_FLOW_RULES: AutomationRule[] = []
 const EMPTY_TAGS: TagRecord[] = []
 
+/** El tema de la app es un toggle manual (ver hooks/useTheme.ts: clase `dark`
+ *  en <html>, guardada en localStorage) y no sigue las preferencias del
+ *  sistema operativo. `colorMode="system"` de @xyflow/react sí las sigue, así
+ *  que si el usuario fuerza oscuro con el sistema en claro (o viceversa) el
+ *  cromo propio de React Flow (Controls, MiniMap y Background por defecto)
+ *  quedaba desincronizado del resto del editor. Este hook observa la clase
+ *  real para que `colorMode` (más abajo) coincida siempre con el tema de la
+ *  app. */
+function useIsDarkMode(): boolean {
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const root = document.documentElement
+    const observer = new MutationObserver(() => setIsDark(root.classList.contains('dark')))
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+  return isDark
+}
+
 function storedConnectionHighlightPreference(): boolean {
   try {
     return window.localStorage.getItem(CONNECTION_HIGHLIGHT_STORAGE_KEY) === 'true'
@@ -130,16 +149,37 @@ function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): stri
     : 'Acción'
 }
 
-const TONES: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'border-wa-primary bg-green-50 dark:border-emerald-700 dark:bg-[#102737]',
-  [FlowNodeType.Condition]: 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-[#102737]',
-  [FlowNodeType.Action]: 'border-violet-400 bg-violet-50 dark:border-sky-800 dark:bg-[#102737]',
-  [FlowNodeType.InvokeFlow]: 'border-indigo-400 bg-indigo-50 dark:border-indigo-800 dark:bg-[#102737]',
-  [FlowNodeType.Wait]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
-  [FlowNodeType.WaitAny]: 'border-cyan-400 bg-cyan-50 dark:border-cyan-800 dark:bg-[#102737]',
-  [FlowNodeType.Question]: 'border-pink-400 bg-pink-50 dark:border-sky-800 dark:bg-[#102737]',
-  [FlowNodeType.RoundRobin]: 'border-teal-400 bg-teal-50 dark:border-teal-800 dark:bg-[#102737]',
-  [FlowNodeType.End]: 'border-gray-400 bg-wa-hover dark:border-slate-600 dark:bg-[#102737]',
+// Antes cada tipo pintaba toda la tarjeta con un fondo pastel + borde grueso
+// del mismo color (look "arcoíris"). Ahora la tarjeta es blanca/neutra
+// siempre (ver NodeShell) y el tipo se identifica solo con una franja de
+// acento delgada en el borde izquierdo, igual que la referencia de diseño
+// ("Hollywood Peel"): tarjetas planas, acento discreto en vez de bloques de
+// color.
+const ACCENT_BORDER: Record<AutomationFlowNodeType, string> = {
+  [FlowNodeType.Trigger]: 'border-l-wa-primary dark:border-l-slate-300',
+  [FlowNodeType.Condition]: 'border-l-amber-400 dark:border-l-amber-500',
+  [FlowNodeType.Action]: 'border-l-violet-400 dark:border-l-blue-500',
+  [FlowNodeType.InvokeFlow]: 'border-l-indigo-400 dark:border-l-violet-500',
+  [FlowNodeType.Wait]: 'border-l-cyan-400 dark:border-l-slate-500',
+  [FlowNodeType.WaitAny]: 'border-l-cyan-400 dark:border-l-slate-500',
+  [FlowNodeType.Question]: 'border-l-pink-400 dark:border-l-amber-500',
+  [FlowNodeType.RoundRobin]: 'border-l-teal-400 dark:border-l-slate-400',
+  [FlowNodeType.End]: 'border-l-gray-400 dark:border-l-blue-500',
+}
+
+// Icono y "kicker" (label superior) del tipo, en el mismo acento que el
+// borde de ACCENT_BORDER — solo dark:, en claro el icono se queda gris neutro
+// como hasta ahora.
+const DARK_ACCENT_TEXT: Record<AutomationFlowNodeType, string> = {
+  [FlowNodeType.Trigger]: 'dark:text-slate-300',
+  [FlowNodeType.Condition]: 'dark:text-amber-400',
+  [FlowNodeType.Action]: 'dark:text-blue-400',
+  [FlowNodeType.InvokeFlow]: 'dark:text-violet-400',
+  [FlowNodeType.Wait]: 'dark:text-slate-400',
+  [FlowNodeType.WaitAny]: 'dark:text-slate-400',
+  [FlowNodeType.Question]: 'dark:text-amber-400',
+  [FlowNodeType.RoundRobin]: 'dark:text-slate-300',
+  [FlowNodeType.End]: 'dark:text-blue-400',
 }
 
 const ICONS: Record<AutomationFlowNodeType, typeof Zap> = {
@@ -183,7 +223,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         : null
   return (
     <div
-      className={`relative ${widthClass} rounded-xl border-2 px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 ${TONES[type]} ${connectionClass} ${
+      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 dark:border-flow-border-dark dark:bg-flow-panel-dark ${ACCENT_BORDER[type]} ${connectionClass} ${
         data.connectionDimmed ? 'opacity-40 saturate-50' : ''
       }`}
     >
@@ -191,7 +231,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
       <div className="flex items-start gap-2">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-600 dark:text-gray-300" />
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-wide text-wa-muted dark:text-slate-400">{nodeKindLabel(type, data)}</p>
           <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{nodeTitle(type, data)}</p>
@@ -222,10 +262,10 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
 
   if (action.type === AutomationActionType.SendTemplate) {
     const template = data.previewTemplate
-    return <div className="mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-violet-800 dark:bg-gray-950/30">
+    return <div className="mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-blue-900 dark:bg-flow-row-dark">
       {template?.attachments[0] && <AttachmentMedia attachment={template.attachments[0]} />}
       <div className="p-2">
-        <div className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+        <div className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-violet-600 dark:text-blue-300">
           <MessageSquareText className="h-3 w-3" />{template?.name ?? 'Plantilla sin seleccionar'}
         </div>
         <p className="line-clamp-4 whitespace-pre-wrap text-[10px] leading-relaxed text-gray-700 dark:text-gray-200">
@@ -238,9 +278,9 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   if (action.type === AutomationActionType.SendAudio) {
     const asset = data.previewAsset
     const url = asset ? resolveMediaUrl(asset.media_url) : null
-    return <div className="nodrag nowheel mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30" onClick={event => event.stopPropagation()}>
+    return <div className="nodrag nowheel mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark" onClick={event => event.stopPropagation()}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-300">
-        <CirclePlay className="h-3.5 w-3.5 text-violet-600" /><span className="truncate">{asset?.filename ?? 'Audio sin seleccionar'}</span>
+        <CirclePlay className="h-3.5 w-3.5 text-violet-600 dark:text-blue-400" /><span className="truncate">{asset?.filename ?? 'Audio sin seleccionar'}</span>
       </div>
       {url ? <audio src={url} controls preload="metadata" className="h-8 w-full" /> : <EmptyPreview label="Elige un audio en las propiedades" />}
     </div>
@@ -253,31 +293,31 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   }
 
   if (action.type === AutomationActionType.SendMedia) {
-    return <div className="nodrag nowheel mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-violet-800 dark:bg-gray-950/30" onClick={event => event.stopPropagation()}>
+    return <div className="nodrag nowheel mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-blue-900 dark:bg-flow-row-dark" onClick={event => event.stopPropagation()}>
       {data.previewAsset ? <AttachmentMedia attachment={data.previewAsset} interactive /> : <EmptyPreview label="Elige un archivo para previsualizarlo" />}
       <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin caption'}</p>
     </div>
   }
 
   if (action.type === AutomationActionType.Notify) {
-    return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30">
-      <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><Bell className="h-3 w-3 text-violet-600" />{action.title || 'Notificación'}</p>
+    return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark">
+      <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><Bell className="h-3 w-3 text-violet-600 dark:text-blue-400" />{action.title || 'Notificación'}</p>
       <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[9px] leading-relaxed text-gray-600 dark:text-gray-300">{action.body || 'Sin contenido'}</p>
     </div>
   }
 
   if (action.type === AutomationActionType.ReactToLastCustomerMessage) {
-    return <div className="mt-2 flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg dark:bg-violet-950">{action.emoji || '🙂'}</span>
+    return <div className="mt-2 flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg dark:bg-blue-950">{action.emoji || '🙂'}</span>
       <div className="min-w-0">
-        <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><SmilePlus className="h-3 w-3 text-violet-600" />Último mensaje del cliente</p>
+        <p className="flex items-center gap-1 text-[10px] font-semibold text-gray-800 dark:text-white"><SmilePlus className="h-3 w-3 text-violet-600 dark:text-blue-400" />Último mensaje del cliente</p>
         <p className="truncate text-[9px] text-gray-500 dark:text-gray-400">Enviar reacción {action.emoji || 'sin seleccionar'}</p>
       </div>
     </div>
   }
 
   if (action.type === AutomationActionType.CreateTask) {
-    return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[9px] dark:border-violet-800 dark:bg-gray-950/30">
+    return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[9px] dark:border-blue-900 dark:bg-flow-row-dark">
       <p className="font-semibold text-gray-800 dark:text-white">{action.title || 'Nueva tarea'}</p>
       {action.description && <p className="mt-0.5 line-clamp-2 text-gray-500 dark:text-gray-400">{action.description}</p>}
       <div className="mt-1.5 flex items-center justify-between text-gray-500 dark:text-gray-400"><span>Vence en {formatWaitDuration(action.due_minutes * 60)}</span><span className="capitalize">{action.priority}</span></div>
@@ -292,13 +332,13 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   const DetailIcon = action.type === AutomationActionType.AssignSeller ? UserRound
     : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? Tag
     : ChevronRight
-  return detail ? <div className="mt-2 flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 px-2 py-2 text-[10px] font-semibold text-gray-700 dark:border-violet-800 dark:bg-gray-950/30 dark:text-gray-200">
-    <DetailIcon className="h-3.5 w-3.5 text-violet-600" /><span className="truncate">{detail}</span>
+  return detail ? <div className="mt-2 flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 px-2 py-2 text-[10px] font-semibold text-gray-700 dark:border-blue-900 dark:bg-flow-row-dark dark:text-gray-200">
+    <DetailIcon className="h-3.5 w-3.5 text-violet-600 dark:text-blue-400" /><span className="truncate">{detail}</span>
   </div> : null
 }
 
 function MessageCard({ text, empty }: { text: string; empty: string }) {
-  return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-[#2a5374] dark:bg-[#173b59]">
+  return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-flow-border-dark dark:bg-flow-row-dark">
     <p className={`line-clamp-5 whitespace-pre-wrap text-[10px] leading-relaxed ${text ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{text || empty}</p>
   </div>
 }
@@ -313,16 +353,16 @@ function AttachmentMedia({ attachment, interactive = false }: { attachment: Prev
   const url = resolveMediaUrl(attachment.media_url) ?? ''
   if (attachment.content_type.startsWith('image/')) {
     const image = <img src={url} alt={attachment.filename} loading="lazy" className="h-32 w-full object-cover" />
-    return interactive ? <a href={url} target="_blank" rel="noreferrer" title="Abrir imagen" className="block overflow-hidden rounded-lg border border-violet-200 dark:border-violet-800">{image}<AttachmentCaption icon={ImageIcon} filename={attachment.filename} /></a> : image
+    return interactive ? <a href={url} target="_blank" rel="noreferrer" title="Abrir imagen" className="block overflow-hidden rounded-lg border border-violet-200 dark:border-blue-900">{image}<AttachmentCaption icon={ImageIcon} filename={attachment.filename} /></a> : image
   }
   if (attachment.content_type.startsWith('video/')) {
-    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-violet-800"><video src={url} controls={interactive} preload="metadata" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
+    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><video src={url} controls={interactive} preload="metadata" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
   }
   if (attachment.content_type.startsWith('audio/')) {
-    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-violet-800 dark:bg-gray-950/30"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="metadata" className="mt-1 h-8 w-full" />}</div>
+    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="metadata" className="mt-1 h-8 w-full" />}</div>
   }
-  return <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[10px] text-gray-700 dark:border-violet-800 dark:bg-gray-950/30 dark:text-gray-200">
-    <FileText className="h-5 w-5 shrink-0 text-violet-600" /><span className="min-w-0 flex-1 truncate">{attachment.filename || 'Documento'}</span><Paperclip className="h-3 w-3" />
+  return <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[10px] text-gray-700 dark:border-blue-900 dark:bg-flow-row-dark dark:text-gray-200">
+    <FileText className="h-5 w-5 shrink-0 text-violet-600 dark:text-blue-400" /><span className="min-w-0 flex-1 truncate">{attachment.filename || 'Documento'}</span><Paperclip className="h-3 w-3" />
   </a>
 }
 
@@ -347,7 +387,7 @@ const ActionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
 const InvokeFlowNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.InvokeFlow} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
-    <div className="mt-2 rounded-lg border border-indigo-200 bg-white/80 p-2 text-[10px] text-indigo-700 dark:border-indigo-800 dark:bg-gray-950/30 dark:text-indigo-300">
+    <div className="mt-2 rounded-lg border border-indigo-200 bg-white/80 p-2 text-[10px] text-indigo-700 dark:border-violet-800 dark:bg-flow-row-dark dark:text-violet-300">
       Inicia una ejecución independiente para el mismo lead
     </div>
     <Handle type="source" position={Position.Right} id={FlowHandle.Next} style={HANDLE_STYLE} />
@@ -357,7 +397,7 @@ const InvokeFlowNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
 const EndNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.End} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
-    {data.close_conversation && <div className="mt-2 rounded-md border border-gray-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-slate-700 dark:bg-gray-950/30 dark:text-gray-300">Cierra la conversación</div>}
+    {data.close_conversation && <div className="mt-2 rounded-md border border-gray-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-slate-700 dark:bg-flow-row-dark dark:text-gray-300">Cierra la conversación</div>}
   </NodeShell>
 ))
 
@@ -376,7 +416,7 @@ const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
     <div className="mt-2 space-y-1">
       {groups.map((group, groupIndex) => <div key={group.id}>
         {groupIndex > 0 && <div className="py-0.5 text-center text-[8px] font-bold uppercase text-amber-600">O</div>}
-        <div className="relative rounded-md border border-green-200 bg-white/70 px-2 py-1.5 text-[9px] text-gray-700 dark:border-emerald-800 dark:bg-[#173b59] dark:text-gray-200">
+        <div className="relative rounded-md border border-green-200 bg-white/70 px-2 py-1.5 text-[9px] text-gray-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100">
           {group.conditions.map((condition, conditionIndex) => <div key={condition.id} className="leading-snug">
             {conditionIndex > 0 && <span className="mr-1 font-bold text-wa-primary-strong">Y</span>}
             <span className="font-semibold">{FLOW_CONDITION_LABELS[condition.condition_type]}</span>
@@ -385,7 +425,7 @@ const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
           <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: '#00a884', right: -18, top: '50%' }} />
         </div>
       </div>)}
-      <div className="relative rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-red-500 dark:border-red-900 dark:bg-[#173b59] dark:text-red-400">
+      <div className="relative rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
         Ninguna de las condiciones
         <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: '#ef4444', right: -18, top: '50%' }} />
       </div>
@@ -414,7 +454,7 @@ function PauseNodeView({ id, data, selected, legacy = false }: NodeProps<CanvasN
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <div className="mt-2 space-y-1.5">
         {conditions.map(condition => (
-          <div key={condition.id} className="relative flex items-center rounded-md border border-cyan-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-sky-900 dark:bg-[#173b59] dark:text-gray-200">
+          <div key={condition.id} className="relative flex items-center rounded-md border border-cyan-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
             <span>{condition.kind === WaitAnyConditionKind.Timer ? `Timer: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
             <Handle
               type="source" position={Position.Right} id={condition.id}
@@ -451,7 +491,7 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
       <MessageCard text={String(data.text ?? '')} empty="Escribe la pregunta en las propiedades" />
       <div className="mt-2 space-y-1">
         {rows.map(row => (
-          <div key={row.handle} className="relative flex items-center gap-1.5 rounded-md border border-pink-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-sky-900 dark:bg-[#173b59] dark:text-gray-200">
+          <div key={row.handle} className="relative flex items-center gap-1.5 rounded-md border border-pink-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Opción sin texto'}</span>
             <Handle type="source" position={Position.Right} id={row.handle} style={{ ...HANDLE_STYLE, background: row.color, right: -18, top: '50%' }} />
           </div>
@@ -471,8 +511,8 @@ const RoundRobinNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <div className="mt-2 space-y-1">
         {outputs.map((output, index) => (
-          <div key={output.id} className="relative flex items-center gap-1.5 rounded-md border border-teal-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-teal-900 dark:bg-[#173b59] dark:text-gray-200">
-            <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-teal-100 text-[8px] font-bold text-teal-700 dark:bg-teal-900 dark:text-teal-200">{index + 1}</span>
+          <div key={output.id} className="relative flex items-center gap-1.5 rounded-md border border-teal-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
+            <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-teal-100 text-[8px] font-bold text-teal-700 dark:bg-white/10 dark:text-gray-200">{index + 1}</span>
             <span className="truncate">{output.label || `Salida ${index + 1}`}</span>
             <Handle
               type="source" position={Position.Right} id={output.id}
@@ -571,6 +611,7 @@ function Canvas({
   flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
+  const isDarkMode = useIsDarkMode()
   const { screenToFlowPosition } = useReactFlow()
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -790,7 +831,7 @@ function Canvas({
   return (
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
-        className="bg-wa-field dark:bg-[#0d2230]"
+        className="bg-wa-field dark:bg-flow-canvas-dark"
         nodes={displayNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
@@ -816,9 +857,9 @@ function Canvas({
         onSelectionStart={() => { setSelectedEdgeId(null); onSelect(null) }}
         onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
         onDrop={handleDrop}
-        colorMode="system"
+        colorMode={isDarkMode ? 'dark' : 'light'}
         fitView
-        proOptions={{ hideAttribution: false }}
+        proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
         selectionOnDrag
@@ -833,7 +874,7 @@ function Canvas({
         zoomOnDoubleClick={false}
         minZoom={0.2}
       >
-        <Background gap={22} size={1} className="opacity-60" />
+        <Background gap={22} size={1} className="opacity-60 dark:opacity-40" />
         <Controls position="top-right" orientation="horizontal" showInteractive={false}>
           <ControlButton
             onClick={() => setConnectionHighlightEnabled(enabled => !enabled)}
@@ -844,7 +885,7 @@ function Canvas({
             {connectionHighlightEnabled ? <Eye className="h-4 w-4 text-violet-600" /> : <EyeOff className="h-4 w-4" />}
           </ControlButton>
         </Controls>
-        <MiniMap pannable zoomable className="!bg-white dark:!bg-wa-panel-dark" />
+        <MiniMap pannable zoomable className="!bg-white dark:!bg-flow-panel-dark" />
       </ReactFlow>
     </div>
   )
