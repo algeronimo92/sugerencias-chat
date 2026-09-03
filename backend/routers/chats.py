@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -35,10 +36,12 @@ from models.schemas import (
 )
 from routers.media import save_media_file
 from services.media_storage import (
+    AudioTranscodeError,
     MediaNotFoundError,
     MediaStorageError,
     image_to_sticker_webp,
     read_media_bytes,
+    transcode_audio_to_ogg_opus,
 )
 from services.media_library_service import get_media_asset
 from services.db_service import (
@@ -610,8 +613,21 @@ async def send_audio(
     """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
+    content_type, data_base64 = body.content_type, body.data_base64
+    # Meta Cloud API solo reproduce notas de voz en Ogg/Opus: lo grabado en el
+    # navegador viene en webm/opus o mp4/aac, así que se convierte acá antes
+    # de guardar. Si ffmpeg falla, sigue el original — mejor eso que no
+    # mandar nada (aunque probablemente el destinatario nunca vea el doble
+    # check, como con el bug que motivó esto).
+    if not content_type.split(";", 1)[0].strip().lower().startswith("audio/ogg"):
+        try:
+            raw = base64.b64decode(data_base64, validate=True)
+            converted = await asyncio.to_thread(transcode_audio_to_ogg_opus, raw)
+            content_type, data_base64 = "audio/ogg", base64.b64encode(converted).decode("ascii")
+        except (ValueError, AudioTranscodeError):
+            pass
     try:
-        media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
+        media_url = await asyncio.to_thread(save_media_file, content_type, data_base64)
     except ValueError as e:
         status = 413 if "grande" in str(e) else 400
         raise HTTPException(status_code=status, detail=str(e))

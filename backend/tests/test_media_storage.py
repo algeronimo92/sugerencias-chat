@@ -1,5 +1,8 @@
 import hashlib
 import base64
+import shutil
+import subprocess
+import tempfile
 from types import SimpleNamespace
 
 import pytest
@@ -91,6 +94,41 @@ def configure_minio(monkeypatch, fake: FakeMinio):
     monkeypatch.setattr(storage.settings, "minio_bucket", "crm-media")
     monkeypatch.setattr(storage.settings, "minio_prefix", "dermicapro")
     monkeypatch.setattr(storage, "get_minio_client", lambda: fake)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="requiere ffmpeg instalado")
+def test_transcode_audio_to_ogg_opus_converts_webm_recording():
+    """Lo que graba el navegador (webm/opus) tiene que salir como un .ogg de
+    verdad: Meta Cloud API acepta el webm igual pero nunca lo reproduce como
+    nota de voz, y el mensaje se queda sin doble check para siempre."""
+    import os
+
+    # No usar NamedTemporaryFile con el handle abierto: en Windows ffmpeg no
+    # puede escribir sobre un archivo que Python todavía tiene abierto.
+    src_path = tempfile.mktemp(suffix=".webm")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+             "-c:a", "libopus", src_path],
+            capture_output=True, check=True,
+        )
+        with open(src_path, "rb") as handle:
+            data = handle.read()
+    finally:
+        if os.path.exists(src_path):
+            os.remove(src_path)
+
+    result = storage.transcode_audio_to_ogg_opus(data)
+
+    assert result[:4] == b"OggS"
+
+
+def test_transcode_audio_to_ogg_opus_raises_when_ffmpeg_missing(monkeypatch):
+    # transcode_audio_to_ogg_opus hace `import shutil` local (mismo patrón que
+    # compress_video), así que parchear el módulo global shutil.which alcanza.
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    with pytest.raises(storage.AudioTranscodeError):
+        storage.transcode_audio_to_ogg_opus(b"not-really-audio")
 
 
 def test_local_backend_preserves_existing_url_contract(media_dir, monkeypatch):

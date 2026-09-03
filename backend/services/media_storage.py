@@ -376,6 +376,60 @@ def compress_video(data: bytes) -> bytes:
                     pass
 
 
+class AudioTranscodeError(RuntimeError):
+    pass
+
+
+def transcode_audio_to_ogg_opus(data: bytes) -> bytes:
+    """Convierte a Ogg/Opus mono con ffmpeg — el único formato que Meta Cloud
+    API procesa como nota de voz (PTT) reproducible. El navegador graba
+    webm/opus (o mp4/aac en Safari): aunque el códec ya sea opus, el
+    contenedor no es Ogg, y Meta acepta el envío (responde 200, llega el
+    mensaje) pero nunca puede reproducirlo del otro lado — se queda sin
+    doble check para siempre porque la entrega nunca se completa. Devuelve
+    los bytes del .ogg.
+
+    Lanza AudioTranscodeError si ffmpeg no está disponible o falla; el
+    llamador decide si manda el original como respaldo."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("ffmpeg") is None:
+        raise AudioTranscodeError("ffmpeg no está disponible")
+
+    in_path = out_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".src", delete=False) as fin:
+            fin.write(data)
+            in_path = fin.name
+        out_path = in_path + ".ogg"
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", in_path,
+                    "-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "32k",
+                    out_path,
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            raise AudioTranscodeError("ffmpeg tardó demasiado")
+        if result.returncode != 0 or not os.path.exists(out_path):
+            raise AudioTranscodeError(result.stderr.decode("utf-8", "replace")[-500:])
+        with open(out_path, "rb") as handle:
+            return handle.read()
+    finally:
+        for path in (in_path, out_path):
+            if path:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
 def image_to_sticker_webp(data: bytes, size: int = 512) -> str:
     """Convierte una imagen a un sticker de WhatsApp: WEBP cuadrado de 512×512
     con fondo transparente, la imagen centrada conservando su proporción.
