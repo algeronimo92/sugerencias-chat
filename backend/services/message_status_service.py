@@ -27,6 +27,11 @@ _STATUS_ALIASES = {
     "DELIVERED": MessageStatus.DELIVERY_ACK,
     "READ": MessageStatus.READ,
     "PLAYED": MessageStatus.PLAYED,
+    # Meta Cloud API reporta "failed" para un mensaje ya despachado que no
+    # pudo entregar. Se mapea a REJECTED (no a un FAILED literal) para no
+    # confundirlo con el estado que usa el outbox para un envío que nunca
+    # salió — ver el comentario en domain_types.MessageStatus.
+    "FAILED": MessageStatus.REJECTED,
 }
 
 MESSAGE_STATUS_RANK = {
@@ -34,6 +39,10 @@ MESSAGE_STATUS_RANK = {
     MessageStatus.DELIVERY_ACK: 2,
     MessageStatus.READ: 3,
     MessageStatus.PLAYED: 4,
+    # Estado terminal: una vez rechazado no debería "avanzar" a otra cosa, y
+    # tampoco debería poder pisarlo un ack tardío/duplicado que llegue fuera
+    # de orden (ver update_message_status, que aplica la misma regla en SQL).
+    MessageStatus.REJECTED: 5,
 }
 
 

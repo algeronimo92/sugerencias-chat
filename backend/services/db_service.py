@@ -1281,6 +1281,10 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
         "DELIVERY_ACK": 2,
         "READ": 3,
         "PLAYED": 4,
+        # Terminal: no debe poder pisarlo un ack tardío/duplicado, y una vez
+        # aplicado tampoco debe "avanzar" a otra cosa (ver MESSAGE_STATUS_RANK
+        # en message_status_service.py, misma regla).
+        "REJECTED": 5,
     }
     incoming_rank = status_rank.get(status)
     if incoming_rank is None:
@@ -1291,6 +1295,7 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
         (WspMessage.status == "DELIVERY_ACK", 2),
         (WspMessage.status == "READ", 3),
         (WspMessage.status == "PLAYED", 4),
+        (WspMessage.status == "REJECTED", 5),
         else_=0,
     )
     stmt = (

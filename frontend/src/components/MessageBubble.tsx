@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertCircle, Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react'
 import type { Chat, Message, MessageStatus } from '../types'
 import { displayName } from '../utils/chat'
 import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
@@ -48,6 +48,14 @@ export function MessageStatusTicks({ status, isAudio = false, onRetry, onDiscard
         </button>
       </span>
     )
+  }
+  // Distinto de FAILED: acá el mensaje sí se despachó (hay wa_message_id) y
+  // Meta avisó después, de forma asíncrona, que no pudo entregarlo (fuera de
+  // ventana de 24h, plantilla no aprobada, número inválido...). No hay un
+  // job de outbox en 'failed' al que volver, así que no hay botón de
+  // reintento acá — "reintentar" significaría mandar un mensaje nuevo.
+  if (status === 'REJECTED') {
+    return <span className="inline-flex items-center gap-1 text-red-500" aria-label="Meta no pudo entregar este mensaje" title="Meta no pudo entregar este mensaje (ventana de 24h o plantilla no aprobada)"><AlertCircle aria-hidden="true" className="h-3 w-3" /> No entregado</span>
   }
   // El mensaje nunca llegó, pero alguien ya decidió que no se reenvía: se
   // dice, sin el rojo de lo que reclama acción ni el botón de reintento.

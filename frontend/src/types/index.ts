@@ -280,7 +280,7 @@ export interface LeadUpdateInput {
 /** DISCARDED es un FAILED que alguien revisó y decidió no reenviar: sigue sin
  * haber llegado al cliente, pero ya no ofrece reintento ni cuenta como fallo
  * vivo en las métricas del backend. */
-export type MessageStatus = 'PENDING' | 'FAILED' | 'DISCARDED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | null
+export type MessageStatus = 'PENDING' | 'FAILED' | 'DISCARDED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | 'REJECTED' | null
 
 /** Taxonomía de tipos de mensaje, en concordancia con el backend
  * (models/schemas.py:MessageType) y con las estructuras de WhatsApp/Evolution

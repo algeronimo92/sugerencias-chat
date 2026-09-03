@@ -16,30 +16,77 @@ webhooks. El código que ya consume esa API — [evolution_service.py](../backen
 la ingesta por RabbitMQ y el workflow `rag` de n8n — cambia lo mínimo posible;
 lo que cambia es **qué hay detrás** de la instancia.
 
-## 2. Supuesto crítico a validar antes de comprometerse con el resto del plan
+## 2. Supuesto crítico — confirmado leyendo el código fuente de Evolution
 
-Todo este plan asume que **Evolution normaliza el webhook de una instancia
-`WHATSAPP-BUSINESS` a la misma forma que ya usa Baileys** — mismo evento
-`messages.upsert`, mismo `data.key.remoteJid` con sufijo `@s.whatsapp.net`,
-mismo `instance` en el cuerpo — porque **todo** lo que sigue depende de esa
-forma: el nodo `Switch Control type` de `rag.json`, el binding de RabbitMQ a
-`evolution_exchange` con las routing keys `messages.upsert`/`send.message`, y
-`parse_evolution_identity` en
-[whatsapp_identity_service.py](../backend/services/whatsapp_identity_service.py).
+Se verificó contra el código fuente real de `whatsapp.business.service.ts` en
+[evolution-foundation/evolution-api, tag 2.3.7](https://github.com/evolution-foundation/evolution-api/blob/2.3.7/src/api/integrations/channel/meta/whatsapp.business.service.ts)
+(no contra la documentación web, que está desactualizada — mismo criterio que
+ya usa [docs/evolution-api-2.3-mensajes/README.md](evolution-api-2.3-mensajes/README.md)).
 
-Si Evolution en modo Business pasa el payload nativo de Meta (`wa_id` sin
-sufijo, estructura `entry[].changes[].value`) sin normalizar, el impacto es
-mucho mayor: hay que tocar el `Switch Control type`, los nodos `* content*`, el
-parser de identidad y potencialmente el binding del exchange. **Por eso la
-Etapa 0 es un spike de una tarde, no un trámite.**
+**Se confirma que sí normaliza** al mismo evento `MESSAGES_UPSERT` con la misma
+forma que Baileys: `key.remoteJid` se construye con el mismo helper `createJid()`
+que usa el canal Baileys, y termina en `@s.whatsapp.net` (líneas 397 y 750 de
+ese archivo, `src/utils/createJid.ts`). No hay LID: una instancia Business
+nunca produce `@lid`, así que `parse_evolution_identity` simplemente no
+encuentra `remote_jid_alt`/`participant` y todo entra como `kind='phone'` — el
+código de
+[whatsapp_identity_service.py](../backend/services/whatsapp_identity_service.py)
+ya tolera ese caso sin cambios.
+
+**Diferencias concretas encontradas** (`messageHandle`, líneas 384-650 de ese
+archivo), comparadas contra la taxonomía documentada en
+[n8n-normalizacion-wsp-messages.md](n8n-normalizacion-wsp-messages.md), y
+**confirmadas con tráfico real** en el spike del 2026-09-02 (instancia
+`dermicapro-business`, número de prueba, 8 tipos probados en vivo — ver
+sección 2.1):
+
+| Tipo | `messageType` (Business) | Forma de `message.*` | Compatible con lo que espera `rag.json` hoy |
+|---|---|---|---|
+| Texto | `conversation` | `{conversation: texto}` | **Sí** — confirmado en vivo, idéntico a Baileys |
+| Imagen/Audio/Documento | `imageMessage`/`audioMessage`/`documentMessage` | `message[type]` = objeto de Meta con `id`, `mime_type`, `sha256` **y `url`** (confirmado en vivo — mejor de lo que sugería el código a primera lectura) | **Sí, sin cambios** — la `url` es de `lookaside.fbsbx.com` (exige `Authorization: Bearer <token>` para descargarla directo, no es pública), pero `rag.json` no la toca: descarga la media vía el endpoint propio de Evolution `POST /chat/getBase64FromMediaMessage/{instance}` con la `apikey` de siempre, así que el matiz de autenticación queda resuelto adentro de Evolution, no en n8n |
+| Sticker | `stickerMessage` | `{stickerMessage: message.sticker}` | No probado en vivo (no crítico), pero por código: **mejor que Baileys**, viene con su propio branch explícito — Baileys hoy cae al fallback `extra`/texto para stickers |
+| Ubicación | `locationMessage` | `{locationMessage: {degreesLatitude, degreesLongitude}}` (sin `name`/`address` en una ubicación en vivo) | **Sí** — confirmado en vivo, coincide con lo que ya espera `location content` |
+| Contacto | `contactMessage` | vCard armado a mano por Evolution, **confirmado en vivo con la convención `item1.TEL;waid=<wa_id>:<telefono>`** | **Sí** — confirmado en vivo, el parser de teléfono documentado en `n8n-normalizacion-wsp-messages.md` funciona sin cambios |
+| Reacción | `reactionMessage` | `{reactionMessage: {key: {id: message_id}, text: emoji}}` | **Sí** — confirmado en vivo, idéntico a lo documentado |
+| Respuesta a botón/lista (`interactive`) | `interactiveMessage` | `{conversation: "Opción A", contextInfo: {stanzaId: <wamid del mensaje de botones>}}` — **confirmado en vivo: texto plano, sin id** | **No.** Baileys entrega `buttonsResponseMessage` con `selectedButtonId` estructurado; Evolution en modo Business **descarta el id y solo deja el texto visible** (verificado con tráfico real el 2026-09-02). `rag.json` no tiene salida para `interactiveMessage`, cae al fallback `extra` — funciona como texto suelto. Único dato recuperable: `contextInfo.stanzaId` liga la respuesta al mensaje de botones original (sirve para saber *a qué* respondió, no *qué* opción eligió — eso solo se puede inferir comparando el texto contra las etiquetas de los botones enviados) |
+| Botón rápido de plantilla (`button`) | `buttonMessage` | `{conversation: button.text}` | No probado en vivo, mismo patrón por código: texto plano, sin id |
+| Encuesta, ubicación en vivo, sticker animado, fijar mensaje | — | no existen en este archivo | **N/A**, no es un bug: Meta Cloud API no expone estos tipos a terceros. No hace falta tocar esas ramas del Switch para instancias Business, pero tampoco hay que borrarlas — siguen sirviendo para instancias Baileys si conviven |
+
+### 2.1 Registro del spike (2026-09-02)
+
+Instancia de prueba `dermicapro-business` sobre el número de test de Meta,
+inspeccionada con una cola temporal `q.wsp.spike` bindeada a `evolution_exchange`
+(sin tocar `q.wsp.inbound` ni disparar el flujo real de n8n). 8/8 tipos
+probados con tráfico real: texto, imagen con caption, audio (nota de voz),
+documento, ubicación, contacto, reacción, y respuesta a un mensaje de botones
+(`sendButtons`). Los 8 confirmaron la tabla de arriba. Cola de inspección
+borrada al terminar.
+
+**Acuses de estado** (`received.statuses`, líneas 746-810): Meta reporta
+`sent`/`delivered`/`read`/`failed` en minúscula; Evolution los sube a mayúscula
+tal cual (`item.status.toUpperCase()`) antes de emitir `MESSAGES_UPDATE`. Contra
+[message_status_service.py](../backend/services/message_status_service.py):
+`SENT`, `DELIVERED` y `READ` **ya están** en `_STATUS_ALIASES` — funcionan sin
+tocar nada (probablemente puestos ahí pensando en esto mismo). **`FAILED` no
+está mapeado** (`normalize_message_status` devuelve `None` para ese valor) y
+tampoco existe un estado equivalente en el enum `MessageStatus` de
+[domain_types.py](../backend/domain_types.py) — un mensaje rechazado por Meta
+(número inválido, fuera de ventana de 24 h) hoy se descartaría en silencio en
+vez de reflejarse como fallido en la UI. **Acción concreta para la Etapa 2**:
+agregar `MessageStatus.FAILED` al enum y su alias en `_STATUS_ALIASES`.
+
+Con esto, la Etapa 0 deja de ser "a ver qué pasa" y pasa a ser: reproducir en
+vivo estos casos ya identificados para confirmar el análisis contra tráfico
+real (sobre todo imagen/audio/documento y `interactive`), no para descubrir la
+forma del payload desde cero. **Hecho — ver sección 2.1.**
 
 ## 3. Qué se mantiene igual y qué cambia (resumen)
 
 | Área | Se mantiene | Cambia |
 |---|---|---|
 | Envío (`evolution_service.py`) | Mismos endpoints (`sendText`, `sendMedia`, `sendTemplate`, etc.) | `send_whatsapp_template` deja de estar bloqueada (`get_template_capabilities` ya detecta `WHATSAPP-BUSINESS`) |
-| Ingesta RabbitMQ (`mq/definitions.json`, `evolution_exchange`) | Topología completa, si se confirma el supuesto de la sección 2 | Nada, en el caso favorable |
-| n8n (`rag.json`, `webhooks-evolution-rabbitmq.json`) | La lógica de negocio (agente analista, IA de adjuntos) | Puede necesitar ajustes en `Switch Control type` / `* content*` según lo que salga del spike |
+| Ingesta RabbitMQ (`mq/definitions.json`, `evolution_exchange`) | Topología completa — mismo evento `MESSAGES_UPSERT`, confirmado por código fuente | Nada |
+| n8n (`rag.json`, `webhooks-evolution-rabbitmq.json`) | La lógica de negocio (agente analista, IA de adjuntos); el Switch para texto/ubicación/contacto/reacción/sticker/media — todo confirmado sin cambios, media incluida | El Code node de `interactiveMessage` ("priority interactive content") tiene un bug real con la forma de Business — hoy pierde hasta el texto, no solo el id (fix en Etapa 1); falta agregar `buttonMessage` (singular) al Switch |
 | Identidad (`whatsapp_identity_service.py`) | El modelo de alias por lead sigue sirviendo | Ya no habrá `@lid` — todo entra como `kind='phone'`; el código lo tolera sin cambios, pero `resolve_history_jid` y `aliases_from_send_key` quedan sin propósito para esta instancia (documentar, no borrar mientras convivan instancias Baileys) |
 | Historial (`find_chat_messages`, `chat/findMessages`) | — | **Se pierde.** Cloud API no expone historial retroactivo. Ninguna instancia Business puede traer mensajes previos a su conexión |
 | Edición/borrado (`edit_whatsapp_message`, `delete_whatsapp_message`) | — | **Deja de funcionar.** Meta Cloud API no soporta editar ni "eliminar para todos" un mensaje saliente vía API |
@@ -49,29 +96,121 @@ Etapa 0 es un spike de una tarde, no un trámite.**
 
 ## 4. Etapas
 
-### Etapa 0 — Spike de validación (no toca producción)
+### Etapa 0 — Spike de validación (no toca producción) — ✅ COMPLETA (2026-09-02)
+
+Confirmado contra tráfico real, ver sección 2.1: los 8 tipos de mensaje
+coinciden con lo previsto por el análisis de código, con dos matices nuevos
+—la `url` de medios sí existe pero exige `Authorization: Bearer <token>`, y
+`interactiveMessage` conserva `contextInfo.stanzaId`— que ya están
+incorporados a la tabla de la sección 2 y a la Etapa 1 de abajo.
+
+Registro de lo que hizo falta resolver en el camino, útil para la Etapa 5
+(migración del número real), donde va a volver a pasar:
+
+- **Bug de Evolution con tokens largos**: la columna `Instance.token` de la
+  base propia de Evolution es `VARCHAR(255)`; un access token de Meta la
+  excede y `POST /instance/create` falla con `P2000` ("too long for the
+  column"). Solución aplicada: `ALTER TABLE "Instance" ALTER COLUMN "token"
+  TYPE VARCHAR(1000)` en la base de Evolution. Es un cambio manual por fuera
+  de las migraciones de Prisma — una futura actualización de Evolution podría
+  revertirlo. Issue conocido: [evolution-foundation/evolution-api#1530](https://github.com/evolution-foundation/evolution-api/issues/1530).
+- **No existe endpoint para actualizar el token de una instancia ya creada**
+  (`instance.router.ts` solo tiene `create`/`restart`/`connect`/`connectionState`/
+  `fetchInstances`/`logout`/`delete`). Si el token vence (los de prueba duran
+  24 h), la única forma de renovarlo es `delete` + `create` de nuevo con el
+  token fresco — no hay un `update` parcial.
+
+<details>
+<summary>Qué hacer (referencia, ya ejecutado)</summary>
 
 **Qué hacer:**
-1. Crear una WABA y un número de **prueba** de Meta (Meta ofrece números de test gratuitos para desarrollo — no gastan cuota de plantillas) usando el flujo de Embedded Signup ya habilitado por el Tech Provider.
-2. Levantar una segunda instancia de Evolution, aparte de `dermicapro`, con `integration: "WHATSAPP-BUSINESS"`, `token`/`number`/`businessId` del número de prueba.
-3. Apuntar su webhook al mismo `evolution_exchange` (o, si se prefiere no arriesgar la cola real, a una cola de prueba `q.wsp.spike` con un binding temporal — el exchange ya es `topic`, así que es un binding más sin tocar nada existente).
-4. Mandar por WhatsApp, contra el número de prueba: texto, imagen con caption, audio, documento, ubicación, un contacto y (si Meta lo permite en modo test) una plantilla.
-5. Comparar el payload crudo recibido contra lo que documenta [n8n-normalizacion-wsp-messages.md](n8n-normalizacion-wsp-messages.md) para cada tipo.
+1. En el Meta App Dashboard de la app Tech Provider: **WhatsApp → API Setup**. Ahí ya hay un número de prueba gratuito (no gasta cuota de plantillas) con su `phone_number_id`, `WABA id` y un botón para generar `access token` — no hace falta Embedded Signup para esto, ese flujo es para onboardear WABAs de terceros (Etapa 4).
+2. Agregar tu propio celular en "Manage phone number list" y mandarte el `hello_world` desde ahí para confirmar que el número de prueba funciona antes de meter a Evolution en el medio.
+3. Levantar una segunda instancia de Evolution, aparte de `dermicapro`, con `integration: "WHATSAPP-BUSINESS"` y esos tres datos:
 
-**Listo cuando:** hay una carpeta de fixtures con los payloads reales de la instancia Business, y una tabla "coincide / no coincide" contra la forma que espera hoy `Switch Control type`.
+   ```bash
+   curl -X POST "https://evolution.dermicapro.online/instance/create" \
+     -H "apikey: <EVOLUTION_ADMIN_APIKEY>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "instanceName": "dermicapro-spike-business",
+       "integration": "WHATSAPP-BUSINESS",
+       "number": "<phone_number_id>",
+       "businessId": "<WABA id>",
+       "token": "<access token del número de prueba>",
+       "qrcode": false
+     }'
+   ```
 
-**Esta etapa decide el tamaño real de las etapas 1 y 2** — si coincide todo, son horas; si no, son días.
+   **Ojo con el campo `number`**: pese al nombre, Evolution lo usa como
+   segmento de URL para llamar a la Graph API (`{URL}/{version}/{number}/messages`,
+   confirmado en `whatsapp.business.service.ts`) — tiene que ser el
+   **`phone_number_id`** de la pantalla de API Setup, no el número en formato
+   E.164. Es el error más común al armar este request.
 
-### Etapa 1 — Ajustar n8n según lo que salió del spike
+4. No hace falta configurar el webhook a mano para que llegue a RabbitMQ: con `RABBITMQ_GLOBAL_ENABLED=true` (ya activo para `dermicapro`, ver [rabbitmq-ingesta-n8n-plan.md](rabbitmq-ingesta-n8n-plan.md)), **cualquier instancia nueva en ese mismo nodo de Evolution publica automáticamente en `evolution_exchange`** — es un exchange compartido por nodo, no por instancia. La única distinción entre instancias es el campo `instance` dentro de cada evento. Si se prefiere no mezclar tráfico de prueba con `q.wsp.inbound`, se puede sumar temporalmente `q.wsp.spike` con un binding al mismo exchange (que ya es `topic`) filtrando por ese campo en el primer nodo del workflow de prueba, sin tocar el binding real.
+5. Mandar por WhatsApp, contra el número de prueba: texto, imagen con caption, audio, documento, ubicación, un contacto, una reacción y una respuesta a un botón/lista de una plantilla con botones.
+6. Guardar cada payload crudo como fixture y confirmar contra la tabla de la sección 2: en particular, de qué campo sale la URL/base64 de los adjuntos, y qué le llega exactamente a `rag.json` para `interactiveMessage`.
 
-Sobre `rag.json` (ver [docs/n8n-normalizacion-wsp-messages.md](n8n-normalizacion-wsp-messages.md) como referencia del estado actual):
+**Listo cuando:** hay una carpeta de fixtures con los payloads reales, y la
+tabla de la sección 2 quedó confirmada o corregida con datos reales.
 
-- Si los campos coinciden: nada que tocar en `Switch Control type` ni en los nodos `* content*`.
-- Si no coinciden (caso más probable para algo como `templateMessage`/`interactiveMessageTemplate`, que en Meta nativo tiene forma de `interactive`/`template` distinta a la de Baileys): añadir las reglas que falten al `Switch Control type`, siguiendo el mismo patrón por el que ya se agregaron `locationMessage`, `pollCreationMessage`, `liveLocationMessage`, etc.
-- Revisar en particular **`contact content`**: la extracción de teléfono hoy parsea el `vcard` de Baileys (`waid=`, `TEL`) — si Meta entrega contactos con otra forma, ese parser necesita una rama nueva.
-- El estado de mensajes (`MESSAGES_UPDATE` → `q.wsp.status` → `/api/webhooks/message-status`) usa códigos numéricos de Baileys (2–5); confirmar si Evolution normaliza el status de Cloud API (`sent`/`delivered`/`read`/`failed`) a los mismos códigos o si `message_status_service.py` necesita una rama nueva.
+</details>
 
-**Listo cuando:** los 7-8 tipos de mensaje de la Etapa 0 producen las mismas columnas en `wsp_messages` que producirían viniendo de Baileys.
+### Etapa 1 — Ajustar n8n con lo que confirmó el spike — ✅ COMPLETA (2026-09-02)
+
+Los dos cambios (Code node `priority interactive content` + regla `buttonMessage`
+en `Switch Control type1`) se aplicaron al `rag.json` local, se importaron en n8n,
+y se confirmó con tráfico real: una respuesta a un botón de plantilla ya guarda
+el texto elegido en `wsp_messages` en vez de caer en `"Mensaje interactivo"`.
+
+Sobre `rag.json` (ver [n8n-normalizacion-wsp-messages.md](n8n-normalizacion-wsp-messages.md)
+como referencia del estado actual). Con el análisis de código como base, el
+trabajo ya es concreto, no exploratorio:
+
+- **Media (imagen/audio/documento): sin cambios, confirmado leyendo `rag.json`.**
+  El nodo `get image` (y sus equivalentes `get audio`/`get document`) no tocan
+  la `url` de Meta en ningún momento — llaman al endpoint propio de Evolution
+  `POST {server_url}/chat/getBase64FromMediaMessage/{instance}`, autenticado
+  con la `apikey` de Evolution de siempre. Evolution resuelve puertas adentro
+  cómo bajar el archivo según el proveedor de la instancia. La preocupación
+  original sobre un header `Authorization: Bearer` en n8n **no aplica**: n8n
+  nunca llega a tocar `lookaside.fbsbx.com` directamente.
+- **`Switch Control type1` — `interactiveMessage` ya tiene salida, pero con un
+  bug real de compatibilidad.** El Switch agrupa `interactiveMessage` junto con
+  listas y respuestas de plantilla bajo la salida `priorityInteractive`, y el
+  Code node **"priority interactive content"** la procesa — pero asume la
+  forma anidada de Baileys (`message.interactiveMessage.selectedDisplayText`).
+  Con el payload real de Business (`message.conversation` plano, sin anidar,
+  confirmado en el spike), `value = message[messageType]` da `{}`, y `content`
+  cae en el string fijo `'Mensaje interactivo'` — **se pierde hasta el texto
+  visible, no solo el id**. Fix: agregar al principio del código del nodo una
+  rama para `messageType === 'interactiveMessage' && typeof message.conversation
+  === 'string' && !message[messageType]` que arme el resultado directo desde
+  `message.conversation` (con `selected_id: null` y `quoted_wa_message_id`
+  desde `message.contextInfo.stanzaId`, no `value.contextInfo.stanzaId`). No
+  afecta el camino de Baileys porque esa condición nunca se cumple ahí.
+- **`buttonMessage` (singular, clic en quick-reply button de una plantilla
+  aprobada — distinto del `interactiveMessage` ya cubierto): resuelto con el
+  mismo fix.** Por código fuente (`messageButtonJson` en
+  `whatsapp.business.service.ts`), produce la misma forma plana
+  (`{conversation: texto, contextInfo: {stanzaId}}`) que `interactiveMessage`.
+  Dos cambios: (a) agregar `buttonMessage` como condición más (`OR`) dentro de
+  la misma regla del Switch que ya agrupa `listMessage`/`interactiveMessage`/etc.
+  bajo la salida `priorityInteractive`; (b) en el Code node "priority
+  interactive content", extender la condición de la rama Business a
+  `(messageType === 'interactiveMessage' || messageType === 'buttonMessage')`.
+  No requiere ningún nodo nuevo. **No probado en vivo** (no se generó tráfico
+  real de este tipo en el spike) — queda para verificar cuando haya una
+  plantilla con quick-reply buttons a mano.
+- **`contact content`**: no necesita cambios — confirmado en el spike, el
+  vCard que arma Evolution en modo Business usa la misma convención
+  `item1.TEL;waid=…` que ya parsea el regex documentado.
+- **Acuses de estado** (`q.wsp.status`): no necesita cambios en n8n — el ajuste
+  real va en el backend (`message_status_service.py`, Etapa 2), agregando
+  `FAILED` al mapeo.
+
+**Listo cuando:** los 8 tipos de mensaje del spike (sección 2.1) producen las mismas columnas en `wsp_messages` que producirían viniendo de Baileys.
 
 ### Etapa 2 — Backend: identidad y ventana de 24 h
 
@@ -81,6 +220,19 @@ Sobre `rag.json` (ver [docs/n8n-normalizacion-wsp-messages.md](n8n-normalizacion
    - Que `send_whatsapp_text` rechace con un error claro (no un 500 genérico) si la instancia es Business y la ventana está cerrada, para que el frontend pueda ofrecer "mandar plantilla" en lugar de fallar en silencio.
    - Esto es exclusivamente para instancias `WHATSAPP-BUSINESS`; una instancia Baileys sigue sin esta restricción.
 3. **Capacidades por instancia.** `get_template_capabilities()` ya distingue Baileys de Business para plantillas; conviene generalizarlo a un solo `get_instance_capabilities()` que además reporte `history_available` y `edit_delete_supported`, para que el frontend oculte los botones de editar/borrar y el buscador de historial retroactivo cuando la instancia activa es Business, en vez de dejarlos fallar al usarlos.
+4. **Estado de rechazo — ✅ HECHO (2026-09-02).** Se agregó `MessageStatus.REJECTED`
+   (no `FAILED`: ese valor ya lo usa el outbox para un envío que nunca salió y
+   admite reintento/descarte — acá el mensaje sí tiene `wa_message_id`, así que
+   "reintentar" significaría mandar uno nuevo, no reactivar un job). El
+   `"failed"` que manda Meta se mapea a `REJECTED` en `_STATUS_ALIASES`
+   ([message_status_service.py](../backend/services/message_status_service.py)).
+   Se corrigió también `update_message_status` en
+   [db_service.py](../backend/services/db_service.py), que tiene su **propio**
+   mapa de rangos duplicado (bug latente: sin esto, un `REJECTED` se habría
+   descartado en silencio ahí, no solo en el de-dup de lotes). Frontend:
+   `MessageStatus` incluye `'REJECTED'` y `MessageBubble.tsx` lo pinta como
+   "No entregado" sin botones de acción. Tests nuevos en
+   `test_message_status_service.py`.
 
 ### Etapa 3 — RabbitMQ / ingesta
 
@@ -133,7 +285,7 @@ Recién después de que las etapas 0-3 estén validadas con un número de prueba
 
 | Riesgo | Mitigación |
 |---|---|
-| El supuesto de la sección 2 no se cumple y el payload de Business es distinto | Etapa 0 lo detecta antes de tocar nada real; el costo de estar equivocado se paga en fixtures, no en producción |
+| El análisis de código (sección 2) no coincide con el comportamiento real (versión distinta, S3/`webhookBase64` mal configurado, etc.) | Etapa 0 lo confirma con fixtures antes de tocar nada real; el costo de estar equivocado se paga en fixtures, no en producción |
 | Se pierde la capacidad de editar/borrar mensajes que los vendedores ya usan | Comunicar antes del corte (Etapa 5.4); ocultar los botones para instancias Business (Etapa 2.3) en vez de dejarlos fallar |
 | Un vendedor intenta escribir a un lead frío fuera de la ventana de 24 h y el mensaje falla en silencio | Backend devuelve error explícito + frontend ofrece plantilla (Etapa 2.2) |
 | El número de producción queda inutilizable en la app normal de WhatsApp tras migrar | Confirmar coexistencia con Meta antes de la Etapa 5; hasta entonces, todo el spike corre sobre un número de prueba nuevo, nunca el de producción |

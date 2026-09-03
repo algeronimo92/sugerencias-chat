@@ -168,6 +168,15 @@ class MessageStatus(StrEnum):
     DELIVERY_ACK = "DELIVERY_ACK"
     READ = "READ"
     PLAYED = "PLAYED"
+    # Meta Cloud API: el mensaje SE DESPACHÓ (tiene wa_message_id) pero Meta
+    # avisó después, de forma asíncrona, que no pudo entregarlo (fuera de
+    # ventana de 24h, plantilla no aprobada, número inválido, etc.). No tiene
+    # equivalente en Baileys. Deliberadamente distinto de "FAILED" —el estado
+    # que usa el outbox para un mensaje que nunca llegó a salir y sí admite
+    # reintento/descarte (ver message_outbox.retry_failed_message): acá ya
+    # existe un wa_message_id real, reintentar significaría mandar un mensaje
+    # nuevo, no reactivar el job.
+    REJECTED = "REJECTED"
 
 
 class TemplateType(StrEnum):

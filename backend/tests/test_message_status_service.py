@@ -75,6 +75,27 @@ def test_batch_keeps_most_advanced_status_and_ignores_pending():
     assert parse_message_status_updates(payload) == [("WA-4", MessageStatus.PLAYED)]
 
 
+def test_meta_cloud_api_failed_status_maps_to_rejected():
+    # Distinto del "FAILED" que usa el outbox para un envío que nunca salió
+    # (ver domain_types.MessageStatus.REJECTED): acá el mensaje sí tiene
+    # wa_message_id, Meta lo aceptó y avisó después que no pudo entregarlo.
+    assert parse_message_status_updates({
+        "wa_message_id": "WA-REJECTED",
+        "status": "failed",
+    }) == [("WA-REJECTED", MessageStatus.REJECTED)]
+
+
+def test_batch_keeps_rejected_over_an_earlier_ack_in_the_same_batch():
+    payload = {
+        "data": [
+            {"key": {"id": "WA-6"}, "status": "SENT"},
+            {"key": {"id": "WA-6"}, "status": "FAILED"},
+        ]
+    }
+
+    assert parse_message_status_updates(payload) == [("WA-6", MessageStatus.REJECTED)]
+
+
 def test_preserves_incoming_direction_from_flat_n8n_contract():
     assert parse_message_status_events({
         "wa_message_id": "WA-INCOMING",
