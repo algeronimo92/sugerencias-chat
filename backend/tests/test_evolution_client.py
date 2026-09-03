@@ -266,6 +266,33 @@ async def test_send_text_accepts_a_real_send_response(monkeypatch):
     assert result["key"]["id"] == "WA-OK"
 
 
+@pytest.mark.asyncio
+async def test_send_whatsapp_audio_disables_evolution_reencoding(monkeypatch):
+    """El audio ya llega convertido a Ogg/Opus (media_storage.transcode_audio_to_ogg_opus):
+    encoding:false evita que Evolution lo vuelva a procesar con su propio
+    ffmpeg, un paso que se traga el envio sin dejar ni un webhook de error
+    cuando la instancia es Meta Cloud API (WHATSAPP-BUSINESS)."""
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    post = AsyncMock(return_value={
+        "key": {"id": "WA-OK", "remoteJid": "51906471403@s.whatsapp.net", "fromMe": True},
+    })
+    monkeypatch.setattr(evolution_service, "_post", post)
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+
+    await evolution_service.send_whatsapp_audio("chat-1", "T2dnUw==")
+
+    payload = post.await_args.args[2]
+    assert payload["encoding"] is False
+    assert payload["audio"] == "T2dnUw=="
+
+
 class _FakeInstancesResponse:
     def __init__(self, rows):
         self.is_error = False

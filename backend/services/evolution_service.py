@@ -432,12 +432,22 @@ async def send_whatsapp_audio(
     chat_id: str, audio_base64: str, quoted: dict | None = None
 ) -> dict:
     """Manda una nota de voz (PTT) — endpoint específico de Evolution API,
-    distinto de mandar un audio como adjunto genérico."""
+    distinto de mandar un audio como adjunto genérico.
+
+    encoding: false porque el audio ya llega convertido a Ogg/Opus desde
+    save_audio_message (ver media_storage.transcode_audio_to_ogg_opus): sin
+    esto, Evolution reconvierte el archivo con su propio ffmpeg antes de
+    mandarlo (por defecto encoding=true), un paso pensado para Baileys que
+    en la integración Meta Cloud API se traga el envío sin dejar rastro — no
+    llega ni el webhook de "failed", el mensaje se queda en SERVER_ACK para
+    siempre."""
     api_url, api_key, instance = await _config()
     destination = await resolve_whatsapp_destination(chat_id)
 
     url = f"{api_url.rstrip('/')}/message/sendWhatsAppAudio/{instance}"
-    payload = _with_quoted({"number": destination, "audio": audio_base64}, quoted, destination)
+    payload = _with_quoted(
+        {"number": destination, "audio": audio_base64, "encoding": False}, quoted, destination
+    )
     return await _post_to_chat(chat_id, url, api_key, payload, timeout=60.0)
 
 
