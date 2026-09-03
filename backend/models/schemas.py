@@ -800,6 +800,12 @@ class SendTemplateRequest(BaseModel):
 class TemplateCapabilities(BaseModel):
     integration: str | None = None
     official_sending_supported: bool = False
+    # Ninguna de las dos se consume todavía en el frontend (Etapa 2.3 del
+    # plan de migración a Meta Cloud API: falta que MessageBubble.tsx y
+    # /chats/{id}/history/availability las respeten). Van en la respuesta
+    # desde ya porque es la misma llamada a Evolution, sin costo extra.
+    history_available: bool = False
+    edit_delete_supported: bool = False
     reason: str | None = None
 
 

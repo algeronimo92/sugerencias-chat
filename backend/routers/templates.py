@@ -15,7 +15,7 @@ from routers.media import normalize_media_content_type, save_media_file
 from services.media_library_service import create_media_asset, delete_media_asset, get_media_asset
 from services.media_storage import MediaStorageError, delete_media, media_size
 from services.ws_manager import manager
-from services.evolution_service import EvolutionApiError, get_template_capabilities
+from services.evolution_service import EvolutionApiError, get_instance_capabilities
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 DEFAULT_INTERACTIVE_FOOTER = "DermicaPro"
@@ -245,11 +245,13 @@ async def get_templates(include_inactive: bool = False, user: User = Depends(get
 @router.get("/capabilities", response_model=TemplateCapabilities)
 async def get_capabilities(_user: User = Depends(get_current_user)):
     try:
-        return await get_template_capabilities()
+        return await get_instance_capabilities()
     except EvolutionApiError as exc:
         return {
             "integration": None,
             "official_sending_supported": False,
+            "history_available": False,
+            "edit_delete_supported": False,
             "reason": f"No se pudo comprobar la integración de Evolution API: {exc}",
         }
 

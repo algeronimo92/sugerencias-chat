@@ -11,7 +11,7 @@ from db.session import get_sessionmaker
 from services import db_service
 from services.evolution_service import (
     EvolutionApiError,
-    get_template_capabilities,
+    get_instance_capabilities,
     media_message_fields,
     send_whatsapp_audio,
     send_whatsapp_buttons,
@@ -552,7 +552,7 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
     interactive_type = payload["interactive_type"]
     description = payload["description"]
     config = payload["config"]
-    capabilities = await get_template_capabilities()
+    capabilities = await get_instance_capabilities()
     if capabilities.get("integration") != "WHATSAPP-BUSINESS":
         if interactive_type == "buttons":
             fallback = _buttons_text_fallback(

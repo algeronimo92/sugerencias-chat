@@ -196,12 +196,22 @@ async def _post_to_chat(
     return result
 
 
-async def get_template_capabilities() -> dict:
-    """Detecta si la instancia usa la integración Meta de Evolution.
+async def get_instance_capabilities() -> dict:
+    """Detecta qué admite la instancia activa según su integración de Evolution.
 
-    Evolution expone sendTemplate en el router general, pero el adaptador
-    Baileys responde "Method not available". Se consulta la instancia para
-    poder explicarlo antes de que el usuario intente enviar.
+    Una sola llamada (`GET /instance/fetchInstances`, cacheada 5 min) contesta
+    varias preguntas a la vez, porque todas dependen del mismo dato: si la
+    instancia es `WHATSAPP-BUSINESS` (Meta Cloud API) o Baileys (WhatsApp Web).
+
+    - `official_sending_supported`: Evolution expone `sendTemplate` en el
+      router general, pero el adaptador Baileys responde "Method not
+      available" — hace falta Business. Es la única bandera que ya se
+      consultaba antes de generalizar esta función (se llamaba
+      `get_template_capabilities`).
+    - `history_available`: Meta Cloud API no tiene equivalente de
+      `chat/findMessages` — el historial retroactivo solo existe en Baileys.
+    - `edit_delete_supported`: Meta Cloud API no soporta editar ni "eliminar
+      para todos" un mensaje saliente vía API — solo Baileys.
     """
     global _capabilities_cache
     if _capabilities_cache and _capabilities_cache[0] > monotonic():
@@ -227,11 +237,19 @@ async def get_template_capabilities() -> dict:
             integration = row.get("integration") or (row.get("instance") or {}).get("integration")
             break
     normalized = str(integration).upper() if integration else None
-    supported = normalized == "WHATSAPP-BUSINESS"
+    is_business = normalized == "WHATSAPP-BUSINESS"
+    # Si no se pudo determinar la integración (la instancia no apareció en
+    # fetchInstances), se restringe todo por igual en vez de asumir Baileys
+    # por default: es el mismo criterio conservador que ya usaba
+    # official_sending_supported (False cuando no está confirmado), ahora
+    # aplicado también a las banderas que son "todo menos Business".
+    is_known = normalized is not None
     result = {
         "integration": normalized,
-        "official_sending_supported": supported,
-        "reason": None if supported else (
+        "official_sending_supported": is_business,
+        "history_available": is_known and not is_business,
+        "edit_delete_supported": is_known and not is_business,
+        "reason": None if is_business else (
             "La instancia de Evolution usa Baileys. Las plantillas oficiales requieren "
             "una instancia con integración WHATSAPP-BUSINESS (Meta Cloud API)."
         ),
@@ -325,7 +343,7 @@ async def send_whatsapp_template(
     language: str,
     components: list[dict],
 ) -> dict:
-    capabilities = await get_template_capabilities()
+    capabilities = await get_instance_capabilities()
     if not capabilities["official_sending_supported"]:
         raise EvolutionApiError(capabilities["reason"] or "La instancia no admite plantillas oficiales")
     api_url, api_key, instance = await _config()

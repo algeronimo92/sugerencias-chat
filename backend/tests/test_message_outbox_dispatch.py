@@ -91,8 +91,9 @@ async def test_location_and_official_template_jobs_dispatch_without_route_wait(m
 
 @pytest.mark.asyncio
 async def test_interactive_job_uses_numbered_text_fallback_for_baileys(monkeypatch):
-    monkeypatch.setattr(message_outbox, "get_template_capabilities", AsyncMock(return_value={
+    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
         "integration": "BAILEYS", "official_sending_supported": False,
+        "history_available": True, "edit_delete_supported": True,
     }))
     send_text = AsyncMock(return_value={"key": {"id": "WA-TEXT"}})
     send_buttons = AsyncMock()

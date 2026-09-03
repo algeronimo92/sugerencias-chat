@@ -276,7 +276,31 @@ trabajo ya es concreto, no exploratorio:
    **Lo que sigue faltando** (alcance mayor, no entra acá): que el composer
    ofrezca activamente "mandar plantilla" al toparse con esto, en vez de que
    el vendedor tenga que leer el tooltip y saber que existe esa opción.
-3. **Capacidades por instancia.** `get_template_capabilities()` ya distingue Baileys de Business para plantillas; conviene generalizarlo a un solo `get_instance_capabilities()` que además reporte `history_available` y `edit_delete_supported`, para que el frontend oculte los botones de editar/borrar y el buscador de historial retroactivo cuando la instancia activa es Business, en vez de dejarlos fallar al usarlos.
+3. **Capacidades por instancia — ✅ backend hecho (2026-09-02), frontend
+   pendiente.** `get_template_capabilities()` se generalizó a
+   `get_instance_capabilities()` en
+   [evolution_service.py](../backend/services/evolution_service.py): misma
+   llamada a Evolution (`GET /instance/fetchInstances`, mismo cache de 5 min),
+   ahora devuelve también `history_available` y `edit_delete_supported`
+   (`True` solo cuando la integración es Baileys confirmada — si no se pudo
+   determinar la integración, las tres banderas quedan restrictivas en vez de
+   asumir "todo menos Business" por default). Actualizados todos los
+   llamadores (`send_whatsapp_template`, `message_outbox.py`,
+   `routers/templates.py`) y el schema `TemplateCapabilities`
+   (backend + frontend) con los dos campos nuevos. Tests nuevos en
+   `test_evolution_client.py` cubriendo Business, Baileys, e integración
+   desconocida.
+
+   **Lo que sigue pendiente, y es la parte más grande:** nada en el frontend
+   consume `history_available`/`edit_delete_supported` todavía.
+   `MessageBubble.tsx` (`canEdit`/`canDelete`) es un componente puramente
+   presentacional que no pide nada por sí solo — hace falta traer la
+   capacidad desde arriba (`ChatThread` o un hook tipo
+   `useInstanceCapabilities()`) y pasarla como prop nueva, más cambiar
+   `/history/availability` en `chats.py` para que use `history_available` en
+   vez de `is_configured()`. Se pospone a propósito hasta que exista una
+   instancia Business real (cerca de la Etapa 5): hoy no hay ningún usuario
+   que se tope con el problema que esto previene.
 4. **Estado de rechazo — ✅ HECHO (2026-09-02).** Se agregó `MessageStatus.REJECTED`
    (no `FAILED`: ese valor ya lo usa el outbox para un envío que nunca salió y
    admite reintento/descarte — acá el mensaje sí tiene `wa_message_id`, así que

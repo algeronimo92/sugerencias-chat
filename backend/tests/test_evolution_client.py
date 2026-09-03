@@ -266,6 +266,76 @@ async def test_send_text_accepts_a_real_send_response(monkeypatch):
     assert result["key"]["id"] == "WA-OK"
 
 
+class _FakeInstancesResponse:
+    def __init__(self, rows):
+        self.is_error = False
+        self._rows = rows
+
+    def json(self):
+        return self._rows
+
+
+class _FakeHttpClient:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def get(self, url, headers=None, timeout=None):
+        return _FakeInstancesResponse(self._rows)
+
+
+def _mock_fetch_instances(monkeypatch, rows):
+    evolution_service._capabilities_cache = None
+    monkeypatch.setattr(
+        evolution_service, "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(evolution_service, "_client", lambda: _FakeHttpClient(rows))
+
+
+@pytest.mark.asyncio
+async def test_instance_capabilities_business_allows_templates_but_not_baileys_only_features(monkeypatch):
+    _mock_fetch_instances(monkeypatch, [{"name": "dermica", "integration": "WHATSAPP-BUSINESS"}])
+
+    result = await evolution_service.get_instance_capabilities()
+
+    assert result == {
+        "integration": "WHATSAPP-BUSINESS",
+        "official_sending_supported": True,
+        "history_available": False,
+        "edit_delete_supported": False,
+        "reason": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_instance_capabilities_baileys_allows_the_opposite_of_business(monkeypatch):
+    _mock_fetch_instances(monkeypatch, [{"name": "dermica", "integration": "WHATSAPP-BAILEYS"}])
+
+    result = await evolution_service.get_instance_capabilities()
+
+    assert result["official_sending_supported"] is False
+    assert result["history_available"] is True
+    assert result["edit_delete_supported"] is True
+    assert result["reason"] is not None
+
+
+@pytest.mark.asyncio
+async def test_instance_capabilities_are_restrictive_when_integration_is_unknown(monkeypatch):
+    # La instancia configurada no aparece en fetchInstances (typo, instancia
+    # borrada, etc.). Sin poder confirmar qué es, se restringe todo por
+    # igual -mismo criterio que ya usaba official_sending_supported- en vez
+    # de asumir que es "todo menos Business" y arriesgarse a ofrecer una
+    # función que en los hechos sí es Business y va a fallar al usarla.
+    _mock_fetch_instances(monkeypatch, [{"name": "otra-instancia", "integration": "WHATSAPP-BUSINESS"}])
+
+    result = await evolution_service.get_instance_capabilities()
+
+    assert result["integration"] is None
+    assert result["official_sending_supported"] is False
+    assert result["history_available"] is False
+    assert result["edit_delete_supported"] is False
+
+
 @pytest.mark.asyncio
 async def test_send_reaction_resolves_uuid_to_destination(monkeypatch):
     lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"

@@ -429,7 +429,7 @@ class TestRunVisualExecutionQuestion:
         # Ya no resuelve acá si son botones nativos o el fallback de texto:
         # eso quedó a cargo del worker del outbox en el momento real del
         # envío (ver _send_buttons_message), así que no hace falta mockear
-        # get_template_capabilities para este test.
+        # get_instance_capabilities para este test.
         FakeSession, calls = capturing_session()
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
