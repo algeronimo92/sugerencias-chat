@@ -284,7 +284,7 @@ describe('MessageBubble', () => {
     const reason = 'La ventana de 24 h para responder libremente a este contacto está cerrada. Mandale una plantilla aprobada para reabrir la conversación.'
     renderBubble({ status: 'FAILED', wa_message_id: null, error_detail: reason })
 
-    const retryButton = screen.getByLabelText(`No se pudo confirmar el envío: ${reason}. Reintentar`)
+    const retryButton = screen.getByLabelText(`${reason} Reintentar`)
     expect(retryButton).toHaveAttribute('title', reason)
   })
 

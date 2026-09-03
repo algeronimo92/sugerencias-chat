@@ -683,7 +683,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     onRetry={() => handleRetryMessage(item.message)}
                     onDiscard={() => discardMessage(item.message)}
                     onStartReply={() => startReply(item.message)}
-                    onReact={(emoji) => reactToMessage({ messageId: item.message.id, emoji })}
+                    onReact={(emoji) => reactToMessage(
+                      { messageId: item.message.id, emoji },
+                      { onError: (err) => toast.error(extractErrorMessage(err)) },
+                    )}
                     onEdit={() => setMessageToEdit(item.message)}
                     onDelete={() => removeMessage(item.message)}
                     onForward={() => setMessageIdsToForward([item.message.id])}

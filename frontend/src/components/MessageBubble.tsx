@@ -38,12 +38,11 @@ export function MessageStatusTicks({ status, isAudio = false, errorDetail, onRet
   }
   if (status === 'FAILED') {
     // Sin motivo real (mensajes viejos, o un fallo que no llegó a dejar
-    // last_error), se conserva el genérico de siempre. Con motivo, se suma
-    // como tooltip: el rótulo compacto no cambia porque tiene que caber al
-    // lado de la hora.
-    const ariaLabel = errorDetail
-      ? `No se pudo confirmar el envío: ${errorDetail}. Reintentar`
-      : 'No se pudo confirmar el envío. Reintentar'
+    // last_error), se conserva el genérico de siempre. Con motivo, ahora
+    // errorDetail ya es una oración corta y amigable de punta a punta (el
+    // backend nunca guarda ahí la excepción cruda), así que se usa tal cual
+    // en vez de prefijarla con otra frase genérica redundante.
+    const ariaLabel = errorDetail ? `${errorDetail} Reintentar` : 'No se pudo confirmar el envío. Reintentar'
     return (
       <span className="inline-flex items-center gap-1.5">
         <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label={ariaLabel} title={errorDetail || 'Reintentar envío'}>

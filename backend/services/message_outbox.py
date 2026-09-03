@@ -11,6 +11,7 @@ from db.session import get_sessionmaker
 from services import db_service
 from services.evolution_service import (
     EvolutionApiError,
+    describe_send_failure,
     get_instance_capabilities,
     media_message_fields,
     send_whatsapp_buttons,
@@ -419,7 +420,7 @@ async def _mark_failed(job: dict, exc: Exception) -> None:
     exhausted = attempts >= MAX_ATTEMPTS
     now = datetime.now(timezone.utc)
     delay = timedelta(seconds=2 ** attempts)
-    error = str(exc)[:2000]
+    error = describe_send_failure(exc, "enviar el mensaje a WhatsApp")[:2000]
     scheduled_updated = False
     async with get_sessionmaker()() as session:
         await session.execute(

@@ -93,6 +93,7 @@ export function ChatComposer({
   const [audioError, setAudioError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
+  const [stickerError, setStickerError] = useState<string | null>(null)
   // Imagen/video/documento elegido o pegado, a la espera de confirmar el envío
   // con epígrafe (la pantalla de preview de WhatsApp). Puede traer varios ítems
   // cuando se eligieron varias fotos/videos juntos: se mandan como mensajes
@@ -187,6 +188,7 @@ export function ChatComposer({
     setAudioError(null)
     setMediaError(null)
     setLocationError(null)
+    setStickerError(null)
     setPendingLocation(null)
     setSlashIndex(0)
     setSlashDismissed(false)
@@ -446,6 +448,7 @@ export function ChatComposer({
         {audioError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{audioError}</p>}
         {mediaError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{mediaError}</p>}
         {locationError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{locationError}</p>}
+        {stickerError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{stickerError}</p>}
         {replyTo && (
           <div className="mb-2 flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-wa-field-dark">
             <div className="min-w-0 flex-1">
@@ -473,7 +476,13 @@ export function ChatComposer({
           {!isRecordingAudio && (
             <EmojiStickerPanel
               onInsertEmoji={insertEmoji}
-              onSelectSticker={(asset) => sendSticker({ assetId: asset.id, mediaUrl: asset.media_url })}
+              onSelectSticker={(asset) => {
+                setStickerError(null)
+                sendSticker(
+                  { assetId: asset.id, mediaUrl: asset.media_url },
+                  { onError: (err) => setStickerError(extractErrorMessage(err)) },
+                )
+              }}
             />
           )}
 

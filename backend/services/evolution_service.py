@@ -26,6 +26,22 @@ class WhatsAppWindowClosedError(EvolutionApiError):
     reabrirla."""
 
 
+def describe_send_failure(exc: Exception, action: str) -> str:
+    """Convierte una excepción de un intento de envío a WhatsApp en un texto
+    apto para mostrarle al usuario (toast, tooltip de burbuja fallida).
+
+    WhatsAppWindowClosedError ya trae su propio mensaje, específico y
+    accionable, así que se devuelve tal cual. Cualquier otra excepción -- un
+    EvolutionApiError con el texto técnico que devuelve Evolution/Meta, o un
+    httpx.HTTPError (timeout, desconexión) -- se reemplaza por un genérico:
+    nunca es agradable ni útil mostrarle a un vendedor un JSON crudo o un
+    stack trace. El detalle real queda en los logs; el llamador debe loguear
+    `exc` antes de invocar esto."""
+    if isinstance(exc, WhatsAppWindowClosedError):
+        return str(exc)
+    return f"No se pudo {action}. Probá de nuevo en unos segundos."
+
+
 _META_ERROR_CODE_WINDOW_CLOSED = 131047
 
 

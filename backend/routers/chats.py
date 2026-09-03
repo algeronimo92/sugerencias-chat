@@ -91,6 +91,7 @@ from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
     delete_whatsapp_message,
+    describe_send_failure,
     edit_whatsapp_message,
     is_configured,
     mark_messages_as_read,
@@ -714,7 +715,8 @@ async def send_sticker(
     try:
         response = await send_whatsapp_sticker(chat_id, sticker_b64)
     except (EvolutionApiError, httpx.HTTPError) as exc:
-        raise HTTPException(502, f"No se pudo enviar el sticker a WhatsApp: {exc}")
+        logger.warning("No se pudo enviar el sticker a WhatsApp para %s: %s", chat_id, exc)
+        raise HTTPException(502, describe_send_failure(exc, "enviar el sticker a WhatsApp"))
 
     message = await insert_message(
         chat_id=chat_id,
@@ -998,7 +1000,8 @@ async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest)
     try:
         await send_whatsapp_reaction(key, body.emoji)
     except (EvolutionApiError, httpx.HTTPError) as exc:
-        raise HTTPException(502, f"No se pudo enviar la reacción a WhatsApp: {exc}")
+        logger.warning("No se pudo enviar la reacción a WhatsApp para %s: %s", chat_id, exc)
+        raise HTTPException(502, describe_send_failure(exc, "enviar la reacción a WhatsApp"))
 
     message = await set_message_reaction(chat_id, target["wa_message_id"], body.emoji, from_me=True)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "reaction"})
@@ -1059,7 +1062,8 @@ async def edit_message(chat_id: str, message_id: int, body: EditMessageRequest):
     try:
         await edit_whatsapp_message(chat_id, target["wa_message_id"], text)
     except (EvolutionApiError, httpx.HTTPError) as exc:
-        raise HTTPException(502, f"No se pudo editar el mensaje en WhatsApp: {exc}")
+        logger.warning("No se pudo editar el mensaje en WhatsApp para %s: %s", chat_id, exc)
+        raise HTTPException(502, describe_send_failure(exc, "editar el mensaje en WhatsApp"))
 
     message = await update_message_content(chat_id, target["wa_message_id"], text)
     if message is None:
@@ -1083,7 +1087,8 @@ async def delete_message(chat_id: str, message_id: int):
     try:
         await delete_whatsapp_message(chat_id, target["wa_message_id"])
     except (EvolutionApiError, httpx.HTTPError) as exc:
-        raise HTTPException(502, f"No se pudo eliminar el mensaje en WhatsApp: {exc}")
+        logger.warning("No se pudo eliminar el mensaje en WhatsApp para %s: %s", chat_id, exc)
+        raise HTTPException(502, describe_send_failure(exc, "eliminar el mensaje en WhatsApp"))
 
     message = await mark_message_deleted(chat_id, target["wa_message_id"])
     if message is None:
