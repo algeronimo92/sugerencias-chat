@@ -1042,7 +1042,7 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
     async with get_sessionmaker()() as session:
         row = (
             await session.execute(
-                text("SELECT * FROM leads WHERE id = :id::uuid"), {"id": chat_id}
+                text("SELECT * FROM leads WHERE id = :id"), {"id": chat_id}
             )
         ).mappings().first()
     if row is None:
@@ -1058,7 +1058,7 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
         rows = (
             await session.execute(
                 text(
-                    "SELECT * FROM wsp_messages WHERE chat_id = :chat_id::uuid "
+                    "SELECT * FROM wsp_messages WHERE chat_id = :chat_id "
                     "ORDER BY id DESC LIMIT :limit"
                 ),
                 {"chat_id": chat_id, "limit": limit},
@@ -1073,7 +1073,7 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
 
 
 async def ensure_lead_stub(
-    chat_id: str, ultimo_mensaje_at: str | None, origen: str | None
+    chat_id: str, ultimo_mensaje_at: datetime | None, origen: str | None
 ) -> dict:
     """Alta idempotente de un lead mínimo para un mensaje entrante nuevo.
     Reemplaza al nodo Postgres ``create lead`` de n8n: ``INSERT ... ON
@@ -1095,7 +1095,7 @@ async def ensure_lead_stub(
         inserted = (await session.execute(stmt)).scalar_one_or_none()
         if inserted is not None and ultimo_mensaje_at:
             await session.execute(
-                text("UPDATE leads SET ultimo_mensaje_at = :ts WHERE id = :id::uuid"),
+                text("UPDATE leads SET ultimo_mensaje_at = :ts WHERE id = :id"),
                 {"ts": ultimo_mensaje_at, "id": chat_id},
             )
         await session.commit()
