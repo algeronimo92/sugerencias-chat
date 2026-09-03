@@ -34,7 +34,10 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:3000"]
+      # 127.0.0.1:5173 sumado junto a los de localhost: es el origen real
+      # desde el que sirve el navegador ahora que el frontend se accede por
+      # IPv4 explícito (ver el comentario en el servicio frontend).
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:3000","http://127.0.0.1:5173"]
       # La conexión no sale de la red Docker local. Producción conserva
       # DATABASE_SSL=require desde backend/.env y compose.prod.yml.
       - DATABASE_SSL=disable
@@ -59,9 +62,13 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000
+      # 127.0.0.1 y no "localhost": en este entorno "localhost" resuelve
+      # primero a ::1 (IPv6), y el mapeo de puertos de Docker Desktop/WSL2
+      # no responde ahí — el navegador se queda colgado o corta la conexión
+      # aunque el contenedor esté sano. 127.0.0.1 fuerza IPv4, que sí anda.
+      - VITE_API_BASE_URL=http://127.0.0.1:8000
     ports:
-      - "5174:5173"
+      - "5173:5173"
     depends_on:
       backend:
         condition: service_healthy
