@@ -93,7 +93,7 @@ from services.evolution_service import (
     delete_whatsapp_message,
     describe_send_failure,
     edit_whatsapp_message,
-    is_configured,
+    get_instance_capabilities,
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_reaction,
@@ -561,9 +561,15 @@ async def get_messages(
 
 @router.get("/history/availability")
 async def get_history_availability():
-    """Si se puede ofrecer el historial de WhatsApp. Solo mira la configuración:
-    el botón no debe costar una llamada a Evolution cada vez que se abre un chat."""
-    return {"available": await is_configured()}
+    """Si se puede ofrecer el historial de WhatsApp. Meta Cloud API no tiene
+    equivalente de `chat/findMessages` (historial retroactivo): solo Baileys
+    puede traerlo. get_instance_capabilities() ya cachea 5 min, así que esto
+    no le pega a Evolution en cada apertura de chat."""
+    try:
+        capabilities = await get_instance_capabilities()
+    except EvolutionApiError:
+        return {"available": False}
+    return {"available": capabilities["history_available"]}
 
 
 @router.get("/{chat_id}/history", response_model=HistoryPage)

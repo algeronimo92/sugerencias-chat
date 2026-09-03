@@ -8,6 +8,7 @@ import {
   useSendMessage, useUnpinMessage, type ReplyTarget,
 } from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
+import { useTemplateCapabilities } from '../hooks/useTemplates'
 import { ForwardMessageDialog } from './ForwardMessageDialog'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
@@ -107,6 +108,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
+  // Mismo dato que ya trae el picker de plantillas oficiales: qué tan
+  // limitada es la instancia de Evolution activa. En Meta Cloud API no se
+  // puede editar ni borrar un mensaje saliente ya mandado.
+  const { data: instanceCapabilities } = useTemplateCapabilities()
   const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead(chat.chat_id)
 
   function toggleAutomation() {
@@ -698,6 +703,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     selectionMode={isSelecting}
                     isSelected={selectedIds.has(item.message.id)}
                     onToggleSelect={() => toggleSelected(item.message.id)}
+                    editDeleteSupported={instanceCapabilities?.edit_delete_supported}
                   />
                 </Fragment>
               )

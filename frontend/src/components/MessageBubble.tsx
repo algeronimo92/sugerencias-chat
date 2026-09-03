@@ -123,6 +123,12 @@ interface Props {
   selectionMode: boolean
   isSelected: boolean
   onToggleSelect: () => void
+  /** Meta Cloud API no soporta editar ni "eliminar para todos" un mensaje
+   * saliente — solo Baileys. `undefined` mientras se resuelve la capacidad de
+   * la instancia se trata como soportado (el default histórico, y el caso
+   * real hoy: casi todo el tráfico sigue siendo Baileys) para no hacer
+   * parpadear los botones al cargar. */
+  editDeleteSupported?: boolean
 }
 
 // Cuánto hay que mantener apretada una burbuja para entrar en modo selección,
@@ -174,6 +180,7 @@ export function MessageBubble({
   selectionMode,
   isSelected,
   onToggleSelect,
+  editDeleteSupported = true,
 }: Props) {
   const isVendedor = m.sender === 'vendedor'
   const isDeleted = !!m.deleted_at
@@ -272,8 +279,10 @@ export function MessageBubble({
   // error, un view-once nunca ofrece una copia descargable.
   const canDownload = mediaSrc != null && kind !== 'view_once' && !isDeleted
   // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
-  // además, solo texto y dentro de los 15 minutos.
-  const canDelete = canReply && isVendedor
+  // además, solo texto y dentro de los 15 minutos. editDeleteSupported tapa
+  // los dos de raíz en una instancia Meta Cloud API, que no admite ninguna
+  // de las dos operaciones.
+  const canDelete = canReply && isVendedor && editDeleteSupported
   const sentAgo = m.sent_at ? Date.now() - new Date(m.sent_at).getTime() : Infinity
   const canEdit = canDelete && (kind === 'text') && sentAgo < EDIT_WINDOW_MS
   // Fijar es nativo del CRM (ver MessageActionsMenu): no depende de WhatsApp,

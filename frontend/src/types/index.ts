@@ -570,8 +570,9 @@ export interface TemplateInteractiveConfig {
 export interface TemplateCapabilities {
   integration: string | null
   official_sending_supported: boolean
-  // Todavía sin consumir en el frontend (falta que MessageBubble.tsx y el
-  // botón de historial las respeten — Etapa 2.3 del plan de migración).
+  // history_available lo consume useEvolutionHistoryAvailability contra
+  // /api/chats/history/availability (no este objeto directo, pero es el
+  // mismo dato); edit_delete_supported lo consume MessageBubble.tsx.
   history_available: boolean
   edit_delete_supported: boolean
   reason: string | null

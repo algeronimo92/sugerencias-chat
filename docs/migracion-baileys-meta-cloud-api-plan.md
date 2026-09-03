@@ -85,6 +85,7 @@ forma del payload desde cero. **Hecho — ver sección 2.1.**
 | Área | Se mantiene | Cambia |
 |---|---|---|
 | Envío (`evolution_service.py`) | Mismos endpoints (`sendText`, `sendMedia`, `sendTemplate`, etc.) | `send_whatsapp_template` deja de estar bloqueada (`get_template_capabilities` ya detecta `WHATSAPP-BUSINESS`) |
+| Audio saliente | — | **`sendWhatsAppAudio` (PTT) no funciona en esta instancia Business — bug real de Evolution 2.3.7, no de esta app** (`processAudio()` hardcodea `fileName`/`mimetype` como `.mp3`/`audio/mpeg` sin mirar el contenido real; confirmado en vivo — el mensaje se acepta con `201` y nunca progresa, `MessageUpdate: []` para siempre en el historial propio de Evolution). Reportado río arriba: [evolution-api#2719](https://github.com/evolution-foundation/evolution-api/issues/2719). El audio saliente ahora va por `send_whatsapp_media(mediatype="audio")` en vez de `send_whatsapp_audio` (eliminado de `evolution_service.py`); entrega bien, pero pierde la burbuja nativa de nota de voz — Evolution tampoco manda el `voice: true` que exige la Graph API para esa burbuja, en ningún camino de audio. Las notas de voz grabadas en el navegador también se convierten a Ogg/Opus antes de guardarse (`media_storage.transcode_audio_to_ogg_opus`), por las dudas de que Evolution algún día arregle el bug de arriba |
 | Ingesta RabbitMQ (`mq/definitions.json`, `evolution_exchange`) | Topología completa — mismo evento `MESSAGES_UPSERT`, confirmado por código fuente | Nada |
 | n8n (`rag.json`, `webhooks-evolution-rabbitmq.json`) | La lógica de negocio (agente analista, IA de adjuntos); el Switch para texto/ubicación/contacto/reacción/sticker/media — todo confirmado sin cambios, media incluida | El Code node de `interactiveMessage` ("priority interactive content") tiene un bug real con la forma de Business — hoy pierde hasta el texto, no solo el id (fix en Etapa 1); falta agregar `buttonMessage` (singular) al Switch |
 | Identidad (`whatsapp_identity_service.py`) | El modelo de alias por lead sigue sirviendo | Ya no habrá `@lid` — todo entra como `kind='phone'`; el código lo tolera sin cambios, pero `resolve_history_jid` y `aliases_from_send_key` quedan sin propósito para esta instancia (documentar, no borrar mientras convivan instancias Baileys) |
@@ -372,16 +373,17 @@ trabajo ya es concreto, no exploratorio:
    `test_evolution_client.py` cubriendo Business, Baileys, e integración
    desconocida.
 
-   **Lo que sigue pendiente, y es la parte más grande:** nada en el frontend
-   consume `history_available`/`edit_delete_supported` todavía.
-   `MessageBubble.tsx` (`canEdit`/`canDelete`) es un componente puramente
-   presentacional que no pide nada por sí solo — hace falta traer la
-   capacidad desde arriba (`ChatThread` o un hook tipo
-   `useInstanceCapabilities()`) y pasarla como prop nueva, más cambiar
-   `/history/availability` en `chats.py` para que use `history_available` en
-   vez de `is_configured()`. Se pospone a propósito hasta que exista una
-   instancia Business real (cerca de la Etapa 5): hoy no hay ningún usuario
-   que se tope con el problema que esto previene.
+   **✅ HECHO (2026-09-03).** `MessageBubble.tsx` recibe ahora
+   `editDeleteSupported?: boolean` (prop opcional, default `true` para no
+   hacer parpadear los botones mientras se resuelve la capacidad — hoy casi
+   todo el tráfico real sigue siendo Baileys) y lo usa para tapar
+   `canEdit`/`canDelete` en la raíz. `ChatThread.tsx` lo alimenta
+   reutilizando `useTemplateCapabilities()` (mismo hook que ya usaba el
+   picker de plantillas oficiales, mismo dato — no hizo falta un hook nuevo).
+   `/history/availability` en `chats.py` ahora usa
+   `get_instance_capabilities()["history_available"]` en vez de
+   `is_configured()`. Tests nuevos: `test_history_availability_route.py`
+   (backend) y un caso nuevo en `MessageBubble.test.tsx` (frontend).
 4. **Estado de rechazo — ✅ HECHO (2026-09-02).** Se agregó `MessageStatus.REJECTED`
    (no `FAILED`: ese valor ya lo usa el outbox para un envío que nunca salió y
    admite reintento/descarte — acá el mensaje sí tiene `wa_message_id`, así que
@@ -396,11 +398,40 @@ trabajo ya es concreto, no exploratorio:
    "No entregado" sin botones de acción. Tests nuevos en
    `test_message_status_service.py`.
 
-### Etapa 3 — RabbitMQ / ingesta
+### Etapa 3 — RabbitMQ / ingesta — ✅ COMPLETA, confirmado por código fuente (2026-09-03)
 
-Si el spike confirma que Evolution emite el mismo evento `messages.upsert` sobre el mismo `evolution_exchange`, **no hay nada que tocar** en [mq/definitions.json](../mq/definitions.json) ni en `mq/provision.sh`: la instancia Business publica con las mismas routing keys, y `q.wsp.inbound` ya está atada a ellas sin filtrar por instancia.
+Se confirma que **no hay nada que tocar** en [mq/definitions.json](../mq/definitions.json) ni en `mq/provision.sh`. Verificado leyendo
+[`rabbitmq.controller.ts`](https://github.com/evolution-foundation/evolution-api/blob/2.3.7/src/api/integrations/event/rabbitmq/rabbitmq.controller.ts)
+de Evolution 2.3.7 (no se pudo probar contra el RabbitMQ real: el puerto de
+administración (10.10.0.1:15672) no tiene ruta desde este entorno de
+desarrollo local, mismo caso que Postgres — ver
+[[entorno-local-apunta-a-bd-produccion]]):
 
-Único punto a confirmar: el `groupsIgnore` y las colas huérfanas de Evolution en modo global (`RABBITMQ_GLOBAL_ENABLED=true`) — confirmar que aplican igual a una instancia Business o si el modo Business tiene su propio comportamiento de colas globales.
+- `emit()` no tiene **ninguna** rama condicionada por tipo de canal
+  (Baileys/Business) — el único filtro por `integration` que existe ahí es
+  sobre la lista de integraciones de eventos habilitadas por instancia
+  (`"rabbitmq"` como string dentro de esa lista), no sobre el proveedor de
+  WhatsApp.
+- En modo **global** (`RABBITMQ_GLOBAL_ENABLED=true`, el que ya usa
+  `dermicapro`), el exchange y las routing keys son siempre los globales
+  (`rabbitmqExchangeName`/el nombre del evento tal cual, ej. `messages.upsert`)
+  — nunca el nombre de la instancia. Una instancia Business en modo global
+  publica exactamente al mismo `evolution_exchange`, con las mismas routing
+  keys, que una Baileys. Solo el modo **local** (`instanceRabbitmq.enabled`
+  activado a mano para esa instancia puntual) crea un exchange nombrado con
+  el `instanceName` — no es el modo que usa esta app, así que no aplica.
+- `groupsIgnore` es una bandera exclusiva de `whatsapp.baileys.service.ts`
+  (filtra mensajes de grupos de WhatsApp Web) — no existe en
+  `whatsapp.business.service.ts` porque Meta Cloud API no tiene ese concepto
+  para terceros. No es una discrepancia a resolver, es simplemente N/A para
+  Business.
+
+**Conclusión:** mientras la instancia Business nueva no tenga su propio
+`Rabbitmq.enabled` local activado (dejarlo como está, sin tocar), va a
+publicar a `q.wsp.inbound`/`q.wsp.status` exactamente igual que `dermicapro`
+hoy, sin colas ni exchanges huérfanos. No hace falta un spike con tráfico
+real para esta etapa: el código no deja margen para un comportamiento
+distinto entre canales acá.
 
 ### Etapa 4 — Encaje con el pivot multi-tenant
 

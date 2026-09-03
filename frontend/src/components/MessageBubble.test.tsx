@@ -45,6 +45,7 @@ interface Options {
   /** Otros mensajes del chat, para correlacionar pedidos de WhatsApp Flow
    * repartidos en varios mensajes. Por defecto, solo el propio mensaje. */
   chatMessages?: Message[]
+  editDeleteSupported?: boolean
 }
 
 function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
@@ -85,6 +86,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       selectionMode={options.selectionMode ?? false}
       isSelected={options.isSelected ?? false}
       onToggleSelect={onToggleSelect}
+      editDeleteSupported={options.editDeleteSupported}
     />,
   )
   return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onDownload, onPin, onUnpin }
@@ -313,6 +315,15 @@ describe('MessageBubble', () => {
     await user.click(screen.getByLabelText('Más acciones'))
     expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
+  })
+
+  it('en una instancia Meta Cloud API no ofrece editar ni eliminar: la API no lo soporta', async () => {
+    const user = userEvent.setup()
+    renderBubble({}, { editDeleteSupported: false })
+
+    await user.click(screen.getByLabelText('Más acciones'))
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
   })
 
   it('ofrece fijar un mensaje sin fijar', async () => {
