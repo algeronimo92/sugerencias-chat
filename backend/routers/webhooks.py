@@ -598,6 +598,18 @@ async def message_by_wa_id_raw_webhook(wa_message_id: str):
     return message or {}
 
 
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    """asyncpg exige un datetime.datetime real para una columna timestamptz
+    -a diferencia de uuid/texto, no acepta la representación en string y la
+    parsea del lado del server."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 class EnsureLeadWebhookBody(BaseModel):
     chat_id: str
     ultimo_mensaje_at: str | None = None
@@ -608,7 +620,9 @@ class EnsureLeadWebhookBody(BaseModel):
 async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
     """Reemplaza al nodo Postgres `create lead`: alta idempotente de un lead
     mínimo cuando llega un mensaje de un chat todavía no registrado."""
-    return await ensure_lead_stub(body.chat_id, body.ultimo_mensaje_at, body.origen)
+    return await ensure_lead_stub(
+        body.chat_id, _parse_iso_datetime(body.ultimo_mensaje_at), body.origen
+    )
 
 
 class SaveInboundMessageWebhookBody(BaseModel):
@@ -636,12 +650,7 @@ async def save_inbound_message_webhook(body: SaveInboundMessageWebhookBody):
     mensaje entrante. Un `wa_message_id` repetido (Evolution reenvía el mismo
     webhook sin confirmación) devuelve la fila ya existente en vez de romper,
     vía la misma lógica de `insert_message` que usa el resto de la app."""
-    sent_at: datetime | None = None
-    if body.sent_at:
-        try:
-            sent_at = datetime.fromisoformat(body.sent_at.strip().replace("Z", "+00:00"))
-        except ValueError:
-            sent_at = None
+    sent_at = _parse_iso_datetime(body.sent_at)
 
     message_secret: bytes | None = None
     if body.message_secret:

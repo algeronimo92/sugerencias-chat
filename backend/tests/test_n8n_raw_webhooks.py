@@ -73,7 +73,9 @@ async def test_ensure_lead_forwards_to_the_service(monkeypatch):
         EnsureLeadWebhookBody(chat_id=LEAD_ID, ultimo_mensaje_at="2026-09-03T10:00:00Z", origen="Facebook Ads")
     )
 
-    stub.assert_awaited_once_with(LEAD_ID, "2026-09-03T10:00:00Z", "Facebook Ads")
+    stub.assert_awaited_once_with(
+        LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
+    )
     assert result == {"id": LEAD_ID, "estado": "nuevo"}
 
 

@@ -105,7 +105,9 @@ async def test_ensure_lead_stub_skips_conflicting_lead(monkeypatch):
     )
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.ensure_lead_stub(LEAD_ID, "2026-09-03T10:00:00Z", "Facebook Ads")
+    result = await db_service.ensure_lead_stub(
+        LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
+    )
 
     assert session.execute.await_count == 2  # insert intentado + el select de fetch_lead_raw
     assert result == existing_row
@@ -124,7 +126,9 @@ async def test_ensure_lead_stub_writes_ultimo_mensaje_at_on_new_lead(monkeypatch
     )
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.ensure_lead_stub(LEAD_ID, "2026-09-03T10:00:00Z", "Facebook Ads")
+    result = await db_service.ensure_lead_stub(
+        LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
+    )
 
     assert session.execute.await_count == 3
     assert result == new_row
