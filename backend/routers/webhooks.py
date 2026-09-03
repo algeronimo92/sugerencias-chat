@@ -1,5 +1,6 @@
 import base64
 import binascii
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
@@ -7,8 +8,12 @@ from pydantic import BaseModel
 from db.models import LeadStage
 from services.db_service import (
     attach_outgoing_analysis,
+    ensure_lead_stub,
     fetch_latest_message,
+    fetch_lead_raw,
     fetch_message_by_wa_id,
+    fetch_messages_raw,
+    insert_message,
     mark_chat_read_from_whatsapp_receipt,
     mark_message_deleted,
     reconcile_outgoing_message,
@@ -557,3 +562,107 @@ async def message_status_webhook(
         "updated_count": len(changed),
         "read_count": len(read_synced),
     }
+
+
+# --- Reemplazo de los nodos Postgres directos de rag.json --------------------
+# n8n consultaba/escribía la base directo con nodos Postgres. Estos endpoints
+# hacen lo mismo por detrás de un HTTP call para que n8n deje de tener
+# credenciales de base de datos, conservando exactamente el mismo shape de
+# request/response que esperan los nodos aguas abajo del workflow (ver
+# docs/migracion-baileys-meta-cloud-api-plan.md).
+
+
+@router.get("/lead-raw")
+async def lead_raw_webhook(chat_id: str):
+    """Reemplaza los nodos Postgres `get lead1` / `try to get lead`: fila
+    cruda de `leads`. `{}` si no existe -el mismo shape que devolvía el nodo
+    Postgres con `alwaysOutputData`- para que el chequeo `{{ $json }}` vacío
+    de los IF de n8n siga funcionando sin tocarlos."""
+    lead = await fetch_lead_raw(chat_id)
+    return lead or {}
+
+
+@router.get("/lead-messages-raw")
+async def lead_messages_raw_webhook(chat_id: str, limit: int = 500):
+    """Reemplaza al nodo Postgres `get messages` (contexto del copiloto de
+    ventas, workflow `sugerencia`): últimos `limit` mensajes de un chat,
+    crudos y más recientes primero."""
+    return {"messages": await fetch_messages_raw(chat_id, limit=limit)}
+
+
+@router.get("/message-by-wa-id-raw")
+async def message_by_wa_id_raw_webhook(wa_message_id: str):
+    """Reemplaza al nodo Postgres `buscar mensaje existente1` (chequeo de
+    duplicado antes de insertar un mensaje entrante). `{}` si no existe."""
+    message = await fetch_message_by_wa_id(wa_message_id)
+    return message or {}
+
+
+class EnsureLeadWebhookBody(BaseModel):
+    chat_id: str
+    ultimo_mensaje_at: str | None = None
+    origen: str | None = None
+
+
+@router.post("/ensure-lead")
+async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
+    """Reemplaza al nodo Postgres `create lead`: alta idempotente de un lead
+    mínimo cuando llega un mensaje de un chat todavía no registrado."""
+    return await ensure_lead_stub(body.chat_id, body.ultimo_mensaje_at, body.origen)
+
+
+class SaveInboundMessageWebhookBody(BaseModel):
+    chat_id: str
+    sender: str
+    content: str | None = None
+    sent_at: str | None = None
+    media_url: str | None = None
+    status: str | None = None
+    wa_message_id: str | None = None
+    media_width: int | None = None
+    media_height: int | None = None
+    quoted_wa_message_id: str | None = None
+    message_type: str | None = None
+    analysis: dict | None = None
+    payload: dict | None = None
+    # base64 de messageContextInfo.messageSecret del mensaje ORIGINAL (ver
+    # message_edited_secret_webhook más arriba).
+    message_secret: str | None = None
+
+
+@router.post("/save-inbound-message")
+async def save_inbound_message_webhook(body: SaveInboundMessageWebhookBody):
+    """Reemplaza al nodo Postgres `guardar mensajes en posgress`: alta de un
+    mensaje entrante. Un `wa_message_id` repetido (Evolution reenvía el mismo
+    webhook sin confirmación) devuelve la fila ya existente en vez de romper,
+    vía la misma lógica de `insert_message` que usa el resto de la app."""
+    sent_at: datetime | None = None
+    if body.sent_at:
+        try:
+            sent_at = datetime.fromisoformat(body.sent_at.strip().replace("Z", "+00:00"))
+        except ValueError:
+            sent_at = None
+
+    message_secret: bytes | None = None
+    if body.message_secret:
+        try:
+            message_secret = base64.b64decode(body.message_secret, validate=True)
+        except (binascii.Error, ValueError):
+            message_secret = None
+
+    return await insert_message(
+        body.chat_id,
+        body.sender,
+        body.content,
+        media_url=body.media_url,
+        wa_message_id=body.wa_message_id,
+        status=body.status,
+        message_type=body.message_type,
+        analysis=body.analysis,
+        payload=body.payload,
+        message_secret=message_secret,
+        sent_at=sent_at,
+        quoted_wa_message_id=body.quoted_wa_message_id,
+        media_width=body.media_width,
+        media_height=body.media_height,
+    )

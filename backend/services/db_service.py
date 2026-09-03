@@ -2,7 +2,8 @@ import asyncio
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, not_, or_, select, true, update
+from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, not_, or_, select, text, true, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationTrigger
@@ -1015,6 +1016,92 @@ async def create_lead(
     return await fetch_chat(lead_id)
 
 
+def _json_safe_row(row: dict) -> dict:
+    """Convierte una fila cruda (``SELECT *`` vía SQL crudo) a JSON-safe:
+    datetime/date a ISO, bytes a None (no serializable, sin uso fuera de la
+    app). Lo demás (str, int, bool, dict de columnas JSONB) ya es JSON-safe."""
+    result = {}
+    for key, value in row.items():
+        if isinstance(value, datetime):
+            result[key] = _fmt_ts(value)
+        elif isinstance(value, date):
+            result[key] = value.isoformat()
+        elif isinstance(value, (bytes, bytearray)):
+            result[key] = None
+        else:
+            result[key] = value
+    return result
+
+
+async def fetch_lead_raw(chat_id: str) -> dict | None:
+    """Fila cruda de ``leads`` (todas las columnas de la tabla, incluida
+    ``ultimo_mensaje_at`` que no está mapeada en el ORM — ver
+    ``ensure_lead_stub``). La usan los endpoints que reemplazan a los nodos
+    Postgres ``get lead1``/``try to get lead`` de n8n, que hacían
+    ``SELECT * FROM leads WHERE id = ...`` directo."""
+    async with get_sessionmaker()() as session:
+        row = (
+            await session.execute(
+                text("SELECT * FROM leads WHERE id = :id::uuid"), {"id": chat_id}
+            )
+        ).mappings().first()
+    if row is None:
+        return None
+    return _json_safe_row(dict(row))
+
+
+async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
+    """Filas crudas de ``wsp_messages`` de un chat, más recientes primero.
+    Reemplaza al nodo Postgres ``get messages`` de n8n. Sin
+    ``message_secret`` (bytes, no serializable y sin uso fuera de la app)."""
+    async with get_sessionmaker()() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT * FROM wsp_messages WHERE chat_id = :chat_id::uuid "
+                    "ORDER BY id DESC LIMIT :limit"
+                ),
+                {"chat_id": chat_id, "limit": limit},
+            )
+        ).mappings().all()
+    result = []
+    for row in rows:
+        data = _json_safe_row(dict(row))
+        data.pop("message_secret", None)
+        result.append(data)
+    return result
+
+
+async def ensure_lead_stub(
+    chat_id: str, ultimo_mensaje_at: str | None, origen: str | None
+) -> dict:
+    """Alta idempotente de un lead mínimo para un mensaje entrante nuevo.
+    Reemplaza al nodo Postgres ``create lead`` de n8n: ``INSERT ... ON
+    CONFLICT (id) DO NOTHING``, sin pisar nada si el lead ya existía.
+
+    ``ultimo_mensaje_at`` no está mapeada en el ORM (columna que solo usa
+    n8n, agregada por la migración ``b7a2c9d41e08_objetos_que_n8n_necesita``)
+    así que se escribe aparte con SQL crudo, y solo cuando el INSERT anterior
+    de verdad creó la fila (si hubo conflicto, el nodo Postgres original no
+    tocaba ninguna columna existente).
+    """
+    stmt = (
+        pg_insert(Lead)
+        .values(id=chat_id, estado=LeadStage.nuevo, origen=origen, conversacion_version=0)
+        .on_conflict_do_nothing(index_elements=[Lead.id])
+        .returning(Lead.id)
+    )
+    async with get_sessionmaker()() as session:
+        inserted = (await session.execute(stmt)).scalar_one_or_none()
+        if inserted is not None and ultimo_mensaje_at:
+            await session.execute(
+                text("UPDATE leads SET ultimo_mensaje_at = :ts WHERE id = :id::uuid"),
+                {"ts": ultimo_mensaje_at, "id": chat_id},
+            )
+        await session.commit()
+    return await fetch_lead_raw(chat_id) or {}
+
+
 async def update_lead(
     chat_id: str,
     values: dict,
@@ -1193,6 +1280,9 @@ _INSERT_MESSAGE_COLUMNS = (
     WspMessage.message_type,
     WspMessage.analysis,
     WspMessage.payload,
+    WspMessage.quoted_wa_message_id,
+    WspMessage.media_width,
+    WspMessage.media_height,
 )
 
 
@@ -1208,6 +1298,10 @@ async def insert_message(
     payload: dict | None = None,
     human_outbound: bool | None = None,
     message_secret: bytes | None = None,
+    sent_at: datetime | None = None,
+    quoted_wa_message_id: str | None = None,
+    media_width: int | None = None,
+    media_height: int | None = None,
 ) -> dict:
     stmt = (
         insert(WspMessage)
@@ -1216,13 +1310,16 @@ async def insert_message(
             sender=sender,
             content=content,
             media_url=media_url,
-            sent_at=datetime.now(timezone.utc),
+            sent_at=sent_at or datetime.now(timezone.utc),
             wa_message_id=wa_message_id,
             status=status,
             message_type=message_type,
             analysis=analysis,
             payload=payload,
             message_secret=message_secret,
+            quoted_wa_message_id=quoted_wa_message_id,
+            media_width=media_width,
+            media_height=media_height,
         )
         .returning(*_INSERT_MESSAGE_COLUMNS)
     )
@@ -1266,6 +1363,9 @@ async def insert_message(
         "message_type": row["message_type"],
         "analysis": row["analysis"],
         "payload": row["payload"],
+        "quoted_wa_message_id": row["quoted_wa_message_id"],
+        "media_width": row["media_width"],
+        "media_height": row["media_height"],
     }
 
 
