@@ -107,9 +107,15 @@ def test_no_expression_uses_raw_remote_jid_as_chat_id():
     assert "data.key.remoteJid }}" not in workflow_text
 
 
-def test_postgres_lead_nodes_use_internal_id():
+def test_lead_lookup_and_creation_webhooks_use_internal_id():
     """Los nodos de resolución de identidad (leer o crear el lead al llegar un
-    mensaje) usan la columna `id` interna, nunca `remote_jid`.
+    mensaje) mandan la columna `id` interna, nunca `remote_jid`.
+
+    `get lead1` / `try to get lead` / `create lead` dejaron de ser nodos
+    Postgres directos: ahora son HTTP Request contra `/api/webhooks/lead-raw`
+    y `/api/webhooks/ensure-lead` del backend (ver
+    docs/migracion-baileys-meta-cloud-api-plan.md), pero el contrato de
+    identidad que este test protege no cambió.
 
     `get lead4`, `update lead`, `update lead4` y `actualizar estado lead` —
     los que el agente analista usa para ACTUALIZAR un lead ya existente— ya
@@ -122,15 +128,21 @@ def test_postgres_lead_nodes_use_internal_id():
     nodes = _nodes_by_name(_workflow())
 
     for name in {"get lead1", "try to get lead"}:
-        where = nodes[name]["parameters"]["where"]["values"]
-        assert where[0]["column"] == "id", name
+        node = nodes[name]
+        assert node["type"] == "n8n-nodes-base.httpRequest", name
+        assert node["parameters"]["url"].endswith("/api/webhooks/lead-raw"), name
+        query = node["parameters"]["queryParameters"]["parameters"]
+        chat_id_param = next(p for p in query if p["name"] == "chat_id")
+        assert "remote_jid" not in chat_id_param["value"], name
+        assert "remoteJid" not in chat_id_param["value"], name
 
-    create_columns = nodes["create lead"]["parameters"]["columns"]
-    create_values = create_columns["value"]
-    assert "id" in create_values
-    assert "remote_jid" not in create_values
-    create_id_schema = next(item for item in create_columns["schema"] if item["id"] == "id")
-    assert create_id_schema["type"] == "string"
+    create_node = nodes["create lead"]
+    assert create_node["type"] == "n8n-nodes-base.httpRequest"
+    assert create_node["parameters"]["url"].endswith("/api/webhooks/ensure-lead")
+    json_body = create_node["parameters"]["jsonBody"]
+    assert "chat_id:" in json_body
+    assert "remote_jid" not in json_body
+    assert "remoteJid" not in json_body
 
 
 @pytest.mark.skip(

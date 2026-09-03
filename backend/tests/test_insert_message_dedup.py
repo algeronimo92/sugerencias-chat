@@ -27,6 +27,9 @@ EXISTING_ROW = {
     "message_type": "text",
     "analysis": None,
     "payload": None,
+    "quoted_wa_message_id": None,
+    "media_width": None,
+    "media_height": None,
 }
 
 

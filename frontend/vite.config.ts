@@ -6,6 +6,15 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    // Vite bloquea por defecto cualquier Host que no reconozca (protección
+    // contra DNS rebinding). Sin esto, acceder al dev server a través de un
+    // túnel (Cloudflare, ngrok, etc.) devuelve 403 "Blocked request". Vacío
+    // en desarrollo normal: solo se activa si se define la env var.
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS
+      ? process.env.VITE_ALLOWED_HOSTS.split(',')
+      : undefined,
+  },
   plugins: [
     react(),
     tailwindcss(),

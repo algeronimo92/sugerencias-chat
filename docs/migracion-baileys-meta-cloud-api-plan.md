@@ -168,14 +168,95 @@ Sobre `rag.json` (ver [n8n-normalizacion-wsp-messages.md](n8n-normalizacion-wsp-
 como referencia del estado actual). Con el análisis de código como base, el
 trabajo ya es concreto, no exploratorio:
 
-- **Media (imagen/audio/documento): sin cambios, confirmado leyendo `rag.json`.**
-  El nodo `get image` (y sus equivalentes `get audio`/`get document`) no tocan
-  la `url` de Meta en ningún momento — llaman al endpoint propio de Evolution
-  `POST {server_url}/chat/getBase64FromMediaMessage/{instance}`, autenticado
-  con la `apikey` de Evolution de siempre. Evolution resuelve puertas adentro
-  cómo bajar el archivo según el proveedor de la instancia. La preocupación
-  original sobre un header `Authorization: Bearer` en n8n **no aplica**: n8n
-  nunca llega a tocar `lookaside.fbsbx.com` directamente.
+- **Media (imagen/audio/video/sticker/ptv) — ⚠️ corregido (2026-09-03): sí
+  hacía falta un cambio, no se detectó leyendo el código de n8n sino
+  probando en vivo.** El endpoint propio de Evolution
+  `POST {server_url}/chat/getBase64FromMediaMessage/{instance}` es correcto
+  (la preocupación original sobre `Authorization: Bearer` a
+  `lookaside.fbsbx.com` sigue sin aplicar), pero su **implementación tiene un
+  contrato distinto entre Baileys y Business**, confirmado leyendo
+  `whatsapp.baileys.service.ts` y `whatsapp.business.service.ts`:
+
+  ```js
+  // Baileys: si el body no trae el mensaje completo, lo busca por key
+  const msg = m?.message ? m : (await this.getMessage(m.key, true));
+
+  // Business: no busca nada — exige que el mensaje ya venga completo
+  const messageType = msg.messageType.includes('Message') ? ... // revienta si no
+  ```
+
+  Los nodos `get audio`/`get image`/`get video`/`get sticker1`/`get ptv`
+  mandaban solo `{"message.key.id": ...}` — alcanza para Baileys (busca el
+  mensaje solo) pero en Business tira `400 Bad Request` /
+  `TypeError: Cannot read properties of undefined (reading 'includes')`
+  porque `msg.messageType` nunca llega poblado. **Fix aplicado**: los cinco
+  nodos ahora mandan `{"message": {{ $json.body.data }}, "convertToMp4": false}`
+  — el objeto completo del webhook en vez de solo la key — que sirve para los
+  dos proveedores (a Baileys tampoco le hace falta la búsqueda si ya recibe
+  `.message` poblado). **✅ Confirmado con tráfico real (2026-09-03)**: nota de
+  voz genuina de un cliente → `get audio` devolvió
+  `mimetype: "audio/ogg; codecs=opus"` (el formato real de una nota de voz de
+  WhatsApp) y `Analyze audio1` (transcripción con Gemini) corrió sin errores.
+
+  **Segundo bug, este sí bloqueante.** El workflow **sí** manda a analizar
+  con Gemini los audios que manda el propio vendedor (no solo los del
+  cliente): el `event: "send.message"`/`fromMe: true` pasaba por el mismo
+  `get audio` → `Convert to audio` → `Analyze audio1`.
+  `getBase64FromMediaMessage` en Business lee `mediaMessage?.mime_type` (con
+  guion bajo), que funciona para un audio **entrante** (Evolution copia ese
+  campo tal cual lo manda Meta) pero no para el **eco de un audio saliente**,
+  cuya forma es distinta (`{fileName, mediaType, media, id, type, mimetype}`
+  — sin guion bajo) — ahí `mime_type` da `undefined` y Gemini rechaza el
+  archivo. Es un bug de Evolution, no se puede corregir ahí.
+
+  **Decisión de producto (2026-09-03): en vez de arreglar el mimetype para
+  el eco saliente, directamente no se manda a Gemini el audio del vendedor
+  — no hace falta transcribir lo que el propio vendedor dijo.** Nodo nuevo
+  **`es audio del vendedor`** (IF), insertado entre `Convert to audio` y
+  `Analyze audio1`, evaluando
+  `$('set files').item.json.parsed.last_sender === 'vendedor'`: si es
+  vendedor salta directo a `upload audio media` (el audio se sigue subiendo
+  y queda con `media_url`, solo no se transcribe); si es cliente sigue igual
+  que antes por `Analyze audio1`. El campo `analysis` de `audio content` pasó
+  a ser condicional (`null` para vendedor, el resumen de Gemini para
+  cliente) — sin eso, referenciar `$('Analyze audio1')` para un item que
+  nunca pasó por ese nodo rompe la ejecución.
+
+  El fix del `mimetype` con fallback en `Convert to audio` (descrito antes)
+  se dejó igual: ya no hace falta para el caso del vendedor porque ese
+  camino ni siquiera llega a necesitar el mimetype para Gemini, pero no
+  molesta dejarlo — es una mejora general de robustez del nodo.
+
+  Pendiente de confirmar con un audio real del vendedor tras el fix (que ya
+  no dispare `Analyze audio1` en absoluto).
+
+  **Extendido a imagen, video y ptv (2026-09-03) — mismo patrón, a pedido.**
+  El mismo problema de fondo aplica a cualquier adjunto que el vendedor
+  manda: no hace falta que Gemini describa una imagen o video que mandó el
+  propio vendedor, y el bug del `mimetype` del eco saliente probablemente
+  afecta a esos tipos también (no confirmado caso por caso, pero la forma
+  del eco es la misma familia de problema). Se replicó la misma solución en
+  los tres caminos restantes:
+
+  | Tipo | Nodo IF nuevo | Salta a (vendedor) | Sigue a (cliente) |
+  |---|---|---|---|
+  | Imagen | `es imagen del vendedor` | `upload image media` | `Analyze an image1` |
+  | Video | `es video del vendedor` | `upload video media` | `Analyze video1` |
+  | PTV (video nota) | `es ptv del vendedor` | `upload ptv media` | `Analyze ptv1` |
+
+  Cada IF va entre el `Convert to <tipo>` correspondiente y su nodo
+  `Analyze`, con la misma condición
+  (`$('set files').item.json.parsed.last_sender === 'vendedor'`). Los
+  `analysis` de `image content`/`video content`/`ptv content` pasaron a ser
+  condicionales con el mismo patrón que `audio content`. En los cuatro casos
+  el adjunto se sigue subiendo y queda con `media_url` — solo se salta el
+  análisis de Gemini.
+
+  Nota sobre nombres engañosos en el workflow: el nodo que convierte la
+  **imagen** se llama `Convert to audio4` (no `Convert to image`) — quedó
+  documentado acá para que no confunda a quien lo retome.
+
+  Pendiente de confirmar los tres con tráfico real del vendedor.
 - **`Switch Control type1` — `interactiveMessage` ya tiene salida, pero con un
   bug real de compatibilidad.** El Switch agrupa `interactiveMessage` junto con
   listas y respuestas de plantilla bajo la salida `priorityInteractive`, y el
