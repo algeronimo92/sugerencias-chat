@@ -38,5 +38,5 @@
 ## Notas
 
 - El DTO declara `ptv` como quinto `mediatype`, pero la validación del endpoint solo admite los cuatro de arriba; para video-nota circular está [sendPtv](send-ptv.md).
-- `mediatype: "audio"` manda el audio como archivo reproducible normal; para nota de voz (PTT, con onda y micrófono) está [sendWhatsAppAudio](send-whatsapp-audio.md).
-- En la app: `send_whatsapp_media`, que manda base64 y `fileName` opcional.
+- `mediatype: "audio"` manda el audio como archivo reproducible normal; para nota de voz (PTT, con onda y micrófono) está [sendWhatsAppAudio](send-whatsapp-audio.md) — pero esa ruta está rota en la instancia Meta Cloud API de esta app, así que **todo el audio saliente** (grabado o TTS) va por acá con `mediatype: "audio"`.
+- En la app: `send_whatsapp_media`, que manda base64 y `fileName` (obligatorio para audio: sin él Evolution devuelve 500).

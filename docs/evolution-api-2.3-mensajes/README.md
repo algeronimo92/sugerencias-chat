@@ -22,7 +22,7 @@ Fuentes primarias (más fieles que la documentación web, que está desactualiza
 |---|---|---|---|
 | `sendText` | [send-text.md](send-text.md) | `number`, `text` | ✅ `send_whatsapp_text` |
 | `sendMedia` | [send-media.md](send-media.md) | `number`, `mediatype` (+ media o archivo) | ✅ `send_whatsapp_media` |
-| `sendWhatsAppAudio` | [send-whatsapp-audio.md](send-whatsapp-audio.md) | `number` (+ audio o archivo) | ✅ `send_whatsapp_audio` |
+| `sendWhatsAppAudio` | [send-whatsapp-audio.md](send-whatsapp-audio.md) | `number` (+ audio o archivo) | ❌ roto en esta instancia, ver nota en el doc |
 | `sendPtv` | [send-ptv.md](send-ptv.md) | `number` (+ video o archivo) | ❌ |
 | `sendSticker` | [send-sticker.md](send-sticker.md) | `number` (+ sticker o archivo) | ❌ |
 | `sendLocation` | [send-location.md](send-location.md) | `number`, `latitude`, `longitude`, `name`, `address` | ✅ `send_whatsapp_location` |

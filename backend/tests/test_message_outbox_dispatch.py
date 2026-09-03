@@ -6,11 +6,16 @@ from services import message_outbox
 
 
 @pytest.mark.asyncio
-async def test_audio_job_reads_durable_media_and_uses_ptt_endpoint(monkeypatch):
+async def test_audio_job_reads_durable_media_and_uses_generic_media_endpoint(monkeypatch):
+    """sendWhatsAppAudio (PTT) quedó roto en la instancia Meta Cloud API que
+    usa la app -acepta el envío pero el mensaje nunca se entrega, sin ni un
+    error- así que las notas de voz se mandan por sendMedia como adjunto de
+    audio, que sí entrega (confirmado mandando el mismo archivo por los dos
+    caminos y comparando el historial de Evolution)."""
     read_media = Mock(return_value="BASE64")
-    send_audio = AsyncMock(return_value={"key": {"id": "WA-AUDIO"}})
+    send_media = AsyncMock(return_value={"key": {"id": "WA-AUDIO"}})
     monkeypatch.setattr(message_outbox, "read_media_base64", read_media)
-    monkeypatch.setattr(message_outbox, "send_whatsapp_audio", send_audio)
+    monkeypatch.setattr(message_outbox, "send_whatsapp_media", send_media)
 
     response, content = await message_outbox._send_payload(
         "51999@s.whatsapp.net",
@@ -20,7 +25,9 @@ async def test_audio_job_reads_durable_media_and_uses_ptt_endpoint(monkeypatch):
     assert response["key"]["id"] == "WA-AUDIO"
     assert content is None
     read_media.assert_called_once_with("/api/media/audio/test.ogg")
-    send_audio.assert_awaited_once_with("51999@s.whatsapp.net", "BASE64", quoted=None)
+    send_media.assert_awaited_once_with(
+        "51999@s.whatsapp.net", "BASE64", "audio", filename="test.ogg", quoted=None
+    )
 
 
 @pytest.mark.asyncio

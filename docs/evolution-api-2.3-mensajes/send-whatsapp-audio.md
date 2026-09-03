@@ -23,4 +23,4 @@
 
 - Siempre llega como **nota de voz** (burbuja con onda y botón de reproducir), no como archivo adjunto. Para audio como adjunto usar [sendMedia](send-media.md) con `mediatype: "audio"`.
 - La conversión a opus requiere ffmpeg en el servidor de Evolution; si el audio ya es ogg/opus se puede desactivar con `encoding: false`.
-- En la app: `send_whatsapp_audio` (usado por la función de TTS y notas de voz), con base64 y `quoted`.
+- **Roto en la instancia Meta Cloud API (WHATSAPP-BUSINESS) de esta app**: acepta el envío (201, `wamid` real) pero el mensaje nunca progresa ni un solo estado — ni siquiera en el historial propio de Evolution (`chat/findMessages` devuelve `MessageUpdate: []` para siempre) — y no genera ningún webhook de error. Confirmado mandando el mismo archivo Ogg/Opus por acá (nunca entregado) y por [sendMedia](send-media.md) con `mediatype: "audio"` (entregado y leído en segundos). La app ya no usa este endpoint para audio saliente por ese motivo — ver `send_whatsapp_media` en `evolution_service.py`.

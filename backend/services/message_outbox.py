@@ -13,7 +13,6 @@ from services.evolution_service import (
     EvolutionApiError,
     get_instance_capabilities,
     media_message_fields,
-    send_whatsapp_audio,
     send_whatsapp_buttons,
     send_whatsapp_list,
     send_whatsapp_location,
@@ -523,8 +522,18 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
     if kind == "text":
         return await send_whatsapp_text(chat_id, payload["text"], quoted=quoted), None
     if kind == "audio":
+        # sendWhatsAppAudio (PTT) queda roto en esta instancia de Evolution
+        # para la integración Meta Cloud API: acepta el envío (201, wamid
+        # real) pero el mensaje nunca progresa ni un solo estado, ni siquiera
+        # en el historial propio de Evolution — se confirmó comparando el
+        # mismo audio (Ogg/Opus, byte a byte) mandado por los dos caminos, y
+        # solo sendMedia lo entregó. mediatype "audio" pierde la burbuja
+        # nativa de nota de voz (onda + reproducir) del lado del destinatario
+        # y queda como adjunto reproducible normal, pero llega. fileName es
+        # obligatorio acá: sin él Evolution devuelve 500 para audio.
         encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
-        return await send_whatsapp_audio(chat_id, encoded, quoted=quoted), None
+        filename = payload["media_url"].rsplit("/", 1)[-1]
+        return await send_whatsapp_media(chat_id, encoded, "audio", filename=filename, quoted=quoted), None
     if kind == "media":
         encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
         return await send_whatsapp_media(
