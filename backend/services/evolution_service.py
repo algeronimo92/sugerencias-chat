@@ -19,6 +19,50 @@ class EvolutionApiError(Exception):
     pass
 
 
+class WhatsAppWindowClosedError(EvolutionApiError):
+    """Meta rechazó un envío libre porque la ventana de 24h del contacto ya
+    cerró (código 131047 de la Graph API). Sólo se da en instancias con
+    integración WHATSAPP-BUSINESS; sólo una plantilla aprobada puede
+    reabrirla."""
+
+
+_META_ERROR_CODE_WINDOW_CLOSED = 131047
+
+
+def _raise_if_send_rejected(result: Any) -> None:
+    """Detecta un rechazo de Meta disfrazado de envío exitoso.
+
+    En una instancia WHATSAPP-BUSINESS, el helper `post()` de Evolution
+    (whatsapp.business.service.ts) atrapa el error de axios cuando Meta
+    rechaza el POST a /messages —por ejemplo con el 131047 de "ventana de 24h
+    cerrada"— y devuelve el objeto de error de Meta tal cual, con el mismo
+    HTTP 200/201 que un envío real. No hay forma de detectarlo por status
+    code: sólo por la forma del body.
+
+    Un envío real (Baileys o Business) siempre trae `key.id`, y su campo
+    `message` es el objeto del mensaje (un dict), nunca un string. El error
+    de Meta, en cambio, no trae `key` y sí trae `code` (int) + `message`
+    (string) — la forma de un error de la Graph API
+    (`{message, type, code, error_subcode, fbtrace_id, ...}`). Se exige esa
+    combinación exacta para no dar falsos positivos sobre una forma de éxito
+    que todavía no se conoce.
+    """
+    if not isinstance(result, dict):
+        return
+    if (result.get("key") or {}).get("id"):
+        return
+    code = result.get("code")
+    message = result.get("message")
+    if not isinstance(code, int) or not isinstance(message, str):
+        return
+    if code == _META_ERROR_CODE_WINDOW_CLOSED:
+        raise WhatsAppWindowClosedError(
+            "La ventana de 24 h para responder libremente a este contacto está "
+            "cerrada. Mandale una plantilla aprobada para reabrir la conversación."
+        )
+    raise EvolutionApiError(f"Meta rechazó el envío: {message} (código {code})")
+
+
 _http_client: httpx.AsyncClient | None = None
 _capabilities_cache: tuple[float, dict] | None = None
 
@@ -142,6 +186,7 @@ async def _post_to_chat(
     automatizaciones, plantillas— pasan por estas funciones.
     """
     result = await _post(url, api_key, payload, timeout)
+    _raise_if_send_rejected(result)
     try:
         await learn_send_aliases(chat_id, result)
     except Exception:

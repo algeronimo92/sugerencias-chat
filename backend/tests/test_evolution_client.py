@@ -191,6 +191,82 @@ async def test_send_text_replaces_uuid_in_quoted_key_with_destination(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_send_text_raises_window_closed_when_meta_rejects_with_131047(monkeypatch):
+    # Evolution, en modo WHATSAPP-BUSINESS, atrapa el error de axios cuando
+    # Meta rechaza el POST a /messages y devuelve el objeto de error de Meta
+    # tal cual, con el mismo HTTP 200/201 que un envío real (confirmado
+    # leyendo whatsapp.business.service.ts: post() nunca relanza el error).
+    # Sin la validación de forma, esto pasaría como un envío exitoso.
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(evolution_service, "_post", AsyncMock(return_value={
+        "message": "(#131047) Message failed to send because more than 24 hours "
+                   "have passed since the customer last replied to this number.",
+        "type": "OAuthException",
+        "code": 131047,
+    }))
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+
+    with pytest.raises(evolution_service.WhatsAppWindowClosedError):
+        await evolution_service.send_whatsapp_text(lead_id, "hola")
+
+
+@pytest.mark.asyncio
+async def test_send_text_raises_generic_error_for_other_meta_rejections(monkeypatch):
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(evolution_service, "_post", AsyncMock(return_value={
+        "message": "Invalid parameter",
+        "type": "OAuthException",
+        "code": 100,
+    }))
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+
+    with pytest.raises(evolution_service.EvolutionApiError) as excinfo:
+        await evolution_service.send_whatsapp_text(lead_id, "hola")
+    assert not isinstance(excinfo.value, evolution_service.WhatsAppWindowClosedError)
+    assert "Invalid parameter" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_send_text_accepts_a_real_send_response(monkeypatch):
+    """Regresión: la validación de forma no debe rechazar un envío real."""
+    lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+    monkeypatch.setattr(
+        evolution_service,
+        "_config",
+        AsyncMock(return_value=("https://evolution.test", "secret", "dermica")),
+    )
+    monkeypatch.setattr(evolution_service, "_post", AsyncMock(return_value={
+        "key": {"id": "WA-OK", "remoteJid": "51906471403@s.whatsapp.net", "fromMe": True},
+        "message": {"conversation": "hola"},
+        "messageTimestamp": 1234567890,
+        "status": "PENDING",
+    }))
+    monkeypatch.setattr(
+        evolution_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+
+    result = await evolution_service.send_whatsapp_text(lead_id, "hola")
+    assert result["key"]["id"] == "WA-OK"
+
+
+@pytest.mark.asyncio
 async def test_send_reaction_resolves_uuid_to_destination(monkeypatch):
     lead_id = "7b08f4d9-855f-4718-b95f-9c021da52f77"
     destination = "51906471403@s.whatsapp.net"

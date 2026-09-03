@@ -215,10 +215,44 @@ trabajo ya es concreto, no exploratorio:
 ### Etapa 2 — Backend: identidad y ventana de 24 h
 
 1. **Identidad.** No se necesita código nuevo si el spike confirma que Evolution entrega `remoteJid` con sufijo `@s.whatsapp.net` — `parse_evolution_identity` y `resolve_whatsapp_identity` ya tratan cualquier JID sin sufijo `@lid` como `kind='phone'` sin rama especial. Sí hay que **documentar** que para instancias Business, `resolve_history_jid` y `aliases_from_send_key` (pensados para el caso `@lid`) son no-ops benignos, no bugs.
-2. **Ventana de 24 h.** Punto nuevo que no existe hoy: el composer del frontend permite texto libre siempre. Hace falta:
-   - Que el backend sepa, por chat, si está dentro de la ventana (último mensaje entrante hace < 24 h) — dato derivable de `wsp_messages`, no requiere columna nueva.
-   - Que `send_whatsapp_text` rechace con un error claro (no un 500 genérico) si la instancia es Business y la ventana está cerrada, para que el frontend pueda ofrecer "mandar plantilla" en lugar de fallar en silencio.
-   - Esto es exclusivamente para instancias `WHATSAPP-BUSINESS`; una instancia Baileys sigue sin esta restricción.
+2. **Ventana de 24 h — ✅ HECHO, con un rediseño respecto a lo planteado
+   arriba (2026-09-02).** La idea original era derivar "¿está abierta la
+   ventana?" de `wsp_messages` (último entrante < 24h) y bloquear el envío
+   preventivamente. Se descartó: es exactamente el riesgo que puede fallar
+   si la ingesta no registró bien un entrante (RabbitMQ caído, n8n
+   desactivado, etc.) — bloquearía un envío que Meta sí aceptaría. Meta ya es
+   la fuente de verdad y lo dice en el momento: el error 131047 ("Re-engagement
+   message") viene en la respuesta **síncrona** del propio POST a `/messages`
+   cuando la ventana está cerrada.
+
+   El problema real, encontrado leyendo `whatsapp.business.service.ts`: el
+   helper `post()` de Evolution atrapa el error de axios y devuelve el
+   objeto de error de Meta **con el mismo HTTP 200/201 que un envío
+   exitoso** — nunca relanza el error. Sin corregir esto, un rechazo por
+   ventana cerrada pasaba como envío exitoso, sin `wa_message_id` real y sin
+   ningún error visible.
+
+   Arreglado en [evolution_service.py](../backend/services/evolution_service.py):
+   `_raise_if_send_rejected()` valida la *forma* de la respuesta (un envío
+   real siempre trae `key.id`; el error de Meta trae `code` int + `message`
+   string en su lugar, nunca los dos a la vez que un envío real) y la
+   convierte en `WhatsAppWindowClosedError` (para 131047, con mensaje
+   accionable) o `EvolutionApiError` genérico (cualquier otro rechazo de
+   Meta). Enganchado en `_post_to_chat`, el punto único por el que pasan
+   todos los envíos a un chat (texto, media, audio, ubicación, sticker,
+   plantillas, botones, listas). Tests nuevos en `test_evolution_client.py`.
+
+   **Nota:** `send_whatsapp_reaction` y `edit_whatsapp_message` no pasan por
+   `_post_to_chat` (van por `_post` directo) y quedan **sin esta protección**
+   todavía — menor prioridad porque el peor caso es perder una reacción, no
+   un mensaje, y `edit_whatsapp_message` ya no aplica a instancias Business
+   (Meta no soporta editar). Pendiente si hace falta blindarlos igual.
+
+   **Lo que falta, y es trabajo de frontend, no de este arreglo:** hoy
+   `WhatsAppWindowClosedError` ya llega distinguible al router, pero nada en
+   la UI todavía ofrece "mandar plantilla" al capturarlo — el composer solo
+   va a mostrar el mensaje de error genérico que ya usa para cualquier fallo
+   de envío.
 3. **Capacidades por instancia.** `get_template_capabilities()` ya distingue Baileys de Business para plantillas; conviene generalizarlo a un solo `get_instance_capabilities()` que además reporte `history_available` y `edit_delete_supported`, para que el frontend oculte los botones de editar/borrar y el buscador de historial retroactivo cuando la instancia activa es Business, en vez de dejarlos fallar al usarlos.
 4. **Estado de rechazo — ✅ HECHO (2026-09-02).** Se agregó `MessageStatus.REJECTED`
    (no `FAILED`: ese valor ya lo usa el outbox para un envío que nunca salió y
