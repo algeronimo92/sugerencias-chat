@@ -280,6 +280,14 @@ describe('MessageBubble', () => {
     expect(onDiscard).toHaveBeenCalledOnce()
   })
 
+  it('un envío fallido con motivo real lo muestra en el tooltip, no el genérico', () => {
+    const reason = 'La ventana de 24 h para responder libremente a este contacto está cerrada. Mandale una plantilla aprobada para reabrir la conversación.'
+    renderBubble({ status: 'FAILED', wa_message_id: null, error_detail: reason })
+
+    const retryButton = screen.getByLabelText(`No se pudo confirmar el envío: ${reason}. Reintentar`)
+    expect(retryButton).toHaveAttribute('title', reason)
+  })
+
   it('un envío descartado deja de ofrecer reintento', () => {
     renderBubble({ status: 'DISCARDED', wa_message_id: null })
 

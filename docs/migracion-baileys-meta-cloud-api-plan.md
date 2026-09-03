@@ -248,11 +248,34 @@ trabajo ya es concreto, no exploratorio:
    un mensaje, y `edit_whatsapp_message` ya no aplica a instancias Business
    (Meta no soporta editar). Pendiente si hace falta blindarlos igual.
 
-   **Lo que falta, y es trabajo de frontend, no de este arreglo:** hoy
-   `WhatsAppWindowClosedError` ya llega distinguible al router, pero nada en
-   la UI todavía ofrece "mandar plantilla" al capturarlo — el composer solo
-   va a mostrar el mensaje de error genérico que ya usa para cualquier fallo
-   de envío.
+   **Corregido — ✅ HECHO (2026-09-02): el texto real ya llega a la burbuja.**
+   Los envíos normales pasan por el outbox (`message_outbox.py`), no por una
+   respuesta HTTP síncrona, así que `WhatsAppWindowClosedError` no llega
+   directo al router — el outbox lo atrapa como cualquier excepción y lo
+   guarda en `MessageOutbox.last_error` (`_mark_failed`), con el mensaje
+   quedando en `WspMessage.status = 'FAILED'`. Hasta acá la UI solo mostraba
+   "No enviado · Reintentar" genérico, sin importar el motivo real.
+
+   Se agregó `error_detail` de punta a punta: `fetch_messages` en
+   [db_service.py](../backend/services/db_service.py) hace un `outerjoin`
+   contra `MessageOutbox.last_error` (solo se expone cuando
+   `status == 'FAILED'`; para cualquier otro estado o un reintento que ya
+   limpió `last_error`, viaja `None`); el schema `Message` y el tipo
+   `Message` del frontend lo incluyen; `MessageStatusTicks` en
+   [MessageBubble.tsx](../frontend/src/components/MessageBubble.tsx) lo usa
+   como `title`/`aria-label` del botón "Reintentar" en vez del genérico —el
+   rótulo compacto no cambia, tiene que caber al lado de la hora, pero el
+   tooltip ahora sí explica el motivo real ("La ventana de 24h... está
+   cerrada. Mandale una plantilla...").
+
+   Probado con una fila sintética contra Postgres real (`docker compose up
+   postgres` + `db_service.fetch_messages` directo): el `last_error` del job
+   viaja correcto hasta el `dict` que sirve la API. Tests nuevos en
+   `MessageBubble.test.tsx`.
+
+   **Lo que sigue faltando** (alcance mayor, no entra acá): que el composer
+   ofrezca activamente "mandar plantilla" al toparse con esto, en vez de que
+   el vendedor tenga que leer el tooltip y saber que existe esa opción.
 3. **Capacidades por instancia.** `get_template_capabilities()` ya distingue Baileys de Business para plantillas; conviene generalizarlo a un solo `get_instance_capabilities()` que además reporte `history_available` y `edit_delete_supported`, para que el frontend oculte los botones de editar/borrar y el buscador de historial retroactivo cuando la instancia activa es Business, en vez de dejarlos fallar al usarlos.
 4. **Estado de rechazo — ✅ HECHO (2026-09-02).** Se agregó `MessageStatus.REJECTED`
    (no `FAILED`: ese valor ya lo usa el outbox para un envío que nunca salió y

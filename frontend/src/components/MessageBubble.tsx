@@ -32,14 +32,21 @@ export interface OpenMedia {
 /** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
  * cliente. En audios, PLAYED agrega además una confirmación visible de que
  * el destinatario reprodujo la nota de voz. */
-export function MessageStatusTicks({ status, isAudio = false, onRetry, onDiscard }: { status: MessageStatus; isAudio?: boolean; onRetry?: () => void; onDiscard?: () => void }) {
+export function MessageStatusTicks({ status, isAudio = false, errorDetail, onRetry, onDiscard }: { status: MessageStatus; isAudio?: boolean; errorDetail?: string | null; onRetry?: () => void; onDiscard?: () => void }) {
   if (status === 'PENDING') {
     return <span className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60" aria-label="Enviando" title="Enviando"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando</span>
   }
   if (status === 'FAILED') {
+    // Sin motivo real (mensajes viejos, o un fallo que no llegó a dejar
+    // last_error), se conserva el genérico de siempre. Con motivo, se suma
+    // como tooltip: el rótulo compacto no cambia porque tiene que caber al
+    // lado de la hora.
+    const ariaLabel = errorDetail
+      ? `No se pudo confirmar el envío: ${errorDetail}. Reintentar`
+      : 'No se pudo confirmar el envío. Reintentar'
     return (
       <span className="inline-flex items-center gap-1.5">
-        <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label="No se pudo confirmar el envío. Reintentar" title="Reintentar envío">
+        <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-red-500 hover:text-red-600" aria-label={ariaLabel} title={errorDetail || 'Reintentar envío'}>
           <RefreshCw aria-hidden="true" className="h-3 w-3" /> No enviado · Reintentar
         </button>
         <span aria-hidden="true" className="text-wa-faint dark:text-wa-text-dark/60">·</span>
@@ -426,7 +433,7 @@ export function MessageBubble({
                 onOpenMedia={onOpenMedia}
                 onDownloadMedia={onDownload}
                 onPreviewSticker={onPreviewSticker}
-                videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} onRetry={onRetry} onDiscard={onDiscard} />}</>}
+                videoFooter={<><span>{formatMessageTime(m.sent_at)}</span>{isVendedor && <MessageStatusTicks status={m.status} errorDetail={m.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}</>}
                 hasQuote={m.quoted_message_id != null}
               />
               {analysis && <MessageAnalysis summary={analysis} />}
@@ -465,7 +472,7 @@ export function MessageBubble({
             )}
             {!isDeleted && m.edited_at && <span title={`Editado ${formatMessageTime(m.edited_at)}`}>Editado</span>}
             <span>{formatMessageTime(m.sent_at)}</span>
-            {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} onRetry={onRetry} onDiscard={onDiscard} />}
+            {isVendedor && <MessageStatusTicks status={m.status} isAudio={kind === 'audio'} errorDetail={m.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
           </div>}
           <ReactionBadge reactions={reactions} isVendedor={isVendedor} />
         </div>

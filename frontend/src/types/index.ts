@@ -363,6 +363,9 @@ export interface Message {
    * quien envía en WhatsApp, así que esto no se refleja allá). null = no
    * está fijado. */
   pinned_at?: string | null
+  /** Motivo real de un status 'FAILED' (el last_error del job del outbox).
+   * null para cualquier otro estado, o si el mensaje no pasó por el outbox. */
+  error_detail?: string | null
 }
 
 /** Mensaje leído de WhatsApp que no está registrado en la base: es anterior

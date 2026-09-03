@@ -149,7 +149,7 @@ export function AlbumBubble({
           {caption && <p className="whitespace-pre-wrap break-words px-1 pt-1.5">{caption}</p>}
           <div className="flex items-center justify-end gap-1 px-1 pt-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60">
             <span>{formatMessageTime(last.sent_at)}</span>
-            {isVendedor && <MessageStatusTicks status={last.status} onRetry={onRetry} onDiscard={onDiscard} />}
+            {isVendedor && <MessageStatusTicks status={last.status} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
           </div>
         </div>
       </div>

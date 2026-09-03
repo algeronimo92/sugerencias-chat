@@ -1692,7 +1692,13 @@ async def fetch_messages(
                 WspMessage.edited_at,
                 WspMessage.deleted_at,
                 WspMessage.pinned_at,
+                # Motivo real de un status='FAILED' -por qué el outbox se
+                # rindió-, para que la burbuja muestre algo más útil que un
+                # genérico "No enviado". NULL para todo lo que no pasó por el
+                # outbox (entrantes) o que sí salió.
+                MessageOutbox.last_error,
             )
+            .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
             .where(WspMessage.chat_id == chat_id)
             # Las reacciones no son burbujas: viven como badge sobre el mensaje
             # objetivo (columna reactions). Las filas legadas de tipo reaction
@@ -1748,6 +1754,10 @@ async def fetch_messages(
             # 0/0 (= no medible) no le sirve al frontend: se expone como None.
             "media_width": r["media_width"] or None,
             "media_height": r["media_height"] or None,
+            # Solo tiene sentido mostrarlo junto al estado FAILED: para
+            # cualquier otro estado es ruido (y para uno ya reintentado con
+            # éxito, last_error queda de un intento anterior que ya no aplica).
+            "error_detail": r["last_error"] if r["status"] == "FAILED" else None,
             **quoted.get(r["quoted_wa_message_id"], {}),
         })
         for r in page

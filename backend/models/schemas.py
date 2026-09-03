@@ -286,6 +286,10 @@ class Message(BaseModel):
     # Fijado nativo del CRM (no existe forma de replicarlo hacia WhatsApp, ver
     # pin_message en db_service). None = no está fijado.
     pinned_at: str | None = None
+    # Motivo real de un status='FAILED' (el last_error del job del outbox).
+    # None para cualquier otro estado, o cuando el mensaje no pasó por el
+    # outbox (entrantes).
+    error_detail: str | None = None
 
 
 class MessagePage(BaseModel):
