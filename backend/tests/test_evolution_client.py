@@ -422,3 +422,98 @@ async def test_http_client_is_reused_and_closed(monkeypatch):
     await evolution_service.close_evolution_client()
     client.aclose.assert_awaited_once_with()
     assert evolution_service._http_client is None
+
+
+@pytest.mark.asyncio
+async def test_get_meta_credentials_reads_token_and_business_id(monkeypatch):
+    _mock_fetch_instances(monkeypatch, [
+        {"name": "dermica", "integration": "WHATSAPP-BUSINESS", "token": "secret-token", "businessId": "waba-123"},
+    ])
+
+    token, business_id = await evolution_service._get_meta_credentials()
+
+    assert (token, business_id) == ("secret-token", "waba-123")
+
+
+@pytest.mark.asyncio
+async def test_get_meta_credentials_fails_loudly_without_token(monkeypatch):
+    _mock_fetch_instances(monkeypatch, [{"name": "dermica", "integration": "WHATSAPP-BUSINESS"}])
+
+    with pytest.raises(evolution_service.EvolutionApiError):
+        await evolution_service._get_meta_credentials()
+
+
+class _FakeGraphResponse:
+    def __init__(self, payload, is_error=False, status_code=200, text=""):
+        self._payload = payload
+        self.is_error = is_error
+        self.status_code = status_code
+        self.text = text or str(payload)
+
+    def json(self):
+        return self._payload
+
+
+class _FakeGraphClient:
+    """Devuelve, en orden, la sesión de subida y luego el handle -- el
+    resumable upload de Meta es siempre esas dos llamadas POST."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls: list[dict] = []
+
+    async def post(self, url, **kwargs):
+        self.calls.append({"url": url, **kwargs})
+        return self._responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_upload_header_media_two_step_flow(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service, "get_effective_many", AsyncMock(return_value={"meta_app_id": "APP123"}),
+    )
+    monkeypatch.setattr(
+        evolution_service, "_get_meta_credentials", AsyncMock(return_value=("secret-token", "waba-123")),
+    )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({"id": "upload:SESSION1"}),
+        _FakeGraphResponse({"h": "HEADER_HANDLE_XYZ"}),
+    ])
+    monkeypatch.setattr(evolution_service, "_client", lambda: fake_client)
+
+    handle = await evolution_service.upload_header_media(b"fake-bytes", "image/jpeg", "foo.jpg")
+
+    assert handle == "HEADER_HANDLE_XYZ"
+    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v21.0/APP123/uploads"
+    assert fake_client.calls[0]["params"]["file_length"] == len(b"fake-bytes")
+    assert fake_client.calls[0]["params"]["access_token"] == "secret-token"
+    assert fake_client.calls[1]["url"] == "https://graph.facebook.com/v21.0/upload:SESSION1"
+    assert fake_client.calls[1]["headers"]["Authorization"] == "OAuth secret-token"
+    assert fake_client.calls[1]["content"] == b"fake-bytes"
+
+
+@pytest.mark.asyncio
+async def test_upload_header_media_requires_app_id_setting(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service, "get_effective_many", AsyncMock(return_value={"meta_app_id": ""}),
+    )
+
+    with pytest.raises(evolution_service.EvolutionApiError):
+        await evolution_service.upload_header_media(b"fake-bytes", "image/jpeg", "foo.jpg")
+
+
+@pytest.mark.asyncio
+async def test_upload_header_media_surfaces_meta_rejection_on_session_start(monkeypatch):
+    monkeypatch.setattr(
+        evolution_service, "get_effective_many", AsyncMock(return_value={"meta_app_id": "APP123"}),
+    )
+    monkeypatch.setattr(
+        evolution_service, "_get_meta_credentials", AsyncMock(return_value=("secret-token", "waba-123")),
+    )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({"error": {"message": "Invalid file type"}}, is_error=True, status_code=400),
+    ])
+    monkeypatch.setattr(evolution_service, "_client", lambda: fake_client)
+
+    with pytest.raises(evolution_service.EvolutionApiError):
+        await evolution_service.upload_header_media(b"fake-bytes", "image/jpeg", "foo.jpg")

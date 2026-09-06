@@ -1,11 +1,13 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, Star, Trash2, UploadCloud } from 'lucide-react'
-import type { LeadStage, MediaAsset, MessageTemplate, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
+import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
+import type { LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
-import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
+import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
+import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
+import { MediaAssetField } from './MediaAssetField'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
 import { ConfirmDialog } from './ui/ConfirmDialog'
@@ -30,8 +32,12 @@ interface TemplateFormState {
   officialName: string
   officialLanguage: string
   officialCategory: NonNullable<MessageTemplate['official_category']>
-  officialStatus: NonNullable<MessageTemplate['official_status']>
   officialParameterValues: string[]
+  officialHeaderType: MessageTemplate['official_header_type']
+  officialHeaderText: string
+  officialHeaderMediaAssetId: number | null
+  officialFooter: string
+  officialButtons: OfficialTemplateButton[]
   interactiveType: MessageTemplate['interactive_type']
   interactiveTitle: string
   interactiveFooter: string
@@ -51,8 +57,12 @@ const EMPTY_FORM: TemplateFormState = {
   officialName: '',
   officialLanguage: 'es',
   officialCategory: 'UTILITY',
-  officialStatus: 'PENDING',
   officialParameterValues: [],
+  officialHeaderType: 'none',
+  officialHeaderText: '',
+  officialHeaderMediaAssetId: null,
+  officialFooter: '',
+  officialButtons: [],
   interactiveType: 'none',
   interactiveTitle: '',
   interactiveFooter: 'DermicaPro',
@@ -122,6 +132,39 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
     }
     const unknownParameters = [...templateVariables(...form.officialParameterValues)].filter(value => !ALLOWED_INTERNAL_VARIABLES.has(value))
     if (unknownParameters.length) errors.push(`Variables no reconocidas en los parámetros: ${unknownParameters.map(value => `{{${value}}}`).join(', ')}.`)
+
+    if (form.officialHeaderType === 'text') {
+      const headerText = form.officialHeaderText.trim()
+      if (!headerText) errors.push('El encabezado de texto no puede estar vacío.')
+      else if (headerText.length > 60) errors.push('El encabezado admite máximo 60 caracteres.')
+      if (templateVariables(headerText).size > 0) errors.push('El encabezado no admite variables.')
+    }
+    if (form.officialHeaderType === 'image' && form.officialHeaderMediaAssetId == null) {
+      errors.push('Selecciona una imagen para el encabezado.')
+    }
+    const footer = form.officialFooter.trim()
+    if (footer.length > 60) errors.push('El pie admite máximo 60 caracteres.')
+    if (templateVariables(footer).size > 0) errors.push('El pie no admite variables.')
+    const officialButtons = form.officialButtons
+    if (officialButtons.length > 3) errors.push('Una plantilla oficial admite como máximo 3 botones.')
+    const hasQuickReply = officialButtons.some(button => button.type === 'quick_reply')
+    if (hasQuickReply && officialButtons.some(button => button.type !== 'quick_reply')) {
+      errors.push('Los botones de respuesta rápida no pueden mezclarse con botones de URL o teléfono.')
+    }
+    if (!hasQuickReply && officialButtons.length > 2) errors.push('Una plantilla oficial admite como máximo 2 botones de URL o teléfono.')
+    const seenButtonTexts = new Set<string>()
+    for (const button of officialButtons) {
+      const text = button.text.trim()
+      if (!text || seenButtonTexts.has(text.toLowerCase())) errors.push('Cada botón necesita un texto único.')
+      else if (text.length > 25) errors.push('El texto de cada botón admite máximo 25 caracteres.')
+      seenButtonTexts.add(text.toLowerCase())
+      if (button.type === 'url' && !/^https:\/\/\S+$/i.test(button.url?.trim() ?? '')) {
+        errors.push('Las URL de botones deben ser completas y comenzar con https://.')
+      }
+      if (button.type === 'phone_number' && !/^\+?[1-9]\d{7,14}$/.test((button.phone_number ?? '').replace(/[\s()-]/g, ''))) {
+        errors.push('El teléfono del botón debe incluir código de país y tener entre 8 y 15 dígitos.')
+      }
+    }
     return errors
   }
 
@@ -260,12 +303,14 @@ export function TemplatesPage() {
   const { data: templateCategories = [], isLoading: categoriesLoading } = useTemplateCategories()
   const createCategory = useCreateTemplateCategory()
   const { data: capabilities } = useTemplateCapabilities()
+  const { data: mediaAssets = [] } = useMediaLibrary()
   const { mutate: create, isPending: isCreating } = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
   const uploadAttachment = useUploadTemplateAttachment()
   const addLibraryAttachment = useAddLibraryTemplateAttachment()
   const deleteTemplate = useDeleteTemplate()
   const deleteAttachment = useDeleteTemplateAttachment()
+  const syncTemplate = useSyncTemplate()
   const [pageState, updatePageState] = useReducer(templatesPageReducer, INITIAL_PAGE_STATE)
   const [categoryFormOpen, setCategoryFormOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -322,8 +367,12 @@ export function TemplatesPage() {
       officialName: template.official_name ?? '',
       officialLanguage: template.official_language ?? 'es',
       officialCategory: template.official_category ?? 'UTILITY',
-      officialStatus: template.official_status ?? 'PENDING',
       officialParameterValues: template.official_parameter_values,
+      officialHeaderType: template.official_header_type,
+      officialHeaderText: template.official_header_text ?? '',
+      officialHeaderMediaAssetId: template.official_header_media_asset_id,
+      officialFooter: template.official_footer ?? '',
+      officialButtons: template.official_buttons,
       interactiveType: template.interactive_type,
       interactiveTitle: template.interactive_config.title ?? '',
       interactiveFooter: template.interactive_config.footer?.trim() || template.interactive_config.footerText?.trim() || 'DermicaPro',
@@ -451,8 +500,12 @@ export function TemplatesPage() {
       official_name: form.templateType === 'official' ? form.officialName : null,
       official_language: form.templateType === 'official' ? form.officialLanguage : null,
       official_category: form.templateType === 'official' ? form.officialCategory : null,
-      official_status: form.templateType === 'official' ? form.officialStatus : null,
       official_parameter_values: form.templateType === 'official' ? form.officialParameterValues : [],
+      official_header_type: form.templateType === 'official' ? form.officialHeaderType : 'none',
+      official_header_text: form.templateType === 'official' && form.officialHeaderType === 'text' ? form.officialHeaderText.trim() : null,
+      official_header_media_asset_id: form.templateType === 'official' && form.officialHeaderType === 'image' ? form.officialHeaderMediaAssetId : null,
+      official_footer: form.templateType === 'official' ? (form.officialFooter.trim() || null) : null,
+      official_buttons: form.templateType === 'official' ? form.officialButtons : [],
       interactive_type: form.templateType === 'internal' ? form.interactiveType : 'none',
       interactive_config: form.templateType !== 'internal' || form.interactiveType === 'none' ? {} : form.interactiveType === 'buttons' ? {
         title: form.interactiveTitle,
@@ -494,6 +547,14 @@ export function TemplatesPage() {
     setError(null)
     deleteAttachment.mutate(id, {
       onSuccess: () => toast.success(`${filename} fue quitado de la plantilla`),
+      onError: err => setError(extractErrorMessage(err)),
+    })
+  }
+
+  function handleSyncTemplate(id: number) {
+    setError(null)
+    syncTemplate.mutate(id, {
+      onSuccess: (template) => toast.success(`Estado actualizado: ${template.official_status}`),
       onError: err => setError(extractErrorMessage(err)),
     })
   }
@@ -586,19 +647,71 @@ export function TemplatesPage() {
             )}
             {form.templateType === 'official' && (
               <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20 md:grid-cols-2">
-                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Nombre exacto en Meta
-                  <input required maxLength={512} pattern="[a-z0-9_]+" value={form.officialName} onChange={event => setForm(f => ({ ...f, officialName: event.target.value.toLowerCase() }))} placeholder="seguimiento_cliente" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
+                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Nombre para Meta
+                  <input required disabled={editingTemplate?.meta_template_id != null} maxLength={512} pattern="[a-z0-9_]+" value={form.officialName} onChange={event => setForm(f => ({ ...f, officialName: event.target.value.toLowerCase() }))} placeholder="seguimiento_cliente" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Idioma
-                  <input required maxLength={6} pattern="[a-z]{2,3}(_[A-Z]{2})?" value={form.officialLanguage} onChange={event => setForm(f => ({ ...f, officialLanguage: event.target.value }))} placeholder="es" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
+                  <input required disabled={editingTemplate?.meta_template_id != null} maxLength={6} pattern="[a-z]{2,3}(_[A-Z]{2})?" value={form.officialLanguage} onChange={event => setForm(f => ({ ...f, officialLanguage: event.target.value }))} placeholder="es" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Categoría oficial
                   <Select value={form.officialCategory} onChange={event => setForm(f => ({ ...f, officialCategory: event.target.value as NonNullable<MessageTemplate['official_category']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></Select>
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Estado en Meta
-                  <Select value={form.officialStatus} onChange={event => setForm(f => ({ ...f, officialStatus: event.target.value as NonNullable<MessageTemplate['official_status']> }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="REJECTED">Rechazada</option><option value="PAUSED">Pausada</option><option value="DISABLED">Deshabilitada</option></Select>
+                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Encabezado
+                  <Select value={form.officialHeaderType} onChange={event => setForm(f => ({ ...f, officialHeaderType: event.target.value as MessageTemplate['official_header_type'] }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="none">Sin encabezado</option><option value="text">Texto</option><option value="image">Imagen</option></Select>
                 </label>
-                <p className="text-[11px] text-blue-700 dark:text-blue-300 md:col-span-2">Estos datos deben coincidir exactamente con la plantilla existente en Meta. La aprobación directa se incorporará en la integración posterior con Meta.</p>
+                {form.officialHeaderType === 'text' && (
+                  <input required maxLength={60} value={form.officialHeaderText} onChange={event => setForm(f => ({ ...f, officialHeaderText: event.target.value }))} placeholder="Título breve, sin variables" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm md:col-span-2 dark:border-blue-900 dark:bg-wa-panel-dark" />
+                )}
+                {form.officialHeaderType === 'image' && (
+                  <div className="md:col-span-2">
+                    <MediaAssetField mediaAssetId={form.officialHeaderMediaAssetId} mediaAssets={mediaAssets} kind="image" onChange={id => setForm(f => ({ ...f, officialHeaderMediaAssetId: id }))} />
+                    <p className="mt-1 text-[11px] text-wa-muted">Se sube a Meta como ejemplo del encabezado al guardar. Requiere tener configurado el Facebook App ID en Configuración → Evolution API.</p>
+                  </div>
+                )}
+                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 md:col-span-2">Pie de página (opcional)
+                  <input maxLength={60} value={form.officialFooter} onChange={event => setForm(f => ({ ...f, officialFooter: event.target.value }))} placeholder="Sin variables" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" />
+                </label>
+                <div className="grid gap-2 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Botones (opcional)</span>
+                    <button
+                      type="button"
+                      disabled={form.officialButtons.length >= 3}
+                      onClick={() => setForm(f => ({ ...f, officialButtons: [...f.officialButtons, { type: 'quick_reply', text: '' }] }))}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Agregar botón
+                    </button>
+                  </div>
+                  {form.officialButtons.map((button, index) => (
+                    <div key={index} className="grid gap-2 rounded-lg border border-blue-200 bg-white p-2 dark:border-blue-900 dark:bg-wa-panel-dark md:grid-cols-[130px_1fr_1fr_auto]">
+                      <Select
+                        value={button.type}
+                        onChange={event => setForm(f => ({ ...f, officialButtons: f.officialButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as OfficialTemplateButton['type'], text: item.text } : item) }))}
+                        className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"
+                      >
+                        <option value="quick_reply">Respuesta rápida</option>
+                        <option value="url">URL</option>
+                        <option value="phone_number">Teléfono</option>
+                      </Select>
+                      <input required maxLength={25} value={button.text} onChange={event => setForm(f => ({ ...f, officialButtons: f.officialButtons.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                      {button.type === 'url' && (
+                        <input required value={button.url ?? ''} onChange={event => setForm(f => ({ ...f, officialButtons: f.officialButtons.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item) }))} placeholder="https://..." className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                      )}
+                      {button.type === 'phone_number' && (
+                        <input required value={button.phone_number ?? ''} onChange={event => setForm(f => ({ ...f, officialButtons: f.officialButtons.map((item, itemIndex) => itemIndex === index ? { ...item, phone_number: event.target.value } : item) }))} placeholder="+51987654321" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                      )}
+                      {button.type === 'quick_reply' && <div />}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, officialButtons: f.officialButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-wa-muted">Máximo 3 de respuesta rápida, o 2 combinando URL/teléfono. No se pueden mezclar.</p>
+                </div>
+                <p className="text-[11px] text-blue-700 dark:text-blue-300 md:col-span-2">
+                  {editingTemplate?.meta_template_id != null
+                    ? 'Ya fue enviada a Meta: nombre e idioma no se pueden cambiar. Los demás cambios se reenvían para revisión.'
+                    : 'Al guardar se envía a Meta para revisión. El estado se sincroniza desde la lista con el botón de actualizar.'}
+                </p>
               </div>
             )}
             <div className="grid gap-3 md:grid-cols-2">
@@ -902,7 +1015,23 @@ export function TemplatesPage() {
                       Creada por {template.created_by_name ?? 'Usuario eliminado'}
                       {template.created_at ? ` · ${new Date(template.created_at).toLocaleDateString('es-PE')}` : ''}
                     </p>
-                    {template.template_type === 'official' && <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400">{template.official_name} · {template.official_language} · {template.official_category} · <span className="font-semibold">{template.official_status}</span></p>}
+                    {template.template_type === 'official' && (
+                      <p className="mt-1 flex items-center gap-1.5 text-[11px] text-blue-600 dark:text-blue-400">
+                        {template.official_name} · {template.official_language} · {template.official_category} · <span className="font-semibold">{template.official_status ?? 'sin estado'}</span>
+                        {template.meta_template_id != null && (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncTemplate(template.id)}
+                            disabled={syncTemplate.isPending}
+                            title="Sincronizar estado con Meta"
+                            aria-label="Sincronizar estado con Meta"
+                            className="rounded p-0.5 text-blue-500 hover:bg-blue-100 disabled:opacity-40 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${syncTemplate.isPending && syncTemplate.variables === template.id ? 'animate-spin' : ''}`} />
+                          </button>
+                        )}
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button

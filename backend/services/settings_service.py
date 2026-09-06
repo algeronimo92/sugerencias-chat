@@ -43,6 +43,13 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("evolution_api_url", "URL de la API", "evolution", "Evolution API (WhatsApp)", secret=False),
     SettingDef("evolution_api_key", "API key", "evolution", "Evolution API (WhatsApp)", secret=True),
     SettingDef("evolution_instance", "Nombre de instancia", "evolution", "Evolution API (WhatsApp)", secret=False),
+    SettingDef(
+        "meta_app_id",
+        "Facebook App ID (Tech Provider, para encabezados con imagen)",
+        "evolution",
+        "Evolution API (WhatsApp)",
+        secret=False,
+    ),
     SettingDef("elevenlabs_api_key", "API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
     SettingDef("elevenlabs_voice_id", "ID de voz", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_model_id", "Modelo", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),

@@ -352,7 +352,27 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                   </>
                 ) : captionAttachmentIndex < 0 && text.trim() && (
                   <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out px-3 py-2 text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
+                    {isOfficial && template.official_header_type === 'text' && template.official_header_text && (
+                      <p className="mb-1 font-semibold">{template.official_header_text}</p>
+                    )}
+                    {isOfficial && template.official_header_type === 'image' && template.official_header_media_url && (
+                      <img
+                        src={resolveMediaUrl(template.official_header_media_url) ?? ''}
+                        alt={template.official_header_media_filename ?? 'Encabezado'}
+                        className="mb-1.5 -mx-3 -mt-2 w-[calc(100%+1.5rem)] rounded-t-xl object-cover"
+                      />
+                    )}
                     <p className="whitespace-pre-wrap break-words"><RichMessage text={text} /></p>
+                    {isOfficial && template.official_footer && (
+                      <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{template.official_footer}</p>
+                    )}
+                    {isOfficial && template.official_buttons.length > 0 && (
+                      <div className="mt-2 -mx-3 -mb-2 border-t border-green-200 dark:border-green-900">
+                        {template.official_buttons.map((button, index) => (
+                          <div key={index} className="border-t border-green-200 px-3 py-1.5 text-center text-xs font-semibold text-blue-600 first:border-t-0 dark:border-green-900 dark:text-blue-400">{button.text}</div>
+                        ))}
+                      </div>
+                    )}
                     <p className="mt-1 text-right text-[9px] text-wa-muted dark:text-wa-muted-dark">Vista previa</p>
                   </div>
                 )}

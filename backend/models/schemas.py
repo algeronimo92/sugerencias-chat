@@ -693,8 +693,13 @@ class TemplateCreate(BaseModel):
     official_name: str | None = None
     official_language: str | None = None
     official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
-    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_status: str | None = None
     official_parameter_values: list[str] = Field(default_factory=list)
+    official_header_type: Literal["none", "text", "image"] = "none"
+    official_header_text: str | None = None
+    official_header_media_asset_id: int | None = None
+    official_footer: str | None = None
+    official_buttons: list[dict] = Field(default_factory=list)
     interactive_type: Literal["none", "buttons", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
 
@@ -717,8 +722,13 @@ class TemplateUpdate(BaseModel):
     official_name: str | None = None
     official_language: str | None = None
     official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
-    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_status: str | None = None
     official_parameter_values: list[str] | None = None
+    official_header_type: Literal["none", "text", "image"] | None = None
+    official_header_text: str | None = None
+    official_header_media_asset_id: int | None = None
+    official_footer: str | None = None
+    official_buttons: list[dict] | None = None
     interactive_type: Literal["none", "buttons", "list"] | None = None
     interactive_config: dict | None = None
 
@@ -738,8 +748,17 @@ class TemplateItem(BaseModel):
     official_name: str | None = None
     official_language: str | None = None
     official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
-    official_status: Literal["APPROVED", "PENDING", "REJECTED", "PAUSED", "DISABLED"] | None = None
+    official_status: str | None = None
     official_parameter_values: list[str] = Field(default_factory=list)
+    meta_template_id: str | None = None
+    official_header_type: Literal["none", "text", "image"] = "none"
+    official_header_text: str | None = None
+    official_header_media_asset_id: int | None = None
+    official_header_media_url: str | None = None
+    official_header_media_content_type: str | None = None
+    official_header_media_filename: str | None = None
+    official_footer: str | None = None
+    official_buttons: list[dict] = Field(default_factory=list)
     interactive_type: Literal["none", "buttons", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
     is_favorite: bool = False
