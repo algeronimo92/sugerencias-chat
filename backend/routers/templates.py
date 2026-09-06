@@ -105,46 +105,34 @@ def _validate_interactive_config(values: dict) -> None:
             raise HTTPException(400, f"El título interactivo admite máximo {MAX_INTERACTIVE_TITLE_LENGTH} caracteres")
         if len(footer) > MAX_INTERACTIVE_FOOTER_LENGTH:
             raise HTTPException(400, f"El pie de mensaje admite máximo {MAX_INTERACTIVE_FOOTER_LENGTH} caracteres")
+        # Meta solo acepta botones "reply" en un mensaje interactivo suelto
+        # (fuera de una plantilla oficial): un botón de URL, llamada o copiar
+        # código siempre rechaza con "interactive.action.buttons.N.reply is
+        # required" (código 100), confirmado con tráfico real. Una plantilla
+        # con ese tipo de botón necesita ser oficial (ver official_buttons).
         normalized = []
         seen_texts: set[str] = set()
         seen_ids: set[str] = set()
-        has_reply = any(isinstance(item, dict) and item.get("type") == "reply" for item in buttons)
-        if has_reply and any(not isinstance(item, dict) or item.get("type") != "reply" for item in buttons):
-            raise HTTPException(400, "Los botones de respuesta no pueden mezclarse con otros tipos")
-        if not has_reply and len(buttons) > 2:
-            raise HTTPException(400, "WhatsApp admite máximo 2 botones de URL, llamada o copia")
         for index, item in enumerate(buttons):
-            if not isinstance(item, dict) or item.get("type") not in ("reply", "url", "call", "copy"):
-                raise HTTPException(400, "Tipo de botón no soportado")
-            button_type = item["type"]
+            if not isinstance(item, dict) or item.get("type") != "reply":
+                raise HTTPException(
+                    400,
+                    "Los botones de una plantilla interna solo admiten respuesta rápida; "
+                    "para un botón de URL, llamada o copiar código creá una plantilla oficial",
+                )
             display_text = str(item.get("displayText") or "").strip()
             if not display_text or display_text.lower() in seen_texts:
                 raise HTTPException(400, "Cada botón necesita un texto único")
             if len(display_text) > MAX_BUTTON_TEXT_LENGTH:
                 raise HTTPException(400, f"El texto de cada botón admite máximo {MAX_BUTTON_TEXT_LENGTH} caracteres")
             seen_texts.add(display_text.lower())
-            result = {"type": button_type, "displayText": display_text}
-            field = {"reply": "id", "url": "url", "call": "phoneNumber", "copy": "copyCode"}[button_type]
-            value = str(item.get(field) or (f"reply_{index + 1}" if field == "id" else "")).strip()
-            if not value:
-                raise HTTPException(400, f"Falta configurar {field} en el botón {index + 1}")
-            if field == "id" and len(value) > MAX_BUTTON_ID_LENGTH:
+            value = str(item.get("id") or f"reply_{index + 1}").strip()
+            if len(value) > MAX_BUTTON_ID_LENGTH:
                 raise HTTPException(400, f"El ID de respuesta admite máximo {MAX_BUTTON_ID_LENGTH} caracteres")
-            if field == "url" and not re.fullmatch(r"https://[^\s]+", value, flags=re.IGNORECASE):
-                raise HTTPException(400, "Las URL de botones deben ser completas y comenzar con https://")
-            if field == "url" and len(value) > 2048:
-                raise HTTPException(400, "Las URL de botones admiten máximo 2048 caracteres")
-            if field == "phoneNumber":
-                value = re.sub(r"[\s()\-]", "", value)
-                if not re.fullmatch(r"\+?[1-9]\d{7,14}", value):
-                    raise HTTPException(400, "El teléfono del botón debe incluir código de país y tener entre 8 y 15 dígitos")
-            if field == "copyCode" and len(value) > MAX_BUTTON_ID_LENGTH:
-                raise HTTPException(400, f"El código para copiar admite máximo {MAX_BUTTON_ID_LENGTH} caracteres")
-            if field == "id" and value in seen_ids:
+            if value in seen_ids:
                 raise HTTPException(400, "Los IDs de respuesta deben ser únicos")
-            seen_ids.add(value) if field == "id" else None
-            result[field] = value
-            normalized.append(result)
+            seen_ids.add(value)
+            normalized.append({"type": "reply", "displayText": display_text, "id": value})
         values["interactive_config"] = {"title": title, "footer": footer, "buttons": normalized}
         return
     if interactive_type == "list":

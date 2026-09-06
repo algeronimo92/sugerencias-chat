@@ -577,9 +577,25 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
         return await send_whatsapp_text(chat_id, fallback), fallback
 
     if interactive_type == "buttons":
+        buttons = config["buttons"]
+        if any(button.get("type") != "reply" for button in buttons):
+            # La Graph API de Meta solo acepta botones "reply" en un mensaje
+            # interactivo suelto (fuera de una plantilla oficial): un botón de
+            # URL, llamada o copiar código siempre rechaza con
+            # "interactive.action.buttons.N.reply is required" (código 100),
+            # confirmado con tráfico real -- no es un caso límite, es la regla.
+            fallback = _buttons_text_fallback(
+                config["title"], description,
+                config.get("footer") or "DermicaPro", buttons,
+            )
+            logger.info(
+                "Botones con tipo no-reply en WHATSAPP-BUSINESS; Meta los rechaza en un "
+                "mensaje interactivo suelto, se manda como texto numerado"
+            )
+            return await send_whatsapp_text(chat_id, fallback), fallback
         response = await send_whatsapp_buttons(
             chat_id, config["title"], description,
-            config.get("footer") or "DermicaPro", config["buttons"],
+            config.get("footer") or "DermicaPro", buttons,
         )
         return response, None
     try:

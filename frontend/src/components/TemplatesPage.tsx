@@ -186,11 +186,11 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
   if (footer.length > 60) errors.push('El pie de mensaje admite máximo 60 caracteres.')
 
   if (form.interactiveType === 'buttons') {
+    // Meta solo acepta botones "reply" en un mensaje interactivo suelto
+    // (fuera de una plantilla oficial); un botón de URL, llamada o copiar
+    // código siempre lo rechaza. Para eso hace falta una plantilla oficial.
     const buttons = form.interactiveButtons
-    const hasReply = buttons.some(button => button.type === 'reply')
     if (buttons.length < 1 || buttons.length > 3) errors.push('Configura entre 1 y 3 botones.')
-    if (hasReply && buttons.some(button => button.type !== 'reply')) errors.push('Los botones de respuesta no pueden mezclarse con URL, llamada o copia.')
-    if (!hasReply && buttons.length > 2) errors.push('WhatsApp admite máximo 2 botones de URL, llamada o copia.')
     const texts = new Set<string>()
     const ids = new Set<string>()
     buttons.forEach((button, index) => {
@@ -199,17 +199,10 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
       else if (label.length > 20) errors.push(`El texto del botón ${index + 1} admite máximo 20 caracteres.`)
       else if (texts.has(label.toLowerCase())) errors.push(`El texto del botón ${index + 1} está repetido.`)
       texts.add(label.toLowerCase())
-      const field = button.type === 'reply' ? 'id' : button.type === 'url' ? 'url' : button.type === 'call' ? 'phoneNumber' : 'copyCode'
-      const value = String(button[field] ?? '').trim()
-      if (!value) errors.push(`Falta configurar el valor del botón ${index + 1}.`)
-      if (field === 'id') {
-        if (value.length > 256) errors.push(`El ID del botón ${index + 1} admite máximo 256 caracteres.`)
-        if (ids.has(value)) errors.push(`El ID del botón ${index + 1} está repetido.`)
-        ids.add(value)
-      }
-      if (field === 'url' && (!/^https:\/\/\S+$/i.test(value) || value.length > 2048)) errors.push(`La URL del botón ${index + 1} debe comenzar con https:// y admitir máximo 2048 caracteres.`)
-      if (field === 'phoneNumber' && !/^\+?[1-9]\d{7,14}$/.test(value.replace(/[\s()-]/g, ''))) errors.push(`El teléfono del botón ${index + 1} debe incluir código de país y tener entre 8 y 15 dígitos.`)
-      if (field === 'copyCode' && value.length > 256) errors.push(`El código del botón ${index + 1} admite máximo 256 caracteres.`)
+      const value = (button.id ?? '').trim()
+      if (value.length > 256) errors.push(`El ID del botón ${index + 1} admite máximo 256 caracteres.`)
+      if (value && ids.has(value)) errors.push(`El ID del botón ${index + 1} está repetido.`)
+      ids.add(value)
     })
     return errors
   }
@@ -577,7 +570,7 @@ export function TemplatesPage() {
   )
   const canAddAttachment = (editingTemplate?.attachments.length ?? 0) + pendingAttachments.length < 10
   const totalInteractiveRows = form.interactiveSections.reduce((total, section) => total + section.rows.length, 0)
-  const maxInteractiveButtons = form.interactiveButtons.some(button => button.type === 'reply') ? 3 : 2
+  const maxInteractiveButtons = 3
 
   return (
     <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
@@ -840,17 +833,15 @@ export function TemplatesPage() {
                 </div>
                 {form.interactiveType === 'buttons' && (
                   <div className="grid gap-2">
-                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Botones ({form.interactiveButtons.some(button => button.type === 'reply') ? 'máximo 3 respuestas' : 'máximo 2 CTA'})</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { type: 'reply', displayText: '', id: `reply_${f.interactiveButtons.length + 1}` }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar</button></div>
-                    {form.interactiveButtons.map((button, index) => {
-                      const field = button.type === 'reply' ? 'id' : button.type === 'url' ? 'url' : button.type === 'call' ? 'phoneNumber' : 'copyCode'
-                      return <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-wa-panel-dark md:grid-cols-[120px_1fr_1fr_auto]">
-                        <Select value={button.type} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { type: event.target.value as TemplateInteractiveButton['type'], displayText: item.displayText } : item) }))} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="reply">Respuesta</option><option value="url">Abrir URL</option><option value="call">Llamar</option><option value="copy">Copiar código</option></Select>
+                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Botones (máximo 3 respuestas)</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { type: 'reply', displayText: '', id: `reply_${f.interactiveButtons.length + 1}` }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar</button></div>
+                    {form.interactiveButtons.map((button, index) => (
+                      <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-wa-panel-dark md:grid-cols-[1fr_1fr_auto]">
                         <input required maxLength={20} value={button.displayText} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, displayText: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
-                        <input required type={field === 'url' ? 'url' : 'text'} inputMode={field === 'phoneNumber' ? 'tel' : 'text'} maxLength={field === 'url' ? 2048 : field === 'phoneNumber' ? 20 : 256} value={String(button[field] ?? '')} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: event.target.value } : item) }))} placeholder={field === 'id' ? 'ID de respuesta' : field === 'url' ? 'https://...' : field === 'phoneNumber' ? '+519...' : 'Código'} className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                        <input required maxLength={256} value={button.id ?? ''} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item) }))} placeholder="ID de respuesta" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                         <button type="button" disabled={form.interactiveButtons.length === 1} onClick={() => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </div>
-                    })}
-                    <p className="text-[11px] text-wa-muted">Los botones de respuesta no pueden mezclarse con URL, llamada o copia.</p>
+                    ))}
+                    <p className="text-[11px] text-wa-muted">Meta solo admite botones de respuesta rápida fuera de una plantilla oficial. Para URL, llamada o copiar código, usá una plantilla oficial.</p>
                   </div>
                 )}
                 {form.interactiveType === 'list' && (
