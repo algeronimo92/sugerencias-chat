@@ -11,6 +11,7 @@ from db.models import (
     AutomationRule,
     Lead,
     LeadTask,
+    MediaAsset,
     MessageTemplate,
     TemplateAttachment,
     TemplateUserState,
@@ -260,6 +261,15 @@ def _template(row, attachments: list[dict] | None = None):
         "official_language": row["official_language"], "official_category": row["official_category"],
         "official_status": row["official_status"],
         "official_parameter_values": row["official_parameter_values"] or [],
+        "meta_template_id": row["meta_template_id"],
+        "official_header_type": row["official_header_type"],
+        "official_header_text": row["official_header_text"],
+        "official_header_media_asset_id": row["official_header_media_asset_id"],
+        "official_header_media_url": row["official_header_media_url"],
+        "official_header_media_content_type": row["official_header_media_content_type"],
+        "official_header_media_filename": row["official_header_media_filename"],
+        "official_footer": row["official_footer"],
+        "official_buttons": row["official_buttons"] or [],
         "interactive_type": row["interactive_type"],
         "interactive_config": row["interactive_config"] or {},
         "last_used_at": _ts(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
@@ -279,6 +289,13 @@ async def list_templates(user_id: int, include_inactive=False):
             MessageTemplate.template_type, MessageTemplate.official_name,
             MessageTemplate.official_language, MessageTemplate.official_category,
             MessageTemplate.official_status, MessageTemplate.official_parameter_values,
+            MessageTemplate.meta_template_id, MessageTemplate.official_header_type,
+            MessageTemplate.official_header_text, MessageTemplate.official_header_media_asset_id,
+            MediaAsset.media_url.label("official_header_media_url"),
+            MediaAsset.content_type.label("official_header_media_content_type"),
+            MediaAsset.filename.label("official_header_media_filename"),
+            MessageTemplate.official_footer,
+            MessageTemplate.official_buttons,
             MessageTemplate.interactive_type, MessageTemplate.interactive_config,
             MessageTemplate.created_by_user_id, User.name.label("created_by_name"),
             MessageTemplate.created_at,
@@ -288,6 +305,7 @@ async def list_templates(user_id: int, include_inactive=False):
             TemplateUserState,
             and_(TemplateUserState.template_id == MessageTemplate.id, TemplateUserState.user_id == user_id),
         )
+        .outerjoin(MediaAsset, MediaAsset.id == MessageTemplate.official_header_media_asset_id)
         .join(User, User.id == MessageTemplate.created_by_user_id)
         .where(or_(MessageTemplate.visibility == "global", MessageTemplate.created_by_user_id == user_id))
         .order_by(TemplateUserState.is_favorite.desc().nullslast(), TemplateUserState.last_used_at.desc().nullslast(), MessageTemplate.name)
@@ -353,12 +371,13 @@ def _references_template(value: object, template_id: int) -> bool:
     return False
 
 
-async def delete_template(template_id: int) -> bool | None:
+async def delete_template(template_id: int) -> dict | None:
     """Elimina una plantilla solo cuando ninguna automatización vigente la necesita.
 
     También revisa versiones visuales usadas por ejecuciones pendientes para no
-    convertir una espera ya programada en una ejecución rota.
-    """
+    convertir una espera ya programada en una ejecución rota. Devuelve la
+    metadata oficial de la plantilla borrada (para que el router pueda
+    limpiarla también del lado de Meta) o `None` si no existía."""
     async with get_sessionmaker()() as session:
         template = (await session.execute(
             select(MessageTemplate).where(MessageTemplate.id == template_id).with_for_update()
@@ -424,7 +443,11 @@ async def delete_template(template_id: int) -> bool | None:
 
         await session.execute(delete(MessageTemplate).where(MessageTemplate.id == template_id))
         await session.commit()
-    return True
+    return {
+        "template_type": template.template_type,
+        "official_name": template.official_name,
+        "meta_template_id": template.meta_template_id,
+    }
 
 
 async def create_personal_template(name: str, content: str, shortcut: str | None, user_id: int):

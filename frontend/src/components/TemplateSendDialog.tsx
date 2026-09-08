@@ -104,7 +104,16 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const send = useSendTemplate(chat.chat_id)
   const { data: capabilities, isLoading: isLoadingCapabilities } = useTemplateCapabilities()
-  const usesSafeInteractiveFallback = isInteractive && capabilities?.integration !== 'WHATSAPP-BUSINESS'
+  // La Graph API de Meta solo acepta botones tipo "reply" en un mensaje
+  // interactivo suelto (fuera de una plantilla oficial) -- un botón de URL,
+  // llamada o copiar código siempre rechaza con "interactive.action.buttons.N.reply
+  // is required", sin importar la ventana de 24h. No es un bug de Evolution
+  // como el de Baileys/desconocida (razón original de este fallback): pasa
+  // igual en WHATSAPP-BUSINESS, así que estos botones también necesitan el
+  // texto numerado de respaldo ahí.
+  const hasNonReplyButtons = template.interactive_type === 'buttons'
+    && (template.interactive_config.buttons ?? []).some(button => button.type !== 'reply')
+  const usesSafeInteractiveFallback = isInteractive && (capabilities?.integration !== 'WHATSAPP-BUSINESS' || hasNonReplyButtons)
   const text = isOfficial ? renderOfficialTemplate(template, chat, parameters) : internalText
   const interactiveConfig = useMemo(() => renderInteractiveConfig(template, chat), [template, chat])
   const safeInteractivePreview = useMemo(() => {
@@ -271,7 +280,11 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
               {usesSafeInteractiveFallback && (
                 <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div><p className="font-semibold">Envío compatible con Evolution/Baileys</p><p className="mt-0.5">Esta instancia puede aceptar botones o listas sin entregarlos a WhatsApp. Para garantizar que el cliente vea el mensaje, las opciones se enviarán como un único texto numerado.</p></div>
+                  <div><p className="font-semibold">Envío como texto numerado</p><p className="mt-0.5">
+                    {hasNonReplyButtons
+                      ? 'Meta solo permite botones de "respuesta rápida" en un mensaje interactivo suelto; un botón de URL, llamada o copiar código lo rechaza siempre. Las opciones se enviarán como un único texto numerado.'
+                      : 'Esta instancia puede aceptar botones o listas sin entregarlos a WhatsApp. Para garantizar que el cliente vea el mensaje, las opciones se enviarán como un único texto numerado.'}
+                  </p></div>
                 </div>
               )}
 
@@ -352,7 +365,27 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                   </>
                 ) : captionAttachmentIndex < 0 && text.trim() && (
                   <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out px-3 py-2 text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
+                    {isOfficial && template.official_header_type === 'text' && template.official_header_text && (
+                      <p className="mb-1 font-semibold">{template.official_header_text}</p>
+                    )}
+                    {isOfficial && template.official_header_type === 'image' && template.official_header_media_url && (
+                      <img
+                        src={resolveMediaUrl(template.official_header_media_url) ?? ''}
+                        alt={template.official_header_media_filename ?? 'Encabezado'}
+                        className="mb-1.5 -mx-3 -mt-2 w-[calc(100%+1.5rem)] rounded-t-xl object-cover"
+                      />
+                    )}
                     <p className="whitespace-pre-wrap break-words"><RichMessage text={text} /></p>
+                    {isOfficial && template.official_footer && (
+                      <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{template.official_footer}</p>
+                    )}
+                    {isOfficial && template.official_buttons.length > 0 && (
+                      <div className="mt-2 -mx-3 -mb-2 border-t border-green-200 dark:border-green-900">
+                        {template.official_buttons.map((button, index) => (
+                          <div key={index} className="border-t border-green-200 px-3 py-1.5 text-center text-xs font-semibold text-blue-600 first:border-t-0 dark:border-green-900 dark:text-blue-400">{button.text}</div>
+                        ))}
+                      </div>
+                    )}
                     <p className="mt-1 text-right text-[9px] text-wa-muted dark:text-wa-muted-dark">Vista previa</p>
                   </div>
                 )}

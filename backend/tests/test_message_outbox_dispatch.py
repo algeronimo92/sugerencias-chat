@@ -124,3 +124,66 @@ async def test_interactive_job_uses_numbered_text_fallback_for_baileys(monkeypat
     assert "1. Mañana" in delivered_content
     send_text.assert_awaited_once_with("51999@s.whatsapp.net", delivered_content)
     send_buttons.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_business_reply_only_buttons_are_sent_natively(monkeypatch):
+    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
+        "integration": "WHATSAPP-BUSINESS", "official_sending_supported": True,
+        "history_available": False, "edit_delete_supported": False,
+    }))
+    send_text = AsyncMock()
+    send_buttons = AsyncMock(return_value={"key": {"id": "WA-BUTTONS"}})
+    monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
+    monkeypatch.setattr(message_outbox, "send_whatsapp_buttons", send_buttons)
+
+    response, delivered_content = await message_outbox._send_payload(
+        "51999@s.whatsapp.net",
+        {
+            "type": "interactive",
+            "interactive_type": "buttons",
+            "description": "Elige una opción",
+            "config": {
+                "title": "Turnos", "footer": "DermicaPro",
+                "buttons": [{"type": "reply", "displayText": "Mañana"}],
+            },
+        },
+    )
+
+    assert response["key"]["id"] == "WA-BUTTONS"
+    assert delivered_content is None
+    send_buttons.assert_awaited_once()
+    send_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_business_rejects_non_reply_buttons_and_falls_back_to_text(monkeypatch):
+    """La Graph API de Meta solo acepta botones "reply" en un mensaje
+    interactivo suelto (fuera de una plantilla oficial): un botón de URL
+    rechaza siempre con "interactive.action.buttons.0.reply is required"
+    (confirmado con tráfico real), sin importar la ventana de 24h."""
+    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
+        "integration": "WHATSAPP-BUSINESS", "official_sending_supported": True,
+        "history_available": False, "edit_delete_supported": False,
+    }))
+    send_text = AsyncMock(return_value={"key": {"id": "WA-TEXT"}})
+    send_buttons = AsyncMock()
+    monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
+    monkeypatch.setattr(message_outbox, "send_whatsapp_buttons", send_buttons)
+
+    _response, delivered_content = await message_outbox._send_payload(
+        "51999@s.whatsapp.net",
+        {
+            "type": "interactive",
+            "interactive_type": "buttons",
+            "description": "Hola, lee esto",
+            "config": {
+                "title": "Presiona un boton", "footer": "DermicaPro",
+                "buttons": [{"type": "url", "displayText": "Abrir enlace", "url": "https://cliniventas.com/"}],
+            },
+        },
+    )
+
+    assert "Abrir enlace: https://cliniventas.com/" in delivered_content
+    send_text.assert_awaited_once_with("51999@s.whatsapp.net", delivered_content)
+    send_buttons.assert_not_awaited()

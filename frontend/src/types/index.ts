@@ -525,8 +525,17 @@ export interface MessageTemplate {
   official_name: string | null
   official_language: string | null
   official_category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | null
-  official_status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED' | null
+  official_status: string | null
   official_parameter_values: string[]
+  meta_template_id: string | null
+  official_header_type: 'none' | 'text' | 'image'
+  official_header_text: string | null
+  official_header_media_asset_id: number | null
+  official_header_media_url: string | null
+  official_header_media_content_type: string | null
+  official_header_media_filename: string | null
+  official_footer: string | null
+  official_buttons: OfficialTemplateButton[]
   interactive_type: 'none' | 'buttons' | 'list'
   interactive_config: TemplateInteractiveConfig
   is_favorite: boolean
@@ -536,6 +545,13 @@ export interface MessageTemplate {
   created_by_name?: string | null
   created_at?: string | null
   attachments: TemplateAttachment[]
+}
+
+export interface OfficialTemplateButton {
+  type: 'quick_reply' | 'url' | 'phone_number'
+  text: string
+  url?: string
+  phone_number?: string
 }
 
 export interface TemplateInteractiveButton {

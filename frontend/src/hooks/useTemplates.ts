@@ -15,8 +15,13 @@ export interface TemplateInput {
   official_name: string | null
   official_language: string | null
   official_category: MessageTemplate['official_category']
-  official_status: MessageTemplate['official_status']
+  official_status?: MessageTemplate['official_status']
   official_parameter_values: string[]
+  official_header_type: MessageTemplate['official_header_type']
+  official_header_text: string | null
+  official_header_media_asset_id: number | null
+  official_footer: string | null
+  official_buttons: MessageTemplate['official_buttons']
   interactive_type: MessageTemplate['interactive_type']
   interactive_config: MessageTemplate['interactive_config']
 }
@@ -110,6 +115,13 @@ export function useDeleteTemplateAttachment() {
         queryClient.invalidateQueries({ queryKey: ['media-library'] }),
       ])
     },
+  })
+}
+
+export function useSyncTemplate() {
+  return useMutation({
+    mutationFn: async (id: number) => (await client.post<MessageTemplate>(`/api/templates/${id}/sync`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 

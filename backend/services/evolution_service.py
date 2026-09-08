@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -40,6 +41,36 @@ def describe_send_failure(exc: Exception, action: str) -> str:
     if isinstance(exc, WhatsAppWindowClosedError):
         return str(exc)
     return f"No se pudo {action}. Probá de nuevo en unos segundos."
+
+
+def describe_template_error(exc: Exception) -> str:
+    """Convierte un rechazo de la Graph API al crear/editar una plantilla en un
+    mensaje apto para el admin.
+
+    `template.router.ts` de Evolution atrapa el error de axios contra
+    `POST /{waba_id}/message_templates` y lo devuelve como un 400 con
+    `details.error_user_msg`/`details.whatsapp_error` (ver `createMetaErrorResponse`
+    en el código fuente de Evolution 2.3.7) — ese texto es específico y
+    accionable ("el nombre ya existe", "la categoría no coincide con el
+    contenido"...). `_request` solo adjunta el JSON crudo al mensaje de
+    `EvolutionApiError`; acá se extrae la parte útil."""
+    if not isinstance(exc, EvolutionApiError):
+        return str(exc)
+    text = str(exc)
+    marker = ": "
+    index = text.find(marker)
+    raw = text[index + len(marker):] if index != -1 else text
+    try:
+        body = json.loads(raw)
+    except (TypeError, ValueError):
+        return text
+    details = body.get("details") if isinstance(body, dict) else None
+    message = (
+        (details or {}).get("error_user_msg")
+        or (details or {}).get("whatsapp_error")
+        or (body.get("message") if isinstance(body, dict) else None)
+    )
+    return str(message) if message else text
 
 
 _META_ERROR_CODE_WINDOW_CLOSED = 131047
@@ -351,6 +382,171 @@ async def find_chat_messages(chat_id: str, page: int, limit: int = HISTORY_PAGE_
     destination = await resolve_history_jid(chat_id)
     payload = {"where": {"key": {"remoteJid": destination}}, "page": page, "offset": limit}
     return await _post(url, api_key, payload, timeout=30.0)
+
+
+GRAPH_API_VERSION = "v21.0"
+
+
+async def _get_meta_credentials() -> tuple[str, str]:
+    """Token de acceso y WABA id de la instancia activa.
+
+    `GET /instance/fetchInstances` (mismo endpoint que usa
+    `get_instance_capabilities`) devuelve la fila cruda de la tabla
+    `Instance` de Evolution -- confirmado leyendo `monitor.service.ts` en
+    2.3.7: `prismaRepository.instance.findMany()` sin `select`, así que
+    vienen todas las columnas escalares, `token` y `businessId` incluidos.
+    Nunca se debe reexponer el resultado de esta función en una respuesta de
+    la API (a diferencia de `get_instance_capabilities`, que sí es pública);
+    solo sirve para hablar directo con la Graph API donde Evolution no tiene
+    endpoint equivalente, como el resumable upload de medios para el
+    encabezado de una plantilla oficial."""
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/instance/fetchInstances"
+    headers = {"apikey": api_key}
+    response = await _client().get(url, headers=headers, timeout=20.0)
+    if response.is_error:
+        raise EvolutionApiError(f"Evolution API respondió {response.status_code} al consultar la instancia")
+    rows = response.json()
+    for row in rows if isinstance(rows, list) else []:
+        row_name = row.get("name") or (row.get("instance") or {}).get("instanceName")
+        if row_name != instance:
+            continue
+        token = row.get("token") or (row.get("instance") or {}).get("token")
+        business_id = row.get("businessId") or (row.get("instance") or {}).get("businessId")
+        if not token or not business_id:
+            raise EvolutionApiError(
+                "Evolution no expuso el token o el WABA id de la instancia; no se puede subir el encabezado a Meta"
+            )
+        return token, business_id
+    raise EvolutionApiError("No se encontró la instancia configurada en Evolution")
+
+
+async def upload_header_media(content: bytes, content_type: str, filename: str) -> str:
+    """Sube un archivo a Meta para usarlo como ejemplo del encabezado de una
+    plantilla oficial (imagen/video/documento) y devuelve el `header_handle`
+    que exige `POST /{waba_id}/message_templates` en ese caso.
+
+    Evolution no tiene equivalente de esto (su `template.service.ts` pasa
+    `components` tal cual a Meta, sin resolver medios) -- es la única llamada
+    de esta app que habla directo con la Graph API en vez de pasar por
+    Evolution, con el "resumable upload API" documentado en
+    https://developers.facebook.com/docs/graph-api/guides/upload:
+
+    1. `POST /{app_id}/uploads` con el tamaño/tipo del archivo -> sesión.
+    2. `POST /{sesión}` con el archivo en el body -> `{h: <header_handle>}`.
+    """
+    app_id = (await get_effective_many(("meta_app_id",)))["meta_app_id"]
+    if not app_id:
+        raise EvolutionApiError(
+            "Falta configurar el Facebook App ID (Tech Provider) en Configuración → Evolution API "
+            "para poder subir encabezados con imagen"
+        )
+    token, _business_id = await _get_meta_credentials()
+    client = _client()
+    started_at = perf_counter()
+    try:
+        start = await client.post(
+            f"https://graph.facebook.com/{GRAPH_API_VERSION}/{app_id}/uploads",
+            params={
+                "file_length": len(content),
+                "file_type": content_type,
+                "file_name": filename,
+                "access_token": token,
+            },
+            timeout=30.0,
+        )
+    finally:
+        record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
+    if start.is_error:
+        raise EvolutionApiError(f"Meta rechazó la sesión de subida ({start.status_code}): {start.text}")
+    session_id = start.json().get("id")
+    if not session_id:
+        raise EvolutionApiError("Meta no devolvió una sesión de subida válida")
+
+    started_at = perf_counter()
+    try:
+        upload = await client.post(
+            f"https://graph.facebook.com/{GRAPH_API_VERSION}/{session_id}",
+            headers={"Authorization": f"OAuth {token}", "file_offset": "0"},
+            content=content,
+            timeout=60.0,
+        )
+    finally:
+        record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
+    if upload.is_error:
+        raise EvolutionApiError(f"Meta rechazó la subida del archivo ({upload.status_code}): {upload.text}")
+    handle = upload.json().get("h")
+    if not handle:
+        raise EvolutionApiError("Meta no devolvió un header_handle válido")
+    return handle
+
+
+async def create_whatsapp_template(
+    name: str, category: str, language: str, components: list[dict],
+) -> dict:
+    """Da de alta una plantilla en Meta para revisión, vía `POST
+    /template/create/{instance}` de Evolution (confirmado contra el código
+    fuente de `template.service.ts` en 2.3.7: pasa `components` tal cual a
+    `POST /{waba_id}/message_templates` de la Graph API, sin transformarlo).
+
+    Devuelve el registro que arma Evolution: incluye `templateId` (el `id`
+    que asignó Meta) y `template` (la respuesta cruda de Meta, con el
+    `status` inicial — normalmente `PENDING`)."""
+    capabilities = await get_instance_capabilities()
+    if not capabilities["official_sending_supported"]:
+        raise EvolutionApiError(capabilities["reason"] or "La instancia no admite plantillas oficiales")
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/template/create/{instance}"
+    payload = {
+        "name": name,
+        "category": category,
+        "language": language,
+        "components": components,
+        "allowCategoryChange": True,
+    }
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def list_whatsapp_templates() -> list[dict]:
+    """Trae del lado de Meta el estado real de las plantillas de la WABA
+    conectada, vía `GET /template/find/{instance}` (pass-through de `GET
+    /{waba_id}/message_templates`). Se usa para sincronizar `official_status`
+    sin que el admin tenga que tipearlo a mano."""
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/template/find/{instance}"
+    headers = {"apikey": api_key}
+    started_at = perf_counter()
+    try:
+        response = await _client().get(url, headers=headers, timeout=20.0)
+    finally:
+        record_external_duration("evolution", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        raise EvolutionApiError(f"Evolution API respondió {response.status_code} al listar plantillas: {response.text}")
+    result = response.json()
+    data = result.get("data") if isinstance(result, dict) else result
+    return data if isinstance(data, list) else []
+
+
+async def update_whatsapp_template(
+    meta_template_id: str, components: list[dict] | None = None, category: str | None = None,
+) -> dict:
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/template/edit/{instance}"
+    payload: dict = {"templateId": meta_template_id}
+    if components is not None:
+        payload["components"] = components
+    if category is not None:
+        payload["category"] = category
+    return await _post(url, api_key, payload, timeout=30.0)
+
+
+async def delete_whatsapp_template(name: str, meta_template_id: str | None = None) -> dict:
+    api_url, api_key, instance = await _config()
+    url = f"{api_url.rstrip('/')}/template/delete/{instance}"
+    payload: dict = {"name": name}
+    if meta_template_id:
+        payload["hsmId"] = meta_template_id
+    return await _request("DELETE", url, api_key, payload, timeout=20.0)
 
 
 async def send_whatsapp_template(
