@@ -91,13 +91,15 @@ from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
     delete_whatsapp_message,
-    describe_send_failure,
     edit_whatsapp_message,
     get_instance_capabilities,
     mark_messages_as_read,
-    mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_reaction,
     send_whatsapp_sticker,
+)
+from services.meta_service import (
+    describe_send_failure,
+    mediatype_from_content_type as _mediatype_from_content_type,
 )
 from services.whatsapp_history import fetch_whatsapp_history
 from services.whatsapp_identity_service import InvalidWhatsAppIdentityError

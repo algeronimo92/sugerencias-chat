@@ -56,10 +56,8 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import (
-    EvolutionApiError,
-    mediatype_from_content_type,
-)
+from services.evolution_service import EvolutionApiError
+from services.meta_service import mediatype_from_content_type
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.settings_service import get_effective
 from services.automation_rules import (

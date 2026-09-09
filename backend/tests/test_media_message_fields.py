@@ -1,4 +1,4 @@
-from services.evolution_service import media_message_fields
+from services.meta_service import media_message_fields
 
 
 def test_image_without_album_id_has_no_payload():

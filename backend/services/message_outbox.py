@@ -11,9 +11,7 @@ from db.session import get_sessionmaker
 from services import db_service
 from services.evolution_service import (
     EvolutionApiError,
-    describe_send_failure,
     get_instance_capabilities,
-    media_message_fields,
     send_whatsapp_buttons,
     send_whatsapp_list,
     send_whatsapp_location,
@@ -22,6 +20,7 @@ from services.evolution_service import (
     send_whatsapp_template,
     send_whatsapp_text,
 )
+from services.meta_service import describe_send_failure, media_message_fields
 from services.media_storage import image_to_sticker_webp, read_media_base64, read_media_bytes
 from services.productivity_service import complete_reply_tasks
 from services.ws_manager import manager
