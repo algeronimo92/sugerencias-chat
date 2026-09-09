@@ -612,16 +612,26 @@ function InteractiveBody(ctx: MessageBodyContext) {
 
 /** Plantillas y mensajes con botones: preview del enlace (si el JSON trajo
  * uno), el cuerpo como texto normal y el pie. Los botones en sí van FUERA de
- * la burbuja (los pinta MessageBubble debajo), como en WhatsApp. */
+ * la burbuja (los pinta MessageBubble debajo), como en WhatsApp.
+ *
+ * Un `interactive` armado por esta misma app (botones/lista propios, sin
+ * preview de enlace: sin `domain` ni `description`) no es un anuncio de
+ * plantilla -- el título va como texto en negrita arriba del cuerpo, no
+ * dentro de la tarjeta con fondo que usan los anuncios reales. */
 function TemplateBody(ctx: MessageBodyContext) {
   const { parsed, hasQuote } = ctx
+  const template = parsed.template
+  const isOwnInteractive = parsed.kind === 'interactive' && !!template && !template.domain && !template.description && !template.answeredQuestion
   return (
     <>
-      {parsed.template && <TemplateMessagePreview template={parsed.template} hasQuote={hasQuote} />}
-      {!parsed.template && <AttachmentChip parsed={parsed} />}
+      {isOwnInteractive && template!.title && (
+        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template!.title}</p>
+      )}
+      {!isOwnInteractive && template && <TemplateMessagePreview template={template} hasQuote={hasQuote} />}
+      {!template && <AttachmentChip parsed={parsed} />}
       <Caption parsed={parsed} />
-      {parsed.template?.footer && (
-        <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{parsed.template.footer}</p>
+      {template?.footer && (
+        <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
       )}
     </>
   )

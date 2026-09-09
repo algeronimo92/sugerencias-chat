@@ -120,7 +120,15 @@ def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
     if kind == "official_template":
         return "template", {"name": payload.get("name"), "language": payload.get("language")}
     if kind == "interactive":
-        return "interactive", {"interactive_type": payload.get("interactive_type")}
+        # El frontend arma los botones/lista de la burbuja a partir de esto
+        # (ver parseOutboundInteractive en frontend/src/utils/message.ts):
+        # sin config/description solo puede mostrar texto plano.
+        return "interactive", {
+            "type": "interactive",
+            "interactive_type": payload.get("interactive_type"),
+            "config": payload.get("config"),
+            "description": payload.get("description"),
+        }
     if kind == "audio":
         return "audio", None
     if kind == "sticker":

@@ -38,6 +38,70 @@ describe('parseContent', () => {
     expect(parsed.template?.buttons).toEqual([{ text: 'HIFU', url: null }])
   })
 
+  it('arma botones reales para un interactivo propio de botones, sin repetir "Opciones" en el texto', () => {
+    const parsed = parseContent({
+      content: 'Presiona un boton\nHola Gerson lee esto\nOpciones: opcion a · opcion b',
+      message_type: 'interactive',
+      payload: {
+        type: 'interactive',
+        interactive_type: 'buttons',
+        description: 'Hola Gerson lee esto',
+        config: {
+          title: 'Presiona un boton',
+          footer: 'DermicaPro',
+          buttons: [
+            { type: 'reply', displayText: 'opcion a', id: 'reply_1' },
+            { type: 'reply', displayText: 'opcion b', id: 'reply_2' },
+          ],
+        },
+      },
+    })
+    expect(parsed.text).toBe('Hola Gerson lee esto')
+    expect(parsed.template).toMatchObject({ title: 'Presiona un boton', body: 'Hola Gerson lee esto', footer: 'DermicaPro' })
+    expect(parsed.template?.buttons).toEqual([
+      { text: 'opcion a', url: null },
+      { text: 'opcion b', url: null },
+    ])
+  })
+
+  it('arma un único botón de "abrir lista" para un interactivo propio de lista', () => {
+    const parsed = parseContent({
+      content: 'Elige una opción\nHola\nOpciones: A — desc',
+      message_type: 'interactive',
+      payload: {
+        type: 'interactive',
+        interactive_type: 'list',
+        description: 'Hola',
+        config: {
+          title: 'Elige una opción',
+          footerText: 'DermicaPro',
+          buttonText: 'Ver opciones',
+          sections: [{ title: 'Sección', rows: [{ title: 'A', description: 'desc', rowId: 'a' }] }],
+        },
+      },
+    })
+    expect(parsed.text).toBe('Hola')
+    expect(parsed.template?.buttons).toEqual([{ text: 'Ver opciones', url: null }])
+  })
+
+  it('deja un botón de URL clicable cuando el interactivo propio de botones lo trae', () => {
+    const parsed = parseContent({
+      content: 'Presiona un boton\nHola\nOpciones: Abrir enlace',
+      message_type: 'interactive',
+      payload: {
+        type: 'interactive',
+        interactive_type: 'buttons',
+        description: 'Hola',
+        config: {
+          title: 'Presiona un boton',
+          footer: 'DermicaPro',
+          buttons: [{ type: 'url', displayText: 'Abrir enlace', url: 'https://cliniventas.com/' }],
+        },
+      },
+    })
+    expect(parsed.template?.buttons).toEqual([{ text: 'Abrir enlace', url: 'https://cliniventas.com/' }])
+  })
+
   it('separa el análisis IA del caption y no lo mezcla en el texto', () => {
     const parsed = parseContent({
       content: 'Mirá esta promo',

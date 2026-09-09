@@ -205,6 +205,32 @@ describe('MessageBubble', () => {
     expect(screen.queryByText(/^Pedido N/)).not.toBeInTheDocument()
   })
 
+  it('un interactivo propio de botones se pinta con el título en negrita y botones reales, sin repetir "Opciones"', () => {
+    renderBubble({
+      content: 'Presiona un boton\nHola Gerson lee esto\nOpciones: opcion a · opcion b',
+      message_type: 'interactive',
+      payload: {
+        type: 'interactive',
+        interactive_type: 'buttons',
+        description: 'Hola Gerson lee esto',
+        config: {
+          title: 'Presiona un boton',
+          footer: 'DermicaPro',
+          buttons: [
+            { type: 'reply', displayText: 'opcion a', id: 'reply_1' },
+            { type: 'reply', displayText: 'opcion b', id: 'reply_2' },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByText('Presiona un boton')).toBeInTheDocument()
+    expect(screen.getByText('Hola Gerson lee esto')).toBeInTheDocument()
+    expect(screen.getByText('opcion a')).toBeInTheDocument()
+    expect(screen.getByText('opcion b')).toBeInTheDocument()
+    expect(screen.queryByText(/Opciones:/)).not.toBeInTheDocument()
+  })
+
   it('muestra un producto con precio normal y precio de oferta', () => {
     renderBubble({
       content: 'HIFU 12D',

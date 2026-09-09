@@ -96,6 +96,35 @@ async def test_location_and_official_template_jobs_dispatch_without_route_wait(m
     )
 
 
+def test_outbound_message_fields_keeps_interactive_config_for_chat_display():
+    """wsp_messages.payload debe traer lo que el frontend necesita para pintar
+    botones/lista reales (parseOutboundInteractive en message.ts); si solo
+    queda interactive_type, la burbuja cae a texto plano aunque el envío a
+    Evolution sí haya llevado los botones completos."""
+    message_type, db_payload = message_outbox._outbound_message_fields({
+        "type": "interactive",
+        "interactive_type": "buttons",
+        "description": "Elige una opción",
+        "config": {
+            "title": "Turnos",
+            "footer": "DermicaPro",
+            "buttons": [{"type": "reply", "displayText": "Mañana", "id": "reply_1"}],
+        },
+    })
+
+    assert message_type == "interactive"
+    assert db_payload == {
+        "type": "interactive",
+        "interactive_type": "buttons",
+        "description": "Elige una opción",
+        "config": {
+            "title": "Turnos",
+            "footer": "DermicaPro",
+            "buttons": [{"type": "reply", "displayText": "Mañana", "id": "reply_1"}],
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_interactive_job_uses_numbered_text_fallback_for_baileys(monkeypatch):
     monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={

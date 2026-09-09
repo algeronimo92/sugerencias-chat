@@ -148,8 +148,44 @@ function parseJson(value: JsonValue | undefined): JsonObject | null {
  * Recibe el objeto ya parseado: sirve tanto para el JSON crudo embebido en los
  * tags legados como para la columna `payload` del modelo normalizado.
  */
+/** El propio outbox arma este payload al encolar un mensaje interactivo
+ * (ver `enqueue_messages`/`chats.py`): `{type: "interactive", interactive_type,
+ * description, config}`, muy distinto de la forma cruda que manda WhatsApp
+ * para un mensaje entrante. Se resuelve aparte porque no comparte ningún
+ * campo con esa otra forma (headers, nativeFlowMessage, contextInfo...). */
+function parseOutboundInteractive(root: JsonObject): TemplateMessage | null {
+  if (root.type !== 'interactive' || !isJsonObject(root.config)) return null
+  const config = root.config
+  const interactiveType = asString(root.interactive_type)
+  const buttons: TemplateButton[] = interactiveType === 'list'
+    // WhatsApp solo muestra, en el mensaje mismo, el botón que abre la lista
+    // -las secciones/opciones aparecen recién cuando el cliente lo toca-, así
+    // que acá se pinta igual: un único botón con ese texto.
+    ? [{ text: asString(config.buttonText) || 'Ver opciones', url: null }]
+    : (Array.isArray(config.buttons) ? config.buttons : []).flatMap((button) => {
+      const buttonData = asObject(button)
+      const text = asString(buttonData.displayText)
+      if (!text) return []
+      return [{ text, url: buttonData.type === 'url' ? safeUrl(buttonData.url) : null }]
+    })
+  const title = asString(config.title)
+  const body = asString(root.description)
+  if (!title && !body && !buttons.length) return null
+  return {
+    title,
+    description: '',
+    domain: '',
+    body,
+    footer: asString(config.footer) || asString(config.footerText),
+    buttons,
+    answeredQuestion: '',
+  }
+}
+
 export function parseTemplateData(root: JsonObject | null): TemplateMessage | null {
   if (!root) return null
+  const outbound = parseOutboundInteractive(root)
+  if (outbound) return outbound
   // Según de dónde salga el payload el contenido viene en la raíz o anidado.
   const data = root.interactiveMessageTemplate
     ? asObject(root.interactiveMessageTemplate)
@@ -227,10 +263,17 @@ export function parseContent(input: ParseInput): ParsedContent {
     const payload = obj.payload ?? null
     const template =
       kind === 'template' || kind === 'interactive' ? parseTemplateData(payload) : null
+    const rawText = (content ?? '').trim()
+    // Un `interactive` propio guarda en `content` un resumen plano ("Título\n
+    // cuerpo\nOpciones: A · B") pensado para cuando no había botones reales;
+    // ahora que el payload sí se pudo desarmar, el cuerpo real evita repetir
+    // esas opciones como texto suelto además de los botones ya renderizados.
     const text =
-      (content ?? '').trim() ||
-      (template ? template.body || template.title : '') ||
-      (kind === 'template' ? TEMPLATE_FALLBACK_TEXT : '')
+      kind === 'interactive' && template
+        ? template.body || template.title || rawText
+        : rawText ||
+          (template ? template.body || template.title : '') ||
+          (kind === 'template' ? TEMPLATE_FALLBACK_TEXT : '')
     return {
       kind,
       ...KIND_META[kind],
