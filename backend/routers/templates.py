@@ -16,9 +16,9 @@ from routers.media import normalize_media_content_type, save_media_file
 from services.media_library_service import create_media_asset, delete_media_asset, get_media_asset
 from services.media_storage import MediaStorageError, delete_media, media_size, read_media_bytes
 from services.ws_manager import manager
-from services.evolution_service import (
-    EvolutionApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
-    get_instance_capabilities, list_whatsapp_templates, update_whatsapp_template, upload_header_media,
+from services.meta_service import (
+    MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
+    is_configured, list_whatsapp_templates, update_whatsapp_template, upload_header_media,
 )
 
 logger = logging.getLogger(__name__)
@@ -284,7 +284,7 @@ async def _build_meta_components(values: dict) -> list[dict]:
         content = await asyncio.to_thread(read_media_bytes, asset["media_url"])
         try:
             handle = await upload_header_media(content, asset["content_type"], asset["filename"])
-        except EvolutionApiError as exc:
+        except MetaApiError as exc:
             raise HTTPException(502, describe_template_error(exc))
         components.append({"type": "HEADER", "format": "IMAGE", "example": {"header_handle": [handle]}})
     components.append({"type": "BODY", "text": values["content"]})
@@ -364,16 +364,22 @@ async def get_templates(include_inactive: bool = False, user: User = Depends(get
 
 @router.get("/capabilities", response_model=TemplateCapabilities)
 async def get_capabilities(_user: User = Depends(get_current_user)):
-    try:
-        return await get_instance_capabilities()
-    except EvolutionApiError as exc:
-        return {
-            "integration": None,
-            "official_sending_supported": False,
-            "history_available": False,
-            "edit_delete_supported": False,
-            "reason": f"No se pudo comprobar la integración de Evolution API: {exc}",
-        }
+    # El frontend compara este campo contra el literal "WHATSAPP-BUSINESS"
+    # (ver TemplateSendDialog.tsx) para decidir si usa el fallback seguro de
+    # texto plano en interactivos -- se mantiene ese valor a propósito para
+    # no tener que tocar el frontend, aunque ya no exista un "tipo de
+    # integración" real que consultar (solo hay un camino: Meta directo).
+    configured = await is_configured()
+    return {
+        "integration": "WHATSAPP-BUSINESS" if configured else None,
+        "official_sending_supported": configured,
+        "history_available": False,
+        "edit_delete_supported": False,
+        "reason": None if configured else (
+            "Falta configurar el token, el phone number id y el WABA id de Meta Cloud "
+            "API en Configuración."
+        ),
+    }
 
 
 @router.post("", response_model=TemplateItem, status_code=201)
@@ -390,10 +396,12 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
             created = await create_whatsapp_template(
                 values["official_name"], values["official_category"], values["official_language"], components,
             )
-        except EvolutionApiError as exc:
+        except MetaApiError as exc:
             raise HTTPException(502, describe_template_error(exc))
-        values["meta_template_id"] = created.get("templateId") or (created.get("template") or {}).get("id")
-        values["official_status"] = (created.get("template") or {}).get("status") or "PENDING"
+        # Meta devuelve el shape nativo directo ({"id","status","category"}),
+        # ya no el wrapper {"templateId","template":{...}} que armaba Evolution.
+        values["meta_template_id"] = created.get("id")
+        values["official_status"] = created.get("status") or "PENDING"
     try:
         item = await create_template(values, admin.id)
     except ValueError as exc:
@@ -575,7 +583,7 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
                     (await _build_meta_components(merged)) if content_changed else None,
                     merged["official_category"] if category_changed_meta else None,
                 )
-            except EvolutionApiError as exc:
+            except MetaApiError as exc:
                 raise HTTPException(502, describe_template_error(exc))
     for key in ("name", "content", "category", "shortcut"):
         if key in values:
@@ -610,7 +618,7 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
     if deleted["template_type"] == "official" and deleted.get("meta_template_id"):
         try:
             await delete_whatsapp_template(deleted["official_name"], deleted["meta_template_id"])
-        except EvolutionApiError as exc:
+        except MetaApiError as exc:
             logger.warning("No se pudo borrar la plantilla %s en Meta: %s", deleted["official_name"], exc)
     await manager.broadcast({"type": "templates_updated"})
     await manager.broadcast({"type": "media_library_updated"})
@@ -629,7 +637,7 @@ async def post_sync_template(template_id: int, admin: User = Depends(require_adm
         raise HTTPException(400, "Esta plantilla no está vinculada a Meta")
     try:
         remote_templates = await list_whatsapp_templates()
-    except EvolutionApiError as exc:
+    except MetaApiError as exc:
         raise HTTPException(502, describe_template_error(exc))
     remote = next((row for row in remote_templates if row.get("id") == current["meta_template_id"]), None)
     if remote is None:

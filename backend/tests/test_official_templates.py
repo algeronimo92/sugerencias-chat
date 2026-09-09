@@ -1,4 +1,4 @@
-"""Alta, sincronización y baja de plantillas oficiales contra Meta (vía Evolution)."""
+"""Alta, sincronización y baja de plantillas oficiales, directo contra Meta."""
 
 from types import SimpleNamespace
 
@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from models.schemas import TemplateCreate, TemplateUpdate
 from routers import templates
-from services.evolution_service import EvolutionApiError
+from services.meta_service import MetaApiError
 
 
 def _official_payload(**overrides):
@@ -40,7 +40,7 @@ async def test_official_template_create_sends_full_components_to_meta(monkeypatc
     async def fake_create_whatsapp_template(name, category, language, components):
         nonlocal sent
         sent = (name, category, language, components)
-        return {"templateId": "meta-123", "template": {"id": "meta-123", "status": "PENDING"}}
+        return {"id": "meta-123", "status": "PENDING", "category": category}
 
     received_values = None
 
@@ -109,8 +109,9 @@ async def test_official_template_image_header_uploads_to_meta_and_builds_handle(
 @pytest.mark.asyncio
 async def test_official_template_create_surfaces_meta_rejection(monkeypatch):
     async def fake_create_whatsapp_template(*_args, **_kwargs):
-        raise EvolutionApiError(
-            'Evolution API respondió 400: {"details": {"error_user_msg": "El nombre ya existe"}}'
+        raise MetaApiError(
+            "Meta Graph API respondió 400: ...",
+            error={"error_user_msg": "El nombre ya existe"},
         )
 
     monkeypatch.setattr(templates, "get_template_category_by_name", _category_found)
