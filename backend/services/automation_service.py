@@ -56,8 +56,7 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import EvolutionApiError
-from services.meta_service import mediatype_from_content_type
+from services.meta_service import MetaApiError, mediatype_from_content_type
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.settings_service import get_effective
 from services.automation_rules import (
@@ -3235,7 +3234,7 @@ async def _run_visual_execution(
             )
             return
         raise ValueError("El flujo excedió el máximo de bloques permitidos")
-    except (KeyError, ValueError, EvolutionApiError, httpx.HTTPError) as exc:
+    except (KeyError, ValueError, MetaApiError, httpx.HTTPError) as exc:
         action_type = "flow"
         if current_id in nodes and nodes[current_id]["type"] == FlowNodeType.ACTION:
             action_type = nodes[current_id]["data"].get("action", {}).get("type", FlowNodeType.ACTION)
@@ -3422,7 +3421,7 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
             saved = await _save_execution(execution_id, deps, action_results=results)
             if not saved:
                 return  # cancelada externamente: no proceses más acciones
-    except (ValueError, EvolutionApiError, httpx.HTTPError) as exc:
+    except (ValueError, MetaApiError, httpx.HTTPError) as exc:
         failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
         results.append({
             "position": len(results) + 1,

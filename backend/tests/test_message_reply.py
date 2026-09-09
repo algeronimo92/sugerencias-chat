@@ -11,47 +11,23 @@ from services import message_outbox
 USER = SimpleNamespace(id=7)
 
 
-def test_quoted_context_marca_de_quien_era_el_mensaje_citado():
-    """`fromMe` es lo que le permite a WhatsApp encontrar el original: si va
-    mal, el mensaje se envía pero llega sin el recuadro de la cita."""
-    propio = message_outbox.quoted_context("51999@s.whatsapp.net", {
+def test_quoted_context_lleva_el_wa_message_id_del_original():
+    """Meta solo necesita el wa_message_id del mensaje citado -a diferencia
+    de Evolution/Baileys, no hace falta armar una key/message falsa con el
+    texto recortado: la Graph API resuelve el resto del lado del cliente."""
+    quoted = message_outbox.quoted_context({
         "id": 5, "sender": "vendedor", "content": "Te paso el precio",
         "wa_message_id": "WA-1",
     })
-    del_cliente = message_outbox.quoted_context("51999@s.whatsapp.net", {
-        "id": 6, "sender": "cliente", "content": "¿Cuánto sale?",
-        "wa_message_id": "WA-2",
-    })
 
-    assert propio["key"] == {
-        "remoteJid": "51999@s.whatsapp.net", "fromMe": True, "id": "WA-1",
-    }
-    assert propio["message"] == {"conversation": "Te paso el precio"}
-    assert del_cliente["key"]["fromMe"] is False
-
-
-def test_quoted_context_recorta_la_vista_previa():
-    quoted = message_outbox.quoted_context("51999@s.whatsapp.net", {
-        "id": 7, "sender": "cliente", "content": "x" * 500, "wa_message_id": "WA-3",
-    })
-
-    assert len(quoted["message"]["conversation"]) == message_outbox.QUOTED_PREVIEW_MAX
-
-
-def test_quoted_context_tolera_un_citado_sin_texto():
-    """Un audio o una imagen sin epígrafe tienen content None en la base."""
-    quoted = message_outbox.quoted_context("51999@s.whatsapp.net", {
-        "id": 8, "sender": "cliente", "content": None, "wa_message_id": "WA-4",
-    })
-
-    assert quoted["message"] == {"conversation": ""}
+    assert quoted == {"wa_message_id": "WA-1"}
 
 
 @pytest.mark.asyncio
-async def test_el_envio_lleva_la_cita_a_evolution(monkeypatch):
+async def test_el_envio_lleva_la_cita_a_meta(monkeypatch):
     send_text = AsyncMock(return_value={"key": {"id": "WA-OUT"}})
     monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
-    quoted = {"key": {"remoteJid": "51999@s.whatsapp.net", "fromMe": False, "id": "WA-2"}}
+    quoted = {"wa_message_id": "WA-2"}
 
     await message_outbox._send_payload("51999@s.whatsapp.net", {
         "type": "text", "text": "Sale 200", "quoted": quoted,

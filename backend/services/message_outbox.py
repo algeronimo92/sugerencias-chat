@@ -9,9 +9,10 @@ from sqlalchemy.orm import aliased
 from db.models import MessageOutbox, ScheduledMessage, WspMessage
 from db.session import get_sessionmaker
 from services import db_service
-from services.evolution_service import (
-    EvolutionApiError,
-    get_instance_capabilities,
+from services.meta_service import (
+    describe_send_failure,
+    media_message_fields,
+    send_whatsapp_audio,
     send_whatsapp_buttons,
     send_whatsapp_list,
     send_whatsapp_location,
@@ -20,8 +21,7 @@ from services.evolution_service import (
     send_whatsapp_template,
     send_whatsapp_text,
 )
-from services.meta_service import describe_send_failure, media_message_fields
-from services.media_storage import image_to_sticker_webp, read_media_base64, read_media_bytes
+from services.media_storage import image_to_sticker_webp, read_media_bytes, stat_media
 from services.productivity_service import complete_reply_tasks
 from services.ws_manager import manager
 
@@ -81,27 +81,14 @@ async def enqueue_text_message(
     }], actor_user_id=actor_user_id))[0]
 
 
-# Tope del texto que se manda como vista previa de la cita. WhatsApp recorta
-# igual del lado del cliente; el límite es solo para no inflar el payload.
-QUOTED_PREVIEW_MAX = 300
+def quoted_context(target: dict) -> dict:
+    """Contexto que Meta necesita para que la cita se vea en WhatsApp.
 
-
-def quoted_context(chat_id: str, target: dict) -> dict:
-    """Contexto que Evolution necesita para que la cita se vea en WhatsApp.
-
-    Es la forma de un mensaje de Baileys recortada al mínimo: la ``key``
-    identifica el mensaje citado (``fromMe`` importa — sin él WhatsApp no
-    encuentra el original) y ``message`` da el texto que se muestra dentro
-    del recuadro de la cita.
-    """
-    return {
-        "key": {
-            "remoteJid": chat_id,
-            "fromMe": target["sender"] == "vendedor",
-            "id": target["wa_message_id"],
-        },
-        "message": {"conversation": (target.get("content") or "")[:QUOTED_PREVIEW_MAX]},
-    }
+    A diferencia de Evolution/Baileys (que exigía una key/message falsa con
+    el texto recortado del original), la Graph API de Meta solo pide el
+    wa_message_id del mensaje citado -ella misma resuelve el resto del lado
+    del cliente- ver meta_service.send_whatsapp_text."""
+    return {"wa_message_id": target["wa_message_id"]}
 
 
 def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
@@ -189,7 +176,7 @@ async def enqueue_messages(
             if item.get("forwarded"):
                 db_payload = {**(db_payload or {}), "forwarded": True}
             if reply_to:
-                payload = {**payload, "quoted": quoted_context(chat_id, reply_to)}
+                payload = {**payload, "quoted": quoted_context(reply_to)}
             message = WspMessage(
                 chat_id=chat_id,
                 sender="vendedor",
@@ -469,35 +456,6 @@ async def _mark_failed(job: dict, exc: Exception) -> None:
             })
 
 
-def _is_baileys_list_serialization_error(exc: Exception) -> bool:
-    return "this.isZero is not a function" in str(exc)
-
-
-def _list_text_fallback(title: str, description: str, footer: str, sections: list[dict]) -> str:
-    lines: list[str] = []
-    if title:
-        lines.append(f"*{title}*")
-    if description:
-        lines.append(description)
-    option_number = 1
-    for section in sections:
-        section_title = str(section.get("title") or "").strip()
-        if section_title:
-            lines.extend(["", f"*{section_title}*"])
-        for row in section.get("rows", []):
-            row_title = str(row.get("title") or "").strip()
-            row_description = str(row.get("description") or "").strip()
-            option = f"{option_number}. {row_title}"
-            if row_description:
-                option += f" — {row_description}"
-            lines.append(option)
-            option_number += 1
-    lines.extend(["", "Responde con el número de la opción que deseas."])
-    if footer:
-        lines.extend(["", footer])
-    return "\n".join(lines)
-
-
 def _buttons_text_fallback(title: str, description: str, footer: str, buttons: list[dict]) -> str:
     lines = [f"*{title}*", description, ""]
     reply_only = all(button.get("type") == "reply" for button in buttons)
@@ -530,22 +488,18 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
     if kind == "text":
         return await send_whatsapp_text(chat_id, payload["text"], quoted=quoted), None
     if kind == "audio":
-        # sendWhatsAppAudio (PTT) queda roto en esta instancia de Evolution
-        # para la integración Meta Cloud API: acepta el envío (201, wamid
-        # real) pero el mensaje nunca progresa ni un solo estado, ni siquiera
-        # en el historial propio de Evolution — se confirmó comparando el
-        # mismo audio (Ogg/Opus, byte a byte) mandado por los dos caminos, y
-        # solo sendMedia lo entregó. mediatype "audio" pierde la burbuja
-        # nativa de nota de voz (onda + reproducir) del lado del destinatario
-        # y queda como adjunto reproducible normal, pero llega. fileName es
-        # obligatorio acá: sin él Evolution devuelve 500 para audio.
-        encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
+        info = await asyncio.to_thread(stat_media, payload["media_url"])
+        content = await asyncio.to_thread(read_media_bytes, payload["media_url"])
         filename = payload["media_url"].rsplit("/", 1)[-1]
-        return await send_whatsapp_media(chat_id, encoded, "audio", filename=filename, quoted=quoted), None
+        return await send_whatsapp_audio(
+            chat_id, content, info.content_type, filename, quoted=quoted,
+        ), None
     if kind == "media":
-        encoded = await asyncio.to_thread(read_media_base64, payload["media_url"])
+        info = await asyncio.to_thread(stat_media, payload["media_url"])
+        content = await asyncio.to_thread(read_media_bytes, payload["media_url"])
+        filename = payload["media_url"].rsplit("/", 1)[-1]
         return await send_whatsapp_media(
-            chat_id, encoded, payload["mediatype"],
+            chat_id, content, info.content_type, payload["mediatype"],
             filename=payload.get("filename"), caption=payload.get("caption"), quoted=quoted,
         ), None
     if kind == "sticker":
@@ -553,8 +507,8 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
         # acá (y no al encolar) porque el archivo original puede ser el que
         # subió el cliente, no un sticker ya normalizado.
         data = await asyncio.to_thread(read_media_bytes, payload["media_url"])
-        encoded = await asyncio.to_thread(image_to_sticker_webp, data)
-        return await send_whatsapp_sticker(chat_id, encoded), None
+        sticker_bytes = await asyncio.to_thread(image_to_sticker_webp, data)
+        return await send_whatsapp_sticker(chat_id, sticker_bytes), None
     if kind == "location":
         return await send_whatsapp_location(
             chat_id, payload["latitude"], payload["longitude"], quoted=quoted
@@ -569,19 +523,6 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
     interactive_type = payload["interactive_type"]
     description = payload["description"]
     config = payload["config"]
-    capabilities = await get_instance_capabilities()
-    if capabilities.get("integration") != "WHATSAPP-BUSINESS":
-        if interactive_type == "buttons":
-            fallback = _buttons_text_fallback(
-                config["title"], description,
-                config.get("footer") or "DermicaPro", config["buttons"],
-            )
-        else:
-            fallback = _list_text_fallback(
-                config["title"], description,
-                config.get("footerText") or "DermicaPro", config["sections"],
-            )
-        return await send_whatsapp_text(chat_id, fallback), fallback
 
     if interactive_type == "buttons":
         buttons = config["buttons"]
@@ -596,8 +537,8 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
                 config.get("footer") or "DermicaPro", buttons,
             )
             logger.info(
-                "Botones con tipo no-reply en WHATSAPP-BUSINESS; Meta los rechaza en un "
-                "mensaje interactivo suelto, se manda como texto numerado"
+                "Botones con tipo no-reply; Meta los rechaza en un mensaje interactivo "
+                "suelto, se manda como texto numerado"
             )
             return await send_whatsapp_text(chat_id, fallback), fallback
         response = await send_whatsapp_buttons(
@@ -605,22 +546,12 @@ async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
             config.get("footer") or "DermicaPro", buttons,
         )
         return response, None
-    try:
-        response = await send_whatsapp_list(
-            chat_id, config["title"], description,
-            config.get("footerText") or "DermicaPro",
-            config["buttonText"], config["sections"],
-        )
-        return response, None
-    except EvolutionApiError as exc:
-        if not _is_baileys_list_serialization_error(exc):
-            raise
-        fallback = _list_text_fallback(
-            config["title"], description,
-            config.get("footerText") or "DermicaPro", config["sections"],
-        )
-        logger.warning("Evolution no pudo serializar una lista; se usa una alternativa de texto numerado")
-        return await send_whatsapp_text(chat_id, fallback), fallback
+    response = await send_whatsapp_list(
+        chat_id, config["title"], description,
+        config.get("footerText") or "DermicaPro",
+        config["buttonText"], config["sections"],
+    )
+    return response, None
 
 
 async def _process_job(job: dict) -> None:
@@ -630,7 +561,7 @@ async def _process_job(job: dict) -> None:
         response, delivered_content = await _send_payload(job["chat_id"], payload)
         await _mark_sent(job, response, delivered_content)
         logger.info(
-            "Mensaje %s del outbox (%s) enviado vía Evolution en %.0fms",
+            "Mensaje %s del outbox (%s) enviado vía Meta en %.0fms",
             job["message_id"], payload.get("type"),
             (perf_counter() - started_at) * 1000,
         )

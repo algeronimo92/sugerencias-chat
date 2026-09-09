@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import binascii
 from datetime import datetime
@@ -29,6 +30,10 @@ from services.ad_referral_service import rehost_ad_thumbnail
 from services.message_status_service import parse_message_status_events
 from services.productivity_service import complete_assigned_seller_reply_tasks
 from services.evolution_service import EvolutionApiError, find_phone_jid_for_lid
+from services import meta_service
+from services.meta_service import MetaApiError
+from services.media_storage import MediaStorageError
+from routers.media import save_media_file
 from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
     WhatsAppIdentityConflictError,
@@ -623,6 +628,39 @@ async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
     return await ensure_lead_stub(
         body.chat_id, _parse_iso_datetime(body.ultimo_mensaje_at), body.origen
     )
+
+
+class MetaMediaImportBody(BaseModel):
+    media_id: str
+    filename: str | None = None
+
+
+@router.post("/meta-media")
+async def meta_media_import_webhook(body: MetaMediaImportBody):
+    """Trae un adjunto entrante desde Meta y lo guarda en el almacenamiento
+    propio, devolviendo la `media_url` estable que espera el resto de la app.
+
+    Reemplaza al par de nodos `get X` + `upload X media` de rag.json (que
+    bajaba el archivo de Evolution y lo resubía en base64). Vive acá y no en
+    n8n porque la descarga necesita el token de Meta, que solo está en las
+    settings del backend -así n8n nunca necesita una copia."""
+    try:
+        content, content_type = await meta_service.download_media(body.media_id)
+    except MetaApiError as exc:
+        logger.warning("No se pudo bajar el medio %s de Meta: %s", body.media_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    encoded = base64.b64encode(content).decode("ascii")
+    try:
+        media_url = await asyncio.to_thread(
+            save_media_file, content_type, encoded, body.filename
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=413 if "grande" in str(exc) else 400, detail=str(exc))
+    except MediaStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"media_url": media_url, "content_type": content_type}
 
 
 class SaveInboundMessageWebhookBody(BaseModel):

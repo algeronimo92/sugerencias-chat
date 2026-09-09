@@ -28,7 +28,7 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.evolution_service import send_whatsapp_reaction
+from services.meta_service import send_whatsapp_reaction
 from services.message_outbox import enqueue_messages
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use

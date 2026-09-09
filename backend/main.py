@@ -30,6 +30,7 @@ from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
 from services.automation_service import backfill_automation_state, watch_automations
 from services.evolution_service import close_evolution_client
+from services.meta_service import close_meta_client
 from services.n8n_service import close_n8n_client
 from services.tts_service import close_tts_client
 from services.message_outbox import watch_message_outbox
@@ -292,6 +293,7 @@ async def lifespan(app: FastAPI):
     with contextlib.suppress(asyncio.CancelledError):
         await queue_metrics_task
     await close_evolution_client()
+    await close_meta_client()
     await close_n8n_client()
     await close_tts_client()
     await close_engine()

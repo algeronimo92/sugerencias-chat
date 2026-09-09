@@ -87,19 +87,24 @@ from services.db_service import (
 from services.auth_service import get_current_user, require_admin
 from services.lead_merge import LeadMergeError, merge_leads
 from services.productivity_service import complete_reply_tasks
+# Lo que sigue viniendo de Evolution es lo que la Cloud API de Meta no tiene:
+# verificar si un número está en WhatsApp, editar y eliminar un mensaje ya
+# enviado, y el historial retroactivo. Son capacidades de la sesión de Baileys,
+# no endpoints de Meta.
 from services.evolution_service import (
     EvolutionApiError,
     check_whatsapp_numbers,
     delete_whatsapp_message,
     edit_whatsapp_message,
     get_instance_capabilities,
-    mark_messages_as_read,
-    send_whatsapp_reaction,
-    send_whatsapp_sticker,
 )
 from services.meta_service import (
+    MetaApiError,
     describe_send_failure,
+    mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
+    send_whatsapp_reaction,
+    send_whatsapp_sticker,
 )
 from services.whatsapp_history import fetch_whatsapp_history
 from services.whatsapp_identity_service import InvalidWhatsAppIdentityError
@@ -714,15 +719,15 @@ async def send_sticker(
         raise HTTPException(404, "El sticker no existe en la librería")
     try:
         data = await asyncio.to_thread(read_media_bytes, asset["media_url"])
-        sticker_b64 = await asyncio.to_thread(image_to_sticker_webp, data)
+        sticker_bytes = await asyncio.to_thread(image_to_sticker_webp, data)
     except MediaNotFoundError:
         raise HTTPException(404, "El archivo del sticker ya no está disponible")
     except (MediaStorageError, OSError, ValueError):
         raise HTTPException(400, "No se pudo preparar el sticker (¿es una imagen válida?)")
 
     try:
-        response = await send_whatsapp_sticker(chat_id, sticker_b64)
-    except (EvolutionApiError, httpx.HTTPError) as exc:
+        response = await send_whatsapp_sticker(chat_id, sticker_bytes)
+    except (MetaApiError, httpx.HTTPError) as exc:
         logger.warning("No se pudo enviar el sticker a WhatsApp para %s: %s", chat_id, exc)
         raise HTTPException(502, describe_send_failure(exc, "enviar el sticker a WhatsApp"))
 
@@ -1007,7 +1012,7 @@ async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest)
     }
     try:
         await send_whatsapp_reaction(key, body.emoji)
-    except (EvolutionApiError, httpx.HTTPError) as exc:
+    except (MetaApiError, httpx.HTTPError) as exc:
         logger.warning("No se pudo enviar la reacción a WhatsApp para %s: %s", chat_id, exc)
         raise HTTPException(502, describe_send_failure(exc, "enviar la reacción a WhatsApp"))
 
@@ -1145,13 +1150,13 @@ async def read_chat(chat_id: str):
     if wa_message_ids:
         try:
             await mark_messages_as_read(chat_id, wa_message_ids)
-        except (EvolutionApiError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
-            # Best-effort: si Evolution falla (no configurada, mensaje ya no
-            # existe del lado de WhatsApp, etc.) igual se marca como visto
-            # de nuestro lado — no tiene sentido bloquear el badge interno
-            # por un problema ajeno a nuestra base.
+        except (MetaApiError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
+            # Best-effort: si Meta falla (no configurada, mensaje ya no existe
+            # del lado de WhatsApp, etc.) igual se marca como visto de nuestro
+            # lado — no tiene sentido bloquear el badge interno por un problema
+            # ajeno a nuestra base.
             logger.warning(
-                "No se pudieron marcar %d mensajes como leídos en Evolution API para %s: %s",
+                "No se pudieron marcar %d mensajes como leídos en Meta para %s: %s",
                 len(wa_message_ids),
                 chat_id,
                 exc,

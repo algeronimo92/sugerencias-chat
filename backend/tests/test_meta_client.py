@@ -124,6 +124,84 @@ async def test_send_to_lid_only_lead_fails_explicitly(monkeypatch):
         await meta_service.send_whatsapp_text("lead-1", "hola")
 
 
+def _mock_media_send(monkeypatch, wamid="wamid.MEDIA"):
+    """send_whatsapp_media hace dos llamadas: primero sube el archivo
+    (POST /{phone_number_id}/media) y después manda el mensaje."""
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({"id": "MEDIA-1"}),
+        _FakeGraphResponse({"messages": [{"id": wamid}], "contacts": [{"wa_id": "51906471403"}]}),
+    ])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
+    return fake_client
+
+
+@pytest.mark.asyncio
+async def test_send_audio_marks_ogg_opus_as_a_voice_note(monkeypatch):
+    fake_client = _mock_media_send(monkeypatch)
+
+    await meta_service.send_whatsapp_audio("lead-1", b"OGG-BYTES", "audio/ogg", "nota.ogg")
+
+    payload = fake_client.calls[1]["json"]
+    assert payload["type"] == "audio"
+    assert payload["audio"] == {"id": "MEDIA-1", "voice": True}
+
+
+@pytest.mark.asyncio
+async def test_send_audio_tolerates_codec_parameters_in_the_content_type(monkeypatch):
+    """El navegador manda `audio/ogg; codecs=opus`: comparar el string entero
+    contra "audio/ogg" perdería el flag y degradaría la nota de voz a adjunto."""
+    fake_client = _mock_media_send(monkeypatch)
+
+    await meta_service.send_whatsapp_audio(
+        "lead-1", b"OGG-BYTES", "audio/ogg; codecs=opus", "nota.ogg",
+    )
+
+    assert fake_client.calls[1]["json"]["audio"]["voice"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_audio_degrades_to_plain_attachment_for_other_formats(monkeypatch):
+    """Meta solo acepta `voice: true` sobre Ogg/Opus. Si ffmpeg no estaba y el
+    archivo quedó en el formato del navegador, reclamar el flag igual haría que
+    Meta rechace el envío entero en vez de entregarlo como adjunto de audio."""
+    fake_client = _mock_media_send(monkeypatch)
+
+    await meta_service.send_whatsapp_audio("lead-1", b"WEBM-BYTES", "audio/webm", "nota.weba")
+
+    assert fake_client.calls[1]["json"]["audio"] == {"id": "MEDIA-1"}
+
+
+@pytest.mark.asyncio
+async def test_send_media_never_leaks_voice_flag_into_other_types(monkeypatch):
+    """`voice` solo existe dentro del objeto `audio` de la Cloud API. Mandarlo
+    en un image/video/document viola el schema y Meta rechaza el envío entero
+    con el error 100, así que ni siquiera debe aparecer como false."""
+    fake_client = _mock_media_send(monkeypatch)
+
+    await meta_service.send_whatsapp_media(
+        "lead-1", b"JPG-BYTES", "image/jpeg", "image", filename="foto.jpg", voice=True,
+    )
+
+    assert fake_client.calls[1]["json"]["image"] == {"id": "MEDIA-1"}
+
+
+@pytest.mark.asyncio
+async def test_send_media_omits_voice_flag_by_default(monkeypatch):
+    fake_client = _mock_media_send(monkeypatch)
+
+    await meta_service.send_whatsapp_media(
+        "lead-1", b"OGG-BYTES", "audio/ogg", "audio", filename="nota.ogg",
+    )
+
+    assert fake_client.calls[1]["json"]["audio"] == {"id": "MEDIA-1"}
+
+
 @pytest.mark.asyncio
 async def test_send_buttons_populates_header_body_and_footer_separately(monkeypatch):
     """Regresión del bug de Evolution (evolution-foundation/evolution-api#2723):
@@ -315,6 +393,43 @@ async def test_upload_media_posts_multipart_and_returns_id(monkeypatch):
     assert call["url"] == "https://graph.facebook.com/v26.0/PHONE1/media"
     assert call["files"]["file"] == ("foto.jpg", b"fake-bytes", "image/jpeg")
     assert call["data"]["messaging_product"] == "whatsapp"
+
+
+@pytest.mark.asyncio
+async def test_download_media_resolves_signed_url_then_fetches_bytes(monkeypatch):
+    """Bajar un adjunto entrante de Meta son dos llamadas: la metadata da una
+    URL firmada temporal, y esa URL igual exige el mismo Bearer (no es
+    pública). Evolution resolvía todo esto en un solo endpoint."""
+    _mock_config(monkeypatch)
+    metadata = _FakeGraphResponse({
+        "url": "https://lookaside.fbsbx.com/whatsapp/MEDIA1",
+        "mime_type": "image/jpeg",
+        "file_size": 1024,
+        "id": "MEDIA1",
+    })
+    bytes_response = _FakeGraphResponse({})
+    bytes_response.content = b"JPEG-BYTES"
+    fake_client = _FakeGraphClient([metadata, bytes_response])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    content, content_type = await meta_service.download_media("MEDIA1")
+
+    assert content == b"JPEG-BYTES"
+    assert content_type == "image/jpeg"
+    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v26.0/MEDIA1"
+    assert fake_client.calls[1]["url"] == "https://lookaside.fbsbx.com/whatsapp/MEDIA1"
+    assert fake_client.calls[1]["headers"]["Authorization"] == "Bearer token-123"
+
+
+@pytest.mark.asyncio
+async def test_download_media_fails_when_meta_omits_the_url(monkeypatch):
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "_client", lambda: _FakeGraphClient([_FakeGraphResponse({"id": "MEDIA1"})]),
+    )
+
+    with pytest.raises(meta_service.MetaApiError):
+        await meta_service.download_media("MEDIA1")
 
 
 @pytest.mark.asyncio

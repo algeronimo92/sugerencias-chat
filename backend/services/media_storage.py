@@ -8,7 +8,6 @@ frontend.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import mimetypes
@@ -312,11 +311,6 @@ def read_media_bytes(media_url: str) -> bytes:
     return b"".join(iter_media_stat(info, media_url, 0, info.size))
 
 
-def read_media_base64(media_url: str) -> str:
-    """Devuelve el archivo en base64 listo para Evolution API."""
-    return base64.b64encode(read_media_bytes(media_url)).decode("ascii")
-
-
 class VideoCompressionError(RuntimeError):
     pass
 
@@ -430,10 +424,9 @@ def transcode_audio_to_ogg_opus(data: bytes) -> bytes:
                     pass
 
 
-def image_to_sticker_webp(data: bytes, size: int = 512) -> str:
+def image_to_sticker_webp(data: bytes, size: int = 512) -> bytes:
     """Convierte una imagen a un sticker de WhatsApp: WEBP cuadrado de 512×512
-    con fondo transparente, la imagen centrada conservando su proporción.
-    Devuelve el base64 listo para el endpoint sendSticker de Evolution."""
+    con fondo transparente, la imagen centrada conservando su proporción."""
     from PIL import Image
 
     with Image.open(BytesIO(data)) as img:
@@ -443,7 +436,7 @@ def image_to_sticker_webp(data: bytes, size: int = 512) -> str:
         canvas.paste(img, ((size - img.width) // 2, (size - img.height) // 2), img)
         buffer = BytesIO()
         canvas.save(buffer, format="WEBP")
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
+    return buffer.getvalue()
 
 
 def image_dimensions(media_url: str) -> tuple[int, int] | None:

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from routers import chats
 from models.schemas import ReactionRequest
-from services.evolution_service import EvolutionApiError
+from services.meta_service import MetaApiError
 
 
 def _patch_common(monkeypatch, *, target, send=None, set_reaction=None):
@@ -87,12 +87,12 @@ async def test_react_unconfirmed_message_returns_409(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_react_does_not_persist_when_evolution_fails(monkeypatch):
+async def test_react_does_not_persist_when_meta_fails(monkeypatch):
     set_reaction = AsyncMock()
     _patch_common(
         monkeypatch,
         target={"id": 7, "sender": "cliente", "content": "hola", "wa_message_id": "WA-7"},
-        send=AsyncMock(side_effect=EvolutionApiError("boom")),
+        send=AsyncMock(side_effect=MetaApiError("boom")),
         set_reaction=set_reaction,
     )
     with pytest.raises(HTTPException) as exc:

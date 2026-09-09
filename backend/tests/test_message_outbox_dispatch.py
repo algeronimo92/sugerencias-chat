@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -6,16 +7,16 @@ from services import message_outbox
 
 
 @pytest.mark.asyncio
-async def test_audio_job_reads_durable_media_and_uses_generic_media_endpoint(monkeypatch):
-    """sendWhatsAppAudio (PTT) quedó roto en la instancia Meta Cloud API que
-    usa la app -acepta el envío pero el mensaje nunca se entrega, sin ni un
-    error- así que las notas de voz se mandan por sendMedia como adjunto de
-    audio, que sí entrega (confirmado mandando el mismo archivo por los dos
-    caminos y comparando el historial de Evolution)."""
-    read_media = Mock(return_value="BASE64")
-    send_media = AsyncMock(return_value={"key": {"id": "WA-AUDIO"}})
-    monkeypatch.setattr(message_outbox, "read_media_base64", read_media)
-    monkeypatch.setattr(message_outbox, "send_whatsapp_media", send_media)
+async def test_audio_job_reads_durable_media_and_delegates_to_the_voice_sender(monkeypatch):
+    """La outbox solo resuelve el archivo y delega: si el audio sale como nota
+    de voz o como adjunto lo decide meta_service según el formato, que es quien
+    conoce las reglas de la Cloud API."""
+    stat_media = Mock(return_value=SimpleNamespace(content_type="audio/ogg"))
+    read_bytes = Mock(return_value=b"AUDIO-BYTES")
+    send_audio = AsyncMock(return_value={"key": {"id": "WA-AUDIO"}})
+    monkeypatch.setattr(message_outbox, "stat_media", stat_media)
+    monkeypatch.setattr(message_outbox, "read_media_bytes", read_bytes)
+    monkeypatch.setattr(message_outbox, "send_whatsapp_audio", send_audio)
 
     response, content = await message_outbox._send_payload(
         "51999@s.whatsapp.net",
@@ -24,15 +25,19 @@ async def test_audio_job_reads_durable_media_and_uses_generic_media_endpoint(mon
 
     assert response["key"]["id"] == "WA-AUDIO"
     assert content is None
-    read_media.assert_called_once_with("/api/media/audio/test.ogg")
-    send_media.assert_awaited_once_with(
-        "51999@s.whatsapp.net", "BASE64", "audio", filename="test.ogg", quoted=None
+    stat_media.assert_called_once_with("/api/media/audio/test.ogg")
+    read_bytes.assert_called_once_with("/api/media/audio/test.ogg")
+    send_audio.assert_awaited_once_with(
+        "51999@s.whatsapp.net", b"AUDIO-BYTES", "audio/ogg", "test.ogg", quoted=None,
     )
 
 
 @pytest.mark.asyncio
 async def test_media_job_preserves_type_and_filename(monkeypatch):
-    monkeypatch.setattr(message_outbox, "read_media_base64", Mock(return_value="BASE64"))
+    monkeypatch.setattr(
+        message_outbox, "stat_media", Mock(return_value=SimpleNamespace(content_type="application/pdf")),
+    )
+    monkeypatch.setattr(message_outbox, "read_media_bytes", Mock(return_value=b"PDF-BYTES"))
     send_media = AsyncMock(return_value={"key": {"id": "WA-MEDIA"}})
     monkeypatch.setattr(message_outbox, "send_whatsapp_media", send_media)
 
@@ -44,13 +49,17 @@ async def test_media_job_preserves_type_and_filename(monkeypatch):
     })
 
     send_media.assert_awaited_once_with(
-        "51999@s.whatsapp.net", "BASE64", "document", filename="file.pdf", caption=None, quoted=None
+        "51999@s.whatsapp.net", b"PDF-BYTES", "application/pdf", "document",
+        filename="file.pdf", caption=None, quoted=None,
     )
 
 
 @pytest.mark.asyncio
-async def test_media_template_caption_reaches_evolution_send_media(monkeypatch):
-    monkeypatch.setattr(message_outbox, "read_media_base64", Mock(return_value="BASE64"))
+async def test_media_caption_reaches_meta_send_media(monkeypatch):
+    monkeypatch.setattr(
+        message_outbox, "stat_media", Mock(return_value=SimpleNamespace(content_type="video/mp4")),
+    )
+    monkeypatch.setattr(message_outbox, "read_media_bytes", Mock(return_value=b"VIDEO-BYTES"))
     send_media = AsyncMock(return_value={"key": {"id": "WA-VIDEO"}})
     monkeypatch.setattr(message_outbox, "send_whatsapp_media", send_media)
 
@@ -64,7 +73,8 @@ async def test_media_template_caption_reaches_evolution_send_media(monkeypatch):
 
     send_media.assert_awaited_once_with(
         "51999@s.whatsapp.net",
-        "BASE64",
+        b"VIDEO-BYTES",
+        "video/mp4",
         "video",
         filename="demo.mp4",
         caption="Hola Ana, mira este video",
@@ -100,7 +110,7 @@ def test_outbound_message_fields_keeps_interactive_config_for_chat_display():
     """wsp_messages.payload debe traer lo que el frontend necesita para pintar
     botones/lista reales (parseOutboundInteractive en message.ts); si solo
     queda interactive_type, la burbuja cae a texto plano aunque el envío a
-    Evolution sí haya llevado los botones completos."""
+    WhatsApp sí haya llevado los botones completos."""
     message_type, db_payload = message_outbox._outbound_message_fields({
         "type": "interactive",
         "interactive_type": "buttons",
@@ -126,41 +136,7 @@ def test_outbound_message_fields_keeps_interactive_config_for_chat_display():
 
 
 @pytest.mark.asyncio
-async def test_interactive_job_uses_numbered_text_fallback_for_baileys(monkeypatch):
-    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
-        "integration": "BAILEYS", "official_sending_supported": False,
-        "history_available": True, "edit_delete_supported": True,
-    }))
-    send_text = AsyncMock(return_value={"key": {"id": "WA-TEXT"}})
-    send_buttons = AsyncMock()
-    monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
-    monkeypatch.setattr(message_outbox, "send_whatsapp_buttons", send_buttons)
-
-    _response, delivered_content = await message_outbox._send_payload(
-        "51999@s.whatsapp.net",
-        {
-            "type": "interactive",
-            "interactive_type": "buttons",
-            "description": "Elige una opción",
-            "config": {
-                "title": "Turnos",
-                "footer": "DermicaPro",
-                "buttons": [{"type": "reply", "displayText": "Mañana"}],
-            },
-        },
-    )
-
-    assert "1. Mañana" in delivered_content
-    send_text.assert_awaited_once_with("51999@s.whatsapp.net", delivered_content)
-    send_buttons.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_business_reply_only_buttons_are_sent_natively(monkeypatch):
-    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
-        "integration": "WHATSAPP-BUSINESS", "official_sending_supported": True,
-        "history_available": False, "edit_delete_supported": False,
-    }))
+async def test_reply_only_buttons_are_sent_natively(monkeypatch):
     send_text = AsyncMock()
     send_buttons = AsyncMock(return_value={"key": {"id": "WA-BUTTONS"}})
     monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
@@ -186,15 +162,11 @@ async def test_business_reply_only_buttons_are_sent_natively(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_business_rejects_non_reply_buttons_and_falls_back_to_text(monkeypatch):
+async def test_non_reply_buttons_fall_back_to_text(monkeypatch):
     """La Graph API de Meta solo acepta botones "reply" en un mensaje
     interactivo suelto (fuera de una plantilla oficial): un botón de URL
     rechaza siempre con "interactive.action.buttons.0.reply is required"
     (confirmado con tráfico real), sin importar la ventana de 24h."""
-    monkeypatch.setattr(message_outbox, "get_instance_capabilities", AsyncMock(return_value={
-        "integration": "WHATSAPP-BUSINESS", "official_sending_supported": True,
-        "history_available": False, "edit_delete_supported": False,
-    }))
     send_text = AsyncMock(return_value={"key": {"id": "WA-TEXT"}})
     send_buttons = AsyncMock()
     monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
@@ -216,3 +188,33 @@ async def test_business_rejects_non_reply_buttons_and_falls_back_to_text(monkeyp
     assert "Abrir enlace: https://cliniventas.com/" in delivered_content
     send_text.assert_awaited_once_with("51999@s.whatsapp.net", delivered_content)
     send_buttons.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_interactive_is_sent_natively(monkeypatch):
+    send_list = AsyncMock(return_value={"key": {"id": "WA-LIST"}})
+    monkeypatch.setattr(message_outbox, "send_whatsapp_list", send_list)
+
+    response, delivered_content = await message_outbox._send_payload(
+        "51999@s.whatsapp.net",
+        {
+            "type": "interactive",
+            "interactive_type": "list",
+            "description": "Elegí un tratamiento",
+            "config": {
+                "title": "Tratamientos", "footerText": "DermicaPro", "buttonText": "Ver opciones",
+                "sections": [{"title": "Faciales", "rows": [
+                    {"title": "Limpieza", "description": "60 min", "rowId": "trat_limpieza"},
+                ]}],
+            },
+        },
+    )
+
+    assert response["key"]["id"] == "WA-LIST"
+    assert delivered_content is None
+    send_list.assert_awaited_once_with(
+        "51999@s.whatsapp.net", "Tratamientos", "Elegí un tratamiento", "DermicaPro", "Ver opciones",
+        [{"title": "Faciales", "rows": [
+            {"title": "Limpieza", "description": "60 min", "rowId": "trat_limpieza"},
+        ]}],
+    )

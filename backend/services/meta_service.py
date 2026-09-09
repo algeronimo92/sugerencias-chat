@@ -258,6 +258,34 @@ async def upload_media(content: bytes, content_type: str, filename: str) -> str:
     return media_id
 
 
+async def download_media(media_id: str) -> tuple[bytes, str]:
+    """Baja un adjunto entrante de Meta y devuelve (bytes, content_type).
+
+    Es un flujo de dos pasos, a diferencia de Evolution -que exponía un solo
+    endpoint (`getBase64FromMediaMessage`) y devolvía el base64 ya resuelto:
+
+    1. `GET /{media_id}` -> metadata con una URL firmada temporal.
+    2. `GET <esa URL>` -> los bytes. La URL igual exige el mismo Bearer, no
+       es pública."""
+    token, _phone_number_id, _waba_id = await _config()
+    metadata = await _request("GET", _graph_url(media_id), token, timeout=30.0)
+    url = metadata.get("url")
+    if not url:
+        raise MetaApiError(f"Meta no devolvió la URL del medio {media_id}")
+    content_type = metadata.get("mime_type") or "application/octet-stream"
+
+    started_at = perf_counter()
+    try:
+        response = await _client().get(
+            url, headers={"Authorization": f"Bearer {token}"}, timeout=60.0,
+        )
+    finally:
+        record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        _raise_meta_error(response)
+    return response.content, content_type
+
+
 async def upload_header_media(content: bytes, content_type: str, filename: str) -> str:
     """Sube un archivo a Meta para usarlo como ejemplo del encabezado de una
     plantilla oficial (imagen/video/documento) y devuelve el `header_handle`
@@ -437,7 +465,12 @@ async def send_whatsapp_buttons(
 
 
 async def send_whatsapp_list(
-    chat_id: str, title: str, description: str, footer_text: str, button_text: str, sections: list[dict],
+    chat_id: str, 
+    title: str, 
+    description: str, 
+    footer_text: str, 
+    button_text: str, 
+    sections: list[dict],
 ) -> dict:
     """`sections[].rows[].rowId` es el nombre de campo propio del DTO de
     Evolution — la Graph API de Meta espera `id`, así que se traduce acá."""
@@ -521,16 +554,13 @@ async def send_whatsapp_media(
     filename: str | None = None,
     caption: str | None = None,
     quoted: dict | None = None,
+    voice: bool = False
 ) -> dict:
-    """Manda un adjunto genérico (imagen, video, audio, o documento).
-
-    También es el camino para audio saliente en general: el mensaje nativo de
-    nota de voz (PTT) quedó roto en la integración Meta Cloud API de esta
-    instancia — mediatype="audio" es lo que realmente entrega, a cambio de
-    perder la burbuja nativa de nota de voz del lado del destinatario."""
     token, phone_number_id, _waba_id = await _config()
     media_id = await upload_media(content, content_type, filename or "archivo")
     media_object: dict = {"id": media_id}
+    if voice and mediatype == "audio":
+        media_object["voice"] = voice
     if caption:
         media_object["caption"] = caption
     if filename and mediatype == "document":
@@ -544,6 +574,22 @@ async def send_whatsapp_media(
     if quoted and quoted.get("wa_message_id"):
         payload["context"] = {"message_id": quoted["wa_message_id"]}
     return await _send(chat_id, token, phone_number_id, payload, timeout=60.0)
+
+
+VOICE_NOTE_CONTENT_TYPE = "audio/ogg"
+
+async def send_whatsapp_audio(
+    chat_id: str,
+    content: bytes,
+    content_type: str,
+    filename: str | None = None,
+    quoted: dict | None = None,
+) -> dict:
+    is_voice_note = content_type.split(";", 1)[0].strip().lower() == VOICE_NOTE_CONTENT_TYPE
+    return await send_whatsapp_media(
+        chat_id, content, content_type, "audio",
+        filename=filename, quoted=quoted, voice=is_voice_note,
+    )
 
 
 async def send_whatsapp_sticker(chat_id: str, sticker_bytes: bytes) -> dict:
