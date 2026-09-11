@@ -75,6 +75,7 @@ class Lead(Base):
     # de texto libre que se muestra en el CRM, sin efecto sobre el envío.
     telefono_secundario: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str | None] = mapped_column(Text)
+    nombre_usuario: Mapped[str | None] = mapped_column(Text)
     servicio_interes: Mapped[str | None] = mapped_column(Text)
     vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Columna histórica conservada temporalmente para integraciones antiguas.
@@ -91,6 +92,11 @@ class Lead(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Columna histórica de la migración a n8n (b7a2c9d41e08), hoy la escribe
+    # únicamente ensure_lead_stub al crear el lead. Nadie la actualiza todavía
+    # en mensajes posteriores -- ver services/db_service.py:insert_message --
+    # así que por ahora solo sirve como fecha del primer mensaje, no del último.
+    ultimo_mensaje_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Último momento en que se abrió el chat en el panel — se compara contra
     # wsp_messages.sent_at de los mensajes del cliente para saber cuántos
     # quedaron sin ver (ver services/db_service.py:_unread_count_subquery).
@@ -798,6 +804,7 @@ class MessageTemplate(Base):
     official_language: Mapped[str | None] = mapped_column(Text)
     official_category: Mapped[str | None] = mapped_column(Text)
     official_status: Mapped[str | None] = mapped_column(Text)
+    official_rejected_reason: Mapped[str | None] = mapped_column(Text)
     official_parameter_values: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     meta_template_id: Mapped[str | None] = mapped_column(Text)
     official_header_type: Mapped[str] = mapped_column(Text, default="none", server_default="none")

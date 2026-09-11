@@ -4,9 +4,11 @@ El riesgo real aquí no es que una migración falle —eso se ve— sino que
 `--autogenerate` proponga borrar objetos que este proyecto no gestiona. La
 base de producción tiene tablas y columnas que `models.py` no declara y que
 usa el flujo de n8n: `n8n_chat_histories`, `leads.metadata`,
-`leads.ultimo_mensaje_at`, `leads.ultimo_emisor`, `leads.tipo_objecion` y
-`wsp_messages.created_at`. Sin el filtro de `include_object`, la primera
-migración autogenerada las eliminaría.
+`leads.ultimo_emisor`, `leads.tipo_objecion` y `wsp_messages.created_at`. Sin
+el filtro de `include_object`, la primera migración autogenerada las
+eliminaría. La exclusión es por tabla completa, no por columna: por eso
+`leads.ultimo_mensaje_at` (que sí está mapeada en `models.py`) también queda
+afuera de la comparación mientras `leads` siga en `EXTERNAL_TABLES`.
 """
 
 from pathlib import Path
@@ -67,13 +69,19 @@ def test_external_tables_are_excluded_from_autogenerate(
     assert env_module.include_object(None, table, "table", True, None) is False
 
 
-@pytest.mark.parametrize(
-    "column", ["metadata", "ultimo_mensaje_at", "ultimo_emisor", "tipo_objecion"]
-)
+@pytest.mark.parametrize("column", ["metadata", "ultimo_emisor", "tipo_objecion"])
 def test_columns_that_n8n_owns_are_protected(env_module, column: str, monkeypatch) -> None:
     """Estas existen en producción y no en models.py: sin filtro, se borrarían."""
     monkeypatch.delenv("ALEMBIC_BASELINE", raising=False)
     assert env_module.include_object(FakeColumn("leads"), column, "column", True, None) is False
+
+
+def test_mapped_column_of_an_external_table_is_still_excluded(env_module, monkeypatch) -> None:
+    """La exclusión es por tabla, no por columna: `ultimo_mensaje_at` sí está
+    en `models.py`, pero mientras `leads` siga en `EXTERNAL_TABLES` da igual —
+    autogenerate no la compara."""
+    monkeypatch.delenv("ALEMBIC_BASELINE", raising=False)
+    assert env_module.include_object(FakeColumn("leads"), "ultimo_mensaje_at", "column", True, None) is False
 
 
 def test_baseline_mode_does_create_external_tables(env_module, monkeypatch) -> None:

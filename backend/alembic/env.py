@@ -10,8 +10,11 @@ Dos decisiones importantes:
    declara. Sin el filtro de `include_object`, un `--autogenerate` propondría
    borrarlas. Comprobado contra el esquema real de producción: aparecerían
    `DROP TABLE n8n_chat_histories`, `DROP COLUMN leads.metadata`,
-   `leads.ultimo_mensaje_at`, `leads.ultimo_emisor`, `leads.tipo_objecion` y
-   `wsp_messages.created_at`, todas en uso por el flujo de n8n.
+   `leads.ultimo_emisor`, `leads.tipo_objecion` y `wsp_messages.created_at`,
+   todas en uso por el flujo de n8n. El filtro excluye la tabla `leads`
+   entera de la comparación, así que da igual si alguna de sus columnas
+   (como `ultimo_mensaje_at`) sí está mapeada en `models.py`: mientras la
+   tabla siga en `EXTERNAL_TABLES`, autogenerate nunca la compara.
 """
 
 from __future__ import annotations

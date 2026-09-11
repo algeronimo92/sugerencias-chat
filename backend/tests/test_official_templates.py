@@ -133,7 +133,7 @@ async def test_sync_endpoint_updates_local_status_from_meta(monkeypatch):
         }]
 
     async def fake_list_whatsapp_templates():
-        return [{"id": "meta-123", "status": "APPROVED"}]
+        return [{"id": "meta-123", "status": "APPROVED", "rejected_reason": "NONE"}]
 
     received = None
 
@@ -152,8 +152,40 @@ async def test_sync_endpoint_updates_local_status_from_meta(monkeypatch):
 
     result = await templates.post_sync_template(9, SimpleNamespace(id=11))
 
-    assert received == (9, {"official_status": "APPROVED"})
+    assert received == (9, {"official_status": "APPROVED", "official_rejected_reason": None})
     assert result["official_status"] == "APPROVED"
+
+
+@pytest.mark.asyncio
+async def test_sync_endpoint_saves_rejection_reason_from_meta(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return [{
+            "id": 9, "template_type": "official", "meta_template_id": "meta-123",
+            "official_status": "PENDING", "attachments": [],
+        }]
+
+    async def fake_list_whatsapp_templates():
+        return [{"id": "meta-123", "status": "REJECTED", "rejected_reason": "TAG_CONTENT_MISMATCH"}]
+
+    received = None
+
+    async def fake_update_template(template_id, values):
+        nonlocal received
+        received = (template_id, values)
+        return {"id": template_id, **values}
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "list_whatsapp_templates", fake_list_whatsapp_templates)
+    monkeypatch.setattr(templates, "update_template", fake_update_template)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    result = await templates.post_sync_template(9, SimpleNamespace(id=11))
+
+    assert received == (9, {"official_status": "REJECTED", "official_rejected_reason": "TAG_CONTENT_MISMATCH"})
+    assert result["official_rejected_reason"] == "TAG_CONTENT_MISMATCH"
 
 
 @pytest.mark.asyncio

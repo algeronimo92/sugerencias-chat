@@ -643,6 +643,10 @@ async def post_sync_template(template_id: int, admin: User = Depends(require_adm
     if remote is None:
         raise HTTPException(404, "Meta ya no tiene esta plantilla; puede haber sido borrada desde el WhatsApp Manager")
     status = remote.get("status")
-    item = await update_template(template_id, {"official_status": status}) if status else current
+    reason = remote.get("rejected_reason")
+    reason = reason if reason and reason != "NONE" else None
+    item = await update_template(
+        template_id, {"official_status": status, "official_rejected_reason": reason},
+    ) if status else current
     await manager.broadcast({"type": "templates_updated"})
     return item

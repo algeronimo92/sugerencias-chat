@@ -1034,9 +1034,9 @@ def _json_safe_row(row: dict) -> dict:
 
 
 async def fetch_lead_raw(chat_id: str) -> dict | None:
-    """Fila cruda de ``leads`` (todas las columnas de la tabla, incluida
-    ``ultimo_mensaje_at`` que no está mapeada en el ORM — ver
-    ``ensure_lead_stub``). La usan los endpoints que reemplazan a los nodos
+    """Fila cruda de ``leads`` (todas las columnas de la tabla, incluidas las
+    que no están mapeadas en el ORM: ``metadata``, ``ultimo_emisor``,
+    ``tipo_objecion``). La usan los endpoints que reemplazan a los nodos
     Postgres ``get lead1``/``try to get lead`` de n8n, que hacían
     ``SELECT * FROM leads WHERE id = ...`` directo."""
     async with get_sessionmaker()() as session:
@@ -1077,27 +1077,20 @@ async def ensure_lead_stub(
 ) -> dict:
     """Alta idempotente de un lead mínimo para un mensaje entrante nuevo.
     Reemplaza al nodo Postgres ``create lead`` de n8n: ``INSERT ... ON
-    CONFLICT (id) DO NOTHING``, sin pisar nada si el lead ya existía.
-
-    ``ultimo_mensaje_at`` no está mapeada en el ORM (columna que solo usa
-    n8n, agregada por la migración ``b7a2c9d41e08_objetos_que_n8n_necesita``)
-    así que se escribe aparte con SQL crudo, y solo cuando el INSERT anterior
-    de verdad creó la fila (si hubo conflicto, el nodo Postgres original no
-    tocaba ninguna columna existente).
+    CONFLICT (id) DO NOTHING``, sin pisar nada si el lead ya existía (el
+    ``ultimo_mensaje_at`` va en el mismo INSERT; con ON CONFLICT DO NOTHING
+    un lead existente no lo toca).
     """
     stmt = (
         pg_insert(Lead)
-        .values(id=chat_id, estado=LeadStage.nuevo, origen=origen, conversacion_version=0)
+        .values(
+            id=chat_id, estado=LeadStage.nuevo, origen=origen, conversacion_version=0,
+            ultimo_mensaje_at=ultimo_mensaje_at,
+        )
         .on_conflict_do_nothing(index_elements=[Lead.id])
-        .returning(Lead.id)
     )
     async with get_sessionmaker()() as session:
-        inserted = (await session.execute(stmt)).scalar_one_or_none()
-        if inserted is not None and ultimo_mensaje_at:
-            await session.execute(
-                text("UPDATE leads SET ultimo_mensaje_at = :ts WHERE id = :id"),
-                {"ts": ultimo_mensaje_at, "id": chat_id},
-            )
+        await session.execute(stmt)
         await session.commit()
     return await fetch_lead_raw(chat_id) or {}
 
@@ -1303,6 +1296,7 @@ async def insert_message(
     media_width: int | None = None,
     media_height: int | None = None,
 ) -> dict:
+    now = datetime.now(timezone.utc)
     stmt = (
         insert(WspMessage)
         .values(
@@ -1337,6 +1331,8 @@ async def insert_message(
                     else _touch_last_read_stmt
                 )
                 await session.execute(touch(chat_id, datetime.now(timezone.utc)))
+
+            await session.execute(_touch_ultimo_mensaje_stmt(chat_id, now))
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -1427,6 +1423,17 @@ def _touch_automated_reply_stmt(chat_id: str, when: datetime):
     """Statement para registrar que un bot/automatización (sin actor_user_id
     humano) le respondió al lead — no cuenta como que un vendedor lo vio."""
     return update(Lead).where(Lead.id == chat_id).values(last_automated_reply_at=when)
+
+
+def _touch_ultimo_mensaje_stmt(chat_id: str, when: datetime):
+    """Statement para actualizar ``ultimo_mensaje_at`` en cada mensaje. Se
+    ejecuta dentro de la transacción de ``insert_message`` a propósito, en
+    vez de llamar a ``update_lead``: ese helper abre su propia sesión y hace
+    ``SELECT ... FOR UPDATE`` sobre ``leads``, lo que compite con el `UPDATE`
+    de ``_touch_last_read_stmt``/``_touch_automated_reply_stmt`` de la misma
+    transacción (deadlock en cada mensaje saliente de un vendedor) y además
+    registra un evento "lead_updated" en el historial por cada mensaje."""
+    return update(Lead).where(Lead.id == chat_id).values(ultimo_mensaje_at=when)
 
 
 async def mark_chat_read(chat_id: str) -> None:

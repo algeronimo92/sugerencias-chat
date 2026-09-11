@@ -749,6 +749,7 @@ class TemplateItem(BaseModel):
     official_language: str | None = None
     official_category: Literal["MARKETING", "UTILITY", "AUTHENTICATION"] | None = None
     official_status: str | None = None
+    official_rejected_reason: str | None = None
     official_parameter_values: list[str] = Field(default_factory=list)
     meta_template_id: str | None = None
     official_header_type: Literal["none", "text", "image"] = "none"

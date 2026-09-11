@@ -96,12 +96,12 @@ async def test_fetch_messages_raw_orders_and_strips_secret(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ensure_lead_stub_skips_conflicting_lead(monkeypatch):
-    # ON CONFLICT DO NOTHING -> scalar_one_or_none() vuelve None: no había
-    # que crear nada, y por lo tanto tampoco se toca ultimo_mensaje_at.
+    # ON CONFLICT DO NOTHING: no había que crear nada, y por lo tanto
+    # tampoco se toca ultimo_mensaje_at de un lead ya existente.
     session = AsyncMock()
     existing_row = {"id": LEAD_ID, "estado": "en_seguimiento"}
     session.execute = AsyncMock(
-        side_effect=[_ExecResult(scalar=None), _ExecResult(row=existing_row)]
+        side_effect=[_ExecResult(), _ExecResult(row=existing_row)]
     )
     _patch_sessionmaker(monkeypatch, session)
 
@@ -119,8 +119,7 @@ async def test_ensure_lead_stub_writes_ultimo_mensaje_at_on_new_lead(monkeypatch
     session = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
-            _ExecResult(scalar=LEAD_ID),  # el INSERT sí creó la fila
-            _ExecResult(),  # UPDATE ultimo_mensaje_at
+            _ExecResult(),  # INSERT ... ultimo_mensaje_at en el mismo statement
             _ExecResult(row=new_row),  # fetch_lead_raw
         ]
     )
@@ -130,5 +129,5 @@ async def test_ensure_lead_stub_writes_ultimo_mensaje_at_on_new_lead(monkeypatch
         LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
     )
 
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 2
     assert result == new_row

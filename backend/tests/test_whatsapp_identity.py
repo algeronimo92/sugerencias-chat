@@ -10,7 +10,7 @@ from services.whatsapp_identity_service import (
     add_phone_jid,
     aliases_from_send_key,
     learn_send_aliases,
-    parse_evolution_identity,
+    parse_message_identity,
     resolve_history_jid,
     resolve_whatsapp_destination,
 )
@@ -28,7 +28,7 @@ def _payload(key: dict, push_name: str = "Gerson P") -> dict:
 
 
 def test_parse_lid_only_never_uses_sender_as_customer_phone():
-    parsed = parse_evolution_identity(_payload({"remoteJid": "267692862898397@lid"}))
+    parsed = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
 
     assert parsed.instance == "dermicapro"
     assert parsed.jids == ("267692862898397@lid",)
@@ -38,7 +38,7 @@ def test_parse_lid_only_never_uses_sender_as_customer_phone():
 
 
 def test_parse_phone_and_lid_aliases_deduplicates_values():
-    parsed = parse_evolution_identity(_payload({
+    parsed = parse_message_identity(_payload({
         "remoteJid": "267692862898397@lid",
         "remoteJidAlt": "51943663225@s.whatsapp.net",
         "participantAlt": "51943663225@s.whatsapp.net",
@@ -54,7 +54,7 @@ def test_parse_phone_and_lid_aliases_deduplicates_values():
 
 @pytest.mark.parametrize("own_name", ["Você", "Voce", "DermicaPro"])
 def test_outgoing_push_name_is_never_used_as_contact_name(own_name):
-    parsed = parse_evolution_identity(_payload({
+    parsed = parse_message_identity(_payload({
         "remoteJid": "51943663225@s.whatsapp.net",
         "fromMe": True,
     }, push_name=own_name))
@@ -63,7 +63,7 @@ def test_outgoing_push_name_is_never_used_as_contact_name(own_name):
 
 
 def test_accepts_complete_n8n_item_wrapper():
-    parsed = parse_evolution_identity({
+    parsed = parse_message_identity({
         "body": _payload({"remoteJid": "51943663225@s.whatsapp.net"})
     })
 
@@ -72,14 +72,14 @@ def test_accepts_complete_n8n_item_wrapper():
 
 def test_group_event_is_not_converted_into_a_lead():
     with pytest.raises(InvalidWhatsAppIdentityError, match="grupo"):
-        parse_evolution_identity(_payload({
+        parse_message_identity(_payload({
             "remoteJid": "120363419787208859@g.us",
             "participant": "51943663225@s.whatsapp.net",
         }))
 
 
 def test_external_contact_lookup_can_add_phone_without_changing_lid():
-    original = parse_evolution_identity(_payload({"remoteJid": "267692862898397@lid"}))
+    original = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
     enriched = add_phone_jid(original, "51943663225@s.whatsapp.net")
 
     assert enriched.lid_jid == original.lid_jid
@@ -91,7 +91,7 @@ def test_external_contact_lookup_can_add_phone_without_changing_lid():
 
 
 def test_lid_digits_are_not_accepted_as_a_phone_lookup_result():
-    original = parse_evolution_identity(_payload({"remoteJid": "267692862898397@lid"}))
+    original = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
     enriched = add_phone_jid(original, "267692862898397@lid")
 
     assert enriched == original

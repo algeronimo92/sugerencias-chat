@@ -369,7 +369,7 @@ async def list_whatsapp_templates() -> list[dict]:
     plantillas rompía `/sync` en silencio para las que quedaban afuera."""
     token, _phone_number_id, waba_id = await _config()
     url = _graph_url(f"{waba_id}/message_templates")
-    params: dict | None = {"fields": "id,name,status,category,language", "limit": 100}
+    params: dict | None = {"fields": "id,name,status,category,language,rejected_reason", "limit": 100}
     next_url: str | None = url
     templates: list[dict] = []
     while next_url:

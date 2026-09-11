@@ -51,6 +51,7 @@ class ParsedWhatsAppIdentity:
     phone_jid: str | None
     lid_jid: str | None
     push_name: str | None
+    username: str | None
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,7 @@ def _unique(values: list[str | None]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def parse_evolution_identity(payload: dict[str, Any]) -> ParsedWhatsAppIdentity:
+def parse_message_identity(payload: dict[str, Any]) -> ParsedWhatsAppIdentity:
     """Extrae identidades de un webhook nativo o del item completo de n8n."""
     evolution = payload.get("body") if isinstance(payload.get("body"), dict) else payload
     data = evolution.get("data") if isinstance(evolution.get("data"), dict) else {}
@@ -114,7 +115,8 @@ def parse_evolution_identity(payload: dict[str, Any]) -> ParsedWhatsAppIdentity:
     # contacto. pushName solo es confiable cuando el mensaje viene del cliente.
     from_me = key.get("fromMe") is True
     push_name = None if from_me else (str(data.get("pushName") or "").strip() or None)
-    return ParsedWhatsAppIdentity(instance, jids, phone_jid, lid_jid, push_name)
+    username = str(data.get("userName") or "") or None
+    return ParsedWhatsAppIdentity(instance, jids, phone_jid, lid_jid, push_name, username)
 
 
 def add_phone_jid(
@@ -196,6 +198,7 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                     legacy_remote_jid=legacy_jid,
                     telefono=_phone_from_jid(identity.phone_jid),
                     nombre=identity.push_name,
+                    nombre_usuario=identity.username,
                     vendedor_id=vendedor_id,
                     created_at=now,
                     updated_at=now,
@@ -218,6 +221,9 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                 lead.updated_at = now
             if identity.push_name and not lead.nombre:
                 lead.nombre = identity.push_name
+                lead.updated_at = now
+            if identity.username and not lead.nombre_usuario:
+                lead.nombre_usuario = identity.username
                 lead.updated_at = now
 
             known_aliases = {(alias.instance, alias.jid): alias for alias in aliases}
