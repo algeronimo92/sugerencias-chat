@@ -14,6 +14,11 @@ export default defineConfig({
     allowedHosts: process.env.VITE_ALLOWED_HOSTS
       ? process.env.VITE_ALLOWED_HOSTS.split(',')
       : undefined,
+    // El contenedor dev monta ./frontend desde Windows (compose.yml): los
+    // eventos de inotify de ese bind mount no cruzan Docker Desktop/WSL2, así
+    // que sin polling el watcher nunca se entera de que guardaste un archivo
+    // y el HMR queda muerto. Con polling sí lo detecta.
+    watch: { usePolling: true },
   },
   plugins: [
     react(),

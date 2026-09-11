@@ -14,9 +14,9 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.navigate }))
 vi.mock('../hooks/useChats', () => ({
   useFindLeadByPhone: () => mocks.findLeadByPhone,
   useCreateLead: () => ({ mutate: mocks.createLead, isPending: false }),
-  usePhoneConfig: () => ({ data: { default_country_code: '51' } }),
 }))
-// El alta completa se prueba aparte; acá solo importa que se abra prellenada.
+// El alta completa se prueba aparte; acá solo importa que se abra prellenada
+// con el número que se eligió.
 vi.mock('./LeadFormDialog', () => ({
   LeadFormDialog: ({ initial, onSubmit }: {
     initial?: { phone?: string | null; name?: string | null }
@@ -29,7 +29,8 @@ vi.mock('./LeadFormDialog', () => ({
   ),
 }))
 
-const ANA = { fullName: 'Ana', phone: '51987654321', phoneLabel: '+51 987 654 321' }
+const ANA = { name: 'Ana', phone: ['51987654321'], phoneLabel: '' }
+const CON_DOS_NUMEROS = { name: 'Bruno', phone: ['51987654321', '51911223344'], phoneLabel: '' }
 
 describe('ContactCard', () => {
   beforeEach(() => {
@@ -38,7 +39,7 @@ describe('ContactCard', () => {
     mocks.createLead.mockReset()
   })
 
-  it('abre la conversación del lead que ya tiene ese número', async () => {
+  it('con un solo número, abre directo la conversación del lead que ya lo tiene', async () => {
     const user = userEvent.setup()
     mocks.findLeadByPhone.mockResolvedValue({ chat_id: '51987654321@s.whatsapp.net' })
     render(<ContactCard contacts={[ANA]} />)
@@ -49,7 +50,7 @@ describe('ContactCard', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/chat/51987654321@s.whatsapp.net')
   })
 
-  it('ofrece el alta prellenada y abre el chat nuevo cuando el lead no existe', async () => {
+  it('con un solo número, ofrece el alta prellenada cuando el lead no existe', async () => {
     const user = userEvent.setup()
     mocks.findLeadByPhone.mockResolvedValue(null)
     mocks.createLead.mockImplementation((_payload, { onSuccess }) => onSuccess({ chat_id: 'nuevo' }))
@@ -66,19 +67,36 @@ describe('ContactCard', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/chat/nuevo')
   })
 
-  it('normaliza el número local del vCard antes de buscar el lead', async () => {
-    const user = userEvent.setup()
-    mocks.findLeadByPhone.mockResolvedValue(null)
-    render(<ContactCard contacts={[{ fullName: 'Ana', phone: '987654321', phoneLabel: '987 654 321' }]} />)
-
-    await user.click(screen.getByRole('button', { name: /Enviar mensaje/ }))
-    expect(mocks.findLeadByPhone).toHaveBeenCalledWith('51987654321')
-  })
-
   it('no ofrece escribirle a un contacto compartido sin número', () => {
-    render(<ContactCard contacts={[{ fullName: 'Ana', phone: null, phoneLabel: '' }]} />)
+    render(<ContactCard contacts={[{ name: 'Ana', phone: null, phoneLabel: '' }]} />)
 
     expect(screen.queryByRole('button', { name: /Enviar mensaje/ })).toBeNull()
     expect(screen.getByText('No llegó el número de este contacto')).toBeInTheDocument()
+  })
+
+  it('con varios números, abre un selector en vez de mandar directo', async () => {
+    const user = userEvent.setup()
+    render(<ContactCard contacts={[CON_DOS_NUMEROS]} />)
+
+    await user.click(screen.getByRole('button', { name: /Enviar mensaje/ }))
+
+    expect(mocks.findLeadByPhone).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('+51987654321')).toBeInTheDocument()
+    expect(screen.getByText('+51911223344')).toBeInTheDocument()
+  })
+
+  it('elegir un número del selector abre el chat de ese número puntual', async () => {
+    const user = userEvent.setup()
+    mocks.findLeadByPhone.mockResolvedValue({ chat_id: '51911223344@s.whatsapp.net' })
+    render(<ContactCard contacts={[CON_DOS_NUMEROS]} />)
+
+    await user.click(screen.getByRole('button', { name: /Enviar mensaje/ }))
+    await user.click(screen.getByText('+51911223344'))
+
+    expect(mocks.findLeadByPhone).toHaveBeenCalledWith('51911223344')
+    expect(mocks.findLeadByPhone).not.toHaveBeenCalledWith('51987654321')
+    expect(mocks.navigate).toHaveBeenCalledWith('/chat/51911223344@s.whatsapp.net')
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
