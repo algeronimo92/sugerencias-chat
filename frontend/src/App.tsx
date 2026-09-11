@@ -47,6 +47,9 @@ const MediaLibraryPage = lazy(() =>
 const AutomationsPage = lazy(() =>
   import('./components/AutomationsPage').then(module => ({ default: module.AutomationsPage })),
 )
+const MyAutomationExecutionsPage = lazy(() =>
+  import('./components/MyAutomationExecutionsPage').then(module => ({ default: module.MyAutomationExecutionsPage })),
+)
 const CatalogsPage = lazy(() =>
   import('./components/CatalogsPage').then(module => ({ default: module.CatalogsPage })),
 )
@@ -109,6 +112,7 @@ function MainLayout() {
   const isMediaLibrary = location.pathname === '/media-library'
   const isDashboard = location.pathname === '/dashboard'
   const isAutomations = location.pathname === '/automations'
+  const isMyFlows = location.pathname === '/mis-flujos'
   const isCatalogs = location.pathname === '/catalogs'
   const isNuevaCita = location.pathname === '/citas/nueva'
   const isIssueReports = location.pathname === '/reports'
@@ -441,6 +445,8 @@ function MainLayout() {
           <TemplatesPage />
         ) : isAutomations && me?.role === 'admin' ? (
           <AutomationsPage />
+        ) : isMyFlows ? (
+          <MyAutomationExecutionsPage />
         ) : isCatalogs && me?.role === 'admin' ? (
           <CatalogsPage />
         ) : isNuevaCita ? (
@@ -655,6 +661,7 @@ function AuthGate() {
         <Route path="/kanban" element={<MainLayout />} />
         <Route path="/tasks" element={<MainLayout />} />
         <Route path="/reports" element={<MainLayout />} />
+        <Route path="/mis-flujos" element={<MainLayout />} />
         <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />

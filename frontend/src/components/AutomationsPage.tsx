@@ -23,6 +23,16 @@ import { useTemplates } from '../hooks/useTemplates'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
+import {
+  EXECUTION_STATUS_LABELS,
+  executionActorLabel,
+  executionStatusLabel,
+  executionTone,
+  executionTriggerLabel,
+  formatExecutionDate as formatDate,
+  isExecutionStatus,
+  todayISODate,
+} from '../utils/automationExecutions'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { MediaAssetField } from './MediaAssetField'
@@ -103,48 +113,10 @@ const EMPTY_FORM: RuleForm = {
   actions: [defaultAction(ActionType.CreateTask)], isActive: true,
 }
 
-function triggerLabel(value: AutomationTrigger) {
-  return TRIGGERS.find(item => item.value === value)?.label ?? value
-}
+const triggerLabel = executionTriggerLabel
 
 function actionLabel(value: AutomationActionResult['type']) {
   return automationStepLabel(value)
-}
-
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
-}
-
-function executionActorLabel(execution: AutomationExecution) {
-  if (execution.started_by_name) return execution.started_by_name
-  if (execution.start_source === 'manual') return 'Usuario eliminado'
-  if (execution.start_source === 'flow') return 'Otro flujo'
-  return 'Sistema'
-}
-
-function executionTone(status: string) {
-  if (status === AutomationExecutionStatus.Completed) return 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'
-  if (status === AutomationExecutionStatus.Failed) return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
-  if (status === AutomationExecutionStatus.Skipped) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-  if (status === AutomationExecutionStatus.Paused) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-}
-
-const EXECUTION_STATUS_LABELS: Record<AutomationExecutionStatusValue, string> = {
-  [AutomationExecutionStatus.Scheduled]: 'Programada',
-  [AutomationExecutionStatus.Running]: 'En curso',
-  [AutomationExecutionStatus.Paused]: 'Pausada',
-  [AutomationExecutionStatus.Completed]: 'Completada',
-  [AutomationExecutionStatus.Failed]: 'Fallida',
-  [AutomationExecutionStatus.Skipped]: 'Omitida',
-}
-
-function isExecutionStatus(value: string): value is AutomationExecutionStatusValue {
-  return Object.values(AutomationExecutionStatus).some(status => status === value)
-}
-
-function executionStatusLabel(status: string) {
-  return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
 }
 
 function validateForm(form: RuleForm) {
@@ -175,11 +147,20 @@ export function AutomationsPage() {
   const [historyRuleId, setHistoryRuleId] = useState<number | null>(null)
   const [historyStatus, setHistoryStatus] = useState<AutomationExecutionStatusValue | null>(null)
   const [hideSkipped, setHideSkipped] = useState(true)
+  // Toggle rápido activo/finalizado/todos. Es mutuamente excluyente con el
+  // selector de estado puntual: elegir uno limpia el otro para que no
+  // compitan (el backend igual le da precedencia al status puntual).
+  const [historyActive, setHistoryActive] = useState<boolean | null>(null)
+  const [historyDateFrom, setHistoryDateFrom] = useState(todayISODate)
+  const [historyDateTo, setHistoryDateTo] = useState(todayISODate)
   const excludeSkipped = hideSkipped && historyStatus !== AutomationExecutionStatus.Skipped
   const { data: executions = [], isLoading: executionsLoading, isFetching: executionsFetching } = useAutomationExecutions({
     ruleId: historyRuleId ?? undefined,
     status: historyStatus ?? undefined,
     excludeSkipped,
+    active: historyActive ?? undefined,
+    dateFrom: historyDateFrom,
+    dateTo: historyDateTo,
   })
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
@@ -212,12 +193,27 @@ export function AutomationsPage() {
   const isSaving = create.isPending || update.isPending
   const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
+  const today = todayISODate()
   const hasCustomHistoryFilters = historyRuleId !== null || historyStatus !== null || !hideSkipped
+    || historyActive !== null || historyDateFrom !== today || historyDateTo !== today
 
   function resetHistoryFilters() {
     setHistoryRuleId(null)
     setHistoryStatus(null)
     setHideSkipped(true)
+    setHistoryActive(null)
+    setHistoryDateFrom(today)
+    setHistoryDateTo(today)
+  }
+
+  function setHistoryStatusFilter(value: AutomationExecutionStatusValue | null) {
+    setHistoryStatus(value)
+    if (value !== null) setHistoryActive(null)
+  }
+
+  function setHistoryActiveFilter(value: boolean | null) {
+    setHistoryActive(value)
+    if (value !== null) setHistoryStatus(null)
   }
 
   function openExecutionChat(leadId: string | null) {
@@ -385,10 +381,23 @@ export function AutomationsPage() {
                 </Select>
               </label>
               <label className="grid min-w-44 flex-1 gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Estado
-                <Select value={historyStatus ?? ''} onChange={event => setHistoryStatus(isExecutionStatus(event.target.value) ? event.target.value : null)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
+                <Select value={historyStatus ?? ''} onChange={event => setHistoryStatusFilter(isExecutionStatus(event.target.value) ? event.target.value : null)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
                   <option value="">Todos los estados</option>
                   {Object.entries(EXECUTION_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </Select>
+              </label>
+              <div className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Actividad
+                <div className="flex rounded-lg bg-wa-border p-1 dark:bg-wa-head-dark">
+                  <button type="button" onClick={() => setHistoryActiveFilter(null)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold normal-case tracking-normal ${historyActive === null ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}>Todos</button>
+                  <button type="button" onClick={() => setHistoryActiveFilter(true)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold normal-case tracking-normal ${historyActive === true ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}>Activos</button>
+                  <button type="button" onClick={() => setHistoryActiveFilter(false)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold normal-case tracking-normal ${historyActive === false ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}>Finalizados</button>
+                </div>
+              </div>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Desde
+                <input type="date" value={historyDateFrom} max={historyDateTo} onChange={event => setHistoryDateFrom(event.target.value)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark" />
+              </label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Hasta
+                <input type="date" value={historyDateTo} min={historyDateFrom} onChange={event => setHistoryDateTo(event.target.value)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark" />
               </label>
               <label className={`flex min-h-9 items-center gap-2 rounded-lg border border-wa-border bg-white px-3 py-2 text-xs text-gray-600 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-300 ${historyStatus === AutomationExecutionStatus.Skipped ? 'opacity-50' : ''}`}>
                 <Checkbox checked={excludeSkipped} disabled={historyStatus === AutomationExecutionStatus.Skipped} onChange={event => setHideSkipped(event.target.checked)} />

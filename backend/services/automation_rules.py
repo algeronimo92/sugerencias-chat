@@ -10,7 +10,7 @@ AutomationDeps.
 """
 
 import re
-from datetime import datetime, tzinfo
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,16 @@ def business_timezone() -> tzinfo:
     """Se resuelve al primer uso y no al importar: en Windows sin el paquete
     tzdata, hacerlo a nivel de módulo revienta el arranque entero."""
     return ZoneInfo(BUSINESS_TIMEZONE_KEY)
+
+
+def local_day_range_utc(date_from: date, date_to: date) -> tuple[datetime, datetime]:
+    """Convierte un rango de fechas de calendario (en la timezone de negocio)
+    a límites UTC medio-abiertos [inicio, fin) listos para filtrar columnas
+    datetime en UTC, p. ej. `automation_executions.created_at`."""
+    tz = business_timezone()
+    start = datetime.combine(date_from, time.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+    return start, end
 
 
 def render_variables(value: str, chat: dict, now: datetime | None = None) -> str:

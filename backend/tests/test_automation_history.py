@@ -1,5 +1,7 @@
 """Filtros del historial de automatizaciones sin depender de PostgreSQL."""
 
+from datetime import date
+
 import pytest
 from sqlalchemy.dialects import postgresql
 
@@ -62,3 +64,48 @@ async def test_history_joins_execution_initiator(monkeypatch):
 
     assert "users.name AS started_by_name" in sql
     assert "users.id = automation_executions.started_by_user_id" in sql
+
+
+@pytest.mark.asyncio
+async def test_history_filters_by_date_range(monkeypatch):
+    # America/Lima es UTC-5 todo el año: medianoche local del 11 y del 12 de
+    # septiembre caen en 05:00 UTC de cada día.
+    sql = await _history_sql(monkeypatch, date_from=date(2026, 9, 11), date_to=date(2026, 9, 11))
+
+    assert "automation_executions.created_at >= '2026-09-11 05:00:00" in sql
+    assert "automation_executions.created_at < '2026-09-12 05:00:00" in sql
+
+
+@pytest.mark.asyncio
+async def test_active_true_filters_non_terminal_statuses(monkeypatch):
+    sql = await _history_sql(monkeypatch, active=True)
+
+    assert "automation_executions.status IN ('scheduled', 'running', 'paused')" in sql or (
+        "automation_executions.status IN (" in sql
+        and all(value in sql for value in ("'scheduled'", "'running'", "'paused'"))
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_false_filters_terminal_statuses(monkeypatch):
+    sql = await _history_sql(monkeypatch, active=False)
+
+    assert "automation_executions.status NOT IN (" in sql
+    assert all(value in sql for value in ("'scheduled'", "'running'", "'paused'"))
+
+
+@pytest.mark.asyncio
+async def test_explicit_status_takes_precedence_over_active(monkeypatch):
+    sql = await _history_sql(monkeypatch, status=AutomationExecutionStatus.COMPLETED, active=True)
+
+    assert "automation_executions.status = 'completed'" in sql
+    assert "automation_executions.status IN (" not in sql
+
+
+@pytest.mark.asyncio
+async def test_history_filters_by_started_by_user_id(monkeypatch):
+    # Es lo que acota "Flujos enviados" a las ejecuciones que un vendedor
+    # disparó él mismo, sin exponerle el historial completo de otros leads.
+    sql = await _history_sql(monkeypatch, started_by_user_id=42)
+
+    assert "automation_executions.started_by_user_id = 42" in sql

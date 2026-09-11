@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from domain_types import AutomationBuilderMode
@@ -244,24 +246,33 @@ async def get_executions(
     chat_id: str | None = None,
     status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped)$"),
     exclude_skipped: bool = False,
+    active: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    # Fuerza el historial a "lo que yo mismo inicié", sin importar el rol —
+    # es lo que usa la pantalla "Flujos enviados" del vendedor.
+    mine: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     user: User = Depends(get_current_user),
 ):
     is_admin = user.role == "admin"
-    if not is_admin and not chat_id:
-        # El historial completo (todas las reglas, todos los leads) sigue
-        # siendo admin-only; un vendedor solo puede consultar el de un chat
-        # puntual — es lo que alimenta el panel "Automatizaciones" del chat.
-        raise HTTPException(400, "Los vendedores deben indicar chat_id")
+    # Sin admin y sin chat puntual, jamás se entrega el historial completo de
+    # todos los leads: se acota siempre a lo que el propio usuario disparó a
+    # mano. Con chat_id, en cambio, el vendedor sigue viendo todo lo que corre
+    # sobre ese lead (también triggers de sistema) — es lo que alimenta el
+    # panel "Automatizaciones" del chat, y ahí sí necesita verlo todo para
+    # entender por qué el sistema le va a escribir al cliente.
+    scope_to_self = mine or (not is_admin and not chat_id)
     return await list_automation_executions(
         rule_id,
         status,
         limit,
         exclude_skipped=exclude_skipped,
         lead_id=chat_id,
-        # Dentro de un chat el vendedor ve todo lo que corre sobre ese lead,
-        # también los triggers de sistema: es lo que necesita para entender por
-        # qué el sistema le va a escribir al cliente y para frenarlo a tiempo.
+        active=active,
+        date_from=date_from,
+        date_to=date_to,
+        started_by_user_id=user.id if scope_to_self else None,
     )
 
 

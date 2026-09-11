@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from time import monotonic
 from uuid import uuid4
 
@@ -64,6 +64,7 @@ from services.automation_rules import (
     classify_customer_reply,
     flow_indexes,
     is_business_hours,
+    local_day_range_utc,
     matches_static_conditions,
     normalize_conditions,
     normalize_edges,
@@ -80,6 +81,13 @@ from services.ws_manager import manager
 logger = logging.getLogger(__name__)
 AUTOMATION_POLL_SECONDS = 10
 MAX_ACTIONS = 10
+# Estados no terminales de una ejecución: el flujo sigue "activo" sobre el
+# lead. El resto (completed/failed/skipped) ya terminó.
+ACTIVE_EXECUTION_STATUSES = {
+    AutomationExecutionStatus.SCHEDULED,
+    AutomationExecutionStatus.RUNNING,
+    AutomationExecutionStatus.PAUSED,
+}
 # Cuántas ejecuciones vencidas corren en paralelo por ciclo del watcher.
 MAX_CONCURRENT_EXECUTIONS = 5
 # Veces máximas que una ejecución RUNNING puede recuperarse de quedar
@@ -407,6 +415,10 @@ async def list_automation_executions(
     exclude_skipped: bool = False,
     lead_id: str | None = None,
     start_source: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    active: bool | None = None,
+    started_by_user_id: int | None = None,
 ) -> list[dict]:
     # Alias propio: `User` ya está tomado por started_by_user_id y la fila
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
@@ -448,12 +460,22 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.status == status)
     elif exclude_skipped:
         stmt = stmt.where(AutomationExecution.status != AutomationExecutionStatus.SKIPPED)
+    elif active is not None:
+        # Un status puntual manda sobre este filtro rápido, igual que ya pasa
+        # arriba con exclude_skipped.
+        stmt = stmt.where(AutomationExecution.status.in_(ACTIVE_EXECUTION_STATUSES) if active
+                           else AutomationExecution.status.not_in(ACTIVE_EXECUTION_STATUSES))
     if execution_id is not None:
         stmt = stmt.where(AutomationExecution.id == execution_id)
     if lead_id is not None:
         stmt = stmt.where(AutomationExecution.lead_id == lead_id)
     if start_source is not None:
         stmt = stmt.where(AutomationExecution.start_source == start_source)
+    if started_by_user_id is not None:
+        stmt = stmt.where(AutomationExecution.started_by_user_id == started_by_user_id)
+    if date_from is not None and date_to is not None:
+        range_start, range_end = local_day_range_utc(date_from, date_to)
+        stmt = stmt.where(AutomationExecution.created_at >= range_start, AutomationExecution.created_at < range_end)
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()

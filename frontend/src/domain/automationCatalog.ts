@@ -209,6 +209,13 @@ export const AutomationExecutionStatus = {
 } as const
 export type AutomationExecutionStatusValue = ValueOf<typeof AutomationExecutionStatus>
 
+/** Estados no terminales: el flujo sigue activo sobre el lead. */
+export const ACTIVE_EXECUTION_STATUSES: AutomationExecutionStatusValue[] = [
+  AutomationExecutionStatus.Scheduled,
+  AutomationExecutionStatus.Running,
+  AutomationExecutionStatus.Paused,
+]
+
 export const NotificationType = {
   InternalNoteMention: 'internal_note_mention',
   Automation: 'automation',

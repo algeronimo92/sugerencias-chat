@@ -8,7 +8,7 @@ import {
   useAutomationExecutions, useCancelExecution, usePauseExecution, useResumeExecution,
 } from '../hooks/useAutomations'
 import {
-  AUTOMATION_TRIGGERS, AutomationExecutionStatus, automationStepLabel,
+  ACTIVE_EXECUTION_STATUSES, AUTOMATION_TRIGGERS, AutomationExecutionStatus, automationStepLabel,
 } from '../domain/automationCatalog'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { extractErrorMessage } from '../utils/errors'
@@ -16,12 +16,6 @@ import { extractErrorMessage } from '../utils/errors'
 interface Props {
   chatId: string
 }
-
-const ACTIVE_STATUSES: string[] = [
-  AutomationExecutionStatus.Scheduled,
-  AutomationExecutionStatus.Running,
-  AutomationExecutionStatus.Paused,
-]
 
 /** Reloj compartido por todas las cuentas regresivas del panel. Solo late
  *  mientras hay algo que contar: sin ejecuciones activas el panel no se
@@ -164,7 +158,7 @@ export function LeadAutomationPanel({ chatId }: Props) {
   const cancelExecution = useCancelExecution()
   const [open, setOpen] = useState(false)
 
-  const active = executions.filter(execution => ACTIVE_STATUSES.includes(execution.status))
+  const active = executions.filter(execution => ACTIVE_EXECUTION_STATUSES.includes(execution.status))
   const now = useTicker(active.length > 0)
   if (active.length === 0) return null
 
