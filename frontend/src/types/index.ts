@@ -526,6 +526,7 @@ export interface MessageTemplate {
   official_language: string | null
   official_category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | null
   official_status: string | null
+  official_rejected_reason: string | null
   official_parameter_values: string[]
   meta_template_id: string | null
   official_header_type: 'none' | 'text' | 'image'

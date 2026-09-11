@@ -26,8 +26,8 @@ describe('groupAlbumMessages', () => {
   it('agrupa 3 fotos consecutivas del mismo remitente dentro de la ventana', () => {
     const messages = [
       message(1, { sent_at: at(0) }),
-      message(2, { sent_at: at(5) }),
-      message(3, { sent_at: at(10) }),
+      message(2, { sent_at: at(2) }),
+      message(3, { sent_at: at(4) }),
     ]
     const groups = groupAlbumMessages(messages)
     expect(groups.size).toBe(1)
@@ -48,12 +48,58 @@ describe('groupAlbumMessages', () => {
     expect(groupAlbumMessages(messages).size).toBe(0)
   })
 
-  it('corta el grupo cuando se excede la ventana de 60s', () => {
+  it('corta el grupo cuando se excede la ventana de 5s', () => {
     const messages = [
       message(1, { sent_at: at(0) }),
-      message(2, { sent_at: at(61) }),
+      message(2, { sent_at: at(6) }),
     ]
     expect(groupAlbumMessages(messages).size).toBe(0)
+  })
+
+  it('una foto con epígrafe no entra en el álbum heurístico', () => {
+    const messages = [
+      message(1, { sent_at: at(0) }),
+      message(2, { sent_at: at(1), content: 'este es el modelo que te decía' }),
+    ]
+    expect(groupAlbumMessages(messages).size).toBe(0)
+  })
+
+  it('la foto con epígrafe tampoco arrastra a la siguiente', () => {
+    const messages = [
+      message(1, { sent_at: at(0) }),
+      message(2, { sent_at: at(1), content: 'mirá el detalle' }),
+      message(3, { sent_at: at(2) }),
+    ]
+    expect(groupAlbumMessages(messages).size).toBe(0)
+  })
+
+  it('las fotos sin epígrafe alrededor de una con epígrafe siguen agrupándose entre sí', () => {
+    const messages = [
+      message(1, { sent_at: at(0) }),
+      message(2, { sent_at: at(1) }),
+      message(3, { sent_at: at(2), content: 'esta es aparte' }),
+      message(4, { sent_at: at(3) }),
+      message(5, { sent_at: at(4) }),
+    ]
+    const groups = groupAlbumMessages(messages)
+    expect(groups.size).toBe(2)
+    expect(groups.get(1)?.map(m => m.id)).toEqual([1, 2])
+    expect(groups.get(4)?.map(m => m.id)).toEqual([4, 5])
+  })
+
+  it('el epígrafe no desagrupa un álbum con album_id explícito', () => {
+    // El ChatComposer manda el epígrafe en el último ítem del lote: si el
+    // epígrafe desagrupara acá, el CRM rompería sus propios álbumes salientes.
+    const messages = [
+      message(1, { sender: 'vendedor', sent_at: at(0), payload: { album_id: 'abc' } }),
+      message(2, { sender: 'vendedor', sent_at: at(1), payload: { album_id: 'abc' } }),
+      message(3, {
+        sender: 'vendedor', sent_at: at(2), content: 'las tres opciones', payload: { album_id: 'abc' },
+      }),
+    ]
+    const groups = groupAlbumMessages(messages)
+    expect(groups.size).toBe(1)
+    expect(groups.get(1)?.map(m => m.id)).toEqual([1, 2, 3])
   })
 
   it('un texto interpuesto corta el grupo', () => {

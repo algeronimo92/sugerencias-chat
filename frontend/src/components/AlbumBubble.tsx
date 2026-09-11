@@ -26,10 +26,11 @@ interface Props {
 }
 
 /** Grilla de 2 a `MAX_TILES` fotos/videos enviados juntos, como el álbum
- * nativo de WhatsApp — que el backend no puede reconstruir desde
- * `albumMessage`/`associatedChildMessage` (ver docs/n8n-normalizacion-wsp-messages.md),
- * así que esto agrupa por heurístico de tiempo (mediaGroups.ts) en vez de un
- * id de álbum real. Tocar cualquier miniatura abre el visor con la galería
+ * nativo de WhatsApp — que para lo entrante no se puede reconstruir: el sobre
+ * de álbum del protocolo viaja cifrado dentro del mensaje y la Cloud API de
+ * Meta no lo expone, así que cada foto llega suelta. Se agrupa por `album_id`
+ * cuando lo puso este mismo CRM, o por heurístico de tiempo si no (ver
+ * mediaGroups.ts). Tocar cualquier miniatura abre el visor con la galería
  * completa del chat, donde se puede seguir navegando más allá del grupo. */
 export function AlbumBubble({
   messages,

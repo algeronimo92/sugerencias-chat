@@ -87,6 +87,19 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 ])
 const ALLOWED_INTERNAL_VARIABLES = new Set(['nombre', 'telefono', 'servicio', 'vendedor', 'fecha_actual'])
 
+const REJECTED_REASON_LABELS: Record<string, string> = {
+  ABUSIVE_CONTENT: 'Contenido considerado abusivo o engañoso',
+  INVALID_FORMAT: 'Formato inválido (variables, saltos de línea o estructura no permitida)',
+  TAG_CONTENT_MISMATCH: 'El contenido no coincide con la categoría elegida (Marketing/Utilidad/Autenticación)',
+  INCORRECT_CATEGORY: 'Categoría incorrecta para este contenido',
+  SCAM: 'Meta lo identificó como posible estafa o phishing',
+  NONE: 'Sin motivo informado por Meta',
+}
+
+function rejectedReasonLabel(reason: string) {
+  return REJECTED_REASON_LABELS[reason] ?? reason
+}
+
 function templateVariables(...values: string[]) {
   return new Set(values.flatMap(value => Array.from(value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), match => match[1].trim())))
 }
@@ -547,7 +560,11 @@ export function TemplatesPage() {
   function handleSyncTemplate(id: number) {
     setError(null)
     syncTemplate.mutate(id, {
-      onSuccess: (template) => toast.success(`Estado actualizado: ${template.official_status}`),
+      onSuccess: (template) => toast.success(
+        template.official_status === 'REJECTED' && template.official_rejected_reason
+          ? `Estado actualizado: RECHAZADA — ${rejectedReasonLabel(template.official_rejected_reason)}`
+          : `Estado actualizado: ${template.official_status}`,
+      ),
       onError: err => setError(extractErrorMessage(err)),
     })
   }
@@ -1021,6 +1038,11 @@ export function TemplatesPage() {
                             <RefreshCw className={`h-3 w-3 ${syncTemplate.isPending && syncTemplate.variables === template.id ? 'animate-spin' : ''}`} />
                           </button>
                         )}
+                      </p>
+                    )}
+                    {template.official_status === 'REJECTED' && template.official_rejected_reason && (
+                      <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">
+                        Motivo: {rejectedReasonLabel(template.official_rejected_reason)}
                       </p>
                     )}
                   </div>
