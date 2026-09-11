@@ -5,7 +5,7 @@ import { Check, Copy, Loader2, MessageCircle } from 'lucide-react'
 import type { LeadUpdateInput } from '../types'
 import type { SharedContact } from '../utils/message'
 import { useCreateLead, useFindLeadByPhone, usePhoneConfig } from '../hooks/useChats'
-import { FALLBACK_COUNTRY_CODE, formatPhonePreview, normalizePhone } from '../utils/phone'
+import { FALLBACK_COUNTRY_CODE, formatPhonePreview } from '../utils/phone'
 import { extractErrorMessage } from '../utils/errors'
 import { LeadFormDialog } from './LeadFormDialog'
 
@@ -35,18 +35,17 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
   const countryCode = phoneConfig?.default_country_code ?? FALLBACK_COUNTRY_CODE
   // El vCard puede traer el número en formato local ("987 654 321"): se
   // normaliza con el mismo criterio que el alta de leads antes de buscarlo.
-  const phoneCheck = normalizePhone(contact.phone ?? '', countryCode)
-  const digits = phoneCheck.status === 'valid' ? phoneCheck.digits : null
-  const name = contact.fullName || 'Contacto'
-  const phoneLabel =
-    contact.phoneLabel || (digits ? formatPhonePreview(digits, countryCode) : '')
+  // const phoneCheck = normalizePhone(contact.phone, countryCode)
+  // const digits = phoneCheck.status === 'valid' ? phoneCheck.digits : null
+  const name = contact.name || 'Contacto'
+  const phones = contact.phone
 
   async function handleOpenChat() {
-    if (!digits || isSearching) return
+    if (isSearching) return
     setError(null)
     setIsSearching(true)
     try {
-      const existing = await findLeadByPhone(digits)
+      const existing = await findLeadByPhone(phones ? phones[0] : "")
       if (existing) navigate(`/chat/${existing.chat_id}`)
       // Sin lead todavía: se abre el alta con el nombre y el número ya
       // cargados, para no crear nada a espaldas del vendedor y para que el
@@ -82,8 +81,8 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
   }
 
   async function handleCopy() {
-    if (!phoneLabel) return
-    await navigator.clipboard.writeText(digits ? `+${digits}` : phoneLabel)
+    if (!phones) return
+    await navigator.clipboard.writeText(phones ? `+${phones}` : phones)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -98,11 +97,11 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium not-italic text-wa-text dark:text-wa-text-dark">{name}</p>
-          {phoneLabel && (
-            <p className="truncate text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{phoneLabel}</p>
+          {phones && (
+            <p className="truncate text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{phones}</p>
           )}
         </div>
-        {phoneLabel && (
+        {phones && (
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); void handleCopy() }}
@@ -117,7 +116,7 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
         )}
       </div>
 
-      {digits ? (
+      {phones ? (
         <button
           type="button"
           onClick={(event) => { event.stopPropagation(); void handleOpenChat() }}
@@ -146,7 +145,7 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
           title="Agregar lead"
           submitLabel="Agregar"
           requirePhoneAndName
-          initial={{ phone: digits ?? '', name: contact.fullName }}
+          initial={{ phone: phones ? phones[0] : "", name: contact.name }}
           isSubmitting={isCreatingLead}
           error={error}
           onSubmit={handleCreateLead}

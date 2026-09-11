@@ -1,40 +1,66 @@
 import {
-  BarChart3, CornerUpLeft, Image, List, MapPin, Megaphone, Mic, MousePointerClick,
-  CreditCard, Paperclip, Pin, ReceiptText, ShoppingBag, SmilePlus, Sticker, User,
-  Video, FileText, EyeOff, type LucideIcon,
-} from 'lucide-react'
-import type { JsonObject, JsonValue, Message, MessageType, MessageAnalysis } from '../types'
+  BarChart3,
+  CornerUpLeft,
+  Image,
+  List,
+  MapPin,
+  Megaphone,
+  Mic,
+  MousePointerClick,
+  CreditCard,
+  Paperclip,
+  Pin,
+  ReceiptText,
+  ShoppingBag,
+  SmilePlus,
+  Sticker,
+  User,
+  Video,
+  FileText,
+  EyeOff,
+  type LucideIcon,
+} from "lucide-react";
+import type {
+  JsonObject,
+  JsonValue,
+  Message,
+  MessageType,
+  MessageAnalysis,
+} from "../types";
 
 /** Clase de render de un mensaje: coincide con la taxonomía del backend
  * (MessageType). El frontend elige ícono/burbuja por acá. */
-export type MessageKind = MessageType
+export type MessageKind = MessageType;
 
-const KIND_META: Record<MessageKind, { icon: LucideIcon | null; label: string }> = {
-  text: { icon: null, label: '' },
-  image: { icon: Image, label: 'Imagen' },
-  video: { icon: Video, label: 'Video' },
-  ptv: { icon: Video, label: 'Video' },
-  audio: { icon: Mic, label: 'Audio' },
-  document: { icon: FileText, label: 'Documento' },
-  location: { icon: MapPin, label: 'Ubicación' },
-  sticker: { icon: Sticker, label: 'Sticker' },
-  contact: { icon: User, label: 'Contacto' },
-  poll: { icon: BarChart3, label: 'Encuesta' },
-  reaction: { icon: SmilePlus, label: 'Reacción' },
-  pin: { icon: Pin, label: 'Mensaje fijado' },
-  interactive: { icon: List, label: 'Interactivo' },
-  template: { icon: Megaphone, label: 'Plantilla' },
-  order: { icon: ReceiptText, label: 'Pedido' },
-  product: { icon: ShoppingBag, label: 'Producto' },
-  payment: { icon: CreditCard, label: 'Pago' },
-  view_once: { icon: EyeOff, label: 'Ver una vez' },
-  unsupported: { icon: Paperclip, label: 'No soportado' },
-}
+const KIND_META: Record<
+  MessageKind,
+  { icon: LucideIcon | null; label: string }
+> = {
+  text: { icon: null, label: "" },
+  image: { icon: Image, label: "Imagen" },
+  video: { icon: Video, label: "Video" },
+  ptv: { icon: Video, label: "Video" },
+  audio: { icon: Mic, label: "Audio" },
+  document: { icon: FileText, label: "Documento" },
+  location: { icon: MapPin, label: "Ubicación" },
+  sticker: { icon: Sticker, label: "Sticker" },
+  contact: { icon: User, label: "Contacto" },
+  poll: { icon: BarChart3, label: "Encuesta" },
+  reaction: { icon: SmilePlus, label: "Reacción" },
+  pin: { icon: Pin, label: "Mensaje fijado" },
+  interactive: { icon: List, label: "Interactivo" },
+  template: { icon: Megaphone, label: "Plantilla" },
+  order: { icon: ReceiptText, label: "Pedido" },
+  product: { icon: ShoppingBag, label: "Producto" },
+  payment: { icon: CreditCard, label: "Pago" },
+  view_once: { icon: EyeOff, label: "Ver una vez" },
+  unsupported: { icon: Paperclip, label: "No soportado" },
+};
 
 export interface TemplateButton {
-  text: string
+  text: string;
   /** null en botones que no abren nada (respuestas rápidas, llamadas). */
-  url: string | null
+  url: string | null;
 }
 
 /** Etiquetas legadas que n8n usaba para los mensajes con botones. Comparten el
@@ -42,96 +68,98 @@ export interface TemplateButton {
  * y su propio ícono en los previews. */
 const TEMPLATE_TAGS: Record<string, { icon: LucideIcon; label: string }> = {
   // Anuncios y plantillas de empresa (TikTok, Meta): traen preview de enlace.
-  templateMessage: { icon: Megaphone, label: 'Plantilla' },
+  templateMessage: { icon: Megaphone, label: "Plantilla" },
   // Mensajes con botones de respuesta rápida, los que manda el propio negocio.
-  buttonsMessage: { icon: MousePointerClick, label: 'Botones' },
+  buttonsMessage: { icon: MousePointerClick, label: "Botones" },
   // El cliente tocó uno de esos botones.
-  buttonsResponseMessage: { icon: CornerUpLeft, label: 'Respuesta' },
-  templateButtonReplyMessage: { icon: CornerUpLeft, label: 'Respuesta' },
-}
+  buttonsResponseMessage: { icon: CornerUpLeft, label: "Respuesta" },
+  templateButtonReplyMessage: { icon: CornerUpLeft, label: "Respuesta" },
+};
 
 /** Un mensaje con botones de WhatsApp (un anuncio de plantilla o un mensaje
  * con respuestas rápidas) ya desarmado para pintarlo. */
 export interface TemplateMessage {
   /** Título del preview del enlace ("TikTok - Make Your Day"). */
-  title: string
-  description: string
-  domain: string
-  body: string
-  footer: string
-  buttons: TemplateButton[]
+  title: string;
+  description: string;
+  domain: string;
+  body: string;
+  footer: string;
+  buttons: TemplateButton[];
   /** Cuando el mensaje es la respuesta del cliente, el texto del mensaje al
    * que le tocó el botón. Vacío en el resto. */
-  answeredQuestion: string
+  answeredQuestion: string;
 }
 
 /** Pseudo-tags simples que escribía n8n en `content` antes de la normalización.
  * Solo respaldo para filas legadas sin backfillear; los tags de plantilla van
  * aparte (TEMPLATE_TAGS) porque llevan JSON adentro. */
 const LEGACY_TAG_KIND: Record<string, MessageKind> = {
-  text: 'text',
-  image: 'image',
-  video: 'video',
-  audio: 'audio',
-  location: 'location',
-  other: 'document',
-}
+  text: "text",
+  image: "image",
+  video: "video",
+  audio: "audio",
+  location: "location",
+  other: "document",
+};
 
 /** Entrada de `parseContent`: el objeto mensaje (camino nuevo, por
  * `message_type`) o solo su `content` string (previews que aún no llevan el
  * tipo, y respaldo legado). */
 export interface ParsableMessage {
-  content: string | null
-  message_type?: MessageType | null
-  analysis?: MessageAnalysis | null
-  payload?: JsonObject | null
+  content: string | null;
+  message_type?: MessageType | null;
+  analysis?: MessageAnalysis | null;
+  payload?: JsonObject | null;
 }
-type ParseInput = string | null | ParsableMessage
+type ParseInput = string | null | ParsableMessage;
 
 export interface ParsedContent {
-  kind: MessageKind
-  icon: LucideIcon | null
-  label: string
+  kind: MessageKind;
+  icon: LucideIcon | null;
+  label: string;
   /** Texto humano del mensaje (caption/cuerpo), sin el análisis IA ni JSON. */
-  text: string
+  text: string;
   /** Resumen del análisis generado con IA, para mostrar bajo demanda. null si
    * el mensaje no tiene análisis. */
-  analysis: string | null
+  analysis: string | null;
   /** Datos estructurados del tipo (lat/lon, filename, opciones…). */
-  payload: JsonObject | null
+  payload: JsonObject | null;
   /** Solo en template/interactive; null si el JSON vino roto o no aplica. */
-  template: TemplateMessage | null
+  template: TemplateMessage | null;
 }
 
 /** Texto que se muestra cuando la plantilla no trae cuerpo (o no se pudo leer). */
-export const TEMPLATE_FALLBACK_TEXT = 'Mensaje de plantilla'
+export const TEMPLATE_FALLBACK_TEXT = "Mensaje de plantilla";
 
 function safeUrl(value: JsonValue | undefined): string | null {
-  if (typeof value !== 'string' || !value) return null
+  if (typeof value !== "string" || !value) return null;
   // Solo http(s): el JSON viene de afuera y termina en un href.
-  return /^https?:\/\//i.test(value) ? value : null
+  return /^https?:\/\//i.test(value) ? value : null;
 }
 
 function asString(value: JsonValue | undefined): string {
-  return typeof value === 'string' ? value.trim() : ''
+  return typeof value === "string" ? value.trim() : "";
 }
 
-export function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+export function isJsonObject(
+  value: JsonValue | undefined,
+): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function asObject(value: JsonValue | undefined): JsonObject {
-  return isJsonObject(value) ? value : {}
+  return isJsonObject(value) ? value : {};
 }
 
 /** Los campos anidados de WhatsApp vienen como JSON dentro de un string. */
 function parseJson(value: JsonValue | undefined): JsonObject | null {
-  if (typeof value !== 'string' || !value.trim()) return null
+  if (typeof value !== "string" || !value.trim()) return null;
   try {
-    const parsed: JsonValue = JSON.parse(value)
-    return isJsonObject(parsed) ? parsed : null
+    const parsed: JsonValue = JSON.parse(value);
+    return isJsonObject(parsed) ? parsed : null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -154,126 +182,154 @@ function parseJson(value: JsonValue | undefined): JsonObject | null {
  * para un mensaje entrante. Se resuelve aparte porque no comparte ningún
  * campo con esa otra forma (headers, nativeFlowMessage, contextInfo...). */
 function parseOutboundInteractive(root: JsonObject): TemplateMessage | null {
-  if (root.type !== 'interactive' || !isJsonObject(root.config)) return null
-  const config = root.config
-  const interactiveType = asString(root.interactive_type)
-  const buttons: TemplateButton[] = interactiveType === 'list'
-    // WhatsApp solo muestra, en el mensaje mismo, el botón que abre la lista
-    // -las secciones/opciones aparecen recién cuando el cliente lo toca-, así
-    // que acá se pinta igual: un único botón con ese texto.
-    ? [{ text: asString(config.buttonText) || 'Ver opciones', url: null }]
-    : (Array.isArray(config.buttons) ? config.buttons : []).flatMap((button) => {
-      const buttonData = asObject(button)
-      const text = asString(buttonData.displayText)
-      if (!text) return []
-      return [{ text, url: buttonData.type === 'url' ? safeUrl(buttonData.url) : null }]
-    })
-  const title = asString(config.title)
-  const body = asString(root.description)
-  if (!title && !body && !buttons.length) return null
+  if (root.type !== "interactive" || !isJsonObject(root.config)) return null;
+  const config = root.config;
+  const interactiveType = asString(root.interactive_type);
+  const buttons: TemplateButton[] =
+    interactiveType === "list"
+      ? // WhatsApp solo muestra, en el mensaje mismo, el botón que abre la lista
+        // -las secciones/opciones aparecen recién cuando el cliente lo toca-, así
+        // que acá se pinta igual: un único botón con ese texto.
+        [{ text: asString(config.buttonText) || "Ver opciones", url: null }]
+      : (Array.isArray(config.buttons) ? config.buttons : []).flatMap(
+          (button) => {
+            const buttonData = asObject(button);
+            const text = asString(buttonData.displayText);
+            if (!text) return [];
+            return [
+              {
+                text,
+                url: buttonData.type === "url" ? safeUrl(buttonData.url) : null,
+              },
+            ];
+          },
+        );
+  const title = asString(config.title);
+  const body = asString(root.description);
+  if (!title && !body && !buttons.length) return null;
   return {
     title,
-    description: '',
-    domain: '',
+    description: "",
+    domain: "",
     body,
     footer: asString(config.footer) || asString(config.footerText),
     buttons,
-    answeredQuestion: '',
-  }
+    answeredQuestion: "",
+  };
 }
 
-export function parseTemplateData(root: JsonObject | null): TemplateMessage | null {
-  if (!root) return null
-  const outbound = parseOutboundInteractive(root)
-  if (outbound) return outbound
+export function parseTemplateData(
+  root: JsonObject | null,
+): TemplateMessage | null {
+  if (!root) return null;
+  const outbound = parseOutboundInteractive(root);
+  if (outbound) return outbound;
   // Según de dónde salga el payload el contenido viene en la raíz o anidado.
   const data = root.interactiveMessageTemplate
     ? asObject(root.interactiveMessageTemplate)
     : root.hydratedTemplate
       ? asObject(root.hydratedTemplate)
-      : root
+      : root;
 
-  const header = asObject(data.header)
-  const body = asObject(data.body)
-  const footer = asObject(data.footer)
-  const nativeFlow = asObject(data.nativeFlowMessage)
+  const header = asObject(data.header);
+  const body = asObject(data.body);
+  const footer = asObject(data.footer);
+  const nativeFlow = asObject(data.nativeFlowMessage);
 
-  const target = asObject(parseJson(nativeFlow.messageParamsJson)?.tap_target_configuration)
+  const target = asObject(
+    parseJson(nativeFlow.messageParamsJson)?.tap_target_configuration,
+  );
 
-  const buttons: TemplateButton[] = []
-  for (const button of Array.isArray(nativeFlow.buttons) ? nativeFlow.buttons : []) {
-    const params = parseJson(asObject(button).buttonParamsJson)
-    if (!params) continue
-    const text = asString(params.display_text)
-    if (!text) continue
-    buttons.push({ text, url: safeUrl(params.url) })
+  const buttons: TemplateButton[] = [];
+  for (const button of Array.isArray(nativeFlow.buttons)
+    ? nativeFlow.buttons
+    : []) {
+    const params = parseJson(asObject(button).buttonParamsJson);
+    if (!params) continue;
+    const text = asString(params.display_text);
+    if (!text) continue;
+    buttons.push({ text, url: safeUrl(params.url) });
   }
   // Botones de respuesta rápida: no abren nada, los toca el cliente.
   for (const button of Array.isArray(data.buttons) ? data.buttons : []) {
-    const buttonData = asObject(button)
-    const text = asString(asObject(buttonData.buttonText).displayText) || asString(buttonData.text)
-    if (!text) continue
-    buttons.push({ text, url: safeUrl(buttonData.url) })
+    const buttonData = asObject(button);
+    const text =
+      asString(asObject(buttonData.buttonText).displayText) ||
+      asString(buttonData.text);
+    if (!text) continue;
+    buttons.push({ text, url: safeUrl(buttonData.url) });
   }
   for (const option of Array.isArray(data.options) ? data.options : []) {
-    const optionData = asObject(option)
-    const text = asString(optionData.text) || asString(optionData.title)
-    if (text) buttons.push({ text, url: null })
+    const optionData = asObject(option);
+    const text = asString(optionData.text) || asString(optionData.title);
+    if (text) buttons.push({ text, url: null });
   }
 
   // Respuesta a un botón: el texto elegido es el mensaje, y el original viene
   // citado adentro del contextInfo (WhatsApp lo muestra arriba de la respuesta).
-  const quoted = asObject(asObject(data.contextInfo).quotedMessage)
+  const quoted = asObject(asObject(data.contextInfo).quotedMessage);
   const answeredQuestion =
     asString(asObject(quoted.buttonsMessage).contentText) ||
     asString(quoted.conversation) ||
-    asString(asObject(quoted.extendedTextMessage).text)
+    asString(asObject(quoted.extendedTextMessage).text);
 
   const parsed: TemplateMessage = {
-    title: asString(header.title) || asString(target.title) || asString(data.title),
+    title:
+      asString(header.title) || asString(target.title) || asString(data.title),
     description: asString(target.description),
     domain: asString(target.domain) || asString(target.canonical_url),
-    body: asString(body.text) || asString(data.body) || asString(data.contentText) ||
-      asString(data.selectedDisplayText) || asString(data.selected_text) || asString(data.description),
-    footer: asString(footer.text) || asString(data.footer) || asString(data.footerText),
+    body:
+      asString(body.text) ||
+      asString(data.body) ||
+      asString(data.contentText) ||
+      asString(data.selectedDisplayText) ||
+      asString(data.selected_text) ||
+      asString(data.description),
+    footer:
+      asString(footer.text) ||
+      asString(data.footer) ||
+      asString(data.footerText),
     buttons,
     answeredQuestion,
-  }
+  };
 
   // Si no se reconoció nada útil es que el JSON no era una plantilla.
-  if (!parsed.title && !parsed.body && !parsed.buttons.length) return null
-  return parsed
+  if (!parsed.title && !parsed.body && !parsed.buttons.length) return null;
+  return parsed;
 }
 
 /** Variante para el JSON crudo que n8n guardaba dentro de los tags legados. */
 export function parseTemplateMessage(raw: string): TemplateMessage | null {
-  return parseTemplateData(parseJson(raw))
+  return parseTemplateData(parseJson(raw));
 }
 
 export function parseContent(input: ParseInput): ParsedContent {
   const obj: ParsableMessage | null =
-    typeof input === 'string' || input == null ? null : input
+    typeof input === "string" || input == null ? null : input;
   // Cuando `obj` es null el input ya es string | null (por la condición de
   // arriba); el cast solo se lo confirma a TypeScript.
-  const content: string | null = obj ? obj.content : (input as string | null)
+  const content: string | null = obj ? obj.content : (input as string | null);
 
   // Camino nuevo: el backend ya clasificó el mensaje y separó el análisis.
   if (obj && obj.message_type) {
-    const kind: MessageKind = obj.message_type in KIND_META ? obj.message_type : 'unsupported'
-    const payload = obj.payload ?? null
+    const kind: MessageKind =
+      obj.message_type in KIND_META ? obj.message_type : "unsupported";
+    const payload = obj.payload ?? null;
     const template =
-      kind === 'template' || kind === 'interactive' ? parseTemplateData(payload) : null
-    const rawText = (content ?? '').trim()
+      kind === "template" || kind === "interactive"
+        ? parseTemplateData(payload)
+        : null;
+    const rawText = (content ?? "").trim();
     // Un `interactive` propio guarda en `content` un resumen plano ("Título\n
     // cuerpo\nOpciones: A · B") pensado para cuando no había botones reales;
     // ahora que el payload sí se pudo desarmar, el cuerpo real evita repetir
     // esas opciones como texto suelto además de los botones ya renderizados.
     const text =
-      kind === 'interactive' && template
+      kind === "interactive" && template
         ? template.body || template.title || rawText
         : rawText ||
-          (template ? template.body || template.title : '') ||
-          (kind === 'template' ? TEMPLATE_FALLBACK_TEXT : '')
+          (template ? template.body || template.title : "") ||
+          (kind === "template" ? TEMPLATE_FALLBACK_TEXT : "");
     return {
       kind,
       ...KIND_META[kind],
@@ -281,11 +337,15 @@ export function parseContent(input: ParseInput): ParsedContent {
       analysis: obj.analysis?.summary?.trim() || null,
       payload,
       template,
-    }
+    };
   }
 
   // Camino legado: clasificar por los pseudo-tags embebidos en `content`.
-  return parseLegacyContent(content, obj?.analysis?.summary ?? null, obj?.payload ?? null)
+  return parseLegacyContent(
+    content,
+    obj?.analysis?.summary ?? null,
+    obj?.payload ?? null,
+  );
 }
 
 function parseLegacyContent(
@@ -294,20 +354,34 @@ function parseLegacyContent(
   payload: JsonObject | null,
 ): ParsedContent {
   if (!content) {
-    return { kind: 'text', ...KIND_META.text, text: '', analysis: analysisFromColumn, payload, template: null }
-  }
-
-  const match = content.match(/^<(\w+)>([\s\S]*)<\/\1>$/)
-  if (!match) {
-    return { kind: 'text', ...KIND_META.text, text: content.trim(), analysis: analysisFromColumn, payload, template: null }
-  }
-
-  const [, tag, inner] = match
-  const templateMeta = TEMPLATE_TAGS[tag]
-  if (templateMeta) {
-    const template = parseTemplateMessage(inner)
     return {
-      kind: 'template',
+      kind: "text",
+      ...KIND_META.text,
+      text: "",
+      analysis: analysisFromColumn,
+      payload,
+      template: null,
+    };
+  }
+
+  const match = content.match(/^<(\w+)>([\s\S]*)<\/\1>$/);
+  if (!match) {
+    return {
+      kind: "text",
+      ...KIND_META.text,
+      text: content.trim(),
+      analysis: analysisFromColumn,
+      payload,
+      template: null,
+    };
+  }
+
+  const [, tag, inner] = match;
+  const templateMeta = TEMPLATE_TAGS[tag];
+  if (templateMeta) {
+    const template = parseTemplateMessage(inner);
+    return {
+      kind: "template",
       ...templateMeta,
       // Nunca el JSON crudo: este texto es el que sale en la lista de chats,
       // en las citas y en el Kanban.
@@ -315,100 +389,124 @@ function parseLegacyContent(
       analysis: analysisFromColumn,
       payload,
       template,
-    }
+    };
   }
 
-  const kind: MessageKind = LEGACY_TAG_KIND[tag] ?? 'unsupported'
-  const { text, analysis } = splitLegacyInner(kind, inner)
-  return { kind, ...KIND_META[kind], text, analysis: analysisFromColumn ?? analysis, payload, template: null }
+  const kind: MessageKind = LEGACY_TAG_KIND[tag] ?? "unsupported";
+  const { text, analysis } = splitLegacyInner(kind, inner);
+  return {
+    kind,
+    ...KIND_META[kind],
+    text,
+    analysis: analysisFromColumn ?? analysis,
+    payload,
+    template: null,
+  };
 }
 
 /** Separa el caption del bloque `Analisis:` que n8n embebía dentro de los tags
  * de imagen/video, y trata el interior de `<audio>` como transcripción. Así el
  * análisis no se muestra dentro de la burbuja ni siquiera en filas legadas. */
-function splitLegacyInner(kind: MessageKind, inner: string): { text: string; analysis: string | null } {
-  const trimmed = inner.trim()
-  if (kind === 'audio') return { text: '', analysis: trimmed || null }
-  if (kind === 'image' || kind === 'video') {
+function splitLegacyInner(
+  kind: MessageKind,
+  inner: string,
+): { text: string; analysis: string | null } {
+  const trimmed = inner.trim();
+  if (kind === "audio") return { text: "", analysis: trimmed || null };
+  if (kind === "image" || kind === "video") {
     // El bloque va tras el caption o directamente al principio si no hay caption.
-    const match = trimmed.match(/(^|\n)\s*Analisis:\s*/i)
+    const match = trimmed.match(/(^|\n)\s*Analisis:\s*/i);
     if (match) {
-      const marker = match.index ?? 0
-      const rest = trimmed.slice(marker + match[0].length)
-      return { text: trimmed.slice(0, marker).trim(), analysis: rest.trim() || null }
+      const marker = match.index ?? 0;
+      const rest = trimmed.slice(marker + match[0].length);
+      return {
+        text: trimmed.slice(0, marker).trim(),
+        analysis: rest.trim() || null,
+      };
     }
   }
-  return { text: trimmed, analysis: null }
+  return { text: trimmed, analysis: null };
 }
 
 export interface QuotePreview {
-  icon: LucideIcon | null
+  icon: LucideIcon | null;
   /** Tipo del adjunto ("Imagen", "Audio"…); vacío en mensajes de texto. */
-  label: string
+  label: string;
   /** Texto del mensaje, su epígrafe, o el nombre del archivo adjunto. */
-  text: string
+  text: string;
 }
 
 /** Resumen de una línea de un mensaje citado, como el recuadro de respuesta
  * de WhatsApp: el texto tal cual cuando lo hay, y si no el tipo de adjunto. */
 export function quotePreview(input: ParseInput): QuotePreview {
-  const { kind, icon, label, text } = parseContent(input)
-  return { icon, label: kind === 'text' ? '' : label, text }
+  const { kind, icon, label, text } = parseContent(input);
+  return { icon, label: kind === "text" ? "" : label, text };
 }
 
 function foldText(value: string): string {
-  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 /** Recorta el texto para que el término buscado quede visible al inicio del
  * preview (como WhatsApp): si el match está más adelante, se antepone "… "
  * y se arranca un poco antes de la coincidencia. Insensible a acentos. */
-export function searchSnippet(text: string, term: string, context = 20): string {
-  const needle = foldText(term.trim())
-  if (!needle) return text
-  const index = foldText(text).indexOf(needle)
-  if (index <= context) return text
-  return '… ' + text.slice(index - context).trimStart()
+export function searchSnippet(
+  text: string,
+  term: string,
+  context = 20,
+): string {
+  const needle = foldText(term.trim());
+  if (!needle) return text;
+  const index = foldText(text).indexOf(needle);
+  if (index <= context) return text;
+  return "… " + text.slice(index - context).trimStart();
 }
 
 /** Parte el texto en [antes, match, después] para resaltar la coincidencia,
  * o null si el término no aparece. Insensible a acentos. */
-export function splitOnMatch(text: string, term: string): [string, string, string] | null {
-  const trimmed = term.trim()
-  if (!trimmed) return null
-  const index = foldText(text).indexOf(foldText(trimmed))
-  if (index < 0) return null
-  return [text.slice(0, index), text.slice(index, index + trimmed.length), text.slice(index + trimmed.length)]
+export function splitOnMatch(
+  text: string,
+  term: string,
+): [string, string, string] | null {
+  const trimmed = term.trim();
+  if (!trimmed) return null;
+  const index = foldText(text).indexOf(foldText(trimmed));
+  if (index < 0) return null;
+  return [
+    text.slice(0, index),
+    text.slice(index, index + trimmed.length),
+    text.slice(index + trimmed.length),
+  ];
 }
 
 export function formatMessageTime(sentAt: string | null): string {
-  if (!sentAt) return ''
-  const d = new Date(sentAt)
-  return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  if (!sentAt) return "";
+  const d = new Date(sentAt);
+  return d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDayLabel(sentAt: string): string {
-  const date = new Date(sentAt)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return 'Hoy'
-  if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
-  return date.toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'long',
-    year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
-  })
+  const date = new Date(sentAt);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Hoy";
+  if (date.toDateString() === yesterday.toDateString()) return "Ayer";
+  return date.toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+  });
 }
 
 /** Un día del hilo con todo lo que pasó ese día, en orden. */
 export interface DaySection<T> {
   /** Clave estable de React: la del primer ítem de la sección. */
-  key: string
+  key: string;
   /** Fecha del día, o null si la sección arranca con ítems sin fecha
    * confirmada (nunca lleva chip). */
-  sentAt: string | null
-  items: { item: T; globalIndex: number }[]
+  sentAt: string | null;
+  items: { item: T; globalIndex: number }[];
 }
 
 /**
@@ -426,86 +524,103 @@ export interface DaySection<T> {
 export function groupByDay<T extends { key: string; sentAt: string | null }>(
   items: T[],
 ): DaySection<T>[] {
-  const sections: (DaySection<T> & { day: string | null })[] = []
+  const sections: (DaySection<T> & { day: string | null })[] = [];
   items.forEach((item, globalIndex) => {
-    const day = item.sentAt ? new Date(item.sentAt).toDateString() : null
-    const current = sections.at(-1)
+    const day = item.sentAt ? new Date(item.sentAt).toDateString() : null;
+    const current = sections.at(-1);
     if (!current || (day !== null && day !== current.day)) {
-      sections.push({ key: item.key, day, sentAt: item.sentAt, items: [{ item, globalIndex }] })
+      sections.push({
+        key: item.key,
+        day,
+        sentAt: item.sentAt,
+        items: [{ item, globalIndex }],
+      });
     } else {
-      current.items.push({ item, globalIndex })
+      current.items.push({ item, globalIndex });
     }
-  })
-  return sections
+  });
+  return sections;
 }
 
 /** Anuncio del que vino el lead (Click-to-WhatsApp de Meta): el primer mensaje
  * trae este contexto en `payload.ad_referral`. */
 export interface AdReferral {
-  title: string
-  body: string
-  sourceUrl: string | null
-  thumbnailUrl: string | null
-  ctwaClid: string | null
+  title: string;
+  body: string;
+  sourceUrl: string | null;
+  thumbnailUrl: string | null;
+  ctwaClid: string | null;
 }
 
 /** Lee el anuncio (Click-to-WhatsApp) del payload de un mensaje, o null si el
  * mensaje no vino de un anuncio. */
-export function messageAdReferral(payload: JsonObject | null): AdReferral | null {
-  const ad = payload?.ad_referral
-  if (!isJsonObject(ad)) return null
-  const title = asString(ad.title)
-  const body = asString(ad.body)
-  if (!title && !body) return null
-  const thumb = asString(ad.thumbnail_url)
+export function messageAdReferral(
+  payload: JsonObject | null,
+): AdReferral | null {
+  const ad = payload?.ad_referral;
+  if (!isJsonObject(ad)) return null;
+  const title = asString(ad.title);
+  const body = asString(ad.body);
+  if (!title && !body) return null;
+  const thumb = asString(ad.thumbnail_url);
   return {
     title,
     body,
     sourceUrl: safeUrl(ad.source_url),
-    thumbnailUrl: thumb.startsWith('/media/') || safeUrl(thumb) ? resolveMediaUrl(thumb) : null,
+    thumbnailUrl:
+      thumb.startsWith("/media/") || safeUrl(thumb)
+        ? resolveMediaUrl(thumb)
+        : null,
     ctwaClid: asString(ad.ctwa_clid) || null,
-  }
+  };
 }
 
 function asNumber(value: JsonValue | undefined): number | null {
-  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
+  if (typeof value !== "number" && (typeof value !== "string" || !value.trim()))
+    return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Los 3 nombres de botón que manda un pedido de "Separación de cita" de
  * WhatsApp Flow, en el orden cronológico en que llegan. Cualquier otro
  * `interactive` (listas, botones de respuesta rápida) no calza acá. */
-const FLOW_ORDER_BUTTON_NAMES = new Set(['review_and_pay', 'payment_status', 'review_order'])
+const FLOW_ORDER_BUTTON_NAMES = new Set([
+  "review_and_pay",
+  "payment_status",
+  "review_order",
+]);
 
 /** Un botón de pedido de WhatsApp Flow, ya leído del payload. Los 3 eventos
  * del mismo pedido (creación, estado de pago, estado del pedido) comparten
  * `reference_id`; cada uno trae solo el subconjunto de campos de su momento. */
 export interface FlowOrderButton {
-  name: 'review_and_pay' | 'payment_status' | 'review_order'
-  amount: number | null
-  subtotal: number | null
-  currency: string | null
-  reference_id: string
-  order_status: string | null
-  payment_status: string | null
-  item_name: string | null
-  quantity: number | null
+  name: "review_and_pay" | "payment_status" | "review_order";
+  amount: number | null;
+  subtotal: number | null;
+  currency: string | null;
+  reference_id: string;
+  order_status: string | null;
+  payment_status: string | null;
+  item_name: string | null;
+  quantity: number | null;
 }
 
 /** Lee el botón de pedido de WhatsApp Flow del payload de un mensaje
  * `interactive`, o null si no calza esa forma (mensaje interactivo común:
  * lista, botones de respuesta rápida, etc. — sigue su camino a TemplateBody). */
-export function messageFlowOrder(payload: JsonObject | null): FlowOrderButton | null {
-  const buttons = payload?.buttons
-  if (!Array.isArray(buttons) || buttons.length === 0) return null
-  const button = buttons[0]
-  if (!isJsonObject(button)) return null
-  const name = asString(button.name)
-  const referenceId = asString(button.reference_id)
-  if (!referenceId || !FLOW_ORDER_BUTTON_NAMES.has(name)) return null
+export function messageFlowOrder(
+  payload: JsonObject | null,
+): FlowOrderButton | null {
+  const buttons = payload?.buttons;
+  if (!Array.isArray(buttons) || buttons.length === 0) return null;
+  const button = buttons[0];
+  if (!isJsonObject(button)) return null;
+  const name = asString(button.name);
+  const referenceId = asString(button.reference_id);
+  if (!referenceId || !FLOW_ORDER_BUTTON_NAMES.has(name)) return null;
   return {
-    name: name as FlowOrderButton['name'],
+    name: name as FlowOrderButton["name"],
     amount: asNumber(button.amount),
     subtotal: asNumber(button.subtotal),
     currency: asString(button.currency) || null,
@@ -514,70 +629,76 @@ export function messageFlowOrder(payload: JsonObject | null): FlowOrderButton | 
     payment_status: asString(button.payment_status) || null,
     item_name: asString(button.item_name) || null,
     quantity: asNumber(button.quantity),
-  }
+  };
 }
 
 /** Debe coincidir exacto con `_PAYMENT_STATUS_LABELS` en
  * backend/services/whatsapp_history.py para no divergir entre lo que arma el
  * backend en `content` y lo que pinta esta tarjeta. */
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  captured: 'Realizado',
-  pending: 'Pendiente',
-  failed: 'Fallido',
-  canceled: 'Cancelado',
-  cancelled: 'Cancelado',
-  declined: 'Rechazado',
-  refunded: 'Reembolsado',
-}
+  captured: "Realizado",
+  pending: "Pendiente",
+  failed: "Fallido",
+  canceled: "Cancelado",
+  cancelled: "Cancelado",
+  declined: "Rechazado",
+  refunded: "Reembolsado",
+};
 
 /** Debe coincidir exacto con `_ORDER_STATUS_LABELS` en
  * backend/services/whatsapp_history.py. */
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-  completed: 'Completado',
-  payment_requested: 'Pendiente de pago',
-  canceled: 'Cancelado',
-  cancelled: 'Cancelado',
-  declined: 'Rechazado',
-  processing: 'En proceso',
-}
+  completed: "Completado",
+  payment_requested: "Pendiente de pago",
+  canceled: "Cancelado",
+  cancelled: "Cancelado",
+  declined: "Rechazado",
+  processing: "En proceso",
+};
 
 function humanizeStatus(status: string): string {
-  const text = status.replaceAll('_', ' ')
-  return text.charAt(0).toUpperCase() + text.slice(1)
+  const text = status.replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Etiqueta legible de un estado de pedido/pago; cae a "Palabra suelta" si el
  * valor no está en el mapa (mismo respaldo que `_humanize` en el backend). */
-export function flowStatusLabel(status: string | null, map: Record<string, string>): string {
-  if (!status) return ''
-  return map[status] ?? humanizeStatus(status)
+export function flowStatusLabel(
+  status: string | null,
+  map: Record<string, string>,
+): string {
+  if (!status) return "";
+  return map[status] ?? humanizeStatus(status);
 }
 
 /** Debe coincidir exacto con `_CURRENCY_SYMBOLS` en
  * backend/services/whatsapp_history.py. */
-const FLOW_CURRENCY_SYMBOLS: Record<string, string> = { PEN: 'S/', USD: '$' }
+const FLOW_CURRENCY_SYMBOLS: Record<string, string> = { PEN: "S/", USD: "$" };
 
 /** Mismo formato que arma el backend para el texto de "Solicitud de pago":
  * símbolo pegado al monto para PEN/USD, o el código de moneda con un espacio
  * como respaldo (`_format_payment_text`). */
-export function formatFlowAmount(amount: number | null, currency: string | null): string {
-  if (amount == null) return ''
-  const code = currency?.toUpperCase() ?? ''
-  const prefix = code ? (FLOW_CURRENCY_SYMBOLS[code] ?? `${code} `) : ''
-  return `${prefix}${amount.toFixed(2)}`
+export function formatFlowAmount(
+  amount: number | null,
+  currency: string | null,
+): string {
+  if (amount == null) return "";
+  const code = currency?.toUpperCase() ?? "";
+  const prefix = code ? (FLOW_CURRENCY_SYMBOLS[code] ?? `${code} `) : "";
+  return `${prefix}${amount.toFixed(2)}`;
 }
 
 /** Estado agregado de un pedido de WhatsApp Flow, correlacionado entre los 3
  * mensajes `interactive` que comparten `reference_id` en el mismo chat. */
 export interface FlowOrderGroup {
-  referenceId: string
-  orderStatus: string | null
-  paymentStatus: string | null
-  itemName: string | null
-  quantity: number | null
-  amount: number | null
-  subtotal: number | null
-  currency: string | null
+  referenceId: string;
+  orderStatus: string | null;
+  paymentStatus: string | null;
+  itemName: string | null;
+  quantity: number | null;
+  amount: number | null;
+  subtotal: number | null;
+  currency: string | null;
 }
 
 /**
@@ -591,15 +712,23 @@ export interface FlowOrderGroup {
  * definidos; si ninguno más allá del original lo trae, queda el original.
  */
 export function flowOrderGroup(
-  messages: Pick<Message, 'message_type' | 'payload' | 'sent_at'>[],
+  messages: Pick<Message, "message_type" | "payload" | "sent_at">[],
   referenceId: string,
 ): FlowOrderGroup {
   const entries = messages
-    .filter(message => message.message_type === 'interactive')
-    .map(message => ({ button: messageFlowOrder(message.payload ?? null), sentAt: message.sent_at }))
-    .filter((entry): entry is { button: FlowOrderButton; sentAt: string | null } =>
-      entry.button != null && entry.button.reference_id === referenceId)
-    .sort((a, b) => new Date(a.sentAt ?? 0).getTime() - new Date(b.sentAt ?? 0).getTime())
+    .filter((message) => message.message_type === "interactive")
+    .map((message) => ({
+      button: messageFlowOrder(message.payload ?? null),
+      sentAt: message.sent_at,
+    }))
+    .filter(
+      (entry): entry is { button: FlowOrderButton; sentAt: string | null } =>
+        entry.button != null && entry.button.reference_id === referenceId,
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.sentAt ?? 0).getTime() - new Date(b.sentAt ?? 0).getTime(),
+    );
 
   const group: FlowOrderGroup = {
     referenceId,
@@ -610,68 +739,72 @@ export function flowOrderGroup(
     amount: null,
     subtotal: null,
     currency: null,
-  }
+  };
   for (const { button } of entries) {
-    if (button.order_status != null) group.orderStatus = button.order_status
-    if (button.payment_status != null) group.paymentStatus = button.payment_status
-    if (button.item_name != null) group.itemName = button.item_name
-    if (button.quantity != null) group.quantity = button.quantity
-    if (button.amount != null) group.amount = button.amount
-    if (button.subtotal != null) group.subtotal = button.subtotal
-    if (button.currency != null) group.currency = button.currency
+    if (button.order_status != null) group.orderStatus = button.order_status;
+    if (button.payment_status != null)
+      group.paymentStatus = button.payment_status;
+    if (button.item_name != null) group.itemName = button.item_name;
+    if (button.quantity != null) group.quantity = button.quantity;
+    if (button.amount != null) group.amount = button.amount;
+    if (button.subtotal != null) group.subtotal = button.subtotal;
+    if (button.currency != null) group.currency = button.currency;
   }
-  return group
+  return group;
 }
 
 /** Un contacto compartido en un mensaje, ya desarmado para pintarlo y para
  * poder abrirle (o crearle) su lead. */
 export interface SharedContact {
-  fullName: string
+  name: string;
   /** Solo dígitos, en formato internacional: con esto se busca o se crea el
    * lead. null cuando el contacto vino sin número usable. */
-  phone: string | null
+  phone: string[] | null;
   /** El número tal como lo mandó el remitente, para mostrarlo tal cual. */
-  phoneLabel: string
+  phoneLabel: string;
 }
 
-/** Lee un campo del vCard ("TEL;waid=51999...:+51 999 ...", "FN:Lidia").
- * Las propiedades pueden venir agrupadas con un prefijo ("item1.TEL"), que es
- * como las manda WhatsApp desde Android. */
-function vcardField(vcard: string, field: string): string {
-  const match = vcard.match(new RegExp(`^(?:[A-Za-z0-9-]+\\.)?${field}[^:\\r\\n]*:(.*)$`, 'im'))
-  return match ? match[1].trim() : ''
+interface NameEntries {
+  first_name?: string;
+  formatted_name?: string;
+}
+
+interface PhoneEntries {
+  phone?: string;
+  type?: string;
+  wa_id?: string;
+}
+
+interface PayloadMessageContacts {
+  contacts?: Entries;
+}
+
+interface Entries {
+  name?: NameEntries;
+  origin?: string;
+  phones?: PhoneEntries[];
+  vcard?: string;
 }
 
 /**
  * Contactos compartidos en un mensaje `contact`.
- *
- * El teléfono puede venir ya desarmado en el payload (`phoneNumber`) o solo
- * dentro del vCard crudo, según quién haya normalizado el mensaje. Del vCard se
- * prefiere el `waid`, que es el número de WhatsApp en formato internacional; el
- * valor visible del `TEL` suele venir en formato local y sin país.
  */
-export function messageContacts(payload: JsonObject | null): SharedContact[] {
-  const entries = Array.isArray(payload?.contacts) ? payload.contacts : []
-  const contacts: SharedContact[] = []
-  for (const entry of entries) {
-    if (!isJsonObject(entry)) continue
-    const vcard = asString(entry.vcard) || asString(entry.vCard)
-    const label =
-      asString(entry.phoneNumber) || asString(entry.phone) || asString(entry.number) ||
-      vcardField(vcard, 'TEL')
-    const waid = vcard.match(/waid=(\d+)/i)?.[1] ?? ''
-    const digits = (waid || label).replace(/\D/g, '')
-    const fullName =
-      asString(entry.fullName) || asString(entry.displayName) || vcardField(vcard, 'FN')
-    if (!fullName && !digits) continue
-    contacts.push({
-      fullName,
-      // Menos de 8 dígitos no es un número marcable (ver normalizePhone).
-      phone: digits.length >= 8 ? digits : null,
-      phoneLabel: label,
-    })
-  }
-  return contacts
+export function messageContacts(
+  payload: PayloadMessageContacts | null,
+): SharedContact[] {
+  const entries = (payload?.contacts as Entries[]) ?? [];
+  console.log("Entries: ", entries);
+
+  return entries.map((entry) => {
+    return {
+      name: entry.name?.first_name ?? "Contacto compartido",
+      phone:
+        entry.phones?.map(
+          (phone) => phone.phone?.trim().replace(/\D/g, "") ?? "",
+        ) ?? [],
+      phoneLabel: entry.vcard ?? "",
+    };
+  });
 }
 
 /** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
@@ -680,37 +813,44 @@ export function messageCoords(
   payload: JsonObject | null,
   legacyText: string,
 ): [number, number] | null {
-  const lat = Number(payload?.latitude)
-  const lon = Number(payload?.longitude)
-  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon]
-  const [legacyLat, legacyLon] = legacyText.split(',').map(Number)
-  if (Number.isFinite(legacyLat) && Number.isFinite(legacyLon)) return [legacyLat, legacyLon]
-  return null
+  const lat = Number(payload?.latitude);
+  const lon = Number(payload?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon];
+  const [legacyLat, legacyLon] = legacyText.split(",").map(Number);
+  if (Number.isFinite(legacyLat) && Number.isFinite(legacyLon))
+    return [legacyLat, legacyLon];
+  return null;
 }
 
 export function resolveMediaUrl(mediaUrl: string | null): string | null {
-  if (!mediaUrl) return null
+  if (!mediaUrl) return null;
   // Los mensajes optimistas usan data:/blob: locales hasta que el backend
   // devuelve la URL durable. Las URLs absolutas también deben pasar intactas.
-  if (/^(?:data:|blob:|https?:\/\/)/i.test(mediaUrl)) return mediaUrl
-  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-  return `${base}${mediaUrl}`
+  if (/^(?:data:|blob:|https?:\/\/)/i.test(mediaUrl)) return mediaUrl;
+  const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+  return `${base}${mediaUrl}`;
 }
 
-export type RichSegmentType = 'text' | 'link' | 'bold' | 'italic' | 'strike' | 'code'
+export type RichSegmentType =
+  | "text"
+  | "link"
+  | "bold"
+  | "italic"
+  | "strike"
+  | "code";
 
 export interface RichSegment {
-  type: RichSegmentType
-  text: string
+  type: RichSegmentType;
+  text: string;
 }
 
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/;
 
 // Orden de prioridad: URL, bloque de código, código inline, negrita markdown
 // (**x**, común en texto generado por IA), negrita/cursiva/tachado estilo
 // WhatsApp (*x*, _x_, ~x~).
 const RICH_TEXT_REGEX =
-  /(https?:\/\/[^\s]+)|```([^`]+?)```|`([^`\n]+?)`|\*\*([^\n*]+?)\*\*|\*([^\n*]+?)\*|_([^\n_]+?)_|~([^\n~]+?)~/g
+  /(https?:\/\/[^\s]+)|```([^`]+?)```|`([^`\n]+?)`|\*\*([^\n*]+?)\*\*|\*([^\n*]+?)\*|_([^\n_]+?)_|~([^\n~]+?)~/g;
 
 /**
  * Interpreta el mismo formato que usa WhatsApp (*negrita*, _cursiva_,
@@ -720,62 +860,65 @@ const RICH_TEXT_REGEX =
  * igual que WhatsApp.
  */
 export function parseRichText(text: string): RichSegment[] {
-  const segments: RichSegment[] = []
-  let lastIndex = 0
+  const segments: RichSegment[] = [];
+  let lastIndex = 0;
 
   for (const match of text.matchAll(RICH_TEXT_REGEX)) {
-    const start = match.index ?? 0
-    const [full, url, codeBlock, code, boldDouble, boldSingle, italic, strike] = match
+    const start = match.index ?? 0;
+    const [full, url, codeBlock, code, boldDouble, boldSingle, italic, strike] =
+      match;
 
     if (url !== undefined) {
-      let trimmedUrl = url
-      let trailing = ''
-      const punctuation = trimmedUrl.match(TRAILING_PUNCTUATION)
+      let trimmedUrl = url;
+      let trailing = "";
+      const punctuation = trimmedUrl.match(TRAILING_PUNCTUATION);
       if (punctuation) {
-        trailing = punctuation[0]
-        trimmedUrl = trimmedUrl.slice(0, -trailing.length)
+        trailing = punctuation[0];
+        trimmedUrl = trimmedUrl.slice(0, -trailing.length);
       }
-      if (!trimmedUrl) continue
+      if (!trimmedUrl) continue;
 
-      if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
-      segments.push({ type: 'link', text: trimmedUrl })
-      if (trailing) segments.push({ type: 'text', text: trailing })
-      lastIndex = start + full.length
-      continue
+      if (start > lastIndex)
+        segments.push({ type: "text", text: text.slice(lastIndex, start) });
+      segments.push({ type: "link", text: trimmedUrl });
+      if (trailing) segments.push({ type: "text", text: trailing });
+      lastIndex = start + full.length;
+      continue;
     }
 
-    let type: RichSegmentType
-    let content: string
+    let type: RichSegmentType;
+    let content: string;
     if (codeBlock !== undefined) {
-      type = 'code'
-      content = codeBlock
+      type = "code";
+      content = codeBlock;
     } else if (code !== undefined) {
-      type = 'code'
-      content = code
+      type = "code";
+      content = code;
     } else if (boldDouble !== undefined) {
-      type = 'bold'
-      content = boldDouble
+      type = "bold";
+      content = boldDouble;
     } else if (boldSingle !== undefined) {
-      type = 'bold'
-      content = boldSingle
+      type = "bold";
+      content = boldSingle;
     } else if (italic !== undefined) {
-      type = 'italic'
-      content = italic
+      type = "italic";
+      content = italic;
     } else if (strike !== undefined) {
-      type = 'strike'
-      content = strike
+      type = "strike";
+      content = strike;
     } else {
-      continue
+      continue;
     }
 
-    if (start > lastIndex) segments.push({ type: 'text', text: text.slice(lastIndex, start) })
-    segments.push({ type, text: content })
-    lastIndex = start + full.length
+    if (start > lastIndex)
+      segments.push({ type: "text", text: text.slice(lastIndex, start) });
+    segments.push({ type, text: content });
+    lastIndex = start + full.length;
   }
 
   if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: text.slice(lastIndex) })
+    segments.push({ type: "text", text: text.slice(lastIndex) });
   }
 
-  return segments.length ? segments : [{ type: 'text', text }]
+  return segments.length ? segments : [{ type: "text", text }];
 }
