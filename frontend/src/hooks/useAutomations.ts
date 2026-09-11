@@ -37,6 +37,14 @@ interface AutomationExecutionFilters {
   chatId?: string
   status?: AutomationExecutionStatusValue
   excludeSkipped?: boolean
+  /** true = solo ejecuciones no terminales (scheduled/running/paused), false
+   *  = solo terminales (completed/failed/skipped). Se ignora en el backend
+   *  si `status` también viene informado. */
+  active?: boolean
+  /** Rango de fechas en 'YYYY-MM-DD', filtrando por `created_at` en la
+   *  timezone de negocio (America/Lima). Ambos deben venir juntos. */
+  dateFrom?: string
+  dateTo?: string
 }
 
 // No hay evento de WebSocket dedicado a cambios de automation_executions: con
@@ -45,12 +53,15 @@ interface AutomationExecutionFilters {
 // avance sin que el vendedor tenga que recargar.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
-export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false }: AutomationExecutionFilters = {}) {
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped],
+    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all', dateFrom ?? 'none', dateTo ?? 'none'],
     queryFn: async () => (await client.get<AutomationExecution[]>('/api/automations/executions', {
-      params: { rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, limit: 200 },
+      params: {
+        rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
+        date_from: dateFrom, date_to: dateTo, limit: 200,
+      },
     })).data,
     refetchInterval: (query) => {
       if (chatId) {

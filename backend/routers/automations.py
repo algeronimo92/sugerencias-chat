@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from domain_types import AutomationBuilderMode
@@ -244,6 +246,9 @@ async def get_executions(
     chat_id: str | None = None,
     status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped)$"),
     exclude_skipped: bool = False,
+    active: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     user: User = Depends(get_current_user),
 ):
@@ -262,6 +267,9 @@ async def get_executions(
         # Dentro de un chat el vendedor ve todo lo que corre sobre ese lead,
         # también los triggers de sistema: es lo que necesita para entender por
         # qué el sistema le va a escribir al cliente y para frenarlo a tiempo.
+        active=active,
+        date_from=date_from,
+        date_to=date_to,
     )
 
 
