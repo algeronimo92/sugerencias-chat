@@ -31,9 +31,9 @@ export function useAutomationRules() {
 
 interface AutomationExecutionFilters {
   ruleId?: number
-  /** Acota el historial a un chat puntual. Es obligatorio para vendedores
-   *  (el backend rechaza la consulta sin admin + sin chatId): es lo que usa
-   *  el pill "Flujo en curso" dentro del chat. */
+  /** Acota el historial a un chat puntual: dentro de un chat el vendedor ve
+   *  todo lo que corre sobre ese lead (también triggers de sistema) — es lo
+   *  que usa el pill "Flujo en curso" dentro del chat. */
   chatId?: string
   status?: AutomationExecutionStatusValue
   excludeSkipped?: boolean
@@ -45,6 +45,11 @@ interface AutomationExecutionFilters {
    *  timezone de negocio (America/Lima). Ambos deben venir juntos. */
   dateFrom?: string
   dateTo?: string
+  /** Acota a las ejecuciones que el propio usuario disparó a mano, sin
+   *  importar el rol. Sin chatId, un vendedor siempre queda acotado así en el
+   *  backend aunque no se mande explícito; se usa para que la pantalla
+   *  "Flujos enviados" se comporte igual si la abre un admin. */
+  mine?: boolean
 }
 
 // No hay evento de WebSocket dedicado a cambios de automation_executions: con
@@ -53,14 +58,14 @@ interface AutomationExecutionFilters {
 // avance sin que el vendedor tenga que recargar.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
-export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo }: AutomationExecutionFilters = {}) {
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all', dateFrom ?? 'none', dateTo ?? 'none'],
+    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all', dateFrom ?? 'none', dateTo ?? 'none', mine],
     queryFn: async () => (await client.get<AutomationExecution[]>('/api/automations/executions', {
       params: {
         rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
-        date_from: dateFrom, date_to: dateTo, limit: 200,
+        date_from: dateFrom, date_to: dateTo, mine, limit: 200,
       },
     })).data,
     refetchInterval: (query) => {
@@ -85,14 +90,15 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
  *  chat de un lead puntual (el admin ve además los que aún no marcó visibles
  *  o publicó, para poder probarlos). chatId hoy no filtra la lista en el
  *  backend — se manda por si una futura iteración lo necesita (p. ej. ocultar
- *  un flujo ya en curso para ese chat). */
-export function useManualFlows(chatId: string) {
+ *  un flujo ya en curso para ese chat). Sin chatId trae el catálogo completo
+ *  de flujos manuales, como usa la pantalla "Flujos enviados" para el filtro
+ *  por automatización. */
+export function useManualFlows(chatId?: string) {
   return useQuery({
-    queryKey: ['automation-manual-flows', chatId],
+    queryKey: ['automation-manual-flows', chatId ?? 'all'],
     queryFn: async () => (await client.get<AutomationRule[]>('/api/automations/manual', {
       params: { chat_id: chatId },
     })).data,
-    enabled: !!chatId,
   })
 }
 

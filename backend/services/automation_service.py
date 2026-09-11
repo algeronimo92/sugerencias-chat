@@ -421,6 +421,7 @@ async def list_automation_executions(
     date_from: date | None = None,
     date_to: date | None = None,
     active: bool | None = None,
+    started_by_user_id: int | None = None,
 ) -> list[dict]:
     # Alias propio: `User` ya está tomado por started_by_user_id y la fila
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
@@ -473,6 +474,8 @@ async def list_automation_executions(
         stmt = stmt.where(AutomationExecution.lead_id == lead_id)
     if start_source is not None:
         stmt = stmt.where(AutomationExecution.start_source == start_source)
+    if started_by_user_id is not None:
+        stmt = stmt.where(AutomationExecution.started_by_user_id == started_by_user_id)
     if date_from is not None and date_to is not None:
         range_start, range_end = local_day_range_utc(date_from, date_to)
         stmt = stmt.where(AutomationExecution.created_at >= range_start, AutomationExecution.created_at < range_end)

@@ -23,6 +23,16 @@ import { useTemplates } from '../hooks/useTemplates'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
+import {
+  EXECUTION_STATUS_LABELS,
+  executionActorLabel,
+  executionStatusLabel,
+  executionTone,
+  executionTriggerLabel,
+  formatExecutionDate as formatDate,
+  isExecutionStatus,
+  todayISODate,
+} from '../utils/automationExecutions'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { MediaAssetField } from './MediaAssetField'
@@ -103,53 +113,10 @@ const EMPTY_FORM: RuleForm = {
   actions: [defaultAction(ActionType.CreateTask)], isActive: true,
 }
 
-function triggerLabel(value: AutomationTrigger) {
-  return TRIGGERS.find(item => item.value === value)?.label ?? value
-}
+const triggerLabel = executionTriggerLabel
 
 function actionLabel(value: AutomationActionResult['type']) {
   return automationStepLabel(value)
-}
-
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
-}
-
-function todayISODate() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-function executionActorLabel(execution: AutomationExecution) {
-  if (execution.started_by_name) return execution.started_by_name
-  if (execution.start_source === 'manual') return 'Usuario eliminado'
-  if (execution.start_source === 'flow') return 'Otro flujo'
-  return 'Sistema'
-}
-
-function executionTone(status: string) {
-  if (status === AutomationExecutionStatus.Completed) return 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'
-  if (status === AutomationExecutionStatus.Failed) return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
-  if (status === AutomationExecutionStatus.Skipped) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-  if (status === AutomationExecutionStatus.Paused) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-}
-
-const EXECUTION_STATUS_LABELS: Record<AutomationExecutionStatusValue, string> = {
-  [AutomationExecutionStatus.Scheduled]: 'Programada',
-  [AutomationExecutionStatus.Running]: 'En curso',
-  [AutomationExecutionStatus.Paused]: 'Pausada',
-  [AutomationExecutionStatus.Completed]: 'Completada',
-  [AutomationExecutionStatus.Failed]: 'Fallida',
-  [AutomationExecutionStatus.Skipped]: 'Omitida',
-}
-
-function isExecutionStatus(value: string): value is AutomationExecutionStatusValue {
-  return Object.values(AutomationExecutionStatus).some(status => status === value)
-}
-
-function executionStatusLabel(status: string) {
-  return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
 }
 
 function validateForm(form: RuleForm) {

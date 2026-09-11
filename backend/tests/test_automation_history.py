@@ -100,3 +100,12 @@ async def test_explicit_status_takes_precedence_over_active(monkeypatch):
 
     assert "automation_executions.status = 'completed'" in sql
     assert "automation_executions.status IN (" not in sql
+
+
+@pytest.mark.asyncio
+async def test_history_filters_by_started_by_user_id(monkeypatch):
+    # Es lo que acota "Flujos enviados" a las ejecuciones que un vendedor
+    # disparó él mismo, sin exponerle el historial completo de otros leads.
+    sql = await _history_sql(monkeypatch, started_by_user_id=42)
+
+    assert "automation_executions.started_by_user_id = 42" in sql

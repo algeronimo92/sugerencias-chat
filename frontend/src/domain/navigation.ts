@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Workflow } from 'lucide-react'
+import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Send, Workflow } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export type NavItem = {
@@ -20,6 +20,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, primary: true },
   { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, primary: false },
   { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, primary: true },
+  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, adminOnly: false, primary: false },
   { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: true, primary: false },
   { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, primary: false },
   { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
