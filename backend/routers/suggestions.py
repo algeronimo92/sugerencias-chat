@@ -9,7 +9,7 @@ from services.db_service import (
 )
 from services.n8n_service import call_n8n
 from services.ws_manager import manager
-from services.automation_service import trigger_stage_changed
+from services.automation_service import notify_automations_scheduled
 
 import logging
 
@@ -81,9 +81,6 @@ async def get_suggestions(body: SuggestionRequest):
                 },
             }
         )
-        if stage_update and stage_update["changed"]:
-            try:
-                await trigger_stage_changed(body.chat_id)
-            except Exception:
-                logger.exception("No se pudo programar la automatización de cambio de etapa del agente")
+        if stage_update:
+            await notify_automations_scheduled(stage_update.get("automations_scheduled", 0))
     return result

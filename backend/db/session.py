@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import settings
-from services.performance import install_db_timing
+from request_metrics import install_db_timing
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None

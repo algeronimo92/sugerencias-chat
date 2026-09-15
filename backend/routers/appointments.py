@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from db.models import User
 from domain_types import NotificationType
 from models.schemas import AppointmentCreate, AppointmentItem
-from routers.media import normalize_media_content_type
+from services.media_upload import normalize_media_content_type
 from services.appointment_service import create_appointment_record, list_appointments
 from services.auth_service import get_current_user
 from services.issue_report_service import list_active_admin_ids

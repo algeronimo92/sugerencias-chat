@@ -24,12 +24,13 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
         "chat_id": LEAD_ID,
         "stage": "en_seguimiento",
         "changed": True,
+        "automations_scheduled": 2,
     })
     monkeypatch.setattr(webhooks, "update_lead_stage", update_stage)
     broadcast = AsyncMock()
     monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
     trigger = AsyncMock()
-    monkeypatch.setattr(webhooks, "trigger_stage_changed", trigger)
+    monkeypatch.setattr(webhooks, "notify_automations_scheduled", trigger)
 
     result = await webhooks.lead_stage_webhook(_body())
 
@@ -42,7 +43,7 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
     )
     broadcast.assert_awaited_once()
     assert broadcast.await_args.args[0]["reason"] == "stage_changed"
-    trigger.assert_awaited_once_with(LEAD_ID)
+    trigger.assert_awaited_once_with(2)
     assert result == {"status": "ok", "changed": True, "stage": "en_seguimiento"}
 
 
@@ -60,7 +61,7 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
     broadcast = AsyncMock()
     monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
     trigger = AsyncMock()
-    monkeypatch.setattr(webhooks, "trigger_stage_changed", trigger)
+    monkeypatch.setattr(webhooks, "notify_automations_scheduled", trigger)
 
     result = await webhooks.lead_stage_webhook(_body())
 

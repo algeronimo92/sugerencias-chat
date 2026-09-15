@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { NotificationPage } from '../types'
-import { useChatSocketConnected } from './useChats'
+import { useChatSocketConnected } from './useRealtime'
 
 export function useNotificationHistory(unreadOnly = false) {
   const connected = useChatSocketConnected()

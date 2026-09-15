@@ -168,6 +168,8 @@ docker compose -f compose.prod.yml -f traefik/docker-compose.yml \
 
 Toma un advisory lock de PostgreSQL, así que es seguro aunque se lance más de una vez a la vez. Sobre una base que ya tiene el esquema y no conoce Alembic, la marca (`stamp`) en la baseline en lugar de intentar recrearla. Con `--check` sólo informa, sin modificar nada.
 
+Alembic es la única fuente del esquema. Los `.sql` de `backend/migrations/` que se citan más abajo son históricos: **no se aplican a mano ni se agregan nuevos** (ver `backend/migrations/README.md`). Todo cambio de esquema va como revisión en `backend/alembic/versions/`.
+
 ### 5. Despliegue blue-green (opcional)
 
 Alternativa a los pasos anteriores para desplegar **sin corte**. La versión nueva se levanta al lado de la que sirve, se migra y se comprueba mientras nadie la usa; sólo entonces se conmuta el tráfico reescribiendo `traefik/dynamic/active.yml`, que Traefik relee en caliente.
@@ -388,8 +390,8 @@ todos los usuarios autenticados pueden asignarlas o quitarlas. Los cambios de
 estado, datos y etiquetas se guardan en `lead_activity` con actor, valores anterior
 y nuevo, fecha y, para el agente IA, confianza y motivo.
 
-El backend crea las tablas nuevas mediante `Base.metadata.create_all()` al arrancar.
-Para aplicarlas explícitamente en otro entorno también está disponible:
+Las tablas las crea Alembic (`python -m scripts.migrate`). El SQL original, hoy
+solo histórico, es:
 
 ```text
 backend/migrations/001_lead_tags_activity.sql

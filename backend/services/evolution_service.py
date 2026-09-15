@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 from time import monotonic, perf_counter
-from services.performance import record_external_duration
+from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
 from services.whatsapp_identity_service import (
     resolve_history_jid,

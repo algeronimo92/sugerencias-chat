@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, or_, select, update
 
 from db.models import Lead, MessageOutbox, ScheduledMessage, User, WspMessage
+from domain_types import MessageStatus, OutboxStatus, ScheduledMessageStatus
 from db.session import get_sessionmaker
-from services.db_service import CUSTOMER_SERVICE_WINDOW, _touch_automated_reply_stmt
+from services.db_service import CUSTOMER_SERVICE_WINDOW
+from services.lead_touch import touch_automated_reply_stmt
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -59,8 +61,8 @@ async def list_scheduled_messages(lead_id: str) -> list[dict]:
         .where(
             ScheduledMessage.lead_id == lead_id,
             or_(
-                ScheduledMessage.status.in_(("scheduled", "processing", "queued", "failed")),
-                (ScheduledMessage.status == "sent") & (ScheduledMessage.scheduled_at >= cutoff),
+                ScheduledMessage.status.in_((ScheduledMessageStatus.SCHEDULED, ScheduledMessageStatus.PROCESSING, ScheduledMessageStatus.QUEUED, ScheduledMessageStatus.FAILED)),
+                (ScheduledMessage.status == ScheduledMessageStatus.SENT) & (ScheduledMessage.scheduled_at >= cutoff),
             ),
         )
         .order_by(ScheduledMessage.scheduled_at.asc(), ScheduledMessage.id.asc())
@@ -91,7 +93,7 @@ async def create_scheduled_message(
             lead_id=lead_id,
             text=text,
             scheduled_at=scheduled_at,
-            status="scheduled",
+            status=ScheduledMessageStatus.SCHEDULED,
             created_by_user_id=user_id,
         )
         session.add(scheduled)
@@ -118,13 +120,13 @@ async def cancel_scheduled_message(
             return None
         if not is_admin and scheduled.created_by_user_id != user_id:
             raise PermissionError("No puedes cancelar un mensaje programado por otro usuario")
-        if scheduled.status not in ("scheduled", "failed"):
+        if scheduled.status not in (ScheduledMessageStatus.SCHEDULED, ScheduledMessageStatus.FAILED):
             raise ValueError("El mensaje ya está en proceso de envío y no puede cancelarse")
-        scheduled.status = "cancelled"
+        scheduled.status = ScheduledMessageStatus.CANCELLED
         scheduled.updated_at = datetime.now(timezone.utc)
         lead_id = scheduled.lead_id
         await session.commit()
-    return {"id": scheduled_id, "lead_id": lead_id, "status": "cancelled"}
+    return {"id": scheduled_id, "lead_id": lead_id, "status": ScheduledMessageStatus.CANCELLED}
 
 
 async def _recover_stale() -> None:
@@ -132,8 +134,8 @@ async def _recover_stale() -> None:
     async with get_sessionmaker()() as session:
         await session.execute(
             update(ScheduledMessage)
-            .where(ScheduledMessage.status == "processing", ScheduledMessage.updated_at < cutoff)
-            .values(status="scheduled", updated_at=datetime.now(timezone.utc))
+            .where(ScheduledMessage.status == ScheduledMessageStatus.PROCESSING, ScheduledMessage.updated_at < cutoff)
+            .values(status=ScheduledMessageStatus.SCHEDULED, updated_at=datetime.now(timezone.utc))
         )
         await session.commit()
 
@@ -143,7 +145,7 @@ async def _claim_due() -> list[int]:
     stmt = (
         select(ScheduledMessage)
         .where(
-            ScheduledMessage.status == "scheduled",
+            ScheduledMessage.status == ScheduledMessageStatus.SCHEDULED,
             ScheduledMessage.scheduled_at <= now,
         )
         .order_by(ScheduledMessage.scheduled_at, ScheduledMessage.id)
@@ -154,7 +156,7 @@ async def _claim_due() -> list[int]:
         rows = (await session.execute(stmt)).scalars().all()
         ids = []
         for scheduled in rows:
-            scheduled.status = "processing"
+            scheduled.status = ScheduledMessageStatus.PROCESSING
             scheduled.updated_at = now
             ids.append(scheduled.id)
         if rows:
@@ -165,10 +167,10 @@ async def _claim_due() -> list[int]:
 async def _dispatch(scheduled_id: int) -> None:
     now = datetime.now(timezone.utc)
     lead_id: str | None = None
-    status = "failed"
+    status = ScheduledMessageStatus.FAILED
     async with get_sessionmaker()() as session:
         scheduled = await session.get(ScheduledMessage, scheduled_id, with_for_update=True)
-        if scheduled is None or scheduled.status != "processing":
+        if scheduled is None or scheduled.status != ScheduledMessageStatus.PROCESSING:
             return
         lead_id = scheduled.lead_id
         last_customer_message = await session.scalar(
@@ -182,7 +184,7 @@ async def _dispatch(scheduled_id: int) -> None:
             and last_customer_message + CUSTOMER_SERVICE_WINDOW > now
         )
         if not window_open:
-            scheduled.status = "failed"
+            scheduled.status = ScheduledMessageStatus.FAILED
             scheduled.error = (
                 "No se envió porque la ventana de atención de 24 horas está cerrada. "
                 "Espera un nuevo mensaje del cliente o usa una plantilla oficial."
@@ -195,7 +197,7 @@ async def _dispatch(scheduled_id: int) -> None:
                 sender="vendedor",
                 content=scheduled.text,
                 sent_at=now,
-                status="PENDING",
+                status=MessageStatus.PENDING,
                 message_type="text",
             )
             session.add(message)
@@ -204,10 +206,10 @@ async def _dispatch(scheduled_id: int) -> None:
                 message_id=message.id,
                 chat_id=scheduled.lead_id,
                 payload={"type": "text", "text": scheduled.text},
-                status="pending",
+                status=OutboxStatus.PENDING,
                 next_attempt_at=now,
             ))
-            scheduled.status = "queued"
+            scheduled.status = ScheduledMessageStatus.QUEUED
             scheduled.queued_message_id = message.id
             scheduled.error = None
             scheduled.updated_at = now
@@ -215,9 +217,9 @@ async def _dispatch(scheduled_id: int) -> None:
             # ese momento: cuenta como "atendido por bot", no como que un
             # humano vio la conversación (ver enqueue_messages para el
             # criterio equivalente con actor_user_id).
-            await session.execute(_touch_automated_reply_stmt(scheduled.lead_id, now))
+            await session.execute(touch_automated_reply_stmt(scheduled.lead_id, now))
             await session.commit()
-            status = "queued"
+            status = ScheduledMessageStatus.QUEUED
 
     if lead_id:
         await manager.broadcast({
@@ -225,7 +227,7 @@ async def _dispatch(scheduled_id: int) -> None:
             "chat_id": lead_id,
             "status": status,
         })
-        if status == "queued":
+        if status == ScheduledMessageStatus.QUEUED:
             await manager.broadcast({
                 "type": "chats_updated",
                 "chat_id": lead_id,

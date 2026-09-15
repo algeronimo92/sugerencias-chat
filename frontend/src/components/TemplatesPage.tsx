@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
-import type { LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
+import type { InteractiveLimits, LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
@@ -10,6 +10,7 @@ import { extractErrorMessage } from '../utils/errors'
 import { MediaAssetField } from './MediaAssetField'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
+import { exceedsLimit } from '../domain/interactiveRules'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { Select } from './ui/Input'
 
@@ -65,7 +66,7 @@ const EMPTY_FORM: TemplateFormState = {
   officialButtons: [],
   interactiveType: 'none',
   interactiveTitle: '',
-  interactiveFooter: 'DermicaPro',
+  interactiveFooter: '',
   interactiveButtonText: 'Ver opciones',
   interactiveButtons: [{ type: 'reply', displayText: '', id: 'reply_1' }],
   interactiveSections: [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
@@ -104,19 +105,19 @@ function templateVariables(...values: string[]) {
   return new Set(values.flatMap(value => Array.from(value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), match => match[1].trim())))
 }
 
-function validateTemplateForm(form: typeof EMPTY_FORM) {
+function validateTemplateForm(form: typeof EMPTY_FORM, limits?: InteractiveLimits) {
   const errors: string[] = []
   const name = form.name.trim()
   const content = form.content.trim()
   const category = form.category.trim()
   const shortcut = form.shortcut.trim().replace(/^\/+/, '').toLowerCase()
   const interactive = form.templateType === 'internal' && form.interactiveType !== 'none'
-  const contentLimit = interactive || form.templateType === 'official' ? 1024 : 4096
+  const contentLimit = interactive || form.templateType === 'official' ? limits?.body : limits?.text
 
   if (!name) errors.push('El nombre es obligatorio.')
   else if (name.length > 120) errors.push('El nombre admite máximo 120 caracteres.')
   if (!content) errors.push('El contenido es obligatorio.')
-  else if (content.length > contentLimit) errors.push(`El contenido admite máximo ${contentLimit} caracteres para este tipo de plantilla.`)
+  else if (exceedsLimit(content, contentLimit)) errors.push(`El contenido admite máximo ${contentLimit} caracteres para este tipo de plantilla.`)
   if (!category) errors.push('La categoría es obligatoria.')
   else if (category.length > 60) errors.push('La categoría admite máximo 60 caracteres.')
   if (shortcut && (shortcut.length > 50 || !/^[a-z0-9_-]+$/.test(shortcut))) {
@@ -193,27 +194,27 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
   if (!interactive) return errors
 
   const title = form.interactiveTitle.trim()
-  const footer = form.interactiveFooter.trim() || 'DermicaPro'
+  const footer = form.interactiveFooter.trim()
   if (!title) errors.push('El título interactivo es obligatorio.')
-  else if (title.length > 60) errors.push('El título interactivo admite máximo 60 caracteres.')
-  if (footer.length > 60) errors.push('El pie de mensaje admite máximo 60 caracteres.')
+  else if (exceedsLimit(title, limits?.title)) errors.push(`El título interactivo admite máximo ${limits?.title} caracteres.`)
+  if (exceedsLimit(footer, limits?.footer)) errors.push(`El pie de mensaje admite máximo ${limits?.footer} caracteres.`)
 
   if (form.interactiveType === 'buttons') {
     // Meta solo acepta botones "reply" en un mensaje interactivo suelto
     // (fuera de una plantilla oficial); un botón de URL, llamada o copiar
     // código siempre lo rechaza. Para eso hace falta una plantilla oficial.
     const buttons = form.interactiveButtons
-    if (buttons.length < 1 || buttons.length > 3) errors.push('Configura entre 1 y 3 botones.')
+    if (buttons.length < 1 || (limits && buttons.length > limits.max_buttons)) errors.push(`Configura entre 1 y ${limits?.max_buttons ?? 'el máximo de'} botones.`)
     const texts = new Set<string>()
     const ids = new Set<string>()
     buttons.forEach((button, index) => {
       const label = button.displayText.trim()
       if (!label) errors.push(`El botón ${index + 1} necesita texto visible.`)
-      else if (label.length > 20) errors.push(`El texto del botón ${index + 1} admite máximo 20 caracteres.`)
+      else if (exceedsLimit(label, limits?.button_text)) errors.push(`El texto del botón ${index + 1} admite máximo ${limits?.button_text} caracteres.`)
       else if (texts.has(label.toLowerCase())) errors.push(`El texto del botón ${index + 1} está repetido.`)
       texts.add(label.toLowerCase())
       const value = (button.id ?? '').trim()
-      if (value.length > 256) errors.push(`El ID del botón ${index + 1} admite máximo 256 caracteres.`)
+      if (exceedsLimit(value, limits?.button_id)) errors.push(`El ID del botón ${index + 1} admite máximo ${limits?.button_id} caracteres.`)
       if (value && ids.has(value)) errors.push(`El ID del botón ${index + 1} está repetido.`)
       ids.add(value)
     })
@@ -221,15 +222,15 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
   }
 
   if (!form.interactiveButtonText.trim()) errors.push('El texto que abre la lista es obligatorio.')
-  else if (form.interactiveButtonText.trim().length > 20) errors.push('El texto que abre la lista admite máximo 20 caracteres.')
-  if (!form.interactiveSections.length || form.interactiveSections.length > 10) errors.push('Configura entre 1 y 10 secciones.')
+  else if (exceedsLimit(form.interactiveButtonText.trim(), limits?.list_button_text)) errors.push(`El texto que abre la lista admite máximo ${limits?.list_button_text} caracteres.`)
+  if (!form.interactiveSections.length || (limits && form.interactiveSections.length > limits.max_sections)) errors.push(`Configura entre 1 y ${limits?.max_sections ?? 'el máximo de'} secciones.`)
   const sectionTitles = new Set<string>()
   const rowIds = new Set<string>()
   let totalRows = 0
   form.interactiveSections.forEach((section, sectionIndex) => {
     const sectionTitle = section.title.trim()
     if (!sectionTitle) errors.push(`La sección ${sectionIndex + 1} necesita título.`)
-    else if (sectionTitle.length > 24) errors.push(`El título de la sección ${sectionIndex + 1} admite máximo 24 caracteres.`)
+    else if (exceedsLimit(sectionTitle, limits?.section_title)) errors.push(`El título de la sección ${sectionIndex + 1} admite máximo ${limits?.section_title} caracteres.`)
     else if (sectionTitles.has(sectionTitle.toLowerCase())) errors.push(`El título de la sección ${sectionIndex + 1} está repetido.`)
     sectionTitles.add(sectionTitle.toLowerCase())
     if (!section.rows.length) errors.push(`La sección ${sectionIndex + 1} necesita al menos una opción.`)
@@ -237,16 +238,16 @@ function validateTemplateForm(form: typeof EMPTY_FORM) {
       totalRows += 1
       const prefix = `Opción ${rowIndex + 1} de la sección ${sectionIndex + 1}`
       if (!row.title.trim()) errors.push(`${prefix}: el título es obligatorio.`)
-      else if (row.title.trim().length > 24) errors.push(`${prefix}: el título admite máximo 24 caracteres.`)
+      else if (exceedsLimit(row.title.trim(), limits?.row_title)) errors.push(`${prefix}: el título admite máximo ${limits?.row_title} caracteres.`)
       if (!row.description.trim()) errors.push(`${prefix}: la descripción es obligatoria.`)
-      else if (row.description.trim().length > 72) errors.push(`${prefix}: la descripción admite máximo 72 caracteres.`)
+      else if (exceedsLimit(row.description.trim(), limits?.row_description)) errors.push(`${prefix}: la descripción admite máximo ${limits?.row_description} caracteres.`)
       if (!row.rowId.trim()) errors.push(`${prefix}: el ID es obligatorio.`)
-      else if (row.rowId.trim().length > 200) errors.push(`${prefix}: el ID admite máximo 200 caracteres.`)
+      else if (exceedsLimit(row.rowId.trim(), limits?.row_id)) errors.push(`${prefix}: el ID admite máximo ${limits?.row_id} caracteres.`)
       else if (rowIds.has(row.rowId.trim())) errors.push(`${prefix}: el ID está repetido.`)
       rowIds.add(row.rowId.trim())
     })
   })
-  if (totalRows > 10) errors.push('Una lista admite máximo 10 opciones en total.')
+  if (limits && totalRows > limits.max_rows) errors.push(`Una lista admite máximo ${limits.max_rows} opciones en total.`)
   return errors
 }
 
@@ -381,7 +382,7 @@ export function TemplatesPage() {
       officialButtons: template.official_buttons,
       interactiveType: template.interactive_type,
       interactiveTitle: template.interactive_config.title ?? '',
-      interactiveFooter: template.interactive_config.footer?.trim() || template.interactive_config.footerText?.trim() || 'DermicaPro',
+      interactiveFooter: template.interactive_config.footer?.trim() || template.interactive_config.footerText?.trim() || '',
       interactiveButtonText: template.interactive_config.buttonText ?? 'Ver opciones',
       interactiveButtons: template.interactive_config.buttons ?? [{ type: 'reply', displayText: '', id: 'reply_1' }],
       interactiveSections: template.interactive_config.sections ?? [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
@@ -490,7 +491,7 @@ export function TemplatesPage() {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
-    const validationErrors = validateTemplateForm(form)
+    const validationErrors = validateTemplateForm(form, capabilities?.interactive_limits)
     if (validationErrors.length) {
       setError(validationErrors.map((message, index) => `${index + 1}. ${message}`).join('\n'))
       return
@@ -515,11 +516,11 @@ export function TemplatesPage() {
       interactive_type: form.templateType === 'internal' ? form.interactiveType : 'none',
       interactive_config: form.templateType !== 'internal' || form.interactiveType === 'none' ? {} : form.interactiveType === 'buttons' ? {
         title: form.interactiveTitle,
-        footer: form.interactiveFooter.trim() || 'DermicaPro',
+        footer: form.interactiveFooter.trim(),
         buttons: form.interactiveButtons,
       } : {
         title: form.interactiveTitle,
-        footerText: form.interactiveFooter.trim() || 'DermicaPro',
+        footerText: form.interactiveFooter.trim(),
         buttonText: form.interactiveButtonText,
         sections: form.interactiveSections,
       },
@@ -845,7 +846,7 @@ export function TemplatesPage() {
                     <input required maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                   <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Pie de mensaje
-                    <input maxLength={60} value={form.interactiveFooter} onChange={event => setForm(f => ({ ...f, interactiveFooter: event.target.value }))} placeholder="DermicaPro" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
+                    <input maxLength={capabilities?.interactive_limits.footer} value={form.interactiveFooter} onChange={event => setForm(f => ({ ...f, interactiveFooter: event.target.value }))} placeholder={capabilities?.interactive_default_footer} className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                 </div>
                 {form.interactiveType === 'buttons' && (

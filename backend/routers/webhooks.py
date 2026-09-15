@@ -2,15 +2,14 @@ import asyncio
 import base64
 import binascii
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from db.models import LeadStage
 from services.db_service import (
     attach_outgoing_analysis,
     ensure_lead_stub,
-    fetch_latest_message,
     fetch_lead_raw,
     fetch_message_by_wa_id,
     fetch_messages_raw,
@@ -33,7 +32,7 @@ from services.evolution_service import EvolutionApiError, find_phone_jid_for_lid
 from services import meta_service
 from services.meta_service import MetaApiError
 from services.media_storage import MediaStorageError
-from routers.media import save_media_file
+from services.media_upload import save_media_file
 from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
     WhatsAppIdentityConflictError,
@@ -44,7 +43,7 @@ from services.whatsapp_identity_service import (
     resolve_whatsapp_identity,
 )
 from services.ws_manager import manager
-from services.automation_service import trigger_inbound_message, trigger_stage_changed
+from services.automation_service import notify_automations_scheduled, trigger_inbound_message
 
 import logging
 
@@ -123,34 +122,20 @@ async def lead_touch_webhook(body: LeadTouchWebhookBody):
 
 
 class NewMessageWebhookBody(BaseModel):
-    # n8n manda el id del mensaje que acaba de insertar. Es opcional para no
-    # romper si el workflow todavía llama al webhook sin body: en ese caso se
-    # cae al último mensaje de la tabla.
-    wa_message_id: str | None = None
+    wa_message_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 @router.post("/messages")
-async def new_message_webhook(
-    body: NewMessageWebhookBody | None = None,
-):
+async def new_message_webhook(body: NewMessageWebhookBody):
     """Llamado por n8n justo después de guardar un mensaje nuevo en la DB."""
     payload = {"type": "chats_updated", "reason": "inbound_message"}
-    wa_message_id = body.wa_message_id if body else None
-    message = None
-    if wa_message_id:
-        message = await fetch_message_by_wa_id(wa_message_id)
-        if message is None:
-            # No debería pasar (n8n avisa después del INSERT), pero si el id no
-            # está todavía visible preferimos notificar de más que no notificar.
-            logger.warning(
-                "Webhook de mensaje con wa_message_id desconocido: %s", wa_message_id
-            )
+    message = await fetch_message_by_wa_id(body.wa_message_id)
     if message is None:
-        message = await fetch_latest_message()
+        logger.warning(
+            "Webhook de mensaje con wa_message_id desconocido: %s", body.wa_message_id
+        )
 
-    if wa_message_id:
-        # Antes del broadcast: al recargar el hilo el payload ya trae la URL estable.
-        await rehost_ad_thumbnail(wa_message_id)
+    await rehost_ad_thumbnail(body.wa_message_id)
 
     if message is not None:
         payload["latest_message"] = message
@@ -491,10 +476,7 @@ async def lead_stage_webhook(
                 "lead_stage_updated": {"chat_id": body.chat_id, "stage": stage.value},
             }
         )
-        try:
-            await trigger_stage_changed(body.chat_id)
-        except Exception:
-            logger.exception("No se pudo programar la automatización de cambio de etapa del webhook")
+        await notify_automations_scheduled(result.get("automations_scheduled", 0))
     else:
         # La etapa no se movió, pero el analista sí tocó el resto del lead.
         await _broadcast_lead_updated(body.chat_id)

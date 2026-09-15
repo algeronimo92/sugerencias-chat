@@ -5,6 +5,10 @@ import type {
   TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue, WaitAnyConditionKindValue,
 } from '../domain/automationCatalog'
 import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from '../domain/automationCatalog'
+import type { components } from '../api/schema'
+
+type ApiSchemas = components['schemas']
+type ApiLeadStage = ApiSchemas['LeadStageUpdate']['stage']
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -26,9 +30,11 @@ export const LEAD_STAGES = [
   'perdido',
   'descalificado',
   'baja',
-] as const
+] as const satisfies readonly ApiLeadStage[]
 
 export type LeadStage = (typeof LEAD_STAGES)[number]
+export type LeadStagesCoverApi = [Exclude<ApiLeadStage, LeadStage>] extends [never] ? true : never
+export const LEAD_STAGES_COVER_API: LeadStagesCoverApi = true
 
 export function isLeadStage(value: string): value is LeadStage {
   return LEAD_STAGES.some(stage => stage === value)
@@ -584,16 +590,9 @@ export interface TemplateInteractiveConfig {
   sections?: TemplateInteractiveSection[]
 }
 
-export interface TemplateCapabilities {
-  integration: string | null
-  official_sending_supported: boolean
-  // history_available lo consume useEvolutionHistoryAvailability contra
-  // /api/chats/history/availability (no este objeto directo, pero es el
-  // mismo dato); edit_delete_supported lo consume MessageBubble.tsx.
-  history_available: boolean
-  edit_delete_supported: boolean
-  reason: string | null
-}
+export type TemplateCapabilities = ApiSchemas['TemplateCapabilities']
+
+export type InteractiveLimits = ApiSchemas['InteractiveLimits']
 
 export interface TemplateAttachment {
   id: number

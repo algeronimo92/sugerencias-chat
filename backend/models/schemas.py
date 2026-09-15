@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from domain_types import (
+    LeadStage as DomainLeadStage,
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
@@ -17,21 +18,7 @@ from domain_types import (
 )
 
 
-LeadStage = Literal[
-    "nuevo",
-    "en_diagnostico",
-    "calificado",
-    "oferta_presentada",
-    "en_objecion",
-    "agendado",
-    "cliente_activo",
-    "postventa",
-    "en_seguimiento",
-    "en_nutricion",
-    "perdido",
-    "descalificado",
-    "baja",
-]
+LeadStage = Literal[tuple(stage.value for stage in DomainLeadStage)]
 
 
 class Chat(BaseModel):
@@ -817,6 +804,23 @@ class SendTemplateRequest(BaseModel):
     parameters: list[str] = Field(default_factory=list)
 
 
+class InteractiveLimits(BaseModel):
+    text: int
+    body: int
+    title: int
+    footer: int
+    button_text: int
+    button_id: int
+    max_buttons: int
+    list_button_text: int
+    section_title: int
+    row_title: int
+    row_description: int
+    row_id: int
+    max_sections: int
+    max_rows: int
+
+
 class TemplateCapabilities(BaseModel):
     integration: str | None = None
     official_sending_supported: bool = False
@@ -827,6 +831,8 @@ class TemplateCapabilities(BaseModel):
     history_available: bool = False
     edit_delete_supported: bool = False
     reason: str | None = None
+    interactive_limits: InteractiveLimits
+    interactive_default_footer: str = ""
 
 
 class TemplateFavoriteUpdate(BaseModel):

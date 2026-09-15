@@ -85,13 +85,13 @@ async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypat
     broadcast = AsyncMock()
     monkeypatch.setattr(message_outbox.manager, "broadcast", broadcast)
 
-    await message_outbox._mark_sent({
+    await message_outbox._persist_sent({
         "id": 10,
         "message_id": 20,
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Hola", "_actor_user_id": 7},
-    }, {"key": {"id": "WA-1"}})
+    }, {"key": {"id": "WA-1"}}, None)
 
     complete.assert_awaited_once_with("lead-1", 7)
     assert {"type": "tasks_updated"} in [call.args[0] for call in broadcast.await_args_list]
@@ -109,13 +109,13 @@ async def test_automatic_message_does_not_complete_seller_tasks(monkeypatch):
     monkeypatch.setattr(message_outbox, "complete_reply_tasks", complete)
     monkeypatch.setattr(message_outbox.manager, "broadcast", AsyncMock())
 
-    await message_outbox._mark_sent({
+    await message_outbox._persist_sent({
         "id": 10,
         "message_id": 20,
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Mensaje automático"},
-    }, {"key": {"id": "WA-1"}})
+    }, {"key": {"id": "WA-1"}}, None)
 
     complete.assert_not_awaited()
 
@@ -136,13 +136,13 @@ async def test_task_completion_failure_does_not_fail_an_already_sent_message(mon
     broadcast = AsyncMock()
     monkeypatch.setattr(message_outbox.manager, "broadcast", broadcast)
 
-    await message_outbox._mark_sent({
+    await message_outbox._persist_sent({
         "id": 10,
         "message_id": 20,
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Hola", "_actor_user_id": 7},
-    }, {"key": {"id": "WA-1"}})
+    }, {"key": {"id": "WA-1"}}, None)
 
     assert broadcast.await_args_list[0].args[0]["reason"] == "outbound_message"
 

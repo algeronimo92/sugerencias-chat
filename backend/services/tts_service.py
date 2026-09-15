@@ -1,6 +1,6 @@
 import httpx
 from time import perf_counter
-from services.performance import record_external_duration
+from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
 
 ELEVENLABS_BASE_URL = "https://api.elevenlabs.io"

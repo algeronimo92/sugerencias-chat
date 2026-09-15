@@ -1,5 +1,6 @@
 import logging
 import secrets
+from urllib.parse import urlsplit
 
 import bcrypt
 from fastapi import Depends, Header, HTTPException, Request, Response
@@ -107,6 +108,15 @@ def clear_device_cookie(response, request) -> None:
         samesite="lax",
         secure=cookie_is_secure(request),
     )
+
+
+def websocket_origin_allowed(origin: str | None, host: str | None, allowed_origins: list[str]) -> bool:
+    if origin is None:
+        return True
+    if origin in allowed_origins:
+        return True
+    origin_host = urlsplit(origin).netloc.lower()
+    return bool(host) and origin_host == host.lower()
 
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:

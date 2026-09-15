@@ -12,32 +12,29 @@ from services.productivity_service import (
     record_template_use, remove_template_attachment, set_template_favorite, update_template,
 )
 from services.template_category_service import get_template_category_by_name
-from routers.media import normalize_media_content_type, save_media_file
+from services.media_upload import normalize_media_content_type, save_media_file
 from services.media_library_service import create_media_asset, delete_media_asset, get_media_asset
 from services.media_storage import MediaStorageError, delete_media, media_size, read_media_bytes
 from services.ws_manager import manager
 from services.meta_service import (
     MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
-    is_configured, list_whatsapp_templates, update_whatsapp_template, upload_header_media,
+    list_whatsapp_templates, update_whatsapp_template, upload_header_media,
+)
+from services.whatsapp_capabilities import get_whatsapp_capabilities
+from services.whatsapp_rules import (
+    LIMITS as INTERACTIVE_LIMITS,
+    MAX_TEXT_LENGTH,
+    InteractiveRuleError,
+    normalize_interactive_config,
+    resolve_interactive_footer,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/templates", tags=["templates"])
-DEFAULT_INTERACTIVE_FOOTER = "DermicaPro"
 ALLOWED_INTERNAL_VARIABLES = {"nombre", "telefono", "servicio", "vendedor", "fecha_actual"}
 MAX_TEMPLATE_NAME_LENGTH = 120
 MAX_SHORTCUT_LENGTH = 50
 MAX_CATEGORY_LENGTH = 60
-MAX_TEXT_LENGTH = 4096
-MAX_INTERACTIVE_BODY_LENGTH = 1024
-MAX_INTERACTIVE_TITLE_LENGTH = 60
-MAX_INTERACTIVE_FOOTER_LENGTH = 60
-MAX_BUTTON_TEXT_LENGTH = 20
-MAX_BUTTON_ID_LENGTH = 256
-MAX_LIST_SECTION_TITLE_LENGTH = 24
-MAX_LIST_ROW_TITLE_LENGTH = 24
-MAX_LIST_ROW_DESCRIPTION_LENGTH = 72
-MAX_LIST_ROW_ID_LENGTH = 200
 MAX_OFFICIAL_HEADER_TEXT_LENGTH = 60
 MAX_OFFICIAL_FOOTER_LENGTH = 60
 MAX_OFFICIAL_BUTTON_TEXT_LENGTH = 25
@@ -74,7 +71,7 @@ def _normalize_and_validate_common(values: dict) -> None:
         )
 
     interactive = values.get("template_type", "internal") == "internal" and values.get("interactive_type") != "none"
-    content_limit = MAX_INTERACTIVE_BODY_LENGTH if interactive or values.get("template_type") == "official" else MAX_TEXT_LENGTH
+    content_limit = INTERACTIVE_LIMITS.body if interactive or values.get("template_type") == "official" else MAX_TEXT_LENGTH
     if len(content) > content_limit:
         raise HTTPException(400, f"El contenido admite máximo {content_limit} caracteres para este tipo de plantilla")
 
@@ -88,103 +85,15 @@ def _validate_internal_variables(*values: object) -> None:
         raise HTTPException(400, f"Variables no reconocidas: {formatted}")
 
 
-def _validate_interactive_config(values: dict) -> None:
+async def _validate_interactive_config(values: dict) -> None:
     interactive_type = values.get("interactive_type") or "none"
     config = values.get("interactive_config") or {}
-    if interactive_type == "none":
-        values["interactive_type"] = "none"
-        values["interactive_config"] = {}
-        return
-    if interactive_type == "buttons":
-        title = str(config.get("title") or "").strip()
-        footer = str(config.get("footer") or "").strip() or DEFAULT_INTERACTIVE_FOOTER
-        buttons = config.get("buttons") if isinstance(config.get("buttons"), list) else []
-        if not title or not 1 <= len(buttons) <= 3:
-            raise HTTPException(400, "Los botones requieren título y entre 1 y 3 opciones")
-        if len(title) > MAX_INTERACTIVE_TITLE_LENGTH:
-            raise HTTPException(400, f"El título interactivo admite máximo {MAX_INTERACTIVE_TITLE_LENGTH} caracteres")
-        if len(footer) > MAX_INTERACTIVE_FOOTER_LENGTH:
-            raise HTTPException(400, f"El pie de mensaje admite máximo {MAX_INTERACTIVE_FOOTER_LENGTH} caracteres")
-        # Meta solo acepta botones "reply" en un mensaje interactivo suelto
-        # (fuera de una plantilla oficial): un botón de URL, llamada o copiar
-        # código siempre rechaza con "interactive.action.buttons.N.reply is
-        # required" (código 100), confirmado con tráfico real. Una plantilla
-        # con ese tipo de botón necesita ser oficial (ver official_buttons).
-        normalized = []
-        seen_texts: set[str] = set()
-        seen_ids: set[str] = set()
-        for index, item in enumerate(buttons):
-            if not isinstance(item, dict) or item.get("type") != "reply":
-                raise HTTPException(
-                    400,
-                    "Los botones de una plantilla interna solo admiten respuesta rápida; "
-                    "para un botón de URL, llamada o copiar código creá una plantilla oficial",
-                )
-            display_text = str(item.get("displayText") or "").strip()
-            if not display_text or display_text.lower() in seen_texts:
-                raise HTTPException(400, "Cada botón necesita un texto único")
-            if len(display_text) > MAX_BUTTON_TEXT_LENGTH:
-                raise HTTPException(400, f"El texto de cada botón admite máximo {MAX_BUTTON_TEXT_LENGTH} caracteres")
-            seen_texts.add(display_text.lower())
-            value = str(item.get("id") or f"reply_{index + 1}").strip()
-            if len(value) > MAX_BUTTON_ID_LENGTH:
-                raise HTTPException(400, f"El ID de respuesta admite máximo {MAX_BUTTON_ID_LENGTH} caracteres")
-            if value in seen_ids:
-                raise HTTPException(400, "Los IDs de respuesta deben ser únicos")
-            seen_ids.add(value)
-            normalized.append({"type": "reply", "displayText": display_text, "id": value})
-        values["interactive_config"] = {"title": title, "footer": footer, "buttons": normalized}
-        return
-    if interactive_type == "list":
-        title = str(config.get("title") or "").strip()
-        footer_text = str(config.get("footerText") or "").strip() or DEFAULT_INTERACTIVE_FOOTER
-        button_text = str(config.get("buttonText") or "").strip()
-        sections = config.get("sections") if isinstance(config.get("sections"), list) else []
-        if not title or not button_text or not sections:
-            raise HTTPException(400, "La lista requiere título, texto del botón y al menos una sección")
-        if len(title) > MAX_INTERACTIVE_TITLE_LENGTH:
-            raise HTTPException(400, f"El título interactivo admite máximo {MAX_INTERACTIVE_TITLE_LENGTH} caracteres")
-        if len(footer_text) > MAX_INTERACTIVE_FOOTER_LENGTH:
-            raise HTTPException(400, f"El pie de mensaje admite máximo {MAX_INTERACTIVE_FOOTER_LENGTH} caracteres")
-        if len(button_text) > MAX_BUTTON_TEXT_LENGTH:
-            raise HTTPException(400, f"El texto que abre la lista admite máximo {MAX_BUTTON_TEXT_LENGTH} caracteres")
-        if len(sections) > 10:
-            raise HTTPException(400, "Una lista admite como máximo 10 secciones")
-        normalized_sections = []
-        seen_section_titles: set[str] = set()
-        seen_row_ids: set[str] = set()
-        total_rows = 0
-        for section in sections:
-            section_title = str(section.get("title") or "").strip() if isinstance(section, dict) else ""
-            rows = section.get("rows") if isinstance(section, dict) and isinstance(section.get("rows"), list) else []
-            if not section_title or not rows or section_title.lower() in seen_section_titles:
-                raise HTTPException(400, "Cada sección necesita un título único y al menos una opción")
-            if len(section_title) > MAX_LIST_SECTION_TITLE_LENGTH:
-                raise HTTPException(400, f"El título de sección admite máximo {MAX_LIST_SECTION_TITLE_LENGTH} caracteres")
-            seen_section_titles.add(section_title.lower())
-            normalized_rows = []
-            for row in rows:
-                row_title = str(row.get("title") or "").strip() if isinstance(row, dict) else ""
-                row_id = str(row.get("rowId") or "").strip() if isinstance(row, dict) else ""
-                description = str(row.get("description") or "").strip() if isinstance(row, dict) else ""
-                if not row_title or not description or not row_id or row_id in seen_row_ids:
-                    raise HTTPException(400, "Cada opción necesita título, descripción e ID único")
-                if len(row_title) > MAX_LIST_ROW_TITLE_LENGTH:
-                    raise HTTPException(400, f"El título de cada opción admite máximo {MAX_LIST_ROW_TITLE_LENGTH} caracteres")
-                if len(description) > MAX_LIST_ROW_DESCRIPTION_LENGTH:
-                    raise HTTPException(400, f"La descripción de cada opción admite máximo {MAX_LIST_ROW_DESCRIPTION_LENGTH} caracteres")
-                if len(row_id) > MAX_LIST_ROW_ID_LENGTH:
-                    raise HTTPException(400, f"El ID de cada opción admite máximo {MAX_LIST_ROW_ID_LENGTH} caracteres")
-                seen_row_ids.add(row_id)
-                normalized_rows.append({"title": row_title, "description": description, "rowId": row_id})
-                total_rows += 1
-            normalized_sections.append({"title": section_title, "rows": normalized_rows})
-        if total_rows > 10:
-            raise HTTPException(400, "Una lista admite como máximo 10 opciones")
-        values["interactive_config"] = {
-            "title": title, "footerText": footer_text, "buttonText": button_text,
-            "sections": normalized_sections,
-        }
+    try:
+        footer = "" if interactive_type == "none" else await resolve_interactive_footer(interactive_type, config)
+        values["interactive_config"] = normalize_interactive_config(interactive_type, config, footer)
+    except InteractiveRuleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    values["interactive_type"] = interactive_type
 
 
 async def _validate_official_components(values: dict) -> None:
@@ -320,7 +229,7 @@ async def _validate_template_values(values: dict) -> dict:
             "official_footer": None,
             "official_buttons": [],
         })
-        _validate_interactive_config(values)
+        await _validate_interactive_config(values)
         _validate_internal_variables(values["content"], values["interactive_config"])
         return values
 
@@ -364,22 +273,7 @@ async def get_templates(include_inactive: bool = False, user: User = Depends(get
 
 @router.get("/capabilities", response_model=TemplateCapabilities)
 async def get_capabilities(_user: User = Depends(get_current_user)):
-    # El frontend compara este campo contra el literal "WHATSAPP-BUSINESS"
-    # (ver TemplateSendDialog.tsx) para decidir si usa el fallback seguro de
-    # texto plano en interactivos -- se mantiene ese valor a propósito para
-    # no tener que tocar el frontend, aunque ya no exista un "tipo de
-    # integración" real que consultar (solo hay un camino: Meta directo).
-    configured = await is_configured()
-    return {
-        "integration": "WHATSAPP-BUSINESS" if configured else None,
-        "official_sending_supported": configured,
-        "history_available": False,
-        "edit_delete_supported": False,
-        "reason": None if configured else (
-            "Falta configurar el token, el phone number id y el WABA id de Meta Cloud "
-            "API en Configuración."
-        ),
-    }
+    return await get_whatsapp_capabilities()
 
 
 @router.post("", response_model=TemplateItem, status_code=201)

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from services.performance import record_external_duration
+from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
 from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
 
@@ -30,6 +30,11 @@ class MetaApiError(Exception):
         self.status_code = status_code
 
 
+class DeliveryUnconfirmedError(MetaApiError):
+    """El POST a /messages salió pero no hubo respuesta legible: Meta pudo
+    haber aceptado el mensaje, así que reenviarlo arriesga duplicarlo."""
+
+
 class WhatsAppWindowClosedError(MetaApiError):
     """Meta rechazó un envío libre porque la ventana de 24h del contacto ya
     cerró (código 131047). Sólo una plantilla aprobada puede reabrirla."""
@@ -44,7 +49,7 @@ def describe_send_failure(exc: Exception, action: str) -> str:
     reemplaza por un genérico: nunca es agradable ni útil mostrarle a un
     vendedor un JSON crudo o un stack trace. El detalle real queda en los
     logs; el llamador debe loguear `exc` antes de invocar esto."""
-    if isinstance(exc, WhatsAppWindowClosedError):
+    if isinstance(exc, (WhatsAppWindowClosedError, DeliveryUnconfirmedError)):
         return str(exc)
     return f"No se pudo {action}. Probá de nuevo en unos segundos."
 
@@ -86,6 +91,14 @@ def _raise_meta_error(response: httpx.Response) -> None:
         f"Meta Graph API respondió {response.status_code}: {message} (código {code})",
         error=error, status_code=response.status_code,
     )
+
+
+UNCONFIRMED_DELIVERY_MESSAGE = (
+    "No se pudo confirmar si el mensaje llegó al cliente. Si lo reintentás, "
+    "podría recibirlo dos veces."
+)
+
+_REQUEST_NOT_SENT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 
 _http_client: httpx.AsyncClient | None = None
@@ -210,7 +223,12 @@ async def _send(chat_id: str, token: str, phone_number_id: str, payload: dict, t
     así que `learn_send_aliases` no tiene mucho que aprender de acá en
     adelante — la fuente real de alias sigue siendo lo entrante."""
     url = _graph_url(f"{phone_number_id}/messages")
-    raw = await _request("POST", url, token, json_body=payload, timeout=timeout)
+    try:
+        raw = await _request("POST", url, token, json_body=payload, timeout=timeout)
+    except _REQUEST_NOT_SENT_ERRORS:
+        raise
+    except (httpx.TransportError, ValueError) as exc:
+        raise DeliveryUnconfirmedError(UNCONFIRMED_DELIVERY_MESSAGE) from exc
     messages = raw.get("messages") or []
     contacts = raw.get("contacts") or []
     wa_id = (contacts[0].get("wa_id") if contacts else None) or payload.get("to")

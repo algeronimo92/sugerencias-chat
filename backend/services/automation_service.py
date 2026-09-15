@@ -1,4 +1,6 @@
 import asyncio
+import dataclasses
+import itertools
 import logging
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
@@ -58,6 +60,7 @@ from services.db_service import (
 )
 from services.meta_service import MetaApiError, mediatype_from_content_type
 from services.automation_deps import DEFAULT_DEPS, AutomationDeps
+from services.automation_scheduling import TRIGGER_TYPES, schedule_automation_event_in_session
 from services.settings_service import get_effective
 from services.automation_rules import (
     business_timezone,
@@ -111,7 +114,6 @@ OVERDUE_LOOKBACK_GRACE_MINUTES = 4320
 # LEAD. Ver pause_lead_executions / pause_automation_execution.
 PAUSE_SCOPE_LEAD = "lead"
 PAUSE_SCOPE_EXECUTION = "execution"
-TRIGGER_TYPES = frozenset(AutomationTrigger)
 ACTION_TYPES = frozenset(AutomationActionType)
 FLOW_NODE_TYPES = frozenset(FlowNodeType)
 FLOW_CONDITION_TYPES = frozenset(FlowConditionType)
@@ -1599,63 +1601,20 @@ async def schedule_automation_event(
     started_by_user_id: int | None = None,
     start_source: str = "system",
 ) -> int:
-    if trigger_type not in TRIGGER_TYPES:
-        return 0
-    stmt = select(
-        AutomationRule.id, AutomationRule.delay_minutes, AutomationRule.builder_mode,
-        AutomationRule.flow_version,
-    ).where(
-        AutomationRule.is_active.is_(True), AutomationRule.trigger_type == trigger_type
-    )
-    if rule_id is not None:
-        stmt = stmt.where(AutomationRule.id == rule_id)
     async with get_sessionmaker()() as session:
-        lead = await session.get(Lead, lead_id)
-        if lead is None:
-            # debug y no warning: el watcher redescubre mensajes de chats sin
-            # lead cada ciclo y un warning por chat cada 10s inunda el log.
-            logger.debug("Evento de automatización ignorado: lead %s no existe", lead_id)
-            return 0
-        # La pausa solo corta los triggers de sistema (lead_created,
-        # stage_changed, message_received, *_overdue, task_due...). Un flujo
-        # manual (start_source == "manual", el vendedor tocó "Iniciar flujo")
-        # se respeta igual: lo pidió a propósito.
-        if lead.automatizacion_pausada and start_source == "system":
-            logger.debug("Evento de automatización ignorado: %s tiene la automatización pausada", lead_id)
-            return 0
-        rules = (await session.execute(stmt)).mappings().all()
-        now = datetime.now(timezone.utc)
-        created = 0
-        for rule in rules:
-            result = await session.execute(
-                pg_insert(AutomationExecution).values(
-                    rule_id=rule["id"],
-                    lead_id=lead_id,
-                    trigger_type=trigger_type,
-                    event_key=event_key,
-                    event_payload=payload or {},
-                    status=AutomationExecutionStatus.SCHEDULED,
-                    scheduled_for=now + timedelta(minutes=rule["delay_minutes"]),
-                    action_results=[],
-                    flow_state={
-                        "flow_version": rule["flow_version"],
-                        "current_node_id": None,
-                        "path": [],
-                    }
-                    if rule["builder_mode"] == AutomationBuilderMode.VISUAL
-                    else {},
-                    created_at=now,
-                    start_source=start_source,
-                    started_by_user_id=started_by_user_id,
-                ).on_conflict_do_nothing(
-                    index_elements=[AutomationExecution.rule_id, AutomationExecution.event_key]
-                )
-            )
-            created += result.rowcount
+        created = await schedule_automation_event_in_session(
+            session, trigger_type, lead_id, event_key, payload,
+            rule_id=rule_id, started_by_user_id=started_by_user_id, start_source=start_source,
+        )
         await session.commit()
+    await notify_automations_scheduled(created)
+    return created
+
+
+async def notify_automations_scheduled(created: int) -> None:
     if created:
         await manager.broadcast({"type": "automations_updated"})
-    return created
+        _wake.set()
 
 
 async def list_manual_flows(is_admin: bool) -> list[dict]:
@@ -1745,24 +1704,6 @@ async def trigger_lead_created(lead_id: str) -> None:
         f"lead:{activity_id or lead_id}",
     )
     _wake.set()
-
-
-async def trigger_stage_changed(lead_id: str) -> None:
-    async with get_sessionmaker()() as session:
-        row = (await session.execute(
-            select(LeadActivity.id, LeadActivity.old_value, LeadActivity.new_value).where(
-                LeadActivity.lead_id == lead_id,
-                LeadActivity.event_type == AutomationTrigger.STAGE_CHANGED,
-            ).order_by(LeadActivity.id.desc()).limit(1)
-        )).mappings().first()
-    if row:
-        await schedule_automation_event(
-            AutomationTrigger.STAGE_CHANGED,
-            lead_id,
-            f"stage:{row['id']}",
-            {"old_value": row["old_value"], "new_value": row["new_value"]},
-        )
-        _wake.set()
 
 
 def _message_sent_at(value) -> datetime:
@@ -2406,6 +2347,7 @@ async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
     updated = await deps.update_lead_stage(
         chat["chat_id"], LeadStage(action["stage"]), actor_type, actor_user_id,
         {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
+        schedule_automations=False,
     )
     if not updated:
         raise ValueError("Lead no encontrado")
@@ -2683,16 +2625,31 @@ ACTION_HANDLERS = {
 }
 
 
+def _with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:
+    calls = itertools.count()
+
+    async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
+        scope = f"automation:{execution_id}:{position}:{next(calls)}"
+        keyed = [{**item, "dedupe_key": f"{scope}:{index}"} for index, item in enumerate(items)]
+        return await deps.enqueue_messages(chat_id, keyed)
+
+    return dataclasses.replace(deps, enqueue_messages=enqueue_messages)
+
+
 async def _execute_action(
     action: dict,
     chat: dict,
     execution: AutomationExecution,
     rule: AutomationRule,
     deps: AutomationDeps = DEFAULT_DEPS,
+    *,
+    position: int | None = None,
 ) -> dict:
     handler = ACTION_HANDLERS.get(action["type"])
     if handler is None:
         raise ValueError(f"Acción no soportada: {action['type']}")
+    if position is not None:
+        deps = _with_outbox_dedupe(deps, execution.id, position)
     result = await handler(action, chat, execution, rule, deps)
     return {"type": action["type"], **result}
 
@@ -2971,7 +2928,9 @@ async def _run_visual_execution(
                 continue
             if node["type"] == FlowNodeType.ACTION:
                 action = node["data"]["action"]
-                result = await _execute_action(action, chat, execution, rule, deps)
+                result = await _execute_action(
+                    action, chat, execution, rule, deps, position=len(results) + 1,
+                )
                 results.append({"position": len(results) + 1, "node_id": node["id"], **result})
                 current_id = edges[(current_id, FlowHandle.NEXT)]
                 saved = await _persist_visual_execution(
@@ -3144,7 +3103,10 @@ async def _run_visual_execution(
                         {"type": "reply", "displayText": button["label"], "id": button["id"]}
                         for button in buttons_data
                     ]
-                    message = await _send_buttons_message(chat, text, buttons, deps)
+                    message = await _send_buttons_message(
+                        chat, text, buttons,
+                        _with_outbox_dedupe(deps, execution.id, len(results) + 1),
+                    )
                     results.append({
                         "position": len(results) + 1, "node_id": node["id"],
                         "type": FlowNodeType.QUESTION,
@@ -3234,6 +3196,7 @@ async def _run_visual_execution(
                     execution,
                     rule,
                     deps,
+                    position=len(results) + 1,
                 )
                 results.append({
                     "position": len(results) + 1,
@@ -3438,7 +3401,9 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
         # Reanuda desde la primera acción sin resultado persistido — un
         # reintento tras un crash no repite WhatsApps ni tareas ya creadas.
         for index in range(len(results), len(actions)):
-            result = await _execute_action(actions[index], chat, execution, rule, deps)
+            result = await _execute_action(
+                actions[index], chat, execution, rule, deps, position=index + 1,
+            )
             results.append({"position": index + 1, **result})
             saved = await _save_execution(execution_id, deps, action_results=results)
             if not saved:

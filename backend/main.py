@@ -23,7 +23,7 @@ configure_logging()
 from config import settings
 from db.session import close_engine, get_engine
 from routers import appointments, auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
-from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token
+from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token, websocket_origin_allowed
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
 from services.ws_manager import manager
@@ -36,7 +36,7 @@ from services.tts_service import close_tts_client
 from services.message_outbox import watch_message_outbox
 from services.queue_metrics import watch_queue_metrics
 from services.scheduled_message_service import watch_scheduled_messages
-from services.performance import begin_request_metrics, finish_request_metrics
+from request_metrics import begin_request_metrics, finish_request_metrics
 from request_context import reset_request_id, set_request_id
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
 from services.settings_service import get_effective, migrate_settings_encryption
@@ -402,6 +402,11 @@ async def readiness():
 
 @app.websocket("/ws/chats")
 async def chats_websocket(websocket: WebSocket):
+    if not websocket_origin_allowed(
+        websocket.headers.get("origin"), websocket.headers.get("host"), settings.cors_origins,
+    ):
+        await websocket.close(code=4403)
+        return
     token = websocket.cookies.get(COOKIE_NAME)
     user = await get_user_from_token(token)
     if user is None:

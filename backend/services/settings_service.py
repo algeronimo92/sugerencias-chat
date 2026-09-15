@@ -86,6 +86,13 @@ SETTING_DEFS: list[SettingDef] = [
     ),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
     SettingDef(
+        "interactive_default_footer",
+        "Pie por defecto de botones y listas de WhatsApp",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
+    ),
+    SettingDef(
         "auto_assign_leads_enabled",
         "Asignar leads de WhatsApp por turnos (round robin)",
         "leads",

@@ -10,7 +10,7 @@ import logging
 
 from db.models import User
 from models.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
-from routers.media import normalize_media_content_type, save_media_file
+from services.media_upload import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user, require_admin
 from services.media_library_service import create_media_asset, delete_media_asset, list_media_assets, rename_media_asset
 from services.media_storage import MediaNotFoundError, MediaStorageError, delete_media, media_size, read_media_bytes

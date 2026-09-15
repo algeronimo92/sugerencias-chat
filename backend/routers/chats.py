@@ -34,13 +34,10 @@ from models.schemas import (
     SendTemplateRequest,
     SellerItem,
 )
-from routers.media import save_media_file
+from services.media_upload import save_media_file
 from services.media_storage import (
     AudioTranscodeError,
-    MediaNotFoundError,
     MediaStorageError,
-    image_to_sticker_webp,
-    read_media_bytes,
     transcode_audio_to_ogg_opus,
 )
 from services.media_library_service import get_media_asset
@@ -62,7 +59,6 @@ from services.db_service import (
     fetch_messages,
     fetch_pinned_messages,
     fetch_reply_target,
-    insert_message,
     mark_message_deleted,
     MAX_PINNED_MESSAGES,
     pin_message,
@@ -86,7 +82,6 @@ from services.db_service import (
 )
 from services.auth_service import get_current_user, require_admin
 from services.lead_merge import LeadMergeError, merge_leads
-from services.productivity_service import complete_reply_tasks
 # Lo que sigue viniendo de Evolution es lo que la Cloud API de Meta no tiene:
 # verificar si un número está en WhatsApp, editar y eliminar un mensaje ya
 # enviado, y el historial retroactivo. Son capacidades de la sesión de Baileys,
@@ -96,7 +91,16 @@ from services.evolution_service import (
     check_whatsapp_numbers,
     delete_whatsapp_message,
     edit_whatsapp_message,
-    get_instance_capabilities,
+)
+from services.whatsapp_rules import (
+    interactive_choices_summary,
+    rendered_interactive_errors,
+    resolve_interactive_footer,
+)
+from services.whatsapp_capabilities import (
+    EDIT_DELETE_UNSUPPORTED_DETAIL,
+    HISTORY_UNSUPPORTED_DETAIL,
+    get_whatsapp_capabilities,
 )
 from services.meta_service import (
     MetaApiError,
@@ -104,7 +108,6 @@ from services.meta_service import (
     mark_messages_as_read,
     mediatype_from_content_type as _mediatype_from_content_type,
     send_whatsapp_reaction,
-    send_whatsapp_sticker,
 )
 from services.whatsapp_history import fetch_whatsapp_history
 from services.whatsapp_identity_service import InvalidWhatsAppIdentityError
@@ -123,32 +126,21 @@ from services.message_outbox import (
     retry_failed_message,
 )
 from services.productivity_service import list_templates, record_template_use
+from services.automation_rules import render_variables
 from services.automation_service import (
     pause_lead_executions,
     resume_lead_executions,
     trigger_lead_created,
-    trigger_stage_changed,
+    notify_automations_scheduled,
 )
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
-DEFAULT_INTERACTIVE_FOOTER = "DermicaPro"
-
-
-def _render_crm_value(value: str, chat: dict) -> str:
-    values = {
-        "nombre": chat.get("name") or "",
-        "telefono": chat.get("phone") or "",
-        "servicio": chat.get("servicio_interes") or "",
-        "vendedor": chat.get("vendedor") or "",
-        "fecha_actual": datetime.now().strftime("%d/%m/%Y"),
-    }
-    return re.sub(r"\{\{(\w+)\}\}", lambda match: values.get(match.group(1), match.group(0)), value)
 
 
 def _render_interactive_config(value, chat: dict):
     if isinstance(value, str):
-        return _render_crm_value(value, chat)
+        return render_variables(value, chat)
     if isinstance(value, list):
         return [_render_interactive_config(item, chat) for item in value]
     if isinstance(value, dict):
@@ -156,58 +148,13 @@ def _render_interactive_config(value, chat: dict):
     return value
 
 
-def _validate_rendered_interactive_message(interactive_type: str, description: str, config: dict) -> None:
-    """Validate the final, lead-specific values before calling Evolution."""
-    errors: list[str] = []
-    title = str(config.get("title") or "").strip()
-    footer = str(config.get("footer") or config.get("footerText") or DEFAULT_INTERACTIVE_FOOTER).strip()
-    if not description.strip():
-        errors.append("la descripción quedó vacía")
-    elif len(description) > 1024:
-        errors.append("la descripción supera 1024 caracteres")
-    if not title:
-        errors.append("el título quedó vacío")
-    elif len(title) > 60:
-        errors.append("el título supera 60 caracteres")
-    if len(footer) > 60:
-        errors.append("el pie supera 60 caracteres")
-
-    if interactive_type == "buttons":
-        for index, button in enumerate(config.get("buttons", []), start=1):
-            label = str(button.get("displayText") or "").strip()
-            if not label or len(label) > 20:
-                errors.append(f"el texto del botón {index} debe tener entre 1 y 20 caracteres")
-            button_type = button.get("type")
-            if button_type == "url":
-                url = str(button.get("url") or "").strip()
-                if not re.fullmatch(r"https://[^\s]{1,2040}", url, flags=re.IGNORECASE):
-                    errors.append(f"la URL del botón {index} no es válida")
-            elif button_type == "call":
-                phone = re.sub(r"[\s()\-]", "", str(button.get("phoneNumber") or ""))
-                if not re.fullmatch(r"\+?[1-9]\d{7,14}", phone):
-                    errors.append(f"el teléfono del botón {index} no es válido")
-    else:
-        button_text = str(config.get("buttonText") or "").strip()
-        if not button_text or len(button_text) > 20:
-            errors.append("el texto que abre la lista debe tener entre 1 y 20 caracteres")
-        for section_index, section in enumerate(config.get("sections", []), start=1):
-            section_title = str(section.get("title") or "").strip()
-            if not section_title or len(section_title) > 24:
-                errors.append(f"el título de la sección {section_index} debe tener entre 1 y 24 caracteres")
-            for row_index, row in enumerate(section.get("rows", []), start=1):
-                row_title = str(row.get("title") or "").strip()
-                row_description = str(row.get("description") or "").strip()
-                row_id = str(row.get("rowId") or "").strip()
-                prefix = f"la opción {row_index} de la sección {section_index}"
-                if not row_title or len(row_title) > 24:
-                    errors.append(f"{prefix} necesita un título de máximo 24 caracteres")
-                if not row_description or len(row_description) > 72:
-                    errors.append(f"{prefix} necesita una descripción de máximo 72 caracteres")
-                if not row_id or len(row_id) > 200:
-                    errors.append(f"{prefix} necesita un ID de máximo 200 caracteres")
-
+async def _validate_rendered_interactive_message(interactive_type: str, description: str, config: dict) -> None:
+    errors = rendered_interactive_errors(
+        interactive_type, description, config, await resolve_interactive_footer(interactive_type, config),
+    )
     if errors:
         raise HTTPException(400, "La plantilla no se puede enviar: " + "; ".join(errors))
+
 
 # Mapea los nombres de campo de la API (schemas.Chat) a las columnas reales de
 # la tabla leads (db.models.Lead) para armar el dict de `update_lead`.
@@ -336,7 +283,6 @@ async def get_kanban_stage(
 
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
-    previous = await fetch_chat(chat_id)
     lead = await update_lead_stage(
         chat_id, DbLeadStage(body.stage), "user", user.id, razon_perdido=body.razon_perdido
     )
@@ -344,11 +290,7 @@ async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depe
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "stage_changed"})
-    if previous and previous["stage"] != body.stage:
-        try:
-            await trigger_stage_changed(chat_id)
-        except Exception:
-            logger.exception("No se pudo programar la automatización de cambio de etapa")
+    await notify_automations_scheduled(lead.get("automations_scheduled", 0))
     return lead
 
 
@@ -568,15 +510,12 @@ async def get_messages(
 
 @router.get("/history/availability")
 async def get_history_availability():
-    """Si se puede ofrecer el historial de WhatsApp. Meta Cloud API no tiene
-    equivalente de `chat/findMessages` (historial retroactivo): solo Baileys
-    puede traerlo. get_instance_capabilities() ya cachea 5 min, así que esto
-    no le pega a Evolution en cada apertura de chat."""
-    try:
-        capabilities = await get_instance_capabilities()
-    except EvolutionApiError:
-        return {"available": False}
-    return {"available": capabilities["history_available"]}
+    return {"available": (await get_whatsapp_capabilities())["history_available"]}
+
+
+async def _require_capability(name: str, detail: str) -> None:
+    if not (await get_whatsapp_capabilities())[name]:
+        raise HTTPException(status_code=409, detail=detail)
 
 
 @router.get("/{chat_id}/history", response_model=HistoryPage)
@@ -586,6 +525,7 @@ async def get_whatsapp_history(
     before_ts: datetime | None = None,
 ):
     """Historial anterior al registro propio, leído de WhatsApp y sin guardar."""
+    await _require_capability("history_available", HISTORY_UNSUPPORTED_DETAIL)
     try:
         return await fetch_whatsapp_history(chat_id, page, before_ts)
     except EvolutionApiError as e:
@@ -709,47 +649,20 @@ async def send_sticker(
     body: StickerRequest,
     user: User = Depends(get_current_user),
 ):
-    """Manda una imagen de la librería de medios como sticker: la convierte a
-    WEBP 512×512 y la envía por sendSticker. Envío directo (no outbox): un
-    sticker es liviano y de bajo riesgo."""
+    """Manda una imagen de la librería de medios como sticker."""
     await _require_existing_lead(chat_id)
 
     asset = await get_media_asset(body.asset_id)
     if asset is None:
         raise HTTPException(404, "El sticker no existe en la librería")
-    try:
-        data = await asyncio.to_thread(read_media_bytes, asset["media_url"])
-        sticker_bytes = await asyncio.to_thread(image_to_sticker_webp, data)
-    except MediaNotFoundError:
-        raise HTTPException(404, "El archivo del sticker ya no está disponible")
-    except (MediaStorageError, OSError, ValueError):
-        raise HTTPException(400, "No se pudo preparar el sticker (¿es una imagen válida?)")
+    if not str(asset.get("content_type") or "").startswith("image/"):
+        raise HTTPException(400, "Solo se puede mandar una imagen como sticker")
 
-    try:
-        response = await send_whatsapp_sticker(chat_id, sticker_bytes)
-    except (MetaApiError, httpx.HTTPError) as exc:
-        logger.warning("No se pudo enviar el sticker a WhatsApp para %s: %s", chat_id, exc)
-        raise HTTPException(502, describe_send_failure(exc, "enviar el sticker a WhatsApp"))
-
-    message = await insert_message(
-        chat_id=chat_id,
-        sender="vendedor",
-        content=None,
-        media_url=asset["media_url"],
-        wa_message_id=(response.get("key") or {}).get("id"),
-        status="SERVER_ACK",
-        message_type="sticker",
-    )
-    try:
-        completed_tasks = await complete_reply_tasks(chat_id, user.id)
-    except Exception:
-        # El sticker ya salió y quedó persistido; no respondemos 500 porque el
-        # vendedor podría reintentarlo y duplicarlo solo por un fallo secundario.
-        logger.exception("No se pudieron completar las tareas del lead %s", chat_id)
-        completed_tasks = 0
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_message"})
-    if completed_tasks:
-        await manager.broadcast({"type": "tasks_updated"})
+    message = (await enqueue_messages(chat_id, [{
+        "media_url": asset["media_url"],
+        "payload": {"type": "sticker", "media_url": asset["media_url"]},
+    }], actor_user_id=user.id))[0]
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return message
 
 
@@ -764,6 +677,7 @@ async def send_template(
     if template is None:
         raise HTTPException(404, "Plantilla no encontrada")
     text = body.text.strip() if body.text else ""
+    await _require_existing_lead(chat_id)
 
     if template["template_type"] == "official":
         if template["official_status"] != "APPROVED":
@@ -791,19 +705,14 @@ async def send_template(
         await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
         return [message]
 
-    await _require_existing_lead(chat_id)
     if template["interactive_type"] != "none":
         chat = await fetch_chat(chat_id)
         if chat is None:
             raise HTTPException(404, "Lead no encontrado")
         config = _render_interactive_config(template["interactive_config"], chat)
-        description = text or _render_crm_value(template["content"], chat)
-        _validate_rendered_interactive_message(template["interactive_type"], description, config)
-        choices = (
-            " · ".join(button["displayText"] for button in config["buttons"])
-            if template["interactive_type"] == "buttons"
-            else " · ".join(row["title"] for section in config["sections"] for row in section["rows"])
-        )
+        description = text or render_variables(template["content"], chat)
+        await _validate_rendered_interactive_message(template["interactive_type"], description, config)
+        choices = interactive_choices_summary(template["interactive_type"], config)
         content = f"{config['title']}\n{description}\nOpciones: {choices}"
         message = (await enqueue_messages(chat_id, [{
             "content": content,
@@ -1056,6 +965,7 @@ async def edit_message(chat_id: str, message_id: int, body: EditMessageRequest):
     texto corregido solo de nuestro lado sería peor que no corregirlo — el
     vendedor daría por hecho que el cliente ve la versión nueva.
     """
+    await _require_capability("edit_delete_supported", EDIT_DELETE_UNSUPPORTED_DETAIL)
     target = _editable_or_deletable_target(
         await fetch_reply_target(chat_id, message_id), "editar"
     )
@@ -1093,6 +1003,7 @@ async def delete_message(chat_id: str, message_id: int):
     (ver mark_message_deleted). El CRM conserva que hubo un mensaje ahí —el
     hilo muestra la lápida, como WhatsApp— sin exponer lo que decía.
     """
+    await _require_capability("edit_delete_supported", EDIT_DELETE_UNSUPPORTED_DETAIL)
     target = _editable_or_deletable_target(
         await fetch_reply_target(chat_id, message_id), "eliminar"
     )

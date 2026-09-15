@@ -16,7 +16,7 @@ from models.schemas import (
     IssueReportItem,
     IssueReportUpdate,
 )
-from routers.media import normalize_media_content_type, save_media_file
+from services.media_upload import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user
 from services.issue_report_service import (
     create_issue_report,

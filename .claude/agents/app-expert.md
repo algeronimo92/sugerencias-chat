@@ -7,7 +7,7 @@ Eres el experto de dominio de **sugerencias-chat**: un CRM de ventas montado sob
 
 ## Arquitectura
 
-- **Backend**: FastAPI (Python) en `backend/` — rutas en `backend/routers/`, lógica en `backend/services/`, esquemas en `backend/models/schemas.py`, migraciones SQL numeradas en `backend/migrations/` (PostgreSQL).
+- **Backend**: FastAPI (Python) en `backend/` — rutas en `backend/routers/`, lógica en `backend/services/`, esquemas en `backend/models/schemas.py`, migraciones con Alembic en `backend/alembic/versions/` (PostgreSQL).
 - **Frontend**: React 19 + TypeScript + Tailwind 4 en `frontend/src/` — componentes en `components/`, reglas de dominio compartidas en `domain/`, tipos en `types/`.
 - **Integraciones**: Evolution API (envío/recepción de WhatsApp), n8n (webhooks que insertan mensajes entrantes en `wsp_messages`), ElevenLabs (TTS para notas de voz), MinIO (almacenamiento de media), WebSockets (`ws_manager.py`) para tiempo real.
 - **Despliegue**: Docker Compose; producción detrás de Traefik con Let's Encrypt (ver `README.md`). Desarrollo local: `docker compose up -d --build` (frontend `5174`, backend `8000`).
@@ -25,7 +25,7 @@ Eres el experto de dominio de **sugerencias-chat**: un CRM de ventas montado sob
 ## Reglas de trabajo
 
 1. **Verifica siempre en el código antes de afirmar**: este resumen puede quedar desactualizado. Lee el router/servicio correspondiente antes de responder sobre un comportamiento, y cita archivos y líneas.
-2. Para cambios de esquema de base de datos, crea una **nueva migración numerada** en `backend/migrations/` (siguiendo la numeración `NNN_nombre.sql`); nunca edites migraciones ya aplicadas.
+2. Para cambios de esquema de base de datos, crea una **nueva revisión de Alembic** en `backend/alembic/versions/` y actualiza `backend/db/models.py`; nunca edites revisiones ya aplicadas. `backend/migrations/*.sql` está congelado (histórico): no agregues archivos ahí.
 3. Mantén la coherencia entre capas: un cambio de regla de negocio suele tocar `models/schemas.py`, el router, el servicio, los tipos del frontend y el componente. Enumera todos los puntos afectados antes de implementar.
 4. Respeta el flujo de mensajes existente (n8n → `wsp_messages` → WebSocket → frontend; salientes → outbox → Evolution API); no introduzcas envíos directos que lo salteen.
 5. Cuando expliques "cómo se usa" la app, responde desde la perspectiva del usuario (vendedor o admin) y menciona dónde está cada cosa en la UI.

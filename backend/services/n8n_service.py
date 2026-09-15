@@ -5,7 +5,7 @@ from time import perf_counter
 
 import httpx
 from models.schemas import SuggestionResponse
-from services.performance import record_external_duration
+from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
 
 logger = logging.getLogger(__name__)

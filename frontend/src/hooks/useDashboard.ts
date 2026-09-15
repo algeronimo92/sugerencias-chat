@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import type { DashboardMetrics } from '../types'
-import { useChatSocketConnected } from './useChats'
+import { useChatSocketConnected } from './useRealtime'
 
 export function useDashboard(days: number) {
   const connected = useChatSocketConnected()

@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import Enum, StrEnum
 
 
 class AutomationTrigger(StrEnum):
@@ -164,6 +164,9 @@ class MessageSender(StrEnum):
 class MessageStatus(StrEnum):
     """Estados de entrega que reporta Evolution API para los mensajes salientes."""
 
+    PENDING = "PENDING"
+    FAILED = "FAILED"
+    DISCARDED = "DISCARDED"
     SERVER_ACK = "SERVER_ACK"
     DELIVERY_ACK = "DELIVERY_ACK"
     READ = "READ"
@@ -188,3 +191,36 @@ class InteractiveType(StrEnum):
     NONE = "none"
     BUTTONS = "buttons"
     LIST = "list"
+
+
+class LeadStage(str, Enum):
+    nuevo = "nuevo"
+    en_diagnostico = "en_diagnostico"
+    calificado = "calificado"
+    oferta_presentada = "oferta_presentada"
+    en_objecion = "en_objecion"
+    agendado = "agendado"
+    cliente_activo = "cliente_activo"
+    postventa = "postventa"
+    en_seguimiento = "en_seguimiento"
+    en_nutricion = "en_nutricion"
+    perdido = "perdido"
+    descalificado = "descalificado"
+    baja = "baja"
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SENT = "sent"
+    FAILED = "failed"
+    DISCARDED = "discarded"
+
+
+class ScheduledMessageStatus(StrEnum):
+    SCHEDULED = "scheduled"
+    PROCESSING = "processing"
+    QUEUED = "queued"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"

@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -24,6 +23,7 @@ from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from domain_types import (
+    LeadStage,
     AutomationBuilderMode,
     AutomationExecutionStatus,
     IssueReportPriority,
@@ -36,22 +36,6 @@ from domain_types import (
 
 class Base(DeclarativeBase):
     pass
-
-
-class LeadStage(str, Enum):
-    nuevo = "nuevo"
-    en_diagnostico = "en_diagnostico"
-    calificado = "calificado"
-    oferta_presentada = "oferta_presentada"
-    en_objecion = "en_objecion"
-    agendado = "agendado"
-    cliente_activo = "cliente_activo"
-    postventa = "postventa"
-    en_seguimiento = "en_seguimiento"
-    en_nutricion = "en_nutricion"
-    perdido = "perdido"
-    descalificado = "descalificado"
-    baja = "baja"
 
 
 class Lead(Base):
@@ -356,6 +340,7 @@ class MessageOutbox(Base):
         DateTime(timezone=True), nullable=False, default=func.now()
     )
     last_error: Mapped[str | None] = mapped_column(Text)
+    dedupe_key: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -366,6 +351,7 @@ class MessageOutbox(Base):
     __table_args__ = (
         Index("idx_message_outbox_pending", status, next_attempt_at, id),
         Index("idx_message_outbox_chat_order", chat_id, id),
+        Index("uq_message_outbox_dedupe_key", dedupe_key, unique=True),
     )
 
 
@@ -402,6 +388,7 @@ class ScheduledMessage(Base):
     __table_args__ = (
         Index("idx_scheduled_messages_due", status, scheduled_at, id),
         Index("idx_scheduled_messages_lead", lead_id, scheduled_at.desc()),
+        Index("idx_scheduled_messages_created_by", created_by_user_id),
     )
 
 
@@ -444,7 +431,7 @@ class TrustedDevice(Base):
     token_hash: Mapped[str] = mapped_column(Text, unique=True)
     pin_hash: Mapped[str | None] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
-    failed_pin_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    failed_pin_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -471,7 +458,7 @@ class AuthSession(Base):
     previous_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     previous_token_valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     auth_method: Mapped[str] = mapped_column(Text)  # password | pin
-    persistent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    persistent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -517,9 +504,9 @@ class LeadService(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("uq_lead_services_name_lower", func.lower(name), unique=True),
@@ -534,9 +521,9 @@ class TemplateCategory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("uq_template_categories_name_lower", func.lower(name), unique=True),
@@ -593,7 +580,10 @@ class LeadNote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (Index("idx_lead_notes_lead_created", lead_id, created_at, id),)
+    __table_args__ = (
+        Index("idx_lead_notes_lead_created", lead_id, created_at, id),
+        Index("idx_lead_notes_author", author_user_id),
+    )
 
 
 class LeadNoteMention(Base):
@@ -641,8 +631,8 @@ class PushSubscription(Base):
     p256dh: Mapped[str] = mapped_column(Text)
     auth: Mapped[str] = mapped_column(Text)
     user_agent: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("idx_push_subscriptions_user", user_id),)
 
@@ -654,19 +644,23 @@ class IssueReport(Base):
     reporter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(Text, default=IssueReportStatus.NEW)
-    priority: Mapped[str] = mapped_column(Text, default=IssueReportPriority.NORMAL)
+    status: Mapped[str] = mapped_column(
+        Text, default=IssueReportStatus.NEW, server_default=IssueReportStatus.NEW.value,
+    )
+    priority: Mapped[str] = mapped_column(
+        Text, default=IssueReportPriority.NORMAL, server_default=IssueReportPriority.NORMAL.value,
+    )
     current_path: Mapped[str] = mapped_column(Text)
     lead_id: Mapped[str | None] = mapped_column(
         PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
     )
-    technical_context: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    technical_context: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         CheckConstraint(
@@ -693,7 +687,7 @@ class IssueReportAttachment(Base):
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("idx_issue_report_attachments_report", report_id),)
 
@@ -705,7 +699,7 @@ class IssueReportComment(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey("issue_reports.id", ondelete="CASCADE"))
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     content: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("idx_issue_report_comments_report_created", report_id, created_at),)
 
@@ -719,7 +713,7 @@ class IssueReportEvent(Base):
     event_type: Mapped[str] = mapped_column(Text)
     previous_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("idx_issue_report_events_report_created", report_id, created_at),)
 
@@ -735,21 +729,21 @@ class Appointment(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     nombre_completo: Mapped[str] = mapped_column(Text)
-    dni: Mapped[str] = mapped_column(Text, default="")
+    dni: Mapped[str] = mapped_column(Text, default="", server_default="")
     telefono: Mapped[str] = mapped_column(Text)
     tratamiento: Mapped[str] = mapped_column(Text)
-    detalle: Mapped[str] = mapped_column(Text, default="")
+    detalle: Mapped[str] = mapped_column(Text, default="", server_default="")
     fecha: Mapped[date] = mapped_column(Date)
     hora: Mapped[str] = mapped_column(Text)
     vendedor: Mapped[str] = mapped_column(Text)
-    adelanto: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    adelanto: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0, server_default="0")
     comprobante_filename: Mapped[str | None] = mapped_column(Text)
-    test_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    test_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     status: Mapped[str] = mapped_column(Text)
     n8n_status: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str | None] = mapped_column(Text)
     event_link: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         CheckConstraint(
@@ -783,6 +777,14 @@ class LeadTask(Base):
     __table_args__ = (
         Index("idx_lead_tasks_assignee_status_due", assigned_user_id, status, due_at),
         Index("idx_lead_tasks_lead_status_due", lead_id, status, due_at),
+        Index("idx_lead_tasks_created_by", created_by_user_id),
+        Index("idx_lead_tasks_completed_by", completed_by_user_id),
+        Index("idx_lead_tasks_due_pending", due_at, postgresql_where=text("status = 'pending'")),
+        Index(
+            "idx_lead_tasks_pending_reminder",
+            remind_at,
+            postgresql_where=text("status = 'pending' AND reminder_sent_at IS NULL"),
+        ),
     )
 
 
@@ -847,7 +849,10 @@ class TemplateUserState(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     use_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    __table_args__ = (Index("idx_template_user_state_recent", user_id, last_used_at.desc()),)
+    __table_args__ = (
+        Index("idx_template_user_state_recent", user_id, last_used_at.desc()),
+        Index("idx_template_user_state_template", template_id),
+    )
 
 
 class MediaAsset(Base):
@@ -864,6 +869,7 @@ class MediaAsset(Base):
     __table_args__ = (
         Index("idx_media_assets_created_at", created_at.desc()),
         Index("idx_media_assets_content_type", content_type),
+        Index("idx_media_assets_uploaded_by", uploaded_by_user_id),
     )
 
 
@@ -879,7 +885,10 @@ class TemplateAttachment(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (Index("idx_template_attachments_template_position", template_id, position),)
+    __table_args__ = (
+        Index("idx_template_attachments_template_position", template_id, position),
+        Index("idx_template_attachments_library_asset", library_asset_id),
+    )
 
 
 class AutomationRule(Base):
@@ -918,6 +927,7 @@ class AutomationRule(Base):
     __table_args__ = (
         Index("idx_automation_rules_trigger_active", trigger_type, is_active),
         Index("idx_automation_rules_builder_mode", builder_mode, is_active),
+        Index("idx_automation_rules_created_by", created_by_user_id),
     )
 
 

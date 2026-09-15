@@ -700,3 +700,21 @@ class TestResumeDoesNotRepeatEnqueuedActions:
         assert len(outbox.enqueued) == 1
         _, items = outbox.enqueued[0]
         assert items[0]["content"] == "Segundo"
+
+
+class TestOutboxDedupe:
+    async def test_engine_steps_tag_each_enqueued_message_with_a_stable_key(self, deps, outbox):
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
+
+        await _execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
+
+        _, items = outbox.enqueued[0]
+        assert [item["dedupe_key"] for item in items] == ["automation:77:3:0:0"]
+
+    async def test_resuming_the_same_step_reuses_the_same_keys(self, deps, outbox):
+        action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
+
+        for _ in range(2):
+            await _execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
+
+        assert outbox.enqueued[0][1][0]["dedupe_key"] == outbox.enqueued[1][1][0]["dedupe_key"]

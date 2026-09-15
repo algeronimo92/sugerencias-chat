@@ -6,7 +6,7 @@ import type {
   AutomationFlowDefinition, AutomationFlowNodeType, AutomationRule, AutomationTrigger,
 } from '../types'
 import type { AutomationExecutionStatusValue } from '../domain/automationCatalog'
-import { useChatSocketConnected } from './useChats'
+import { useChatSocketConnected } from './useRealtime'
 
 export interface AutomationRuleInput {
   name: string

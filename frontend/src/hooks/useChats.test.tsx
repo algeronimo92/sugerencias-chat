@@ -18,7 +18,7 @@ import type { PropsWithChildren } from 'react'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useChatUpdates } from './useChats'
+import { useChatUpdates } from './useRealtime'
 
 const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 

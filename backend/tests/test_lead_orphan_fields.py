@@ -64,7 +64,7 @@ def stage_deps(monkeypatch):
     monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"stage": "calificado"}))
     monkeypatch.setattr(chats, "update_lead_stage", update_stage)
     monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(chats, "trigger_stage_changed", AsyncMock())
+    monkeypatch.setattr(chats, "notify_automations_scheduled", AsyncMock())
     return update_stage
 
 

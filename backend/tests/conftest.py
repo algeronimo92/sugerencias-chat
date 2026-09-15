@@ -164,7 +164,9 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         recorder.lead_updates.append((chat_id, values))
         return values
 
-    async def update_lead_stage(chat_id, stage, actor_type="system", actor_user_id=None, metadata=None):
+    async def update_lead_stage(
+        chat_id, stage, actor_type="system", actor_user_id=None, metadata=None, schedule_automations=True,
+    ):
         # .value y no str(): LeadStage es (str, Enum) y no StrEnum, así que
         # str() devolvería "LeadStage.en_objecion" en vez de "en_objecion".
         value = getattr(stage, "value", stage)

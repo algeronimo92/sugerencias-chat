@@ -3,6 +3,7 @@ import { AlertTriangle, BadgeCheck, CheckCircle2, FileAudio, FileText, Image, Lo
 import type { Chat, MessageTemplate, MessageType, TemplateAttachment } from '../types'
 import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
+import { INTERACTIVE_REPLY_PROMPT, buttonFallbackLine } from '../domain/interactiveRules'
 import { extractErrorMessage } from '../utils/errors'
 import { parseRichText, resolveMediaUrl } from '../utils/message'
 import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate } from '../utils/templates'
@@ -122,11 +123,8 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     if (template.interactive_type === 'buttons') {
       const buttons = interactiveConfig.buttons ?? []
       const replyOnly = buttons.every(button => button.type === 'reply')
-      buttons.forEach((button, index) => {
-        const detail = button.type === 'url' ? button.url : button.type === 'call' ? button.phoneNumber : button.type === 'copy' ? button.copyCode : null
-        lines.push(button.type === 'reply' ? `${index + 1}. ${button.displayText}` : `• ${button.displayText}: ${detail ?? ''}`)
-      })
-      if (replyOnly) lines.push('', 'Responde con el número de la opción que deseas.')
+      buttons.forEach((button, index) => lines.push(buttonFallbackLine(button, index)))
+      if (replyOnly) lines.push('', INTERACTIVE_REPLY_PROMPT)
       if (interactiveConfig.footer) lines.push('', interactiveConfig.footer)
     } else {
       let optionNumber = 1
@@ -138,7 +136,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
         }
         lines.push('')
       }
-      lines.push('Responde con el número de la opción que deseas.')
+      lines.push(INTERACTIVE_REPLY_PROMPT)
       if (interactiveConfig.footerText) lines.push('', interactiveConfig.footerText)
     }
     return lines.join('\n')

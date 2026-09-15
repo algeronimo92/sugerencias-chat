@@ -52,6 +52,65 @@ jobs:
           SECRET_KEY: "ci-test-key"
         run: python -m pytest
 
+  migrations-check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_DB: app
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: "postgresql+asyncpg://app:app@localhost:5432/app"
+      DATABASE_SSL: "disable"
+      N8N_WEBHOOK_URL: "https://example.com/webhook/x"
+      SECRET_KEY: "ci-migrations-key"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Apply every revision on an empty database
+        run: python -m scripts.migrate
+      - name: Latest revision downgrades and upgrades again
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+      - name: models.py matches the migrated schema
+        run: alembic check
+
+  api-types-check:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql+asyncpg://u:p@localhost/db"
+      N8N_WEBHOOK_URL: "https://example.com/webhook/x"
+      SECRET_KEY: "ci-api-types-key"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r backend/requirements.txt
+      - name: Frontend types match the backend OpenAPI schema
+        run: |
+          ./scripts/generate-api-types.sh
+          git diff --exit-code -- frontend/src/api/schema.d.ts
+
   docker-build-check:
     runs-on: ubuntu-latest
     steps:
@@ -119,7 +178,7 @@ jobs:
             grafana/loki:3.7.6 -verify-config -config.file=/etc/loki/loki-config.yml
 
   deploy:
-    needs: [frontend-checks, backend-checks, docker-build-check, monitoring-checks]
+    needs: [frontend-checks, backend-checks, migrations-check, api-types-check, docker-build-check, monitoring-checks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

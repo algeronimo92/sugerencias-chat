@@ -37,6 +37,7 @@ def _patch(monkeypatch, *, target, edit=None, delete=None, update=None, mark=Non
     monkeypatch.setattr(chats, "update_message_content", update)
     monkeypatch.setattr(chats, "mark_message_deleted", mark)
     monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    monkeypatch.setattr(chats, "get_whatsapp_capabilities", AsyncMock(return_value={"edit_delete_supported": True}))
     return edit, delete, update, mark
 
 
@@ -164,3 +165,21 @@ class TestDelete:
         assert exc.value.status_code == 502
         # Si no se borró en WhatsApp, en el CRM sigue estando.
         mark.assert_not_awaited()
+
+
+class TestUnsupportedChannel:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("call", [
+        lambda: chats.edit_message(CHAT_ID, 7, EditMessageRequest(text="corregido")),
+        lambda: chats.delete_message(CHAT_ID, 7),
+    ])
+    async def test_refuses_before_calling_whatsapp(self, monkeypatch, call):
+        edit, delete, _, _ = _patch(monkeypatch, target=_target())
+        monkeypatch.setattr(chats, "get_whatsapp_capabilities", AsyncMock(return_value={"edit_delete_supported": False}))
+
+        with pytest.raises(HTTPException) as exc:
+            await call()
+
+        assert exc.value.status_code == 409
+        edit.assert_not_awaited()
+        delete.assert_not_awaited()

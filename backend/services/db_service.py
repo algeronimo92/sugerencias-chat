@@ -1,10 +1,11 @@
 import asyncio
+import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import and_, bindparam, case, delete, exists, false, func, insert, not_, or_, select, text, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from domain_types import AutomationTrigger
 from db.models import (
@@ -27,8 +28,16 @@ from db.models import (
     WspMessage,
 )
 from db.session import get_sessionmaker
+from services.automation_scheduling import schedule_automation_event_in_session
+from services.lead_touch import (
+    touch_automated_reply_stmt,
+    touch_last_read_stmt,
+    touch_ultimo_mensaje_stmt,
+)
 from services.message_edit_crypto import decrypt_edited_text
 from services.settings_service import get_effective
+
+logger = logging.getLogger(__name__)
 
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
@@ -757,18 +766,47 @@ async def _record_activity(
     new_value: dict | None = None,
     metadata: dict | None = None,
 ) -> None:
-    await session.execute(
-        insert(LeadActivity).values(
-            lead_id=lead_id,
-            event_type=event_type,
-            actor_type=actor_type,
-            actor_user_id=actor_user_id,
-            old_value=old_value,
-            new_value=new_value,
-            metadata_=metadata,
-            created_at=datetime.now(timezone.utc),
-        )
+    await session.execute(_activity_insert(
+        lead_id, event_type, actor_type, actor_user_id, old_value, new_value, metadata,
+    ))
+
+
+def _activity_insert(
+    lead_id: str,
+    event_type: str,
+    actor_type: str,
+    actor_user_id: int | None,
+    old_value: dict | None,
+    new_value: dict | None,
+    metadata: dict | None,
+):
+    return insert(LeadActivity).values(
+        lead_id=lead_id,
+        event_type=event_type,
+        actor_type=actor_type,
+        actor_user_id=actor_user_id,
+        old_value=old_value,
+        new_value=new_value,
+        metadata_=metadata,
+        created_at=datetime.now(timezone.utc),
     )
+
+
+async def _schedule_stage_automations(
+    session, chat_id: str, activity_id: int, old_value: dict, new_value: dict,
+) -> int:
+    try:
+        async with session.begin_nested():
+            return await schedule_automation_event_in_session(
+                session,
+                AutomationTrigger.STAGE_CHANGED,
+                chat_id,
+                f"stage:{activity_id}",
+                {"old_value": old_value, "new_value": new_value},
+            )
+    except SQLAlchemyError:
+        logger.exception("No se pudieron agendar las automatizaciones del cambio de etapa de %s", chat_id)
+        return 0
 
 
 async def update_lead_stage(
@@ -779,7 +817,9 @@ async def update_lead_stage(
     metadata: dict | None = None,
     include_chat: bool = True,
     razon_perdido: str | None = None,
+    schedule_automations: bool = True,
 ) -> dict | None:
+    automations_scheduled = 0
     async with get_sessionmaker()() as session:
         old_stage = (
             await session.execute(select(Lead.estado).where(Lead.id == chat_id).with_for_update())
@@ -828,21 +868,27 @@ async def update_lead_stage(
                         "sent_at": _fmt_ts(trigger["sent_at"]),
                     },
                 }
-            await _record_activity(
-                session,
-                chat_id,
-                AutomationTrigger.STAGE_CHANGED,
-                actor_type,
-                actor_user_id,
-                {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage},
-                {"stage": stage.value},
-                metadata,
-            )
+            old_value = {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage}
+            new_value = {"stage": stage.value}
+            activity_id = (await session.execute(_activity_insert(
+                chat_id, AutomationTrigger.STAGE_CHANGED, actor_type, actor_user_id,
+                old_value, new_value, metadata,
+            ).returning(LeadActivity.id))).scalar_one()
+            if schedule_automations:
+                automations_scheduled = await _schedule_stage_automations(
+                    session, chat_id, activity_id, old_value, new_value,
+                )
         await session.commit()
 
     if not include_chat:
-        return {"chat_id": chat_id, "stage": stage.value, "changed": changed}
-    return await fetch_chat(chat_id)
+        return {
+            "chat_id": chat_id,
+            "stage": stage.value,
+            "changed": changed,
+            "automations_scheduled": automations_scheduled,
+        }
+    chat = await fetch_chat(chat_id)
+    return {**chat, "automations_scheduled": automations_scheduled} if chat else chat
 
 
 async def mark_lead_no_show(chat_id: str, actor_user_id: int) -> dict | None:
@@ -1326,13 +1372,13 @@ async def insert_message(
                 # None conserva el comportamiento de los envíos directos
                 # autenticados que ya pasan por este helper (p. ej. sticker).
                 touch = (
-                    _touch_automated_reply_stmt
+                    touch_automated_reply_stmt
                     if human_outbound is False
-                    else _touch_last_read_stmt
+                    else touch_last_read_stmt
                 )
                 await session.execute(touch(chat_id, datetime.now(timezone.utc)))
 
-            await session.execute(_touch_ultimo_mensaje_stmt(chat_id, now))
+            await session.execute(touch_ultimo_mensaje_stmt(chat_id, now))
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -1412,33 +1458,9 @@ async def update_message_status(wa_message_id: str, status: str) -> dict | None:
     return {"id": row["id"], "chat_id": row["chat_id"], "status": status}
 
 
-def _touch_last_read_stmt(chat_id: str, when: datetime):
-    """Statement para marcar el chat visto por un humano. Se ejecuta dentro
-    de la transacción del llamador (insert_message, enqueue_messages) o de
-    la propia de mark_chat_read — no abre sesión, solo arma el UPDATE."""
-    return update(Lead).where(Lead.id == chat_id).values(last_read_at=when)
-
-
-def _touch_automated_reply_stmt(chat_id: str, when: datetime):
-    """Statement para registrar que un bot/automatización (sin actor_user_id
-    humano) le respondió al lead — no cuenta como que un vendedor lo vio."""
-    return update(Lead).where(Lead.id == chat_id).values(last_automated_reply_at=when)
-
-
-def _touch_ultimo_mensaje_stmt(chat_id: str, when: datetime):
-    """Statement para actualizar ``ultimo_mensaje_at`` en cada mensaje. Se
-    ejecuta dentro de la transacción de ``insert_message`` a propósito, en
-    vez de llamar a ``update_lead``: ese helper abre su propia sesión y hace
-    ``SELECT ... FOR UPDATE`` sobre ``leads``, lo que compite con el `UPDATE`
-    de ``_touch_last_read_stmt``/``_touch_automated_reply_stmt`` de la misma
-    transacción (deadlock en cada mensaje saliente de un vendedor) y además
-    registra un evento "lead_updated" en el historial por cada mensaje."""
-    return update(Lead).where(Lead.id == chat_id).values(ultimo_mensaje_at=when)
-
-
 async def mark_chat_read(chat_id: str) -> None:
     async with get_sessionmaker()() as session:
-        await session.execute(_touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
+        await session.execute(touch_last_read_stmt(chat_id, datetime.now(timezone.utc)))
         await session.commit()
 
 
@@ -1644,22 +1666,8 @@ async def fetch_messages_after_cursor(
     ]
 
 
-async def fetch_latest_message() -> dict | None:
-    """Último mensaje de cualquier chat, con el nombre del lead — se usa para
-    armar la notificación cuando el webhook de n8n avisa de un mensaje nuevo."""
-    stmt = _message_notification_stmt().order_by(
-        WspMessage.sent_at.desc(), WspMessage.id.desc()
-    ).limit(1)
-    async with get_sessionmaker()() as session:
-        row = (await session.execute(stmt)).mappings().first()
-
-    if row is None:
-        return None
-    return _message_notification_payload(row)
-
-
 async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
-    """Mismo payload que ``fetch_latest_message`` pero para un mensaje concreto.
+    """Payload de notificación de un mensaje concreto.
 
     El webhook de n8n manda el ``wa_message_id`` que acaba de insertar, así dos
     mensajes que entran casi a la vez no se pisan (buscar "el último" podía
