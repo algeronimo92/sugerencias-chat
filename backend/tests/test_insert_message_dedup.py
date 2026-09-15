@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from services import db_service
+from tests.conftest import patch_store
 
 EXISTING_ROW = {
     "id": 42,
@@ -74,7 +75,7 @@ async def test_insert_message_returns_existing_row_instead_of_raising(monkeypatc
         async def __aexit__(self, *_args):
             return False
 
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.insert_message(
         "d17d73fb-70aa-4750-bfa2-c069e37d78db",
@@ -103,7 +104,7 @@ async def test_insert_message_without_wa_message_id_reraises(monkeypatch):
         async def __aexit__(self, *_args):
             return False
 
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     with pytest.raises(IntegrityError):
         await db_service.insert_message(

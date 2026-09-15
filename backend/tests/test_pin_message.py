@@ -9,6 +9,7 @@ import pytest
 
 from services import db_service
 from services.db_service import PinLimitReachedError
+from tests.conftest import patch_store
 
 CHAT_ID = "d17d73fb-70aa-4750-bfa2-c069e37d78db"
 
@@ -70,7 +71,7 @@ def _session_context(row, *, pinned_count=0):
 async def test_pin_sets_pinned_at_and_user_when_under_the_limit(monkeypatch):
     row = _Row()
     SessionContext, session = _session_context(row, pinned_count=1)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.pin_message(CHAT_ID, 42, user_id=7)
 
@@ -83,7 +84,7 @@ async def test_pin_sets_pinned_at_and_user_when_under_the_limit(monkeypatch):
 async def test_pin_raises_when_chat_already_has_the_limit(monkeypatch):
     row = _Row()
     SessionContext, session = _session_context(row, pinned_count=3)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     with pytest.raises(PinLimitReachedError):
         await db_service.pin_message(CHAT_ID, 42, user_id=7)
@@ -99,7 +100,7 @@ async def test_pin_is_idempotent_and_does_not_recheck_the_limit(monkeypatch):
     # pinned_count=3 probaría que igual pasa: un mensaje ya fijado no vuelve a
     # contar contra el límite al "re-fijarse".
     SessionContext, session = _session_context(row, pinned_count=3)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.pin_message(CHAT_ID, 42, user_id=7)
 
@@ -112,7 +113,7 @@ async def test_pin_is_idempotent_and_does_not_recheck_the_limit(monkeypatch):
 async def test_pin_returns_none_for_a_deleted_message(monkeypatch):
     row = _Row(deleted_at=datetime.now(timezone.utc))
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     assert await db_service.pin_message(CHAT_ID, 42, user_id=7) is None
     session.commit.assert_not_awaited()
@@ -121,7 +122,7 @@ async def test_pin_returns_none_for_a_deleted_message(monkeypatch):
 @pytest.mark.asyncio
 async def test_pin_returns_none_when_message_not_found(monkeypatch):
     SessionContext, session = _session_context(None)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     assert await db_service.pin_message(CHAT_ID, 999, user_id=7) is None
 
@@ -130,7 +131,7 @@ async def test_pin_returns_none_when_message_not_found(monkeypatch):
 async def test_unpin_clears_pinned_fields(monkeypatch):
     row = _Row(pinned_at=datetime.now(timezone.utc), pinned_by_user_id=7)
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.unpin_message(CHAT_ID, 42)
 
@@ -143,7 +144,7 @@ async def test_unpin_clears_pinned_fields(monkeypatch):
 async def test_unpin_is_idempotent(monkeypatch):
     row = _Row(pinned_at=None)
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.unpin_message(CHAT_ID, 42)
 
@@ -154,6 +155,6 @@ async def test_unpin_is_idempotent(monkeypatch):
 @pytest.mark.asyncio
 async def test_unpin_returns_none_when_message_not_found(monkeypatch):
     SessionContext, session = _session_context(None)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     assert await db_service.unpin_message(CHAT_ID, 999) is None

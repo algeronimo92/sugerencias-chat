@@ -7,10 +7,16 @@ import httpx
 import pytest
 
 from db.models import WspMessage
-from services import message_outbox, meta_service
+from services import message_outbox, meta_service, whatsapp_channel
 from services.media_storage import MediaNotFoundError
 from services.message_outbox import SendOutcome, classify_send_failure, is_final_failure
-from services.meta_service import DeliveryUnconfirmedError, MetaApiError, WhatsAppWindowClosedError
+from services.meta_service import MetaApiError, WhatsAppWindowClosedError
+from services.outbound_kinds import OutboundDelivery
+from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, SendReceipt
+
+
+DELIVERY = OutboundDelivery(SendReceipt("WA-1"))
+QUICK_DELIVERY = OutboundDelivery(SendReceipt("WA-QUICK"))
 
 
 def _job(**overrides):
@@ -33,6 +39,7 @@ def _job(**overrides):
     (MetaApiError("demasiadas solicitudes", status_code=429), SendOutcome.RETRYABLE),
     (MetaApiError("error interno", status_code=503), SendOutcome.RETRYABLE),
     (MediaNotFoundError("no existe"), SendOutcome.DEFINITIVE),
+    (ChannelError("rechazo de otro proveedor", status_code=400), SendOutcome.DEFINITIVE),
     (httpx.ConnectError("sin red"), SendOutcome.RETRYABLE),
     (RuntimeError("minio caído"), SendOutcome.RETRYABLE),
 ])
@@ -67,14 +74,14 @@ async def test_meta_send_that_never_connected_keeps_the_transport_error(monkeypa
 
 
 def test_unconfirmed_delivery_is_explained_to_the_seller():
-    exc = DeliveryUnconfirmedError(meta_service.UNCONFIRMED_DELIVERY_MESSAGE)
+    exc = DeliveryUnconfirmedError()
 
-    assert meta_service.describe_send_failure(exc, "enviar") == meta_service.UNCONFIRMED_DELIVERY_MESSAGE
+    assert whatsapp_channel.describe_send_failure(exc, "enviar") == whatsapp_channel.UNCONFIRMED_DELIVERY_MESSAGE
 
 
 async def test_accepted_message_is_never_requeued_when_recording_it_fails(monkeypatch):
     monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0, 0))
-    monkeypatch.setattr(message_outbox, "_send_payload", AsyncMock(return_value=({"key": {"id": "WA-1"}}, None)))
+    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(return_value=DELIVERY))
     record = AsyncMock(side_effect=[RuntimeError("db"), RuntimeError("db"), False])
     announce = AsyncMock()
     mark_failed = AsyncMock()
@@ -91,7 +98,7 @@ async def test_accepted_message_is_never_requeued_when_recording_it_fails(monkey
 
 async def test_accepted_message_stays_out_of_retry_even_if_it_never_gets_recorded(monkeypatch):
     monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0))
-    monkeypatch.setattr(message_outbox, "_send_payload", AsyncMock(return_value=({"key": {"id": "WA-1"}}, None)))
+    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(return_value=DELIVERY))
     monkeypatch.setattr(message_outbox, "_record_sent", AsyncMock(side_effect=RuntimeError("db")))
     mark_failed = AsyncMock()
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
@@ -103,7 +110,7 @@ async def test_accepted_message_stays_out_of_retry_even_if_it_never_gets_recorde
 
 async def test_failed_send_is_recorded_with_its_outcome(monkeypatch):
     exc = DeliveryUnconfirmedError("sin respuesta")
-    monkeypatch.setattr(message_outbox, "_send_payload", AsyncMock(side_effect=exc))
+    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(side_effect=exc))
     mark_failed = AsyncMock()
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
 
@@ -116,15 +123,15 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
     monkeypatch.setattr(message_outbox, "SHUTDOWN_GRACE_SECONDS", 0.05)
     release_quick = asyncio.Event()
 
-    async def send(chat_id, payload):
+    async def send(_sender, chat_id, payload):
         if payload["text"] == "rápido":
             await release_quick.wait()
-            return {"key": {"id": "WA-QUICK"}}, None
+            return QUICK_DELIVERY
         await asyncio.Event().wait()
 
     persist = AsyncMock(return_value=True)
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "_send_payload", send)
+    monkeypatch.setattr(message_outbox, "send_outbound", send)
     monkeypatch.setattr(message_outbox, "_persist_sent", persist)
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
 
@@ -139,7 +146,7 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
     with pytest.raises(asyncio.CancelledError):
         await worker
 
-    persist.assert_awaited_once_with(quick, {"key": {"id": "WA-QUICK"}}, None)
+    persist.assert_awaited_once_with(quick, QUICK_DELIVERY)
     mark_failed.assert_awaited_once()
     failed_job, failed_exc, outcome = mark_failed.await_args.args
     assert failed_job == stuck

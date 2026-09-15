@@ -1,12 +1,13 @@
 """Tests del historial de versiones de los flujos visuales."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from domain_types import AutomationBuilderMode
 from services.automation_service import list_flow_versions, publish_visual_flow, restore_flow_version
+from tests.conftest import automations_patch
 
 RULE_ID = 7
 
@@ -54,13 +55,13 @@ def session_returning(rows=None, scalar=None):
 
 class TestListFlowVersions:
     async def test_returns_empty_for_a_rule_that_is_not_visual(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=visual_rule(builder_mode=AutomationBuilderMode.SIMPLE),
         )):
             assert await list_flow_versions(RULE_ID) == []
 
     async def test_returns_empty_for_a_missing_rule(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(return_value=None)):
+        with automations_patch("get_automation_rule", AsyncMock(return_value=None)):
             assert await list_flow_versions(RULE_ID) == []
 
     async def test_marks_the_published_version_as_current(self):
@@ -69,8 +70,8 @@ class TestListFlowVersions:
             {"version": 2, "definition": definition(2, 1), "created_at": None},
         ]
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=visual_rule())),
-            patch("services.automation_service.get_sessionmaker", session_returning(rows=rows)),
+            automations_patch("get_automation_rule", AsyncMock(return_value=visual_rule())),
+            automations_patch("get_sessionmaker", session_returning(rows=rows)),
         ):
             versions = await list_flow_versions(RULE_ID)
 
@@ -83,8 +84,8 @@ class TestListFlowVersions:
     async def test_tolerates_a_version_with_an_empty_definition(self):
         rows = [{"version": 1, "definition": None, "created_at": None}]
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=visual_rule())),
-            patch("services.automation_service.get_sessionmaker", session_returning(rows=rows)),
+            automations_patch("get_automation_rule", AsyncMock(return_value=visual_rule())),
+            automations_patch("get_sessionmaker", session_returning(rows=rows)),
         ):
             versions = await list_flow_versions(RULE_ID)
         assert versions[0]["node_count"] == 0
@@ -93,13 +94,13 @@ class TestListFlowVersions:
 class TestRestoreFlowVersion:
     async def test_returns_none_when_the_version_does_not_exist(self):
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=visual_rule())),
-            patch("services.automation_service.get_sessionmaker", session_returning(scalar=None)),
+            automations_patch("get_automation_rule", AsyncMock(return_value=visual_rule())),
+            automations_patch("get_sessionmaker", session_returning(scalar=None)),
         ):
             assert await restore_flow_version(RULE_ID, 99) is None
 
     async def test_returns_none_for_a_rule_that_is_not_visual(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=visual_rule(builder_mode=AutomationBuilderMode.SIMPLE),
         )):
             assert await restore_flow_version(RULE_ID, 1) is None
@@ -109,9 +110,9 @@ class TestRestoreFlowVersion:
         que ya está corriendo sigue igual hasta que el usuario publique."""
         update_mock = AsyncMock(return_value=visual_rule())
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=visual_rule())),
-            patch("services.automation_service.get_sessionmaker", session_returning(scalar=definition(2, 1))),
-            patch("services.automation_service.update_automation_rule", update_mock),
+            automations_patch("get_automation_rule", AsyncMock(return_value=visual_rule())),
+            automations_patch("get_sessionmaker", session_returning(scalar=definition(2, 1))),
+            automations_patch("update_automation_rule", update_mock),
         ):
             await restore_flow_version(RULE_ID, 2)
 
@@ -135,10 +136,10 @@ class TestPublishFlowVersion:
             "conditions": {},
             "flow_definition": published,
         }
-        sessionmaker = patch("services.automation_service.get_sessionmaker")
+        sessionmaker = automations_patch("get_sessionmaker")
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=current)),
-            patch("services.automation_service.validate_visual_flow", AsyncMock(return_value=validated)),
+            automations_patch("get_automation_rule", AsyncMock(return_value=current)),
+            automations_patch("validate_visual_flow", AsyncMock(return_value=validated)),
             sessionmaker as get_sessionmaker,
         ):
             with pytest.raises(ValueError, match="No hay cambios pendientes para publicar"):

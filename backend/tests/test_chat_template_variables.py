@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
-from routers import chats
-from services import automation_rules
+from services import automation_rules, chat_messaging
 
 
 class _LateNightInLima(datetime):
@@ -14,7 +13,7 @@ class _LateNightInLima(datetime):
 def test_manual_interactive_uses_business_date_not_server_utc_date(monkeypatch):
     monkeypatch.setattr(automation_rules, "datetime", _LateNightInLima)
 
-    rendered = chats._render_interactive_config(
+    rendered = chat_messaging.render_interactive_config(
         {"title": "Hoy {{fecha_actual}}", "buttons": [{"displayText": "{{nombre}}"}]},
         {"name": "Ana"},
     )

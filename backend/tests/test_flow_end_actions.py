@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from services import automation_service
 from services.automation_service import _run_visual_execution
-from tests.conftest import make_chat, make_execution, make_rule
+from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
 class _SuccessfulSession:
@@ -101,8 +101,7 @@ async def test_published_flow_preserves_end_close_action(monkeypatch):
         "type": "change_stage",
         "stage": "en_diagnostico",
     }
-    monkeypatch.setattr(
-        automation_service,
+    patch_automations(monkeypatch,
         "get_sessionmaker",
         lambda: lambda: _SuccessfulSession(),
     )

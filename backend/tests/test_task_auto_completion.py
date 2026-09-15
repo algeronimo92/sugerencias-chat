@@ -8,6 +8,8 @@ from fastapi import HTTPException
 
 from routers import tasks
 from services import message_outbox, productivity_service
+from services.outbound_kinds import OutboundDelivery
+from services.whatsapp_channel import SendReceipt
 
 
 class _SessionContext:
@@ -91,7 +93,7 @@ async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypat
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Hola", "_actor_user_id": 7},
-    }, {"key": {"id": "WA-1"}}, None)
+    }, OutboundDelivery(SendReceipt("WA-1")))
 
     complete.assert_awaited_once_with("lead-1", 7)
     assert {"type": "tasks_updated"} in [call.args[0] for call in broadcast.await_args_list]
@@ -115,7 +117,7 @@ async def test_automatic_message_does_not_complete_seller_tasks(monkeypatch):
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Mensaje automático"},
-    }, {"key": {"id": "WA-1"}}, None)
+    }, OutboundDelivery(SendReceipt("WA-1")))
 
     complete.assert_not_awaited()
 
@@ -142,7 +144,7 @@ async def test_task_completion_failure_does_not_fail_an_already_sent_message(mon
         "chat_id": "lead-1",
         "attempts": 0,
         "payload": {"type": "text", "text": "Hola", "_actor_user_id": 7},
-    }, {"key": {"id": "WA-1"}}, None)
+    }, OutboundDelivery(SendReceipt("WA-1")))
 
     assert broadcast.await_args_list[0].args[0]["reason"] == "outbound_message"
 

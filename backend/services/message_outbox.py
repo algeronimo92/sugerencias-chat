@@ -13,33 +13,11 @@ from db.models import MessageOutbox, ScheduledMessage, WspMessage
 from domain_types import MessageStatus, OutboxStatus, ScheduledMessageStatus
 from db.session import get_sessionmaker
 from services.lead_touch import touch_automated_reply_stmt, touch_last_read_stmt
-from services.meta_service import (
-    UNCONFIRMED_DELIVERY_MESSAGE,
-    DeliveryUnconfirmedError,
-    MetaApiError,
-    describe_send_failure,
-    media_message_fields,
-    send_whatsapp_audio,
-    send_whatsapp_buttons,
-    send_whatsapp_list,
-    send_whatsapp_location,
-    send_whatsapp_media,
-    send_whatsapp_sticker,
-    send_whatsapp_template,
-    send_whatsapp_text,
-)
-from services.media_storage import (
-    MediaNotFoundError,
-    image_to_sticker_webp,
-    read_media_bytes,
-    stat_media,
-)
+from services.media_storage import MediaNotFoundError
+from services.outbound_kinds import OutboundDelivery, outbound_message_fields, send_outbound
 from services.productivity_service import complete_reply_tasks
-from services.whatsapp_rules import (
-    buttons_are_reply_only,
-    buttons_text_fallback,
-    resolve_interactive_footer,
-)
+from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, describe_send_failure
+from services.whatsapp_channels import current_channel
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -59,7 +37,7 @@ class SendOutcome(StrEnum):
     UNCONFIRMED = "unconfirmed"
 
 
-def _meta_rejection_outcome(exc: MetaApiError) -> SendOutcome:
+def _rejection_outcome(exc: ChannelError) -> SendOutcome:
     if exc.status_code is not None and (exc.status_code == 429 or exc.status_code >= 500):
         return SendOutcome.RETRYABLE
     return SendOutcome.DEFINITIVE
@@ -67,7 +45,7 @@ def _meta_rejection_outcome(exc: MetaApiError) -> SendOutcome:
 
 SEND_FAILURE_OUTCOMES: tuple[tuple[type[Exception], Callable[[Exception], SendOutcome]], ...] = (
     (DeliveryUnconfirmedError, lambda _exc: SendOutcome.UNCONFIRMED),
-    (MetaApiError, _meta_rejection_outcome),
+    (ChannelError, _rejection_outcome),
     (MediaNotFoundError, lambda _exc: SendOutcome.DEFINITIVE),
     (KeyError, lambda _exc: SendOutcome.DEFINITIVE),
     (ValueError, lambda _exc: SendOutcome.DEFINITIVE),
@@ -115,11 +93,6 @@ def _format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _wa_message_id(response: dict) -> str | None:
-    key = response.get("key") or {}
-    return key.get("id") or response.get("messageId") or response.get("id")
-
-
 async def enqueue_text_message(
     chat_id: str,
     text: str,
@@ -142,39 +115,6 @@ def quoted_context(target: dict) -> dict:
     wa_message_id del mensaje citado -ella misma resuelve el resto del lado
     del cliente- ver meta_service.send_whatsapp_text."""
     return {"wa_message_id": target["wa_message_id"]}
-
-
-def _outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
-    """Deriva (message_type, payload de wsp_messages) del payload de despacho.
-
-    El payload de despacho (``MessageOutbox.payload``) es la instrucción de envío
-    a Evolution; la columna ``payload`` de ``wsp_messages`` guarda solo lo que el
-    frontend necesita para renderizar (lat/lon, filename…). Esto reemplaza a los
-    pseudo-tags que antes se armaban en ``content`` en cada call site."""
-    kind = payload.get("type")
-    if kind == "media":
-        return media_message_fields(payload["mediatype"], payload.get("filename"), payload.get("album_id"))
-    if kind == "location":
-        return "location", {"latitude": payload["latitude"], "longitude": payload["longitude"]}
-    if kind == "official_template":
-        return "template", {"name": payload.get("name"), "language": payload.get("language")}
-    if kind == "interactive":
-        # El frontend arma los botones/lista de la burbuja a partir de esto
-        # (ver parseOutboundInteractive en frontend/src/utils/message.ts):
-        # sin config/description solo puede mostrar texto plano.
-        return "interactive", {
-            "type": "interactive",
-            "interactive_type": payload.get("interactive_type"),
-            "config": payload.get("config"),
-            "description": payload.get("description"),
-        }
-    if kind == "audio":
-        return "audio", None
-    if kind == "sticker":
-        return "sticker", None
-    if kind == "text":
-        return "text", None
-    return "unsupported", None
 
 
 def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
@@ -236,7 +176,7 @@ async def enqueue_messages(
             payload = item["payload"]
             if actor_user_id is not None:
                 payload = {**payload, "_actor_user_id": actor_user_id}
-            message_type, db_payload = _outbound_message_fields(payload)
+            message_type, db_payload = outbound_message_fields(payload)
             if item.get("forwarded"):
                 db_payload = {**(db_payload or {}), "forwarded": True}
             if reply_to:
@@ -405,7 +345,7 @@ async def _recover_stale_jobs() -> None:
             row["message_id"],
         )
         await _mark_failed(
-            dict(row), DeliveryUnconfirmedError(UNCONFIRMED_DELIVERY_MESSAGE), SendOutcome.UNCONFIRMED,
+            dict(row), DeliveryUnconfirmedError(), SendOutcome.UNCONFIRMED,
         )
 
 
@@ -447,8 +387,9 @@ async def _claim_batch() -> list[dict]:
     return claimed
 
 
-async def _record_sent(job: dict, response: dict, delivered_content: str | None = None) -> bool:
-    wa_id = _wa_message_id(response)
+async def _record_sent(job: dict, delivery: OutboundDelivery) -> bool:
+    wa_id = delivery.receipt.provider_message_id
+    delivered_content = delivery.delivered_content
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         await session.execute(
@@ -503,11 +444,11 @@ async def _announce_sent(job: dict, scheduled_updated: bool) -> None:
         logger.exception("No se pudo avisar el envío del mensaje %s", job["message_id"])
 
 
-async def _persist_sent(job: dict, response: dict, delivered_content: str | None) -> bool:
+async def _persist_sent(job: dict, delivery: OutboundDelivery) -> bool:
     for delay in RECORD_SENT_RETRY_DELAYS:
         await asyncio.sleep(delay)
         try:
-            scheduled_updated = await _record_sent(job, response, delivered_content)
+            scheduled_updated = await _record_sent(job, delivery)
         except Exception:
             logger.warning(
                 "WhatsApp aceptó el mensaje %s pero no se pudo registrar como enviado",
@@ -573,84 +514,14 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
             })
 
 
-async def _send_payload(chat_id: str, payload: dict) -> tuple[dict, str | None]:
-    """Envía un payload de outbox y devuelve la respuesta y, si cambió por
-    un fallback compatible, el contenido realmente entregado."""
-    kind = payload.get("type")
-    # Solo lo llevan los envíos que responden a un mensaje concreto. Las
-    # plantillas oficiales e interactivas usan endpoints de Evolution que no
-    # aceptan cita, así que ahí ni se guarda.
-    quoted = payload.get("quoted")
-    if kind == "text":
-        return await send_whatsapp_text(chat_id, payload["text"], quoted=quoted), None
-    if kind == "audio":
-        info = await asyncio.to_thread(stat_media, payload["media_url"])
-        content = await asyncio.to_thread(read_media_bytes, payload["media_url"])
-        filename = payload["media_url"].rsplit("/", 1)[-1]
-        return await send_whatsapp_audio(
-            chat_id, content, info.content_type, filename, quoted=quoted,
-        ), None
-    if kind == "media":
-        info = await asyncio.to_thread(stat_media, payload["media_url"])
-        content = await asyncio.to_thread(read_media_bytes, payload["media_url"])
-        filename = payload["media_url"].rsplit("/", 1)[-1]
-        return await send_whatsapp_media(
-            chat_id, content, info.content_type, payload["mediatype"],
-            filename=payload.get("filename"), caption=payload.get("caption"), quoted=quoted,
-        ), None
-    if kind == "sticker":
-        # sendSticker no acepta cita ni caption: solo el WEBP. Se reconvierte
-        # acá (y no al encolar) porque el archivo original puede ser el que
-        # subió el cliente, no un sticker ya normalizado.
-        data = await asyncio.to_thread(read_media_bytes, payload["media_url"])
-        sticker_bytes = await asyncio.to_thread(image_to_sticker_webp, data)
-        return await send_whatsapp_sticker(chat_id, sticker_bytes), None
-    if kind == "location":
-        return await send_whatsapp_location(
-            chat_id, payload["latitude"], payload["longitude"], quoted=quoted
-        ), None
-    if kind == "official_template":
-        return await send_whatsapp_template(
-            chat_id, payload["name"], payload["language"], payload.get("components", [])
-        ), None
-    if kind != "interactive":
-        raise ValueError(f"Tipo de outbox no soportado: {kind}")
-
-    interactive_type = payload["interactive_type"]
-    description = payload["description"]
-    config = payload["config"]
-    footer = await resolve_interactive_footer(interactive_type, config)
-
-    if interactive_type == "buttons":
-        buttons = config["buttons"]
-        if not buttons_are_reply_only(buttons):
-            # La Graph API de Meta solo acepta botones "reply" en un mensaje
-            # interactivo suelto (fuera de una plantilla oficial): un botón de
-            # URL, llamada o copiar código siempre rechaza con
-            # "interactive.action.buttons.N.reply is required" (código 100),
-            # confirmado con tráfico real -- no es un caso límite, es la regla.
-            fallback = buttons_text_fallback(config["title"], description, footer, buttons)
-            logger.info(
-                "Botones con tipo no-reply; Meta los rechaza en un mensaje interactivo "
-                "suelto, se manda como texto numerado"
-            )
-            return await send_whatsapp_text(chat_id, fallback), fallback
-        response = await send_whatsapp_buttons(chat_id, config["title"], description, footer, buttons)
-        return response, None
-    response = await send_whatsapp_list(
-        chat_id, config["title"], description, footer, config["buttonText"], config["sections"],
-    )
-    return response, None
-
-
 async def _process_job(job: dict) -> None:
     started_at = perf_counter()
     payload = job["payload"]
     try:
-        response, delivered_content = await _send_payload(job["chat_id"], payload)
+        delivery = await send_outbound(current_channel().sender, job["chat_id"], payload)
     except asyncio.CancelledError:
         await asyncio.shield(_mark_failed(
-            job, DeliveryUnconfirmedError(UNCONFIRMED_DELIVERY_MESSAGE), SendOutcome.UNCONFIRMED,
+            job, DeliveryUnconfirmedError(), SendOutcome.UNCONFIRMED,
         ))
         raise
     except Exception as exc:
@@ -665,7 +536,7 @@ async def _process_job(job: dict) -> None:
         job["message_id"], payload.get("type"),
         (perf_counter() - started_at) * 1000,
     )
-    await asyncio.shield(_persist_sent(job, response, delivered_content))
+    await asyncio.shield(_persist_sent(job, delivery))
 
 
 async def _process_batch(jobs: list[dict]) -> None:

@@ -28,7 +28,8 @@ from services.db_service import (
     update_lead,
     update_lead_stage,
 )
-from services.meta_service import send_whatsapp_reaction
+from services.whatsapp_channel import ReactionTarget
+from services.whatsapp_channels import current_channel
 from services.message_outbox import enqueue_messages
 from services.notification_service import create_system_notification
 from services.productivity_service import create_task, record_template_use
@@ -38,6 +39,13 @@ from services.ws_manager import manager
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def _send_reaction(key: dict, emoji: str) -> None:
+    await current_channel().actions.react(
+        ReactionTarget(chat_id=key["remoteJid"], provider_message_id=key["id"], from_me=bool(key.get("fromMe"))),
+        emoji,
+    )
 
 
 async def _broadcast(payload: dict) -> None:
@@ -74,7 +82,7 @@ class AutomationDeps:
     # tienen orden que preservar contra otros mensajes salientes y son
     # idempotentes (WhatsApp reemplaza la reacción propia).
     enqueue_messages: Callable[[str, list[dict]], Awaitable[list[dict]]] = enqueue_messages
-    send_reaction: Callable[[dict, str], Awaitable[dict]] = send_whatsapp_reaction
+    send_reaction: Callable[[dict, str], Awaitable[None]] = _send_reaction
 
     broadcast: Callable[[dict], Awaitable[None]] = _broadcast
     send_to_user: Callable[[int, dict], Awaitable[None]] = _send_to_user

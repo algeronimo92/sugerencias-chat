@@ -8,6 +8,7 @@ from sqlalchemy.dialects import postgresql
 
 from routers import automations, templates
 from services import automation_service, productivity_service
+from tests.conftest import patch_automations
 
 
 @pytest.mark.parametrize(
@@ -45,7 +46,7 @@ async def test_rule_listing_excludes_soft_deleted_automations(monkeypatch):
             statements.append(statement)
             return FakeResult()
 
-    monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: FakeSession)
+    patch_automations(monkeypatch, "get_sessionmaker", lambda: FakeSession)
     assert await automation_service.list_automation_rules() == []
     sql = str(statements[0].compile(
         dialect=postgresql.dialect(),

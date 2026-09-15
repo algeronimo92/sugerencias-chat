@@ -5,13 +5,14 @@ schedule_automation_event, get_sessionmaker y get_automation_execution se
 sustituyen, siguiendo el mismo patrón que test_flow_versions.py.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationBuilderMode, AutomationTrigger
 from services.automation_service import start_manual_flow_execution
+from tests.conftest import automations_patch
 
 RULE_ID = 42
 LEAD_ID = "51999@s.whatsapp.net"
@@ -72,10 +73,10 @@ def session_scalar(value):
 class TestStartManualFlowExecution:
     async def test_creates_execution_for_a_seller_when_flow_is_published_and_visible(self):
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=manual_rule())),
-            patch("services.automation_service.schedule_automation_event", AsyncMock(return_value=1)) as schedule,
-            patch("services.automation_service.get_sessionmaker", session_scalar(555)),
-            patch("services.automation_service.get_automation_execution", AsyncMock(return_value=execution_row())),
+            automations_patch("get_automation_rule", AsyncMock(return_value=manual_rule())),
+            automations_patch("schedule_automation_event", AsyncMock(return_value=1)) as schedule,
+            automations_patch("get_sessionmaker", session_scalar(555)),
+            automations_patch("get_automation_execution", AsyncMock(return_value=execution_row())),
         ):
             result = await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
 
@@ -89,39 +90,39 @@ class TestStartManualFlowExecution:
 
     async def test_admin_can_start_even_when_not_marked_visible_to_sellers(self):
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(
+            automations_patch("get_automation_rule", AsyncMock(
                 return_value=manual_rule(visible_to_sellers=False),
             )),
-            patch("services.automation_service.schedule_automation_event", AsyncMock(return_value=1)),
-            patch("services.automation_service.get_sessionmaker", session_scalar(555)),
-            patch("services.automation_service.get_automation_execution", AsyncMock(return_value=execution_row())),
+            automations_patch("schedule_automation_event", AsyncMock(return_value=1)),
+            automations_patch("get_sessionmaker", session_scalar(555)),
+            automations_patch("get_automation_execution", AsyncMock(return_value=execution_row())),
         ):
             result = await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=1, is_admin=True)
         assert result["id"] == 555
 
     async def test_rejects_when_not_visible_to_sellers_and_caller_is_not_admin(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=manual_rule(visible_to_sellers=False),
         )):
             with pytest.raises(ValueError, match="no está disponible"):
                 await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
 
     async def test_rejects_non_visual_rules(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=manual_rule(builder_mode=AutomationBuilderMode.SIMPLE),
         )):
             with pytest.raises(ValueError, match="flujo de inicio manual"):
                 await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
 
     async def test_rejects_rules_whose_trigger_is_not_manual(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=manual_rule(trigger_type=AutomationTrigger.LEAD_CREATED),
         )):
             with pytest.raises(ValueError, match="flujo de inicio manual"):
                 await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
 
     async def test_rejects_inactive_rule_even_for_admin(self):
-        with patch("services.automation_service.get_automation_rule", AsyncMock(
+        with automations_patch("get_automation_rule", AsyncMock(
             return_value=manual_rule(is_active=False),
         )):
             with pytest.raises(ValueError, match="Publica y activa"):
@@ -132,8 +133,8 @@ class TestStartManualFlowExecution:
         lead no existe (ver automation_service.py); acá se traduce a un error
         claro en vez de intentar recuperar una ejecución que nunca se creó."""
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=manual_rule())),
-            patch("services.automation_service.schedule_automation_event", AsyncMock(return_value=0)),
+            automations_patch("get_automation_rule", AsyncMock(return_value=manual_rule())),
+            automations_patch("schedule_automation_event", AsyncMock(return_value=0)),
         ):
             with pytest.raises(ValueError, match="No se pudo iniciar"):
                 await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
@@ -143,10 +144,10 @@ class TestStartManualFlowExecution:
         cada disparo manual necesita una event_key distinta para no chocar
         con el índice único (rule_id, event_key) de automation_executions."""
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=manual_rule())),
-            patch("services.automation_service.schedule_automation_event", AsyncMock(return_value=1)) as schedule,
-            patch("services.automation_service.get_sessionmaker", session_scalar(555)),
-            patch("services.automation_service.get_automation_execution", AsyncMock(return_value=execution_row())),
+            automations_patch("get_automation_rule", AsyncMock(return_value=manual_rule())),
+            automations_patch("schedule_automation_event", AsyncMock(return_value=1)) as schedule,
+            automations_patch("get_sessionmaker", session_scalar(555)),
+            automations_patch("get_automation_execution", AsyncMock(return_value=execution_row())),
         ):
             await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
             await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
@@ -165,9 +166,9 @@ class TestStartManualFlowExecution:
         acá se verifica que ese conflicto de base se traduce a un mensaje
         claro en vez de propagarse como un 500."""
         with (
-            patch("services.automation_service.get_automation_rule", AsyncMock(return_value=manual_rule())),
-            patch(
-                "services.automation_service.schedule_automation_event",
+            automations_patch("get_automation_rule", AsyncMock(return_value=manual_rule())),
+            automations_patch(
+                "schedule_automation_event",
                 AsyncMock(side_effect=IntegrityError("INSERT", {}, Exception("duplicate key"))),
             ),
         ):

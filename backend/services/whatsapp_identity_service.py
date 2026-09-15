@@ -132,6 +132,7 @@ def add_phone_jid(
         phone_jid=identity.phone_jid or clean_phone,
         lid_jid=identity.lid_jid,
         push_name=identity.push_name,
+        username=identity.username,
     )
 
 

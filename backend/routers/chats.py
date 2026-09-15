@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -86,30 +85,21 @@ from services.lead_merge import LeadMergeError, merge_leads
 # verificar si un número está en WhatsApp, editar y eliminar un mensaje ya
 # enviado, y el historial retroactivo. Son capacidades de la sesión de Baileys,
 # no endpoints de Meta.
-from services.evolution_service import (
-    EvolutionApiError,
-    check_whatsapp_numbers,
-    delete_whatsapp_message,
-    edit_whatsapp_message,
-)
-from services.whatsapp_rules import (
-    interactive_choices_summary,
-    rendered_interactive_errors,
-    resolve_interactive_footer,
-)
+from services.evolution_service import check_whatsapp_numbers
+from services.message_media import mediatype_from_content_type as _mediatype_from_content_type
 from services.whatsapp_capabilities import (
     EDIT_DELETE_UNSUPPORTED_DETAIL,
     HISTORY_UNSUPPORTED_DETAIL,
     get_whatsapp_capabilities,
 )
-from services.meta_service import (
-    MetaApiError,
+from services.whatsapp_channel import (
+    ChannelError,
+    HistoryReader,
+    MessageEditor,
+    ReactionTarget,
     describe_send_failure,
-    mark_messages_as_read,
-    mediatype_from_content_type as _mediatype_from_content_type,
-    send_whatsapp_reaction,
 )
-from services.whatsapp_history import fetch_whatsapp_history
+from services.whatsapp_channels import current_channel
 from services.whatsapp_identity_service import InvalidWhatsAppIdentityError
 from services.phone_utils import (
     PhoneValidationError,
@@ -118,15 +108,20 @@ from services.phone_utils import (
     normalize_phone,
 )
 from services.ws_manager import manager
-from services.template_delivery import build_internal_template_items
 from services.message_outbox import (
     discard_failed_message,
     enqueue_messages,
     enqueue_text_message,
     retry_failed_message,
 )
-from services.productivity_service import list_templates, record_template_use
-from services.automation_rules import render_variables
+from services import chat_messaging
+from services.chat_messaging import (
+    ChatMessagingError,
+    InvalidTemplateInputError,
+    LeadNotFoundError,
+    TemplateNotFoundError,
+    TemplateNotSendableError,
+)
 from services.automation_service import (
     pause_lead_executions,
     resume_lead_executions,
@@ -136,24 +131,6 @@ from services.automation_service import (
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
-
-
-def _render_interactive_config(value, chat: dict):
-    if isinstance(value, str):
-        return render_variables(value, chat)
-    if isinstance(value, list):
-        return [_render_interactive_config(item, chat) for item in value]
-    if isinstance(value, dict):
-        return {key: _render_interactive_config(item, chat) for key, item in value.items()}
-    return value
-
-
-async def _validate_rendered_interactive_message(interactive_type: str, description: str, config: dict) -> None:
-    errors = rendered_interactive_errors(
-        interactive_type, description, config, await resolve_interactive_footer(interactive_type, config),
-    )
-    if errors:
-        raise HTTPException(400, "La plantilla no se puede enviar: " + "; ".join(errors))
 
 
 # Mapea los nombres de campo de la API (schemas.Chat) a las columnas reales de
@@ -300,7 +277,7 @@ async def _verify_whatsapp_number(digits: str) -> tuple[bool | None, str | None]
     alta de leads porque WhatsApp está desconectado dejaría el CRM inusable."""
     try:
         rows = await check_whatsapp_numbers([digits])
-    except (EvolutionApiError, httpx.HTTPError):
+    except (ChannelError, httpx.HTTPError):
         logger.warning("No se pudo verificar el número %s en WhatsApp; se continúa igual", digits, exc_info=True)
         return None, None
     row = rows[0] if rows and isinstance(rows[0], dict) else None
@@ -513,9 +490,18 @@ async def get_history_availability():
     return {"available": (await get_whatsapp_capabilities())["history_available"]}
 
 
-async def _require_capability(name: str, detail: str) -> None:
-    if not (await get_whatsapp_capabilities())[name]:
-        raise HTTPException(status_code=409, detail=detail)
+def _require_editor() -> MessageEditor:
+    editor = current_channel().editor
+    if editor is None:
+        raise HTTPException(status_code=409, detail=EDIT_DELETE_UNSUPPORTED_DETAIL)
+    return editor
+
+
+async def _require_history() -> HistoryReader:
+    history = current_channel().history
+    if history is None or not await history.is_available():
+        raise HTTPException(status_code=409, detail=HISTORY_UNSUPPORTED_DETAIL)
+    return history
 
 
 @router.get("/{chat_id}/history", response_model=HistoryPage)
@@ -525,10 +511,10 @@ async def get_whatsapp_history(
     before_ts: datetime | None = None,
 ):
     """Historial anterior al registro propio, leído de WhatsApp y sin guardar."""
-    await _require_capability("history_available", HISTORY_UNSUPPORTED_DETAIL)
+    history = await _require_history()
     try:
-        return await fetch_whatsapp_history(chat_id, page, before_ts)
-    except EvolutionApiError as e:
+        return await history.fetch(chat_id, page, before_ts)
+    except ChannelError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except InvalidWhatsAppIdentityError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -666,6 +652,14 @@ async def send_sticker(
     return message
 
 
+TEMPLATE_ERROR_STATUS: dict[type[ChatMessagingError], int] = {
+    TemplateNotFoundError: 404,
+    LeadNotFoundError: 404,
+    TemplateNotSendableError: 409,
+    InvalidTemplateInputError: 400,
+}
+
+
 @router.post("/{chat_id}/templates/{template_id}", response_model=list[Message])
 async def send_template(
     chat_id: str,
@@ -673,70 +667,10 @@ async def send_template(
     body: SendTemplateRequest,
     user: User = Depends(get_current_user),
 ):
-    template = next((item for item in await list_templates(user.id) if item["id"] == template_id), None)
-    if template is None:
-        raise HTTPException(404, "Plantilla no encontrada")
-    text = body.text.strip() if body.text else ""
-    await _require_existing_lead(chat_id)
-
-    if template["template_type"] == "official":
-        if template["official_status"] != "APPROVED":
-            raise HTTPException(409, "Solo se pueden enviar plantillas oficiales con estado APPROVED")
-        expected_parameters = template["official_parameter_values"]
-        parameters = [value.strip() for value in body.parameters]
-        if len(parameters) != len(expected_parameters) or any(not value for value in parameters):
-            raise HTTPException(400, "Los parámetros no coinciden con las variables de la plantilla oficial")
-        components = []
-        if parameters:
-            components.append({
-                "type": "body",
-                "parameters": [{"type": "text", "text": value} for value in parameters],
-            })
-        message = (await enqueue_messages(chat_id, [{
-            "content": text or template["content"],
-            "payload": {
-                "type": "official_template",
-                "name": template["official_name"],
-                "language": template["official_language"],
-                "components": components,
-            },
-        }], actor_user_id=user.id))[0]
-        await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-        return [message]
-
-    if template["interactive_type"] != "none":
-        chat = await fetch_chat(chat_id)
-        if chat is None:
-            raise HTTPException(404, "Lead no encontrado")
-        config = _render_interactive_config(template["interactive_config"], chat)
-        description = text or render_variables(template["content"], chat)
-        await _validate_rendered_interactive_message(template["interactive_type"], description, config)
-        choices = interactive_choices_summary(template["interactive_type"], config)
-        content = f"{config['title']}\n{description}\nOpciones: {choices}"
-        message = (await enqueue_messages(chat_id, [{
-            "content": content,
-            "payload": {
-                "type": "interactive",
-                "interactive_type": template["interactive_type"],
-                "description": description,
-                "config": config,
-            },
-        }], actor_user_id=user.id))[0]
-        await record_template_use(template_id, user.id)
-        await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-        return [message]
-
-    if not text and not template["attachments"]:
-        raise HTTPException(400, "La plantilla no tiene contenido para enviar")
-    if len(text) > 4096:
-        raise HTTPException(400, "El texto de la plantilla supera el máximo de 4096 caracteres")
-
-    items = build_internal_template_items(text, template["attachments"])
-    sent = await enqueue_messages(chat_id, items, actor_user_id=user.id)
-    await record_template_use(template_id, user.id)
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return sent
+    try:
+        return await chat_messaging.send_template(chat_id, template_id, body.text, body.parameters, user.id)
+    except ChatMessagingError as exc:
+        raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
 
 
 @router.post("/{chat_id}/location", response_model=Message)
@@ -914,14 +848,14 @@ async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest)
         # no se le puede reaccionar hasta que se confirme el envío.
         raise HTTPException(409, "El mensaje todavía no está confirmado en WhatsApp")
 
-    key = {
-        "remoteJid": chat_id,
-        "fromMe": target["sender"] == "vendedor",
-        "id": target["wa_message_id"],
-    }
+    reaction_target = ReactionTarget(
+        chat_id=chat_id,
+        provider_message_id=target["wa_message_id"],
+        from_me=target["sender"] == "vendedor",
+    )
     try:
-        await send_whatsapp_reaction(key, body.emoji)
-    except (MetaApiError, httpx.HTTPError) as exc:
+        await current_channel().actions.react(reaction_target, body.emoji)
+    except (ChannelError, httpx.HTTPError) as exc:
         logger.warning("No se pudo enviar la reacción a WhatsApp para %s: %s", chat_id, exc)
         raise HTTPException(502, describe_send_failure(exc, "enviar la reacción a WhatsApp"))
 
@@ -965,7 +899,7 @@ async def edit_message(chat_id: str, message_id: int, body: EditMessageRequest):
     texto corregido solo de nuestro lado sería peor que no corregirlo — el
     vendedor daría por hecho que el cliente ve la versión nueva.
     """
-    await _require_capability("edit_delete_supported", EDIT_DELETE_UNSUPPORTED_DETAIL)
+    editor = _require_editor()
     target = _editable_or_deletable_target(
         await fetch_reply_target(chat_id, message_id), "editar"
     )
@@ -983,8 +917,8 @@ async def edit_message(chat_id: str, message_id: int, body: EditMessageRequest):
         raise HTTPException(400, "El texto del mensaje no puede quedar vacío")
 
     try:
-        await edit_whatsapp_message(chat_id, target["wa_message_id"], text)
-    except (EvolutionApiError, httpx.HTTPError) as exc:
+        await editor.edit(chat_id, target["wa_message_id"], text)
+    except (ChannelError, httpx.HTTPError) as exc:
         logger.warning("No se pudo editar el mensaje en WhatsApp para %s: %s", chat_id, exc)
         raise HTTPException(502, describe_send_failure(exc, "editar el mensaje en WhatsApp"))
 
@@ -1003,14 +937,14 @@ async def delete_message(chat_id: str, message_id: int):
     (ver mark_message_deleted). El CRM conserva que hubo un mensaje ahí —el
     hilo muestra la lápida, como WhatsApp— sin exponer lo que decía.
     """
-    await _require_capability("edit_delete_supported", EDIT_DELETE_UNSUPPORTED_DETAIL)
+    editor = _require_editor()
     target = _editable_or_deletable_target(
         await fetch_reply_target(chat_id, message_id), "eliminar"
     )
 
     try:
-        await delete_whatsapp_message(chat_id, target["wa_message_id"])
-    except (EvolutionApiError, httpx.HTTPError) as exc:
+        await editor.delete(chat_id, target["wa_message_id"])
+    except (ChannelError, httpx.HTTPError) as exc:
         logger.warning("No se pudo eliminar el mensaje en WhatsApp para %s: %s", chat_id, exc)
         raise HTTPException(502, describe_send_failure(exc, "eliminar el mensaje en WhatsApp"))
 
@@ -1060,8 +994,8 @@ async def read_chat(chat_id: str):
     wa_message_ids = await fetch_unread_wa_message_ids(chat_id)
     if wa_message_ids:
         try:
-            await mark_messages_as_read(chat_id, wa_message_ids)
-        except (MetaApiError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
+            await current_channel().actions.mark_read(chat_id, wa_message_ids)
+        except (ChannelError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
             # Best-effort: si Meta falla (no configurada, mensaje ya no existe
             # del lado de WhatsApp, etc.) igual se marca como visto de nuestro
             # lado — no tiene sentido bloquear el badge interno por un problema

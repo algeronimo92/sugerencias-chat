@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Routes, Route, useLocation, useMatch, useNavigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { toast } from 'sonner'
-import { AlertTriangle, Bug, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Sparkles, Moon, Sun, X } from 'lucide-react'
-import { EMPTY_CHAT_FILTERS, type Chat, type ChatFilters } from './types'
-import { ChatList } from './components/ChatList'
-import { ChatPeekDialog } from './components/ChatPeekDialog'
-import { ChatThread } from './components/ChatThread'
+import { AlertTriangle, Bug, Loader2, LogOut, MessageSquareLock, MessagesSquare, RefreshCw, Settings as SettingsIcon, ShieldCheck, Moon, Sun, X } from 'lucide-react'
+import { EMPTY_CHAT_FILTERS } from './types'
+import { ChatWorkspace } from './components/ChatWorkspace'
+import { PageLoader } from './components/layout/PageLoader'
+import { useLayoutContext, type LayoutContext, type SettingsTab } from './components/layout/layoutContext'
+import { useChatFiltersState } from './hooks/useChatFiltersState'
+import { useOpenChat } from './hooks/useOpenChat'
 import { LoginPage } from './components/LoginPage'
 import { MobileNavBar } from './components/MobileNavBar'
 import { NotificationCenter } from './components/NotificationCenter'
@@ -15,20 +16,15 @@ import { PwaUpdatePrompt } from './components/PwaUpdatePrompt'
 import { Sidebar } from './components/Sidebar'
 import { useLayout } from './hooks/useBreakpoint'
 import { useLogout, useMe } from './hooks/useAuth'
-import { useChat, useInfiniteChats, useMarkChatRead, useMarkChatUnread, useUnreadCount } from './hooks/useChats'
+import { useUnreadCount } from './hooks/useChats'
 import { useChatUpdates } from './hooks/useRealtime'
 import type { InternalMentionAlert } from './hooks/useRealtime'
 import { useNotifications } from './hooks/useNotifications'
-import { useSuggestionStatus, useGenerateSuggestions } from './hooks/useSuggestions'
-import { useWhatsappStatus } from './hooks/useWhatsapp'
 import { useTheme } from './hooks/useTheme'
 import { Button } from './components/ui/Button'
-import { Spinner } from './components/ui/Spinner'
 import { AppToaster } from './components/ui/Toaster'
 import { Tooltip } from './components/ui/Tooltip'
 import { queryClient } from './queryClient'
-import { hasOpenOverlay } from './utils/overlay'
-import { extractErrorMessage } from './utils/errors'
 
 const KanbanBoard = lazy(() =>
   import('./components/KanbanBoard').then(module => ({ default: module.KanbanBoard })),
@@ -69,23 +65,10 @@ const IssueReportDialog = lazy(() =>
 const IssueReportsPage = lazy(() =>
   import('./components/IssueReportsPage').then(module => ({ default: module.IssueReportsPage })),
 )
-const SuggestionPanel = lazy(() =>
-  import('./components/SuggestionPanel').then(module => ({ default: module.SuggestionPanel })),
-)
-
-function PageLoader() {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-wa-app dark:bg-wa-app-dark">
-      <Spinner label="Cargando vista…" />
-    </div>
-  )
-}
-
 function MainLayout() {
   const { data: me } = useMe()
   const { mutate: logout } = useLogout()
-  const { chatId: chatIdParam } = useParams<{ chatId: string }>()
-  const chatId = chatIdParam ?? null
+  const chatId = useMatch('/chat/:chatId')?.params.chatId ?? null
   const navigate = useNavigate()
 
   // Cuando se hace clic en una notificación push con la app ya abierta en
@@ -107,33 +90,20 @@ function MainLayout() {
     return () => navigator.serviceWorker.removeEventListener('message', handleMessage)
   }, [navigate])
   const location = useLocation()
-  const isKanban = location.pathname === '/kanban'
-  const isTasks = location.pathname === '/tasks'
-  const isTemplates = location.pathname === '/templates'
-  const isMediaLibrary = location.pathname === '/media-library'
-  const isDashboard = location.pathname === '/dashboard'
-  const isAutomations = location.pathname === '/automations'
-  const isMyFlows = location.pathname === '/mis-flujos'
-  const isCatalogs = location.pathname === '/catalogs'
-  const isNuevaCita = location.pathname === '/citas/nueva'
-  const isIssueReports = location.pathname === '/reports'
-
-  // 'mobile' = una vista a la vez + navegación inferior; 'tablet' = lista y
-  // conversación, con las sugerencias en un panel deslizable; 'desktop' = las
-  // tres columnas de siempre.
-  const layout = useLayout()
-  const isMobile = layout === 'mobile'
-  const isDesktop = layout === 'desktop'
-  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false)
-  const [previewChat, setPreviewChat] = useState<Chat | null>(null)
-
+  const isMobile = useLayout() === 'mobile'
   const { theme, toggleTheme } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false)
   const [isIssueReportOpen, setIsIssueReportOpen] = useState(false)
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'claves' | 'whatsapp' | 'usuarios'>('claves')
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('claves')
 
-  function openSettings(tab: 'claves' | 'whatsapp' | 'usuarios' = 'claves') {
+  const layoutContext: LayoutContext = {
+    chatFilters: useChatFiltersState(me?.id ?? null),
+    openSettings,
+    openIssueReport: () => setIsIssueReportOpen(true),
+  }
+
+  function openSettings(tab: SettingsTab = 'claves') {
     setSettingsInitialTab(tab)
     setIsSettingsOpen(true)
   }
@@ -149,24 +119,6 @@ function MainLayout() {
     setInternalMention(alert)
   }
 
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'mine'>('all')
-  const [advancedFilters, setAdvancedFilters] = useState<ChatFilters>(EMPTY_CHAT_FILTERS)
-  const effectiveFilters: ChatFilters = {
-    ...advancedFilters,
-    unreadOnly: chatFilter === 'unread',
-    // "Mis leads" pisa el filtro de vendedor de los avanzados mientras está
-    // activo — no tiene sentido combinarlos, y así al desactivarlo se
-    // vuelve solo al filtro avanzado que el usuario haya dejado cargado.
-    sellerId: chatFilter === 'mine' ? (me?.id ?? null) : advancedFilters.sellerId,
-  }
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
-    return () => clearTimeout(timeout)
-  }, [search])
-
   useChatUpdates(chatId ?? null, notify, showInternalMention)
 
   useEffect(() => {
@@ -174,147 +126,6 @@ function MainLayout() {
     const timeout = window.setTimeout(() => setInternalMention(null), 8000)
     return () => window.clearTimeout(timeout)
   }, [internalMention])
-
-  const {
-    data,
-    isLoading,
-    error,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-  } = useInfiniteChats(debouncedSearch, effectiveFilters)
-  const chats = data?.pages.flatMap((page) => page.items) ?? []
-
-  // Estado de la conexión de WhatsApp — solo admin (el endpoint es admin-only).
-  // Alimenta el CTA del estado vacío cuando la instancia no está vinculada.
-  const { data: whatsappStatus } = useWhatsappStatus({ enabled: me?.role === 'admin' })
-  const showConnectWhatsapp = me?.role === 'admin' && whatsappStatus != null && whatsappStatus.state !== 'open'
-
-  async function handleLoadMore(): Promise<void> {
-    if (hasNextPage && !isFetchingNextPage) await fetchNextPage()
-  }
-
-  // Consulta directa por clave primaria, independiente de la búsqueda de la lista.
-  const { data: selectedChat = null } = useChat(chatId ?? null)
-
-
-  // Sugerencias a demanda: al abrir un chat solo se LEE lo ya generado
-  // (gratis, sin IA). Generar es siempre una acción explícita del vendedor.
-  // Si llega un mensaje nuevo del cliente, useChatUpdates invalida esta query
-  // y el refetch apenas marca la sugerencia como desactualizada (stale).
-  const { data: suggestionStatus = null, isLoading: isSuggestionsLoading } =
-    useSuggestionStatus(selectedChat?.chat_id ?? null)
-
-  // Única vía que llama a la IA: CTA "Generá sugerencias" / "Generá otras".
-  const generateSuggestionsMutation = useGenerateSuggestions()
-  const isGeneratingForSelected =
-    generateSuggestionsMutation.isPending &&
-    generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id
-  const suggestionsErrorMessage =
-    generateSuggestionsMutation.error instanceof Error &&
-    generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id
-      ? generateSuggestionsMutation.error.message
-      : null
-
-  const { mutate: markChatRead } = useMarkChatRead()
-  const markChatUnread = useMarkChatUnread()
-
-  // Marca el chat como visto solo cuando realmente está visible. Si queda
-  // seleccionado mientras la ventana está en segundo plano, sus mensajes
-  // siguen pendientes hasta que el usuario regrese.
-  useEffect(() => {
-    function markVisibleChatRead() {
-      if (chatId && selectedChat && selectedChat.unread_count > 0 && !document.hidden && document.hasFocus()) {
-        markChatRead(chatId)
-      }
-    }
-
-    markVisibleChatRead()
-    window.addEventListener('focus', markVisibleChatRead)
-    document.addEventListener('visibilitychange', markVisibleChatRead)
-    return () => {
-      window.removeEventListener('focus', markVisibleChatRead)
-      document.removeEventListener('visibilitychange', markVisibleChatRead)
-    }
-    // selectedChat.timestamp cambia si llega un mensaje al chat abierto.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, selectedChat?.unread_count])
-
-  function handleSelectChat(chat: Chat) {
-    // Resultado de búsqueda que matcheó por un mensaje del historial: se pasa
-    // el id por el estado de navegación para saltar hasta él y resaltarlo.
-    if (chat.search_rank === 0 && chat.matched_message_id) {
-      navigate(`/chat/${chat.chat_id}`, { state: { highlightMessageId: chat.matched_message_id } })
-    } else {
-      navigate(`/chat/${chat.chat_id}`)
-    }
-  }
-
-  function handleCloseChat() {
-    navigate('/')
-  }
-
-  function handleMarkChatUnread(chat: Chat) {
-    if (chat.chat_id === chatId) handleCloseChat()
-    markChatUnread.mutate(chat.chat_id, {
-      onSuccess: () => toast.success(`${chat.name || chat.phone || 'Chat'} marcado como no leído`),
-      onError: error => toast.error(extractErrorMessage(error)),
-    })
-  }
-
-  // Fuera de escritorio las sugerencias son un panel superpuesto: al saltar a
-  // otro lead tiene que cerrarse, o quedaría mostrando el anterior.
-  useEffect(() => {
-    setIsSuggestionsOpen(false)
-  }, [chatId])
-
-  // El panel de sugerencias, compartido por la columna de escritorio y el
-  // panel deslizable de móvil/tablet.
-  function renderSuggestionPanel(chat: Chat) {
-    return (
-      <SuggestionPanel
-        chat={chat}
-        data={suggestionStatus?.suggestion ?? null}
-        generatedAt={suggestionStatus?.generated_at ?? null}
-        isStale={suggestionStatus?.stale ?? false}
-        isLoading={isSuggestionsLoading}
-        isGenerating={isGeneratingForSelected}
-        error={suggestionsErrorMessage}
-        onGenerate={(force = false, instruction) =>
-          generateSuggestionsMutation.mutate({
-            chat_id: chat.chat_id,
-            phone: chat.phone,
-            force,
-            instruction,
-          })
-        }
-      />
-    )
-  }
-
-  // Escape cierra el lead abierto, igual que WhatsApp
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Escape') return
-      // Una pulsación cierra una sola capa, la de más arriba. Con un diálogo
-      // encima (la vista previa de una plantilla, el visor de multimedia, un
-      // confirmar…) el Escape es de ese diálogo y el lead de atrás no se toca.
-      if (hasOpenOverlay()) return
-      // El panel de sugerencias no es un diálogo pero también tapa el chat.
-      if (isSuggestionsOpen) {
-        setIsSuggestionsOpen(false)
-        return
-      }
-      if (selectedChat) {
-        handleCloseChat()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChat?.chat_id, isSuggestionsOpen])
 
   // La barra global usa la superficie más profunda; los encabezados de cada
   // columna usan wa-head-dark para que ambos niveles se distingan sin chocar.
@@ -429,182 +240,50 @@ function MainLayout() {
         {!isMobile && <Sidebar isAdmin={me?.role === 'admin'} unreadCount={unreadCount} />}
         <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
       <Suspense fallback={<PageLoader />}>
-        {isTasks ? (
-          <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
-        ) : isIssueReports ? (
-          <IssueReportsPage onCreate={() => setIsIssueReportOpen(true)} />
-        ) : isDashboard && me?.role === 'admin' ? (
-          <DashboardPage
-            onOpenTasks={() => navigate('/tasks')}
-            onFilterChats={(filters) => {
-              setChatFilter('all')
-              setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
-              navigate('/')
-            }}
-          />
-        ) : isTemplates && me?.role === 'admin' ? (
-          <TemplatesPage />
-        ) : isAutomations && me?.role === 'admin' ? (
-          <AutomationsPage />
-        ) : isMyFlows ? (
-          <MyAutomationExecutionsPage />
-        ) : isCatalogs && me?.role === 'admin' ? (
-          <CatalogsPage />
-        ) : isNuevaCita ? (
-          <NewAppointmentPage />
-        ) : isMediaLibrary && me?.role === 'admin' ? (
-          <MediaLibraryPage />
-        ) : isKanban ? (
-          <KanbanBoard onOpenChat={handleSelectChat} />
-        ) : (
-          <div className="relative flex min-w-0 flex-1 overflow-hidden">
-            {/* Panel izquierdo — Lista de chats.
-                En móvil ocupa la pantalla entera y se retira al abrir un chat:
-                no hay lugar para las dos cosas a la vez. Se oculta con
-                invisible + absolute (no display:none): un contenedor con
-                display:none pierde el scroll del todo al ocultarse -no hay
-                forma de restaurarlo después, ni con JS-, mientras que
-                visibility:hidden conserva el layout y con él la posición de
-                scroll: absolute lo saca del flujo para que el chat pueda
-                ocupar el ancho completo. */}
-            <div className={`h-full overflow-hidden ${isMobile ? (chatId ? 'invisible pointer-events-none absolute inset-0' : 'w-full') : 'w-72 shrink-0 xl:w-80'}`}>
-              <ChatList
-                chats={chats}
-                isLoading={isLoading}
-                error={!!error}
-                search={search}
-                onSearchChange={setSearch}
-                filter={chatFilter}
-                onFilterChange={setChatFilter}
-                unreadCount={unreadCount}
-                advancedFilters={advancedFilters}
-                onAdvancedFiltersChange={setAdvancedFilters}
-                onRefresh={async () => { await refetch() }}
-                selectedId={selectedChat?.chat_id ?? null}
-                onSelect={handleSelectChat}
-                onPreview={setPreviewChat}
-                onMarkUnread={handleMarkChatUnread}
-                markingUnreadId={markChatUnread.isPending ? markChatUnread.variables : null}
-                hasNextPage={!!hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                hasNextPageError={isFetchNextPageError}
-                onLoadMore={handleLoadMore}
-                showConnectWhatsapp={showConnectWhatsapp}
-                onConnectWhatsapp={() => openSettings('whatsapp')}
-              />
-            </div>
-
-            {/* Panel central — Conversación */}
-            {(!isMobile || chatId) && (
-              <div className="h-full min-w-0 flex-1 overflow-hidden">
-                {selectedChat ? (
-                  <ChatThread
-                    chat={selectedChat}
-                    highlightMessageId={(location.state as { highlightMessageId?: number } | null)?.highlightMessageId ?? null}
-                    onBack={isMobile ? handleCloseChat : undefined}
-                    onOpenSuggestions={isDesktop ? undefined : () => setIsSuggestionsOpen(true)}
-                  />
-                ) : chatId ? (
-                  /* El lead todavía no llegó (entrada directa por URL o
-                     recarga). En móvil la lista está oculta, así que sin esta
-                     rama la pantalla quedaría sin salida. */
-                  <div className="flex h-full flex-col items-center justify-center gap-4 bg-wa-app dark:bg-wa-panel-dark">
-                    <Spinner label="Abriendo la conversación…" />
-                    {isMobile && (
-                      <Button variant="ghost" size="sm" onClick={handleCloseChat}>
-                        Volver a la lista
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 border-b-[6px] border-wa-primary bg-wa-app px-6 text-center text-wa-muted/50 dark:border-wa-primary/60 dark:bg-wa-panel-dark dark:text-wa-muted-dark/50">
-                    <MessagesSquare className="w-12 h-12" strokeWidth={1.25} />
-                    <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Selecciona un lead para ver la conversación</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Panel derecho — Sugerencias. Solo en escritorio: por debajo de
-                1280px las tres columnas dejarían la conversación inusable, así
-                que las sugerencias pasan a un panel deslizable. */}
-            {isDesktop && (
-              <div className="h-full w-96 shrink-0 overflow-hidden border-l border-wa-border bg-wa-app dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
-                {selectedChat ? (
-                  renderSuggestionPanel(selectedChat)
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 text-wa-muted/50 dark:text-wa-muted-dark/50">
-                    <Sparkles className="w-12 h-12" strokeWidth={1.25} />
-                    <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center px-6">Selecciona un lead para ver las sugerencias</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <Outlet context={layoutContext} />
       </Suspense>
         </div>
       </div>
-
-      {previewChat && (
-        <ChatPeekDialog
-          chat={previewChat}
-          onClose={() => setPreviewChat(null)}
-          onOpen={() => {
-            const chat = previewChat
-            setPreviewChat(null)
-            handleSelectChat(chat)
-          }}
-        />
-      )}
-
-      {/* Sugerencias como panel deslizable en móvil y tablet. */}
-      <AnimatePresence>
-        {!isDesktop && isSuggestionsOpen && selectedChat && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={() => setIsSuggestionsOpen(false)}
-              /* aria-hidden y sin handler de teclado a propósito: un fondo de
-                 modal no debe ser un punto de tabulación más. Quien navega con
-                 teclado cierra con Escape (ver el handler de arriba). */
-              aria-hidden="true"
-              className="fixed inset-0 z-75 bg-black/40"
-            />
-            <motion.aside
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 32, stiffness: 320 }}
-              aria-label="Sugerencias del lead"
-              className="fixed inset-y-0 right-0 z-76 flex w-full max-w-md flex-col overflow-hidden border-l border-wa-border bg-wa-app pt-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
-            >
-              <div className="flex h-12 shrink-0 items-center justify-between border-b border-wa-border px-3 dark:border-wa-border-dark">
-                <span className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Sugerencias</span>
-                <button
-                  type="button"
-                  onClick={() => setIsSuggestionsOpen(false)}
-                  aria-label="Cerrar sugerencias"
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <Suspense fallback={<PageLoader />}>{renderSuggestionPanel(selectedChat)}</Suspense>
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
           ahí el espacio es para el composer y se vuelve con la flecha. */}
       {isMobile && !chatId && <MobileNavBar isAdmin={me?.role === 'admin'} unreadCount={unreadCount} />}
     </div>
+  )
+}
+
+function RequireAdmin({ isAdmin }: { isAdmin: boolean }) {
+  const layoutContext = useLayoutContext()
+  return isAdmin ? <Outlet context={layoutContext} /> : <Navigate to="/" replace />
+}
+
+function KanbanRoute() {
+  const openChat = useOpenChat()
+  return <KanbanBoard onOpenChat={openChat} />
+}
+
+function TasksRoute() {
+  const navigate = useNavigate()
+  return <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
+}
+
+function IssueReportsRoute() {
+  const { openIssueReport } = useLayoutContext()
+  return <IssueReportsPage onCreate={openIssueReport} />
+}
+
+function DashboardRoute() {
+  const navigate = useNavigate()
+  const { chatFilters } = useLayoutContext()
+  return (
+    <DashboardPage
+      onOpenTasks={() => navigate('/tasks')}
+      onFilterChats={(filters) => {
+        chatFilters.setChatFilter('all')
+        chatFilters.setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
+        navigate('/')
+      }}
+    />
   )
 }
 
@@ -657,18 +336,25 @@ function AuthGate() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<MainLayout />} />
-        <Route path="/chat/:chatId" element={<MainLayout />} />
-        <Route path="/kanban" element={<MainLayout />} />
-        <Route path="/tasks" element={<MainLayout />} />
-        <Route path="/reports" element={<MainLayout />} />
-        <Route path="/mis-flujos" element={<MainLayout />} />
-        <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/catalogs" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/citas/nueva" element={<MainLayout />} />
+        <Route element={<MainLayout />}>
+          <Route element={<ChatWorkspace />}>
+            <Route index element={null} />
+            <Route path="chat/:chatId" element={null} />
+          </Route>
+          <Route path="kanban" element={<KanbanRoute />} />
+          <Route path="tasks" element={<TasksRoute />} />
+          <Route path="reports" element={<IssueReportsRoute />} />
+          <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
+          <Route path="citas/nueva" element={<NewAppointmentPage />} />
+          <Route element={<RequireAdmin isAdmin={me.role === 'admin'} />}>
+            <Route path="templates" element={<TemplatesPage />} />
+            <Route path="media-library" element={<MediaLibraryPage />} />
+            <Route path="dashboard" element={<DashboardRoute />} />
+            <Route path="automations" element={<AutomationsPage />} />
+            <Route path="catalogs" element={<CatalogsPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   )

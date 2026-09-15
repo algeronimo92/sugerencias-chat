@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services import db_service
+from tests.conftest import patch_store
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
@@ -44,7 +45,7 @@ def _session_context(session):
 
 
 def _patch_sessionmaker(monkeypatch, session):
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: _session_context(session))
+    patch_store(monkeypatch, "get_sessionmaker", lambda: _session_context(session))
 
 
 @pytest.mark.asyncio

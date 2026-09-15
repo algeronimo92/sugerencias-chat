@@ -6,7 +6,10 @@ from fastapi import HTTPException
 
 from routers import chats
 from models.schemas import EditMessageRequest
-from services.evolution_service import EvolutionApiError
+from types import SimpleNamespace
+
+from services.whatsapp_channel import ChannelError
+from tests.conftest import install_channel
 
 CHAT_ID = "51999@s.whatsapp.net"
 
@@ -32,12 +35,10 @@ def _patch(monkeypatch, *, target, edit=None, delete=None, update=None, mark=Non
     delete = delete or AsyncMock(return_value={})
     update = update or AsyncMock(return_value={"id": 7, "content": "corregido"})
     mark = mark or AsyncMock(return_value={"id": 7, "deleted_at": "2026-08-06T12:00:00.000Z"})
-    monkeypatch.setattr(chats, "edit_whatsapp_message", edit)
-    monkeypatch.setattr(chats, "delete_whatsapp_message", delete)
+    install_channel(monkeypatch, editor=SimpleNamespace(edit=edit, delete=delete))
     monkeypatch.setattr(chats, "update_message_content", update)
     monkeypatch.setattr(chats, "mark_message_deleted", mark)
     monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
-    monkeypatch.setattr(chats, "get_whatsapp_capabilities", AsyncMock(return_value={"edit_delete_supported": True}))
     return edit, delete, update, mark
 
 
@@ -99,7 +100,7 @@ class TestEdit:
         _, _, update, _ = _patch(
             monkeypatch,
             target=_target(),
-            edit=AsyncMock(side_effect=EvolutionApiError("boom")),
+            edit=AsyncMock(side_effect=ChannelError("boom")),
         )
         with pytest.raises(HTTPException) as exc:
             await chats.edit_message(CHAT_ID, 7, EditMessageRequest(text="corregido"))
@@ -158,7 +159,7 @@ class TestDelete:
         _, _, _, mark = _patch(
             monkeypatch,
             target=_target(),
-            delete=AsyncMock(side_effect=EvolutionApiError("boom")),
+            delete=AsyncMock(side_effect=ChannelError("boom")),
         )
         with pytest.raises(HTTPException) as exc:
             await chats.delete_message(CHAT_ID, 7)
@@ -175,7 +176,7 @@ class TestUnsupportedChannel:
     ])
     async def test_refuses_before_calling_whatsapp(self, monkeypatch, call):
         edit, delete, _, _ = _patch(monkeypatch, target=_target())
-        monkeypatch.setattr(chats, "get_whatsapp_capabilities", AsyncMock(return_value={"edit_delete_supported": False}))
+        install_channel(monkeypatch, editor=None)
 
         with pytest.raises(HTTPException) as exc:
             await call()

@@ -139,3 +139,16 @@ def test_uploaded_bytes_are_unchanged(counting: CountingMinio) -> None:
     stored = next(iter(counting.objects.values()))
     assert stored["data"] == payload
     assert stored["metadata"]["x-amz-meta-sha256"] == hashlib.sha256(payload).hexdigest()
+
+
+@pytest.mark.parametrize("filename", ["nota.ogg", "nota.oga", "nota.m4a", "nota.weba"])
+def test_audio_is_read_from_its_category_even_without_system_mimetypes(counting: CountingMinio, monkeypatch, filename: str) -> None:
+    """La imagen de producción (Debian) no conoce estas extensiones: sin el
+    mapa propio, cada lectura de una nota de voz gasta stats de más buscando
+    en la categoría equivocada."""
+    monkeypatch.setattr(storage.mimetypes, "guess_type", lambda *_args, **_kwargs: (None, None))
+    url = storage.save_media_bytes(filename, b"abcdefghij", "audio/ogg")
+    counting.stat_calls = 0
+
+    assert storage.read_media_bytes(url) == b"abcdefghij"
+    assert counting.stat_calls == 1

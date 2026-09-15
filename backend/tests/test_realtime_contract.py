@@ -26,7 +26,7 @@ def _constant_values(node: ast.AST, assignments: dict[str, list[ast.AST]]) -> se
 
 
 def _emitted_events():
-    for path in [*sorted((BACKEND / "routers").glob("*.py")), *sorted((BACKEND / "services").glob("*.py")), BACKEND / "main.py"]:
+    for path in [*sorted((BACKEND / "routers").glob("*.py")), *sorted((BACKEND / "services").rglob("*.py")), BACKEND / "main.py"]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):

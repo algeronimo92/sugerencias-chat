@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services import meta_service
+from services.message_media import media_message_fields, mediatype_from_content_type
+from services.whatsapp_channel import describe_send_failure
 
 
 @pytest.mark.asyncio
@@ -357,12 +359,12 @@ async def test_raise_meta_error_generic_for_other_codes(monkeypatch):
 
 def test_describe_send_failure_keeps_window_closed_message_verbatim():
     exc = meta_service.WhatsAppWindowClosedError("ventana cerrada, mandá una plantilla")
-    assert meta_service.describe_send_failure(exc, "enviar el mensaje") == "ventana cerrada, mandá una plantilla"
+    assert describe_send_failure(exc, "enviar el mensaje") == "ventana cerrada, mandá una plantilla"
 
 
 def test_describe_send_failure_hides_generic_errors_behind_friendly_text():
     exc = meta_service.MetaApiError("Meta Graph API respondió 400: ...")
-    assert meta_service.describe_send_failure(exc, "enviar el mensaje") == \
+    assert describe_send_failure(exc, "enviar el mensaje") == \
         "No se pudo enviar el mensaje. Probá de nuevo en unos segundos."
 
 
@@ -551,11 +553,11 @@ async def test_http_client_is_reused_and_closed(monkeypatch):
 
 
 def test_media_message_fields_document_keeps_filename():
-    assert meta_service.media_message_fields("document", "factura.pdf") == (
+    assert media_message_fields("document", "factura.pdf") == (
         "document", {"filename": "factura.pdf"},
     )
 
 
 def test_mediatype_from_content_type_defaults_to_document():
-    assert meta_service.mediatype_from_content_type("application/pdf") == "document"
-    assert meta_service.mediatype_from_content_type("image/png") == "image"
+    assert mediatype_from_content_type("application/pdf") == "document"
+    assert mediatype_from_content_type("image/png") == "image"

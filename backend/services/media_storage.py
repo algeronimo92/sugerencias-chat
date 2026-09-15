@@ -77,7 +77,22 @@ def _local_path(media_url: str) -> Path:
     return _local_path_from_filename(_media_filename(media_url))
 
 
+# La base de tipos del sistema no es la misma en todas las imágenes: Debian
+# no conoce .ogg/.oga/.m4a/.weba, así que una nota de voz guardada en "audio/"
+# se buscaba después en "files/" y cada lectura gastaba dos stats de más.
+EXTENSION_CATEGORIES = {
+    ".ogg": "audio", ".oga": "audio", ".opus": "audio", ".m4a": "audio", ".weba": "audio",
+    ".mp3": "audio", ".wav": "audio", ".aac": "audio",
+    ".mp4": "video", ".webm": "video", ".mov": "video", ".mkv": "video",
+    ".jpg": "images", ".jpeg": "images", ".png": "images", ".gif": "images", ".webp": "images",
+}
+
+
 def _media_category(filename: str, content_type: str | None = None) -> str:
+    if not content_type:
+        category = EXTENSION_CATEGORIES.get(Path(filename).suffix.lower())
+        if category:
+            return category
     normalized = (content_type or mimetypes.guess_type(filename)[0] or "").lower()
     if normalized.startswith("image/"):
         return "images"

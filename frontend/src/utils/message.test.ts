@@ -336,23 +336,41 @@ describe('messageAdReferral', () => {
 })
 
 describe('messageContacts', () => {
-  it('devuelve vacío si el mensaje no trae contactos', () => {
+  it('devuelve vacío cuando el mensaje no trae una lista de contactos', () => {
     expect(messageContacts(null)).toEqual([])
     expect(messageContacts({ contacts: 'Ana' })).toEqual([])
-    expect(messageContacts({ contacts: [{}] })).toEqual([])
+    expect(messageContacts({ contacts: [] })).toEqual([])
   })
 
-  it('lee el nombre y el teléfono ya desarmados por el backend', () => {
+  it('lee la forma de Meta Cloud API, prefiriendo el wa_id sobre el número visible', () => {
+    expect(messageContacts({
+      contacts: [{
+        name: { formatted_name: 'Lidia Mimbela', first_name: 'Lidia' },
+        phones: [{ phone: '+51 987 654 321', wa_id: '51987654321' }],
+      }],
+    })).toEqual([{ name: 'Lidia Mimbela', phone: ['51987654321'], phoneLabel: '+51 987 654 321' }])
+  })
+
+  it('conserva los varios números de un contacto', () => {
+    const contacts = messageContacts({
+      contacts: [{ name: { first_name: 'Ana' }, phones: [{ wa_id: '51987654321' }, { phone: '+51 900 000 000' }] }],
+    })
+
+    expect(contacts[0].phone).toEqual(['51987654321', '51900000000'])
+  })
+
+  it('lee la forma que arma el historial de Evolution', () => {
     expect(messageContacts({ contacts: [{ fullName: 'Ana', phoneNumber: '+51 987 654 321' }] }))
-      .toEqual([{ fullName: 'Ana', phone: '51987654321', phoneLabel: '+51 987 654 321' }])
+      .toEqual([{ name: 'Ana', phone: ['51987654321'], phoneLabel: '+51 987 654 321' }])
   })
 
   it('saca el número del vCard, prefiriendo el waid sobre el TEL visible', () => {
     const vcard =
       'BEGIN:VCARD\nVERSION:3.0\nFN:Lidia Mimbela\n' +
       'TEL;type=CELL;waid=51987654321:987 654 321\nEND:VCARD'
+
     expect(messageContacts({ contacts: [{ vcard }] }))
-      .toEqual([{ fullName: 'Lidia Mimbela', phone: '51987654321', phoneLabel: '987 654 321' }])
+      .toEqual([{ name: 'Lidia Mimbela', phone: ['51987654321'], phoneLabel: '987 654 321' }])
   })
 
   it('lee el TEL agrupado ("item1.TEL") que manda WhatsApp desde Android', () => {
@@ -360,13 +378,19 @@ describe('messageContacts', () => {
       'BEGIN:VCARD\nVERSION:3.0\nN:;;;;\nFN:Alger Pier\n' +
       'item1.TEL;waid=51906471403:+51 906 471 403\nitem1.X-ABLabel:Celular\n' +
       'PHOTO;BASE64:/9j/4AAQSkZJRgABAQAAAQABAAD\nEND:VCARD'
+
     expect(messageContacts({ contacts: [{ displayName: 'Alger Pier Nuevo 1', vcard }] }))
-      .toEqual([{ fullName: 'Alger Pier Nuevo 1', phone: '51906471403', phoneLabel: '+51 906 471 403' }])
+      .toEqual([{ name: 'Alger Pier Nuevo 1', phone: ['51906471403'], phoneLabel: '+51 906 471 403' }])
   })
 
-  it('deja el contacto sin teléfono cuando el vCard no trae uno marcable', () => {
+  it('deja el contacto sin número marcable cuando el vCard no trae uno usable', () => {
     expect(messageContacts({ contacts: [{ fullName: 'Ana', vcard: 'BEGIN:VCARD\nTEL:123\nEND:VCARD' }] }))
-      .toEqual([{ fullName: 'Ana', phone: null, phoneLabel: '123' }])
+      .toEqual([{ name: 'Ana', phone: null, phoneLabel: '123' }])
+  })
+
+  it('nombra al contacto aunque no venga nombre', () => {
+    expect(messageContacts({ contacts: [{ phones: [{ wa_id: '51987654321' }] }] })[0].name)
+      .toBe('Contacto compartido')
   })
 })
 

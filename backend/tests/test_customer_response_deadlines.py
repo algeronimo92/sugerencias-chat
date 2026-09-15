@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationTrigger
-from services import automation_service
+from services import automation_service, ws_manager
+from tests.conftest import patch_automations
 
 
 def _session_factory(session):
@@ -33,13 +34,12 @@ async def test_seller_message_programs_deadline_without_running_inbound_triggers
     schedule_deadline = AsyncMock(return_value=1)
     open_conversation = AsyncMock()
     schedule_event = AsyncMock()
-    monkeypatch.setattr(
-        automation_service,
+    patch_automations(monkeypatch,
         "_schedule_customer_response_deadlines",
         schedule_deadline,
     )
-    monkeypatch.setattr(automation_service, "open_conversation_from_inbound", open_conversation)
-    monkeypatch.setattr(automation_service, "schedule_automation_event", schedule_event)
+    patch_automations(monkeypatch, "open_conversation_from_inbound", open_conversation)
+    patch_automations(monkeypatch, "schedule_automation_event", schedule_event)
 
     message = {
         "chat_id": "lead-1",
@@ -57,17 +57,16 @@ async def test_seller_message_programs_deadline_without_running_inbound_triggers
 @pytest.mark.asyncio
 async def test_customer_message_cancels_pending_deadline(monkeypatch):
     cancel = AsyncMock(return_value=1)
-    monkeypatch.setattr(automation_service, "_cancel_customer_response_deadlines", cancel)
-    monkeypatch.setattr(
-        automation_service,
+    patch_automations(monkeypatch, "_cancel_customer_response_deadlines", cancel)
+    patch_automations(monkeypatch,
         "open_conversation_from_inbound",
         AsyncMock(return_value=None),
     )
-    monkeypatch.setattr(automation_service, "schedule_automation_event", AsyncMock(return_value=1))
-    monkeypatch.setattr(automation_service.manager, "broadcast", AsyncMock())
+    patch_automations(monkeypatch, "schedule_automation_event", AsyncMock(return_value=1))
+    monkeypatch.setattr(ws_manager.manager, "broadcast", AsyncMock())
     session = AsyncMock()
     session.scalar = AsyncMock(side_effect=[2, 9])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: _session_factory(session))
+    patch_automations(monkeypatch, "get_sessionmaker", lambda: _session_factory(session))
 
     await automation_service.trigger_inbound_message({
         "chat_id": "lead-1",
@@ -77,7 +76,7 @@ async def test_customer_message_cancels_pending_deadline(monkeypatch):
     })
 
     cancel.assert_awaited_once_with("lead-1")
-    automation_service.manager.broadcast.assert_awaited_once_with({
+    ws_manager.manager.broadcast.assert_awaited_once_with({
         "type": "automations_updated"
     })
 

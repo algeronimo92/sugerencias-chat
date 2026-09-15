@@ -19,6 +19,7 @@ from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus, AutomationTrigger
 from services import automation_service
+from tests.conftest import patch_automations
 
 
 def _compile(statement) -> str:
@@ -56,7 +57,7 @@ async def test_schedule_automation_event_skips_system_trigger_when_paused(monkey
     lead = SimpleNamespace(automatizacion_pausada=True)
     session = AsyncMock()
     session.get = AsyncMock(return_value=lead)
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     created = await automation_service.schedule_automation_event(
         AutomationTrigger.MESSAGE_RECEIVED, "lead-1", "message:1",
@@ -73,7 +74,7 @@ async def test_schedule_automation_event_ignores_pause_for_manual_start(monkeypa
     session = AsyncMock()
     session.get = AsyncMock(return_value=lead)
     session.execute = AsyncMock(return_value=_EmptyRulesResult())
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     created = await automation_service.schedule_automation_event(
         AutomationTrigger.MANUAL, "lead-1", "manual:abc", rule_id=5, start_source="manual",
@@ -89,7 +90,7 @@ async def test_schedule_automation_event_runs_normally_when_not_paused(monkeypat
     session = AsyncMock()
     session.get = AsyncMock(return_value=lead)
     session.execute = AsyncMock(return_value=_EmptyRulesResult())
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     created = await automation_service.schedule_automation_event(
         AutomationTrigger.MESSAGE_RECEIVED, "lead-1", "message:1",
@@ -103,9 +104,9 @@ async def test_schedule_automation_event_runs_normally_when_not_paused(monkeypat
 async def test_pause_lead_executions_broadcasts_when_rows_affected(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=2))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     frozen = await automation_service.pause_lead_executions("lead-1")
 
@@ -117,9 +118,9 @@ async def test_pause_lead_executions_broadcasts_when_rows_affected(monkeypatch):
 async def test_pause_lead_executions_skips_broadcast_when_nothing_frozen(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=0))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     frozen = await automation_service.pause_lead_executions("lead-1")
 
@@ -133,8 +134,8 @@ async def test_pause_lead_executions_freezes_instead_of_cancelling(monkeypatch):
     llevaba puesto el flujo entero, incluido uno parado en un bloque Pausa."""
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await automation_service.pause_lead_executions("lead-1")
 
@@ -150,9 +151,9 @@ async def test_resume_lead_executions_gives_back_the_remaining_time(monkeypatch)
     golpe por haber vencido mientras estaba congelada."""
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=3))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     resumed = await automation_service.resume_lead_executions("lead-1")
 
@@ -173,8 +174,8 @@ async def test_resume_lead_executions_leaves_execution_scoped_pauses_frozen(monk
     columna (NULL) sí se reanudan, de ahí el IS DISTINCT FROM."""
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await automation_service.resume_lead_executions("lead-1")
 
@@ -189,10 +190,10 @@ async def test_pause_automation_execution_freezes_only_that_row(monkeypatch):
     única forma de frenar uno sin perder lo que ya avanzó."""
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(
-        automation_service, "get_automation_execution", AsyncMock(return_value={"id": 7})
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch,
+        "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
 
     item = await automation_service.pause_automation_execution(7)
@@ -210,9 +211,9 @@ async def test_pause_automation_execution_freezes_only_that_row(monkeypatch):
 async def test_pause_automation_execution_returns_none_when_not_scheduled(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=0))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     assert await automation_service.pause_automation_execution(7) is None
     broadcast.assert_not_awaited()
@@ -228,10 +229,10 @@ async def test_resume_automation_execution_gives_back_the_remaining_time(monkeyp
         SimpleNamespace(automatizacion_pausada=False),
     ])
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(
-        automation_service, "get_automation_execution", AsyncMock(return_value={"id": 7})
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch,
+        "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
     automation_service._wake.clear()
 
@@ -255,8 +256,8 @@ async def test_resume_automation_execution_refuses_while_the_lead_is_paused(monk
         ),
         SimpleNamespace(automatizacion_pausada=True),
     ])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     with pytest.raises(ValueError, match="botón del bot"):
         await automation_service.resume_automation_execution(7)
@@ -272,10 +273,10 @@ async def test_resume_automation_execution_ignores_the_lead_pause_for_manual_flo
         status=AutomationExecutionStatus.PAUSED, start_source="manual", lead_id="lead-1",
     ))
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(
-        automation_service, "get_automation_execution", AsyncMock(return_value={"id": 7})
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch,
+        "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
 
     assert await automation_service.resume_automation_execution(7) == {"id": 7}
@@ -289,8 +290,8 @@ async def test_resume_automation_execution_returns_none_when_not_paused(monkeypa
     session.get = AsyncMock(return_value=SimpleNamespace(
         status=AutomationExecutionStatus.SCHEDULED, start_source="system", lead_id="lead-1",
     ))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     assert await automation_service.resume_automation_execution(7) is None
     session.execute.assert_not_awaited()
@@ -300,9 +301,9 @@ async def test_resume_automation_execution_returns_none_when_not_paused(monkeypa
 async def test_resume_lead_executions_skips_broadcast_when_nothing_frozen(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=0))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
     automation_service._wake.clear()
 
     resumed = await automation_service.resume_lead_executions("lead-1")

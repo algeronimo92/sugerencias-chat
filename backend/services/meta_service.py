@@ -7,6 +7,7 @@ import httpx
 
 from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
+from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError
 from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
 
 logger = logging.getLogger(__name__)
@@ -19,39 +20,23 @@ _META_ERROR_CODE_SCHEMA_VIOLATION = 100  # ej. botón no-reply fuera de plantill
 _META_ERROR_CODE_AUTH = 190  # token vencido o inválido
 
 
-class MetaApiError(Exception):
+class MetaApiError(ChannelError):
     """Rechazo real de la Graph API (HTTP 4xx/5xx), a diferencia del Evolution
     de antes -que a veces devolvía un rechazo de Meta como HTTP 200- acá el
     status code siempre es confiable."""
 
     def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
-        super().__init__(message)
+        super().__init__(message, status_code=status_code)
         self.error = error or {}
-        self.status_code = status_code
-
-
-class DeliveryUnconfirmedError(MetaApiError):
-    """El POST a /messages salió pero no hubo respuesta legible: Meta pudo
-    haber aceptado el mensaje, así que reenviarlo arriesga duplicarlo."""
 
 
 class WhatsAppWindowClosedError(MetaApiError):
     """Meta rechazó un envío libre porque la ventana de 24h del contacto ya
     cerró (código 131047). Sólo una plantilla aprobada puede reabrirla."""
 
-
-def describe_send_failure(exc: Exception, action: str) -> str:
-    """Convierte una excepción de un intento de envío a WhatsApp en un texto
-    apto para mostrarle al usuario (toast, tooltip de burbuja fallida).
-
-    WhatsAppWindowClosedError ya trae su propio mensaje, específico y
-    accionable, así que se devuelve tal cual. Cualquier otra excepción se
-    reemplaza por un genérico: nunca es agradable ni útil mostrarle a un
-    vendedor un JSON crudo o un stack trace. El detalle real queda en los
-    logs; el llamador debe loguear `exc` antes de invocar esto."""
-    if isinstance(exc, (WhatsAppWindowClosedError, DeliveryUnconfirmedError)):
-        return str(exc)
-    return f"No se pudo {action}. Probá de nuevo en unos segundos."
+    def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
+        super().__init__(message, error=error, status_code=status_code)
+        self.user_message = message
 
 
 def describe_template_error(exc: Exception) -> str:
@@ -93,11 +78,6 @@ def _raise_meta_error(response: httpx.Response) -> None:
     )
 
 
-UNCONFIRMED_DELIVERY_MESSAGE = (
-    "No se pudo confirmar si el mensaje llegó al cliente. Si lo reintentás, "
-    "podría recibirlo dos veces."
-)
-
 _REQUEST_NOT_SENT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 
@@ -118,39 +98,6 @@ async def close_meta_client() -> None:
     if _http_client is not None:
         await _http_client.aclose()
         _http_client = None
-
-
-def mediatype_from_content_type(content_type: str) -> str:
-    if content_type.startswith("image/"):
-        return "image"
-    if content_type.startswith("video/"):
-        return "video"
-    if content_type.startswith("audio/"):
-        return "audio"
-    return "document"
-
-
-def media_message_fields(
-    mediatype: str, filename: str | None, album_id: str | None = None,
-) -> tuple[str, dict | None]:
-    """Deriva (message_type, payload) para un adjunto saliente.
-
-    El mediatype (image/video/audio/document) ya es un message_type válido; solo
-    document necesita conservar el nombre en payload, porque WhatsApp no le da
-    caption y ese nombre es lo único que lo identifica del lado del receptor.
-    Fuente única de este mapeo para los dos caminos de envío (el encolado del
-    outbox y el envío síncrono de las automatizaciones).
-
-    `album_id` viaja cuando el CRM mandó varias fotos/videos juntos desde un
-    mismo picker (ver ChatComposer): WhatsApp no tiene forma de agrupar eso del
-    lado del cliente, pero acá sí se puede agrupar en grilla de forma exacta en
-    vez de adivinar por tiempo — ver utils/mediaGroups.ts en el frontend."""
-    payload: dict = {}
-    if mediatype == "document" and filename:
-        payload["filename"] = filename
-    if album_id:
-        payload["album_id"] = album_id
-    return mediatype, payload or None
 
 
 async def _config() -> tuple[str, str, str]:
@@ -228,7 +175,7 @@ async def _send(chat_id: str, token: str, phone_number_id: str, payload: dict, t
     except _REQUEST_NOT_SENT_ERRORS:
         raise
     except (httpx.TransportError, ValueError) as exc:
-        raise DeliveryUnconfirmedError(UNCONFIRMED_DELIVERY_MESSAGE) from exc
+        raise DeliveryUnconfirmedError() from exc
     messages = raw.get("messages") or []
     contacts = raw.get("contacts") or []
     wa_id = (contacts[0].get("wa_id") if contacts else None) or payload.get("to")

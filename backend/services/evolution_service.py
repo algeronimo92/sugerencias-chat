@@ -6,6 +6,7 @@ import httpx
 from time import monotonic, perf_counter
 from request_metrics import record_external_duration
 from services.settings_service import get_effective_many
+from services.whatsapp_channel import ChannelError
 from services.whatsapp_identity_service import (
     resolve_history_jid,
     resolve_whatsapp_destination,
@@ -20,8 +21,9 @@ logger = logging.getLogger(__name__)
 # enviado, el historial retroactivo y la vinculación por QR.
 
 
-class EvolutionApiError(Exception):
-    pass
+class EvolutionApiError(ChannelError):
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message, status_code=status_code)
 
 
 _http_client: httpx.AsyncClient | None = None

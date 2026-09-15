@@ -10,6 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus
 from services import automation_service
+from tests.conftest import patch_automations
 
 
 class _SessionContext:
@@ -53,9 +54,9 @@ async def test_claiming_due_executions_does_not_increment_attempts(monkeypatch):
     session.execute = AsyncMock(side_effect=[
         _ClaimResult([]), _ClaimResult([777]), SimpleNamespace(),
     ])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "_run_execution", AsyncMock())
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "_run_execution", AsyncMock())
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await automation_service.process_due_automation_executions(limit=5)
 
@@ -73,11 +74,11 @@ async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(monkeyp
     session.execute = AsyncMock(side_effect=[
         _ClaimResult([42]), _ClaimResult([]), SimpleNamespace(),
     ])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     run_execution = AsyncMock()
-    monkeypatch.setattr(automation_service, "_run_execution", run_execution)
+    patch_automations(monkeypatch, "_run_execution", run_execution)
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     processed = await automation_service.process_due_automation_executions(limit=5)
 
@@ -103,7 +104,7 @@ async def test_reviving_a_stale_execution_increments_attempts(monkeypatch):
             return []
 
     session.execute = AsyncMock(side_effect=[_ExhaustedResult(), SimpleNamespace()])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     await automation_service._release_stale_executions()
 
@@ -121,10 +122,10 @@ async def test_retrying_an_execution_resets_attempts(monkeypatch):
     session = AsyncMock()
     session.get = AsyncMock(side_effect=[execution, rule])
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(
-        automation_service, "get_automation_execution", AsyncMock(return_value={"id": 5}),
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch,
+        "get_automation_execution", AsyncMock(return_value={"id": 5}),
     )
 
     result = await automation_service.retry_automation_execution(5)

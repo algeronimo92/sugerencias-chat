@@ -17,7 +17,7 @@ from services.automation_service import (
     _normalize_wait_any_conditions,
     _run_visual_execution,
 )
-from tests.conftest import make_chat, make_execution, make_rule
+from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
 def wait_any_flow():
@@ -257,7 +257,7 @@ class TestRunVisualExecutionWaitAny:
 
 class TestRunVisualExecutionWaitAnyBusinessHours:
     async def test_overrides_the_natural_branch_when_outside_business_hours(self, deps, monkeypatch):
-        monkeypatch.setattr("services.automation_service.is_business_hours", lambda now: False)
+        patch_automations(monkeypatch, "is_business_hours", lambda now: False)
         FakeSession, calls = capturing_session()
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
@@ -281,7 +281,7 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
         assert wait_result["branch"] == "business_hours"
 
     async def test_does_not_override_when_within_business_hours(self, deps, monkeypatch):
-        monkeypatch.setattr("services.automation_service.is_business_hours", lambda now: True)
+        patch_automations(monkeypatch, "is_business_hours", lambda now: True)
         FakeSession, calls = capturing_session()
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
@@ -543,7 +543,7 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
         await automation_service._discover_wait_any_replies()
 
@@ -574,7 +574,7 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
         await automation_service._discover_wait_any_replies()
 
@@ -599,7 +599,7 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: (lambda: session))
+        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
         await automation_service._discover_wait_any_replies()
 

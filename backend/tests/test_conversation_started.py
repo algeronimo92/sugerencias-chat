@@ -6,6 +6,7 @@ import pytest
 
 from domain_types import AutomationTrigger
 from services import automation_service, db_service
+from tests.conftest import patch_automations, patch_store
 
 
 def _sessionmaker(session):
@@ -65,9 +66,9 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
     session = AsyncMock()
     session.scalar = AsyncMock(side_effect=[2, 9])
 
-    monkeypatch.setattr(automation_service, "open_conversation_from_inbound", opened)
-    monkeypatch.setattr(automation_service, "schedule_automation_event", schedule)
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "open_conversation_from_inbound", opened)
+    patch_automations(monkeypatch, "schedule_automation_event", schedule)
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     await automation_service.trigger_inbound_message({
         "chat_id": "lead-1",
@@ -97,16 +98,15 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
 
 @pytest.mark.asyncio
 async def test_inbound_message_does_not_repeat_trigger_while_open(monkeypatch):
-    monkeypatch.setattr(
-        automation_service,
+    patch_automations(monkeypatch,
         "open_conversation_from_inbound",
         AsyncMock(return_value=None),
     )
     schedule = AsyncMock(return_value=1)
-    monkeypatch.setattr(automation_service, "schedule_automation_event", schedule)
+    patch_automations(monkeypatch, "schedule_automation_event", schedule)
     session = AsyncMock()
     session.scalar = AsyncMock(side_effect=[4, 9])
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     await automation_service.trigger_inbound_message({
         "chat_id": "lead-1",
@@ -127,7 +127,7 @@ async def test_open_conversation_transition_returns_version_and_audits(monkeypat
         _MappingResult({"conversacion_version": 2, "conversacion_abierta_at": opened_at}),
         None,
     ])
-    monkeypatch.setattr(db_service, "get_sessionmaker", _sessionmaker(session))
+    patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     result = await db_service.open_conversation_from_inbound(
         "lead-1", "wamid-9", "Necesito otra cita",
@@ -145,7 +145,7 @@ async def test_open_conversation_transition_returns_version_and_audits(monkeypat
 async def test_open_conversation_transition_is_noop_when_already_open(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_MappingResult(None))
-    monkeypatch.setattr(db_service, "get_sessionmaker", _sessionmaker(session))
+    patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
     result = await db_service.open_conversation_from_inbound("lead-1", "wamid-10")
 

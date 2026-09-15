@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from services import automation_service
+from tests.conftest import patch_automations
 
 
 class _SessionContext:
@@ -59,10 +60,10 @@ def test_a_decimal_setting_is_truncated_to_whole_hours() -> None:
 @pytest.mark.asyncio
 async def test_sweep_does_nothing_while_the_setting_is_empty(monkeypatch) -> None:
     session = AsyncMock()
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "get_effective", AsyncMock(return_value=""))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value=""))
     update = AsyncMock()
-    monkeypatch.setattr(automation_service, "update_lead", update)
+    patch_automations(monkeypatch, "update_lead", update)
 
     closed = await automation_service._auto_close_idle_conversations()
 
@@ -76,12 +77,12 @@ async def test_sweep_does_nothing_while_the_setting_is_empty(monkeypatch) -> Non
 async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult(["lead-1", "lead-2"]))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "get_effective", AsyncMock(return_value="12"))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
     update = AsyncMock()
-    monkeypatch.setattr(automation_service, "update_lead", update)
+    patch_automations(monkeypatch, "update_lead", update)
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     closed = await automation_service._auto_close_idle_conversations()
 
@@ -95,9 +96,9 @@ async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None
 async def test_sweep_skips_paused_leads_and_measures_the_last_message(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult([]))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "get_effective", AsyncMock(return_value="12"))
-    monkeypatch.setattr(automation_service, "update_lead", AsyncMock())
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
+    patch_automations(monkeypatch, "update_lead", AsyncMock())
 
     await automation_service._auto_close_idle_conversations()
 
@@ -115,12 +116,12 @@ async def test_sweep_skips_paused_leads_and_measures_the_last_message(monkeypatc
 async def test_a_failed_close_does_not_abort_the_rest(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult(["lead-1", "lead-2"]))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(automation_service, "get_effective", AsyncMock(return_value="12"))
-    monkeypatch.setattr(
-        automation_service, "update_lead", AsyncMock(side_effect=[RuntimeError("boom"), None]),
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
+    patch_automations(monkeypatch,
+        "update_lead", AsyncMock(side_effect=[RuntimeError("boom"), None]),
     )
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     closed = await automation_service._auto_close_idle_conversations()
 

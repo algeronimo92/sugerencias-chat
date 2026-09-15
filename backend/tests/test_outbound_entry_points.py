@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from models.schemas import SendTemplateRequest, StickerRequest
 from routers import chats, webhooks
+from services import chat_messaging
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
 CHAT_ID = "51999@s.whatsapp.net"
@@ -53,14 +54,14 @@ async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast
 
 
 async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypatch, broadcast):
-    monkeypatch.setattr(chats, "list_templates", AsyncMock(return_value=[{
+    monkeypatch.setattr(chat_messaging, "list_templates", AsyncMock(return_value=[{
         "id": 4, "template_type": "official", "official_status": "APPROVED",
         "official_parameter_values": [], "content": "Hola", "official_name": "hola",
         "official_language": "es",
     }]))
-    monkeypatch.setattr(chats, "lead_exists", AsyncMock(return_value=False))
+    monkeypatch.setattr(chat_messaging, "lead_exists", AsyncMock(return_value=False))
     enqueue = AsyncMock()
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
+    monkeypatch.setattr(chat_messaging, "enqueue_messages", enqueue)
 
     with pytest.raises(HTTPException) as exc:
         await chats.send_template(CHAT_ID, 4, SendTemplateRequest(), SELLER)
@@ -85,3 +86,17 @@ async def test_unknown_inbound_id_never_falls_back_to_another_chats_message(monk
 
     trigger.assert_not_awaited()
     broadcast.assert_awaited_once_with({"type": "chats_updated", "reason": "inbound_message"})
+
+
+def test_every_template_kind_and_error_has_a_mapping():
+    assert set(chat_messaging.TEMPLATE_ITEM_BUILDERS) == {"official", "interactive", "internal"}
+    assert set(chats.TEMPLATE_ERROR_STATUS) == set(chat_messaging.ChatMessagingError.__subclasses__())
+
+
+@pytest.mark.parametrize(("template", "kind"), [
+    ({"template_type": "official", "interactive_type": "none"}, "official"),
+    ({"template_type": "internal", "interactive_type": "buttons"}, "interactive"),
+    ({"template_type": "internal", "interactive_type": "none"}, "internal"),
+])
+def test_template_kind(template, kind):
+    assert chat_messaging.template_kind(template) == kind

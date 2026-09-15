@@ -21,7 +21,7 @@ from services.automation_service import (
     _execute_action,
     _notify_execution_failure,
 )
-from tests.conftest import make_chat, make_execution, make_rule
+from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 from tests.test_automation_actions import deps_with_template, template
 
 
@@ -103,10 +103,10 @@ class TestRetry:
         return session
 
     def _patch(self, monkeypatch, session):
-        monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
-        monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=AsyncMock()))
-        monkeypatch.setattr(
-            automation_service, "get_automation_execution", AsyncMock(return_value={"id": 5}),
+        patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+        patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+        patch_automations(monkeypatch,
+            "get_automation_execution", AsyncMock(return_value={"id": 5}),
         )
 
     async def test_registra_quien_autorizo(self, monkeypatch):

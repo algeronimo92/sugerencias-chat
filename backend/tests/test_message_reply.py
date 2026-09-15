@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from models.schemas import SendMessageRequest
 from routers import chats
 from services import message_outbox
+from services.outbound_kinds import send_outbound
+from tests.conftest import FakeSender
 
 USER = SimpleNamespace(id=7)
 
@@ -24,16 +26,15 @@ def test_quoted_context_lleva_el_wa_message_id_del_original():
 
 
 @pytest.mark.asyncio
-async def test_el_envio_lleva_la_cita_a_meta(monkeypatch):
-    send_text = AsyncMock(return_value={"key": {"id": "WA-OUT"}})
-    monkeypatch.setattr(message_outbox, "send_whatsapp_text", send_text)
+async def test_el_envio_lleva_la_cita_al_canal():
+    sender = FakeSender()
     quoted = {"wa_message_id": "WA-2"}
 
-    await message_outbox._send_payload("51999@s.whatsapp.net", {
+    await send_outbound(sender, "51999@s.whatsapp.net", {
         "type": "text", "text": "Sale 200", "quoted": quoted,
     })
 
-    send_text.assert_awaited_once_with("51999@s.whatsapp.net", "Sale 200", quoted=quoted)
+    assert sender.only_call() == ("send_text", ("51999@s.whatsapp.net", "Sale 200"), {"quoted": quoted})
 
 
 @pytest.mark.asyncio

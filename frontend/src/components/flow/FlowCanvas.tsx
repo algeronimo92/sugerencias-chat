@@ -8,20 +8,20 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  Activity, Bell, CheckCircle2, ChevronRight, CirclePlay, FileText,
-  Image as ImageIcon, MessageCircleQuestion, MessageSquareText, Paperclip,
-  Eye, EyeOff, Repeat, SmilePlus, Split, Tag, Timer, Trash2, UserRound, Video, Zap,
+  Bell, ChevronRight, CirclePlay, FileText,
+  Image as ImageIcon, MessageSquareText, Paperclip,
+  Eye, EyeOff, SmilePlus, Tag, Trash2, UserRound, Video,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
   AutomationFlowNodeType, AutomationRule, AutomationTrigger, MediaAsset, MessageTemplate, QuestionButton, RoundRobinOutput, Tag as TagRecord, WaitAnyCondition,
 } from '../../types'
 import {
-  AUTOMATION_ACTION_LABELS, AUTOMATION_TRIGGERS, AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
-  FlowHandle, FlowNodeType, formatWaitDuration, isAutomationActionType, isFlowConditionType,
-  QuestionHandle, QUESTION_HANDLE_LABELS, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
+  AutomationActionType, FLOW_CONDITION_LABELS, FLOW_NODE_LABELS,
+  FlowHandle, FlowNodeType, formatWaitDuration, QuestionHandle, QUESTION_HANDLE_LABELS, WaitAnyConditionKind, WAIT_ANY_CONDITION_LABELS,
 } from '../../domain/automationCatalog'
 import { resolveMediaUrl } from '../../utils/message'
+import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
@@ -94,44 +94,6 @@ function storedConnectionHighlightPreference(): boolean {
   }
 }
 
-function nodeTitle(type: AutomationFlowNodeType, data: CanvasNodeData): string {
-  if (type === FlowNodeType.Trigger) {
-    return AUTOMATION_TRIGGERS.find(item => item.value === data.trigger_type)?.label ?? 'Disparador'
-  }
-  if (type === FlowNodeType.Condition) {
-    const first = data.condition_groups?.[0]?.conditions[0]
-    const condition = String(first?.condition_type ?? data.condition_type ?? '')
-    const count = data.condition_groups?.reduce((sum, group) => sum + group.conditions.length, 0) ?? 1
-    const label = isFlowConditionType(condition) ? FLOW_CONDITION_LABELS[condition] : 'Condición'
-    return `${label}${count > 1 ? ` (+${count - 1})` : ''}`
-  }
-  if (type === FlowNodeType.Action) {
-    const action = data.action
-    const actionType = String(action?.type ?? '')
-    return isAutomationActionType(actionType) ? AUTOMATION_ACTION_LABELS[actionType] : 'Acción'
-  }
-  if (type === FlowNodeType.InvokeFlow) return data.invokedFlowName ?? 'Selecciona un flujo'
-  if (type === FlowNodeType.Wait) return `Esperar ${formatWaitDuration(Number(data.seconds ?? 0))}`
-  if (type === FlowNodeType.WaitAny) {
-    const conditions = data.conditions ?? []
-    const timer = conditions.find(c => c.kind === WaitAnyConditionKind.Timer)
-    const hasMessage = conditions.some(c => c.kind === WaitAnyConditionKind.Message)
-    const hasMedia = conditions.some(c => c.kind === WaitAnyConditionKind.MediaReceived)
-    const timerLabel = timer ? formatWaitDuration(timer.seconds) : ''
-    const waitedFor = [hasMessage && 'mensaje', hasMedia && 'foto'].filter(Boolean).join(' o ')
-    return waitedFor ? `${timerLabel} o ${waitedFor}` : timerLabel
-  }
-  if (type === FlowNodeType.Question) {
-    const buttons = data.buttons ?? []
-    return buttons.length ? buttons.map(button => button.label).join(' / ') : 'Sin botones'
-  }
-  if (type === FlowNodeType.RoundRobin) {
-    const outputs = data.outputs ?? []
-    return outputs.length ? `Reparto entre ${outputs.length} salidas` : 'Sin salidas'
-  }
-  return String(data.label || 'Fin')
-}
-
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
   if (type === FlowNodeType.Question) return 'Mensaje interactivo'
   if (type === FlowNodeType.RoundRobin) return 'Reparto por turnos'
@@ -182,18 +144,6 @@ const DARK_ACCENT_TEXT: Record<AutomationFlowNodeType, string> = {
   [FlowNodeType.End]: 'dark:text-blue-400',
 }
 
-const ICONS: Record<AutomationFlowNodeType, typeof Zap> = {
-  [FlowNodeType.Trigger]: Zap,
-  [FlowNodeType.Condition]: Split,
-  [FlowNodeType.Action]: Activity,
-  [FlowNodeType.InvokeFlow]: CirclePlay,
-  [FlowNodeType.Wait]: Timer,
-  [FlowNodeType.WaitAny]: Timer,
-  [FlowNodeType.Question]: MessageCircleQuestion,
-  [FlowNodeType.RoundRobin]: Repeat,
-  [FlowNodeType.End]: CheckCircle2,
-}
-
 interface ShellProps {
   id: string
   type: AutomationFlowNodeType
@@ -203,7 +153,7 @@ interface ShellProps {
 }
 
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
-  const Icon = ICONS[type]
+  const Icon = FLOW_NODE_VIEW[type].icon
   const widthClass = type === FlowNodeType.Condition ? 'w-[26rem]' : 'w-72'
   const connectionClass = data.connectionRole === 'source'
     ? 'ring-2 ring-cyan-400 ring-offset-2 shadow-[0_0_24px_rgba(34,211,238,0.45)] dark:ring-offset-gray-950'
@@ -234,7 +184,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-wide text-wa-muted dark:text-slate-400">{nodeKindLabel(type, data)}</p>
-          <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{nodeTitle(type, data)}</p>
+          <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{flowNodeSummary(type, data)}</p>
         </div>
         {type !== FlowNodeType.Trigger && data.onDelete && (
           <button

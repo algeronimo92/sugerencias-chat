@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from services import db_service
 from services.message_edit_crypto import derive_edit_key
+from tests.conftest import patch_store
 
 CHAT_ID = "d17d73fb-70aa-4750-bfa2-c069e37d78db"
 WA_MESSAGE_ID = "3EB0ABCDEF1234567890"
@@ -86,7 +87,7 @@ def _conversation_field(text: str) -> bytes:
 async def test_null_secret_returns_none_and_does_not_touch_row(monkeypatch):
     row = _Row(message_secret=None, content="texto original")
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.update_message_content_from_secret(
         CHAT_ID, WA_MESSAGE_ID, [SENDER], b"payload-cifrado", os.urandom(12)
@@ -100,7 +101,7 @@ async def test_null_secret_returns_none_and_does_not_touch_row(monkeypatch):
 @pytest.mark.asyncio
 async def test_unknown_message_returns_none(monkeypatch):
     SessionContext, session = _session_context(None)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.update_message_content_from_secret(
         CHAT_ID, "id-desconocido", [SENDER], b"payload-cifrado", os.urandom(12)
@@ -114,7 +115,7 @@ async def test_unknown_message_returns_none(monkeypatch):
 async def test_deleted_message_returns_none_even_with_secret(monkeypatch):
     row = _Row(message_secret=os.urandom(32), deleted_at=datetime.now(timezone.utc))
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.update_message_content_from_secret(
         CHAT_ID, WA_MESSAGE_ID, [SENDER], b"payload-cifrado", os.urandom(12)
@@ -130,7 +131,7 @@ async def test_no_sender_candidate_matches_leaves_content_untouched(monkeypatch)
     ciphertext, nonce = _encrypt(_conversation_field("nuevo texto"), secret, WA_MESSAGE_ID, SENDER)
     row = _Row(message_secret=secret, content="texto original")
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.update_message_content_from_secret(
         CHAT_ID, WA_MESSAGE_ID, ["999@lid"], ciphertext, nonce
@@ -147,7 +148,7 @@ async def test_matching_candidate_updates_content_and_edited_at(monkeypatch):
     ciphertext, nonce = _encrypt(_conversation_field("precio correcto: 450"), secret, WA_MESSAGE_ID, SENDER)
     row = _Row(message_secret=secret, content="texto original", edited_at=None)
     SessionContext, session = _session_context(row)
-    monkeypatch.setattr(db_service, "get_sessionmaker", lambda: SessionContext)
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
 
     result = await db_service.update_message_content_from_secret(
         CHAT_ID, WA_MESSAGE_ID, ["999@lid", SENDER], ciphertext, nonce

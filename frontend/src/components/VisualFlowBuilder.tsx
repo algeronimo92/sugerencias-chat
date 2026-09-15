@@ -2,28 +2,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Activity, ArrowRight, Beaker, Braces, Check, CheckCircle2, CirclePlay, History, LayoutGrid,
-  Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, Upload, UserRound, X, Zap,
+  Copy, ListFilter, Loader2, MessageCircleQuestion, MessageSquareText, Play, Plus, Redo2, Repeat, Save, Split, Timer, Undo2, Upload, UserRound, X,
 } from 'lucide-react'
 import { FlowCanvas } from './flow/FlowCanvas'
+import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
 import { CreateTemplateDialog } from './CreateTemplateDialog'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { AttachmentPreview, MediaAssetField } from './MediaAssetField'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
-import client from '../api/client'
 import type {
   AppUser, AutomationAction, AutomationActionType, AutomationConditions,
   AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType,
   AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode,
-  AutomationFlowNodeType, AutomationRule, Chat, MediaAsset, MessageTemplate, QuestionButton,
+  AutomationFlowNodeType, AutomationRule, MediaAsset, MessageTemplate, QuestionButton,
   RoundRobinOutput, Tag, WaitAnyCondition,
 } from '../types'
 import { isLeadStage, LEAD_STAGES } from '../types'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { useFlowHistory } from '../hooks/useFlowHistory'
+import { useFlowEditor } from '../hooks/useFlowEditor'
 import {
   useAutomationRules, useCreateVisualFlow, useFlowVersions, usePublishVisualFlow, useRestoreFlowVersion,
   useSaveVisualFlow, useSimulateVisualFlow, useUpdateAutomation,
-  type AutomationFlowSimulation,
 } from '../hooks/useAutomations'
 import { useUsers } from '../hooks/useUsers'
 import { useTags } from '../hooks/useLeadMeta'
@@ -31,6 +31,7 @@ import { useLeadServices } from '../hooks/useLeadServices'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
+import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import {
   AUTOMATION_ACTION_LABELS as ACTION_LABELS,
   AUTOMATION_TRIGGERS as TRIGGERS,
@@ -53,7 +54,6 @@ import {
   WAIT_ANY_CONDITION_LABELS,
   WaitAnyConditionKind,
   assertNever,
-  formatWaitDuration,
   isAutomationActionType,
   isAutomationTrigger,
   isFlowConditionType,
@@ -231,34 +231,15 @@ function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: 
 }
 
 function nodeIcon(type: AutomationFlowNodeType) {
-  if (type === NodeType.Trigger) return <Zap className="h-4 w-4 text-wa-primary-strong" />
-  if (type === NodeType.Condition) return <Split className="h-4 w-4 text-amber-600" />
-  if (type === NodeType.Action) return <Activity className="h-4 w-4 text-violet-600" />
-  if (type === NodeType.InvokeFlow) return <CirclePlay className="h-4 w-4 text-indigo-600" />
-  if (type === NodeType.Wait || type === NodeType.WaitAny) return <Timer className="h-4 w-4 text-cyan-600" />
-  if (type === NodeType.Question) return <MessageCircleQuestion className="h-4 w-4 text-pink-600" />
-  if (type === NodeType.RoundRobin) return <Repeat className="h-4 w-4 text-teal-600" />
-  return <CheckCircle2 className="h-4 w-4 text-wa-muted" />
+  const { icon: Icon, iconClass } = FLOW_NODE_VIEW[type]
+  return <Icon className={`h-4 w-4 ${iconClass}`} />
 }
 
 function nodeTitle(node: AutomationFlowNode, rules: AutomationRule[] = []) {
-  if (node.type === NodeType.Trigger) return TRIGGERS.find(item => item.value === node.data.trigger_type)?.label ?? 'Disparador'
-  if (node.type === NodeType.Condition) {
-    const groups = conditionGroups(node.data, node.id)
-    const first = groups[0]?.conditions[0]
-    const total = groups.reduce((sum, group) => sum + group.conditions.length, 0)
-    return first ? `${CONDITION_LABELS[first.condition_type]}${total > 1 ? ` (+${total - 1})` : ''}` : 'Condición'
-  }
-  if (node.type === NodeType.Action) return ACTION_LABELS[node.data.action.type]
-  if (node.type === NodeType.InvokeFlow) {
-    return rules.find(item => item.id === node.data.flow_rule_id)?.name
-      ?? (node.data.flow_rule_id ? `Flujo #${node.data.flow_rule_id}` : 'Selecciona un flujo')
-  }
-  if (node.type === NodeType.Wait) return `Pausa · ${formatWaitDuration(node.data.seconds)}`
-  if (node.type === NodeType.WaitAny) return FLOW_NODE_LABELS[NodeType.WaitAny]
-  if (node.type === NodeType.Question) return node.data.buttons.map(button => button.label).join(' / ') || FLOW_NODE_LABELS[NodeType.Question]
-  if (node.type === NodeType.RoundRobin) return `${FLOW_NODE_LABELS[NodeType.RoundRobin]} · ${node.data.outputs.length} salidas`
-  return node.data.label || 'Fin'
+  if (node.type !== NodeType.InvokeFlow) return flowNodeSummary(node.type, node.data)
+  const flowRuleId = node.data.flow_rule_id
+  const invokedFlowName = rules.find(item => item.id === flowRuleId)?.name ?? (flowRuleId ? `Flujo #${flowRuleId}` : undefined)
+  return flowNodeSummary(node.type, { invokedFlowName })
 }
 
 function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
@@ -294,18 +275,13 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   const { data: leadServices = [] } = useLeadServices()
   const { data: templates = [] } = useTemplates(true)
   const { data: mediaAssets = [] } = useMediaLibrary()
-  const [ruleId, setRuleId] = useState<number | null>(rule?.id ?? null)
-  const [publishedDefinition, setPublishedDefinition] = useState<AutomationFlowDefinition | null>(() => (
-    rule?.published_flow_definition ? withDefaultConditions(rule.published_flow_definition) : null
-  ))
-  const [savedDefinition, setSavedDefinition] = useState<AutomationFlowDefinition | null>(() => {
+  const initialDefinition = (() => {
     const definition = rule?.flow_definition
     return isFlowDefinition(definition) && definition.nodes.length ? withDefaultConditions(definition) : null
-  })
-  const [savedName, setSavedName] = useState<string | null>(rule?.name ?? null)
-  const [name, setName] = useState(rule?.name ?? 'Nuevo flujo visual')
-  const [maxPerHour, setMaxPerHour] = useState<number | null>(rule?.max_executions_per_hour ?? null)
-  const [visibleToSellers, setVisibleToSellers] = useState<boolean>(rule?.visible_to_sellers ?? false)
+  })()
+  const initialPublishedDefinition = rule?.published_flow_definition
+    ? withDefaultConditions(rule.published_flow_definition)
+    : null
   const {
     value: flow,
     commit: setFlow,
@@ -320,22 +296,12 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       ? withDefaultConditions(definition)
       : initialFlow()
   })
-  const [showEntryConditions, setShowEntryConditions] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(flow.nodes[0]?.id ?? null)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [simulationOpen, setSimulationOpen] = useState(false)
-  const [leadSearch, setLeadSearch] = useState('')
-  const [leadResults, setLeadResults] = useState<Chat[]>([])
-  const [selectedLead, setSelectedLead] = useState<Chat | null>(null)
-  const [simulation, setSimulation] = useState<AutomationFlowSimulation | null>(null)
-  const [searching, setSearching] = useState(false)
-  const [versionsOpen, setVersionsOpen] = useState(false)
-  const [jsonViewOpen, setJsonViewOpen] = useState(false)
-  const [importJsonOpen, setImportJsonOpen] = useState(false)
-  const [jsonViewTab, setJsonViewTab] = useState<'draft' | 'published'>('draft')
-  const [jsonCopied, setJsonCopied] = useState(false)
-  const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false)
+  const [editor, dispatch] = useFlowEditor(rule, initialDefinition, initialPublishedDefinition, flow.nodes[0]?.id ?? null)
+  const {
+    ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
+    selectedId, showEntryConditions, error, notice, jsonViewTab, jsonCopied,
+  } = editor
+  const { simulation: simulationOpen, versions: versionsOpen, jsonView: jsonViewOpen, importJson: importJsonOpen, exitConfirmation: exitConfirmationOpen } = editor.openDialogs
   const copiedNodeRef = useRef<AutomationFlowNode | null>(null)
   const { data: versions = [], isLoading: versionsLoading } = useFlowVersions(versionsOpen ? ruleId : null)
   const restoreVersion = useRestoreFlowVersion()
@@ -365,7 +331,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
 
   const duplicateNode = useCallback((source: AutomationFlowNode) => {
     if (source.type === NodeType.Trigger) {
-      setError('El disparador es único y no se puede copiar.')
+      dispatch({ type: 'fail', message: 'El disparador es único y no se puede copiar.' })
       return
     }
     const duplicate = {
@@ -374,10 +340,10 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       position: { x: source.position.x + 40, y: source.position.y + 40 },
     } as AutomationFlowNode
     setFlow(current => ({ ...current, nodes: [...current.nodes, duplicate] }))
-    setSelectedId(duplicate.id)
+    dispatch({ type: 'select', nodeId: duplicate.id })
     copiedNodeRef.current = structuredClone(duplicate)
-    setError(null)
-  }, [setFlow])
+    dispatch({ type: 'clearFeedback' })
+  }, [setFlow, dispatch])
 
   useEffect(() => {
     function handleBuilderShortcut(event: KeyboardEvent) {
@@ -394,7 +360,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       } else if (key === 'c' && selected && selected.type !== NodeType.Trigger) {
         event.preventDefault()
         copiedNodeRef.current = structuredClone(selected)
-        setNotice('Nodo copiado. Pégalo con Ctrl+V o Cmd+V.')
+        dispatch({ type: 'notify', message: 'Nodo copiado. Pégalo con Ctrl+V o Cmd+V.' })
       } else if (key === 'v' && copiedNodeRef.current) {
         event.preventDefault()
         duplicateNode(copiedNodeRef.current)
@@ -405,7 +371,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     }
     window.addEventListener('keydown', handleBuilderShortcut)
     return () => window.removeEventListener('keydown', handleBuilderShortcut)
-  }, [canRedo, canUndo, duplicateNode, redo, selected, undo])
+  }, [canRedo, canUndo, dispatch, duplicateNode, redo, selected, undo])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return
@@ -488,14 +454,14 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
 
   const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }) => {
     if (type === NodeType.Trigger) {
-      setError('El flujo solo puede tener un disparador.')
+      dispatch({ type: 'fail', message: 'El flujo solo puede tener un disparador.' })
       return
     }
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     setFlow(current => ({ ...current, nodes: [...current.nodes, createFlowNode(type, id, position.x, position.y)] }))
-    setSelectedId(id)
-    setError(null)
-  }, [setFlow])
+    dispatch({ type: 'select', nodeId: id })
+    dispatch({ type: 'clearFeedback' })
+  }, [setFlow, dispatch])
 
   // La comprobación del disparador se hace antes de actualizar, leyendo `flow`
   // de las dependencias. Antes vivía dentro del updater de setFlow, que debe
@@ -510,22 +476,22 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     )
     if (removable.size === 0) {
       if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
-        setError('El disparador no se puede eliminar; podés cambiar su tipo.')
+        dispatch({ type: 'fail', message: 'El disparador no se puede eliminar; podés cambiar su tipo.' })
       }
       return
     }
     if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
-      setError('El disparador se conservó; se eliminaron los demás bloques seleccionados.')
+      dispatch({ type: 'fail', message: 'El disparador se conservó; se eliminaron los demás bloques seleccionados.' })
     } else {
-      setError(null)
+      dispatch({ type: 'clearFeedback' })
     }
     setFlow(current => ({
       ...current,
       nodes: current.nodes.filter(item => !removable.has(item.id)),
       edges: current.edges.filter(edge => !removable.has(edge.source) && !removable.has(edge.target)),
     }))
-    setSelectedId(previous => (previous && removable.has(previous) ? null : previous))
-  }, [flow, setFlow])
+    dispatch({ type: 'deselectRemoved', removedIds: removable })
+  }, [flow, setFlow, dispatch])
 
   const moveNodes = useCallback((moves: Array<{ id: string; position: { x: number; y: number } }>) => {
     const positions = new Map(moves.map(move => [move.id, move.position]))
@@ -539,7 +505,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   }, [setFlow])
 
   const connectNodes = useCallback((edge: AutomationFlowEdge) => {
-    setError(null)
+    dispatch({ type: 'clearFeedback' })
     setFlow(current => ({
       ...current,
       // Una salida solo puede apuntar a un destino: reconectar reemplaza la
@@ -551,7 +517,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         edge,
       ],
     }))
-  }, [setFlow])
+  }, [setFlow, dispatch])
 
   const removeEdge = useCallback((edgeId: string) => {
     setFlow(current => ({ ...current, edges: current.edges.filter(edge => edge.id !== edgeId) }))
@@ -585,68 +551,61 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     }))
   }
 
+  function applySavedFlow(saved: AutomationRule) {
+    let definition: AutomationFlowDefinition | null = null
+    if (isFlowDefinition(saved.flow_definition)) {
+      definition = withDefaultConditions(saved.flow_definition)
+      syncFlow(definition)
+    }
+    dispatch({ type: 'draftSaved', ruleId: saved.id, name: saved.name, definition })
+  }
+
   async function persistDraft() {
-    setError(null); setNotice(null)
+    dispatch({ type: 'clearFeedback' })
     try {
       const saved = ruleId == null
         ? await createFlow.mutateAsync({ name, flow_definition: flow })
         : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flow })
-      setRuleId(saved.id)
-      if (isFlowDefinition(saved.flow_definition)) {
-        const normalized = withDefaultConditions(saved.flow_definition)
-        syncFlow(normalized)
-        setSavedDefinition(normalized)
-      }
-      setName(saved.name)
-      setSavedName(saved.name)
-      setNotice('Borrador guardado.')
+      applySavedFlow(saved)
       return saved
     } catch (reason) {
-      setError(extractErrorMessage(reason))
+      dispatch({ type: 'fail', message: extractErrorMessage(reason) })
       return null
     }
   }
 
   async function importFlowJson(flowDefinition: AutomationFlowDefinition) {
-    setError(null); setNotice(null)
+    dispatch({ type: 'clearFeedback' })
     const saved = ruleId == null
       ? await createFlow.mutateAsync({ name, flow_definition: flowDefinition })
       : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flowDefinition })
-    setRuleId(saved.id)
-    if (isFlowDefinition(saved.flow_definition)) {
-      const normalized = withDefaultConditions(saved.flow_definition)
-      syncFlow(normalized)
-      setSavedDefinition(normalized)
-    }
-    setName(saved.name)
-    setSavedName(saved.name)
-    setSelectedId(null)
+    applySavedFlow(saved)
+    dispatch({ type: 'select', nodeId: null })
     toast.success('Flujo reemplazado desde JSON.')
   }
 
   function commitMaxPerHour(value: number | null) {
-    setMaxPerHour(value)
+    dispatch({ type: 'maxPerHourChanged', value })
     if (ruleId == null || value === (rule?.max_executions_per_hour ?? null)) return
-    updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, { onError: reason => setError(extractErrorMessage(reason)) })
+    updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, { onError: reason => dispatch({ type: 'fail', message: extractErrorMessage(reason) }) })
   }
 
   function commitVisibleToSellers(value: boolean) {
-    setVisibleToSellers(value)
+    dispatch({ type: 'visibleToSellersChanged', value })
     if (ruleId == null || value === (rule?.visible_to_sellers ?? false)) return
-    updateRule.mutate({ id: ruleId, visible_to_sellers: value }, { onError: reason => setError(extractErrorMessage(reason)) })
+    updateRule.mutate({ id: ruleId, visible_to_sellers: value }, { onError: reason => dispatch({ type: 'fail', message: extractErrorMessage(reason) }) })
   }
 
   async function restore(version: number) {
     if (ruleId == null) return
-    setError(null); setNotice(null)
+    dispatch({ type: 'clearFeedback' })
     try {
       const restored = await restoreVersion.mutateAsync({ id: ruleId, version })
       if (isFlowDefinition(restored.flow_definition)) setFlow(withDefaultConditions(restored.flow_definition))
-      setName(restored.name)
-      setSelectedId(null)
-      setVersionsOpen(false)
-      setNotice(`Versión ${version} cargada como borrador. Revísala y publica para aplicarla.`)
-    } catch (reason) { setError(extractErrorMessage(reason)) }
+      dispatch({ type: 'rename', name: restored.name })
+      dispatch({ type: 'closeDialog', dialog: 'versions' })
+      dispatch({ type: 'versionRestored', version })
+    } catch (reason) { dispatch({ type: 'fail', message: extractErrorMessage(reason) }) }
   }
 
   async function publish() {
@@ -654,34 +613,29 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     if (!saved) return
     try {
       const published = await publishFlow.mutateAsync(saved.id)
-      setPublishedDefinition(published.published_flow_definition
-        ? withDefaultConditions(published.published_flow_definition)
-        : null)
-      setNotice(`Flujo publicado · versión ${published.flow_version}.`)
-    } catch (reason) { setError(extractErrorMessage(reason)) }
+      dispatch({
+        type: 'published',
+        definition: published.published_flow_definition
+          ? withDefaultConditions(published.published_flow_definition)
+          : null,
+        version: published.flow_version,
+      })
+    } catch (reason) { dispatch({ type: 'fail', message: extractErrorMessage(reason) }) }
   }
 
-  async function searchLeads() {
-    setSearching(true); setError(null)
-    try {
-      const response = await client.get<{ items: Chat[] }>('/api/chats', { params: { search: leadSearch.trim() } })
-      setLeadResults(response.data.items.slice(0, 12))
-    } catch (reason) { setError(extractErrorMessage(reason)) }
-    finally { setSearching(false) }
-  }
-
-  async function simulate() {
-    if (!selectedLead) return
+  async function simulate(leadId: string) {
     const saved = await persistDraft()
-    if (!saved) return
+    if (!saved) return null
     try {
-      setSimulation(await simulateFlow.mutateAsync({ id: saved.id, leadId: selectedLead.chat_id }))
-      setSimulationOpen(true)
-    } catch (reason) { setError(extractErrorMessage(reason)) }
+      return await simulateFlow.mutateAsync({ id: saved.id, leadId })
+    } catch (reason) {
+      dispatch({ type: 'fail', message: extractErrorMessage(reason) })
+      return null
+    }
   }
 
   function requestClose() {
-    if (hasUnsavedChanges) setExitConfirmationOpen(true)
+    if (hasUnsavedChanges) dispatch({ type: 'openDialog', dialog: 'exitConfirmation' })
     else onClose()
   }
 
@@ -693,13 +647,13 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
   return <div className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-flow-canvas-dark">
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
       <button type="button" onClick={requestClose} aria-label="Cerrar constructor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
-      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => setName(event.target.value)} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
+      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
       <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="Historial de cambios">
         <button type="button" disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer" className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Undo2 className="h-4 w-4" /></button>
         <button type="button" disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y o Ctrl+Shift+Z)" aria-label="Rehacer" className="p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><Redo2 className="h-4 w-4" /></button>
       </div>
-      <button type="button" onClick={() => setShowEntryConditions(current => !current)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-emerald-700/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-wa-border text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
-      <label title={ruleId == null ? 'Guarda el borrador primero' : 'Freno de seguridad: pasado el tope, el resto se reintenta más tarde'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máx/hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => setMaxPerHour(event.target.value ? Number(event.target.value) : null)} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
+      <button type="button" onClick={() => dispatch({ type: 'toggleEntryConditions' })} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-emerald-700/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-wa-border text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
+      <label title={ruleId == null ? 'Guarda el borrador primero' : 'Freno de seguridad: pasado el tope, el resto se reintenta más tarde'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máx/hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => dispatch({ type: 'maxPerHourChanged', value: event.target.value ? Number(event.target.value) : null })} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
       {isManualTrigger && (
         <label
           title={ruleId == null ? 'Guarda el borrador primero' : 'Aparece en el botón "Iniciar flujo" del chat para cualquier vendedor'}
@@ -715,11 +669,11 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
         </label>
       )}
       <button type="button" onClick={autoLayout} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
-      <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => setVersionsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
-      <button type="button" onClick={() => { setSimulationOpen(true); setSimulation(null) }} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
+      <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => dispatch({ type: 'openDialog', dialog: 'versions' })} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
+      <button type="button" onClick={() => dispatch({ type: 'openDialog', dialog: 'simulation' })} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
       <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="JSON del flujo">
-        <button type="button" title="Ver el JSON del flujo" onClick={() => { setJsonViewOpen(true); setJsonViewTab('draft'); setJsonCopied(false) }} className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Braces className="h-4 w-4" /></button>
-        <button type="button" title="Reemplazar todos los bloques y conexiones con un JSON" onClick={() => setImportJsonOpen(true)} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-white/10"><Upload className="h-4 w-4" /></button>
+        <button type="button" title="Ver el JSON del flujo" onClick={() => dispatch({ type: 'openDialog', dialog: 'jsonView' })} className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Braces className="h-4 w-4" /></button>
+        <button type="button" title="Reemplazar todos los bloques y conexiones con un JSON" onClick={() => dispatch({ type: 'openDialog', dialog: 'importJson' })} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-white/10"><Upload className="h-4 w-4" /></button>
       </div>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Save className="h-4 w-4" />Guardar borrador</button>
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
@@ -749,7 +703,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           flowRules={automationRules}
           tags={tags}
           selectedId={selectedId}
-          onSelect={id => { setSelectedId(id); if (id) setShowEntryConditions(false) }}
+          onSelect={id => dispatch({ type: 'select', nodeId: id })}
           onMoveNodes={moveNodes}
           onDeleteNodes={removeNodes}
           onConnect={connectNodes}
@@ -783,15 +737,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </aside>}
     </div>
 
-    {simulationOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"><div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark"><div className="flex items-start justify-between"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Beaker className="h-4 w-4 text-wa-primary-strong" />Simular sin ejecutar acciones</h2><p className="mt-1 text-[11px] text-wa-muted">Guarda el borrador y recorre el flujo con los datos actuales de un lead.</p></div><button type="button" onClick={() => setSimulationOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button></div><div className="mt-4 flex gap-2"><input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void searchLeads() }} placeholder="Buscar por nombre o teléfono" className={fieldClass} /><button type="button" disabled={searching} onClick={() => void searchLeads()} className="rounded-lg bg-wa-head-dark px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-wa-active-dark">Buscar</button></div>{leadResults.length > 0 && <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-wa-border dark:border-wa-border-dark">{leadResults.map(lead => <button key={lead.chat_id} type="button" onClick={() => setSelectedLead(lead)} className={`flex w-full items-center gap-2 border-b border-wa-border px-3 py-2 text-left last:border-0 dark:border-wa-border-dark ${selectedLead?.chat_id === lead.chat_id ? 'bg-green-50 dark:bg-green-950/30' : ''}`}><UserRound className="h-4 w-4 text-wa-muted" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{lead.name || 'Sin nombre'}</span><span className="block text-[10px] text-wa-muted">{lead.phone || lead.chat_id} · {lead.stage}</span></span></button>)}</div>}<button type="button" disabled={!selectedLead || simulateFlow.isPending} onClick={() => void simulate()} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{simulateFlow.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Recorrer flujo</button>{simulation && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark">Ruta para {simulation.lead_name || simulation.lead_id}</p><div className="space-y-1.5">{simulation.path.map((step, index) => <div key={String(step.node_id)} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] ${step.status === 'would_fail' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-wa-border bg-wa-hover text-gray-600 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-300'}`}><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-wa-border font-bold dark:bg-wa-active-dark">{index + 1}</span><span><strong>{String(step.type)}</strong>{step.branch ? ` · rama ${step.branch === FlowHandle.No ? 'Ninguna' : step.branch === FlowHandle.Yes ? 'Sí' : 'coincidente'}` : ''}{step.minutes ? ` · ${String(step.minutes)} min` : ''}{step.detail ? <span className="block opacity-80">{String(step.detail)}</span> : null}</span></div>)}</div></div>}</div></div>}
-    {versionsOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setVersionsOpen(false) }}>
+    {simulationOpen && <FlowSimulationDialog isSimulating={simulateFlow.isPending} onSimulate={simulate} onClose={() => dispatch({ type: 'closeDialog', dialog: 'simulation' })} />}
+    {versionsOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) dispatch({ type: 'closeDialog', dialog: 'versions' }) }}>
       <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><History className="h-4 w-4 text-wa-primary-strong" />Versiones publicadas</h2>
             <p className="mt-1 text-[11px] text-wa-muted">Restaurar carga la versión como borrador. No cambia lo que se está ejecutando hasta que publiques.</p>
           </div>
-          <button type="button" onClick={() => setVersionsOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={() => dispatch({ type: 'closeDialog', dialog: 'versions' })} className="text-wa-muted"><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-4 space-y-2">
           {versionsLoading ? <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-wa-muted" /></div>
@@ -809,25 +763,25 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </div>
     </div>}
     {jsonViewOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-      <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="absolute inset-0 cursor-default" />
+      <button type="button" aria-label="Cerrar" onClick={() => dispatch({ type: 'closeDialog', dialog: 'jsonView' })} className="absolute inset-0 cursor-default" />
       <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-wa-panel-dark">
         <div className="flex items-start justify-between p-5 pb-0">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold text-wa-text dark:text-white"><Braces className="h-4 w-4 text-wa-primary-strong" />JSON del flujo</h2>
             <p className="mt-1 text-[11px] text-wa-muted">Estructura de nodos y conexiones tal como se guarda.</p>
           </div>
-          <button type="button" aria-label="Cerrar" onClick={() => setJsonViewOpen(false)} className="text-wa-muted"><X className="h-5 w-5" /></button>
+          <button type="button" aria-label="Cerrar" onClick={() => dispatch({ type: 'closeDialog', dialog: 'jsonView' })} className="text-wa-muted"><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-3 flex items-center gap-2 px-5">
-          <button type="button" onClick={() => setJsonViewTab('draft')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${jsonViewTab === 'draft' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Borrador actual</button>
-          <button type="button" disabled={!publishedDefinition} title={!publishedDefinition ? 'Este flujo aún no se publicó' : undefined} onClick={() => setJsonViewTab('published')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${jsonViewTab === 'published' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Publicado{rule?.flow_version ? ` (v${rule.flow_version})` : ''}</button>
+          <button type="button" onClick={() => dispatch({ type: 'jsonTabChanged', tab: 'draft' })} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${jsonViewTab === 'draft' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Borrador actual</button>
+          <button type="button" disabled={!publishedDefinition} title={!publishedDefinition ? 'Este flujo aún no se publicó' : undefined} onClick={() => dispatch({ type: 'jsonTabChanged', tab: 'published' })} className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${jsonViewTab === 'published' ? 'bg-wa-primary text-white' : 'border border-wa-border text-gray-600 dark:border-wa-border-dark dark:text-gray-300'}`}>Publicado{rule?.flow_version ? ` (v${rule.flow_version})` : ''}</button>
           <button
             type="button"
             onClick={() => {
               const text = JSON.stringify(jsonViewTab === 'published' ? (publishedDefinition ?? flow) : flow, null, 2)
               void navigator.clipboard.writeText(text)
-              setJsonCopied(true)
-              window.setTimeout(() => setJsonCopied(false), 1500)
+              dispatch({ type: 'jsonCopied', copied: true })
+              window.setTimeout(() => dispatch({ type: 'jsonCopied', copied: false }), 1500)
             }}
             className="ml-auto flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"
           ><Copy className="h-3.5 w-3.5" />{jsonCopied ? 'Copiado' : 'Copiar'}</button>
@@ -840,15 +794,15 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       description="Pega el JSON de un flow_definition o sube un archivo .json. Se guarda de inmediato como el nuevo borrador de este flujo."
       confirmLabel="Reemplazar flujo"
       destructiveNotice="Esto reemplaza TODOS los bloques y conexiones actuales del flujo por los del JSON. No se pierde nada del lado del servidor hasta que confirmes, pero el lienzo actual se descarta."
-      onClose={() => setImportJsonOpen(false)}
+      onClose={() => dispatch({ type: 'closeDialog', dialog: 'importJson' })}
       onImport={importFlowJson}
     />}
-    {exitConfirmationOpen && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setExitConfirmationOpen(false) }}>
+    {exitConfirmationOpen && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) dispatch({ type: 'closeDialog', dialog: 'exitConfirmation' }) }}>
       <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-flow-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
         <h2 id="unsaved-flow-title" className="text-sm font-semibold text-wa-text dark:text-white">Hay cambios sin guardar</h2>
         <p className="mt-2 text-xs leading-relaxed text-wa-muted">Guarda el borrador antes de salir para conservar la configuración actual. Guardarlo no modifica la versión publicada.</p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" disabled={isBusy} onClick={() => setExitConfirmationOpen(false)} className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-wa-hover disabled:opacity-40 dark:text-gray-300 dark:hover:bg-wa-head-dark">Seguir editando</button>
+          <button type="button" disabled={isBusy} onClick={() => dispatch({ type: 'closeDialog', dialog: 'exitConfirmation' })} className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-wa-hover disabled:opacity-40 dark:text-gray-300 dark:hover:bg-wa-head-dark">Seguir editando</button>
           <button type="button" disabled={isBusy} onClick={onClose} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">Salir sin guardar</button>
           <button type="button" disabled={isBusy} onClick={() => void saveAndClose()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar borrador y salir</button>
         </div>

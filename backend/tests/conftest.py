@@ -1,3 +1,4 @@
+import contextlib
 """Dobles de prueba para los colaboradores externos del motor.
 
 Permiten ejercitar la ejecución de acciones sin PostgreSQL ni Evolution API:
@@ -210,3 +211,125 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         enqueue_messages=outbox.enqueue_messages,
         send_reaction=whatsapp.send_reaction,
     )
+
+
+class FakeSender:
+    """Canal saliente que registra cada llamada y devuelve un recibo propio."""
+
+    def __init__(self, fail_with: Exception | None = None):
+        self.calls: list[tuple[str, tuple, dict]] = []
+        self.fail_with = fail_with
+
+    def __getattr__(self, method: str):
+        if not method.startswith("send_"):
+            raise AttributeError(method)
+
+        async def record(*args, **kwargs):
+            self.calls.append((method, args, kwargs))
+            if self.fail_with:
+                raise self.fail_with
+            from services.whatsapp_channel import SendReceipt
+            return SendReceipt(provider_message_id=f"WA-{method}")
+
+        return record
+
+    def only_call(self) -> tuple[str, tuple, dict]:
+        assert len(self.calls) == 1, self.calls
+        return self.calls[0]
+
+
+@dataclass
+class FakeConversationActions:
+    reactions: list = field(default_factory=list)
+    reads: list = field(default_factory=list)
+    fail_with: Exception | None = None
+
+    async def react(self, target, emoji):
+        if self.fail_with:
+            raise self.fail_with
+        self.reactions.append((target, emoji))
+
+    async def mark_read(self, chat_id, provider_message_ids):
+        if self.fail_with:
+            raise self.fail_with
+        self.reads.append((chat_id, provider_message_ids))
+
+
+@dataclass
+class FakeEditor:
+    edits: list = field(default_factory=list)
+    deletes: list = field(default_factory=list)
+    fail_with: Exception | None = None
+
+    async def edit(self, chat_id, provider_message_id, text):
+        if self.fail_with:
+            raise self.fail_with
+        self.edits.append((chat_id, provider_message_id, text))
+
+    async def delete(self, chat_id, provider_message_id):
+        if self.fail_with:
+            raise self.fail_with
+        self.deletes.append((chat_id, provider_message_id))
+
+
+def install_channel(monkeypatch, **components):
+    from services import whatsapp_channels
+    from services.whatsapp_channel import WhatsAppChannel
+
+    channel = WhatsAppChannel(
+        name="meta",
+        sender=components.get("sender") or FakeSender(),
+        actions=components.get("actions") or FakeConversationActions(),
+        editor=components.get("editor"),
+        history=components.get("history"),
+    )
+    monkeypatch.setitem(whatsapp_channels.CHANNELS, whatsapp_channels.ACTIVE_CHANNEL, channel)
+    return channel
+
+
+def _package_modules(facade_name: str, package_name: str):
+    import importlib
+    import pkgutil
+
+    package = importlib.import_module(package_name)
+    return [importlib.import_module(facade_name)] + [
+        importlib.import_module(f"{package_name}.{info.name}") for info in pkgutil.iter_modules(package.__path__)
+    ]
+
+
+def _patch_everywhere(monkeypatch, modules, name, value):
+    bound = [module for module in modules if hasattr(module, name)]
+    assert bound, f"ningún módulo define {name}"
+    for module in bound:
+        monkeypatch.setattr(module, name, value)
+
+
+def patch_automations(monkeypatch, name, value):
+    """Reemplaza un colaborador en todos los módulos del motor de automatizaciones que lo usan."""
+    _patch_everywhere(monkeypatch, _package_modules("services.automation_service", "services.automations"), name, value)
+
+
+def patch_store(monkeypatch, name, value):
+    """Reemplaza un colaborador en todos los módulos de persistencia que lo usan."""
+    _patch_everywhere(monkeypatch, _package_modules("services.db_service", "services.store"), name, value)
+
+
+@contextlib.contextmanager
+def _patching(patcher_function, name, new):
+    from unittest.mock import MagicMock
+
+    replacement = MagicMock() if new is None else new
+    patcher = pytest.MonkeyPatch()
+    try:
+        patcher_function(patcher, name, replacement)
+        yield replacement
+    finally:
+        patcher.undo()
+
+
+def automations_patch(name, new=None):
+    return _patching(patch_automations, name, new)
+
+
+def store_patch(name, new=None):
+    return _patching(patch_store, name, new)

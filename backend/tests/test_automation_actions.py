@@ -14,7 +14,7 @@ import pytest
 from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
 from services import automation_service
 from services.automation_service import _execute_action, _resolve_recipient, _run_execution
-from tests.conftest import make_chat, make_execution, make_rule
+from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
 def template(**overrides):
@@ -90,8 +90,7 @@ class _MediaValidationSession:
 
 class TestSendMediaValidation:
     async def test_rule_accepts_and_preserves_caption(self, monkeypatch):
-        monkeypatch.setattr(
-            automation_service,
+        patch_automations(monkeypatch,
             "get_sessionmaker",
             lambda: lambda: _MediaValidationSession(),
         )

@@ -7,6 +7,7 @@ from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus
 from services import automation_service
+from tests.conftest import patch_automations
 
 
 async def _history_sql(monkeypatch, **filters) -> str:
@@ -30,7 +31,7 @@ async def _history_sql(monkeypatch, **filters) -> str:
             statements.append(statement)
             return FakeResult()
 
-    monkeypatch.setattr(automation_service, "get_sessionmaker", lambda: FakeSession)
+    patch_automations(monkeypatch, "get_sessionmaker", lambda: FakeSession)
     await automation_service.list_automation_executions(**filters)
     return str(statements[0].compile(
         dialect=postgresql.dialect(),

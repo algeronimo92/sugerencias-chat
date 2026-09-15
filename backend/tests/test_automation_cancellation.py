@@ -12,7 +12,7 @@ import pytest
 from domain_types import AutomationExecutionStatus
 from services import automation_service
 from services.automation_service import _run_execution, _run_visual_execution, _save_execution
-from tests.conftest import make_chat, make_execution, make_rule
+from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
 class _SessionContext:
@@ -81,9 +81,9 @@ def _sequential_session(rowcounts):
 async def test_cancel_returns_none_when_already_in_a_final_state(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=0))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await automation_service.cancel_automation_execution(5)
 
@@ -95,11 +95,11 @@ async def test_cancel_returns_none_when_already_in_a_final_state(monkeypatch):
 async def test_cancel_broadcasts_and_returns_execution_when_applied(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
-    monkeypatch.setattr(
-        automation_service, "get_automation_execution", AsyncMock(return_value={"id": 5}),
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch,
+        "get_automation_execution", AsyncMock(return_value={"id": 5}),
     )
 
     result = await automation_service.cancel_automation_execution(5)
@@ -118,9 +118,9 @@ async def test_retry_returns_none_when_execution_already_moved_on(monkeypatch):
     session = AsyncMock()
     session.get = AsyncMock(side_effect=[execution, rule])
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=0))
-    monkeypatch.setattr(automation_service, "get_sessionmaker", _sessionmaker(session))
+    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
-    monkeypatch.setattr(automation_service, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await automation_service.retry_automation_execution(5)
 
@@ -207,9 +207,9 @@ class TestRunExecutionStopsAfterCancellation:
         )
 
         execute_action = AsyncMock(return_value={"status": AutomationExecutionStatus.COMPLETED})
-        monkeypatch.setattr(automation_service, "_execute_action", execute_action)
-        monkeypatch.setattr(
-            automation_service, "_save_execution", AsyncMock(side_effect=[True, False]),
+        patch_automations(monkeypatch, "_execute_action", execute_action)
+        patch_automations(monkeypatch,
+            "_save_execution", AsyncMock(side_effect=[True, False]),
         )
 
         await _run_execution(1, test_deps)

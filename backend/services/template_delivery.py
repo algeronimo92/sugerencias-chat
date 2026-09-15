@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from services.meta_service import mediatype_from_content_type
+from services.message_media import mediatype_from_content_type
 
 
 MEDIA_CAPTION_MAX_LENGTH = 1024

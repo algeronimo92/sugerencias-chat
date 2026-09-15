@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
-import type { InteractiveLimits, LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
+import type { MediaAsset, MessageTemplate, OfficialTemplateButton } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
@@ -10,7 +10,7 @@ import { extractErrorMessage } from '../utils/errors'
 import { MediaAssetField } from './MediaAssetField'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
-import { exceedsLimit } from '../domain/interactiveRules'
+import { EMPTY_TEMPLATE_FORM as EMPTY_FORM, validateTemplateForm, type TemplateFormState } from '../domain/templateForm'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { Select } from './ui/Input'
 
@@ -20,56 +20,6 @@ function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
   event.preventDefault()
   event.stopPropagation()
   event.dataTransfer.dropEffect = 'copy'
-}
-
-interface TemplateFormState {
-  name: string
-  shortcut: string
-  content: string
-  category: string
-  stage: LeadStage | ''
-  taskType: TaskType | ''
-  templateType: MessageTemplate['template_type']
-  officialName: string
-  officialLanguage: string
-  officialCategory: NonNullable<MessageTemplate['official_category']>
-  officialParameterValues: string[]
-  officialHeaderType: MessageTemplate['official_header_type']
-  officialHeaderText: string
-  officialHeaderMediaAssetId: number | null
-  officialFooter: string
-  officialButtons: OfficialTemplateButton[]
-  interactiveType: MessageTemplate['interactive_type']
-  interactiveTitle: string
-  interactiveFooter: string
-  interactiveButtonText: string
-  interactiveButtons: TemplateInteractiveButton[]
-  interactiveSections: TemplateInteractiveSection[]
-}
-
-const EMPTY_FORM: TemplateFormState = {
-  name: '',
-  shortcut: '',
-  content: '',
-  category: 'Seguimiento',
-  stage: '',
-  taskType: '',
-  templateType: 'internal',
-  officialName: '',
-  officialLanguage: 'es',
-  officialCategory: 'UTILITY',
-  officialParameterValues: [],
-  officialHeaderType: 'none',
-  officialHeaderText: '',
-  officialHeaderMediaAssetId: null,
-  officialFooter: '',
-  officialButtons: [],
-  interactiveType: 'none',
-  interactiveTitle: '',
-  interactiveFooter: '',
-  interactiveButtonText: 'Ver opciones',
-  interactiveButtons: [{ type: 'reply', displayText: '', id: 'reply_1' }],
-  interactiveSections: [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
 }
 
 function officialParameterCount(content: string) {
@@ -86,7 +36,6 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'mov', 'mp3', 'wav', 'ogg', 'm4a',
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip',
 ])
-const ALLOWED_INTERNAL_VARIABLES = new Set(['nombre', 'telefono', 'servicio', 'vendedor', 'fecha_actual'])
 
 const REJECTED_REASON_LABELS: Record<string, string> = {
   ABUSIVE_CONTENT: 'Contenido considerado abusivo o engañoso',
@@ -99,156 +48,6 @@ const REJECTED_REASON_LABELS: Record<string, string> = {
 
 function rejectedReasonLabel(reason: string) {
   return REJECTED_REASON_LABELS[reason] ?? reason
-}
-
-function templateVariables(...values: string[]) {
-  return new Set(values.flatMap(value => Array.from(value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), match => match[1].trim())))
-}
-
-function validateTemplateForm(form: typeof EMPTY_FORM, limits?: InteractiveLimits) {
-  const errors: string[] = []
-  const name = form.name.trim()
-  const content = form.content.trim()
-  const category = form.category.trim()
-  const shortcut = form.shortcut.trim().replace(/^\/+/, '').toLowerCase()
-  const interactive = form.templateType === 'internal' && form.interactiveType !== 'none'
-  const contentLimit = interactive || form.templateType === 'official' ? limits?.body : limits?.text
-
-  if (!name) errors.push('El nombre es obligatorio.')
-  else if (name.length > 120) errors.push('El nombre admite máximo 120 caracteres.')
-  if (!content) errors.push('El contenido es obligatorio.')
-  else if (exceedsLimit(content, contentLimit)) errors.push(`El contenido admite máximo ${contentLimit} caracteres para este tipo de plantilla.`)
-  if (!category) errors.push('La categoría es obligatoria.')
-  else if (category.length > 60) errors.push('La categoría admite máximo 60 caracteres.')
-  if (shortcut && (shortcut.length > 50 || !/^[a-z0-9_-]+$/.test(shortcut))) {
-    errors.push('El atajo admite máximo 50 caracteres: letras minúsculas, números, - y _.')
-  }
-
-  if (form.templateType === 'official') {
-    const officialName = form.officialName.trim()
-    if (!/^[a-z0-9_]+$/.test(officialName) || officialName.length > 512) {
-      errors.push('El nombre oficial admite minúsculas, números y guiones bajos (máximo 512).')
-    }
-    if (!/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(form.officialLanguage.trim())) {
-      errors.push('El idioma oficial debe tener un formato como es, es_PE o en_US.')
-    }
-    const officialVariables = templateVariables(content)
-    if ([...officialVariables].some(value => !/^\d+$/.test(value))) {
-      errors.push('El contenido oficial solo admite variables numéricas como {{1}}, {{2}}, ...')
-    }
-    const positions = [...officialVariables].filter(value => /^\d+$/.test(value)).map(Number).sort((a, b) => a - b)
-    const expected = Array.from({ length: positions.at(-1) ?? 0 }, (_, index) => index + 1)
-    if (positions.length !== expected.length || positions.some((value, index) => value !== expected[index])) {
-      errors.push('Las variables oficiales deben ser consecutivas: {{1}}, {{2}}, ...')
-    }
-    if (form.officialParameterValues.length !== expected.length || form.officialParameterValues.some(value => !value.trim())) {
-      errors.push('Configura un valor para cada variable oficial.')
-    }
-    const unknownParameters = [...templateVariables(...form.officialParameterValues)].filter(value => !ALLOWED_INTERNAL_VARIABLES.has(value))
-    if (unknownParameters.length) errors.push(`Variables no reconocidas en los parámetros: ${unknownParameters.map(value => `{{${value}}}`).join(', ')}.`)
-
-    if (form.officialHeaderType === 'text') {
-      const headerText = form.officialHeaderText.trim()
-      if (!headerText) errors.push('El encabezado de texto no puede estar vacío.')
-      else if (headerText.length > 60) errors.push('El encabezado admite máximo 60 caracteres.')
-      if (templateVariables(headerText).size > 0) errors.push('El encabezado no admite variables.')
-    }
-    if (form.officialHeaderType === 'image' && form.officialHeaderMediaAssetId == null) {
-      errors.push('Selecciona una imagen para el encabezado.')
-    }
-    const footer = form.officialFooter.trim()
-    if (footer.length > 60) errors.push('El pie admite máximo 60 caracteres.')
-    if (templateVariables(footer).size > 0) errors.push('El pie no admite variables.')
-    const officialButtons = form.officialButtons
-    if (officialButtons.length > 3) errors.push('Una plantilla oficial admite como máximo 3 botones.')
-    const hasQuickReply = officialButtons.some(button => button.type === 'quick_reply')
-    if (hasQuickReply && officialButtons.some(button => button.type !== 'quick_reply')) {
-      errors.push('Los botones de respuesta rápida no pueden mezclarse con botones de URL o teléfono.')
-    }
-    if (!hasQuickReply && officialButtons.length > 2) errors.push('Una plantilla oficial admite como máximo 2 botones de URL o teléfono.')
-    const seenButtonTexts = new Set<string>()
-    for (const button of officialButtons) {
-      const text = button.text.trim()
-      if (!text || seenButtonTexts.has(text.toLowerCase())) errors.push('Cada botón necesita un texto único.')
-      else if (text.length > 25) errors.push('El texto de cada botón admite máximo 25 caracteres.')
-      seenButtonTexts.add(text.toLowerCase())
-      if (button.type === 'url' && !/^https:\/\/\S+$/i.test(button.url?.trim() ?? '')) {
-        errors.push('Las URL de botones deben ser completas y comenzar con https://.')
-      }
-      if (button.type === 'phone_number' && !/^\+?[1-9]\d{7,14}$/.test((button.phone_number ?? '').replace(/[\s()-]/g, ''))) {
-        errors.push('El teléfono del botón debe incluir código de país y tener entre 8 y 15 dígitos.')
-      }
-    }
-    return errors
-  }
-
-  const interactiveValues = form.interactiveType === 'none' ? '' : JSON.stringify({
-    title: form.interactiveTitle,
-    footer: form.interactiveFooter,
-    buttonText: form.interactiveButtonText,
-    buttons: form.interactiveButtons,
-    sections: form.interactiveSections,
-  })
-  const unknownVariables = [...templateVariables(content, interactiveValues)].filter(value => !ALLOWED_INTERNAL_VARIABLES.has(value))
-  if (unknownVariables.length) errors.push(`Variables no reconocidas: ${unknownVariables.map(value => `{{${value}}}`).join(', ')}.`)
-  if (!interactive) return errors
-
-  const title = form.interactiveTitle.trim()
-  const footer = form.interactiveFooter.trim()
-  if (!title) errors.push('El título interactivo es obligatorio.')
-  else if (exceedsLimit(title, limits?.title)) errors.push(`El título interactivo admite máximo ${limits?.title} caracteres.`)
-  if (exceedsLimit(footer, limits?.footer)) errors.push(`El pie de mensaje admite máximo ${limits?.footer} caracteres.`)
-
-  if (form.interactiveType === 'buttons') {
-    // Meta solo acepta botones "reply" en un mensaje interactivo suelto
-    // (fuera de una plantilla oficial); un botón de URL, llamada o copiar
-    // código siempre lo rechaza. Para eso hace falta una plantilla oficial.
-    const buttons = form.interactiveButtons
-    if (buttons.length < 1 || (limits && buttons.length > limits.max_buttons)) errors.push(`Configura entre 1 y ${limits?.max_buttons ?? 'el máximo de'} botones.`)
-    const texts = new Set<string>()
-    const ids = new Set<string>()
-    buttons.forEach((button, index) => {
-      const label = button.displayText.trim()
-      if (!label) errors.push(`El botón ${index + 1} necesita texto visible.`)
-      else if (exceedsLimit(label, limits?.button_text)) errors.push(`El texto del botón ${index + 1} admite máximo ${limits?.button_text} caracteres.`)
-      else if (texts.has(label.toLowerCase())) errors.push(`El texto del botón ${index + 1} está repetido.`)
-      texts.add(label.toLowerCase())
-      const value = (button.id ?? '').trim()
-      if (exceedsLimit(value, limits?.button_id)) errors.push(`El ID del botón ${index + 1} admite máximo ${limits?.button_id} caracteres.`)
-      if (value && ids.has(value)) errors.push(`El ID del botón ${index + 1} está repetido.`)
-      ids.add(value)
-    })
-    return errors
-  }
-
-  if (!form.interactiveButtonText.trim()) errors.push('El texto que abre la lista es obligatorio.')
-  else if (exceedsLimit(form.interactiveButtonText.trim(), limits?.list_button_text)) errors.push(`El texto que abre la lista admite máximo ${limits?.list_button_text} caracteres.`)
-  if (!form.interactiveSections.length || (limits && form.interactiveSections.length > limits.max_sections)) errors.push(`Configura entre 1 y ${limits?.max_sections ?? 'el máximo de'} secciones.`)
-  const sectionTitles = new Set<string>()
-  const rowIds = new Set<string>()
-  let totalRows = 0
-  form.interactiveSections.forEach((section, sectionIndex) => {
-    const sectionTitle = section.title.trim()
-    if (!sectionTitle) errors.push(`La sección ${sectionIndex + 1} necesita título.`)
-    else if (exceedsLimit(sectionTitle, limits?.section_title)) errors.push(`El título de la sección ${sectionIndex + 1} admite máximo ${limits?.section_title} caracteres.`)
-    else if (sectionTitles.has(sectionTitle.toLowerCase())) errors.push(`El título de la sección ${sectionIndex + 1} está repetido.`)
-    sectionTitles.add(sectionTitle.toLowerCase())
-    if (!section.rows.length) errors.push(`La sección ${sectionIndex + 1} necesita al menos una opción.`)
-    section.rows.forEach((row, rowIndex) => {
-      totalRows += 1
-      const prefix = `Opción ${rowIndex + 1} de la sección ${sectionIndex + 1}`
-      if (!row.title.trim()) errors.push(`${prefix}: el título es obligatorio.`)
-      else if (exceedsLimit(row.title.trim(), limits?.row_title)) errors.push(`${prefix}: el título admite máximo ${limits?.row_title} caracteres.`)
-      if (!row.description.trim()) errors.push(`${prefix}: la descripción es obligatoria.`)
-      else if (exceedsLimit(row.description.trim(), limits?.row_description)) errors.push(`${prefix}: la descripción admite máximo ${limits?.row_description} caracteres.`)
-      if (!row.rowId.trim()) errors.push(`${prefix}: el ID es obligatorio.`)
-      else if (exceedsLimit(row.rowId.trim(), limits?.row_id)) errors.push(`${prefix}: el ID admite máximo ${limits?.row_id} caracteres.`)
-      else if (rowIds.has(row.rowId.trim())) errors.push(`${prefix}: el ID está repetido.`)
-      rowIds.add(row.rowId.trim())
-    })
-  })
-  if (limits && totalRows > limits.max_rows) errors.push(`Una lista admite máximo ${limits.max_rows} opciones en total.`)
-  return errors
 }
 
 function validateAttachmentFile(file: File) {

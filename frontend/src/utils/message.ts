@@ -764,48 +764,88 @@ export interface SharedContact {
   phoneLabel: string;
 }
 
-interface NameEntries {
+interface ContactName {
   first_name?: string;
   formatted_name?: string;
 }
 
-interface PhoneEntries {
+interface ContactPhone {
   phone?: string;
   type?: string;
   wa_id?: string;
 }
 
-interface PayloadMessageContacts {
-  contacts?: Entries;
+/** Un contacto compartido puede llegar con la forma de Meta Cloud API
+ * (`name`/`phones`), con la que arma el historial de Evolution
+ * (`fullName`/`phoneNumber`) o solo como vCard crudo. */
+interface ContactEntry {
+  name?: ContactName;
+  phones?: ContactPhone[];
+  fullName?: string;
+  displayName?: string;
+  phoneNumber?: string | null;
+  vcard?: string;
 }
 
-interface Entries {
-  name?: NameEntries;
-  origin?: string;
-  phones?: PhoneEntries[];
-  vcard?: string;
+interface PayloadMessageContacts {
+  contacts?: unknown;
+}
+
+const VCARD_NAME = /^FN:(.+)$/m;
+const VCARD_TEL = /^(?:item\d+\.)?TEL[^:\n]*:(.+)$/m;
+const VCARD_WAID = /waid=(\d+)/;
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function contactName(entry: ContactEntry): string {
+  const fromVcard = entry.vcard ? VCARD_NAME.exec(entry.vcard)?.[1]?.trim() : undefined;
+  return (
+    entry.displayName?.trim()
+    || entry.fullName?.trim()
+    || entry.name?.formatted_name?.trim()
+    || entry.name?.first_name?.trim()
+    || fromVcard
+    || "Contacto compartido"
+  );
+}
+
+/** Números marcables (solo dígitos) y el texto tal como lo mandó el remitente.
+ * `wa_id` gana sobre el número visible: es el que WhatsApp puede abrir. */
+function contactPhones(entry: ContactEntry): { phones: string[]; label: string } {
+  const listed = (entry.phones ?? [])
+    .map(phone => ({ digits: onlyDigits(phone.wa_id ?? phone.phone ?? ""), label: phone.phone?.trim() ?? "" }))
+    .filter(phone => phone.digits);
+  if (listed.length) return { phones: listed.map(phone => phone.digits), label: listed[0].label }
+
+  if (entry.phoneNumber) {
+    const digits = onlyDigits(entry.phoneNumber);
+    return { phones: digits ? [digits] : [], label: entry.phoneNumber.trim() };
+  }
+
+  const visible = entry.vcard ? VCARD_TEL.exec(entry.vcard)?.[1]?.trim() ?? "" : "";
+  const waid = entry.vcard ? VCARD_WAID.exec(entry.vcard)?.[1] : undefined;
+  const digits = waid ?? onlyDigits(visible);
+  // Un TEL local sin waid no es marcable: se muestra, pero no abre un chat.
+  const dialable = waid || digits.length >= 10 ? digits : "";
+  return { phones: dialable ? [dialable] : [], label: visible };
 }
 
 /**
  * Contactos compartidos en un mensaje `contact`.
  */
-export function messageContacts(
-  payload: PayloadMessageContacts | null,
-): SharedContact[] {
-  const entries = (payload?.contacts as Entries[]) ?? [];
-  console.log("Entries: ", entries);
+export function messageContacts(payload: PayloadMessageContacts | null): SharedContact[] {
+  const entries = payload?.contacts;
+  if (!Array.isArray(entries)) return [];
 
-  return entries.map((entry) => {
-    return {
-      name: entry.name?.first_name ?? "Contacto compartido",
-      phone:
-        entry.phones?.map(
-          (phone) => phone.phone?.trim().replace(/\D/g, "") ?? "",
-        ) ?? [],
-      phoneLabel: entry.vcard ?? "",
-    };
+  return entries.filter(isJsonObject).map((entry) => {
+    const contact = entry as ContactEntry;
+    const { phones, label } = contactPhones(contact);
+    return { name: contactName(contact), phone: phones.length ? phones : null, phoneLabel: label };
   });
 }
+
 
 /** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
  * "lat,lon" que vivía en content (respaldo legado). null si no hay. */
