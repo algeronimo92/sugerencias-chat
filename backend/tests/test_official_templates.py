@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from models.schemas import TemplateCreate, TemplateUpdate
 from routers import templates
+from services import template_validation
 from services.meta_service import MetaApiError
 
 
@@ -90,15 +91,15 @@ async def test_official_template_image_header_uploads_to_meta_and_builds_handle(
         upload_calls.append((content, content_type, filename))
         return "HANDLE_ABC"
 
-    monkeypatch.setattr(templates, "get_media_asset", fake_get_media_asset)
-    monkeypatch.setattr(templates, "read_media_bytes", fake_read_media_bytes)
-    monkeypatch.setattr(templates, "upload_header_media", fake_upload_header_media)
+    monkeypatch.setattr(template_validation, "get_media_asset", fake_get_media_asset)
+    monkeypatch.setattr(template_validation, "read_media_bytes", fake_read_media_bytes)
+    monkeypatch.setattr(template_validation, "upload_header_media", fake_upload_header_media)
 
     values = {
         "content": "Hola {{1}}", "official_header_type": "image",
         "official_header_media_asset_id": 42, "official_footer": None, "official_buttons": [],
     }
-    components = await templates._build_meta_components(values)
+    components = await template_validation.build_meta_components(values)
 
     assert read_calls == ["media/foo.jpg"]
     assert upload_calls == [(b"fake-bytes", "image/jpeg", "foo.jpg")]
