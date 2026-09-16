@@ -7,8 +7,9 @@ from pydantic import ValidationError
 
 from models.schemas import SendTemplateRequest, StickerRequest
 from routers import chats, webhooks
+from models.webhook_schemas import NewMessageWebhookBody
 from services import chat_messaging
-from tests.conftest import patch_chats
+from tests.conftest import patch_chats, patch_webhooks
 from routers.chats.outbound import TEMPLATE_ERROR_STATUS
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
@@ -19,7 +20,7 @@ CHAT_ID = "51999@s.whatsapp.net"
 def broadcast(monkeypatch):
     mock = AsyncMock()
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
-    monkeypatch.setattr(webhooks.manager, "broadcast", mock)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
     return mock
 
 
@@ -75,16 +76,16 @@ async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypa
 @pytest.mark.parametrize("body", [{}, {"wa_message_id": ""}, {"wa_message_id": "   "}])
 def test_inbound_message_webhook_requires_the_message_id(body):
     with pytest.raises(ValidationError):
-        webhooks.NewMessageWebhookBody(**body)
+        NewMessageWebhookBody(**body)
 
 
 async def test_unknown_inbound_id_never_falls_back_to_another_chats_message(monkeypatch, broadcast):
-    monkeypatch.setattr(webhooks, "fetch_message_by_wa_id", AsyncMock(return_value=None))
-    monkeypatch.setattr(webhooks, "rehost_ad_thumbnail", AsyncMock())
+    patch_webhooks(monkeypatch, "fetch_message_by_wa_id", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "rehost_ad_thumbnail", AsyncMock())
     trigger = AsyncMock()
-    monkeypatch.setattr(webhooks, "trigger_inbound_message", trigger)
+    patch_webhooks(monkeypatch, "trigger_inbound_message", trigger)
 
-    await webhooks.new_message_webhook(webhooks.NewMessageWebhookBody(wa_message_id="WA-X"))
+    await webhooks.new_message_webhook(NewMessageWebhookBody(wa_message_id="WA-X"))
 
     trigger.assert_not_awaited()
     broadcast.assert_awaited_once_with({"type": "chats_updated", "reason": "inbound_message"})

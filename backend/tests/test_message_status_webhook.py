@@ -1,20 +1,23 @@
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from routers import webhooks
+from tests.conftest import patch_webhooks
 
 
 @pytest.mark.asyncio
 async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypatch):
-    monkeypatch.setattr(webhooks, "update_message_status", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "update_message_status", AsyncMock(return_value=None))
     mark_read = AsyncMock(return_value={
         "chat_id": "51999999999@s.whatsapp.net",
         "last_read_at": "2026-07-20T13:43:21Z",
     })
-    monkeypatch.setattr(webhooks, "mark_chat_read_from_whatsapp_receipt", mark_read)
+    patch_webhooks(monkeypatch, "mark_chat_read_from_whatsapp_receipt", mark_read)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_status_webhook({
         "wa_message_id": "WA-INCOMING",
@@ -37,9 +40,8 @@ async def test_incoming_read_receipt_advances_internal_unread_watermark(monkeypa
 
 @pytest.mark.asyncio
 async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
-    monkeypatch.setattr(
-        webhooks,
-        "update_message_status",
+    patch_webhooks(
+        monkeypatch, "update_message_status",
         AsyncMock(return_value={
             "id": 1,
             "chat_id": "51999999999@s.whatsapp.net",
@@ -47,9 +49,9 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
         }),
     )
     mark_read = AsyncMock()
-    monkeypatch.setattr(webhooks, "mark_chat_read_from_whatsapp_receipt", mark_read)
+    patch_webhooks(monkeypatch, "mark_chat_read_from_whatsapp_receipt", mark_read)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_status_webhook({
         "wa_message_id": "WA-OUTGOING",
@@ -70,11 +72,11 @@ async def test_outgoing_read_receipt_only_updates_delivery_status(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delivery_receipt_does_not_mark_incoming_chat_read(monkeypatch):
-    monkeypatch.setattr(webhooks, "update_message_status", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "update_message_status", AsyncMock(return_value=None))
     mark_read = AsyncMock()
-    monkeypatch.setattr(webhooks, "mark_chat_read_from_whatsapp_receipt", mark_read)
+    patch_webhooks(monkeypatch, "mark_chat_read_from_whatsapp_receipt", mark_read)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_status_webhook({
         "wa_message_id": "WA-INCOMING",

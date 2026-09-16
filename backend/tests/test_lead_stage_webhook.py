@@ -1,9 +1,14 @@
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 
 from routers import webhooks
+from db.models import LeadStage
+from models.webhook_schemas import LeadStageWebhookBody
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
@@ -15,7 +20,7 @@ def _body(**overrides):
         "razonamiento": "El vendedor habló último y pasaron 24 horas sin respuesta.",
     }
     payload.update(overrides)
-    return webhooks.LeadStageWebhookBody(**payload)
+    return LeadStageWebhookBody(**payload)
 
 
 @pytest.mark.asyncio
@@ -26,17 +31,17 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
         "changed": True,
         "automations_scheduled": 2,
     })
-    monkeypatch.setattr(webhooks, "update_lead_stage", update_stage)
+    patch_webhooks(monkeypatch, "update_lead_stage", update_stage)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
     trigger = AsyncMock()
-    monkeypatch.setattr(webhooks, "notify_automations_scheduled", trigger)
+    patch_webhooks(monkeypatch, "notify_automations_scheduled", trigger)
 
     result = await webhooks.lead_stage_webhook(_body())
 
     update_stage.assert_awaited_once_with(
         LEAD_ID,
-        webhooks.LeadStage.en_seguimiento,
+        LeadStage.en_seguimiento,
         actor_type="agent",
         metadata={"reason": "El vendedor habló último y pasaron 24 horas sin respuesta."},
         include_chat=False,
@@ -53,15 +58,15 @@ async def test_unchanged_stage_notifies_panels_but_skips_automations(monkeypatch
     reescribió nombre, teléfono y notas con un UPDATE directo. Sin el aviso, el
     CRM se queda con los datos viejos: con el WebSocket conectado no hay
     polling que lo salve."""
-    monkeypatch.setattr(webhooks, "update_lead_stage", AsyncMock(return_value={
+    patch_webhooks(monkeypatch, "update_lead_stage", AsyncMock(return_value={
         "chat_id": LEAD_ID,
         "stage": "en_seguimiento",
         "changed": False,
     }))
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
     trigger = AsyncMock()
-    monkeypatch.setattr(webhooks, "notify_automations_scheduled", trigger)
+    patch_webhooks(monkeypatch, "notify_automations_scheduled", trigger)
 
     result = await webhooks.lead_stage_webhook(_body())
 
@@ -82,9 +87,9 @@ async def test_null_stage_only_notifies_panels(monkeypatch):
     """n8n puede llamar siempre sin un nodo IF adelante: sin etapa no se toca
     `leads.estado`, pero el resto del lead sí pudo cambiar."""
     update_stage = AsyncMock()
-    monkeypatch.setattr(webhooks, "update_lead_stage", update_stage)
+    patch_webhooks(monkeypatch, "update_lead_stage", update_stage)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.lead_stage_webhook(_body(estado=None))
 
@@ -106,7 +111,7 @@ async def test_invalid_stage_returns_422_with_valid_options(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_missing_lead_returns_404(monkeypatch):
-    monkeypatch.setattr(webhooks, "update_lead_stage", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "update_lead_stage", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as exc:
         await webhooks.lead_stage_webhook(_body())

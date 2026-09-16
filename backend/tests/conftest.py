@@ -319,6 +319,11 @@ def patch_chats(monkeypatch, name, value):
     _patch_everywhere(monkeypatch, _package_modules("routers.chats", "routers.chats"), name, value)
 
 
+def patch_webhooks(monkeypatch, name, value):
+    """Reemplaza un colaborador en todos los módulos del router de webhooks que lo usan."""
+    _patch_everywhere(monkeypatch, _package_modules("routers.webhooks", "routers.webhooks"), name, value)
+
+
 def patch_history(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del historial de WhatsApp."""
     _patch_everywhere(

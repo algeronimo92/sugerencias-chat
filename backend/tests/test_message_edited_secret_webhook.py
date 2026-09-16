@@ -1,10 +1,13 @@
 import base64
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from routers import webhooks
-from routers.webhooks import MessageEditedSecretWebhookBody
+from models.webhook_schemas import MessageEditedSecretWebhookBody
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
@@ -12,9 +15,9 @@ LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 @pytest.mark.asyncio
 async def test_decrypted_edit_updates_message_and_broadcasts(monkeypatch):
     update = AsyncMock(return_value={"id": 42, "content": "precio correcto: 450"})
-    monkeypatch.setattr(webhooks, "update_message_content_from_secret", update)
+    patch_webhooks(monkeypatch, "update_message_content_from_secret", update)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_edited_secret_webhook(
         MessageEditedSecretWebhookBody(
@@ -39,9 +42,9 @@ async def test_decrypted_edit_updates_message_and_broadcasts(monkeypatch):
 async def test_unknown_message_returns_matched_false_without_error(monkeypatch):
     # El mensaje editado no está en la base (histórico previo a la
     # integración): igual que el webhook hermano, 200 con matched=False, no 404.
-    monkeypatch.setattr(webhooks, "update_message_content_from_secret", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "update_message_content_from_secret", AsyncMock(return_value=None))
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_edited_secret_webhook(
         MessageEditedSecretWebhookBody(
@@ -61,9 +64,9 @@ async def test_unknown_message_returns_matched_false_without_error(monkeypatch):
 async def test_failed_decryption_returns_matched_false_without_error(monkeypatch):
     # Descifrado fallido (secreto no capturado, ningún sender válido) es
     # esperado, no un error de servidor.
-    monkeypatch.setattr(webhooks, "update_message_content_from_secret", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "update_message_content_from_secret", AsyncMock(return_value=None))
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_edited_secret_webhook(
         MessageEditedSecretWebhookBody(
@@ -81,9 +84,9 @@ async def test_failed_decryption_returns_matched_false_without_error(monkeypatch
 @pytest.mark.asyncio
 async def test_malformed_base64_returns_matched_false_without_error(monkeypatch):
     update = AsyncMock()
-    monkeypatch.setattr(webhooks, "update_message_content_from_secret", update)
+    patch_webhooks(monkeypatch, "update_message_content_from_secret", update)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.message_edited_secret_webhook(
         MessageEditedSecretWebhookBody(

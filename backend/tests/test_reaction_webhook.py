@@ -1,9 +1,12 @@
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from routers import webhooks
-from routers.webhooks import ReactionWebhookBody
+from models.webhook_schemas import ReactionWebhookBody
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
@@ -11,9 +14,9 @@ LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 @pytest.mark.asyncio
 async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
     set_reaction = AsyncMock(return_value={"id": 42, "reactions": [{"emoji": "❤️", "from_me": False}]})
-    monkeypatch.setattr(webhooks, "set_message_reaction", set_reaction)
+    patch_webhooks(monkeypatch, "set_message_reaction", set_reaction)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.reaction_webhook(
         ReactionWebhookBody(
@@ -35,9 +38,9 @@ async def test_reaction_on_known_message_merges_and_broadcasts(monkeypatch):
 async def test_reaction_on_unknown_target_is_ignored_without_broadcast(monkeypatch):
     # El mensaje reaccionado no está en la base (histórico previo): no hay dónde
     # colgar el badge, así que no se avisa a los paneles.
-    monkeypatch.setattr(webhooks, "set_message_reaction", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "set_message_reaction", AsyncMock(return_value=None))
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.reaction_webhook(
         ReactionWebhookBody(

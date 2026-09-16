@@ -1,9 +1,12 @@
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from routers import webhooks
-from routers.webhooks import OutgoingAnalysisWebhookBody
+from models.webhook_schemas import OutgoingAnalysisWebhookBody
+from tests.conftest import patch_webhooks
 
 ANALYSIS = {"summary": "una imagen de una crema", "kind": "descripcion", "version": 1}
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
@@ -12,9 +15,9 @@ LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 @pytest.mark.asyncio
 async def test_merges_analysis_into_app_message(monkeypatch):
     attach = AsyncMock(return_value={"matched": True, "message_id": 1253})
-    monkeypatch.setattr(webhooks, "attach_outgoing_analysis", attach)
+    patch_webhooks(monkeypatch, "attach_outgoing_analysis", attach)
     broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.outgoing_analysis_webhook(
         OutgoingAnalysisWebhookBody(
@@ -39,11 +42,11 @@ async def test_merges_analysis_into_app_message(monkeypatch):
 @pytest.mark.asyncio
 async def test_inserts_when_no_app_message_matches(monkeypatch):
     # Media enviada desde el teléfono: no hay fila de la app, se inserta.
-    monkeypatch.setattr(
-        webhooks, "attach_outgoing_analysis",
+    patch_webhooks(
+        monkeypatch, "attach_outgoing_analysis",
         AsyncMock(return_value={"matched": False, "message_id": 1300}),
     )
-    monkeypatch.setattr(webhooks.manager, "broadcast", AsyncMock())
+    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     result = await webhooks.outgoing_analysis_webhook(
         OutgoingAnalysisWebhookBody(

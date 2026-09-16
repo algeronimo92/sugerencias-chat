@@ -9,14 +9,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from routers import webhooks
-from routers.webhooks import EnsureLeadWebhookBody, SaveInboundMessageWebhookBody
+from models.webhook_schemas import EnsureLeadWebhookBody, SaveInboundMessageWebhookBody
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 @pytest.mark.asyncio
 async def test_lead_raw_returns_empty_object_when_not_found(monkeypatch):
-    monkeypatch.setattr(webhooks, "fetch_lead_raw", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "fetch_lead_raw", AsyncMock(return_value=None))
 
     result = await webhooks.lead_raw_webhook(chat_id=LEAD_ID)
 
@@ -26,7 +27,7 @@ async def test_lead_raw_returns_empty_object_when_not_found(monkeypatch):
 @pytest.mark.asyncio
 async def test_lead_raw_returns_the_row_when_found(monkeypatch):
     row = {"id": LEAD_ID, "estado": "nuevo", "ultimo_mensaje_at": "2026-09-03T10:00:00.000000Z"}
-    monkeypatch.setattr(webhooks, "fetch_lead_raw", AsyncMock(return_value=row))
+    patch_webhooks(monkeypatch, "fetch_lead_raw", AsyncMock(return_value=row))
 
     result = await webhooks.lead_raw_webhook(chat_id=LEAD_ID)
 
@@ -37,7 +38,7 @@ async def test_lead_raw_returns_the_row_when_found(monkeypatch):
 async def test_lead_messages_raw_wraps_the_list(monkeypatch):
     rows = [{"id": 2, "content": "b"}, {"id": 1, "content": "a"}]
     fetch = AsyncMock(return_value=rows)
-    monkeypatch.setattr(webhooks, "fetch_messages_raw", fetch)
+    patch_webhooks(monkeypatch, "fetch_messages_raw", fetch)
 
     result = await webhooks.lead_messages_raw_webhook(chat_id=LEAD_ID, limit=500)
 
@@ -47,7 +48,7 @@ async def test_lead_messages_raw_wraps_the_list(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_message_by_wa_id_raw_returns_empty_object_when_not_found(monkeypatch):
-    monkeypatch.setattr(webhooks, "fetch_message_by_wa_id", AsyncMock(return_value=None))
+    patch_webhooks(monkeypatch, "fetch_message_by_wa_id", AsyncMock(return_value=None))
 
     result = await webhooks.message_by_wa_id_raw_webhook(wa_message_id="ABC-1")
 
@@ -57,7 +58,7 @@ async def test_message_by_wa_id_raw_returns_empty_object_when_not_found(monkeypa
 @pytest.mark.asyncio
 async def test_message_by_wa_id_raw_returns_the_row_when_found(monkeypatch):
     row = {"id": 42, "wa_message_id": "ABC-1"}
-    monkeypatch.setattr(webhooks, "fetch_message_by_wa_id", AsyncMock(return_value=row))
+    patch_webhooks(monkeypatch, "fetch_message_by_wa_id", AsyncMock(return_value=row))
 
     result = await webhooks.message_by_wa_id_raw_webhook(wa_message_id="ABC-1")
 
@@ -67,7 +68,7 @@ async def test_message_by_wa_id_raw_returns_the_row_when_found(monkeypatch):
 @pytest.mark.asyncio
 async def test_ensure_lead_forwards_to_the_service(monkeypatch):
     stub = AsyncMock(return_value={"id": LEAD_ID, "estado": "nuevo"})
-    monkeypatch.setattr(webhooks, "ensure_lead_stub", stub)
+    patch_webhooks(monkeypatch, "ensure_lead_stub", stub)
 
     result = await webhooks.ensure_lead_webhook(
         EnsureLeadWebhookBody(chat_id=LEAD_ID, ultimo_mensaje_at="2026-09-03T10:00:00Z", origen="Facebook Ads")
@@ -82,7 +83,7 @@ async def test_ensure_lead_forwards_to_the_service(monkeypatch):
 @pytest.mark.asyncio
 async def test_save_inbound_message_parses_timestamp_and_secret(monkeypatch):
     insert = AsyncMock(return_value={"id": 99, "wa_message_id": "IN-1"})
-    monkeypatch.setattr(webhooks, "insert_message", insert)
+    patch_webhooks(monkeypatch, "insert_message", insert)
 
     body = SaveInboundMessageWebhookBody(
         chat_id=LEAD_ID,
@@ -111,7 +112,7 @@ async def test_save_inbound_message_parses_timestamp_and_secret(monkeypatch):
 @pytest.mark.asyncio
 async def test_save_inbound_message_tolerates_missing_optional_fields(monkeypatch):
     insert = AsyncMock(return_value={"id": 100})
-    monkeypatch.setattr(webhooks, "insert_message", insert)
+    patch_webhooks(monkeypatch, "insert_message", insert)
 
     body = SaveInboundMessageWebhookBody(chat_id=LEAD_ID, sender="cliente", content="Hola")
 
