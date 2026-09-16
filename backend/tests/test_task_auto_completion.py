@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from routers import tasks
-from services import message_outbox, productivity_service
+from services import message_outbox, task_service
 from services.outbound_kinds import OutboundDelivery
 from services.whatsapp_channel import SendReceipt
 
@@ -36,9 +36,9 @@ async def test_reply_completion_only_targets_sellers_follow_up_tasks(monkeypatch
         return SimpleNamespace(rowcount=2)
 
     session.execute = execute
-    monkeypatch.setattr(productivity_service, "get_sessionmaker", _sessionmaker(session))
+    monkeypatch.setattr(task_service, "get_sessionmaker", _sessionmaker(session))
 
-    completed = await productivity_service.complete_reply_tasks("lead-1", 7)
+    completed = await task_service.complete_reply_tasks("lead-1", 7)
 
     assert completed == 2
     params = statements[0].compile().params
@@ -59,9 +59,9 @@ async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatc
         return SimpleNamespace(rowcount=1)
 
     session.execute = execute
-    monkeypatch.setattr(productivity_service, "get_sessionmaker", _sessionmaker(session))
+    monkeypatch.setattr(task_service, "get_sessionmaker", _sessionmaker(session))
 
-    completed = await productivity_service.complete_assigned_seller_reply_tasks("lead-1")
+    completed = await task_service.complete_assigned_seller_reply_tasks("lead-1")
 
     assert completed == 1
     sql = str(statements[0].compile())

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
 from routers import automations, templates
-from services import automation_service, productivity_service
+from services import automation_service, template_service
 from tests.conftest import patch_automations
 
 
@@ -20,8 +20,8 @@ from tests.conftest import patch_automations
     ],
 )
 def test_template_reference_is_found_in_simple_and_visual_definitions(definition):
-    assert productivity_service._references_template(definition, 7)
-    assert not productivity_service._references_template(definition, 8)
+    assert template_service._references_template(definition, 7)
+    assert not template_service._references_template(definition, 8)
 
 
 @pytest.mark.asyncio

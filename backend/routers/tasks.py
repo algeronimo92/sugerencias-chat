@@ -5,7 +5,7 @@ from domain_types import TaskStatus
 from db.models import User
 from models.schemas import TaskCreate, TaskItem, TaskUpdate
 from services.auth_service import get_current_user
-from services.productivity_service import (
+from services.task_service import (
     complete_pending_tasks,
     create_task,
     get_task,

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from services.productivity_service import claim_due_reminders, release_reminder
+from services.task_service import claim_due_reminders, release_reminder
 from services.ws_manager import manager
 
 logger = logging.getLogger(__name__)

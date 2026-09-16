@@ -32,7 +32,8 @@ from services.whatsapp_channel import ReactionTarget
 from services.whatsapp_channels import current_channel
 from services.message_outbox import enqueue_messages
 from services.notification_service import create_system_notification
-from services.productivity_service import create_task, record_template_use
+from services.task_service import create_task
+from services.template_service import record_template_use
 from services.push_service import send_push_to_user
 from services.ws_manager import manager
 

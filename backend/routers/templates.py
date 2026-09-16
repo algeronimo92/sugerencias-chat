@@ -7,9 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from db.models import User
 from models.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateUpdate
 from services.auth_service import get_current_user, require_admin
-from services.productivity_service import (
-    add_template_attachment, create_personal_template, create_template, delete_template as delete_template_record, list_templates,
-    record_template_use, remove_template_attachment, set_template_favorite, update_template,
+from services.template_service import (
+    add_template_attachment,
+    create_personal_template,
+    create_template,
+    delete_template as delete_template_record,
+    list_templates,
+    record_template_use,
+    remove_template_attachment,
+    set_template_favorite,
+    update_template,
 )
 from services.template_category_service import get_template_category_by_name
 from services.media_upload import normalize_media_content_type, save_media_file

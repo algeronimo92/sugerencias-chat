@@ -15,7 +15,7 @@ from db.session import get_sessionmaker
 from services.lead_touch import touch_automated_reply_stmt, touch_last_read_stmt
 from services.media_storage import MediaNotFoundError
 from services.outbound_kinds import OutboundDelivery, outbound_message_fields, send_outbound
-from services.productivity_service import complete_reply_tasks
+from services.task_service import complete_reply_tasks
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, describe_send_failure
 from services.whatsapp_channels import current_channel
 from services.ws_manager import manager

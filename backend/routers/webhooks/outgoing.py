@@ -2,7 +2,7 @@ import base64
 import binascii
 
 from services.db_service import attach_outgoing_analysis, reconcile_outgoing_message
-from services.productivity_service import complete_assigned_seller_reply_tasks
+from services.task_service import complete_assigned_seller_reply_tasks
 from services.ws_manager import manager
 from models.webhook_schemas import OutgoingAnalysisWebhookBody, OutgoingWebhookBody
 from routers.webhooks.common import webhooks_router
