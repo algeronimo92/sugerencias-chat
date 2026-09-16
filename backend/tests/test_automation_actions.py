@@ -41,6 +41,49 @@ def media_asset(**overrides):
     return SimpleNamespace(**{**defaults, **overrides})
 
 
+def resumable_execution(action_results):
+    return SimpleNamespace(
+        id=1, rule_id=1, lead_id="51999@s.whatsapp.net",
+        action_results=action_results,
+        event_payload={}, flow_state={}, window_override_by_user_id=None,
+    )
+
+
+def two_message_rule():
+    return make_rule(
+        builder_mode="simple", max_executions_per_hour=None,
+        actions=[
+            {"type": AutomationActionType.SEND_MESSAGE, "text": "Primero"},
+            {"type": AutomationActionType.SEND_MESSAGE, "text": "Segundo"},
+        ],
+    )
+
+
+def deps_running(deps, execution, rule):
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, model, pk):
+            name = getattr(model, "__name__", "")
+            return execution if name == "AutomationExecution" else rule
+
+        async def execute(self, stmt):
+            return SimpleNamespace(rowcount=1)
+
+        async def commit(self):
+            pass
+
+    return dataclasses.replace(
+        deps,
+        session_factory=lambda: FakeSession,
+        fetch_chat=AsyncMock(return_value=make_chat()),
+    )
+
+
 def deps_with_media_asset(deps, asset):
     """Sustituye la sesión de base por una que devuelve el asset indicado
     (o None, para simular que ya no existe en la librería de medios)."""
@@ -650,55 +693,39 @@ class TestDispatch:
 class TestResumeDoesNotRepeatEnqueuedActions:
     async def test_run_execution_only_executes_the_remaining_action(self, deps, outbox):
         """Un reintento tras un crash no debe reenviar un WhatsApp que ya se
-        encoló — el chequeo de qué acciones ya corrieron es puramente
-        posicional (len(action_results) vs. cantidad de acciones); nunca
-        dependió del wa_message_id real, que con el outbox ni siquiera se
-        conoce en este punto (el mensaje queda "pending" hasta que el worker
-        lo procesa)."""
-        execution = SimpleNamespace(
-            id=1, rule_id=1, lead_id="51999@s.whatsapp.net",
-            action_results=[{
-                "position": 1, "type": AutomationActionType.SEND_MESSAGE,
-                "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
-            }],
-            event_payload={}, flow_state={}, window_override_by_user_id=None,
-        )
-        rule = make_rule(
-            builder_mode="simple", max_executions_per_hour=None,
-            actions=[
-                {"type": AutomationActionType.SEND_MESSAGE, "text": "Primero"},
-                {"type": AutomationActionType.SEND_MESSAGE, "text": "Segundo"},
-            ],
-        )
+        encoló — el chequeo de qué acciones ya corrieron es posicional sobre
+        los resultados exitosos, y nunca dependió del wa_message_id real, que
+        con el outbox ni siquiera se conoce en este punto (el mensaje queda
+        "pending" hasta que el worker lo procesa)."""
+        execution = resumable_execution([{
+            "position": 1, "type": AutomationActionType.SEND_MESSAGE,
+            "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
+        }])
 
-        class FakeSession:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *exc):
-                return False
-
-            async def get(self, model, pk):
-                name = getattr(model, "__name__", "")
-                return execution if name == "AutomationExecution" else rule
-
-            async def execute(self, stmt):
-                return SimpleNamespace(rowcount=1)
-
-            async def commit(self):
-                pass
-
-        test_deps = dataclasses.replace(
-            deps,
-            session_factory=lambda: FakeSession,
-            fetch_chat=AsyncMock(return_value=make_chat()),
-        )
-
-        await _run_execution(1, test_deps)
+        await _run_execution(1, deps_running(deps, execution, two_message_rule()))
 
         assert len(outbox.enqueued) == 1
         _, items = outbox.enqueued[0]
         assert items[0]["content"] == "Segundo"
+
+    async def test_run_execution_retries_the_action_that_failed(self, deps, outbox):
+        """El resultado fallido también se persiste en action_results, así que
+        contarlo como acción hecha dejaría al reintento saltándose justo la
+        que nunca llegó al cliente."""
+        execution = resumable_execution([
+            {
+                "position": 1, "type": AutomationActionType.SEND_MESSAGE,
+                "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
+            },
+            {
+                "position": 2, "type": AutomationActionType.SEND_MESSAGE,
+                "status": AutomationExecutionStatus.FAILED, "error": "timeout",
+            },
+        ])
+
+        await _run_execution(1, deps_running(deps, execution, two_message_rule()))
+
+        assert [items[0]["content"] for _, items in outbox.enqueued] == ["Segundo"]
 
 
 class TestOutboxDedupe:

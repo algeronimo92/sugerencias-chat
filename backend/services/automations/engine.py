@@ -48,6 +48,13 @@ from services.ws_manager import manager
 logger = logging.getLogger(__name__)
 
 
+def _resumable_results(results: list[dict]) -> list[dict]:
+    return [
+        result for result in results
+        if result.get("status") != AutomationExecutionStatus.FAILED
+    ]
+
+
 async def _persist_visual_execution(
     execution_id: int,
     status: AutomationExecutionStatus,
@@ -393,8 +400,9 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
         await _run_visual_execution(execution, rule, chat, deps)
         return
 
-    results = list(execution.action_results or [])
-    if not results:
+    previous = list(execution.action_results or [])
+    results = _resumable_results(previous)
+    if not previous:
         # Solo se evalúan condiciones en el primer intento: al reanudar una
         # ejecución interrumpida las acciones ya corridas pudieron cambiar el
         # estado del lead y un skip aquí dejaría la regla a medias.
@@ -407,8 +415,9 @@ async def _run_execution(execution_id: int, deps: AutomationDeps = DEFAULT_DEPS)
             return
     actions = list(rule.actions or [])
     try:
-        # Reanuda desde la primera acción sin resultado persistido — un
-        # reintento tras un crash no repite WhatsApps ni tareas ya creadas.
+        # Reanuda desde la primera acción sin resultado exitoso persistido — un
+        # reintento tras un crash no repite WhatsApps ni tareas ya creadas, pero
+        # sí vuelve a intentar la que quedó fallida.
         for index in range(len(results), len(actions)):
             result = await _execute_action(
                 actions[index], chat, execution, rule, deps, position=index + 1,
