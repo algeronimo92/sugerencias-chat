@@ -16,41 +16,41 @@ def empty_settings_cache():
 @pytest.mark.asyncio
 async def test_effective_settings_are_loaded_once_and_reused(monkeypatch):
     load_values = AsyncMock(return_value={
-        "evolution_api_url": "https://evolution.test",
-        "evolution_instance": "dermica",
+        "n8n_webhook_url": "https://n8n.test/webhook",
+        "n8n_citas_webhook_url": "https://n8n.test/citas",
     })
     monkeypatch.setattr(settings_service, "_db_values", load_values)
     monkeypatch.setattr(
         settings_service,
         "_env_default",
-        lambda key: "secret-from-env" if key == "evolution_api_key" else "",
+        lambda key: "secret-from-env" if key == "n8n_webhook_token" else "",
     )
 
     first = await settings_service.get_effective_many((
-        "evolution_api_url", "evolution_api_key", "evolution_instance",
+        "n8n_webhook_url", "n8n_webhook_token", "n8n_citas_webhook_url",
     ))
-    second = await settings_service.get_effective("evolution_api_url")
+    second = await settings_service.get_effective("n8n_webhook_url")
 
     assert first == {
-        "evolution_api_url": "https://evolution.test",
-        "evolution_api_key": "secret-from-env",
-        "evolution_instance": "dermica",
+        "n8n_webhook_url": "https://n8n.test/webhook",
+        "n8n_webhook_token": "secret-from-env",
+        "n8n_citas_webhook_url": "https://n8n.test/citas",
     }
-    assert second == "https://evolution.test"
+    assert second == "https://n8n.test/webhook"
     load_values.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
 async def test_invalidating_cache_forces_a_reload(monkeypatch):
     load_values = AsyncMock(side_effect=[
-        {"evolution_instance": "first"},
-        {"evolution_instance": "second"},
+        {"n8n_citas_webhook_url": "first"},
+        {"n8n_citas_webhook_url": "second"},
     ])
     monkeypatch.setattr(settings_service, "_db_values", load_values)
 
-    assert await settings_service.get_effective("evolution_instance") == "first"
+    assert await settings_service.get_effective("n8n_citas_webhook_url") == "first"
     settings_service.invalidate_settings_cache()
-    assert await settings_service.get_effective("evolution_instance") == "second"
+    assert await settings_service.get_effective("n8n_citas_webhook_url") == "second"
     assert load_values.await_count == 2
 
 
@@ -78,7 +78,7 @@ async def test_updating_secret_setting_never_persists_plaintext(monkeypatch):
         base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
     )
 
-    await settings_service.update_settings({"evolution_api_key": "plain-secret"})
+    await settings_service.update_settings({"n8n_webhook_token": "plain-secret"})
 
     params = statements[0].compile().params
     serialized_params = " ".join(str(value) for value in params.values())
@@ -105,8 +105,8 @@ async def test_updating_public_setting_persists_usable_plaintext(monkeypatch):
 
     monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
 
-    public_url = "https://evolution.example.test"
-    await settings_service.update_settings({"evolution_api_url": public_url})
+    public_url = "https://n8n.example.test/webhook"
+    await settings_service.update_settings({"n8n_webhook_url": public_url})
 
     params = statements[0].compile().params
     serialized_params = " ".join(str(value) for value in params.values())
@@ -147,7 +147,7 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
         AsyncMock(return_value={
             "n8n_webhook_url": encrypted_public_url,
             "n8n_webhook_token": "legacy-plaintext-token",
-            "evolution_instance": "already-plain",
+            "an_old_removed_key": "already-plain",
         }),
     )
 
@@ -166,13 +166,13 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
 @pytest.mark.asyncio
 async def test_secret_values_are_never_returned_by_settings_api_model(monkeypatch):
     monkeypatch.setattr(settings_service, "_db_values", AsyncMock(return_value={
-        "evolution_api_url": "https://evolution.test",
-        "evolution_api_key": "decrypted-in-backend-only",
+        "n8n_webhook_url": "https://n8n.test/webhook",
+        "n8n_webhook_token": "decrypted-in-backend-only",
     }))
     monkeypatch.setattr(settings_service, "_env_default", lambda _key: "")
 
     items = {item["key"]: item for item in await settings_service.list_settings()}
 
-    assert items["evolution_api_url"]["value"] == "https://evolution.test"
-    assert items["evolution_api_key"]["configured"] is True
-    assert items["evolution_api_key"]["value"] is None
+    assert items["n8n_webhook_url"]["value"] == "https://n8n.test/webhook"
+    assert items["n8n_webhook_token"]["configured"] is True
+    assert items["n8n_webhook_token"]["value"] is None

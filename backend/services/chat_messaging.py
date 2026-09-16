@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from services.automation_rules import render_variables
 from services.db_service import fetch_chat, lead_exists
 from services.message_outbox import enqueue_messages
+from services.meta_service import render_official_body, template_parameter_identifiers
 from services.template_service import list_templates, record_template_use
 from services.template_delivery import build_internal_template_items
 from services.whatsapp_rules import (
@@ -51,17 +52,49 @@ async def _official_items(template: dict, chat_id: str, text: str, parameters: l
     values = [value.strip() for value in parameters]
     if len(values) != len(template["official_parameter_values"]) or any(not value for value in values):
         raise InvalidTemplateInputError("Los parámetros no coinciden con las variables de la plantilla oficial")
-    components = (
-        [{"type": "body", "parameters": [{"type": "text", "text": value} for value in values]}]
-        if values else []
-    )
+    components = []
+    if values:
+        variable_names = template_parameter_identifiers(template["content"])
+        # Una plantilla con variables con nombre (`{{cliente}}`, a diferencia
+        # de la posicional `{{1}}` que arma esta app al crear) exige mandar
+        # `parameter_name` en cada parámetro -- si no, Meta responde 132012
+        # ("Parameter format does not match format in the created template").
+        is_named = len(variable_names) == len(values) and any(not name.isdigit() for name in variable_names)
+        components.append({
+            "type": "body",
+            "parameters": [
+                {"type": "text", "parameter_name": name, "text": value}
+                if is_named else {"type": "text", "text": value}
+                for name, value in zip(variable_names or values, values)
+            ],
+        })
+    header_media = None
+    if template.get("official_header_type") == "image" and template.get("official_header_media_url"):
+        # El id de medio de Meta no se sube acá: subirlo ahora dejaría un id
+        # que puede tardar en consumirse (reintentos del outbox) y que Meta
+        # invalida pasado un tiempo. Solo viaja la referencia al archivo
+        # local; el envío real sube la imagen y arma el componente HEADER
+        # recién al momento del despacho (ver services/outbound_kinds.py).
+        header_media = {
+            "media_url": template["official_header_media_url"],
+            "content_type": template["official_header_media_content_type"],
+            "filename": template["official_header_media_filename"],
+        }
     return [{
-        "content": text or template["content"],
+        "content": render_official_body(template["content"], values) if values else (text or template["content"]),
         "payload": {
             "type": "official_template",
             "name": template["official_name"],
             "language": template["official_language"],
             "components": components,
+            "header_media": header_media,
+            # Nada de esto viaja a Meta (que ya conoce la plantilla aprobada
+            # por nombre+idioma): es solo lo que necesita el CRM para pintar
+            # la burbuja completa -header, pie y botones- tal como la ve el
+            # cliente en WhatsApp, en vez de mostrar únicamente el body.
+            "header_text": template.get("official_header_text") if template.get("official_header_type") == "text" else None,
+            "footer": template.get("official_footer"),
+            "buttons": template.get("official_buttons") or [],
         },
     }]
 

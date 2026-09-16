@@ -216,9 +216,15 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
 class FakeSender:
     """Canal saliente que registra cada llamada y devuelve un recibo propio."""
 
-    def __init__(self, fail_with: Exception | None = None):
+    def __init__(self, fail_with: Exception | None = None, media_id: str = "MEDIA-1"):
         self.calls: list[tuple[str, tuple, dict]] = []
+        self.uploads: list[tuple[bytes, str, str]] = []
         self.fail_with = fail_with
+        self.media_id = media_id
+
+    async def upload_media(self, content: bytes, content_type: str, filename: str) -> str:
+        self.uploads.append((content, content_type, filename))
+        return self.media_id
 
     def __getattr__(self, method: str):
         if not method.startswith("send_"):

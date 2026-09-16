@@ -102,6 +102,57 @@ describe('parseContent', () => {
     expect(parsed.template?.buttons).toEqual([{ text: 'Abrir enlace', url: 'https://cliniventas.com/' }])
   })
 
+  it('pinta header, pie y botones de una plantilla oficial de Meta enviada desde la app', () => {
+    const parsed = parseContent({
+      content: 'Hola Ana, tu cita es el martes.',
+      message_type: 'template',
+      payload: {
+        type: 'official_template',
+        name: 'recordatorio_cita',
+        language: 'es',
+        header_text: 'DermicaPro',
+        footer: 'Gracias por tu preferencia',
+        buttons: [
+          { type: 'quick_reply', text: 'Confirmar' },
+          { type: 'url', text: 'Ver detalles', url: 'https://dermicapro.com/citas' },
+        ],
+      },
+    })
+    expect(parsed.text).toBe('Hola Ana, tu cita es el martes.')
+    expect(parsed.template).toMatchObject({ title: 'DermicaPro', footer: 'Gracias por tu preferencia' })
+    expect(parsed.template?.buttons).toEqual([
+      { text: 'Confirmar', url: null },
+      { text: 'Ver detalles', url: 'https://dermicapro.com/citas' },
+    ])
+  })
+
+  it('una plantilla oficial sin header/pie/botones no arma una tarjeta vacía', () => {
+    const parsed = parseContent({
+      content: 'Hola Ana.',
+      message_type: 'template',
+      payload: { type: 'official_template', name: 'saludo', language: 'es', header_text: null, footer: null, buttons: [] },
+    })
+    expect(parsed.text).toBe('Hola Ana.')
+    expect(parsed.template).toBeNull()
+  })
+
+  it('trae la URL del encabezado de imagen de una plantilla oficial, ya guardada en el storage de medios', () => {
+    const parsed = parseContent({
+      content: 'Hola, aprovecha nuestra promo.',
+      message_type: 'template',
+      payload: {
+        type: 'official_template',
+        name: 'promo_verano',
+        language: 'es',
+        header_text: null,
+        header_image_url: '/api/media/images/encabezado.jpg',
+        footer: null,
+        buttons: [],
+      },
+    })
+    expect(parsed.template?.headerImageUrl).toBe('/api/media/images/encabezado.jpg')
+  })
+
   it('separa el análisis IA del caption y no lo mezcla en el texto', () => {
     const parsed = parseContent({
       content: 'Mirá esta promo',

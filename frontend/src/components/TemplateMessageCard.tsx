@@ -1,6 +1,6 @@
 import { CornerUpLeft, ExternalLink } from 'lucide-react'
 
-import type { TemplateMessage } from '../utils/message'
+import { resolveMediaUrl, type TemplateMessage } from '../utils/message'
 
 /**
  * Lo que va arriba del cuerpo, como en WhatsApp: el preview del enlace en los
@@ -27,8 +27,15 @@ export function TemplateMessagePreview({
     )
   }
 
-  if (!template.title && !template.description && !template.domain) return null
+  // El encabezado de imagen de una plantilla oficial ya está en el storage de
+  // medios de la app (MinIO/local) desde que la plantilla se creó o importó
+  // -ver `_import_header_media_asset` en routers/templates.py- así que se
+  // resuelve como cualquier otra imagen, sin volver a subirla por mensaje.
+  const headerImageSrc = template.headerImageUrl ? resolveMediaUrl(template.headerImageUrl) : null
+
+  if (!template.title && !template.description && !template.domain && !headerImageSrc) return null
   const href = template.buttons.find((button) => button.url)?.url ?? null
+  const hasCard = !!(template.title || template.domain || template.description)
 
   const card = (
     <>
@@ -52,12 +59,19 @@ export function TemplateMessagePreview({
   )
 
   const className = 'mb-1.5 block rounded-lg bg-black/5 px-2.5 py-2 dark:bg-white/10'
-  return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={`${className} transition-colors hover:bg-black/10 dark:hover:bg-white/15`}>
-      {card}
-    </a>
-  ) : (
-    <div className={className}>{card}</div>
+  return (
+    <>
+      {headerImageSrc && (
+        <img src={headerImageSrc} alt="" loading="lazy" className="mb-1.5 max-h-48 w-full rounded-lg object-cover" />
+      )}
+      {hasCard && (href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className={`${className} transition-colors hover:bg-black/10 dark:hover:bg-white/15`}>
+          {card}
+        </a>
+      ) : (
+        <div className={className}>{card}</div>
+      ))}
+    </>
   )
 }
 

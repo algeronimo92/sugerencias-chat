@@ -1,323 +1,478 @@
-# Plan de arquitectura: pasar el CRM a SaaS multi-tenant
+﻿# Plan de arquitectura y migración a SaaS multi-tenant
 
-> Estado: propuesta para revisión. No se ha tocado código de producto todavía.
-> Modelo elegido: **tenant = organización**. Una organización tiene UN número
-> de WhatsApp y VARIOS usuarios que comparten los mismos leads y mensajes.
->
-> Revisión 2026-09-09: se actualiza sobre la versión original (2026-07-21)
-> para reflejar dos cambios de fondo verificados en el código y en
-> `rag.json`: (1) n8n **ya no escribe directo en la base** — todo pasa por
-> `/api/webhooks/*`, lo cual elimina el riesgo que este plan marcaba como el
-> más grave; y (2) hay una migración en curso de Evolution API a **Meta Cloud
-> API** para el envío y las plantillas oficiales (`backend/services/meta_service.py`),
-> con intención de reemplazar Evolution también en la recepción y quedarse con
-> n8n como orquestador/normalizador. Esta revisión también incorpora las tres
-> costuras de arquitectura identificadas en
-> `docs/analisis/03-arquitectura-y-flujo-de-eventos.md` (§A.7), porque son
-> prerrequisito técnico del scoping por organización, no un proyecto aparte.
+> Revisión: **2026-09-16**, reemplaza la propuesta del 2026-09-09.
+> Estado: diseño actualizado mediante inspección del repositorio; **no es una
+> migración implementada ni una validación de producción**.
+> Modelo: tenant = organización; varios usuarios comparten sus datos y una
+> organización tiene como máximo un número de WhatsApp activo en esta primera versión.
+> **No habilitar una segunda organización hasta aislar datos, credenciales,
+> ingesta, workers, archivos y tiempo real.**
 
-## 1. Objetivo
+## 1. Estado real y correcciones al plan anterior
 
-Que cada organización se registre, **conecte su propio número de WhatsApp**
-y vea **solo sus propios leads y mensajes**, mientras todas las organizaciones
-reciben en paralelo. El mecanismo de conexión ya no está cerrado a "escanear
-un QR": con Meta Cloud API como proveedor objetivo, es más probable que sea
-un flujo de **Embedded Signup** de Meta (ver §3.7). El QR sigue vigente hoy
-porque Evolution todavía es el canal de entrada real.
+La revisión contrasta modelos, servicios, routers, frontend, revisiones Alembic,
+despliegue y los cinco workflows JSON versionados. No se consultó la base real,
+la configuración de Meta ni qué workflows están activos en n8n. La presencia de
+un archivo no demuestra que esté desplegado.
 
-Aclaración que sigue vigente: la separación entre organizaciones es un
-problema de *aislamiento de datos*, no de qué proveedor de WhatsApp esté
-detrás. Cambiar de Evolution a Meta Cloud API no resuelve el multi-tenant por
-sí solo; solo cambia cuál es el proveedor cuya identidad hay que scopear.
+El árbol inspeccionado tiene un **rebase pendiente con 13 archivos en conflicto**,
+incluidos `db_service.py`, `meta_service.py`, `message_outbox.py`,
+`whatsapp_identity_service.py` y componentes del frontend. Las observaciones sobre
+esas piezas describen código presente, no una versión ejecutable consolidada.
+Esta revisión documental no resuelve ni sobrescribe los cambios del rebase.
 
-## 2. Punto de partida
+| Supuesto anterior | Evidencia actual | Corrección |
+|---|---|---|
+| `db_service.py` es un monolito por separar desde cero | Hay módulos en [services/store](../backend/services/store) y una fachada en `db_service.py`, todavía en conflicto | Extender esa separación con contexto obligatorio; evitar una segunda capa paralela de repositorios |
+| Auth basada en sesión/JWT | [session_service.py](../backend/services/session_service.py) usa tokens opacos, hashes, rotación, `auth_sessions` y `trusted_devices`; rechaza cookies JWT históricas | Resolver org desde sesión/usuario; no introducir JWT como requisito |
+| `chat_watcher` procesa solo el último mensaje mediante una firma global | [chat_watcher.py](../backend/services/chat_watcher.py) ya pagina por `(sent_at, id)` y procesa cada mensaje | Adaptar recuperación y emisiones, sin repetir la reescritura |
+| No hay abstracción de proveedor | [whatsapp_channel.py](../backend/services/whatsapp_channel.py), [whatsapp_channels.py](../backend/services/whatsapp_channels.py) y `meta_channel.py` ya definen puertos/adaptadores | Inyectar conexión y credenciales; `current_channel()` sigue siendo global |
+| Embedded Signup solo está por investigar y el QR sigue disponible | Hay `/api/settings/meta/embedded-signup`, `useFacebookSdk.ts` y `WhatsappPanel.tsx`; `routers/whatsapp.py` está eliminado, pero `main.py` todavía lo importa/registra | Consolidar el rebase y adaptar el signup existente; no prometer un QR operativo |
+| Evolution es necesariamente la entrada real | Existe [webhook meta cloud api.json](../webhook%20meta%20cloud%20api.json), además de `rag.json` y flujos legacy | Verificar la ruta desplegada; Meta es el destino y Evolution solo compatibilidad comprobada |
+| n8n ya no escribe DB, así que basta ajustar el backend | Los cinco JSON no contienen nodos Postgres, pero transportan IDs sin contexto confiable de org | Coordinar los contratos HTTP de lectura, escritura y multimedia de n8n |
+| Solo falta cambiar el UNIQUE de `wa_message_id` | Hay unicidades globales de JID legacy, catálogos, shortcuts y dedupe del outbox | Migrar restricciones y consultas juntas, con integridad entre organizaciones |
+| Settings y workers se migran después del onboarding | Usan configuración/datos globales y ejecutan efectos externos | Son requisitos previos al segundo tenant |
 
-Qué es cierto hoy en el código (verificado, no lo que se documentó en julio):
+`realtime_events.py` ya tiene enums, pero [ws_manager.py](../backend/services/ws_manager.py)
+conserva conexiones en memoria por usuario y `broadcast()` es global. Los enums
+no constituyen un bus entre procesos. `compose.mq.yml` configura ingesta
+Evolution → n8n; no prueba que el backend distribuya eventos entre réplicas.
 
-- **Datos en un pool único.** `leads` (PK interna `UUID`, con `remote_jid`
-  legacy) y `wsp_messages` (`chat_id`) no tienen dueño todavía. Ver
-  [db/models.py](../backend/db/models.py).
-- **Ya resuelto: n8n dejó de escribir en la base.** El riesgo #1 de la versión
-  anterior de este plan ("n8n hace INSERT/UPDATE directo sobre tablas de
-  negocio") ya no existe. Verificado en `rag.json`: no queda ningún nodo
-  `n8n-nodes-base.postgres` en el workflow; cada escritura pasa por un
-  endpoint HTTP de `backend/routers/webhooks.py` (`ensure-lead`, `lead-raw`,
-  `save-inbound-message`, `messages`, `reaction`, `message-edited-secret`,
-  `outgoing`, `poll-results`, `message-status`, `meta-media`, etc.). Varios
-  docstrings del propio backend lo dejan explícito, por ejemplo
-  `ensure_lead_webhook`: *"Reemplaza al nodo Postgres `create lead`"*. Esto es
-  una base mucho mejor de lo que asumía la versión original del plan: **la
-  única superficie de escritura de datos de negocio ya es el backend**, así
-  que el scoping por organización se puede resolver ahí, sin coordinar
-  cambios de esquema con n8n.
-- **Migración de proveedor en curso, no completa.** `meta_service.py` ya es
-  el único camino para enviar mensajes y para el ciclo de vida de plantillas
-  oficiales (`message_outbox.py` y `routers/templates.py` no importan nada de
-  `evolution_service`). La recepción todavía depende de Evolution → n8n para
-  el grueso del flujo, pero ya hay una costura empezada del lado de Meta:
-  `/api/webhooks/meta-media` descarga multimedia entrante vía
-  `meta_service.download_media` porque *"la descarga necesita el token de
-  Meta, que solo está en las settings del backend"* (comentario del propio
-  código). Confirmado con el usuario: la intención es sacar Evolution por
-  completo y quedarse con n8n como orquestador (IA, normalización de
-  payloads, análisis de imagen/audio), no como sistema de mensajería.
-- **`rag.json` ya tiene una noción de "instance"**, pero hoy es un valor
-  hardcodeado (`"instance": "dermicapro-business"`, líneas ~5145-5189) usado
-  únicamente para decidir si el backend de destino es un túnel de desarrollo
-  o producción — **no** para identificar organización. Es, sin embargo, el
-  campo natural para convertir en la clave de ruteo instancia/número → org
-  cuando haya más de una.
-- **Config global.** Evolution, n8n, ElevenLabs y (ahora) Meta viven en
-  `app_settings`, una fila por clave, global. Ver
-  [settings_service.py](../backend/services/settings_service.py).
-- **Auth existe pero sin tenant.** `users` con roles admin/vendedor
-  ([auth_service](../backend/services/auth_service.py)); todos ven los mismos
-  datos. El primer admin se siembra con `ADMIN_EMAIL`/`ADMIN_PASSWORD`.
-- **Tiempo real global.** `/ws/chats` hace `manager.broadcast(...)` a
-  **todos** los clientes conectados
-  ([ws_manager](../backend/services/ws_manager.py)), desde ~15 call sites
-  distintos sin un contrato compartido.
-- **Workers globales.** `chat_watcher`, `automation_service`,
-  `task_reminder`, `message_outbox` y `scheduled_message_service` recorren
-  toda la base sin noción de organización. `chat_watcher` en particular no es
-  parametrizable tal cual está: calcula una firma y "el último mensaje" sobre
-  la tabla entera.
-- **Sin capa de acceso a datos donde inyectar el scope.** `db_service.py`
-  (~3000 líneas) más otros 8 servicios abren su propia sesión SQLAlchemy y
-  arman `select()` a mano. Es el bloqueador técnico real del plan: sin esto,
-  agregar `organization_id` obliga a auditar todo el backend en vez de un
-  punto de entrada acotado.
-- **QR de Evolution: vigente pero con fecha de vencimiento.** El flujo ya
-  construido ([whatsapp.py](../backend/routers/whatsapp.py),
-  [evolution_service.py](../backend/services/evolution_service.py),
-  `WhatsappPanel.tsx`) sigue funcionando hoy, pero es específico de
-  Baileys/Evolution. Si Evolution se retira, este flujo se retira con él y el
-  onboarding de organizaciones nuevas necesita un mecanismo distinto (§3.7).
+### 1.1 Bloqueos previos de migraciones
 
-## 3. Arquitectura objetivo
+La inspección estática del grafo Alembic encontró dos heads:
 
-### 3.1 Modelo de datos
-- Nueva tabla `organizations` (id, name, status, plan, created_at, …).
-- `users.organization_id` FK. Los roles (admin/vendedor) pasan a ser
-  **dentro de** la organización.
-- `organization_id` en todas las tablas de negocio: `leads`, `wsp_messages`,
-  `lead_tasks`, `internal_notes`, `tags` (+ mapeos), `message_templates`,
-  `automation_rules`, `automation_executions`, `notifications`,
-  `lead_activity`, `message_outbox`, `media_library`, `scheduled_messages`,
-  `app_settings` (pasa a `organization_settings`).
+- `c4e8a1d6f239` (`outbox_dedupe_key`).
+- `c9a2e6f83d51` (`plantillas_importadas_de_meta`), con padre `6af703c8bc6c`.
 
-### 3.2 Identidad interna de `leads`
-Ya resuelto en su primera parte: `leads.id` es `UUID` y las FK internas
-apuntan a ella; los JID externos viven en `whatsapp_identities.lead_id`.
+[scripts/migrate.py](../backend/scripts/migrate.py) espera una única head.
+`backend/migrations/031_plantillas_importadas_de_meta.sql` contradice
+[migrations/README.md](../backend/migrations/README.md) y
+`test_legacy_sql_migrations_frozen.py`, cuyo máximo permitido es 30.
+Regularizarlo al consolidar el rebase: comprobar qué revisiones están aplicadas
+por entorno. Si ambas ramas se desplegaron, usar una revisión merge y reconciliar
+su DDL; si una nunca se desplegó, evaluar corregir su padre. **No reescribir una
+revisión aplicada, elevar el límite del test ni ejecutar SQL 031 para sortearlo.**
+Si ya se aplicó manualmente, reconciliar el esquema sin recrear columnas existentes.
 
-Falta: `organization_id` en la unicidad de los alias — `(organization_id,
-instance, jid)` en vez de `(instance, jid)` — para que dos organizaciones
-registren el mismo contacto sin colisión.
+`leads` y `wsp_messages` siguen excluidas de autogenerate por `EXTERNAL_TABLES`
+en [alembic/env.py](../backend/alembic/env.py): requieren revisiones explícitas.
+Los comentarios sobre escrituras directas de n8n son históricos; quitar el filtro
+a ciegas puede proponer borrar columnas reales no mapeadas.
 
-**Punto nuevo a verificar antes de diseñar el scoping de identidad**: buena
-parte de la complejidad actual (`whatsapp_identity_service`, `lead_merge`)
-existe por cómo Baileys/Evolution expone un LID distinto del JID telefónico.
-No hay confirmación en este repo de si Meta Cloud API tiene un problema
-equivalente (Meta identifica los chats por `wa_id`, generalmente el número en
-formato E.164) o si ese problema se reduce al retirar Evolution. **No asumir
-que `whatsapp_identity_service` deja de hacer falta sin revisar primero un
-payload real de webhook de Meta.**
+## 2. Invariantes
 
-### 3.3 Aislamiento (defensa en profundidad)
-Dos capas, de menor a mayor garantía:
+1. Toda fila de negocio tiene una organización obligatoria e inmutable. Se
+   conservan UUID/bigint actuales; conocer un ID no autoriza su acceso.
+2. `TenantContext` es obligatorio y procede de sesión validada, integración
+   autenticada o job persistido. No de un `organization_id` elegido por el cliente.
+3. Las referencias entre filas pertenecen a la misma org, incluso para admins.
+   Admin de organización no es operador de plataforma.
+4. No hay fallback silencioso a la org inicial, credenciales WhatsApp globales
+   ni búsquedas en todas las organizaciones.
+5. Jobs y eventos retienen dueño/conexión durante reintentos, pausas y rotación
+   de credenciales. Suspender una org revoca acceso y detiene nuevos efectos
+   externos. Los eventos entrantes se rechazan/reintentan o retienen de forma
+   duradera según contrato; nunca se reasignan a otra org.
+6. Las etapas preparatorias mantienen una sola org habilitada. Extraer funciones
+   o añadir columnas no certifica aislamiento.
 
-1. **Scoping obligatorio en la app**, implementado como un `TenantContext`
-   resuelto por un `Depends` de FastAPI a partir de la sesión/JWT, propagado
-   explícitamente a los servicios de caso de uso, y **exigido por la capa de
-   repositorios** (§3.8) — no por convención en cada función suelta. Cubierto
-   con tests que fallan si un endpoint devuelve datos de otra organización.
-2. **Row-Level Security de PostgreSQL (hardening)**, con políticas por
-   `current_setting('app.current_org')`. Va después del scoping de
-   aplicación, como red de seguridad si un query se escapa.
+## 3. Modelo de datos
 
-### 3.4 Proveedor de WhatsApp por organización
+### 3.1 Organizaciones, usuarios y conexiones
 
-Con la migración a Meta Cloud API confirmada como destino, este punto cambia
-de forma respecto al plan original:
+Crear `organizations(id UUID, name, status, created_at, ...)` y
+`users.organization_id NOT NULL`. Primera versión: un usuario pertenece a una org;
+conservar email globalmente único para mantener inequívoco el login por email.
+Si se necesita pertenencia múltiple, diseñar `organization_memberships` y selección
+de org ligada a sesión antes de cambiar esa regla.
 
-- **Objetivo**: cada organización tiene un `phone_number_id` de WhatsApp
-  Business Platform (posiblemente bajo un único Business Manager "tech
-  provider", posiblemente uno por cliente — a decidir en §3.7). Se guarda por
-  organización: `phone_number_id`, token de acceso (o referencia al System
-  User), y estado de conexión. **No hay instancia de servidor por
-  organización** — a diferencia de Evolution, sumar una org no consume un
-  proceso ni una sesión de Baileys.
-- **Evolution como puente, no como destino final.** Mientras convivan
-  clientes ya conectados por QR, el modelo de "una instancia por org" del
-  plan original sigue siendo válido *para esos clientes legacy*, con el
-  riesgo ya señalado (recursos de servidor por instancia). No conviene
-  invertir en generalizar ese modelo si el rumbo es abandonarlo.
-- **`EvolutionClient`/`MetaClient` instanciables** (§3.8.3) son el
-  prerrequisito técnico común a ambos casos: sin esto, no hay forma de que
-  `message_outbox` sepa con qué credencial/proveedor enviar según la
-  organización del job.
+Crear `whatsapp_connections` con ID estable, `organization_id`, proveedor,
+`phone_number_id`, `waba_id`, referencia a secreto cifrado, versión de credencial,
+estado y fechas. Índice parcial: máximo una conexión activa por org. Reservar cada
+`phone_number_id` a una sola org; no reasignarlo sin procedimiento explícito de
+transferencia. Conservar conexiones históricas para jobs y webhooks tardíos.
 
-### 3.5 Ruteo en n8n
+Comprobar que token, WABA y número realmente corresponden y que la conexión no
+pertenece a otra org. No confiar en IDs enviados por el navegador. Para esta
+primera versión no compartir WABA entre organizaciones: las plantillas se gestionan
+por WABA y ese caso necesita reglas adicionales. La app Meta de plataforma puede
+ser compartida.
 
-Actualizado: n8n **no** necesita escribir `organization_id` en ningún INSERT
-propio, porque ya no hace ningún INSERT — pero sí necesita **mandar el dato
-que permite resolverlo** en cada llamada a `/api/webhooks/*`, y hoy no lo
-hace (el único campo parecido, `"instance"`, está hardcodeado a
-`"dermicapro-business"` para un propósito distinto, ruteo de entorno).
+### 3.2 Inventario completo del ORM
 
-Camino recomendado, en orden de preferencia:
+[db/models.py](../backend/db/models.py) declara **33 tablas** en el árbol auditado.
+El plan anterior usaba nombres genéricos incorrectos: `tags`, `internal_notes`,
+`notifications` y `media_library`.
 
-1. Si el mensaje llega originado en Meta Cloud API, el payload de Meta ya
-   trae `phone_number_id` en cada webhook (`entry[].changes[].value.metadata.phone_number_id`).
-   n8n lo reenvía tal cual en el body a `/api/webhooks/*`; el backend resuelve
-   `phone_number_id → organization_id` con una tabla de mapeo propia. n8n no
-   necesita saber nada de organizaciones.
-2. Mientras Evolution siga viva, el nombre de instancia de Evolution cumple
-   el mismo rol (`instance → organization_id`), y es exactamente el campo
-   `"instance"` que `rag.json` ya transporta hoy, solo que hay que dejar de
-   hardcodearlo y generalizar el mapeo en el backend en vez de en n8n.
+| Tablas actuales | Propiedad/origen para backfill |
+|---|---|
+| `users` | Organización inicial; roles y protección del último admin por org |
+| `auth_sessions`, `trusted_devices` | Usuario; preservar hashes, rotación, expiración y revocación |
+| `leads`, `whatsapp_identities`, `wsp_ad` | Lead y conexión; anuncios sin lead requieren asignación explícita |
+| `wsp_messages`, `message_outbox`, `scheduled_messages` | Mensaje por lead; outbox por mensaje y lead coincidentes; programados por lead/creador |
+| `lead_tags`, `lead_services`, `template_categories` | Catálogos de la org inicial, sin compartir implícitamente |
+| `lead_tag_assignments`, `lead_activity`, `lead_tasks` | Lead y todos los usuarios/tags referenciados de la misma org |
+| `lead_notes`, `lead_note_mentions` | Lead/nota y autor/usuario mencionado de la misma org |
+| `user_notifications`, `push_subscriptions` | Destinatario/propietario; validar también referencias del payload |
+| `issue_reports`, `issue_report_attachments`, `issue_report_comments`, `issue_report_events` | Reporte y actores; acceso de soporte de plataforma separado y auditado |
+| `appointments` | Creador y org del flujo externo, incluidos registros fallidos o duplicados |
+| `message_templates`, `template_attachments`, `template_user_state`, `media_assets` | Plantilla/creador, adjunto/asset y usuario; `visibility='global'` significa toda la org |
+| `automation_rules`, `automation_flow_versions`, `automation_round_robin_state`, `automation_executions` | Regla y referencias; versiones, contadores y ejecuciones sin lead también tienen dueño |
+| `app_settings` | Separar plataforma y `organization_settings`; no renombrar toda la tabla |
 
-Esto reduce el riesgo original de "coordinar el esquema de tablas externas
-con n8n" a "coordinar qué campo de identificación de proveedor viaja en el
-body" — mucho más chico, y no requiere que n8n conozca el modelo de datos de
-la app.
+Añadir `organization_id` explícito a las 32 tablas distintas de `app_settings`,
+incluidas hijas, para políticas y consultas verificables. La autenticación necesita
+un lookup acotado anterior al contexto tenant (§4.1 y §4.7).
 
-### 3.6 Tiempo real y workers
-- **WebSocket por organización.** Deja de ser un broadcast global: se agrupa
-  por org y se emite solo a esa organización.
-- **Workers por organización.** Los watchers leen `organization_id` de la
-  fila que reclaman (la mayoría ya usa `FOR UPDATE SKIP LOCKED` fila por
-  fila, así que esto es barato) y lo propagan a lo que emiten. La excepción
-  es `chat_watcher`, que no es parametrizable tal cual y hay que reescribirlo
-  (calcula una firma y "el último mensaje" sobre toda la tabla, no por chat
-  ni por org).
+Inventariar además tablas, índices, funciones, triggers y columnas reales fuera del
+ORM, incluidos `n8n_*`, históricos y backups. No cambiar tablas ajenas automáticamente.
+Si contienen contexto activo de clientes, definir su aislamiento antes del segundo
+tenant; estos JSON no auditan toda la instalación de n8n.
 
-Esta sección se implementa en la práctica como el **event bus interno**
-(§3.8.2): en vez de tocar los ~15 call sites de `manager.broadcast(...)` uno
-por uno para agregarles un filtro de org, se centraliza la emisión en un solo
-punto que ya conoce el `TenantContext`.
+### 3.3 Integridad entre organizaciones
 
-### 3.7 Onboarding / signup
+Mantener PK actuales y crear claves únicas adicionales `(organization_id, id)`
+en padres. Usar FK compuestas, por ejemplo:
 
-Punto abierto, y más abierto que en la versión original del plan porque ya no
-se puede asumir QR:
+```text
+wsp_messages(organization_id, chat_id) -> leads(organization_id, id)
+lead_tasks(organization_id, assigned_user_id) -> users(organization_id, id)
+lead_tag_assignments(organization_id, tag_id) -> lead_tags(organization_id, id)
+message_outbox(organization_id, message_id) -> wsp_messages(organization_id, id)
+```
 
-- **Si el proveedor final es Meta Cloud API**, el onboarding estándar para
-  una plataforma que conecta números de terceros es **Embedded Signup**
-  (OAuth de Meta for Business + verificación de negocio + tokens de System
-  User, típicamente bajo el rol de "Tech Provider" o similar en Meta). Es un
-  flujo bastante distinto al QR: depende de aprobación/verificación de Meta,
-  no solo de código propio. **Esto es una dependencia de producto y de
-  plazos de Meta, no solo de arquitectura — investigar y timeboxear aparte,
-  antes de comprometer fechas del pivot.**
-- **Mientras tanto**, el flujo QR ya construido se puede seguir usando para
-  clientes que se conecten vía Evolution, y convive con Embedded Signup para
-  los que se conecten vía Meta — dos caminos de onboarding en paralelo
-  durante la transición, no una decisión de "todo o nada".
-- El alta crea `organization` + primer usuario admin de esa org. Reemplaza
-  el seed único `ADMIN_EMAIL`/`ADMIN_PASSWORD`.
-- Billing, planes y límites: etapa final, no bloquean el resto.
+Aplicarlo también a menciones, adjuntos, actores, plantillas, reglas, versiones,
+sesiones y dispositivos. En outbox comprobar además que `message_id` y `chat_id`
+identifican el mismo chat; dos FK independientes no garantizan eso. Auditar
+`ON DELETE`: un `SET NULL` compuesto no debe anular `organization_id`; anular solo
+la referencia opcional o usar borrado lógico según la relación.
 
-### 3.8 Costuras internas de arquitectura (prerrequisito técnico)
+IDs guardados en JSON (payload, acciones, condiciones, versiones de flujos,
+resultados y notificaciones) no quedan protegidos por FK. Validarlos al guardar y
+al ejecutar, incluyendo forward e invocación de otros flujos. Fusiones y
+reasignaciones de leads nunca cruzan organizaciones.
 
-Tomado de `docs/analisis/03-arquitectura-y-flujo-de-eventos.md` §A.7: no son
-un proyecto aparte del pivot SaaS, son lo que hace que el pivot sea acotado
-en vez de "tocar todo el backend". Sin esto, la Etapa 1 de la sección 4 no
-tiene dónde apoyarse.
+### 3.4 Unicidades, deduplicación e índices
 
-1. **Repositorios + `TenantContext`.** `db_service.py` y los ~8 servicios que
-   abren sesión propia (`message_outbox`, `scheduled_message_service`,
-   `automation_service`, `notification_service`, `productivity_service`,
-   `internal_notes_service`, `media_library_service`, `settings_service`) se
-   parten por agregado: `repositories/{chats,leads,tags,users,automations,...}.py`.
-   Cada método de repositorio exige `organization_id` como parámetro — no
-   opcional, no con default. Es mecánico y con alto volumen, pero de bajo
-   riesgo porque los tests actuales ya cubren el comportamiento.
-2. **Event bus interno.** Reemplaza los ~15 `manager.broadcast(...)`
-   dispersos por `bus.publish(ChatUpdated(org_id=..., chat_id=..., reason=...))`.
-   El transporte (in-memory hoy, Redis pub/sub o `LISTEN/NOTIFY` mañana) queda
-   detrás de una interfaz. Resuelve a la vez: el filtrado por organización
-   (§3.6), el problema ya existente de que blue-green corre dos backends que
-   no se enteran entre sí, y el contrato implícito de `chats_updated` (~15
-   variantes de `reason` como string libre, consumidas por un switch gigante
-   en el frontend).
-3. **Clientes de proveedor instanciables.** `evolution_service.py` y
-   `meta_service.py` pasan de módulos con config global (`_http_client`,
-   `_config()` resolviendo una única instancia) a clases instanciadas por
-   organización: `MetaClient(phone_number_id, token)`,
-   `EvolutionClient(url, api_key, instance)`. `message_outbox` construye el
-   cliente correcto a partir del `organization_id` del job. Nota: la
-   migración a Meta ya tuvo la oportunidad de introducir este patrón y no lo
-   hizo — `meta_service.py` repite el mismo molde de singleton que
-   `evolution_service.py`. Conviene resolverlo ahora, antes de que el resto
-   del backend dependa aún más de la forma actual.
+| Restricción actual | Cambio |
+|---|---|
+| `leads.remote_jid` único global | `(organization_id, remote_jid)` |
+| `whatsapp_identities(instance, jid)` | `(organization_id, instance, jid)` durante compatibilidad; `instance` mapea a conexión propia y no autoriza acceso |
+| `idx_wsp_messages_wa_message_id` | UNIQUE `(organization_id, wa_message_id)` manteniendo `WHERE wa_message_id IS NOT NULL` |
+| `uq_message_outbox_dedupe_key` | UNIQUE `(organization_id, dedupe_key)`; adaptar inserción, conflicto y recuperación |
+| Nombres de `lead_tags`, `lead_services`, `template_categories` | Unicidad por org de `name` y `lower(name)`; retirar también UNIQUE globales de columna |
+| Shortcuts de `message_templates` | Global: `(organization_id, lower(shortcut))`; personal: `(organization_id, created_by_user_id, lower(shortcut))`, conservando predicados parciales |
+| Plantillas oficiales | Importación/sync por org y WABA/conexión; definir dedupe por ID Meta o nombre/idioma y sanear duplicados antes de imponerlo |
+| Outbox por mensaje, versión por regla y otras claves internas | Conservar unicidades basadas en IDs globalmente únicos; añadir integridad tenant |
 
-## 4. Plan por etapas
+Hashes de sesión/dispositivo, email y endpoint push no deben perder unicidad global
+por sustitución mecánica. Las URLs de objetos pueden seguir siendo únicas; su
+autorización depende de su dueño.
 
-Fusiona las etapas del plan original con las costuras de §3.8, en el orden
-que minimiza riesgo (cada etapa es desplegable sola sin cambiar el
-comportamiento observable, salvo donde se indica).
+Actualizar junto al índice búsquedas por `wa_message_id`, `ON CONFLICT`, recuperación
+tras `IntegrityError`, reconciliación de ecos, estados, reacciones, citas y dedupe
+de lotes. `store/messages.py` hoy recupera duplicados sin org: cambiar solo el índice
+haría ambigua la consulta. Separar lotes por conexión/org **antes** de deduplicar.
 
-| # | Etapa | Alcance | Resultado | Riesgo |
-|---|---|---|---|---|
-| 0a | **Event bus + realtime fuera de proceso** | `ws_manager`, los ~15 call sites de broadcast, `_wake`/`_wakeup` in-process | Arregla algo que **ya está roto hoy** (blue-green no propaga broadcasts entre colores). Deja la costura donde después entra el filtro por org. No requiere tocar el esquema. | Bajo-Medio |
-| 0b | **Repositorios por agregado** | `db_service.py` → `repositories/{chats,leads,tags,users,automations}.py`; los 8 servicios con sesión propia | Sin esto, el scoping de la Etapa 2 no tiene dónde apoyarse. Cubierto por los tests existentes. | Bajo (alto volumen) |
-| 0c | **Clientes de proveedor instanciables** | `evolution_service.py`, `meta_service.py`, `message_outbox`, `automation_deps`, `whatsapp.py` | Prerrequisito de "credencial por organización" tanto para Meta como para Evolution legacy. Se puede hacer ya con un único cliente global construido desde settings, sin esperar a tener organizaciones reales. | Bajo |
-| 1 | **Fundaciones multi-tenant** | Tabla `organizations`; `users.organization_id`; sesión/JWT con `org_id`; "organización por defecto" + backfill de todo lo existente | Sin cambio de comportamiento: sigue habiendo una sola org. `TenantContext` ya tiene a quién dárselo (repositorios de la 0b). | Bajo |
-| 2 | **Scoping de datos** | `organization_id` en todas las tablas de negocio (backfill) + cada repositorio exige org_id + tests de aislamiento | Aislamiento real a nivel app. Es el grueso del trabajo. Con 0a-0c-1 hechas, la superficie de auditoría baja de "todo el backend" a "los repositorios". | **Alto** |
-| 2b | **Unicidad de `wsp_messages.wa_message_id` a `(organization_id, wa_message_id)`** | migración | Sin esto, un mensaje de la organización B puede rechazarse como "duplicado" del de la organización A (el índice único hoy es global). Debe ir en la misma ventana que la Etapa 2. | Alto |
-| 3 | **Proveedor por organización** | `phone_number_id`/instancia + credencial por org; para Meta: tabla de mapeo `phone_number_id → organization_id`; para Evolution legacy: mapeo `instance → organization_id` (reemplaza el `"dermicapro-business"` hardcodeado de `rag.json`) | Cada organización manda/recibe por su propio número. | Medio |
-| 4 | **Onboarding** | Embedded Signup de Meta (o QR para clientes legacy de Evolution, en paralelo) | Alta de organización autoservicio. Depende de investigación/aprobación de Meta — no bloquea las etapas anteriores. | Medio-Alto (dependencia externa) |
-| 5 | **Workers con contexto de org** | Los 5 watchers leen `organization_id` de la fila reclamada; reescribir `chat_watcher` (no es parametrizable, hay que rehacerlo) | El outbox y `scheduled_messages` ya reclaman fila por fila, así que solo necesitan propagar el dato. | Medio |
-| 6 | **`app_settings` por organización + RLS como red de seguridad** | `app_settings` → `organization_settings`; políticas RLS | Config de proveedor y de IA por org. RLS al final, como hardening. | Medio-Alto |
-| 7 | **Signup + billing** | Planes, límites, facturación | Producto SaaS vendible. | Medio |
+Incluir org en índices de listas, búsqueda, kanban, asignación y vencimientos,
+conservando orden/predicados. Medir planes de consulta en copia representativa;
+no duplicar todos los índices por rutina.
 
-## 5. Riesgos y decisiones abiertas
+## 4. Adaptación de los flujos
 
-- ~~Fuga entre tenants por escritura directa de n8n~~ — **resuelto**: n8n ya
-  no escribe en la base (§2). El riesgo de fuga que queda es el de siempre en
-  cualquier query de la app sin filtrar por org; se mitiga con la capa de
-  repositorios obligatoria (§3.8.1) + tests, y RLS como hardening.
-- **Dependencia de Embedded Signup de Meta para el onboarding real.** No es
-  código propio: depende de la verificación de negocio y del rol de "tech
-  provider" en Meta for Developers. Investigar el proceso y los plazos antes
-  de prometer fecha de lanzamiento del signup autoservicio.
-- **`wsp_messages.wa_message_id` con UNIQUE global** (Etapa 2b) — si se
-  migra el esquema sin corregir este índice a la vez, un mensaje de una
-  organización puede perderse silenciosamente por chocar con el de otra.
-- **`chat_watcher` no se parametriza, se reescribe.** Calcula una firma y "el
-  último mensaje" sobre toda la tabla; no hay forma de agregarle un `WHERE
-  organization_id = ...` y que siga teniendo sentido tal como está diseñado.
-- **Identidad LID/JID bajo Meta Cloud API: sin verificar.** Ver §3.2. No
-  asumir que se simplifica sin confirmarlo contra un payload real.
-- **Superficie de la Etapa 2 sigue siendo grande** aun con repositorios: es
-  la migración de esquema con backfill sobre tablas con datos reales de
-  clientes. Alto riesgo por definición, se mitiga con tests de aislamiento
-  específicos (un test que falla si un endpoint devuelve datos de otra
-  organización), no solo con los tests funcionales existentes.
-- **Evolution no desaparece de un día para el otro.** Mientras haya clientes
-  conectados por QR, las Etapas 3 y 5 tienen que soportar los dos proveedores
-  a la vez (Meta y Evolution), no solo Meta.
+### 4.1 Sesión, servicios y permisos
 
-## 6. Qué NO cambia
+Extender `get_current_user` con `TenantContext` validando sesión, usuario y org
+activos. El bootstrap solo lee por token hasheado y devuelve contexto mínimo;
+no entrega una sesión SQL global reutilizable por routers de negocio.
 
-- El patrón de settings (DB cifrada > `.env`) y la mayoría de la UI de
-  leads/mensajes se conservan; lo que cambia por debajo es el *scope* de las
-  consultas y quién resuelve la credencial de envío.
-- El outbox transaccional (insertar el mensaje y su job de envío en la misma
-  transacción) y las esperas durables de automatizaciones no cambian: son
-  correctos independientemente del proveedor o del multi-tenant.
-- El flujo de QR/estado de conexión de Evolution se reutiliza para los
-  clientes que sigan en ese proveedor durante la transición.
+Exigir contexto en `services/store/*` y servicios con sesiones propias: tareas,
+notas, plantillas/categorías, medios, automatizaciones, outbox, programados,
+settings, dashboard, citas, reportes, notificaciones/push, identidades y asignación.
+Compartir sesión/unidad de trabajo para operaciones atómicas. Las pruebas actuales
+con dobles no sustituyen pruebas de DB/API con dos orgs.
 
-## 7. Próximo paso sugerido
+Filtrar lecturas, escrituras, agregados, subconsultas, joins y SQL crudo. Validar
+IDs relacionados antes de mutar/enviar y responder sin revelar datos ajenos.
+La protección del último admin y `lead_assignment.py` se calculan por org.
+El seed `ADMIN_EMAIL`/`ADMIN_PASSWORD` queda limitado al bootstrap inicial;
+no crea admins globales ni vuelve a poblar otras organizaciones.
 
-Arrancar por las **Etapas 0a-0c** (event bus, repositorios, clientes
-instanciables). A diferencia del plan original, esto ya no es "antes de
-empezar el pivot" sino la forma correcta de empezarlo: son cambios de bajo
-riesgo, no requieren decidir todavía nada sobre Embedded Signup ni sobre
-cuándo se apaga Evolution, y son exactamente lo que le falta a la Etapa 2
-(scoping) para no volverse una auditoría de todo el backend. En paralelo,
-conviene abrir la investigación de Embedded Signup de Meta (Etapa 4) cuanto
-antes, porque es la única etapa de este plan con una dependencia externa que
-no controlás vos.
+Invalidar cachés de sesión entre réplicas al revocar usuarios, sesiones u orgs y
+cerrar sus WebSocket. Cambiar de org a un usuario activo no es una edición ordinaria:
+requiere revocación y revisión de relaciones.
+
+### 4.2 Settings, credenciales y canal
+
+Conservar `app_settings` para plataforma, con acceso exclusivo del operador:
+app Meta, infraestructura, cifrado y valores explícitamente compartidos. Crear
+`organization_settings` con PK `(organization_id, key)`. WhatsApp se resuelve desde
+`whatsapp_connections`, con una sola fuente de verdad para número y credenciales.
+
+Clasificar n8n, citas y ElevenLabs según contrato de producto: compartir un servicio
+no permite compartir datos, destinos ni autorización. `/api/settings` no debe
+exponer/modificar secretos de plataforma para un admin de org. Preservar cifrado
+DB y ocultación de secretos en respuestas.
+
+Eliminar fallback `.env` para token, WABA y número de otras orgs: importar valores
+efectivos legacy **una vez** a la org inicial. Una org nueva sin conexión falla por
+configuración ausente. Cachés por org/conexión/versión de credencial/clave según
+corresponda, con invalidación entre réplicas; el diccionario global actual no sirve.
+
+Reutilizar `WhatsAppChannel` mediante fábrica con contexto. El pool HTTP puede
+compartirse si no muta headers/autorización globales. Cubrir envío, lectura,
+reacciones, medios, plantillas e historial. `EvolutionHistoryReader` aún figura en
+el canal Meta: retirarlo o acotarlo a conexiones legacy comprobadas, sin fallback
+a credenciales Evolution globales para cualquier org.
+
+El signup existente guarda hoy tres claves globales. Adaptarlo a un intento ligado
+a sesión/admin/org, de uso único, resultado verificado y persistencia sin sobrescribir
+otra conexión. Mantener estado pendiente hasta completar verificación/ruteo. Los
+permisos reales de Meta se comprueban en el entorno; tener código no los acredita.
+
+### 4.3 n8n, webhooks e identidad
+
+El workflow Meta recorre `entry`, `changes`, mensajes y estados, pero **no conserva
+`phone_number_id`**: el texto no aparece en el JSON actual. La identidad usa una
+instancia sintética fija. `rag.json` contiene `dermicapro-business`, y callbacks de
+estados/borrados carecen de contexto. Añadir columnas al backend no basta.
+
+Definir contrato versionado con conexión, tipo/ID de evento, correlación y payload.
+Preservar el `phone_number_id` original por elemento de Meta y separar lotes de
+varios números. El backend resuelve org desde su registro. Eventos a nivel WABA,
+como plantillas, requieren ruteo por WABA, no un número inventado.
+
+El dato de ruteo **no autentica**. Verificar autenticidad del proveedor en la frontera
+pública antes de normalizar; el handshake del webhook no autentica cada POST.
+Entre n8n y backend usar credencial de integración con conexiones permitidas o
+una envoltura firmada verificable. Si se conserva token compartido de orquestador,
+será exclusivamente de plataforma y su permiso global será explícito; nunca se
+entrega a clientes. Validar coincidencia de conexión, recurso y credencial. Eventos
+sin ruteo, desconocidos o ambiguos se rechazan o retienen para revisión, sin fallback
+ni éxito que los descarte silenciosamente.
+
+Propagar contexto a todos los endpoints de `routers/webhooks/*`, incluidas lecturas
+raw, identidad, ensure-lead, historial, duplicados, análisis, estado, reacciones,
+outgoing, medios, etapas y callbacks tardíos. También `/api/media/upload`, sugerencias
+IA y citas en ambos sentidos. Auditar `/api/public/catalog`, llamado por `rag.json`:
+la URL no demuestra que exista un catálogo público tenant-aware en este backend.
+Aislar memorias IA, cachés, archivos y destinos externos compartidos por org.
+
+Conservar alias LID/JID históricos. En [whatsapp_connection.py](../backend/services/whatsapp_connection.py),
+`ANY_CONNECTION='*'` y `connection_scope() == None` no pueden saltarse el filtro de
+org: `*` solo abarca conexiones de esa org; conexión ausente nunca habilita búsqueda
+global. Teléfono, JID e ID de mensaje no sirven para deducir una organización.
+
+Ensayar workflows con fixtures de mensajes, estados, reacciones, medios, ecos y
+reintentos. Compatibilidad sin ruteo solo durante la fase de una org, mediante
+adaptador explícito ligado a la credencial inicial. Retirarlo antes del segundo
+tenant y conservar la versión de workflow necesaria para revertir esa fase.
+
+### 4.4 Jobs, automatizaciones y recuperación
+
+Todo job lleva `organization_id`; envíos también `connection_id` estable. Reclamar
+con aislamiento y `FOR UPDATE SKIP LOCKED` donde corresponda, conservando atomicidad
+mensaje + outbox y leases/reintentos. Al ejecutar, revalidar org/conexión; rotar token
+no permite cambiar el número de un job. Suspender conexión detiene/reprograma
+pendientes explícitamente.
+
+Para RLS: enumerador de orgs activas obtiene solo IDs; workers abren transacción
+scoped y reclaman por org. No conceder `BYPASSRLS` general para recorrer una cola
+global. Añadir equidad, límites por org y pruebas concurrentes.
+
+Cubrir outbox, programados, `automation_scheduling`, `automations/*`, recordatorios,
+notificaciones/push y mantenimiento. Contadores, reglas, reparto de vendedores,
+esperas durables, invocaciones y reanudación retienen contexto. Recordatorios
+personales exigen org y destinatario, no broadcast a toda la org.
+
+El watcher ya procesa lotes, pero el cursor por `sent_at` vive en memoria y al
+arrancar toma el último mensaje. No recupera inserciones tardías anteriores al
+cursor ni trabajo omitido durante reinicio. Para acciones recuperables, persistir
+evento pendiente en la transacción del mensaje y consumir con idempotencia. No
+sustituir por `MAX(id)` suponiendo orden de commit. Puede conservarse polling por
+org para resincronizar UI. Webhook y watcher no deben duplicar automatizaciones.
+
+### 4.5 Tiempo real y navegador
+
+Registrar sockets por `(organization_id, user_id, session_id)`. Extender enums con
+sobre versionado (`event_id`, `organization_id`, tipo, recurso, destinatario
+opcional) y publicar después del commit. Mantener outbox de mensajes para envíos;
+para eventos de dominio durables usar cola/tabla separada.
+
+Probar transporte entre réplicas. Con RabbitMQ cada réplica debe recibir eventos
+para sus sockets; una cola con consumidores competidores no hace fanout a todas.
+Redis pub/sub o `LISTEN/NOTIFY` requieren recuperación por consulta y no reemplazan
+una cola durable. El bus en memoria solo cubre una instancia. `_wake`/`_wakeup`
+son optimizaciones locales; polling/reintentos deben recuperar trabajo en otra réplica.
+
+Claves de React Query como `['chats', ...]` y `['chat', id]` no incluyen org.
+Añadirla a datos de negocio; cerrar sockets, cancelar solicitudes y limpiar estado
+al salir/cambiar sesión. Revisar almacenamiento local y push en dispositivos
+compartidos: respuestas tardías de A no pueden repoblar la sesión B.
+
+### 4.6 Archivos privados
+
+`main.py` exige sesión para `/media/{filename}`, pero `routers/media.py` busca por
+nombre sin comprobar org. Bucket privado y nombres aleatorios no aíslan usuarios
+autenticados de organizaciones distintas.
+
+Registrar dueño de cada objeto: mensajes, biblioteca, adjuntos de plantillas/reportes,
+TTS, uploads n8n y comprobantes. `media_assets` es biblioteca, no un inventario de
+todos los archivos. Crear registro de propiedad o ampliar explícitamente el modelo,
+incluidos uploads todavía sin mensaje.
+
+Autorizar GET, HEAD, Range, descarga, reutilización, forward, borrado y lectura
+interna antes de acceder a disco/MinIO. Prefijos por org para objetos nuevos;
+URLs históricas mediante mapeo autorizado, sin obligar a mover archivos en el
+primer despliegue. Backfill por referencias y reporte de huérfanos, sin adivinar dueño.
+Cachés HTTP y URLs firmadas, si se usan, deben respetar el aislamiento/revocación.
+
+### 4.7 RLS y pool de conexiones
+
+Activar RLS antes del lanzamiento multi-tenant como segunda barrera. Runtime sin
+superusuario, propiedad de tablas ni `BYPASSRLS`; rol de migraciones separado.
+Aplicar `ENABLE` y `FORCE ROW LEVEL SECURITY` a tablas tenant con `USING` y
+`WITH CHECK`. Superusuarios/BYPASSRLS eluden políticas; FK/UNICIDAD tampoco están
+sujetas a RLS, por lo que siguen siendo necesarias las FK compuestas.
+[PostgreSQL 16: políticas de filas](https://www.postgresql.org/docs/16/ddl-rowsecurity.html).
+
+En cada transacción, antes de consultar negocio, usar contexto validado y
+`set_config('app.current_org', :org_id, true)`: el tercer argumento limita el ajuste
+a la transacción. No dejar `SET` persistente en una conexión del pool.
+[Funciones de configuración](https://www.postgresql.org/docs/16/functions-admin.html).
+
+Predicado propuesto para columna UUID:
+
+```sql
+organization_id = NULLIF(current_setting('app.current_org', true), '')::uuid
+```
+
+Sin contexto válido no hay acceso a filas; la app rechaza antes de consultar.
+Cada nueva sesión/transacción lo establece de nuevo. No compartir `AsyncSession`
+entre tareas concurrentes u orgs.
+
+Bootstrap de sesión, ruteo de integración y enumeración de orgs requieren
+funciones/roles acotados, mínimos y auditados, separados del acceso de negocio.
+No crear política global permisiva para arreglar login ni conceder bypass a todo
+el backend. RLS con contexto establecido por la app cubre consultas olvidadas,
+no una app comprometida que puede elegir deliberadamente otro contexto.
+
+## 5. Secuencia y condiciones de salida
+
+Las etapas 1–5 mantienen una sola org en producción; no son multi-tenant parcial.
+
+| Etapa | Entrega | Condición para continuar |
+|---|---|---|
+| 0. Consolidar base | Resolver rebase en su trabajo correspondiente, regularizar Alembic/SQL 031, inventariar esquema y workflows reales | Sin conflictos, una head, checks backend/frontend pasan y backup restaurado en ensayo |
+| 1. Expandir | Organizaciones, conexiones, settings por org, columnas nullable y `TenantContext` sobre capas actuales | Release de compatibilidad que opera la org inicial y escribe dueño en datos nuevos |
+| 2. Backfill y contratos | Históricos, propiedad de archivos, nuevas FK/índices y contratos n8n/Meta | Sin filas sin dueño ni referencias cruzadas; conteos conciliados y ruteo inequívoco |
+| 3. Aislamiento completo | API, servicios, sesión, settings/canales, archivos, navegador, jobs y eventos | Dos orgs en pruebas sin lecturas, escrituras, envíos o notificaciones cruzadas |
+| 4. Endurecer | NOT NULL, unicidades tenant, RLS y retiro de fallbacks | Sin contexto falla; rol real y pool reutilizado pasan pruebas |
+| 5. Ensayo operativo | Blue-green, fanout, recuperación, latencia y reversión | Versiones de la ventana compatibles; sin procesos antiguos sin scope |
+| 6. Piloto | Segunda org y signup adaptado | Criterios §7 completos; monitoreo por org y rollback tenant-aware |
+| 7. Autoservicio | Registro, invitaciones, planes, límites y billing | Alta/baja idempotentes sin romper aislamiento ni pendientes |
+
+### 5.1 Expandir → rellenar → restringir
+
+1. **Ensayar con copia restaurada**, revisión Alembic, distribución de filas,
+   volumen, índices y multimedia. Confirmar pertenencia a la org inicial; un
+   nombre de instancia no prueba propiedad si hay varias fuentes históricas.
+2. **Expandir con Alembic**: UUID inicial estable, creación idempotente, tablas
+   nuevas y columnas nullable. No SQL manual de `backend/migrations/` ni fijar
+   revisión padre antes de cerrar etapa 0.
+3. **Cubrir escrituras concurrentes** de API, workers y workflows. Mientras
+   conviva código anterior, usar mantenimiento o default/trigger temporal limitado
+   a la org inicial. Debe retirarse antes de la segunda org. Nullable por sí solo
+   no cubre escrituras viejas.
+4. **Backfill reanudable por lotes**, padres primero y después hijos. Derivar org,
+   comparar todos los padres y detenerse ante discrepancias. Asignar explícitamente
+   filas sin padre y settings. Actualizar pendientes y registrar progreso/conteos/
+   errores sin secretos. Evitar transacción masiva sobre mensajes.
+5. **Construir/validar índices y FK** antes de retirar los anteriores. Prever locks,
+   `lock_timeout`, espacio y recuperación. En tablas grandes evaluar índices
+   concurrentes: `CREATE INDEX CONCURRENTLY` no funciona dentro de transacción y
+   puede dejar índice inválido al fallar. El runner usa `engine.begin()` con
+   advisory lock: diseñar/probar esa frontera transaccional y conservar exclusión
+   entre migradores antes de incluir tal DDL.
+   [CREATE INDEX en PostgreSQL 16](https://www.postgresql.org/docs/16/sql-createindex.html).
+6. **Conciliar con tráfico nuevo**: segunda pasada de nulos, conteos por tabla/org,
+   relaciones, jobs activos/pausados/fallidos, medios y payloads históricos.
+   Aplicar NOT NULL, FK validadas y políticas.
+7. **Retirar compatibilidad**: unicidades globales de negocio, fallbacks, defaults
+   temporales y productores anteriores. Actualizar dedupe antes de permitir
+   colisiones entre orgs. Probar upgrade, instalación nueva y reanudación.
+
+### 5.2 Blue-green y reversión
+
+[deploy-bluegreen.sh](../scripts/deploy-bluegreen.sh) migra la DB compartida antes
+de levantar el color nuevo. El swap **no revierte esquema**; el color viejo puede
+seguir ejecutando jobs. Código sin scope no puede coexistir con datos de una
+segunda org.
+
+Durante expansión solo se vuelve a la release de compatibilidad probada con una
+org y esquema expandido. Antes de endurecer columnas/retirar índices, verificar
+ambas versiones de la ventana. Antes del piloto, drenar/detener procesos viejos,
+incluidos workers, y dejar como versión anterior una release con aislamiento completo.
+
+Después de crear la segunda org, **prohibido volver al binario single-tenant** o
+eliminar `organization_id` mediante downgrade. Ante incidente: deshabilitar altas
+y efectos externos afectados, conservar jobs/eventos y corregir o volver a una
+release tenant-aware compatible. Restauración de backup es recuperación de desastre
+coordinada con replay posterior; puede perder escrituras recientes y no es rollback
+ordinario. Ensayarla antes del corte.
+
+## 6. Pruebas de aceptación
+
+Usar PostgreSQL 16, familia configurada en `compose.db.yml`, dos orgs A/B,
+credenciales ficticias distintas y claves externas iguales deliberadamente.
+Dobles de proveedor evitan WhatsApps reales; integración real comprueba SQL, FK,
+RLS, concurrencia y rutas. Ampliar tests existentes de auth, n8n, identidad, dedupe,
+outbox, medios, watcher y arquitectura.
+
+| Caso | Resultado exigido |
+|---|---|
+| Mismo teléfono/JID, `wa_message_id`, tag y shortcut en A/B | Independientes; retry en A deduplica solo A |
+| Usuario A lee/modifica ID de B, incluidos raw, búsqueda y dashboard | Sin datos, cambios, conteos ni confirmación de existencia de B |
+| Vendedor, tag, mención, adjunto, plantilla o regla de B asignados a A | Rechazo de servicio y DB para relaciones con FK |
+| Borrados en cascada/SET NULL | Mantienen dueño y afectan solo filas autorizadas |
+| Header/body manipulado, conexión desconocida o lote mixto | Auth/ruteo por elemento, sin fallback ni dedupe cruzado |
+| Estado, reacción, cita o callback IA tardío | Solo mensaje/lead y conexión originales |
+| Jobs paralelos, retry, pausa y rotación de token | Mismo dueño/número, sin mezcla de credenciales ni jobs cruzados |
+| Dos réplicas y sockets en ambas | Solo org destinataria; eventos personales solo al usuario; recuperación tras caída |
+| GET/HEAD/Range, forward o borrado del archivo de B por A | Sin bytes ni metadatos privados |
+| Logout A → login B con fetch en vuelo y push compartido | Sin datos, eventos o notificaciones de A en B |
+| Revocación de sesión/PIN o suspensión de org | Sin HTTP/WS ni nuevos envíos, incluso con caché en otra réplica |
+| SQL sin WHERE tenant y secuencia A → B → sin contexto en una conexión | RLS bloquea cruce y ausencia de contexto; pool no conserva org anterior |
+| Backfill interrumpido con escrituras concurrentes | Reanudable, sin nulos residuales, cruce o pérdida de mensajes |
+| Upgrade, instalación limpia y rollback blue-green | Una head, conteos conciliados, versiones compatibles y ningún worker viejo |
+
+## 7. Criterio para habilitar la segunda organización
+
+- [ ] Rebase resuelto, una head y política de SQL histórico respetada.
+- [ ] Esquema real conciliado con las 33 tablas ORM y objetos adicionales.
+- [ ] Backfill completo, restricciones validadas y ningún default de tenant inicial.
+- [ ] API, sesión, settings, canales y archivos exigen contexto autorizado.
+- [ ] Workflows activos/callbacks conservan ruteo autenticado, sin fallback legacy.
+- [ ] Jobs, medios, IA, eventos, cachés y push pasan los casos cruzados de §6.
+- [ ] RLS probado con rol runtime y reutilización real del pool.
+- [ ] Signup guarda/verifica únicamente la conexión de su org.
+- [ ] Transporte entre réplicas y recuperación ensayados; procesos viejos retirados.
+- [ ] Backup restaurado y rollback a release tenant-aware comprobados.
+
+El siguiente paso de implementación es **cerrar etapa 0** y preparar la release
+de compatibilidad, aprovechando las capas actuales. No hay que reconstruir desde
+cero repositorios, watcher ni Embedded Signup.
+
+## 8. Verificación realizada en esta revisión
+
+- Inventario obtenido del AST de `db/models.py`: 33/33 tablas incluidas.
+- Grafo leído de las revisiones Alembic: dos heads, sin padres inexistentes.
+- Workflows inspeccionados: `rag.json`, `webhook meta cloud api.json`,
+  `webhook msg update.json`, `webhook msg deleted.json` y `Webhooks evolution.json`.
+- Enlaces locales del documento comprobados y `git diff --check` sin errores.
+- Control de SQL histórico ejecutado aisladamente: falla por el archivo 031,
+  condición preexistente descrita en §1.1.
+- No se ejecutaron migraciones, llamadas a proveedores ni la suite completa sobre
+  el árbol con conflictos. Las pruebas de §6 son criterios pendientes de la
+  implementación, no resultados de esta revisión documental.

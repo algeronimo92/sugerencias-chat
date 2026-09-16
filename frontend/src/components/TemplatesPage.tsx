@@ -1,12 +1,13 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, BadgeCheck, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
-import type { MediaAsset, MessageTemplate, OfficialTemplateButton } from '../types'
+import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
+import type { LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
+import { ImportMetaTemplatesDialog } from './ImportMetaTemplatesDialog'
 import { MediaAssetField } from './MediaAssetField'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automationCatalog'
@@ -120,6 +121,7 @@ export function TemplatesPage() {
   const [pageState, updatePageState] = useReducer(templatesPageReducer, INITIAL_PAGE_STATE)
   const [categoryFormOpen, setCategoryFormOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const { open, editingId, form, error, pendingAttachments, libraryOpen, isDraggingFiles } = pageState
   const setOpen = (value: boolean) => updatePageState({ open: value })
   const setEditingId = (value: number | null) => updatePageState({ editingId: value })
@@ -397,14 +399,32 @@ export function TemplatesPage() {
             <FileText className="h-5 w-5 text-wa-primary-strong" />
             <h1 className="text-xl font-semibold text-wa-text dark:text-white">Plantillas</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => (open ? closeForm() : openCreateForm())}
-            className="flex items-center gap-2 rounded-md bg-wa-primary px-3 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong"
-          >
-            <Plus className="h-4 w-4" /> Nueva plantilla
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImportDialogOpen(true)}
+              className="flex items-center gap-2 rounded-md border border-wa-border px-3 py-2 text-sm font-medium text-wa-text hover:bg-wa-field dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark"
+            >
+              <Download className="h-4 w-4" /> Importar desde Meta
+            </button>
+            <button
+              type="button"
+              onClick={() => (open ? closeForm() : openCreateForm())}
+              className="flex items-center gap-2 rounded-md bg-wa-primary px-3 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong"
+            >
+              <Plus className="h-4 w-4" /> Nueva plantilla
+            </button>
+          </div>
         </div>
+
+        {importDialogOpen && (
+          <ImportMetaTemplatesDialog
+            existingMetaIds={new Set(data.flatMap(template => template.meta_template_id ? [template.meta_template_id] : []))}
+            categories={templateCategories}
+            defaultCategory={templateCategories.find(category => category.name === 'Seguimiento')?.name ?? templateCategories[0]?.name}
+            onClose={() => setImportDialogOpen(false)}
+          />
+        )}
 
         {capabilities && (
           <div className={`mb-4 flex gap-2 rounded-xl border px-4 py-3 text-xs ${capabilities.official_sending_supported ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
@@ -811,6 +831,7 @@ export function TemplatesPage() {
                       <h2 className="truncate font-medium text-wa-text dark:text-white">{template.name}</h2>
                       {template.is_favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-yellow-400 text-yellow-400" />}
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${template.template_type === 'official' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-wa-field text-gray-600 dark:bg-wa-active-dark dark:text-gray-300'}`}>{template.template_type === 'official' ? 'Oficial' : 'Interna'}</span>
+                      {template.imported_from_meta && <span title="Importada desde Meta: borrarla acá no la borra de la WABA" className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-purple-700 dark:bg-purple-950 dark:text-purple-300">Importada</span>}
                       {template.interactive_type !== 'none' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-wa-primary-strong dark:bg-green-950 dark:text-green-300">{template.interactive_type === 'buttons' ? 'Botones' : 'Lista'}</span>}
                     </div>
                     <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
@@ -870,7 +891,13 @@ export function TemplatesPage() {
                     </button>
                     <ConfirmDialog
                       title={`Eliminar “${template.name}”`}
-                      description="La plantilla desaparecerá para todos. Sus archivos permanecerán en la biblioteca multimedia. Si una automatización todavía la usa, el sistema impedirá el borrado."
+                      description={
+                        template.template_type === 'official' && template.meta_template_id != null && !template.imported_from_meta
+                          ? "La plantilla desaparecerá para todos y también se borrará de Meta (WhatsApp Business). Si una automatización todavía la usa, el sistema impedirá el borrado."
+                          : template.imported_from_meta
+                            ? "La plantilla desaparecerá de la app, pero seguirá existiendo en Meta (WhatsApp Business) — podés volver a importarla cuando quieras. Si una automatización todavía la usa, el sistema impedirá el borrado."
+                            : "La plantilla desaparecerá para todos. Sus archivos permanecerán en la biblioteca multimedia. Si una automatización todavía la usa, el sistema impedirá el borrado."
+                      }
                       confirmLabel="Eliminar plantilla"
                       disabled={deleteTemplate.isPending}
                       onConfirm={() => handleDeleteTemplate(template.id, template.name)}

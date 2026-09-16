@@ -86,6 +86,10 @@ export interface TemplateMessage {
   body: string;
   footer: string;
   buttons: TemplateButton[];
+  /** Encabezado de imagen de una plantilla oficial de Meta (ver
+   * parseOutboundOfficialTemplate). null en el resto de los mensajes con
+   * botones, que no tienen este concepto. */
+  headerImageUrl: string | null;
   /** Cuando el mensaje es la respuesta del cliente, el texto del mensaje al
    * que le tocó el botón. Vacío en el resto. */
   answeredQuestion: string;
@@ -214,6 +218,44 @@ function parseOutboundInteractive(root: JsonObject): TemplateMessage | null {
     body,
     footer: asString(config.footer) || asString(config.footerText),
     buttons,
+    headerImageUrl: null,
+    answeredQuestion: "",
+  };
+}
+
+/** El propio outbox arma este payload al encolar una plantilla oficial de
+ * Meta (ver `send_template`/`chats.py` y `_outbound_message_fields`/
+ * `message_outbox.py`): `{type: "official_template", header_text, footer,
+ * buttons}`. Aparte de `parseOutboundInteractive` porque los botones traen su
+ * propio shape (`official_buttons`, con `type: "quick_reply"|"url"|"phone_number"`),
+ * no el de un mensaje interactivo. Sin esto la burbuja solo mostraba el body
+ * (ya resuelto en `content`) y perdía encabezado, pie y botones -lo que el
+ * cliente sí ve en WhatsApp, aunque la app no los necesite para enviar. */
+function parseOutboundOfficialTemplate(root: JsonObject): TemplateMessage | null {
+  if (root.type !== "official_template") return null;
+  const buttons: TemplateButton[] = (Array.isArray(root.buttons) ? root.buttons : []).flatMap(
+    (button) => {
+      const buttonData = asObject(button);
+      const text = asString(buttonData.text);
+      if (!text) return [];
+      return [{ text, url: buttonData.type === "url" ? safeUrl(buttonData.url) : null }];
+    },
+  );
+  const title = asString(root.header_text);
+  const footer = asString(root.footer);
+  // No es un `safeUrl` (http/https): puede ser una ruta relativa propia de la
+  // app (`/api/media/...`) -- `resolveMediaUrl`, ya en el componente que la
+  // pinta, es quien sabe convertirla en una URL absoluta.
+  const headerImageUrl = asString(root.header_image_url) || null;
+  if (!title && !footer && !buttons.length && !headerImageUrl) return null;
+  return {
+    title,
+    description: "",
+    domain: "",
+    body: "",
+    footer,
+    buttons,
+    headerImageUrl,
     answeredQuestion: "",
   };
 }
@@ -222,7 +264,7 @@ export function parseTemplateData(
   root: JsonObject | null,
 ): TemplateMessage | null {
   if (!root) return null;
-  const outbound = parseOutboundInteractive(root);
+  const outbound = parseOutboundInteractive(root) ?? parseOutboundOfficialTemplate(root);
   if (outbound) return outbound;
   // Según de dónde salga el payload el contenido viene en la raíz o anidado.
   const data = root.interactiveMessageTemplate
@@ -290,6 +332,7 @@ export function parseTemplateData(
       asString(data.footer) ||
       asString(data.footerText),
     buttons,
+    headerImageUrl: null,
     answeredQuestion,
   };
 

@@ -40,9 +40,6 @@ SETTING_DEFS: list[SettingDef] = [
         "n8n (sugerencias IA)",
         secret=True,
     ),
-    SettingDef("evolution_api_url", "URL de la API", "evolution", "Evolution API (WhatsApp)", secret=False),
-    SettingDef("evolution_api_key", "API key", "evolution", "Evolution API (WhatsApp)", secret=True),
-    SettingDef("evolution_instance", "Nombre de instancia", "evolution", "Evolution API (WhatsApp)", secret=False),
     SettingDef(
         "whatsapp_active_connection",
         "Conexión activa (vacío = la instancia de Evolution)",
@@ -56,6 +53,13 @@ SETTING_DEFS: list[SettingDef] = [
         "meta",
         "Meta Cloud API (WhatsApp)",
         secret=False,
+    ),
+    SettingDef(
+        "meta_app_secret",
+        "App Secret (Tech Provider, para Embedded Signup)",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=True,
     ),
     SettingDef(
         "meta_access_token",

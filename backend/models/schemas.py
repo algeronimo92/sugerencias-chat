@@ -749,6 +749,7 @@ class TemplateItem(BaseModel):
     official_buttons: list[dict] = Field(default_factory=list)
     interactive_type: Literal["none", "buttons", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
+    imported_from_meta: bool = False
     is_favorite: bool = False
     last_used_at: str | None = None
     use_count: int = 0
@@ -756,6 +757,13 @@ class TemplateItem(BaseModel):
     created_by_name: str | None = None
     created_at: str | None = None
     attachments: list["TemplateAttachmentItem"] = Field(default_factory=list)
+
+
+class TemplateMetaImport(BaseModel):
+    name: str
+    category: str
+    shortcut: str | None = None
+    official_parameter_values: list[str] = Field(default_factory=list)
 
 
 class TemplateAttachmentItem(BaseModel):

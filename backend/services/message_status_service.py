@@ -1,9 +1,10 @@
-"""Normalización de eventos de estado enviados por Evolution API.
+"""Normalización de eventos de estado de entrega de WhatsApp, reenviados por n8n.
 
-Evolution ha emitido dos variantes de ``MESSAGES_UPDATE`` según la versión
-y el adaptador: estados con nombre (``DELIVERY_ACK``) o códigos numéricos,
-y el estado puede venir en ``data.status`` o ``data.update.status``.  n8n
-también puede enviar el contrato plano que ya usaba la aplicación.
+Tolera tanto el contrato plano que ya usaba la aplicación como la forma
+nativa que llegaba desde la vieja integración con Evolution API (estados
+con nombre como ``DELIVERY_ACK`` o códigos numéricos, con el estado en
+``data.status`` o ``data.update.status``), además de los valores nativos de
+Meta Cloud API (``sent``/``delivered``/``read``/``failed``).
 """
 
 from collections.abc import Iterator

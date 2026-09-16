@@ -561,3 +561,29 @@ def test_media_message_fields_document_keeps_filename():
 def test_mediatype_from_content_type_defaults_to_document():
     assert mediatype_from_content_type("application/pdf") == "document"
     assert mediatype_from_content_type("image/png") == "image"
+
+
+def test_template_parameter_identifiers_positional_deduplicates_positions():
+    assert meta_service.template_parameter_identifiers(
+        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}."
+    ) == ["1", "2"]
+
+
+def test_template_parameter_identifiers_named_keeps_each_occurrence():
+    assert meta_service.template_parameter_identifiers(
+        "Hola {{cliente}}, tu turno es {{fecha}}."
+    ) == ["cliente", "fecha"]
+
+
+def test_render_official_body_positional_reuses_value_for_repeated_position():
+    rendered = meta_service.render_official_body(
+        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}.", ["Ana", "martes"],
+    )
+    assert rendered == "Hola Ana, tu turno es martes. Gracias Ana."
+
+
+def test_render_official_body_named_substitutes_each_occurrence_in_order():
+    rendered = meta_service.render_official_body(
+        "Hola {{cliente}}, tu turno es {{fecha}}.", ["Ana", "martes"],
+    )
+    assert rendered == "Hola Ana, tu turno es martes."

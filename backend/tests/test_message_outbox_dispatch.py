@@ -83,6 +83,43 @@ async def test_location_and_official_template_jobs_reach_the_channel():
     ]
 
 
+async def test_official_template_with_image_header_uploads_it_and_prepends_header_component(monkeypatch):
+    """Sin el componente HEADER, Meta rechaza el envío con 132012 ("Parameter
+    format does not match format in the created template") porque la
+    plantilla real tiene encabezado de imagen y el envío no traía ninguno.
+    La imagen se sube acá (no al encolar) para no arrastrar un media id que
+    ya pudo vencer para cuando el outbox realmente despacha."""
+    read_bytes = Mock(return_value=b"IMG-BYTES")
+    monkeypatch.setattr(outbound_kinds, "read_media_bytes", read_bytes)
+    sender = FakeSender(media_id="MEDIA-HEADER-1")
+
+    await send_outbound(sender, CHAT_ID, {
+        "type": "official_template",
+        "name": "promo",
+        "language": "es_PE",
+        "components": [{"type": "body", "parameters": [{"type": "text", "text": "Ana"}]}],
+        "header_media": {
+            "media_url": "/api/media/images/encabezado.jpg",
+            "content_type": "image/jpeg",
+            "filename": "encabezado.jpg",
+        },
+    })
+
+    read_bytes.assert_called_once_with("/api/media/images/encabezado.jpg")
+    assert sender.uploads == [(b"IMG-BYTES", "image/jpeg", "encabezado.jpg")]
+    assert sender.only_call() == (
+        "send_template",
+        (
+            CHAT_ID, "promo", "es_PE",
+            [
+                {"type": "header", "parameters": [{"type": "image", "image": {"id": "MEDIA-HEADER-1"}}]},
+                {"type": "body", "parameters": [{"type": "text", "text": "Ana"}]},
+            ],
+        ),
+        {},
+    )
+
+
 def test_outbound_message_fields_keeps_interactive_config_for_chat_display():
     config = {
         "title": "Turnos", "footer": "DermicaPro",
@@ -121,6 +158,56 @@ async def test_non_reply_buttons_fall_back_to_text():
 
     assert "Abrir enlace: https://cliniventas.com/" in delivery.delivered_content
     assert sender.only_call() == ("send_text", (CHAT_ID, delivery.delivered_content), {})
+
+
+def test_outbound_message_fields_keeps_official_template_header_footer_buttons():
+    """wsp_messages.payload debe traer header/pie/botones para que la burbuja
+    los pinte (parseOutboundOfficialTemplate en message.ts); antes solo
+    guardaba name/language y la plantilla se veía solo con el body, sin nada
+    de lo que Meta ya aprobó como parte del mensaje."""
+    message_type, db_payload = outbound_message_fields({
+        "type": "official_template",
+        "name": "promo_verano",
+        "language": "es",
+        "components": [{"type": "body", "parameters": [{"type": "text", "text": "Ana"}]}],
+        "header_media": None,
+        "header_text": "DermicaPro",
+        "footer": "Gracias por tu preferencia",
+        "buttons": [{"type": "quick_reply", "text": "Confirmar"}],
+    })
+
+    assert message_type == "template"
+    assert db_payload == {
+        "type": "official_template",
+        "name": "promo_verano",
+        "language": "es",
+        "header_text": "DermicaPro",
+        "header_image_url": None,
+        "footer": "Gracias por tu preferencia",
+        "buttons": [{"type": "quick_reply", "text": "Confirmar"}],
+    }
+
+
+def test_outbound_message_fields_keeps_official_template_header_image_url():
+    """La imagen de encabezado ya está en el storage de medios de la app desde
+    que la plantilla se creó/importó -- alcanza con guardar esa misma URL acá
+    para que la burbuja la muestre, sin volver a subirla por mensaje."""
+    _message_type, db_payload = outbound_message_fields({
+        "type": "official_template",
+        "name": "promo_verano",
+        "language": "es",
+        "components": [],
+        "header_media": {
+            "media_url": "/api/media/images/encabezado.jpg",
+            "content_type": "image/jpeg",
+            "filename": "encabezado.jpg",
+        },
+        "header_text": None,
+        "footer": None,
+        "buttons": [],
+    })
+
+    assert db_payload["header_image_url"] == "/api/media/images/encabezado.jpg"
 
 
 async def test_list_interactive_is_sent_natively():

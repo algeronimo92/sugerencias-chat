@@ -30,6 +30,15 @@ STALE_PROCESSING_AFTER = timedelta(minutes=5)
 STALE_SWEEP_INTERVAL_SECONDS = 60.0
 SHUTDOWN_GRACE_SECONDS = 8.0
 RECORD_SENT_RETRY_DELAYS = (0.0, 0.5, 1.0, 2.0, 4.0)
+# `_process_batch` procesa cada tanda con `asyncio.gather`: un solo job que se
+# cuelgue (sin lanzar excepción, sin timeout propio) nunca deja terminar ese
+# `gather`, así que el loop jamás vuelve a reclamar tandas nuevas -- todo el
+# outbox queda congelado, no solo ese mensaje. Encontrado en vivo con un envío
+# de plantilla con encabezado de imagen que se quedó en "processing" para
+# siempre. Distinto del barrido de `_recover_stale_jobs` (que repone jobs
+# huérfanos porque el proceso murió): este timeout cubre un proceso vivo con
+# un job colgado, para que el resto del outbox pueda seguir andando.
+JOB_TIMEOUT_SECONDS = 90
 
 
 class SendOutcome(StrEnum):
@@ -325,6 +334,9 @@ async def _quoted_message(session, chat_id: str, wa_message_id: str | None) -> d
 
 
 async def _recover_stale_jobs() -> None:
+    """Recupera jobs que quedaron en "processing" porque el proceso murió a
+    mitad de camino (crash, `docker restart`, OOM), no porque estén realmente
+    trabados con el worker vivo (para eso está `JOB_TIMEOUT_SECONDS`)."""
     cutoff = datetime.now(timezone.utc) - STALE_PROCESSING_AFTER
     async with get_sessionmaker()() as session:
         rows = (await session.execute(
@@ -515,7 +527,10 @@ async def _process_job(job: dict) -> None:
     started_at = perf_counter()
     payload = job["payload"]
     try:
-        delivery = await send_outbound(current_channel().sender, job["chat_id"], payload)
+        delivery = await asyncio.wait_for(
+            send_outbound(current_channel().sender, job["chat_id"], payload),
+            timeout=JOB_TIMEOUT_SECONDS,
+        )
     except asyncio.CancelledError:
         await asyncio.shield(_mark_failed(
             job, DeliveryUnconfirmedError(), SendOutcome.UNCONFIRMED,

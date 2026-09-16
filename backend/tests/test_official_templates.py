@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import TemplateCreate, TemplateUpdate
+from models.schemas import TemplateCreate, TemplateMetaImport, TemplateUpdate
 from routers import templates
 from services import template_validation
 from services.meta_service import MetaApiError
@@ -214,6 +214,198 @@ async def test_patch_blocks_renaming_official_template_already_sent_to_meta(monk
 
 
 @pytest.mark.asyncio
+async def test_import_meta_template_links_without_recreating_on_meta(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return [{"id": 1, "meta_template_id": "meta-other"}]
+
+    async def fake_get_whatsapp_template(meta_template_id):
+        assert meta_template_id == "meta-999"
+        return {
+            "id": "meta-999", "name": "bienvenida_cliente", "status": "APPROVED",
+            "category": "MARKETING", "language": "es", "rejected_reason": "NONE",
+            "components": [
+                {"type": "HEADER", "format": "TEXT", "text": "DermicaPro"},
+                {"type": "BODY", "text": "Hola {{1}}, bienvenido."},
+                {"type": "FOOTER", "text": "Gracias"},
+                {"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Ver más"}]},
+            ],
+        }
+
+    async def fake_category_found(name):
+        return {"id": 1, "name": name, "is_active": True}
+
+    received_values = None
+
+    async def fake_create_template(values, user_id):
+        nonlocal received_values
+        received_values = values
+        return {"id": 5, **values, "is_active": True, "visibility": "global",
+                "is_favorite": False, "last_used_at": None, "use_count": 0, "attachments": []}
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+    monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
+    monkeypatch.setattr(templates, "create_template", fake_create_template)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    body = TemplateMetaImport(name="Bienvenida", category="Seguimiento", official_parameter_values=["{{nombre}}"])
+    result = await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
+
+    assert result["id"] == 5
+    assert received_values["meta_template_id"] == "meta-999"
+    assert received_values["official_name"] == "bienvenida_cliente"
+    assert received_values["official_status"] == "APPROVED"
+    assert received_values["content"] == "Hola {{1}}, bienvenido."
+    assert received_values["official_header_type"] == "text"
+    assert received_values["official_header_text"] == "DermicaPro"
+    assert received_values["official_footer"] == "Gracias"
+    assert received_values["official_buttons"] == [{"type": "quick_reply", "text": "Ver más"}]
+    assert received_values["official_parameter_values"] == ["{{nombre}}"]
+
+
+@pytest.mark.asyncio
+async def test_import_meta_template_rejects_already_linked(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return [{"id": 1, "meta_template_id": "meta-999"}]
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+
+    body = TemplateMetaImport(name="Bienvenida", category="Seguimiento")
+    with pytest.raises(HTTPException) as error:
+        await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
+
+    assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_import_meta_template_requires_all_parameter_values(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return []
+
+    async def fake_get_whatsapp_template(_meta_template_id):
+        return {
+            "id": "meta-999", "name": "bienvenida_cliente", "status": "APPROVED",
+            "category": "MARKETING", "language": "es",
+            "components": [{"type": "BODY", "text": "Hola {{1}}, tu turno es {{2}}."}],
+        }
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+
+    body = TemplateMetaImport(name="Bienvenida", category="Seguimiento", official_parameter_values=["Ana"])
+    with pytest.raises(HTTPException) as error:
+        await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
+
+    assert error.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_import_meta_template_image_header_falls_back_to_none(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return []
+
+    async def fake_get_whatsapp_template(_meta_template_id):
+        return {
+            "id": "meta-999", "name": "promo_verano", "status": "APPROVED",
+            "category": "MARKETING", "language": "es",
+            "components": [
+                {"type": "HEADER", "format": "IMAGE"},
+                {"type": "BODY", "text": "Hola, aprovecha nuestra promo."},
+            ],
+        }
+
+    async def fake_category_found(name):
+        return {"id": 1, "name": name, "is_active": True}
+
+    received_values = None
+
+    async def fake_create_template(values, user_id):
+        nonlocal received_values
+        received_values = values
+        return {"id": 5, **values, "is_active": True, "visibility": "global",
+                "is_favorite": False, "last_used_at": None, "use_count": 0, "attachments": []}
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+    monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
+    monkeypatch.setattr(templates, "create_template", fake_create_template)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    body = TemplateMetaImport(name="Promo", category="Seguimiento")
+    await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
+
+    assert received_values["official_header_type"] == "none"
+    assert received_values["official_header_media_asset_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_import_meta_template_downloads_image_header_example(monkeypatch):
+    async def fake_list_templates(_user_id, _include_inactive):
+        return []
+
+    async def fake_get_whatsapp_template(_meta_template_id):
+        return {
+            "id": "meta-999", "name": "promo_verano", "status": "APPROVED",
+            "category": "MARKETING", "language": "es",
+            "components": [
+                {"type": "HEADER", "format": "IMAGE", "example": {"header_handle": ["https://cdn.meta.example/foo.jpg"]}},
+                {"type": "BODY", "text": "Hola, aprovecha nuestra promo."},
+            ],
+        }
+
+    async def fake_download(url):
+        assert url == "https://cdn.meta.example/foo.jpg"
+        return b"fake-image-bytes", "image/jpeg"
+
+    def fake_save_media_file(content_type, data_base64, filename):
+        assert content_type == "image/jpeg"
+        assert filename == "promo_verano.jpeg"
+        return "media/promo_verano.jpeg"
+
+    def fake_media_size(media_url):
+        return 123
+
+    async def fake_create_media_asset(media_url, content_type, filename, size_bytes, user_id):
+        return {"id": 77, "media_url": media_url, "content_type": content_type, "filename": filename}
+
+    async def fake_category_found(name):
+        return {"id": 1, "name": name, "is_active": True}
+
+    received_values = None
+
+    async def fake_create_template(values, user_id):
+        nonlocal received_values
+        received_values = values
+        return {"id": 5, **values, "is_active": True, "visibility": "global",
+                "is_favorite": False, "last_used_at": None, "use_count": 0, "attachments": []}
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+    monkeypatch.setattr(templates, "download_template_header_example", fake_download)
+    monkeypatch.setattr(templates, "save_media_file", fake_save_media_file)
+    monkeypatch.setattr(templates, "media_size", fake_media_size)
+    monkeypatch.setattr(templates, "create_media_asset", fake_create_media_asset)
+    monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
+    monkeypatch.setattr(templates, "create_template", fake_create_template)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    body = TemplateMetaImport(name="Promo", category="Seguimiento")
+    await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
+
+    assert received_values["official_header_type"] == "image"
+    assert received_values["official_header_media_asset_id"] == 77
+
+
+@pytest.mark.asyncio
 async def test_delete_cleans_up_meta_template_after_local_delete(monkeypatch):
     async def fake_delete_template_record(_template_id):
         return {"template_type": "official", "official_name": "recordatorio_cita", "meta_template_id": "meta-123"}
@@ -235,4 +427,30 @@ async def test_delete_cleans_up_meta_template_after_local_delete(monkeypatch):
     result = await templates.delete_template(9, SimpleNamespace(id=11))
 
     assert deleted_with == ("recordatorio_cita", "meta-123")
+    assert result == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_delete_of_imported_template_never_touches_meta(monkeypatch):
+    """Una plantilla vinculada con 'Importar desde Meta' ya existía y fue
+    aprobada fuera de la app: borrar el vínculo local no debe borrar la
+    plantilla real de la WABA (a diferencia de una creada acá)."""
+    async def fake_delete_template_record(_template_id):
+        return {
+            "template_type": "official", "official_name": "promo_verano",
+            "meta_template_id": "meta-999", "imported_from_meta": True,
+        }
+
+    async def fake_delete_whatsapp_template(*_args, **_kwargs):
+        raise AssertionError("no debería borrarse en Meta una plantilla importada")
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "delete_template_record", fake_delete_template_record)
+    monkeypatch.setattr(templates, "delete_whatsapp_template", fake_delete_whatsapp_template)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    result = await templates.delete_template(9, SimpleNamespace(id=11))
+
     assert result == {"status": "ok"}

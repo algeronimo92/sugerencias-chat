@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import client from '../api/client'
 import { queryClient } from '../queryClient'
-import type { MessageTemplate, TemplateAttachment, TemplateCapabilities } from '../types'
+import type { MessageTemplate, MetaTemplateRaw, TemplateAttachment, TemplateCapabilities } from '../types'
 
 export interface TemplateInput {
   name: string
@@ -115,6 +115,40 @@ export function useDeleteTemplateAttachment() {
         queryClient.invalidateQueries({ queryKey: ['media-library'] }),
       ])
     },
+  })
+}
+
+/** Plantillas tal cual existen del lado de Meta, incluidas las creadas desde
+ * el WhatsApp Manager que todavía no se vincularon a la app. Deshabilitado
+ * hasta que se pida (el diálogo de importación lo abre a demanda). */
+export function useMetaTemplates(enabled: boolean) {
+  return useQuery({
+    queryKey: ['meta-templates'],
+    queryFn: async () => (await client.get<MetaTemplateRaw[]>('/api/templates/meta')).data,
+    enabled,
+  })
+}
+
+export function useMetaTemplateDetail(metaTemplateId: string | null) {
+  return useQuery({
+    queryKey: ['meta-templates', metaTemplateId],
+    queryFn: async () => (await client.get<MetaTemplateRaw>(`/api/templates/meta/${metaTemplateId}`)).data,
+    enabled: metaTemplateId != null,
+  })
+}
+
+export function useImportMetaTemplate() {
+  return useMutation({
+    mutationFn: async ({ metaTemplateId, name, category, shortcut, officialParameterValues }: {
+      metaTemplateId: string
+      name: string
+      category: string
+      shortcut: string | null
+      officialParameterValues: string[]
+    }) => (await client.post<MessageTemplate>(`/api/templates/meta/${metaTemplateId}/import`, {
+      name, category, shortcut, official_parameter_values: officialParameterValues,
+    })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 

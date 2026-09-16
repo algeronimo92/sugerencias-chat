@@ -73,17 +73,6 @@ async def test_rekey_collision_maps_to_409(update_deps):
 
 
 @pytest.mark.asyncio
-async def test_rekey_blocked_if_new_number_has_no_whatsapp(update_deps):
-    update_deps.check.return_value = [{"exists": False}]
-
-    with pytest.raises(HTTPException) as exc:
-        await chats.update_chat(CHAT_ID, LeadUpdate(phone="999888777"), ADMIN)
-
-    assert exc.value.status_code == 422
-    update_deps.rekey.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_explicit_null_phone_is_ignored(update_deps):
     body = LeadUpdate(phone=None, name="Ana")
 

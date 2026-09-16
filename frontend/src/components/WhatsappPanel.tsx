@@ -1,172 +1,149 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { CheckCircle2, Loader2, LogOut, QrCode, RefreshCw, Smartphone } from 'lucide-react'
-import { useConnectWhatsapp, useLogoutWhatsapp, useWhatsappStatus, type WhatsappQr } from '../hooks/useWhatsapp'
+import { CheckCircle2, Link2, Loader2 } from 'lucide-react'
+import { useCompleteMetaEmbeddedSignup } from '../hooks/useSettings'
+import { useFacebookSdk } from '../hooks/useFacebookSdk'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
-import { ConfirmDialog } from './ui/ConfirmDialog'
 interface Props {
   onGoToClaves: () => void
 }
 
-// El QR de WhatsApp rota cada ~20-30s; se refresca en pantalla antes de que expire.
-const QR_REFRESH_MS = 20_000
+const META_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID as string | undefined
+const META_CONFIG_ID = import.meta.env.VITE_FACEBOOK_CONFIG_ID as string | undefined
 
-export function WhatsappPanel({ onGoToClaves }: Props) {
-  const { data: status, isLoading, error } = useWhatsappStatus({ pollUntilConnected: true })
-  const { mutate: connect, isPending: isConnecting } = useConnectWhatsapp()
-  const { mutate: logout, isPending: isLoggingOut } = useLogoutWhatsapp()
+interface EmbeddedSignupData {
+  phone_number_id?: string
+  waba_id?: string
+}
 
-  const [qr, setQr] = useState<WhatsappQr | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+function isEmbeddedSignupMessage(data: unknown): data is { type: string; event: string; data?: EmbeddedSignupData } {
+  return typeof data === 'object' && data !== null && (data as { type?: unknown }).type === 'WA_EMBEDDED_SIGNUP'
+}
 
-  const state = status?.state
-  const isConnected = state === 'open'
+// Panel de coexistencia con Meta (WhatsApp Embedded Signup): vincula un
+// número que ya está activo en la app oficial de WhatsApp Business sin
+// desconectarlo de ahí. Completa las mismas credenciales que se pueden
+// tipear a mano en la pestaña Claves (meta_access_token/waba_id/phone_number_id).
+function MetaEmbeddedSignupPanel() {
+  const sdkReady = useFacebookSdk(META_APP_ID)
+  const { mutate: complete, isPending } = useCompleteMetaEmbeddedSignup()
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  // El `code` de FB.login() y el {waba_id, phone_number_id} del postMessage
+  // de Meta llegan por separado y en cualquier orden; se juntan acá antes de
+  // mandarlos al backend.
+  const pendingCode = useRef<string | null>(null)
+  const pendingSignupData = useRef<EmbeddedSignupData | null>(null)
 
-  // Al quedar vinculada (el polling detecta el escaneo), el QR ya no sirve.
+  function trySubmit() {
+    const code = pendingCode.current
+    const data = pendingSignupData.current
+    // El phone_number_id es opcional: el evento de coexistencia
+    // (FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING) no lo manda -- el backend lo
+    // resuelve solo a partir de la WABA (ver meta_service.py).
+    if (!code || !data?.waba_id) return
+    pendingCode.current = null
+    pendingSignupData.current = null
+    setError(null)
+    complete(
+      { code, waba_id: data.waba_id, phone_number_id: data.phone_number_id },
+      {
+        onSuccess: () => {
+          setSuccess(true)
+          toast.success('WhatsApp vinculado con Meta')
+        },
+        onError: (err) => setError(extractErrorMessage(err)),
+      }
+    )
+  }
+
   useEffect(() => {
-    if (isConnected) setQr(null)
-  }, [isConnected])
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return
+      let payload: unknown
+      try {
+        payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+      } catch {
+        return
+      }
+      if (!isEmbeddedSignupMessage(payload)) return
+      // 'FINISH' es el signup normal (WABA + número nuevo); en coexistencia
+      // con la app de WhatsApp Business el evento es distinto y su payload
+      // trae solo waba_id -- ver docs de Meta sobre Embedded Signup.
+      if ((payload.event === 'FINISH' || payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') && payload.data) {
+        pendingSignupData.current = payload.data
+        trySubmit()
+      } else if (payload.event === 'CANCEL' || payload.event === 'ERROR') {
+        setError('Se canceló la vinculación con Meta.')
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  function requestQr() {
-    setActionError(null)
-    connect(undefined, {
-      onSuccess: (data) => {
-        if (data.base64) setQr(data)
-        else if (data.state === 'open') setQr(null)
-        else setActionError('Evolution no devolvió el QR todavía. Esperá unos segundos y probá otra vez.')
+  function handleLogin() {
+    if (!window.FB || !META_CONFIG_ID) return
+    setError(null)
+    setSuccess(false)
+    window.FB.login(
+      (response) => {
+        const code = response.authResponse?.code
+        if (!code) {
+          if (response.status !== 'connected') setError('Se canceló la vinculación con Meta.')
+          return
+        }
+        pendingCode.current = code
+        trySubmit()
       },
-      onError: (err) => setActionError(extractErrorMessage(err)),
-    })
-  }
-
-  // Mientras se muestra el QR y no se conecta, se pide uno nuevo periódicamente
-  // para que no expire delante del usuario. Este refresco es SILENCIOSO: si una
-  // llamada falla no se muestra error, porque el estado real de la vinculación
-  // lo determina el polling de /status — mostrar un error acá durante el
-  // emparejamiento confundía con un "no se pudo conectar".
-  useEffect(() => {
-    if (!qr || isConnected) return
-    const timer = setInterval(() => {
-      connect(undefined, {
-        onSuccess: (data) => { if (data.base64) setQr(data) },
-        onError: () => {},
-      })
-    }, QR_REFRESH_MS)
-    return () => clearInterval(timer)
-  }, [qr, isConnected, connect])
-
-  function handleLogout() {
-    // El logout es lo ÚNICO que "desconecta todo": corta la recepción de
-    // mensajes nuevos por n8n hasta volver a vincular. No borra chats guardados,
-    // pero se confirma para que no se dispare por error.
-    setActionError(null)
-    setQr(null)
-    logout(undefined, { onSuccess: () => toast.success('WhatsApp desvinculado'), onError: (err) => setActionError(extractErrorMessage(err)) })
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-12 text-sm text-wa-muted dark:text-wa-muted-dark">
-        <Loader2 className="h-4 w-4 animate-spin" /> Consultando estado…
-      </div>
+      {
+        config_id: META_CONFIG_ID,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding', sessionInfoVersion: '3' },
+      }
     )
   }
 
-  if (state === 'not_configured') {
-    return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
-        <p className="mb-3">
-          Primero completá <span className="font-semibold">URL, API key e instancia</span> de Evolution API.
-        </p>
-        <button
-          type="button"
-          onClick={onGoToClaves}
-          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-        >
-          Ir a la pestaña Claves
-        </button>
-      </div>
-    )
-  }
+  if (!META_APP_ID || !META_CONFIG_ID) return null
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
-        <Smartphone className="h-4 w-4" />
-        Instancia: <span className="font-medium text-gray-700 dark:text-wa-text-dark">{status?.instance ?? '—'}</span>
+    <div className="space-y-2 rounded-xl border border-wa-border p-4 dark:border-wa-border-dark">
+      <div className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
+        <Link2 className="h-4 w-4" />
+        Coexistencia con Meta
       </div>
-
-      {isConnected ? (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-wa-primary">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-            WhatsApp vinculado
-          </div>
-          <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-            Vinculado como dispositivo (tu teléfono sigue siendo el principal). Desvincular no borra ningún chat.
-          </p>
-          <ConfirmDialog
-            title="Desvincular WhatsApp"
-            description="Se detendrá la recepción de mensajes nuevos hasta que vuelvas a escanear el QR. Los chats guardados no se eliminarán."
-            confirmLabel="Desvincular"
-            disabled={isLoggingOut}
-            onConfirm={handleLogout}
-          >
-            <button
-              type="button"
-              disabled={isLoggingOut}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-wa-border-dark dark:text-red-400 dark:hover:bg-red-950/30"
-            >
-              {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-              Desvincular
-            </button>
-          </ConfirmDialog>
-        </div>
-      ) : qr && qr.base64 ? (
-        <div className="space-y-3">
-          <div className="flex justify-center rounded-xl border border-wa-border bg-white p-4 dark:border-wa-border-dark">
-            <img src={qr.base64} alt="Código QR de WhatsApp" className="h-56 w-56 max-w-full" />
-          </div>
-          <div className="flex items-center justify-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {state === 'connecting' ? 'Vinculando…' : 'Esperando que escanees el QR…'}
-          </div>
-          {qr.pairing_code && (
-            <p className="text-center text-xs text-wa-muted dark:text-wa-muted-dark">
-              O ingresá el código: <span className="font-mono font-semibold tracking-widest text-gray-700 dark:text-wa-text-dark">{qr.pairing_code}</span>
-            </p>
-          )}
-          <p className="text-center text-[11px] text-wa-muted dark:text-wa-muted-dark">
-            En tu teléfono: WhatsApp › Dispositivos vinculados › Vincular un dispositivo.
-          </p>
-          <div className="flex justify-center">
-            <Button variant="ghost" size="sm" onClick={requestQr} disabled={isConnecting}>
-              <RefreshCw className={`h-3.5 w-3.5 ${isConnecting ? 'animate-spin' : ''}`} aria-hidden="true" /> Generar nuevo QR
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-wa-muted dark:text-wa-muted-dark">
-            {state === 'missing'
-              ? 'La instancia configurada no existe todavía en Evolution. Revisá el nombre en la pestaña Claves.'
-              : 'WhatsApp no está vinculado.'}
-          </p>
-          <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-            Escaneá el QR desde tu teléfono para vincularlo como un dispositivo. No borra ningún chat.
-          </p>
-          <Button onClick={requestQr} disabled={isConnecting}>
-            {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <QrCode className="h-4 w-4" aria-hidden="true" />}
-            Vincular por QR
-          </Button>
-        </div>
+      <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
+        Vinculá un número que ya usás en la app oficial de WhatsApp Business sin
+        desconectarlo de ahí. Reemplaza tener que copiar el token, el WABA id y el
+        phone number id a mano en la pestaña Claves.
+      </p>
+      <Button onClick={handleLogin} disabled={!sdkReady || isPending} variant="ghost">
+        {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Link2 className="h-4 w-4" aria-hidden="true" />}
+        Vincular con Meta
+      </Button>
+      {success && (
+        <p className="flex items-center gap-1 text-xs text-wa-primary-strong dark:text-wa-primary">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Credenciales guardadas en la pestaña Claves.
+        </p>
       )}
+      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
+    </div>
+  )
+}
 
-      {actionError && <p className="text-xs text-red-500 dark:text-red-400">{actionError}</p>}
-      {error && !actionError && !status && (
-        <p className="text-xs text-red-500 dark:text-red-400">No se pudo consultar el estado de la conexión.</p>
-      )}
+export function WhatsappPanel({ onGoToClaves }: Props) {
+  return (
+    <div className="space-y-4">
+      <MetaEmbeddedSignupPanel />
+      <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
+        También podés completar el token, el WABA id y el phone number id a mano en{' '}
+        <button type="button" onClick={onGoToClaves} className="font-medium text-wa-primary-strong underline dark:text-wa-primary">
+          la pestaña Claves
+        </button>
+        .
+      </p>
     </div>
   )
 }

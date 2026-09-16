@@ -277,9 +277,9 @@ class WspMessage(Base):
     # db_service) y el hilo pinta la lápida, igual que WhatsApp.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # messageContextInfo.messageSecret del mensaje ORIGINAL (crudo, sin API que
-    # lo exponga): permite descifrar una edición nativa futura de WhatsApp, que
-    # desde ~mayo 2026 llega cifrada (secretEncryptedMessage) en vez de en texto
-    # plano. Ver services/message_edit_crypto.py. NULL si Evolution no lo mandó.
+    # lo exponga). Lo guardaba la vieja integración con Evolution para poder
+    # descifrar una edición nativa futura de WhatsApp; ya no se descifra nada
+    # con esto, la columna queda solo por las filas históricas que la tienen.
     message_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
     # Fijado nativo del CRM: WhatsApp no expone ningún endpoint para fijar un
     # mensaje del lado de quien envía (ni Evolution API ni Baileys lo tienen),
@@ -821,6 +821,7 @@ class MessageTemplate(Base):
     official_buttons: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     interactive_type: Mapped[str] = mapped_column(Text, default="none", server_default="none")
     interactive_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    imported_from_meta: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

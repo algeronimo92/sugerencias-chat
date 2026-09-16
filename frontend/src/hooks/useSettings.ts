@@ -29,3 +29,25 @@ export function useSaveSettings() {
     },
   })
 }
+
+export interface MetaEmbeddedSignupPayload {
+  code: string
+  waba_id: string
+  // Ausente en coexistencia con la app de WhatsApp Business (ver WhatsappPanel.tsx).
+  phone_number_id?: string
+}
+
+async function completeMetaEmbeddedSignup(payload: MetaEmbeddedSignupPayload): Promise<SettingItem[]> {
+  const { data } = await client.post<SettingItem[]>('/api/settings/meta/embedded-signup', payload)
+  return data
+}
+
+export function useCompleteMetaEmbeddedSignup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: completeMetaEmbeddedSignup,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['settings'], data)
+    },
+  })
+}

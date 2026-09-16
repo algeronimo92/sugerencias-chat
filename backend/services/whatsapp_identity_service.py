@@ -393,8 +393,7 @@ async def learn_send_aliases(chat_id: str, response: Any) -> tuple[str, ...]:
 
     Cierra el agujero por el que un mismo contacto termina partido en dos
     leads: el entrante crea uno con el LID y el saliente usa otro con el
-    teléfono. Además es lo que permite que el historial se pida con el JID que
-    Evolution efectivamente indexa (ver ``evolution_service.find_chat_messages``).
+    teléfono.
 
     Solo agrega alias libres. Si el JID ya pertenece a otro lead se deja como
     está y se registra en el log: fusionar dos historiales es una decisión con

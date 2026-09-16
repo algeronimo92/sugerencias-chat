@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import contextlib
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from db.models import User
-from models.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateUpdate
+from models.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from services.auth_service import get_current_user, require_admin
 from services.template_service import (
     add_template_attachment,
@@ -25,7 +26,8 @@ from services.media_storage import MediaStorageError, delete_media, media_size
 from services.ws_manager import manager
 from services.meta_service import (
     MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
-    list_whatsapp_templates, update_whatsapp_template,
+    download_template_header_example, get_whatsapp_template, list_whatsapp_templates,
+    template_parameter_identifiers, update_whatsapp_template, upload_header_media,
 )
 from services.whatsapp_capabilities import get_whatsapp_capabilities
 from services.template_validation import (
@@ -54,9 +56,171 @@ def _template_errors():
         raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
 
 
+
+
 @router.get("", response_model=list[TemplateItem])
 async def get_templates(include_inactive: bool = False, user: User = Depends(get_current_user)):
     return await list_templates(user.id, include_inactive and user.role == "admin")
+
+
+@router.get("/meta")
+async def get_meta_templates(_admin: User = Depends(require_admin)):
+    """Lista tal cual las devuelve Meta (`GET /{waba_id}/message_templates`),
+    sin pasar por las plantillas guardadas en la BD -- sirve para ver el
+    estado real de la WABA, por ejemplo plantillas creadas desde el WhatsApp
+    Manager que todavía no se vincularon acá."""
+    try:
+        return await list_whatsapp_templates()
+    except MetaApiError as exc:
+        raise HTTPException(502, describe_template_error(exc))
+
+
+@router.get("/meta/{meta_template_id}")
+async def get_meta_template_detail(meta_template_id: str, _admin: User = Depends(require_admin)):
+    """Detalle completo (con `components`) de una plantilla puntual de Meta --
+    lo que necesita el diálogo de importación para mostrar cuántas variables
+    tiene el body antes de pedirle al admin sus valores por defecto."""
+    try:
+        return await get_whatsapp_template(meta_template_id)
+    except MetaApiError as exc:
+        raise HTTPException(502, describe_template_error(exc))
+
+
+async def _import_header_media_asset(header: dict, remote_name: str, admin_id: int) -> int | None:
+    """Descarga el ejemplo de imagen del encabezado (si Meta lo da) y lo
+    guarda como un asset local, para que la plantilla importada quede con
+    header IMAGE de verdad y no solo "sin encabezado".
+
+    Cualquier fallo acá (sin ejemplo, tipo no soportado, falla de red) se
+    degrada a "sin encabezado" en el llamador en vez de abortar todo el
+    import -- el header es solo para la vista previa local, el envío nunca
+    lo manda (ver `send_template` en `routers/chats.py`)."""
+    example_urls = ((header.get("example") or {}).get("header_handle")) or []
+    example_url = example_urls[0] if example_urls else None
+    if not example_url:
+        return None
+    try:
+        content, content_type = await download_template_header_example(example_url)
+    except MetaApiError:
+        logger.warning("No se pudo descargar el ejemplo del encabezado de %s", remote_name)
+        return None
+    if not content_type.startswith("image/"):
+        return None
+    extension = content_type.split("/", 1)[-1] or "jpg"
+    filename = f"{remote_name}.{extension}"
+    try:
+        media_url = await asyncio.to_thread(
+            save_media_file, content_type, base64.b64encode(content).decode(), filename,
+        )
+        size_bytes = await asyncio.to_thread(media_size, media_url)
+        asset = await create_media_asset(media_url, content_type, filename, size_bytes, admin_id)
+    except (ValueError, MediaStorageError):
+        logger.warning("No se pudo guardar el ejemplo del encabezado de %s como asset", remote_name)
+        return None
+    return asset["id"]
+
+
+async def _parse_meta_template(remote: dict, admin_id: int) -> dict:
+    """Traduce el shape nativo de la Graph API (`components`) a los campos
+    internos `official_*`, en el sentido inverso a `_build_meta_components`."""
+    components = remote.get("components") or []
+    body = next((c for c in components if c.get("type") == "BODY"), None)
+    header = next((c for c in components if c.get("type") == "HEADER"), None)
+    footer = next((c for c in components if c.get("type") == "FOOTER"), None)
+    buttons_component = next((c for c in components if c.get("type") == "BUTTONS"), None)
+
+    official_header_type = "none"
+    official_header_text = None
+    official_header_media_asset_id = None
+    if header and header.get("format") == "TEXT":
+        official_header_type = "text"
+        official_header_text = header.get("text")
+    elif header and header.get("format") == "IMAGE":
+        official_header_media_asset_id = await _import_header_media_asset(
+            header, remote.get("name") or "plantilla", admin_id,
+        )
+        official_header_type = "image" if official_header_media_asset_id is not None else "none"
+
+    official_buttons: list[dict] = []
+    for button in (buttons_component or {}).get("buttons") or []:
+        button_type = button.get("type")
+        if button_type == "QUICK_REPLY":
+            official_buttons.append({"type": "quick_reply", "text": button.get("text", "")})
+        elif button_type == "URL":
+            official_buttons.append({"type": "url", "text": button.get("text", ""), "url": button.get("url", "")})
+        elif button_type == "PHONE_NUMBER":
+            official_buttons.append({
+                "type": "phone_number", "text": button.get("text", ""),
+                "phone_number": button.get("phone_number", ""),
+            })
+
+    rejected_reason = remote.get("rejected_reason")
+    return {
+        "content": (body or {}).get("text") or "",
+        "meta_template_id": remote.get("id"),
+        "official_name": remote.get("name"),
+        "official_language": remote.get("language"),
+        "official_category": remote.get("category"),
+        "official_status": remote.get("status") or "PENDING",
+        "official_rejected_reason": rejected_reason if rejected_reason and rejected_reason != "NONE" else None,
+        "official_header_type": official_header_type,
+        "official_header_text": official_header_text,
+        "official_header_media_asset_id": official_header_media_asset_id,
+        "official_footer": (footer or {}).get("text"),
+        "official_buttons": official_buttons,
+    }
+
+
+@router.post("/meta/{meta_template_id}/import", response_model=TemplateItem, status_code=201)
+async def post_import_meta_template(
+    meta_template_id: str, body: TemplateMetaImport, admin: User = Depends(require_admin),
+):
+    """Vincula a la app una plantilla que ya existe (y está aprobada o en
+    revisión) del lado de Meta -- por ejemplo, creada desde el WhatsApp
+    Manager -- sin volver a darla de alta en la Graph API."""
+    already_linked = any(
+        item.get("meta_template_id") == meta_template_id
+        for item in await list_templates(admin.id, True)
+    )
+    if already_linked:
+        raise HTTPException(409, "Esta plantilla de Meta ya está vinculada a la app")
+    try:
+        remote = await get_whatsapp_template(meta_template_id)
+    except MetaApiError as exc:
+        raise HTTPException(502, describe_template_error(exc))
+
+    values = await _parse_meta_template(remote, admin.id)
+    values.update({
+        "name": body.name,
+        "shortcut": body.shortcut,
+        "category": body.category,
+        "template_type": "official",
+        "interactive_type": "none",
+        "interactive_config": {},
+        "stage": None,
+        "task_type": None,
+        "service": None,
+        "official_parameter_values": [str(value).strip() for value in body.official_parameter_values],
+        "imported_from_meta": True,
+    })
+    with _template_errors():
+        normalize_common_fields(values)
+    expected_count = len(template_parameter_identifiers(values["content"]))
+    if len(values["official_parameter_values"]) != expected_count or any(not value for value in values["official_parameter_values"]):
+        raise HTTPException(400, f"Debes configurar un valor para cada una de las {expected_count} variables oficiales")
+    with _template_errors():
+        validate_internal_variables(values["official_parameter_values"])
+
+    category = await get_template_category_by_name(values["category"])
+    if category is None:
+        raise HTTPException(400, "Selecciona una categoría activa del catálogo")
+    values["category"] = category["name"]
+    try:
+        item = await create_template(values, admin.id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    await manager.broadcast({"type": "templates_updated"})
+    return item
 
 
 @router.get("/capabilities", response_model=TemplateCapabilities)
@@ -303,7 +467,11 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
         raise HTTPException(409, str(exc))
     if deleted is None:
         raise HTTPException(404, "Plantilla no encontrada")
-    if deleted["template_type"] == "official" and deleted.get("meta_template_id"):
+    # Una plantilla importada ya existía en Meta antes que en esta app: borrar
+    # el vínculo local no debe borrar la plantilla real de la WABA, a
+    # diferencia de una creada acá (donde esta app es la dueña del ciclo de
+    # vida en Meta).
+    if deleted["template_type"] == "official" and deleted.get("meta_template_id") and not deleted.get("imported_from_meta"):
         try:
             await delete_whatsapp_template(deleted["official_name"], deleted["meta_template_id"])
         except MetaApiError as exc:

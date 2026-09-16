@@ -7,7 +7,6 @@ from services import whatsapp_identity_service
 
 from services.whatsapp_identity_service import (
     InvalidWhatsAppIdentityError,
-    add_phone_jid,
     aliases_from_send_key,
     learn_send_aliases,
     parse_message_identity,
@@ -76,25 +75,6 @@ def test_group_event_is_not_converted_into_a_lead():
             "remoteJid": "120363419787208859@g.us",
             "participant": "51943663225@s.whatsapp.net",
         }))
-
-
-def test_external_contact_lookup_can_add_phone_without_changing_lid():
-    original = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
-    enriched = add_phone_jid(original, "51943663225@s.whatsapp.net")
-
-    assert enriched.lid_jid == original.lid_jid
-    assert enriched.phone_jid == "51943663225@s.whatsapp.net"
-    assert enriched.jids == (
-        "267692862898397@lid",
-        "51943663225@s.whatsapp.net",
-    )
-
-
-def test_lid_digits_are_not_accepted_as_a_phone_lookup_result():
-    original = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
-    enriched = add_phone_jid(original, "267692862898397@lid")
-
-    assert enriched == original
 
 
 @pytest.mark.asyncio

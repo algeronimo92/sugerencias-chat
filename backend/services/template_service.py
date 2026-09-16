@@ -41,6 +41,7 @@ def _template(row, attachments: list[dict] | None = None):
         "official_buttons": row["official_buttons"] or [],
         "interactive_type": row["interactive_type"],
         "interactive_config": row["interactive_config"] or {},
+        "imported_from_meta": bool(row["imported_from_meta"]),
         "last_used_at": iso_utc(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
@@ -67,6 +68,7 @@ async def list_templates(user_id: int, include_inactive=False):
             MessageTemplate.official_footer,
             MessageTemplate.official_buttons,
             MessageTemplate.interactive_type, MessageTemplate.interactive_config,
+            MessageTemplate.imported_from_meta,
             MessageTemplate.created_by_user_id, User.name.label("created_by_name"),
             MessageTemplate.created_at,
             TemplateUserState.is_favorite, TemplateUserState.last_used_at, TemplateUserState.use_count,
@@ -217,6 +219,7 @@ async def delete_template(template_id: int) -> dict | None:
         "template_type": template.template_type,
         "official_name": template.official_name,
         "meta_template_id": template.meta_template_id,
+        "imported_from_meta": template.imported_from_meta,
     }
 
 

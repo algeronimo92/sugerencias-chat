@@ -264,6 +264,12 @@ def _validate_official_text(values: dict) -> tuple[str, str, list[str]]:
     if not values.get("official_category"):
         raise TemplateValidationError("La categoría oficial es obligatoria")
 
+    # Una plantilla creada desde cero acá siempre usa variables posicionales
+    # ({{1}}, {{2}}, ...), consecutivas -- es el único formato que esta app
+    # sabe armar al mandarla a Meta. Una importada desde el WhatsApp Manager
+    # (`routers/templates.py post_import_meta_template`) puede traer variables
+    # con nombre tal como Meta ya la aprobó, pero ese camino no pasa por acá
+    # -- valida el conteo aparte y no vuelve a exigir el formato posicional.
     positions = sorted({int(value) for value in re.findall(r"\{\{(\d+)\}\}", values.get("content") or "")})
     if any(not value.isdigit() for value in template_variables(values.get("content"))):
         raise TemplateValidationError(

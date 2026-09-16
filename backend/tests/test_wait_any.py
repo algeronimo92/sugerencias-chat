@@ -428,8 +428,8 @@ class TestRunVisualExecutionQuestion:
     async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox):
         # Ya no resuelve acá si son botones nativos o el fallback de texto:
         # eso quedó a cargo del worker del outbox en el momento real del
-        # envío (ver _send_buttons_message), así que no hace falta mockear
-        # get_instance_capabilities para este test.
+        # envío (ver _send_buttons_message), así que este test no necesita
+        # mockear nada de esa decisión.
         FakeSession, calls = capturing_session()
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,

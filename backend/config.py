@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     n8n_webhook_url: str = ""
     # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
     # webhook de n8n (dirección app -> n8n). Env var OUTBOUND_WEBHOOK_TOKEN a
-    # propósito, distinta de INBOUND_WEBHOOK_TOKEN (n8n/Evolution -> backend,
-    # la dirección opuesta) para que no se confundan al configurarlas.
+    # propósito, distinta de INBOUND_WEBHOOK_TOKEN (n8n -> backend, la
+    # dirección opuesta) para que no se confundan al configurarlas.
     n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
     # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
@@ -38,9 +38,6 @@ class Settings(BaseSettings):
     # URL de prueba ("Listen for test event" en el editor de n8n). Solo la
     # usan los admins desde el toggle "modo prueba" del formulario.
     n8n_citas_webhook_test_url: str = ""
-    evolution_api_url: str = ""
-    evolution_api_key: str = ""
-    evolution_instance: str = ""
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     elevenlabs_model_id: str = "eleven_multilingual_v2"
@@ -58,6 +55,12 @@ class Settings(BaseSettings):
     # cierra sola. Vacío o 0 lo desactiva. Editable desde Configuración.
     conversation_auto_close_hours: str = ""
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # Para orígenes con subdominio variable (ej. túneles rápidos de Cloudflare,
+    # hostname aleatorio en cada corrida) que no se pueden listar en
+    # cors_origins de antemano. None = desactivado; un string vacío matchearía
+    # cualquier origen (ver re.compile("").match), por eso no se usa "" como
+    # default acá.
+    cors_origin_regex: str | None = None
 
     # Almacenamiento multimedia. "local" conserva el comportamiento anterior;
     # "minio" usa un bucket privado y mantiene las URLs /media/<archivo>.

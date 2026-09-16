@@ -61,9 +61,24 @@ async def _send_location(sender: MessageSender, chat_id: str, payload: dict) -> 
 
 
 async def _send_official_template(sender: MessageSender, chat_id: str, payload: dict) -> OutboundDelivery:
-    return OutboundDelivery(await sender.send_template(
-        chat_id, payload["name"], payload["language"], payload.get("components", []),
-    ))
+    components = list(payload.get("components") or [])
+    header_media = payload.get("header_media")
+    if header_media:
+        # Recién acá se sube la imagen y se arma el componente HEADER -- si se
+        # subiera al encolar, un reintento (o una cola atrasada) podría llegar
+        # con un media id que Meta ya invalidó. Sin este componente, Meta
+        # rechaza el envío con 132012 ("Parameter format does not match format
+        # in the created template"): la plantilla tiene encabezado de imagen
+        # pero el envío no traía ninguno.
+        content = await asyncio.to_thread(read_media_bytes, header_media["media_url"])
+        media_id = await sender.upload_media(
+            content, header_media["content_type"], header_media["filename"] or "encabezado",
+        )
+        components = [
+            {"type": "header", "parameters": [{"type": "image", "image": {"id": media_id}}]},
+            *components,
+        ]
+    return OutboundDelivery(await sender.send_template(chat_id, payload["name"], payload["language"], components))
 
 
 async def _send_buttons(
@@ -109,6 +124,30 @@ async def _send_interactive(sender: MessageSender, chat_id: str, payload: dict) 
     return await send(sender, chat_id, payload["description"], config, footer)
 
 
+def _official_template_fields(payload: dict) -> tuple[str, dict | None]:
+    # El frontend arma el header/pie/botones de la burbuja a partir de esto
+    # (ver parseOutboundOfficialTemplate en frontend/src/utils/message.ts);
+    # sin esto solo podía mostrar el body -- el resto de lo que el cliente ve
+    # en WhatsApp (encabezado, pie, botones) quedaba invisible en el CRM.
+    #
+    # `header_media.media_url` ya vive en el almacenamiento de medios de la
+    # app (MinIO/local, según MEDIA_STORAGE_BACKEND) desde que la plantilla se
+    # creó o se importó -- ver `add_template_attachment`/
+    # `_import_header_media_asset` en routers/templates.py. No hace falta
+    # volver a subirlo ni copiarlo por mensaje: alcanza con guardar la misma
+    # URL acá para que la burbuja la resuelva como cualquier imagen.
+    header_media = payload.get("header_media") or {}
+    return "template", {
+        "type": "official_template",
+        "name": payload.get("name"),
+        "language": payload.get("language"),
+        "header_text": payload.get("header_text"),
+        "header_image_url": header_media.get("media_url"),
+        "footer": payload.get("footer"),
+        "buttons": payload.get("buttons") or [],
+    }
+
+
 def _interactive_fields(payload: dict) -> tuple[str, dict | None]:
     # El frontend arma los botones/lista de la burbuja a partir de esto
     # (ver parseOutboundInteractive en frontend/src/utils/message.ts):
@@ -133,10 +172,7 @@ OUTBOUND_KINDS: dict[str, OutboundKind] = {
         lambda payload: ("location", {"latitude": payload["latitude"], "longitude": payload["longitude"]}),
         _send_location,
     ),
-    "official_template": OutboundKind(
-        lambda payload: ("template", {"name": payload.get("name"), "language": payload.get("language")}),
-        _send_official_template,
-    ),
+    "official_template": OutboundKind(_official_template_fields, _send_official_template),
     "interactive": OutboundKind(_interactive_fields, _send_interactive),
 }
 

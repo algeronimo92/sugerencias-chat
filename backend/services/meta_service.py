@@ -1,12 +1,13 @@
 import asyncio
 import logging
+import re
 from time import perf_counter
 from typing import Any
 
 import httpx
 
 from request_metrics import record_external_duration
-from services.settings_service import get_effective_many
+from services.settings_service import get_effective_many, update_settings
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError
 from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
 
@@ -33,6 +34,14 @@ class MetaApiError(ChannelError):
 class WhatsAppWindowClosedError(MetaApiError):
     """Meta rechazó un envío libre porque la ventana de 24h del contacto ya
     cerró (código 131047). Sólo una plantilla aprobada puede reabrirla."""
+
+    def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
+        super().__init__(message, error=error, status_code=status_code)
+        self.user_message = message
+
+
+class MetaInvalidTokenException(MetaApiError):
+    """Rechazo de solicitud por token invalido o vencido"""
 
     def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
         super().__init__(message, error=error, status_code=status_code)
@@ -72,6 +81,11 @@ def _raise_meta_error(response: httpx.Response) -> None:
             "cerrada. Mandale una plantilla aprobada para reabrir la conversación.",
             error=error, status_code=response.status_code,
         )
+    if code == _META_ERROR_CODE_AUTH:
+        raise MetaInvalidTokenException(
+            "Token invalido o vencido, genera uno nuevo", error=error, status_code=response.status_code
+            )
+    
     raise MetaApiError(
         f"Meta Graph API respondió {response.status_code}: {message} (código {code})",
         error=error, status_code=response.status_code,
@@ -100,6 +114,52 @@ async def close_meta_client() -> None:
         _http_client = None
 
 
+def template_parameter_identifiers(content: str) -> list[str]:
+    """Identificadores de variable del body de una plantilla oficial, en el
+    orden en que Meta los espera al armar el `components` de un envío.
+
+    Meta soporta dos formatos de variable en el body de una plantilla:
+    posicional (`{{1}}`, `{{2}}`, ...) y con nombre (`{{customer_name}}`).
+    Esta app solo arma plantillas posicionales al crearlas acá, pero una
+    importada desde el WhatsApp Manager (ver `routers/templates.py
+    _parse_meta_template`) puede venir en cualquiera de los dos formatos, y
+    hay que distinguirlos: un envío con parámetros posicionales llanos
+    (`{"type": "text", "text": ...}`) contra una plantilla con nombre falla
+    con el código 132012 ("Parameter format does not match format in the
+    created template") -- para esas hace falta agregar `parameter_name` a
+    cada parámetro (ver `send_whatsapp_template`/`routers/chats.py`).
+
+    Si todas las variables encontradas son numéricas se asume posicional
+    clásico y se devuelve una entrada por posición distinta (1..máximo,
+    tolerando que una posición se repita en el texto); si alguna tiene
+    nombre, se devuelve cada aparición literal en el orden del texto, porque
+    ese es el orden en el que se le va a pedir el valor al admin/vendedor."""
+    matches = re.findall(r"\{\{\s*([^{}]+?)\s*\}\}", content)
+    if matches and all(match.isdigit() for match in matches):
+        highest = max(int(match) for match in matches)
+        return [str(position) for position in range(1, highest + 1)]
+    return matches
+
+
+def render_official_body(content: str, parameter_values: list[str]) -> str:
+    """Sustituye cada variable del body de una plantilla oficial por su valor
+    real, para guardar/mostrar el mensaje tal como se lo mandó a Meta.
+
+    Es la única fuente confiable de "qué se mandó": ni el webhook de
+    entrada (n8n reenvía eventos del cliente y cambios de estado, nunca el
+    contenido de un mensaje que la propia app mandó) ni la respuesta de
+    `POST /messages` (`_send` solo devuelve `{contacts, messages:[{id}]}`,
+    sin el body) tienen el texto ya resuelto -- Meta jamás lo hace eco. Hay
+    que armarlo acá, con el mismo criterio posicional/con nombre que
+    `template_parameter_identifiers`, antes de encolar el envío."""
+    identifiers = template_parameter_identifiers(content)
+    if identifiers and all(name.isdigit() for name in identifiers):
+        mapping = dict(zip(identifiers, parameter_values))
+        return re.sub(r"\{\{\s*(\d+)\s*\}\}", lambda m: mapping.get(m.group(1), m.group(0)), content)
+    values = iter(parameter_values)
+    return re.sub(r"\{\{\s*[^{}]+?\s*\}\}", lambda _match: next(values, _match.group(0)), content)
+
+
 async def _config() -> tuple[str, str, str]:
     """-> (access_token, phone_number_id, waba_id)."""
     values = await get_effective_many((
@@ -120,6 +180,78 @@ async def is_configured() -> bool:
         "meta_access_token", "meta_phone_number_id", "meta_waba_id",
     ))
     return all(values.values())
+
+
+async def _resolve_phone_number_id(waba_id: str, access_token: str) -> str:
+    """El evento de coexistencia (`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`)
+    solo trae `waba_id` -- a diferencia del embedded signup normal, Meta no
+    manda el `phone_number_id` por `postMessage` porque el número ya existía
+    de antes en la app de WhatsApp Business, no se creó en este flujo. Hay
+    que resolverlo aparte con `GET /{waba_id}/phone_numbers`."""
+    body = await _request(
+        "GET", _graph_url(f"{waba_id}/phone_numbers"), access_token,
+        params={"fields": "id"}, timeout=20.0,
+    )
+    numbers = body.get("data") or []
+    if len(numbers) == 1:
+        return numbers[0]["id"]
+    if not numbers:
+        raise MetaApiError(f"La WABA {waba_id} no tiene ningún número de teléfono todavía")
+    raise MetaApiError(
+        f"La WABA {waba_id} tiene {len(numbers)} números; completá el Phone Number ID "
+        "a mano en Configuración → Claves porque no se puede elegir uno solo automáticamente"
+    )
+
+
+async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str | None = None) -> None:
+    """Cierra el flujo de WhatsApp Embedded Signup: cambia el `code` de un
+    solo uso que dio `FB.login()` por un token de acceso, suscribe esta app a
+    los webhooks de la WABA elegida y guarda las tres credenciales
+    resultantes como si el admin las hubiese tipeado a mano en la pestaña
+    Claves.
+
+    `waba_id` (y, en el signup normal -no coexistencia-, `phone_number_id`)
+    no los devuelve este intercambio -- llegan aparte, del evento
+    `WA_EMBEDDED_SIGNUP` que Meta manda por `postMessage` al completar el
+    signup en el frontend (ver WhatsappPanel.tsx). En coexistencia con la app
+    de WhatsApp Business el evento es `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`
+    y su payload omite `phone_number_id` a propósito -- se resuelve acá con
+    `_resolve_phone_number_id`."""
+    values = await get_effective_many(("meta_app_id", "meta_app_secret"))
+    app_id, app_secret = values["meta_app_id"], values["meta_app_secret"]
+    if not (app_id and app_secret):
+        raise MetaApiError(
+            "Faltan el Facebook App ID y App Secret (Tech Provider) en Configuración → "
+            "Meta Cloud API para completar el signup"
+        )
+
+    started_at = perf_counter()
+    try:
+        exchange = await _client().get(
+            _graph_url("oauth/access_token"),
+            params={"client_id": app_id, "client_secret": app_secret, "code": code},
+            timeout=30.0,
+        )
+    finally:
+        record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
+    if exchange.is_error:
+        _raise_meta_error(exchange)
+    access_token = exchange.json().get("access_token")
+    if not access_token:
+        raise MetaApiError("Meta no devolvió un access token para el código recibido")
+
+    # Sin esto la WABA no manda webhooks (mensajes entrantes, estados) a esta
+    # app -- paso obligatorio de Embedded Signup, ver docs de Meta.
+    await _request("POST", _graph_url(f"{waba_id}/subscribed_apps"), access_token, timeout=20.0)
+
+    if not phone_number_id:
+        phone_number_id = await _resolve_phone_number_id(waba_id, access_token)
+
+    await update_settings({
+        "meta_access_token": access_token,
+        "meta_waba_id": waba_id,
+        "meta_phone_number_id": phone_number_id,
+    })
 
 
 def _graph_url(path: str) -> str:
@@ -251,6 +383,27 @@ async def download_media(media_id: str) -> tuple[bytes, str]:
     return response.content, content_type
 
 
+async def download_template_header_example(url: str) -> tuple[bytes, str]:
+    """Baja el archivo de ejemplo del encabezado de una plantilla ya aprobada.
+
+    Al pedir los `components` de una plantilla existente, el `example.
+    header_handle` de un HEADER tipo IMAGE ya no es el handle opaco del
+    resumable upload (ver `upload_header_media`, eso es solo para crear una
+    plantilla nueva) sino una URL descargable con el archivo real que Meta
+    aprobó -- necesario para poder importar el encabezado con imagen de una
+    plantilla creada fuera de la app (WhatsApp Manager) en vez de perderlo."""
+    token, _phone_number_id, _waba_id = await _config()
+    started_at = perf_counter()
+    try:
+        response = await _client().get(url, headers={"Authorization": f"Bearer {token}"}, timeout=60.0)
+    finally:
+        record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
+    if response.is_error:
+        raise MetaApiError(f"No se pudo descargar el ejemplo del encabezado ({response.status_code})")
+    content_type = response.headers.get("content-type", "application/octet-stream").split(";", 1)[0].strip()
+    return response.content, content_type
+
+
 async def upload_header_media(content: bytes, content_type: str, filename: str) -> str:
     """Sube un archivo a Meta para usarlo como ejemplo del encabezado de una
     plantilla oficial (imagen/video/documento) y devuelve el `header_handle`
@@ -325,6 +478,21 @@ async def create_whatsapp_template(
         "allow_category_change": True,
     }
     return await _request("POST", url, token, json_body=payload, timeout=30.0)
+
+
+async def get_whatsapp_template(meta_template_id: str) -> dict:
+    """`GET /{meta_template_id}` con los `components` completos -- a
+    diferencia de `list_whatsapp_templates` (que no los pide, para no pesar
+    el listado), esto trae el body/header/footer/botones tal como Meta los
+    aprobó. Hace falta para importar una plantilla creada fuera de la app
+    (ej. desde el WhatsApp Manager) sin tener que reconstruirla a mano."""
+    token, _phone_number_id, _waba_id = await _config()
+    url = _graph_url(meta_template_id)
+    return await _request(
+        "GET", url, token,
+        params={"fields": "id,name,status,category,language,rejected_reason,components"},
+        timeout=20.0,
+    )
 
 
 async def list_whatsapp_templates() -> list[dict]:

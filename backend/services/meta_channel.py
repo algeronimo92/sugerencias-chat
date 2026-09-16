@@ -45,6 +45,9 @@ class MetaMessageSender:
     async def send_template(self, chat_id: str, name: str, language: str, components: list[dict]) -> SendReceipt:
         return _receipt(await meta_service.send_whatsapp_template(chat_id, name, language, components))
 
+    async def upload_media(self, content: bytes, content_type: str, filename: str) -> str:
+        return await meta_service.upload_media(content, content_type, filename)
+
     async def send_buttons(
         self, chat_id: str, title: str, description: str, footer: str, buttons: list[dict],
     ) -> SendReceipt:

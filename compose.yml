@@ -38,6 +38,9 @@ services:
       # desde el que sirve el navegador ahora que el frontend se accede por
       # IPv4 explícito (ver el comentario en el servicio frontend).
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:3000","http://127.0.0.1:5173"]
+      # Mismo comodín que VITE_ALLOWED_HOSTS del frontend: el hostname del
+      # túnel rápido de Cloudflare cambia en cada corrida.
+      - CORS_ORIGIN_REGEX=https://.*\.trycloudflare\.com
       # La conexión no sale de la red Docker local. Producción conserva
       # DATABASE_SSL=require desde backend/.env y compose.prod.yml.
       - DATABASE_SSL=disable
@@ -62,11 +65,19 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      # 127.0.0.1 y no "localhost": en este entorno "localhost" resuelve
-      # primero a ::1 (IPv6), y el mapeo de puertos de Docker Desktop/WSL2
-      # no responde ahí — el navegador se queda colgado o corta la conexión
-      # aunque el contenedor esté sano. 127.0.0.1 fuerza IPv4, que sí anda.
-      - VITE_API_BASE_URL=http://127.0.0.1:8000
+      # Vacío = rutas relativas (mismo comportamiento que producción, ver
+      # api/client.ts): el navegador le habla al mismo origen que sirve la
+      # app y es Vite quien reenvía /api, /media y /ws al backend por dentro
+      # de la red de Docker (ver proxy en vite.config.ts). Necesario para que
+      # la cookie de sesión sea same-origin sin importar si se entra por
+      # localhost:5173 o por un túnel https -- apuntar directo a
+      # 127.0.0.1:8000 desde un origen https rompía SameSite=Lax.
+      - VITE_API_BASE_URL=
+      # El comodín de subdominio cubre cualquier túnel rápido de Cloudflare
+      # (cloudflared tunnel --url, hostname aleatorio en cada corrida) sin
+      # tener que actualizar esto cada vez que se reinicia el túnel. Hace
+      # falta para probar el Embedded Signup de Meta, que exige HTTPS.
+      - VITE_ALLOWED_HOSTS=.trycloudflare.com
     ports:
       - "5173:5173"
     depends_on:

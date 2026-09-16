@@ -19,9 +19,31 @@ export function renderOfficialParameterValues(template: MessageTemplate, chat: C
   return template.official_parameter_values.map(value => renderTemplateText(value, chat))
 }
 
+/** Espejo de `template_parameter_identifiers` en el backend (`meta_service.py`):
+ * si todas las variables del body son numéricas ({{1}}, {{2}}...) es el
+ * formato posicional clásico, con una entrada por posición distinta; si
+ * alguna tiene nombre ({{cliente}}) se listan tal cual aparecen, en orden,
+ * porque cada aparición consume su propio valor. */
+export function templateParameterIdentifiers(content: string): string[] {
+  const matches = Array.from(content.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), match => match[1].trim())
+  if (matches.length > 0 && matches.every(match => /^\d+$/.test(match))) {
+    const highest = Math.max(...matches.map(Number))
+    return Array.from({ length: highest }, (_, index) => String(index + 1))
+  }
+  return matches
+}
+
+/** Sin distinguir el formato de variable, una plantilla importada con
+ * nombre ({{cliente}}) mostraba el placeholder crudo en vez del valor real,
+ * porque el reemplazo solo buscaba posiciones numéricas ({{1}}, {{2}}...). */
 export function renderOfficialTemplate(template: MessageTemplate, chat: Chat, parameters?: string[]): string {
   const values = parameters ?? renderOfficialParameterValues(template, chat)
-  return template.content.replace(/\{\{(\d+)\}\}/g, (match, position) => values[Number(position) - 1] ?? match)
+  const identifiers = templateParameterIdentifiers(template.content)
+  if (identifiers.length > 0 && identifiers.every(identifier => /^\d+$/.test(identifier))) {
+    return template.content.replace(/\{\{\s*(\d+)\s*\}\}/g, (match, position) => values[Number(position) - 1] ?? match)
+  }
+  let index = 0
+  return template.content.replace(/\{\{\s*[^{}]+?\s*\}\}/g, match => values[index++] ?? match)
 }
 
 export function renderInteractiveConfig(template: MessageTemplate, chat: Chat): TemplateInteractiveConfig {

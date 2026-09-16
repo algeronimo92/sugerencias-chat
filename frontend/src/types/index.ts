@@ -545,6 +545,7 @@ export interface MessageTemplate {
   official_buttons: OfficialTemplateButton[]
   interactive_type: 'none' | 'buttons' | 'list'
   interactive_config: TemplateInteractiveConfig
+  imported_from_meta: boolean
   is_favorite: boolean
   last_used_at: string | null
   use_count: number
@@ -559,6 +560,23 @@ export interface OfficialTemplateButton {
   text: string
   url?: string
   phone_number?: string
+}
+
+/** Plantilla tal cual la devuelve la Graph API (`GET /{waba_id}/message_templates`),
+ * antes de vincularla a la app -- ver `useMetaTemplates`. */
+export interface MetaTemplateRaw {
+  id: string
+  name: string
+  status: string
+  category: string
+  language: string
+  rejected_reason?: string | null
+  components?: {
+    type: string
+    format?: string
+    text?: string
+    buttons?: { type: string; text: string; url?: string; phone_number?: string }[]
+  }[]
 }
 
 export interface TemplateInteractiveButton {
