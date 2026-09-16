@@ -314,6 +314,11 @@ def patch_store(monkeypatch, name, value):
     _patch_everywhere(monkeypatch, _package_modules("services.db_service", "services.store"), name, value)
 
 
+def patch_chats(monkeypatch, name, value):
+    """Reemplaza un colaborador en todos los módulos del router de chats que lo usan."""
+    _patch_everywhere(monkeypatch, _package_modules("routers.chats", "routers.chats"), name, value)
+
+
 @contextlib.contextmanager
 def _patching(patcher_function, name, new):
     from unittest.mock import MagicMock

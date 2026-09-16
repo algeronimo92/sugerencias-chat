@@ -19,7 +19,6 @@ def _imported_modules(path: Path) -> set[str]:
 
 
 @pytest.mark.parametrize(("package", "forbidden_prefix"), [
-    ("routers", "routers."),
     ("db", "services"),
     ("services", "routers"),
 ])
@@ -34,13 +33,32 @@ def test_layers_do_not_depend_on_forbidden_packages(package, forbidden_prefix):
     assert violations == set()
 
 
+def test_a_router_never_reaches_into_another_router():
+    """Un router partido en varios módulos puede hablar entre sus propios
+    módulos; lo que no puede es depender de otro router."""
+    violations = set()
+    for path in (BACKEND / "routers").rglob("*.py"):
+        relative = path.relative_to(BACKEND / "routers")
+        own = f"routers.{relative.parts[0]}" if len(relative.parts) > 1 else None
+        for module in _imported_modules(path):
+            if not module.startswith("routers."):
+                continue
+            if own and (module == own or module.startswith(f"{own}.")):
+                continue
+            violations.add(f"{path.relative_to(BACKEND)} -> {module}")
+
+    assert violations == set()
+
+
 @pytest.mark.parametrize("module", [
     "services/message_outbox.py",
     "services/outbound_kinds.py",
     "services/automations/actions.py",
     "services/automations/engine.py",
     "services/automation_deps.py",
-    "routers/chats.py",
+    "routers/chats/outbound.py",
+    "routers/chats/message_actions.py",
+    "routers/chats/read_state.py",
 ])
 def test_messaging_flows_depend_on_the_channel_port_not_on_meta(module):
     imported = _imported_modules(BACKEND / module)

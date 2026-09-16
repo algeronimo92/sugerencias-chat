@@ -14,6 +14,7 @@ from models.schemas import LeadCreate
 from routers import chats
 from services.db_service import LeadAlreadyExistsError
 from services.evolution_service import EvolutionApiError
+from tests.conftest import patch_chats
 
 
 ADMIN = SimpleNamespace(role="admin", id=1)
@@ -24,11 +25,11 @@ def create_deps(monkeypatch):
     """Dobles por defecto: país 51, Evolution confirma existencia, insert OK."""
     created_lead = AsyncMock(return_value={"chat_id": "51906471403@s.whatsapp.net"})
     check = AsyncMock(return_value=[{"exists": True, "jid": "51906471403@s.whatsapp.net"}])
-    monkeypatch.setattr(chats, "effective_country_code", AsyncMock(return_value="51"))
-    monkeypatch.setattr(chats, "check_whatsapp_numbers", check)
-    monkeypatch.setattr(chats, "create_lead", created_lead)
-    monkeypatch.setattr(chats, "trigger_lead_created", AsyncMock())
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
+    patch_chats(monkeypatch, "check_whatsapp_numbers", check)
+    patch_chats(monkeypatch, "create_lead", created_lead)
+    patch_chats(monkeypatch, "trigger_lead_created", AsyncMock())
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return SimpleNamespace(create_lead=created_lead, check=check)
 
 

@@ -10,6 +10,7 @@ from db.models import Base, Lead
 from models.schemas import LeadUpdate
 from routers import chats
 from services.db_service import LeadAlreadyExistsError
+from tests.conftest import patch_chats
 
 
 ADMIN = SimpleNamespace(role="admin", id=1)
@@ -31,11 +32,11 @@ def update_deps(monkeypatch):
     updated = AsyncMock(return_value={"chat_id": CHAT_ID})
     rekeyed = AsyncMock(return_value=CHAT_ID)
     check = AsyncMock(return_value=[{"exists": True, "jid": None}])
-    monkeypatch.setattr(chats, "effective_country_code", AsyncMock(return_value="51"))
-    monkeypatch.setattr(chats, "check_whatsapp_numbers", check)
-    monkeypatch.setattr(chats, "update_lead", updated)
-    monkeypatch.setattr(chats, "rekey_lead_phone", rekeyed)
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
+    patch_chats(monkeypatch, "check_whatsapp_numbers", check)
+    patch_chats(monkeypatch, "update_lead", updated)
+    patch_chats(monkeypatch, "rekey_lead_phone", rekeyed)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return SimpleNamespace(update_lead=updated, rekey=rekeyed, check=check)
 
 

@@ -7,6 +7,7 @@ import pytest
 from models.schemas import SendLocationRequest, SendMediaRequest, SendMessageRequest
 from routers import chats
 from services.media_storage import AudioTranscodeError
+from tests.conftest import patch_chats
 
 USER = SimpleNamespace(id=7)
 
@@ -25,9 +26,9 @@ async def test_text_send_returns_queued_message_without_waiting_for_evolution(mo
     require_lead = AsyncMock()
     enqueue = AsyncMock(return_value=queued)
     broadcast = AsyncMock()
-    monkeypatch.setattr(chats, "_require_existing_lead", require_lead)
-    monkeypatch.setattr(chats, "enqueue_text_message", enqueue)
-    monkeypatch.setattr(chats.manager, "broadcast", broadcast)
+    patch_chats(monkeypatch, "_require_existing_lead", require_lead)
+    patch_chats(monkeypatch, "enqueue_text_message", enqueue)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await chats.send_message(
         "51999999999@s.whatsapp.net",
@@ -55,12 +56,12 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
         "media_url": "/api/media/audio/voice.ogg", "wa_message_id": None,
         "status": "PENDING",
     }
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
-    monkeypatch.setattr(chats, "save_decoded_media", lambda *_args: queued["media_url"])
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "save_decoded_media", lambda *_args: queued["media_url"])
     enqueue = AsyncMock(return_value=[queued])
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
     broadcast = AsyncMock()
-    monkeypatch.setattr(chats.manager, "broadcast", broadcast)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await chats.send_audio(
         "51999999999@s.whatsapp.net",
@@ -91,16 +92,16 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
         "media_url": "/api/media/audio/voice.ogg", "wa_message_id": None,
         "status": "PENDING",
     }
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     save_calls = []
-    monkeypatch.setattr(
-        chats, "save_decoded_media",
+    patch_chats(
+        monkeypatch, "save_decoded_media",
         lambda content_type, raw: (save_calls.append((content_type, raw)), queued["media_url"])[1],
     )
     transcode = lambda data: b"ogg-bytes"
-    monkeypatch.setattr(chats, "transcode_audio_to_ogg_opus", transcode)
-    monkeypatch.setattr(chats, "enqueue_messages", AsyncMock(return_value=[queued]))
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "transcode_audio_to_ogg_opus", transcode)
+    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[queued]))
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_audio(
         "51999999999@s.whatsapp.net",
@@ -121,19 +122,19 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
         "media_url": "/api/media/audio/voice.webm", "wa_message_id": None,
         "status": "PENDING",
     }
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     save_calls = []
-    monkeypatch.setattr(
-        chats, "save_decoded_media",
+    patch_chats(
+        monkeypatch, "save_decoded_media",
         lambda content_type, raw: (save_calls.append((content_type, raw)), queued["media_url"])[1],
     )
 
     def _boom(_data):
         raise AudioTranscodeError("ffmpeg no está disponible")
 
-    monkeypatch.setattr(chats, "transcode_audio_to_ogg_opus", _boom)
-    monkeypatch.setattr(chats, "enqueue_messages", AsyncMock(return_value=[queued]))
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "transcode_audio_to_ogg_opus", _boom)
+    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[queued]))
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_audio(
         "51999999999@s.whatsapp.net",
@@ -152,10 +153,10 @@ async def test_location_send_returns_pending_job(monkeypatch):
         "sent_at": "2026-07-21T12:00:00.000000Z", "media_url": None,
         "wa_message_id": None, "status": "PENDING",
     }
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     enqueue = AsyncMock(return_value=[queued])
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     result = await chats.send_location(
         "51999999999@s.whatsapp.net",
@@ -175,8 +176,8 @@ async def test_retry_reuses_failed_message_instead_of_creating_a_duplicate(monke
         "wa_message_id": None, "status": "PENDING",
     }
     retry = AsyncMock(return_value=retried)
-    monkeypatch.setattr(chats, "retry_failed_message", retry)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "retry_failed_message", retry)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     result = await chats.retry_message("51999999999@s.whatsapp.net", 80)
 

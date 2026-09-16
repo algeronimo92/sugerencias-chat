@@ -1,23 +1,25 @@
 from unittest.mock import AsyncMock
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 
 from models.schemas import ReactionRequest
 from routers import chats
 from services.whatsapp_channel import ChannelError, ReactionTarget
-from tests.conftest import FakeConversationActions, install_channel
+from tests.conftest import FakeConversationActions, install_channel, patch_chats
 
 CHAT_ID = "51999@s.whatsapp.net"
 
 
 def _patch_common(monkeypatch, *, target, actions=None, set_reaction=None):
-    monkeypatch.setattr(chats, "fetch_reply_target", AsyncMock(return_value=target))
+    patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
     actions = actions or FakeConversationActions()
     install_channel(monkeypatch, actions=actions)
     set_reaction = set_reaction or AsyncMock(return_value={"id": 7, "reactions": [{"emoji": "❤️", "from_me": True}]})
-    monkeypatch.setattr(chats, "set_message_reaction", set_reaction)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "set_message_reaction", set_reaction)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return actions, set_reaction
 
 

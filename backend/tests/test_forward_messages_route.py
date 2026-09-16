@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from models.schemas import ForwardMessagesRequest
 from routers import chats
+from tests.conftest import patch_chats
 
 CHAT_ID = "51999999999@s.whatsapp.net"
 TARGET = "51888888888@s.whatsapp.net"
@@ -26,15 +27,15 @@ def _message(**overrides) -> dict:
 
 
 def _patch(monkeypatch, *, messages, existing=None):
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
-    monkeypatch.setattr(chats, "fetch_messages_to_forward", AsyncMock(return_value=messages))
-    monkeypatch.setattr(
-        chats, "filter_existing_leads",
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "fetch_messages_to_forward", AsyncMock(return_value=messages))
+    patch_chats(
+        monkeypatch, "filter_existing_leads",
         AsyncMock(return_value={TARGET} if existing is None else existing),
     )
     enqueue = AsyncMock(return_value=[])
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return enqueue
 
 

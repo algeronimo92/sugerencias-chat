@@ -17,6 +17,7 @@ from models.schemas import Chat, LeadStageUpdate, LeadUpdate
 from routers import chats
 from services.db_service import _activity_safe
 from services.lead_updates import LEAD_FIELD_TO_COLUMN
+from tests.conftest import patch_chats
 
 
 CHAT_ID = "51906471403@s.whatsapp.net"
@@ -26,8 +27,8 @@ ADMIN = SimpleNamespace(role="admin", id=1)
 @pytest.fixture
 def update_deps(monkeypatch):
     updated = AsyncMock(return_value={"chat_id": CHAT_ID})
-    monkeypatch.setattr(chats, "update_lead", updated)
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "update_lead", updated)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return updated
 
 
@@ -62,10 +63,10 @@ async def test_patch_lead_ignores_fields_not_sent(update_deps):
 @pytest.fixture
 def stage_deps(monkeypatch):
     update_stage = AsyncMock(return_value={"chat_id": CHAT_ID, "stage": "perdido"})
-    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"stage": "calificado"}))
-    monkeypatch.setattr(chats, "update_lead_stage", update_stage)
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(chats, "notify_automations_scheduled", AsyncMock())
+    patch_chats(monkeypatch, "fetch_chat", AsyncMock(return_value={"stage": "calificado"}))
+    patch_chats(monkeypatch, "update_lead_stage", update_stage)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "notify_automations_scheduled", AsyncMock())
     return update_stage
 
 

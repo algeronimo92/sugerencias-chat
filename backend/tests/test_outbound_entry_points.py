@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from models.schemas import SendTemplateRequest, StickerRequest
 from routers import chats, webhooks
 from services import chat_messaging
+from tests.conftest import patch_chats
+from routers.chats.outbound import TEMPLATE_ERROR_STATUS
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
 CHAT_ID = "51999@s.whatsapp.net"
@@ -16,18 +18,18 @@ CHAT_ID = "51999@s.whatsapp.net"
 @pytest.fixture
 def broadcast(monkeypatch):
     mock = AsyncMock()
-    monkeypatch.setattr(chats.manager, "broadcast", mock)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
     monkeypatch.setattr(webhooks.manager, "broadcast", mock)
     return mock
 
 
 async def test_sticker_is_queued_in_the_outbox_instead_of_sent_directly(monkeypatch, broadcast):
-    monkeypatch.setattr(chats, "lead_exists", AsyncMock(return_value=True))
-    monkeypatch.setattr(chats, "get_media_asset", AsyncMock(return_value={
+    patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    patch_chats(monkeypatch, "get_media_asset", AsyncMock(return_value={
         "id": 3, "media_url": "/api/media/images/gato.png", "content_type": "image/png",
     }))
     enqueue = AsyncMock(return_value=[{"id": 1, "status": "PENDING"}])
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
 
     result = await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
 
@@ -39,12 +41,12 @@ async def test_sticker_is_queued_in_the_outbox_instead_of_sent_directly(monkeypa
 
 
 async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast):
-    monkeypatch.setattr(chats, "lead_exists", AsyncMock(return_value=True))
-    monkeypatch.setattr(chats, "get_media_asset", AsyncMock(return_value={
+    patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    patch_chats(monkeypatch, "get_media_asset", AsyncMock(return_value={
         "id": 3, "media_url": "/api/media/documents/a.pdf", "content_type": "application/pdf",
     }))
     enqueue = AsyncMock()
-    monkeypatch.setattr(chats, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
 
     with pytest.raises(HTTPException) as exc:
         await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
@@ -90,7 +92,7 @@ async def test_unknown_inbound_id_never_falls_back_to_another_chats_message(monk
 
 def test_every_template_kind_and_error_has_a_mapping():
     assert set(chat_messaging.TEMPLATE_ITEM_BUILDERS) == {"official", "interactive", "internal"}
-    assert set(chats.TEMPLATE_ERROR_STATUS) == set(chat_messaging.ChatMessagingError.__subclasses__())
+    assert set(TEMPLATE_ERROR_STATUS) == set(chat_messaging.ChatMessagingError.__subclasses__())
 
 
 @pytest.mark.parametrize(("template", "kind"), [

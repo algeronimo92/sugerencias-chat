@@ -9,6 +9,7 @@ from services import evolution_service, whatsapp_capabilities
 from services.evolution_channel import EvolutionHistoryReader
 from services.evolution_service import EvolutionApiError
 from tests.conftest import FakeEditor, install_channel
+from fastapi import HTTPException
 
 
 def _evolution(**flags):
@@ -65,7 +66,7 @@ async def test_capabilities_follow_the_active_channel(monkeypatch):
 async def test_history_route_refuses_when_channel_has_no_history(monkeypatch):
     install_channel(monkeypatch, history=None)
 
-    with pytest.raises(chats.HTTPException) as exc:
+    with pytest.raises(HTTPException) as exc:
         await chats.get_whatsapp_history("51999@s.whatsapp.net", None, None)
 
     assert exc.value.status_code == 409

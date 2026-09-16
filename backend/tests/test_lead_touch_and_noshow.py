@@ -14,6 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 from routers import chats, webhooks
+from tests.conftest import patch_chats
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 JID = "51987654321@s.whatsapp.net"
@@ -65,9 +66,9 @@ async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(mon
 @pytest.mark.asyncio
 async def test_register_no_show_returns_updated_chat(monkeypatch):
     mark_no_show = AsyncMock(return_value={"chat_id": LEAD_ID, "contador_noshow": 1})
-    monkeypatch.setattr(chats, "mark_lead_no_show", mark_no_show)
+    patch_chats(monkeypatch, "mark_lead_no_show", mark_no_show)
     broadcast = AsyncMock()
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await chats.register_no_show(LEAD_ID, ADMIN)
 
@@ -78,7 +79,7 @@ async def test_register_no_show_returns_updated_chat(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_register_no_show_missing_lead_returns_404(monkeypatch):
-    monkeypatch.setattr(chats, "mark_lead_no_show", AsyncMock(return_value=None))
+    patch_chats(monkeypatch, "mark_lead_no_show", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as exc:
         await chats.register_no_show(LEAD_ID, ADMIN)

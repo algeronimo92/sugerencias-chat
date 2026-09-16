@@ -8,7 +8,8 @@ from models.schemas import SendMessageRequest
 from routers import chats
 from services import message_outbox
 from services.outbound_kinds import send_outbound
-from tests.conftest import FakeSender
+from tests.conftest import FakeSender, patch_chats
+from routers.chats.outbound import _resolve_reply_to
 
 USER = SimpleNamespace(id=7)
 
@@ -39,10 +40,10 @@ async def test_el_envio_lleva_la_cita_al_canal():
 
 @pytest.mark.asyncio
 async def test_responder_a_un_mensaje_inexistente_es_404(monkeypatch):
-    monkeypatch.setattr(chats, "fetch_reply_target", AsyncMock(return_value=None))
+    patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as error:
-        await chats._resolve_reply_to("51999@s.whatsapp.net", 42)
+        await _resolve_reply_to("51999@s.whatsapp.net", 42)
 
     assert error.value.status_code == 404
 
@@ -51,12 +52,12 @@ async def test_responder_a_un_mensaje_inexistente_es_404(monkeypatch):
 async def test_responder_a_un_mensaje_aun_en_la_outbox_es_409(monkeypatch):
     """Sin wa_message_id no hay cita posible. Se avisa en vez de enviar el
     mensaje suelto: quien respondió esperaba ver el recuadro."""
-    monkeypatch.setattr(chats, "fetch_reply_target", AsyncMock(return_value={
+    patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value={
         "id": 42, "sender": "vendedor", "content": "Ahí va", "wa_message_id": None,
     }))
 
     with pytest.raises(HTTPException) as error:
-        await chats._resolve_reply_to("51999@s.whatsapp.net", 42)
+        await _resolve_reply_to("51999@s.whatsapp.net", 42)
 
     assert error.value.status_code == 409
 
@@ -64,11 +65,11 @@ async def test_responder_a_un_mensaje_aun_en_la_outbox_es_409(monkeypatch):
 @pytest.mark.asyncio
 async def test_el_texto_se_encola_con_el_mensaje_citado(monkeypatch):
     target = {"id": 42, "sender": "cliente", "content": "¿Cuánto sale?", "wa_message_id": "WA-2"}
-    monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
-    monkeypatch.setattr(chats, "fetch_reply_target", AsyncMock(return_value=target))
+    patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
     enqueue = AsyncMock(return_value={"id": 90, "status": "PENDING"})
-    monkeypatch.setattr(chats, "enqueue_text_message", enqueue)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "enqueue_text_message", enqueue)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_message(
         "51999999999@s.whatsapp.net",

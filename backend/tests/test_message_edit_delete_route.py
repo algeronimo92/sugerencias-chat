@@ -9,7 +9,7 @@ from models.schemas import EditMessageRequest
 from types import SimpleNamespace
 
 from services.whatsapp_channel import ChannelError
-from tests.conftest import install_channel
+from tests.conftest import install_channel, patch_chats
 
 CHAT_ID = "51999@s.whatsapp.net"
 
@@ -30,15 +30,15 @@ def _target(**overrides) -> dict:
 
 
 def _patch(monkeypatch, *, target, edit=None, delete=None, update=None, mark=None):
-    monkeypatch.setattr(chats, "fetch_reply_target", AsyncMock(return_value=target))
+    patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
     edit = edit or AsyncMock(return_value={})
     delete = delete or AsyncMock(return_value={})
     update = update or AsyncMock(return_value={"id": 7, "content": "corregido"})
     mark = mark or AsyncMock(return_value={"id": 7, "deleted_at": "2026-08-06T12:00:00.000Z"})
     install_channel(monkeypatch, editor=SimpleNamespace(edit=edit, delete=delete))
-    monkeypatch.setattr(chats, "update_message_content", update)
-    monkeypatch.setattr(chats, "mark_message_deleted", mark)
-    monkeypatch.setattr(chats.manager, "broadcast", AsyncMock())
+    patch_chats(monkeypatch, "update_message_content", update)
+    patch_chats(monkeypatch, "mark_message_deleted", mark)
+    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     return edit, delete, update, mark
 
 
