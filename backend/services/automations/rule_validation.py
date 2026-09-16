@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
 from sqlalchemy import select
 
 from db.models import LeadStage, LeadTag, MediaAsset, MessageTemplate, User
@@ -34,6 +37,163 @@ from services.automations.common import (
 _normalize_automation_conditions = normalize_conditions
 
 
+@dataclass
+class ActionReferences:
+    """Ids que las acciones mencionan y hay que verificar contra la base una
+    sola vez al final, en lugar de una consulta por acción."""
+
+    users: set[int] = field(default_factory=set)
+    tags: set[int] = field(default_factory=set)
+    templates: set[int] = field(default_factory=set)
+    media_assets: set[int] = field(default_factory=set)
+
+
+def _normalize_create_task(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    title = str(raw.get("title") or "").strip()
+    due_minutes = int(raw.get("due_minutes") or 0)
+    remind_before = int(raw.get("remind_minutes_before") or 0)
+    if not title or len(title) > 160 or not 1 <= due_minutes <= 43200:
+        raise ValueError(f"Acción {position}: título y vencimiento de tarea inválidos")
+    if remind_before < 0 or remind_before >= due_minutes:
+        raise ValueError(f"Acción {position}: el recordatorio debe ser anterior al vencimiento")
+    assignee = int(raw["assigned_user_id"]) if raw.get("assigned_user_id") else None
+    if assignee:
+        refs.users.add(assignee)
+    return {
+        "type": action_type,
+        "title": title,
+        "description": str(raw.get("description") or "").strip()[:1000] or None,
+        "task_type": raw.get("task_type") if raw.get("task_type") in TASK_TYPES else TaskType.FOLLOW_UP,
+        "priority": raw.get("priority") if raw.get("priority") in TASK_PRIORITIES else TaskPriority.NORMAL,
+        "due_minutes": due_minutes,
+        "remind_minutes_before": remind_before,
+        "assigned_user_id": assignee,
+    }
+
+
+def _normalize_assign_seller(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    user_id = int(raw.get("user_id") or 0)
+    if not user_id:
+        raise ValueError(f"Acción {position}: selecciona un vendedor")
+    refs.users.add(user_id)
+    return {"type": action_type, "user_id": user_id}
+
+
+def _normalize_tag_action(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    tag_id = int(raw.get("tag_id") or 0)
+    if not tag_id:
+        raise ValueError(f"Acción {position}: selecciona una etiqueta")
+    refs.tags.add(tag_id)
+    return {"type": action_type, "tag_id": tag_id}
+
+
+def _normalize_change_stage(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    stage = str(raw.get("stage") or "")
+    if stage not in {item.value for item in LeadStage}:
+        raise ValueError(f"Acción {position}: etapa inválida")
+    return {"type": action_type, "stage": stage}
+
+
+def _normalize_notify(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    title = str(raw.get("title") or "").strip()
+    body = str(raw.get("body") or "").strip()
+    recipient = (
+        raw.get("recipient")
+        if raw.get("recipient") in AUTOMATION_RECIPIENTS
+        else AutomationRecipient.SELLER
+    )
+    user_id = (
+        int(raw.get("user_id") or 0)
+        if recipient == AutomationRecipient.SPECIFIC
+        else None
+    )
+    if not title or not body or len(title) > 160 or len(body) > 1000:
+        raise ValueError(f"Acción {position}: título o contenido de notificación inválido")
+    if recipient == AutomationRecipient.SPECIFIC and not user_id:
+        raise ValueError(f"Acción {position}: selecciona el destinatario")
+    if user_id:
+        refs.users.add(user_id)
+    return {
+        "type": action_type, "recipient": recipient, "user_id": user_id,
+        "title": title, "body": body,
+    }
+
+
+def _normalize_send_template(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    template_id = int(raw.get("template_id") or 0)
+    if not template_id:
+        raise ValueError(f"Acción {position}: selecciona una plantilla")
+    refs.templates.add(template_id)
+    return {"type": action_type, "template_id": template_id}
+
+
+def _normalize_send_message(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    text = str(raw.get("text") or "").strip()
+    if not text:
+        raise ValueError(f"Acción {position}: escribe el mensaje a enviar")
+    if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
+        raise ValueError(f"Acción {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
+    return {"type": action_type, "text": text}
+
+
+def _normalize_reaction(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    emoji = str(raw.get("emoji") or "").strip()
+    if not emoji or len(emoji) > MAX_REACTION_LENGTH:
+        raise ValueError(f"Acción {position}: selecciona una reacción válida")
+    return {"type": action_type, "emoji": emoji}
+
+
+def _normalize_change_service(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    # Vacío es válido — significa quitar el servicio de interés actual, no un
+    # error de formulario.
+    service = str(raw.get("service") or "").strip()[:160] or None
+    return {"type": action_type, "service": service}
+
+
+def _normalize_conversation_state(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    state = str(raw.get("state") or "")
+    if state not in CONVERSATION_STATES:
+        raise ValueError(f"Acción {position}: estado de conversación inválido")
+    return {"type": action_type, "state": state}
+
+
+def _normalize_media_asset_action(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    media_asset_id = int(raw.get("media_asset_id") or 0)
+    if not media_asset_id:
+        raise ValueError(f"Acción {position}: selecciona un archivo de la librería de medios")
+    refs.media_assets.add(media_asset_id)
+    return {"type": action_type, "media_asset_id": media_asset_id}
+
+
+def _normalize_send_media(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
+    normalized = _normalize_media_asset_action(action_type, raw, position, refs)
+    caption = str(raw.get("caption") or "").strip()
+    if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+        raise ValueError(
+            f"Acción {position}: el caption admite máximo "
+            f"{MAX_MEDIA_CAPTION_LENGTH} caracteres"
+        )
+    return {**normalized, "caption": caption}
+
+
+ACTION_NORMALIZERS: dict[str, Callable[[str, dict, int, ActionReferences], dict]] = {
+    AutomationActionType.CREATE_TASK: _normalize_create_task,
+    AutomationActionType.ASSIGN_SELLER: _normalize_assign_seller,
+    AutomationActionType.ADD_TAG: _normalize_tag_action,
+    AutomationActionType.REMOVE_TAG: _normalize_tag_action,
+    AutomationActionType.CHANGE_STAGE: _normalize_change_stage,
+    AutomationActionType.NOTIFY: _normalize_notify,
+    AutomationActionType.SEND_TEMPLATE: _normalize_send_template,
+    AutomationActionType.SEND_MESSAGE: _normalize_send_message,
+    AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE: _normalize_reaction,
+    AutomationActionType.CHANGE_SERVICE: _normalize_change_service,
+    AutomationActionType.SET_CONVERSATION_STATE: _normalize_conversation_state,
+    AutomationActionType.SEND_AUDIO: _normalize_media_asset_action,
+    AutomationActionType.SEND_ATTACHMENT: _normalize_media_asset_action,
+    AutomationActionType.SEND_MEDIA: _normalize_send_media,
+}
+
+
 async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> dict:
     name = str(values.get("name") or "").strip()
     if not name or len(name) > 120:
@@ -59,122 +219,14 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
     if not 1 <= len(actions) <= max_actions:
         raise ValueError(f"Configura entre 1 y {max_actions} acciones")
     normalized_actions: list[dict] = []
-    referenced_users: set[int] = set()
-    referenced_tags: set[int] = set()
-    referenced_templates: set[int] = set()
-    referenced_media_assets: set[int] = set()
+    refs = ActionReferences()
     for position, raw in enumerate(actions, start=1):
-        if not isinstance(raw, dict) or raw.get("type") not in ACTION_TYPES:
+        if not isinstance(raw, dict) or raw.get("type") not in ACTION_NORMALIZERS:
             raise ValueError(f"Acción {position}: tipo no soportado")
         action_type = raw["type"]
-        if action_type == AutomationActionType.CREATE_TASK:
-            title = str(raw.get("title") or "").strip()
-            due_minutes = int(raw.get("due_minutes") or 0)
-            remind_before = int(raw.get("remind_minutes_before") or 0)
-            if not title or len(title) > 160 or not 1 <= due_minutes <= 43200:
-                raise ValueError(f"Acción {position}: título y vencimiento de tarea inválidos")
-            if remind_before < 0 or remind_before >= due_minutes:
-                raise ValueError(f"Acción {position}: el recordatorio debe ser anterior al vencimiento")
-            assignee = int(raw["assigned_user_id"]) if raw.get("assigned_user_id") else None
-            if assignee:
-                referenced_users.add(assignee)
-            normalized_actions.append({
-                "type": action_type,
-                "title": title,
-                "description": str(raw.get("description") or "").strip()[:1000] or None,
-                "task_type": raw.get("task_type") if raw.get("task_type") in TASK_TYPES else TaskType.FOLLOW_UP,
-                "priority": raw.get("priority") if raw.get("priority") in TASK_PRIORITIES else TaskPriority.NORMAL,
-                "due_minutes": due_minutes,
-                "remind_minutes_before": remind_before,
-                "assigned_user_id": assignee,
-            })
-        elif action_type == AutomationActionType.ASSIGN_SELLER:
-            user_id = int(raw.get("user_id") or 0)
-            if not user_id:
-                raise ValueError(f"Acción {position}: selecciona un vendedor")
-            referenced_users.add(user_id)
-            normalized_actions.append({"type": action_type, "user_id": user_id})
-        elif action_type in {AutomationActionType.ADD_TAG, AutomationActionType.REMOVE_TAG}:
-            tag_id = int(raw.get("tag_id") or 0)
-            if not tag_id:
-                raise ValueError(f"Acción {position}: selecciona una etiqueta")
-            referenced_tags.add(tag_id)
-            normalized_actions.append({"type": action_type, "tag_id": tag_id})
-        elif action_type == AutomationActionType.CHANGE_STAGE:
-            stage = str(raw.get("stage") or "")
-            if stage not in {item.value for item in LeadStage}:
-                raise ValueError(f"Acción {position}: etapa inválida")
-            normalized_actions.append({"type": action_type, "stage": stage})
-        elif action_type == AutomationActionType.NOTIFY:
-            title = str(raw.get("title") or "").strip()
-            body = str(raw.get("body") or "").strip()
-            recipient = (
-                raw.get("recipient")
-                if raw.get("recipient") in AUTOMATION_RECIPIENTS
-                else AutomationRecipient.SELLER
-            )
-            user_id = (
-                int(raw.get("user_id") or 0)
-                if recipient == AutomationRecipient.SPECIFIC
-                else None
-            )
-            if not title or not body or len(title) > 160 or len(body) > 1000:
-                raise ValueError(f"Acción {position}: título o contenido de notificación inválido")
-            if recipient == AutomationRecipient.SPECIFIC and not user_id:
-                raise ValueError(f"Acción {position}: selecciona el destinatario")
-            if user_id:
-                referenced_users.add(user_id)
-            normalized_actions.append({
-                "type": action_type, "recipient": recipient, "user_id": user_id,
-                "title": title, "body": body,
-            })
-        elif action_type == AutomationActionType.SEND_TEMPLATE:
-            template_id = int(raw.get("template_id") or 0)
-            if not template_id:
-                raise ValueError(f"Acción {position}: selecciona una plantilla")
-            referenced_templates.add(template_id)
-            normalized_actions.append({"type": action_type, "template_id": template_id})
-        elif action_type == AutomationActionType.SEND_MESSAGE:
-            text = str(raw.get("text") or "").strip()
-            if not text:
-                raise ValueError(f"Acción {position}: escribe el mensaje a enviar")
-            if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
-                raise ValueError(f"Acción {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
-            normalized_actions.append({"type": action_type, "text": text})
-        elif action_type == AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE:
-            emoji = str(raw.get("emoji") or "").strip()
-            if not emoji or len(emoji) > MAX_REACTION_LENGTH:
-                raise ValueError(f"Acción {position}: selecciona una reacción válida")
-            normalized_actions.append({"type": action_type, "emoji": emoji})
-        elif action_type == AutomationActionType.CHANGE_SERVICE:
-            # Vacío es válido — significa quitar el servicio de interés
-            # actual, no un error de formulario.
-            service = str(raw.get("service") or "").strip()[:160] or None
-            normalized_actions.append({"type": action_type, "service": service})
-        elif action_type == AutomationActionType.SET_CONVERSATION_STATE:
-            state = str(raw.get("state") or "")
-            if state not in CONVERSATION_STATES:
-                raise ValueError(f"Acción {position}: estado de conversación inválido")
-            normalized_actions.append({"type": action_type, "state": state})
-        elif action_type in {
-            AutomationActionType.SEND_AUDIO,
-            AutomationActionType.SEND_ATTACHMENT,
-            AutomationActionType.SEND_MEDIA,
-        }:
-            media_asset_id = int(raw.get("media_asset_id") or 0)
-            if not media_asset_id:
-                raise ValueError(f"Acción {position}: selecciona un archivo de la librería de medios")
-            referenced_media_assets.add(media_asset_id)
-            normalized = {"type": action_type, "media_asset_id": media_asset_id}
-            if action_type == AutomationActionType.SEND_MEDIA:
-                caption = str(raw.get("caption") or "").strip()
-                if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
-                    raise ValueError(
-                        f"Acción {position}: el caption admite máximo "
-                        f"{MAX_MEDIA_CAPTION_LENGTH} caracteres"
-                    )
-                normalized["caption"] = caption
-            normalized_actions.append(normalized)
+        normalized_actions.append(
+            ACTION_NORMALIZERS[action_type](action_type, raw, position, refs)
+        )
 
     for position, action in enumerate(normalized_actions, start=1):
         unknown = set().union(*(
@@ -187,25 +239,25 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
             raise ValueError(f"Acción {position}: variables no reconocidas: {names}")
 
     if normalized_conditions["seller_id"]:
-        referenced_users.add(normalized_conditions["seller_id"])
+        refs.users.add(normalized_conditions["seller_id"])
     if normalized_conditions["tag_id"]:
-        referenced_tags.add(normalized_conditions["tag_id"])
+        refs.tags.add(normalized_conditions["tag_id"])
     async with get_sessionmaker()() as session:
-        if referenced_users:
+        if refs.users:
             found = set((await session.execute(
-                select(User.id).where(User.id.in_(referenced_users), User.is_active.is_(True))
+                select(User.id).where(User.id.in_(refs.users), User.is_active.is_(True))
             )).scalars().all())
-            if found != referenced_users:
+            if found != refs.users:
                 raise ValueError("Algún usuario seleccionado no existe o está inactivo")
-        if referenced_tags:
+        if refs.tags:
             found = set((await session.execute(
-                select(LeadTag.id).where(LeadTag.id.in_(referenced_tags), LeadTag.is_active.is_(True))
+                select(LeadTag.id).where(LeadTag.id.in_(refs.tags), LeadTag.is_active.is_(True))
             )).scalars().all())
-            if found != referenced_tags:
+            if found != refs.tags:
                 raise ValueError("Alguna etiqueta seleccionada no existe o está inactiva")
-        if referenced_templates:
+        if refs.templates:
             templates = (await session.execute(
-                select(MessageTemplate).where(MessageTemplate.id.in_(referenced_templates))
+                select(MessageTemplate).where(MessageTemplate.id.in_(refs.templates))
             )).scalars().all()
             valid_ids = {
                 template.id for template in templates
@@ -213,13 +265,13 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
                 and template.template_type == "internal"
                 and template.interactive_type == "none"
             }
-            if valid_ids != referenced_templates:
+            if valid_ids != refs.templates:
                 raise ValueError("El envío automático solo admite plantillas internas activas (sin botones/listas)")
-        if referenced_media_assets:
+        if refs.media_assets:
             found = set((await session.execute(
-                select(MediaAsset.id).where(MediaAsset.id.in_(referenced_media_assets))
+                select(MediaAsset.id).where(MediaAsset.id.in_(refs.media_assets))
             )).scalars().all())
-            if found != referenced_media_assets:
+            if found != refs.media_assets:
                 raise ValueError("Algún archivo de la librería de medios ya no existe")
 
     max_per_hour = values.get("max_executions_per_hour")
