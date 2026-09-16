@@ -16,6 +16,7 @@ from db.models import Lead
 from models.schemas import Chat, LeadStageUpdate, LeadUpdate
 from routers import chats
 from services.db_service import _activity_safe
+from services.lead_updates import LEAD_FIELD_TO_COLUMN
 
 
 CHAT_ID = "51906471403@s.whatsapp.net"
@@ -119,7 +120,7 @@ def test_chat_schema_exposes_the_orphan_fields():
 
 
 def test_editable_fields_map_to_real_columns():
-    """_LEAD_FIELD_TO_COLUMN es el único gate del PATCH: un typo acá sería un
+    """LEAD_FIELD_TO_COLUMN es el único gate del PATCH: un typo acá sería un
     AttributeError recién dentro de update_lead."""
-    for column in chats._LEAD_FIELD_TO_COLUMN.values():
+    for column in LEAD_FIELD_TO_COLUMN.values():
         assert hasattr(Lead, column), f"Lead.{column} no existe"

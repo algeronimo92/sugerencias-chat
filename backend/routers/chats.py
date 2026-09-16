@@ -121,7 +121,9 @@ from services.chat_messaging import (
     LeadNotFoundError,
     TemplateNotFoundError,
     TemplateNotSendableError,
+    forward_item,
 )
+from services.lead_updates import lead_column_values
 from services.automation_service import (
     pause_lead_executions,
     resume_lead_executions,
@@ -131,25 +133,6 @@ from services.automation_service import (
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
-
-
-# Mapea los nombres de campo de la API (schemas.Chat) a las columnas reales de
-# la tabla leads (db.models.Lead) para armar el dict de `update_lead`.
-_LEAD_FIELD_TO_COLUMN = {
-    "phone": "telefono",
-    "secondary_phone": "telefono_secundario",
-    "name": "nombre",
-    "servicio_interes": "servicio_interes",
-    "vendedor_id": "vendedor_id",
-    "origen": "origen",
-    "notas": "notas",
-    "con_especialista": "con_especialista",
-    "automatizacion_pausada": "automatizacion_pausada",
-    "conversacion_abierta": "conversacion_abierta",
-    "razon_perdido": "razon_perdido",
-    "fecha_recontacto": "fecha_recontacto",
-    "proxima_cita": "proxima_cita",
-}
 
 
 async def _require_existing_lead(chat_id: str) -> None:
@@ -335,18 +318,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
 async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_current_user)):
     if "vendedor_id" in body.model_fields_set and user.role != "admin" and body.vendedor_id != user.id:
         raise HTTPException(status_code=403, detail="Solo un administrador puede reasignar o quitar el vendedor")
-    values = {
-        _LEAD_FIELD_TO_COLUMN[k]: v for k, v in body.model_dump(exclude_unset=True).items()
-    }
-
-    # con_especialista y automatizacion_pausada son NOT NULL: un null
-    # explícito se ignora en vez de reventar contra la base.
-    if "con_especialista" in values and values["con_especialista"] is None:
-        del values["con_especialista"]
-    if "automatizacion_pausada" in values and values["automatizacion_pausada"] is None:
-        del values["automatizacion_pausada"]
-    if "conversacion_abierta" in values and values["conversacion_abierta"] is None:
-        del values["conversacion_abierta"]
+    values = lead_column_values(body.model_dump(exclude_unset=True))
 
     # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
     # su alias externo; el chat_id interno permanece estable.
@@ -699,83 +671,6 @@ async def send_location(
     return message
 
 
-# Tipos de adjunto que se reenvían con sendMedia, y con qué mediatype. Un
-# video-nota (ptv) sale como video normal: WhatsApp no deja crear uno nuevo
-# desde la API, y mandarlo como video conserva el contenido.
-_FORWARDABLE_MEDIA_TYPES = {
-    "image": "image",
-    "video": "video",
-    "ptv": "video",
-    "document": "document",
-}
-
-
-def _forward_item(message: dict) -> dict | None:
-    """Convierte un mensaje guardado en un ítem de outbox para otro chat.
-
-    Reenviar es volver a enviar el contenido, no delegar en WhatsApp: el
-    archivo ya está en nuestro almacenamiento y el texto en la base, así que
-    el destino recibe un mensaje nuevo con el mismo contenido (como el
-    "Reenviar" de WhatsApp, que tampoco reenvía el mensaje original).
-
-    Devuelve None si el tipo no se puede volver a enviar y tampoco tiene texto
-    con el que sustituirlo — encuestas, contactos, reacciones.
-    """
-    kind = message["message_type"]
-    content = (message["content"] or "").strip() or None
-    media_url = message["media_url"]
-    payload = message["payload"] or {}
-
-    if media_url and kind in _FORWARDABLE_MEDIA_TYPES:
-        mediatype = _FORWARDABLE_MEDIA_TYPES[kind]
-        return {
-            "content": content,
-            "media_url": media_url,
-            "payload": {
-                "type": "media",
-                "media_url": media_url,
-                "mediatype": mediatype,
-                "filename": payload.get("filename"),
-                "caption": content,
-            },
-            "forwarded": True,
-        }
-    if media_url and kind == "audio":
-        return {
-            "content": None,
-            "media_url": media_url,
-            "payload": {"type": "audio", "media_url": media_url},
-            "forwarded": True,
-        }
-    if media_url and kind == "sticker":
-        return {
-            "content": None,
-            "media_url": media_url,
-            "payload": {"type": "sticker", "media_url": media_url},
-            "forwarded": True,
-        }
-    if kind == "location":
-        latitude, longitude = payload.get("latitude"), payload.get("longitude")
-        if latitude is None or longitude is None:
-            return None
-        return {
-            "content": None,
-            "payload": {"type": "location", "latitude": latitude, "longitude": longitude},
-            "forwarded": True,
-        }
-    # Todo lo demás (texto, y también plantillas o interactivos, que del otro
-    # lado no se pueden reconstruir) viaja como texto plano mientras haya algo
-    # que decir. Un adjunto cuyo archivo ya no está queda igual: se reenvía su
-    # epígrafe, que es lo único que sobrevive.
-    if content:
-        return {
-            "content": content,
-            "payload": {"type": "text", "text": content},
-            "forwarded": True,
-        }
-    return None
-
-
 @router.post("/{chat_id}/messages/forward", response_model=ForwardMessagesResponse)
 async def forward_messages(
     chat_id: str,
@@ -793,7 +688,7 @@ async def forward_messages(
     if not messages:
         raise HTTPException(404, "No se encontraron los mensajes a reenviar")
 
-    items = [item for item in (_forward_item(message) for message in messages) if item]
+    items = [item for item in (forward_item(message) for message in messages) if item]
     skipped = len(messages) - len(items)
     if not items:
         raise HTTPException(409, "Ninguno de los mensajes seleccionados se puede reenviar")

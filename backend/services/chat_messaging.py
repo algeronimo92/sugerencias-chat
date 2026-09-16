@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from services.automation_rules import render_variables
 from services.db_service import fetch_chat, lead_exists
@@ -110,6 +111,111 @@ def template_kind(template: dict) -> str:
     if template["template_type"] == "official":
         return "official"
     return "interactive" if template["interactive_type"] != "none" else "internal"
+
+
+@dataclass(frozen=True)
+class ForwardRule:
+    build: Callable[[dict], dict | None]
+    text_fallback: bool = True
+
+
+def _media_forward(mediatype: str) -> Callable[[dict], dict | None]:
+    def build(source: dict) -> dict | None:
+        if not source["media_url"]:
+            return None
+        return {
+            "content": source["content"],
+            "media_url": source["media_url"],
+            "payload": {
+                "type": "media",
+                "media_url": source["media_url"],
+                "mediatype": mediatype,
+                "filename": source["payload"].get("filename"),
+                "caption": source["content"],
+            },
+            "forwarded": True,
+        }
+
+    return build
+
+
+def _stored_media_forward(kind: str) -> Callable[[dict], dict | None]:
+    def build(source: dict) -> dict | None:
+        if not source["media_url"]:
+            return None
+        return {
+            "content": None,
+            "media_url": source["media_url"],
+            "payload": {"type": kind, "media_url": source["media_url"]},
+            "forwarded": True,
+        }
+
+    return build
+
+
+def _location_forward(source: dict) -> dict | None:
+    latitude = source["payload"].get("latitude")
+    longitude = source["payload"].get("longitude")
+    if latitude is None or longitude is None:
+        return None
+    return {
+        "content": None,
+        "payload": {"type": "location", "latitude": latitude, "longitude": longitude},
+        "forwarded": True,
+    }
+
+
+def _text_forward(source: dict) -> dict | None:
+    if not source["content"]:
+        return None
+    return {
+        "content": source["content"],
+        "payload": {"type": "text", "text": source["content"]},
+        "forwarded": True,
+    }
+
+
+FORWARD_RULES: dict[str, ForwardRule] = {
+    "image": ForwardRule(_media_forward("image")),
+    "video": ForwardRule(_media_forward("video")),
+    # Un video-nota sale como video normal: WhatsApp no deja crear uno nuevo
+    # desde la API, y mandarlo como video conserva el contenido.
+    "ptv": ForwardRule(_media_forward("video")),
+    "document": ForwardRule(_media_forward("document")),
+    "audio": ForwardRule(_stored_media_forward("audio")),
+    "sticker": ForwardRule(_stored_media_forward("sticker")),
+    "location": ForwardRule(_location_forward, text_fallback=False),
+}
+
+
+def forward_item(message: dict) -> dict | None:
+    """Convierte un mensaje guardado en un ítem de outbox para otro chat.
+
+    Reenviar es volver a enviar el contenido, no delegar en WhatsApp: el
+    archivo ya está en nuestro almacenamiento y el texto en la base, así que
+    el destino recibe un mensaje nuevo con el mismo contenido (como el
+    "Reenviar" de WhatsApp, que tampoco reenvía el mensaje original).
+
+    Lo que no se puede reconstruir del otro lado —plantillas, interactivos, y
+    también un adjunto cuyo archivo ya no está— viaja como texto plano
+    mientras quede algo que decir. La ubicación es la excepción: sin
+    coordenadas no hay nada que mandar, y su contenido es un marcador interno.
+
+    Devuelve None cuando no queda nada reenviable.
+    """
+    source = {
+        "kind": message["message_type"],
+        "content": (message["content"] or "").strip() or None,
+        "media_url": message["media_url"],
+        "payload": message["payload"] or {},
+    }
+    rule = FORWARD_RULES.get(source["kind"])
+    if rule is None:
+        return _text_forward(source)
+    item = rule.build(source)
+    if item is not None:
+        return item
+    return _text_forward(source) if rule.text_fallback else None
 
 
 async def send_template(

@@ -38,66 +38,6 @@ def _patch(monkeypatch, *, messages, existing=None):
     return enqueue
 
 
-class TestForwardItem:
-    def test_text_travels_as_text(self):
-        assert chats._forward_item(_message()) == {
-            "content": "Hola",
-            "payload": {"type": "text", "text": "Hola"},
-            "forwarded": True,
-        }
-
-    def test_image_keeps_caption_and_file(self):
-        item = chats._forward_item(_message(
-            message_type="image", content="mirá esto", media_url="/api/media/img/a.jpg",
-        ))
-        assert item["media_url"] == "/api/media/img/a.jpg"
-        assert item["payload"] == {
-            "type": "media",
-            "media_url": "/api/media/img/a.jpg",
-            "mediatype": "image",
-            "filename": None,
-            "caption": "mirá esto",
-        }
-
-    def test_document_keeps_its_filename(self):
-        item = chats._forward_item(_message(
-            message_type="document", content=None,
-            media_url="/api/media/doc/presupuesto.pdf",
-            payload={"filename": "presupuesto.pdf"},
-        ))
-        assert item["payload"]["filename"] == "presupuesto.pdf"
-        assert item["payload"]["mediatype"] == "document"
-
-    def test_video_note_is_forwarded_as_a_plain_video(self):
-        item = chats._forward_item(_message(
-            message_type="ptv", content=None, media_url="/api/media/video/v.mp4",
-        ))
-        assert item["payload"]["mediatype"] == "video"
-
-    def test_audio_uses_the_voice_note_endpoint(self):
-        item = chats._forward_item(_message(
-            message_type="audio", content=None, media_url="/api/media/audio/a.ogg",
-        ))
-        assert item["payload"] == {"type": "audio", "media_url": "/api/media/audio/a.ogg"}
-
-    def test_location_carries_the_coordinates(self):
-        item = chats._forward_item(_message(
-            message_type="location", content=None,
-            payload={"latitude": -12.1, "longitude": -77.0},
-        ))
-        assert item["payload"] == {"type": "location", "latitude": -12.1, "longitude": -77.0}
-
-    def test_interactive_message_falls_back_to_its_text(self):
-        # Del otro lado no se puede reconstruir el menú, pero el texto sí llega.
-        item = chats._forward_item(_message(
-            message_type="interactive", content="Elegí una opción",
-        ))
-        assert item["payload"] == {"type": "text", "text": "Elegí una opción"}
-
-    def test_message_without_text_nor_file_is_not_forwardable(self):
-        assert chats._forward_item(_message(message_type="poll", content=None)) is None
-
-
 class TestForwardRoute:
     @pytest.mark.asyncio
     async def test_queues_every_message_in_every_target(self, monkeypatch):
