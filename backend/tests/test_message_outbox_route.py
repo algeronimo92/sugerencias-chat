@@ -56,7 +56,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
         "status": "PENDING",
     }
     monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
-    monkeypatch.setattr(chats, "save_media_file", lambda *_args: queued["media_url"])
+    monkeypatch.setattr(chats, "save_decoded_media", lambda *_args: queued["media_url"])
     enqueue = AsyncMock(return_value=[queued])
     monkeypatch.setattr(chats, "enqueue_messages", enqueue)
     broadcast = AsyncMock()
@@ -94,8 +94,8 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
     monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
     save_calls = []
     monkeypatch.setattr(
-        chats, "save_media_file",
-        lambda content_type, data_base64: (save_calls.append((content_type, data_base64)), queued["media_url"])[1],
+        chats, "save_decoded_media",
+        lambda content_type, raw: (save_calls.append((content_type, raw)), queued["media_url"])[1],
     )
     transcode = lambda data: b"ogg-bytes"
     monkeypatch.setattr(chats, "transcode_audio_to_ogg_opus", transcode)
@@ -108,10 +108,7 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
         USER,
     )
 
-    assert len(save_calls) == 1
-    content_type, data_base64 = save_calls[0]
-    assert content_type == "audio/ogg"
-    assert base64.b64decode(data_base64) == b"ogg-bytes"
+    assert save_calls == [("audio/ogg", b"ogg-bytes")]
 
 
 @pytest.mark.asyncio
@@ -127,8 +124,8 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
     monkeypatch.setattr(chats, "_require_existing_lead", AsyncMock())
     save_calls = []
     monkeypatch.setattr(
-        chats, "save_media_file",
-        lambda content_type, data_base64: (save_calls.append((content_type, data_base64)), queued["media_url"])[1],
+        chats, "save_decoded_media",
+        lambda content_type, raw: (save_calls.append((content_type, raw)), queued["media_url"])[1],
     )
 
     def _boom(_data):
@@ -144,7 +141,7 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
         USER,
     )
 
-    assert save_calls == [("audio/webm;codecs=opus", "QUJD")]
+    assert save_calls == [("audio/webm;codecs=opus", b"ABC")]
 
 
 @pytest.mark.asyncio

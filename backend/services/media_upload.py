@@ -66,7 +66,20 @@ def normalize_media_content_type(content_type: str, filename: str | None = None)
 
 def save_media_file(content_type: str, data_base64: str, filename: str | None = None) -> str:
     """Decodifica y guarda un archivo base64, y devuelve su media_url estable.
-    Lanza ValueError con el motivo si el archivo no es válido.
+    Lanza ValueError con el motivo si el archivo no es válido."""
+    try:
+        raw = base64.b64decode(data_base64, validate=True)
+    except Exception:
+        raise ValueError("base64 inválido")
+    return save_decoded_media(content_type, raw, filename)
+
+
+def save_decoded_media(content_type: str, raw: bytes, filename: str | None = None) -> str:
+    """Igual que ``save_media_file`` pero partiendo de los bytes ya decodificados.
+
+    Quien ya tiene el archivo en memoria (por ejemplo la nota de voz que se
+    transcodifica antes de guardar) no debería volver a codificarlo en base64
+    solo para que acá se decodifique otra vez.
 
     La extensión se toma del filename original cuando está disponible, en vez
     de adivinarla con mimetypes.guess_extension(content_type): en la imagen
@@ -77,11 +90,6 @@ def save_media_file(content_type: str, data_base64: str, filename: str | None = 
     content_type = normalize_media_content_type(content_type, filename)
     if not (content_type.startswith(ALLOWED_CONTENT_PREFIXES) or content_type in ALLOWED_DOCUMENT_TYPES):
         raise ValueError("Tipo de archivo no permitido")
-
-    try:
-        raw = base64.b64decode(data_base64, validate=True)
-    except Exception:
-        raise ValueError("base64 inválido")
 
     if not raw:
         raise ValueError("El archivo está vacío")
