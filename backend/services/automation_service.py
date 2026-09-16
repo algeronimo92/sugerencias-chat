@@ -34,7 +34,6 @@ from services.automations.common import (  # noqa: F401
     _normalize_reply_text,
     _render,
     _rule_dict,
-    _ts,
     _unknown_variables,
     _wait_seconds,
     _wake,

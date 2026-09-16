@@ -7,6 +7,7 @@ from services.db_service import count_wa_messages, existing_wa_message_ids
 from services.evolution_service import HISTORY_PAGE_SIZE, find_chat_messages
 from services.whatsapp_history.content import _normalize_record
 from services.whatsapp_history.envelope import _as_utc, _extract_records
+from services.time_format import iso_utc_micros
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ async def fetch_whatsapp_history(
                 "wa_message_id": n["wa_message_id"],
                 "sender": n["sender"],
                 "content": n["content"],
-                "sent_at": n["sent_at"].strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "sent_at": iso_utc_micros(n["sent_at"]),
                 "message_type": n["message_type"],
                 "payload": n["payload"],
             }

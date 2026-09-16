@@ -6,24 +6,21 @@ from sqlalchemy.exc import IntegrityError
 from domain_types import TaskStatus, TaskType
 from db.models import Lead, LeadTask, User
 from db.session import get_sessionmaker
-
-
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
+from services.time_format import iso_utc
 
 
 def _task(row):
     return {
         "id": row["id"], "lead_id": row["lead_id"], "lead_name": row["lead_name"],
         "title": row["title"], "description": row["description"], "task_type": row["task_type"],
-        "status": row["status"], "priority": row["priority"], "due_at": _ts(row["due_at"]),
-        "remind_at": _ts(row["remind_at"]), "assigned_user_id": row["assigned_user_id"],
+        "status": row["status"], "priority": row["priority"], "due_at": iso_utc(row["due_at"]),
+        "remind_at": iso_utc(row["remind_at"]), "assigned_user_id": row["assigned_user_id"],
         "assigned_user_name": row["assigned_user_name"],
         "is_overdue": (
             row["status"] == TaskStatus.PENDING
             and row["due_at"] < datetime.now(timezone.utc)
         ),
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     }
 
 
@@ -221,7 +218,7 @@ async def claim_due_reminders() -> list[dict]:
                 "lead_name": lead_name,
                 "title": task.title,
                 "assigned_user_id": task.assigned_user_id,
-                "due_at": _ts(task.due_at),
+                "due_at": iso_utc(task.due_at),
             })
         if rows:
             await session.commit()

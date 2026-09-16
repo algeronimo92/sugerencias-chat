@@ -6,12 +6,9 @@ from sqlalchemy.orm import aliased
 
 from db.models import Appointment, User
 from db.session import get_sessionmaker
+from services.time_format import iso_utc
 
 Creator = aliased(User)
-
-
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
 
 
 def _serialize(row) -> dict:
@@ -34,7 +31,7 @@ def _serialize(row) -> dict:
         "n8n_status": row["n8n_status"],
         "message": row["message"],
         "event_link": row["event_link"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     }
 
 

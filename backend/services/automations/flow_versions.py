@@ -6,9 +6,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from db.models import AutomationFlowVersion, AutomationRule
 from db.session import get_sessionmaker
 from domain_types import AutomationBuilderMode, AutomationTrigger
-from services.automations.common import (
-    _ts,
-)
 from services.automations.flow_validation import (
     normalize_visual_draft,
     validate_visual_flow,
@@ -20,6 +17,7 @@ from services.automations.rules import (
 from services.automations.scheduler import (
     _backfill_customer_response_deadlines,
 )
+from services.time_format import iso_utc
 
 
 async def create_visual_flow(name: str, definition: dict, user_id: int) -> dict:
@@ -104,7 +102,7 @@ async def list_flow_versions(rule_id: int) -> list[dict]:
     return [
         {
             "version": row["version"],
-            "created_at": _ts(row["created_at"]),
+            "created_at": iso_utc(row["created_at"]),
             "node_count": len((row["definition"] or {}).get("nodes") or []),
             "edge_count": len((row["definition"] or {}).get("edges") or []),
             "is_current": row["version"] == current["flow_version"],

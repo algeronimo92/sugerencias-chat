@@ -4,10 +4,7 @@ from sqlalchemy import delete, insert, select, update
 
 from db.models import Lead, LeadActivity, LeadNote, LeadNoteMention, User, UserNotification
 from db.session import get_sessionmaker
-
-
-def _ts(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")
+from services.time_format import iso_utc
 
 
 def _note(row, mentions: list[dict] | None = None) -> dict:
@@ -17,8 +14,8 @@ def _note(row, mentions: list[dict] | None = None) -> dict:
         "author_user_id": row["author_user_id"],
         "author_name": row["author_name"],
         "content": row["content"],
-        "created_at": _ts(row["created_at"]),
-        "updated_at": _ts(row["updated_at"]),
+        "created_at": iso_utc(row["created_at"]),
+        "updated_at": iso_utc(row["updated_at"]),
         "is_edited": row["updated_at"] > row["created_at"],
         "mentions": mentions or [],
     }

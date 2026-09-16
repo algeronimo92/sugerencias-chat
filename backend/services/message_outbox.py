@@ -19,6 +19,7 @@ from services.task_service import complete_reply_tasks
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, describe_send_failure
 from services.whatsapp_channels import current_channel
 from services.ws_manager import manager
+from services.time_format import iso_utc_micros
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +90,6 @@ async def _wait_for_work() -> None:
         _wakeup.clear()
 
 
-def _format_timestamp(value: datetime) -> str:
-    return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-
 async def enqueue_text_message(
     chat_id: str,
     text: str,
@@ -122,7 +119,7 @@ def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
         "id": message.id,
         "sender": message.sender,
         "content": message.content,
-        "sent_at": _format_timestamp(message.sent_at),
+        "sent_at": iso_utc_micros(message.sent_at),
         "media_url": message.media_url,
         "wa_message_id": message.wa_message_id,
         "status": message.status,

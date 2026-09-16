@@ -5,14 +5,11 @@ from sqlalchemy.exc import IntegrityError
 
 from db.models import MessageTemplate, TemplateCategory, User
 from db.session import get_sessionmaker
+from services.time_format import iso_utc
 
 
 class TemplateCategoryAlreadyExistsError(Exception):
     pass
-
-
-def _ts(value: datetime | None) -> str | None:
-    return value.isoformat().replace("+00:00", "Z") if value else None
 
 
 def _item(row) -> dict:
@@ -22,7 +19,7 @@ def _item(row) -> dict:
         "is_active": row["is_active"],
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     }
 
 

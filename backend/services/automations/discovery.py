@@ -32,7 +32,6 @@ from services.automations.common import (
     OVERDUE_LOOKBACK_GRACE_MINUTES,
     STALE_EXECUTION_MINUTES,
     _normalize_reply_text,
-    _ts,
     _wake,
 )
 from services.automations.engine import (
@@ -46,6 +45,7 @@ from services.automations.scheduler import (
 from services.db_service import update_lead
 from services.settings_service import get_effective
 from services.ws_manager import manager
+from services.time_format import iso_utc
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ async def _discover_recent_inbound_messages() -> None:
                 "message_id": str(metadata.get("message_id") or ""),
                 "content": metadata.get("content"),
                 "conversation_version": version,
-                "conversation_opened_at": _ts(row["created_at"]),
+                "conversation_opened_at": iso_utc(row["created_at"]),
             },
         )
 
@@ -319,11 +319,11 @@ async def _discover_timed_events() -> None:
                 await schedule_automation_event(
                     AutomationTrigger.TASK_DUE,
                     task["lead_id"],
-                    f"task:{task['id']}:{_ts(task['due_at'])}", {
+                    f"task:{task['id']}:{iso_utc(task['due_at'])}", {
                         "task_id": task["id"],
                         "assigned_user_id": task["assigned_user_id"],
                         "title": task["title"],
-                        "due_at": _ts(task["due_at"]),
+                        "due_at": iso_utc(task["due_at"]),
                     }, rule.id
                 )
             continue
@@ -351,7 +351,7 @@ async def _discover_timed_events() -> None:
                 AutomationTrigger(rule.trigger_type),
                 row["chat_id"],
                 f"overdue:{row['id']}",
-                {"last_message_id": str(row["id"]), "last_sender": row["sender"], "last_message_at": _ts(row["sent_at"])},
+                {"last_message_id": str(row["id"]), "last_sender": row["sender"], "last_message_at": iso_utc(row["sent_at"])},
                 rule.id,
             )
 
@@ -510,7 +510,7 @@ async def backfill_automation_state() -> None:
             due_at = due_map.get(task_id)
             if due_at is None:
                 continue
-            new_key = f"task:{task_id}:{_ts(due_at)}"
+            new_key = f"task:{task_id}:{iso_utc(due_at)}"
             if new_key == row["event_key"] or (row["rule_id"], new_key) in existing_keys:
                 continue
             await session.execute(update(AutomationExecution).where(

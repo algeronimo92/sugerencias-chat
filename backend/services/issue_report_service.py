@@ -12,16 +12,13 @@ from db.models import (
 )
 from domain_types import IssueReportPriority, IssueReportStatus
 from db.session import get_sessionmaker
+from services.time_format import iso_utc
 
 
 Reporter = aliased(User)
 Resolver = aliased(User)
 CommentAuthor = aliased(User)
 EventActor = aliased(User)
-
-
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
 
 
 def _public_code(report_id: int) -> str:
@@ -93,10 +90,10 @@ def _serialize(row, attachments: list[dict]) -> dict:
         "technical_context": row["technical_context"] or {},
         "attachments": attachments,
         "comment_count": row["comment_count"],
-        "resolved_at": _ts(row["resolved_at"]),
+        "resolved_at": iso_utc(row["resolved_at"]),
         "resolved_by_name": row["resolved_by_name"],
-        "created_at": _ts(row["created_at"]),
-        "updated_at": _ts(row["updated_at"]),
+        "created_at": iso_utc(row["created_at"]),
+        "updated_at": iso_utc(row["updated_at"]),
     }
 
 
@@ -170,7 +167,7 @@ async def get_issue_report_detail(report_id: int) -> dict | None:
         "author_name": row["author_name"],
         "author_role": row["author_role"],
         "content": row["content"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     } for row in comment_rows]
     report["events"] = [{
         "id": row["id"],
@@ -178,7 +175,7 @@ async def get_issue_report_detail(report_id: int) -> dict | None:
         "event_type": row["event_type"],
         "previous_value": row["previous_value"],
         "new_value": row["new_value"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     } for row in event_rows]
     return report
 
@@ -294,7 +291,7 @@ async def create_issue_report_comment(report_id: int, author_user_id: int, conte
         "author_name": row["author_name"],
         "author_role": row["author_role"],
         "content": row["content"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
     }
 
 

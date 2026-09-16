@@ -9,11 +9,11 @@ from domain_types import AutomationBuilderMode, AutomationExecutionStatus, Autom
 from services.automation_scheduling import schedule_automation_event_in_session
 from services.automations.common import (
     OVERDUE_LOOKBACK_GRACE_MINUTES,
-    _ts,
     _wake,
 )
 from services.db_service import open_conversation_from_inbound
 from services.ws_manager import manager
+from services.time_format import iso_utc
 
 
 async def schedule_automation_event(
@@ -151,8 +151,8 @@ async def _schedule_customer_response_deadlines(
             payload = {
                 "last_message_id": message_key,
                 "last_sender": "vendedor",
-                "last_message_at": _ts(sent_at),
-                "deadline_at": _ts(scheduled_for),
+                "last_message_at": iso_utc(sent_at),
+                "deadline_at": iso_utc(scheduled_for),
             }
             flow_state = (
                 {

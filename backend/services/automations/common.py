@@ -14,6 +14,7 @@ from domain_types import (
 )
 from services.automation_rules import flow_indexes, render_variables, unknown_variables
 from services.template_delivery import MEDIA_CAPTION_MAX_LENGTH
+from services.time_format import iso_utc
 
 AUTOMATION_POLL_SECONDS = 10
 MAX_ACTIONS = 10
@@ -83,10 +84,6 @@ _render = render_variables
 _unknown_variables = unknown_variables
 
 
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
-
-
 def _wait_seconds(data: dict) -> int:
     """Segundos de espera de un nodo Wait. Con compatibilidad hacia atrás:
     los flujos publicados antes de dividir la espera en horas/minutos/
@@ -117,10 +114,10 @@ def _rule_dict(row) -> dict:
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
         "execution_count": int(row["execution_count"] or 0),
-        "last_execution_at": _ts(row["last_execution_at"]),
+        "last_execution_at": iso_utc(row["last_execution_at"]),
         "last_execution_status": row["last_execution_status"],
-        "created_at": _ts(row["created_at"]),
-        "updated_at": _ts(row["updated_at"]),
+        "created_at": iso_utc(row["created_at"]),
+        "updated_at": iso_utc(row["updated_at"]),
     }
 
 
@@ -134,19 +131,19 @@ def _execution_dict(row) -> dict:
         "lead_name": row["lead_name"],
         "trigger_type": row["trigger_type"],
         "status": row["status"],
-        "scheduled_for": _ts(row["scheduled_for"]),
-        "paused_at": _ts(row["paused_at"]),
+        "scheduled_for": iso_utc(row["scheduled_for"]),
+        "paused_at": iso_utc(row["paused_at"]),
         "pause_scope": row["pause_scope"],
-        "started_at": _ts(row["started_at"]),
-        "finished_at": _ts(row["finished_at"]),
+        "started_at": iso_utc(row["started_at"]),
+        "finished_at": iso_utc(row["finished_at"]),
         "action_results": row["action_results"] or [],
         "flow_state": row["flow_state"] or {},
         "error": row["error"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
         "start_source": row["start_source"] or "system",
         "started_by_user_id": row["started_by_user_id"],
         "started_by_name": row["started_by_name"],
-        "window_override_at": _ts(row["window_override_at"]),
+        "window_override_at": iso_utc(row["window_override_at"]),
         "window_override_by_name": row["window_override_by_name"],
     }
 

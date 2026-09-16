@@ -16,10 +16,7 @@ from db.models import (
     User,
 )
 from db.session import get_sessionmaker
-
-
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
+from services.time_format import iso_utc
 
 
 def _template(row, attachments: list[dict] | None = None):
@@ -44,10 +41,10 @@ def _template(row, attachments: list[dict] | None = None):
         "official_buttons": row["official_buttons"] or [],
         "interactive_type": row["interactive_type"],
         "interactive_config": row["interactive_config"] or {},
-        "last_used_at": _ts(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
+        "last_used_at": iso_utc(row["last_used_at"]), "use_count": int(row["use_count"] or 0),
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc(row["created_at"]),
         "attachments": attachments or [],
     }
 

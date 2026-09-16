@@ -5,10 +5,7 @@ from sqlalchemy import func, insert, select, update
 from domain_types import NotificationType
 from db.models import UserNotification
 from db.session import get_sessionmaker
-
-
-def _ts(value):
-    return value.isoformat().replace("+00:00", "Z") if value else None
+from services.time_format import iso_utc
 
 
 def _notification(row) -> dict:
@@ -20,8 +17,8 @@ def _notification(row) -> dict:
         "lead_id": row.lead_id,
         "source_id": row.source_id,
         "metadata": row.metadata_,
-        "read_at": _ts(row.read_at),
-        "created_at": _ts(row.created_at),
+        "read_at": iso_utc(row.read_at),
+        "created_at": iso_utc(row.created_at),
     }
 
 

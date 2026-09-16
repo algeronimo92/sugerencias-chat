@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select, true
 
 from db.models import LeadStage, LeadTag, LeadTagAssignment
+from services.time_format import iso_utc_micros, parse_iso_utc_micros
 
 CHATS_PAGE_SIZE = 30
 KANBAN_PAGE_SIZE = 40
@@ -35,10 +36,7 @@ class LastAdminError(Exception):
     pass
 
 
-def _fmt_ts(value: datetime | None) -> str | None:
-    # Microsegundos incluidos: la paginación por cursor usa este mismo valor
-    # de ida y vuelta, y truncarlo a segundos podía generar colisiones falsas.
-    return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') if value else None
+_fmt_ts = iso_utc_micros
 
 
 def _activity_safe(values: dict) -> dict:
@@ -128,8 +126,7 @@ async def _tags_by_lead(session, chat_ids: list[str]) -> dict[str, list[dict]]:
     return result
 
 
-def _parse_ts(value: str) -> datetime:
-    return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+_parse_ts = parse_iso_utc_micros
 
 
 def _json_safe_row(row: dict) -> dict:

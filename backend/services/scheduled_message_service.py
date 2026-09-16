@@ -10,6 +10,7 @@ from db.session import get_sessionmaker
 from services.db_service import CUSTOMER_SERVICE_WINDOW
 from services.lead_touch import touch_automated_reply_stmt
 from services.ws_manager import manager
+from services.time_format import iso_utc_micros
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +20,18 @@ DISPATCH_CONCURRENCY = 10
 STALE_PROCESSING_MINUTES = 5
 
 
-def _ts(value: datetime | None) -> str | None:
-    return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ") if value else None
-
-
 def _item(row) -> dict:
     return {
         "id": row["id"],
         "lead_id": row["lead_id"],
         "text": row["text"],
-        "scheduled_at": _ts(row["scheduled_at"]),
+        "scheduled_at": iso_utc_micros(row["scheduled_at"]),
         "status": row["status"],
         "created_by_user_id": row["created_by_user_id"],
         "created_by_user_name": row["created_by_user_name"],
         "queued_message_id": row["queued_message_id"],
         "error": row["error"],
-        "created_at": _ts(row["created_at"]),
+        "created_at": iso_utc_micros(row["created_at"]),
     }
 
 
