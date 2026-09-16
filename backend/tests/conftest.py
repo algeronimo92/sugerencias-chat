@@ -319,6 +319,15 @@ def patch_chats(monkeypatch, name, value):
     _patch_everywhere(monkeypatch, _package_modules("routers.chats", "routers.chats"), name, value)
 
 
+def patch_history(monkeypatch, name, value):
+    """Reemplaza un colaborador en todos los módulos del historial de WhatsApp."""
+    _patch_everywhere(
+        monkeypatch,
+        _package_modules("services.whatsapp_history", "services.whatsapp_history"),
+        name, value,
+    )
+
+
 @contextlib.contextmanager
 def _patching(patcher_function, name, new):
     from unittest.mock import MagicMock

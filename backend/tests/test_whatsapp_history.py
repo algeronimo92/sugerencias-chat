@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services import whatsapp_history
+from tests.conftest import patch_history
 from services.whatsapp_history import (
     _extract_records,
     _normalize_record,
@@ -329,8 +330,8 @@ def test_normalize_descarta_registros_incompletos(record):
 @pytest.fixture
 def evolution(monkeypatch):
     """Reemplaza Evolution y la base por dobles controlados."""
-    monkeypatch.setattr(whatsapp_history, "count_wa_messages", AsyncMock(return_value=0))
-    monkeypatch.setattr(whatsapp_history, "existing_wa_message_ids", AsyncMock(return_value=set()))
+    patch_history(monkeypatch, "count_wa_messages", AsyncMock(return_value=0))
+    patch_history(monkeypatch, "existing_wa_message_ids", AsyncMock(return_value=set()))
 
     pages: dict[int, object] = {}
     calls: list[int] = []
@@ -339,7 +340,7 @@ def evolution(monkeypatch):
         calls.append(page)
         return pages.get(page, {"messages": {"pages": max(pages), "records": []}})
 
-    monkeypatch.setattr(whatsapp_history, "find_chat_messages", fake_find)
+    patch_history(monkeypatch, "find_chat_messages", fake_find)
     return type("Evolution", (), {"pages": pages, "calls": calls})
 
 
@@ -371,8 +372,8 @@ async def test_excluye_lo_posterior_al_inicio_del_registro(evolution):
 @pytest.mark.asyncio
 async def test_excluye_los_mensajes_que_ya_estan_en_la_base(evolution, monkeypatch):
     evolution.pages[1] = _page([_record("A", 1_700_000_100), _record("B", 1_700_000_200)])
-    monkeypatch.setattr(
-        whatsapp_history, "existing_wa_message_ids", AsyncMock(return_value={"A"})
+    patch_history(
+        monkeypatch, "existing_wa_message_ids", AsyncMock(return_value={"A"})
     )
 
     result = await fetch_whatsapp_history("chat", None, None)
@@ -384,7 +385,7 @@ async def test_excluye_los_mensajes_que_ya_estan_en_la_base(evolution, monkeypat
 async def test_saltea_las_paginas_que_ya_cubre_la_base(evolution, monkeypatch):
     """500 mensajes propios: en vez de recorrer 10 páginas de duplicados,
     arranca en la 9 (una antes del límite, para no pasarse)."""
-    monkeypatch.setattr(whatsapp_history, "count_wa_messages", AsyncMock(return_value=500))
+    patch_history(monkeypatch, "count_wa_messages", AsyncMock(return_value=500))
     boundary = datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)  # 1_700_000_000
     evolution.pages[9] = _page([_record("YA_REGISTRADO", 1_700_000_500)], pages=10, current=9)
     evolution.pages[10] = _page([_record("A", 1_600_000_000)], pages=10, current=10)
@@ -399,7 +400,7 @@ async def test_saltea_las_paginas_que_ya_cubre_la_base(evolution, monkeypatch):
 async def test_retrocede_cuando_la_estimacion_se_paso_de_largo(evolution, monkeypatch):
     """Si la base tiene huecos, la página estimada cae más atrás que el límite
     y en el medio quedarían mensajes sin mostrar."""
-    monkeypatch.setattr(whatsapp_history, "count_wa_messages", AsyncMock(return_value=200))
+    patch_history(monkeypatch, "count_wa_messages", AsyncMock(return_value=200))
     boundary = datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)  # 1_700_000_000
     # Página 3 (la estimada) es toda anterior al límite -> retrocede a la 1.
     evolution.pages[3] = _page([_record("VIEJO", 1_600_000_000)], pages=3, current=3)
