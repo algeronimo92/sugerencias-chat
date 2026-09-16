@@ -1,6 +1,5 @@
 import base64
 import logging
-import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,26 +13,25 @@ from services.auth_service import get_current_user
 from services.issue_report_service import list_active_admin_ids
 from services.notification_service import create_system_notification
 from services.push_service import send_push_to_user
+from services.phone_utils import PhoneValidationError, effective_country_code, normalize_phone
+from services.n8n_service import post_form
 from services.settings_service import get_effective
+from services.db_service import list_active_sellers
 from services.ws_manager import manager
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 logger = logging.getLogger(__name__)
 
-# Mismas reglas que el nodo "Preparar cita y mensajes" del workflow de n8n
-# (FORM-NUEVAS-CITAS.json): esto solo adelanta el error con un 400 rápido, la
-# validación real sigue viviendo ahí.
-ALLOWED_VENDEDORES = {"Antonella", "Grecia"}
+# El comprobante y su tamaño sí son reglas de esta app; el vendedor y el
+# teléfono salen de los usuarios activos y del país configurado, para que dar
+# de alta a alguien nuevo no necesite un despliegue.
 ALLOWED_COMPROBANTE_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 MAX_COMPROBANTE_BYTES = 10 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 60.0
 
 
-def _normalize_phone(raw: str) -> str:
-    phone = re.sub(r"\D", "", raw)
-    if len(phone) == 11 and phone.startswith("51"):
-        phone = phone[2:]
-    return phone
+async def _active_seller_names() -> set[str]:
+    return {str(seller["name"]).strip() for seller in await list_active_sellers()}
 
 
 @router.get("", response_model=list[AppointmentItem])
@@ -43,11 +41,12 @@ async def get_appointments(_user: User = Depends(get_current_user)):
 
 @router.post("")
 async def post_appointment(body: AppointmentCreate, user: User = Depends(get_current_user)):
-    phone = _normalize_phone(body.telefono)
-    if not re.fullmatch(r"9\d{8}", phone):
-        raise HTTPException(400, "Teléfono peruano inválido")
-    if body.vendedor not in ALLOWED_VENDEDORES:
-        raise HTTPException(400, "Vendedor inválido")
+    try:
+        normalize_phone(body.telefono, await effective_country_code())
+    except PhoneValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if body.vendedor.strip() not in await _active_seller_names():
+        raise HTTPException(400, "Vendedor inválido: elegí un usuario activo del equipo")
     if body.test_mode and user.role != "admin":
         raise HTTPException(403, "Solo un administrador puede enviar en modo prueba")
 
@@ -106,8 +105,7 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
         )
 
     try:
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-            response = await client.post(webhook_url, data=data, files=files)
+        response = await post_form(webhook_url, data, files, REQUEST_TIMEOUT_SECONDS)
     except httpx.HTTPError as exc:
         message = f"No se pudo contactar a n8n: {exc}"
         await record("error", None, message, None)

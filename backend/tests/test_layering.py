@@ -56,3 +56,9 @@ def test_automation_modules_never_import_their_facade():
     }
 
     assert violations == set()
+
+
+def test_lead_visibility_does_not_depend_on_the_evolution_client():
+    imported = _imported_modules(BACKEND / "services" / "store" / "chat_queries.py")
+
+    assert not any(name.startswith("services.evolution_service") for name in imported)

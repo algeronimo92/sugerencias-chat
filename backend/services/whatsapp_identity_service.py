@@ -20,6 +20,7 @@ from db.models import Lead, WhatsAppIdentity
 from db.session import get_sessionmaker
 from services.lead_assignment import pick_next_vendedor_id
 from services.settings_service import get_effective
+from services.whatsapp_connection import ANY_CONNECTION, active_connection, connection_scope
 
 
 logger = logging.getLogger(__name__)
@@ -297,8 +298,7 @@ async def resolve_whatsapp_destination(chat_id: str) -> str:
     considera la que está en uso. Sin instancia configurada no se filtra: no
     hay forma de saber cuál es la activa.
     """
-    active_instance = await get_effective("evolution_instance")
-    instances = (active_instance, "*") if active_instance else None
+    instances = await connection_scope()
 
     async with get_sessionmaker()() as session:
         phone_stmt = (
@@ -406,7 +406,7 @@ async def learn_send_aliases(chat_id: str, response: Any) -> tuple[str, ...]:
     if not jids:
         return ()
 
-    instance = (await get_effective("evolution_instance")).strip() or "*"
+    instance = await active_connection() or ANY_CONNECTION
     learned: list[str] = []
     try:
         async with get_sessionmaker()() as session:

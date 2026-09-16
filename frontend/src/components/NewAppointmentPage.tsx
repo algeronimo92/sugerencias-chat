@@ -2,6 +2,7 @@ import { CalendarPlus, FileText, FileUp, FlaskConical, History, Loader2, Save, X
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { useMe } from '../hooks/useAuth'
+import { useSellers } from '../hooks/useUsers'
 import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../hooks/useAppointments'
 import { extractErrorMessage } from '../utils/errors'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
@@ -39,8 +40,6 @@ const HORAS = [
   '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
   '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
 ]
-
-const VENDEDORES = ['Antonella', 'Grecia']
 
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_BYTES = 10 * 1024 * 1024
@@ -110,6 +109,7 @@ function resultMessage(result: AppointmentResult): { text: string; tone: 'succes
 
 export function NewAppointmentPage() {
   const { data: me } = useMe()
+  const { data: sellers = [] } = useSellers()
   const isAdmin = me?.role === 'admin'
   const [form, setForm] = useState(EMPTY_FORM)
   const [comprobante, setComprobante] = useState<File | null>(null)
@@ -302,7 +302,7 @@ export function NewAppointmentPage() {
               <label htmlFor="nc-vendedor" className={labelClass}>Vendedor *</label>
               <Select id="nc-vendedor" value={form.vendedor} onValueChange={value => update('vendedor', value)} disabled={busy} required>
                 <option value="" disabled>Selecciona un vendedor</option>
-                {VENDEDORES.map(item => <option key={item} value={item}>{item}</option>)}
+                {sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}</option>)}
               </Select>
             </div>
 

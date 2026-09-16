@@ -1997,6 +1997,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/webhooks/last-message-raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Last Message Raw Webhook
+         * @description Reemplaza al nodo Postgres `ultimo mensaje1`: el wa_message_id del
+         *     último mensaje del chat. `{}` si el chat todavía no tiene ninguno.
+         */
+        get: operations["last_message_raw_webhook_api_webhooks_last_message_raw_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/lead-analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lead Analysis Webhook
+         * @description Reemplaza el UPDATE directo del nodo `update lead`: deja el cambio
+         *     auditado en lead_activity y avisa a los paneles abiertos.
+         */
+        post: operations["lead_analysis_webhook_api_webhooks_lead_analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/lead-inbound-activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lead Inbound Activity Webhook
+         * @description Reemplaza el UPDATE directo del nodo `update lead4`.
+         */
+        post: operations["lead_inbound_activity_webhook_api_webhooks_lead_inbound_activity_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/webhooks/lead-messages-raw": {
         parameters: {
             query?: never;
@@ -3341,6 +3403,29 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * LeadAnalysisWebhookBody
+         * @description Campos del lead que escribe el agente analista de n8n. Todo opcional:
+         *     solo se actualiza lo que el agente resolvió en esa corrida.
+         */
+        LeadAnalysisWebhookBody: {
+            /** Chat Id */
+            chat_id: string;
+            /** Fecha Recontacto */
+            fecha_recontacto?: string | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Notas */
+            notas?: string | null;
+            /** Razon Perdido */
+            razon_perdido?: string | null;
+            /** Servicio Interes */
+            servicio_interes?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Tipo Objecion */
+            tipo_objecion?: string | null;
+        };
         /** LeadCreate */
         LeadCreate: {
             /** Name */
@@ -3357,6 +3442,18 @@ export interface components {
             servicio_interes?: string | null;
             /** Vendedor Id */
             vendedor_id?: number | null;
+        };
+        /**
+         * LeadInboundActivityWebhookBody
+         * @description Último mensaje del chat, tal como lo veía el nodo `update lead4`.
+         */
+        LeadInboundActivityWebhookBody: {
+            /** Chat Id */
+            chat_id: string;
+            /** Ultimo Emisor */
+            ultimo_emisor?: string | null;
+            /** Ultimo Mensaje At */
+            ultimo_mensaje_at?: string | null;
         };
         /** LeadMergeRequest */
         LeadMergeRequest: {
@@ -8622,6 +8719,112 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["EnsureLeadWebhookBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    last_message_raw_webhook_api_webhooks_last_message_raw_get: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-webhook-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lead_analysis_webhook_api_webhooks_lead_analysis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-webhook-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeadAnalysisWebhookBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lead_inbound_activity_webhook_api_webhooks_lead_inbound_activity_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-webhook-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeadInboundActivityWebhookBody"];
             };
         };
         responses: {

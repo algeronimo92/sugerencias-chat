@@ -74,6 +74,7 @@ from services.store.messages import (  # noqa: F401
     count_wa_messages,
     existing_wa_message_ids,
     fetch_chat_signature,
+    fetch_last_wa_message_id,
     fetch_latest_message_cursor,
     fetch_message_ad_payload,
     fetch_message_by_wa_id,

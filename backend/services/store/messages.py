@@ -172,6 +172,19 @@ async def fetch_chat_signature() -> str:
     return f"{count}:{last_sent.isoformat() if last_sent else ''}"
 
 
+async def fetch_last_wa_message_id(chat_id: str) -> str | None:
+    """wa_message_id del último mensaje de un chat (lo que leía el nodo
+    Postgres `ultimo mensaje1` de n8n)."""
+    stmt = (
+        select(WspMessage.wa_message_id)
+        .where(WspMessage.chat_id == chat_id, WspMessage.wa_message_id.isnot(None))
+        .order_by(WspMessage.id.desc())
+        .limit(1)
+    )
+    async with get_sessionmaker()() as session:
+        return await session.scalar(stmt)
+
+
 async def fetch_latest_message_cursor() -> tuple[datetime, int] | None:
     """Cursor del último mensaje existente, sin recuperar su contenido.
 

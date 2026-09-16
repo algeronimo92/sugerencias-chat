@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import binascii
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException
@@ -11,6 +11,7 @@ from services.db_service import (
     attach_outgoing_analysis,
     ensure_lead_stub,
     fetch_lead_raw,
+    fetch_last_wa_message_id,
     fetch_message_by_wa_id,
     fetch_messages_raw,
     insert_message,
@@ -20,6 +21,7 @@ from services.db_service import (
     record_lead_touch,
     set_message_reaction,
     update_poll_results,
+    update_lead,
     update_lead_stage,
     update_message_content,
     update_message_content_from_secret,
@@ -610,6 +612,66 @@ async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
     return await ensure_lead_stub(
         body.chat_id, _parse_iso_datetime(body.ultimo_mensaje_at), body.origen
     )
+
+
+class LeadAnalysisWebhookBody(BaseModel):
+    """Campos del lead que escribe el agente analista de n8n. Todo opcional:
+    solo se actualiza lo que el agente resolvió en esa corrida."""
+
+    chat_id: str
+    nombre: str | None = None
+    telefono: str | None = None
+    servicio_interes: str | None = None
+    notas: str | None = None
+    razon_perdido: str | None = None
+    fecha_recontacto: date | None = None
+    tipo_objecion: str | None = None
+
+
+@router.post("/lead-analysis")
+async def lead_analysis_webhook(body: LeadAnalysisWebhookBody):
+    """Reemplaza el UPDATE directo del nodo `update lead`: deja el cambio
+    auditado en lead_activity y avisa a los paneles abiertos."""
+    values = body.model_dump(exclude={"chat_id"}, exclude_none=True)
+    if not values:
+        return {"status": "ok", "changed": False}
+    lead = await update_lead(body.chat_id, values, actor_type="agent")
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    await _broadcast_lead_updated(body.chat_id)
+    return {"status": "ok", "changed": True}
+
+
+class LeadInboundActivityWebhookBody(BaseModel):
+    """Último mensaje del chat, tal como lo veía el nodo `update lead4`."""
+
+    chat_id: str
+    ultimo_emisor: str | None = None
+    ultimo_mensaje_at: str | None = None
+
+
+@router.post("/lead-inbound-activity")
+async def lead_inbound_activity_webhook(body: LeadInboundActivityWebhookBody):
+    """Reemplaza el UPDATE directo del nodo `update lead4`."""
+    values: dict = {}
+    if body.ultimo_emisor is not None:
+        values["ultimo_emisor"] = body.ultimo_emisor
+    timestamp = _parse_iso_datetime(body.ultimo_mensaje_at)
+    if timestamp is not None:
+        values["ultimo_mensaje_at"] = timestamp
+    if not values:
+        return {"status": "ok", "changed": False}
+    if await update_lead(body.chat_id, values, actor_type="system") is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    return {"status": "ok", "changed": True}
+
+
+@router.get("/last-message-raw")
+async def last_message_raw_webhook(chat_id: str):
+    """Reemplaza al nodo Postgres `ultimo mensaje1`: el wa_message_id del
+    último mensaje del chat. `{}` si el chat todavía no tiene ninguno."""
+    wa_message_id = await fetch_last_wa_message_id(chat_id)
+    return {"wa_message_id": wa_message_id} if wa_message_id else {}
 
 
 class MetaMediaImportBody(BaseModel):

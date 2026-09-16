@@ -32,6 +32,16 @@ async def close_n8n_client() -> None:
         _http_client = None
 
 
+async def post_form(url: str, data: dict, files: dict | None, timeout: float) -> httpx.Response:
+    """Envía un formulario multipart a un webhook de n8n con el cliente
+    compartido del proceso, en vez de abrir uno nuevo por request."""
+    started_at = perf_counter()
+    try:
+        return await _client().post(url, data=data, files=files, timeout=timeout)
+    finally:
+        record_external_duration("n8n", (perf_counter() - started_at) * 1000)
+
+
 async def call_n8n(
     chat_id: str,
     phone: str | None,

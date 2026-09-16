@@ -116,6 +116,11 @@ class Lead(Base):
     conversacion_cerrada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     conversacion_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     razon_perdido: Mapped[str | None] = mapped_column(Text)
+    # Las escribía solo el agente analista de n8n con un UPDATE directo; se
+    # declaran para poder hacerlo por la API (ver routers/webhooks.py). La
+    # tabla `leads` está fuera de autogenerate, así que no llevan migración.
+    tipo_objecion: Mapped[str | None] = mapped_column(Text)
+    ultimo_emisor: Mapped[str | None] = mapped_column(Text)
     fecha_recontacto: Mapped[date | None] = mapped_column(Date)
     contador_noshow: Mapped[int | None] = mapped_column(SmallInteger)
     proxima_cita: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -13,7 +13,7 @@ from db.models import (
     WspMessage,
 )
 from db.session import get_sessionmaker
-from services.settings_service import get_effective
+from services.whatsapp_connection import connection_scope
 from services.store.common import (
     CHATS_PAGE_SIZE,
     CUSTOMER_SERVICE_WINDOW,
@@ -95,7 +95,7 @@ def _has_tag_condition(tag_id: int):
 
 
 async def _visible_lead_condition():
-    """Un lead solo se lista si tiene un alias de la instancia de WhatsApp
+    """Un lead solo se lista si tiene un alias de la conexión de WhatsApp
     activa (o el `"*"` sintético de los leads creados a mano).
 
     Al migrar de instancia (nuevo número/reconexión), `_resolve_once` crea
@@ -105,14 +105,14 @@ async def _visible_lead_condition():
     uso. Si no hay ninguna instancia configurada no se filtra nada: no hay
     forma de saber cuál es "la activa".
     """
-    active_instance = await get_effective("evolution_instance")
-    if not active_instance:
+    scope = await connection_scope()
+    if scope is None:
         return true()
     return exists(
         select(WhatsAppIdentity.id)
         .where(
             WhatsAppIdentity.lead_id == Lead.id,
-            WhatsAppIdentity.instance.in_((active_instance, "*")),
+            WhatsAppIdentity.instance.in_(scope),
         )
         .correlate(Lead)
     )
