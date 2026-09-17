@@ -59,11 +59,21 @@ def test_a_router_never_reaches_into_another_router():
     "routers/chats/outbound.py",
     "routers/chats/message_actions.py",
     "routers/chats/read_state.py",
+    "services/whatsapp_capabilities.py",
 ])
 def test_messaging_flows_depend_on_the_channel_port_not_on_meta(module):
     imported = _imported_modules(BACKEND / module)
 
     assert not any(name.startswith("services.meta_service") for name in imported)
+
+
+def test_the_capabilities_module_names_no_provider_at_all():
+    """Existe para que el resto no sepa qué canal está conectado: si nombra a
+    uno, la respuesta miente en cuanto se conecte otro."""
+    imported = _imported_modules(BACKEND / "services/whatsapp_capabilities.py")
+    proveedores = {"services.meta_service", "services.evolution_service"}
+
+    assert not {name for name in imported if name in proveedores}
 
 
 def test_automation_modules_never_import_their_facade():

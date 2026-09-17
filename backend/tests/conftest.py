@@ -272,6 +272,24 @@ class FakeEditor:
         self.deletes.append((chat_id, provider_message_id))
 
 
+@dataclass
+class FakeChannelStatus:
+    """Canal configurado salvo que el test diga lo contrario."""
+
+    integration: str | None = "FAKE-CHANNEL"
+    configured: bool = True
+    reason: str | None = None
+
+    async def availability(self):
+        from services.whatsapp_channel import ChannelAvailability
+
+        return ChannelAvailability(
+            integration=self.integration if self.configured else None,
+            configured=self.configured,
+            reason=self.reason,
+        )
+
+
 def install_channel(monkeypatch, **components):
     from services import whatsapp_channels
     from services.whatsapp_channel import WhatsAppChannel
@@ -280,6 +298,7 @@ def install_channel(monkeypatch, **components):
         name="meta",
         sender=components.get("sender") or FakeSender(),
         actions=components.get("actions") or FakeConversationActions(),
+        status=components.get("status") or FakeChannelStatus(),
         editor=components.get("editor"),
         history=components.get("history"),
     )

@@ -96,9 +96,27 @@ class HistoryReader(Protocol):
 
 
 @dataclass(frozen=True)
+class ChannelAvailability:
+    """Si el canal puede operar, y con qué nombre se presenta.
+
+    `reason` explica en términos del proveedor qué falta configurar, así que
+    lo redacta cada adaptador: quién lo lee no sabe cuál está conectado.
+    """
+
+    integration: str | None
+    configured: bool
+    reason: str | None = None
+
+
+class ChannelStatus(Protocol):
+    async def availability(self) -> ChannelAvailability: ...
+
+
+@dataclass(frozen=True)
 class WhatsAppChannel:
     name: str
     sender: MessageSender
     actions: ConversationActions
+    status: ChannelStatus
     editor: MessageEditor | None = None
     history: HistoryReader | None = None
