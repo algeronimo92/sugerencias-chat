@@ -7,10 +7,10 @@ from sqlalchemy import func, or_, select, update
 from db.models import Lead, MessageOutbox, ScheduledMessage, User, WspMessage
 from domain_types import MessageStatus, OutboxStatus, ScheduledMessageStatus
 from db.session import get_sessionmaker
-from services.db_service import CUSTOMER_SERVICE_WINDOW
 from services.lead_touch import touch_automated_reply_stmt
 from services.ws_manager import manager
 from services.time_format import iso_utc_micros
+from services.service_window import SERVICE_WINDOW_CLOSED_DETAIL, service_window_is_open
 
 logger = logging.getLogger(__name__)
 
@@ -170,22 +170,9 @@ async def _dispatch(scheduled_id: int) -> None:
         if scheduled is None or scheduled.status != ScheduledMessageStatus.PROCESSING:
             return
         lead_id = scheduled.lead_id
-        last_customer_message = await session.scalar(
-            select(func.max(WspMessage.sent_at)).where(
-                WspMessage.chat_id == scheduled.lead_id,
-                WspMessage.sender == "cliente",
-            )
-        )
-        window_open = bool(
-            last_customer_message
-            and last_customer_message + CUSTOMER_SERVICE_WINDOW > now
-        )
-        if not window_open:
+        if not await service_window_is_open(scheduled.lead_id):
             scheduled.status = ScheduledMessageStatus.FAILED
-            scheduled.error = (
-                "No se envió porque la ventana de atención de 24 horas está cerrada. "
-                "Espera un nuevo mensaje del cliente o usa una plantilla oficial."
-            )
+            scheduled.error = SERVICE_WINDOW_CLOSED_DETAIL
             scheduled.updated_at = now
             await session.commit()
         else:

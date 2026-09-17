@@ -29,8 +29,6 @@ from services.automations.common import (
     MAX_FLOW_NODES,
     PAUSE_SCOPE_LEAD,
     RATE_LIMIT_RETRY_MINUTES,
-    SERVICE_WINDOW_CLOSED_ERROR,
-    SERVICE_WINDOW_ERROR_CODE,
     _flow_indexes,
 )
 from services.automations.conditions import (
@@ -44,6 +42,7 @@ from services.automations.flow_nodes import (
 )
 from services.whatsapp_channel import ChannelError
 from services.ws_manager import manager
+from services.service_window import SERVICE_WINDOW_CLOSED_ERROR, SERVICE_WINDOW_ERROR_CODE
 
 logger = logging.getLogger(__name__)
 

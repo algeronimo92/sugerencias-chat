@@ -338,6 +338,17 @@ def patch_chats(monkeypatch, name, value):
     _patch_everywhere(monkeypatch, _package_modules("routers.chats", "routers.chats"), name, value)
 
 
+def open_service_window(monkeypatch, is_open: bool = True):
+    """Ventana de atención de 24 h abierta para las rutas de envío libre.
+
+    Los tests de envío simulan el lead, la outbox y el canal; la ventana es el
+    otro chequeo previo que hacen todas esas rutas.
+    """
+    from unittest.mock import AsyncMock
+
+    patch_chats(monkeypatch, "service_window_is_open", AsyncMock(return_value=is_open))
+
+
 def patch_webhooks(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del router de webhooks que lo usan."""
     _patch_everywhere(monkeypatch, _package_modules("routers.webhooks", "routers.webhooks"), name, value)

@@ -207,7 +207,12 @@ export function ChatComposer({
     if (!text) return
     setDraft('')
     onReplyChange(null)
-    sendMessage({ text, replyTo })
+    sendMessage({ text, replyTo }, {
+      // Un rechazo del backend (ventana de 24 h cerrada, lead inexistente) no
+      // deja burbuja de reintento: sin devolver el texto, lo que el vendedor
+      // escribió desaparece junto con el error.
+      onError: () => setDraft((current) => current || text),
+    })
   }
 
   async function handleAudioRecorded(blob: Blob) {
