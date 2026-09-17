@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.exc import IntegrityError
 
 from db.models import User
 from domain_types import IssueReportPriority, IssueReportStatus, NotificationType
@@ -19,6 +18,7 @@ from models.schemas import (
 from services.media_upload import normalize_media_content_type, save_media_file
 from services.auth_service import get_current_user
 from services.issue_report_service import (
+    InvalidReportContextError,
     create_issue_report,
     create_issue_report_comment,
     get_issue_report,
@@ -108,9 +108,9 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
     except HTTPException:
         await _delete_saved(saved_urls)
         raise
-    except IntegrityError:
+    except InvalidReportContextError as exc:
         await _delete_saved(saved_urls)
-        raise HTTPException(400, "El contexto del reporte ya no es válido")
+        raise HTTPException(400, str(exc))
     except (MediaStorageError, ValueError) as exc:
         await _delete_saved(saved_urls)
         raise HTTPException(503 if isinstance(exc, MediaStorageError) else 400, str(exc))

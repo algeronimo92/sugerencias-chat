@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
 from db.models import (
@@ -13,6 +14,10 @@ from db.models import (
 from domain_types import IssueReportPriority, IssueReportStatus
 from db.session import get_sessionmaker
 from services.time_format import iso_utc
+
+
+class InvalidReportContextError(Exception):
+    """El lead o el usuario al que el reporte hace referencia ya no existe."""
 
 
 Reporter = aliased(User)
@@ -182,35 +187,40 @@ async def get_issue_report_detail(report_id: int) -> dict | None:
 
 async def create_issue_report(values: dict, attachments: list[dict], reporter_user_id: int) -> dict:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
-        report_id = (await session.execute(
-            insert(IssueReport).values(
-                reporter_user_id=reporter_user_id,
-                title=values["title"],
-                description=values["description"],
-                status=IssueReportStatus.NEW,
-                priority=IssueReportPriority.NORMAL,
-                current_path=values["current_path"],
-                lead_id=values.get("lead_id"),
-                technical_context=values.get("technical_context") or {},
+    try:
+        async with get_sessionmaker()() as session:
+            report_id = (await session.execute(
+                insert(IssueReport).values(
+                    reporter_user_id=reporter_user_id,
+                    title=values["title"],
+                    description=values["description"],
+                    status=IssueReportStatus.NEW,
+                    priority=IssueReportPriority.NORMAL,
+                    current_path=values["current_path"],
+                    lead_id=values.get("lead_id"),
+                    technical_context=values.get("technical_context") or {},
+                    created_at=now,
+                    updated_at=now,
+                ).returning(IssueReport.id)
+            )).scalar_one()
+            if attachments:
+                await session.execute(insert(IssueReportAttachment), [
+                    {**attachment, "report_id": report_id, "created_at": now}
+                    for attachment in attachments
+                ])
+            await session.execute(insert(IssueReportEvent).values(
+                report_id=report_id,
+                actor_user_id=reporter_user_id,
+                event_type="created",
+                previous_value=None,
+                new_value=IssueReportStatus.NEW,
                 created_at=now,
-                updated_at=now,
-            ).returning(IssueReport.id)
-        )).scalar_one()
-        if attachments:
-            await session.execute(insert(IssueReportAttachment), [
-                {**attachment, "report_id": report_id, "created_at": now}
-                for attachment in attachments
-            ])
-        await session.execute(insert(IssueReportEvent).values(
-            report_id=report_id,
-            actor_user_id=reporter_user_id,
-            event_type="created",
-            previous_value=None,
-            new_value=IssueReportStatus.NEW,
-            created_at=now,
-        ))
-        await session.commit()
+            ))
+            await session.commit()
+    except IntegrityError as exc:
+        raise InvalidReportContextError(
+            "El contexto del reporte ya no es válido"
+        ) from exc
     report = await get_issue_report(report_id)
     assert report is not None
     return report

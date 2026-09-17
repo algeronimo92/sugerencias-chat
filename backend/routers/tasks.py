@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.exc import IntegrityError
 
 from domain_types import TaskStatus
 from db.models import User
 from models.schemas import TaskCreate, TaskItem, TaskUpdate
 from services.auth_service import get_current_user
 from services.task_service import (
+    MissingTaskReferenceError,
     complete_pending_tasks,
     create_task,
     get_task,
@@ -43,8 +43,8 @@ async def post_task(body: TaskCreate, user: User = Depends(get_current_user)):
         raise HTTPException(403, "Solo un administrador puede asignar tareas a otro usuario")
     try:
         item = await create_task(values, user.id)
-    except IntegrityError:
-        raise HTTPException(404, "Lead o responsable no encontrado")
+    except MissingTaskReferenceError as exc:
+        raise HTTPException(404, str(exc))
     await manager.broadcast({"type": "tasks_updated"})
     return item
 
@@ -80,8 +80,8 @@ async def patch_task(task_id: int, body: TaskUpdate, user: User = Depends(get_cu
         raise HTTPException(403, "Solo un administrador puede reasignar tareas")
     try:
         item = await update_task(task_id, values, user.id)
-    except IntegrityError:
-        raise HTTPException(404, "Responsable no encontrado")
+    except MissingTaskReferenceError as exc:
+        raise HTTPException(404, str(exc))
     if not item:
         raise HTTPException(404, "Tarea no encontrada")
     await manager.broadcast({"type": "tasks_updated"})
