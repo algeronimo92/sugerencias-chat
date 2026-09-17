@@ -67,6 +67,21 @@ def test_messaging_flows_depend_on_the_channel_port_not_on_meta(module):
     assert not any(name.startswith("services.meta_service") for name in imported)
 
 
+def test_only_the_outbox_writes_to_the_outbox():
+    """`enqueue_messages` resuelve el message_type desde OUTBOUND_KINDS, el
+    touch del lead, la deduplicación y el aviso al worker. Quien arme la fila
+    por su cuenta se pierde todo eso en silencio."""
+    culpables = set()
+    for path in (BACKEND / "services").rglob("*.py"):
+        if path.name == "message_outbox.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "MessageOutbox":
+                culpables.add(str(path.relative_to(BACKEND)))
+
+    assert culpables == set()
+
+
 def test_the_capabilities_module_names_no_provider_at_all():
     """Existe para que el resto no sepa qué canal está conectado: si nombra a
     uno, la respuesta miente en cuanto se conecte otro."""

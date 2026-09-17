@@ -2,15 +2,15 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, select, update
 
-from db.models import Lead, MessageOutbox, ScheduledMessage, User, WspMessage
-from domain_types import MessageStatus, OutboxStatus, ScheduledMessageStatus
+from db.models import Lead, ScheduledMessage, User
+from domain_types import ScheduledMessageStatus
 from db.session import get_sessionmaker
-from services.lead_touch import touch_automated_reply_stmt
 from services.ws_manager import manager
 from services.time_format import iso_utc_micros
 from services.service_window import SERVICE_WINDOW_CLOSED_DETAIL, service_window_is_open
+from services.message_outbox import enqueue_text_message
 
 logger = logging.getLogger(__name__)
 
@@ -162,48 +162,48 @@ async def _claim_due() -> list[int]:
 
 
 async def _dispatch(scheduled_id: int) -> None:
+    """Encola el mensaje programado por la misma puerta que el resto.
+
+    El encolado va fuera de la transacción que marca la fila como QUEUED, así
+    que hay una ventana entre ambos. La hace segura el `dedupe_key`: si el
+    proceso se cae en el medio, `_recover_stale` devuelve la fila a scheduled,
+    el próximo intento vuelve a encolar con la misma clave y `enqueue_messages`
+    devuelve el mensaje que ya existe en vez de crear otro.
+    """
     now = datetime.now(timezone.utc)
-    lead_id: str | None = None
-    status = ScheduledMessageStatus.FAILED
     async with get_sessionmaker()() as session:
         scheduled = await session.get(ScheduledMessage, scheduled_id, with_for_update=True)
         if scheduled is None or scheduled.status != ScheduledMessageStatus.PROCESSING:
             return
-        lead_id = scheduled.lead_id
-        if not await service_window_is_open(scheduled.lead_id):
+        lead_id, text = scheduled.lead_id, scheduled.text
+        window_open = await service_window_is_open(lead_id)
+        if not window_open:
             scheduled.status = ScheduledMessageStatus.FAILED
             scheduled.error = SERVICE_WINDOW_CLOSED_DETAIL
             scheduled.updated_at = now
             await session.commit()
-        else:
-            message = WspMessage(
-                chat_id=scheduled.lead_id,
-                sender="vendedor",
-                content=scheduled.text,
-                sent_at=now,
-                status=MessageStatus.PENDING,
-                message_type="text",
+
+    status = ScheduledMessageStatus.FAILED
+    if window_open:
+        # Sin actor_user_id: no hay un vendedor mirando la app en este momento,
+        # así que cuenta como "atendido por bot" y no como que un humano vio la
+        # conversación (enqueue_messages resuelve el touch con ese criterio).
+        message = await enqueue_text_message(
+            lead_id, text, dedupe_key=f"scheduled:{scheduled_id}",
+        )
+        async with get_sessionmaker()() as session:
+            await session.execute(
+                update(ScheduledMessage)
+                .where(ScheduledMessage.id == scheduled_id)
+                .values(
+                    status=ScheduledMessageStatus.QUEUED,
+                    queued_message_id=message["id"],
+                    error=None,
+                    updated_at=datetime.now(timezone.utc),
+                )
             )
-            session.add(message)
-            await session.flush()
-            session.add(MessageOutbox(
-                message_id=message.id,
-                chat_id=scheduled.lead_id,
-                payload={"type": "text", "text": scheduled.text},
-                status=OutboxStatus.PENDING,
-                next_attempt_at=now,
-            ))
-            scheduled.status = ScheduledMessageStatus.QUEUED
-            scheduled.queued_message_id = message.id
-            scheduled.error = None
-            scheduled.updated_at = now
-            # Un mensaje programado no tiene un vendedor mirando la app en
-            # ese momento: cuenta como "atendido por bot", no como que un
-            # humano vio la conversación (ver enqueue_messages para el
-            # criterio equivalente con actor_user_id).
-            await session.execute(touch_automated_reply_stmt(scheduled.lead_id, now))
             await session.commit()
-            status = ScheduledMessageStatus.QUEUED
+        status = ScheduledMessageStatus.QUEUED
 
     if lead_id:
         await manager.broadcast({
