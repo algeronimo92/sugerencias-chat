@@ -65,7 +65,10 @@ interface Props {
   /** Vienen del padre y no de un useSendMessage propio: el hilo también
    *  necesita retryMessage de esa misma instancia, y su `error` combina los
    *  fallos de envío con los de reintento. Duplicar el hook separaría los dos. */
-  sendMessage: (payload: { text: string; replyTo: ReplyTarget | null }) => void
+  sendMessage: (
+    payload: { text: string; replyTo: ReplyTarget | null },
+    options?: { onError?: (error: Error) => void },
+  ) => void
   sendError: Error | null
 }
 
