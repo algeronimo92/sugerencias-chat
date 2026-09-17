@@ -177,13 +177,23 @@ OUTBOUND_KINDS: dict[str, OutboundKind] = {
 }
 
 
-def outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
-    kind = OUTBOUND_KINDS.get(payload.get("type"))
-    return kind.message_fields(payload) if kind else ("unsupported", None)
-
-
-async def send_outbound(sender: MessageSender, chat_id: str, payload: dict) -> OutboundDelivery:
+def _require_kind(payload: dict) -> OutboundKind:
     kind = OUTBOUND_KINDS.get(payload.get("type"))
     if kind is None:
         raise ValueError(f"Tipo de outbox no soportado: {payload.get('type')}")
-    return await kind.send(sender, chat_id, payload)
+    return kind
+
+
+def outbound_message_fields(payload: dict) -> tuple[str, dict | None]:
+    """Falla al encolar y no al enviar.
+
+    Antes devolvía ("unsupported", None) para un tipo que el registro no
+    conoce, así que el mensaje se persistía igual y recién reventaba en el
+    worker: una fila muerta en la outbox y una burbuja fallida en el chat por
+    lo que siempre es un error de programación.
+    """
+    return _require_kind(payload).message_fields(payload)
+
+
+async def send_outbound(sender: MessageSender, chat_id: str, payload: dict) -> OutboundDelivery:
+    return await _require_kind(payload).send(sender, chat_id, payload)

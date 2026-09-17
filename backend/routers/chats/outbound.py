@@ -39,7 +39,7 @@ from services.chat_messaging import (
     TemplateNotSendableError,
     forward_item,
 )
-from routers.chats.common import _require_existing_lead, chats_router
+from routers.chats.common import _require_existing_lead, _require_open_service_window, chats_router
 
 
 router = chats_router()
@@ -78,6 +78,7 @@ async def send_message(
     if not text:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
     await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     message = await enqueue_text_message(chat_id, text, reply_to, actor_user_id=user.id)
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
@@ -92,6 +93,7 @@ async def send_audio(
 ):
     """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     content_type = body.content_type
     try:
@@ -135,6 +137,7 @@ async def send_media(
 ):
     """Guarda y encola un adjunto sin esperar a Evolution."""
     await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
     mediatype = _mediatype_from_content_type(body.content_type)
     if mediatype not in ("image", "video", "audio", "document"):
         raise HTTPException(status_code=400, detail="Tipo de archivo no soportado")
@@ -180,6 +183,7 @@ async def send_sticker(
 ):
     """Manda una imagen de la librería de medios como sticker."""
     await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
 
     asset = await get_media_asset(body.asset_id)
     if asset is None:
@@ -223,6 +227,7 @@ async def send_location(
     user: User = Depends(get_current_user),
 ):
     await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
     # lat/lon van a la columna payload (los deriva enqueue_messages del payload
     # de despacho); el content queda vacío.
@@ -251,6 +256,9 @@ async def forward_messages(
     conversación de origen, encolados por la outbox como cualquier otro envío
     (con reintentos y sin bloquear la respuesta).
     """
+    # La ventana de 24 h no se comprueba acá: el envío no va a este chat sino a
+    # los destinos, que tienen cada uno la suya. Reenviar desde una
+    # conversación cerrada a una abierta es válido.
     await _require_existing_lead(chat_id)
     messages = await fetch_messages_to_forward(chat_id, body.message_ids)
     if not messages:

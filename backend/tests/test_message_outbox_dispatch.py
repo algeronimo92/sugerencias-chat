@@ -26,8 +26,17 @@ def test_every_outbound_kind_declares_fields_and_sender():
     assert set(OUTBOUND_KINDS) == {"text", "audio", "media", "sticker", "location", "official_template", "interactive"}
 
 
-def test_unknown_kind_is_stored_as_unsupported():
-    assert outbound_message_fields({"type": "carousel"}) == ("unsupported", None)
+def test_unknown_kind_is_rejected_at_enqueue_time():
+    """Un payload saliente lo arma esta app, así que un tipo que el registro no
+    conoce siempre es un error de programación. Antes se guardaba como
+    "unsupported" y reventaba recién en el worker: quedaba una fila muerta en la
+    outbox y una burbuja fallida en el chat del cliente.
+
+    Distinto del "unsupported" de entrada, que sí es un tipo válido: ahí el que
+    manda algo que no entendemos es WhatsApp.
+    """
+    with pytest.raises(ValueError, match="carousel"):
+        outbound_message_fields({"type": "carousel"})
 
 
 async def test_unknown_kind_is_rejected_before_reaching_the_channel():

@@ -25,11 +25,11 @@ from services.automation_deps import DEFAULT_DEPS, AutomationDeps
 from services.automations.common import (
     MAX_MEDIA_CAPTION_LENGTH,
     MAX_WHATSAPP_TEXT_LENGTH,
-    SERVICE_WINDOW_CLOSED_ERROR,
     _render,
 )
 from services.message_media import mediatype_from_content_type
 from services.template_delivery import build_internal_template_items
+from services.service_window import SERVICE_WINDOW_CLOSED_ERROR
 
 
 def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:

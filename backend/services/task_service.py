@@ -9,6 +9,10 @@ from db.session import get_sessionmaker
 from services.time_format import iso_utc
 
 
+class MissingTaskReferenceError(Exception):
+    """El lead o el responsable que la tarea apunta no existe."""
+
+
 def _task(row):
     return {
         "id": row["id"], "lead_id": row["lead_id"], "lead_name": row["lead_name"],
@@ -65,9 +69,13 @@ async def create_task(values: dict, user_id: int):
         "status": TaskStatus.PENDING,
     }
     async with get_sessionmaker()() as session:
-        result = await session.execute(insert(LeadTask).values(**values).returning(LeadTask.id))
-        task_id = result.scalar_one()
-        await session.commit()
+        try:
+            result = await session.execute(insert(LeadTask).values(**values).returning(LeadTask.id))
+            task_id = result.scalar_one()
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise MissingTaskReferenceError("Lead o responsable no encontrado") from exc
     return await get_task(task_id)
 
 
@@ -92,9 +100,9 @@ async def update_task(task_id: int, values: dict, user_id: int):
         try:
             result = await session.execute(stmt)
             await session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await session.rollback()
-            raise
+            raise MissingTaskReferenceError("Responsable no encontrado") from exc
     return await get_task(task_id) if result.rowcount else None
 
 

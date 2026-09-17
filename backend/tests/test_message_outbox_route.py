@@ -7,7 +7,7 @@ import pytest
 from models.schemas import SendLocationRequest, SendMediaRequest, SendMessageRequest
 from routers import chats
 from services.media_storage import AudioTranscodeError
-from tests.conftest import patch_chats
+from tests.conftest import open_service_window, patch_chats
 
 USER = SimpleNamespace(id=7)
 
@@ -27,6 +27,7 @@ async def test_text_send_returns_queued_message_without_waiting_for_evolution(mo
     enqueue = AsyncMock(return_value=queued)
     broadcast = AsyncMock()
     patch_chats(monkeypatch, "_require_existing_lead", require_lead)
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "enqueue_text_message", enqueue)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
@@ -57,6 +58,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
         "status": "PENDING",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "save_decoded_media", lambda *_args: queued["media_url"])
     enqueue = AsyncMock(return_value=[queued])
     patch_chats(monkeypatch, "enqueue_messages", enqueue)
@@ -93,6 +95,7 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
         "status": "PENDING",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    open_service_window(monkeypatch)
     save_calls = []
     patch_chats(
         monkeypatch, "save_decoded_media",
@@ -123,6 +126,7 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
         "status": "PENDING",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    open_service_window(monkeypatch)
     save_calls = []
     patch_chats(
         monkeypatch, "save_decoded_media",
@@ -154,6 +158,7 @@ async def test_location_send_returns_pending_job(monkeypatch):
         "wa_message_id": None, "status": "PENDING",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    open_service_window(monkeypatch)
     enqueue = AsyncMock(return_value=[queued])
     patch_chats(monkeypatch, "enqueue_messages", enqueue)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))

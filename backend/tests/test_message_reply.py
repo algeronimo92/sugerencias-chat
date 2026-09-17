@@ -8,7 +8,7 @@ from models.schemas import SendMessageRequest
 from routers import chats
 from services import message_outbox
 from services.outbound_kinds import send_outbound
-from tests.conftest import FakeSender, patch_chats
+from tests.conftest import FakeSender, open_service_window, patch_chats
 from routers.chats.outbound import _resolve_reply_to
 
 USER = SimpleNamespace(id=7)
@@ -66,6 +66,7 @@ async def test_responder_a_un_mensaje_aun_en_la_outbox_es_409(monkeypatch):
 async def test_el_texto_se_encola_con_el_mensaje_citado(monkeypatch):
     target = {"id": 42, "sender": "cliente", "content": "¿Cuánto sale?", "wa_message_id": "WA-2"}
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
     enqueue = AsyncMock(return_value={"id": 90, "status": "PENDING"})
     patch_chats(monkeypatch, "enqueue_text_message", enqueue)

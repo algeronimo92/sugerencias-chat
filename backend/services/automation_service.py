@@ -24,8 +24,6 @@ from services.automations.common import (  # noqa: F401
     PAUSE_SCOPE_EXECUTION,
     PAUSE_SCOPE_LEAD,
     RATE_LIMIT_RETRY_MINUTES,
-    SERVICE_WINDOW_CLOSED_ERROR,
-    SERVICE_WINDOW_ERROR_CODE,
     STALE_EXECUTION_MINUTES,
     TASK_PRIORITIES,
     TASK_TYPES,
@@ -181,3 +179,4 @@ from services.automations.discovery import (  # noqa: F401
     backfill_automation_state,
     watch_automations,
 )
+from services.service_window import SERVICE_WINDOW_CLOSED_ERROR, SERVICE_WINDOW_ERROR_CODE  # noqa: F401

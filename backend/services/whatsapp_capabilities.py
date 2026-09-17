@@ -1,24 +1,26 @@
-from services import meta_service
+"""Qué sabe hacer el canal de WhatsApp conectado.
+
+Todo sale del canal: este módulo no puede nombrar a un proveedor, porque
+existe justamente para que el resto del sistema no tenga que saber cuál está
+conectado.
+"""
+
 from services.whatsapp_channels import current_channel
 from services.whatsapp_rules import default_interactive_footer, interactive_limits_payload
 
-MISSING_META_CONFIG_REASON = (
-    "Falta configurar el token, el phone number id y el WABA id de Meta Cloud "
-    "API en Configuración."
-)
 EDIT_DELETE_UNSUPPORTED_DETAIL = "El canal de WhatsApp conectado no permite editar ni eliminar mensajes enviados"
 HISTORY_UNSUPPORTED_DETAIL = "El canal de WhatsApp conectado no permite traer el historial anterior"
 
 
 async def get_whatsapp_capabilities() -> dict:
     channel = current_channel()
-    configured = await meta_service.is_configured()
+    availability = await channel.status.availability()
     return {
-        "integration": "WHATSAPP-BUSINESS" if configured else None,
-        "official_sending_supported": configured,
+        "integration": availability.integration,
+        "official_sending_supported": availability.configured,
         "history_available": channel.history is not None and await channel.history.is_available(),
         "edit_delete_supported": channel.editor is not None,
-        "reason": None if configured else MISSING_META_CONFIG_REASON,
+        "reason": availability.reason,
         "interactive_limits": interactive_limits_payload(),
         "interactive_default_footer": await default_interactive_footer(),
     }

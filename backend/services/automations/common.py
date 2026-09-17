@@ -62,8 +62,6 @@ MAX_MEDIA_CAPTION_LENGTH = MEDIA_CAPTION_MAX_LENGTH
 # Único texto del fallo por ventana cerrada. La notificación lo acompaña con
 # SERVICE_WINDOW_ERROR_CODE para que el frontend ofrezca la autorización sin
 # tener que reconocer la frase.
-SERVICE_WINDOW_CLOSED_ERROR = "No se envió WhatsApp porque la ventana de 24 horas está cerrada"
-SERVICE_WINDOW_ERROR_CODE = "service_window_closed"
 MAX_REACTION_LENGTH = 16
 CONVERSATION_STATES = frozenset({"open", "closed"})
 # Tope de conversaciones que cierra por inactividad cada barrido. Con el

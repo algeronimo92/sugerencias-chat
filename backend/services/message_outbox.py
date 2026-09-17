@@ -105,11 +105,13 @@ async def enqueue_text_message(
     reply_to: dict | None = None,
     *,
     actor_user_id: int | None = None,
+    dedupe_key: str | None = None,
 ) -> dict:
     return (await enqueue_messages(chat_id, [{
         "content": text,
         "payload": {"type": "text", "text": text},
         "reply_to": reply_to,
+        "dedupe_key": dedupe_key,
     }], actor_user_id=actor_user_id))[0]
 
 

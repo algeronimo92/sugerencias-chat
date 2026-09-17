@@ -59,11 +59,91 @@ def test_a_router_never_reaches_into_another_router():
     "routers/chats/outbound.py",
     "routers/chats/message_actions.py",
     "routers/chats/read_state.py",
+    "services/whatsapp_capabilities.py",
 ])
 def test_messaging_flows_depend_on_the_channel_port_not_on_meta(module):
     imported = _imported_modules(BACKEND / module)
 
     assert not any(name.startswith("services.meta_service") for name in imported)
+
+
+def test_no_router_speaks_sql():
+    """Un router puede importar `db.models` para tipar lo que le inyecta una
+    dependencia, pero el mecanismo de persistencia no puede asomar en HTTP: si
+    una ruta atrapa IntegrityError, el servicio no levantó su error de dominio.
+    """
+    violations = {
+        f"{path.relative_to(BACKEND)} -> {module}"
+        for path in (BACKEND / "routers").rglob("*.py")
+        for module in _imported_modules(path)
+        if module.startswith("sqlalchemy")
+    }
+
+    assert violations == set()
+
+
+# Los flujos de conversación hablan con el canal; estos módulos son los únicos
+# que tratan con Meta directamente, y son de administración de la cuenta
+# (plantillas del catálogo, import de media), no de mandar mensajes.
+META_ALLOWED = {
+    "services/meta_channel.py",
+    "services/template_validation.py",
+    "routers/templates.py",
+    "routers/webhooks/media.py",
+}
+
+
+def test_only_an_explicit_allow_list_talks_to_meta_directly():
+    """Antes la regla nombraba a los módulos que NO podían importar
+    `meta_service`, así que cualquier módulo nuevo quedaba autorizado sin que
+    nadie lo decidiera. Invertida, agregar un consumidor es una decisión."""
+    culpables = {
+        str(path.relative_to(BACKEND))
+        for base in ("services", "routers")
+        for path in (BACKEND / base).rglob("*.py")
+        if any(name.startswith("services.meta_service") for name in _imported_modules(path))
+        and str(path.relative_to(BACKEND)) not in META_ALLOWED
+    }
+
+    assert culpables == set()
+
+
+def test_the_allow_list_has_no_leftovers():
+    """Un módulo que dejó de hablar con Meta tiene que salir de la lista, o
+    deja de ser una decisión y pasa a ser historia."""
+    sobrantes = {
+        entry for entry in META_ALLOWED
+        if not any(
+            name.startswith("services.meta_service")
+            for name in _imported_modules(BACKEND / entry)
+        )
+    }
+
+    assert sobrantes == set()
+
+
+def test_only_the_outbox_writes_to_the_outbox():
+    """`enqueue_messages` resuelve el message_type desde OUTBOUND_KINDS, el
+    touch del lead, la deduplicación y el aviso al worker. Quien arme la fila
+    por su cuenta se pierde todo eso en silencio."""
+    culpables = set()
+    for path in (BACKEND / "services").rglob("*.py"):
+        if path.name == "message_outbox.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "MessageOutbox":
+                culpables.add(str(path.relative_to(BACKEND)))
+
+    assert culpables == set()
+
+
+def test_the_capabilities_module_names_no_provider_at_all():
+    """Existe para que el resto no sepa qué canal está conectado: si nombra a
+    uno, la respuesta miente en cuanto se conecte otro."""
+    imported = _imported_modules(BACKEND / "services/whatsapp_capabilities.py")
+    proveedores = {"services.meta_service", "services.evolution_service"}
+
+    assert not {name for name in imported if name in proveedores}
 
 
 def test_automation_modules_never_import_their_facade():

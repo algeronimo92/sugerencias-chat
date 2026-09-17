@@ -8,7 +8,7 @@ from routers import chats
 from services import evolution_service, whatsapp_capabilities
 from services.evolution_channel import EvolutionHistoryReader
 from services.evolution_service import EvolutionApiError
-from tests.conftest import FakeEditor, install_channel
+from tests.conftest import FakeChannelStatus, FakeEditor, install_channel
 from fastapi import HTTPException
 
 
@@ -24,8 +24,7 @@ def _evolution(**flags):
 
 
 @pytest.fixture(autouse=True)
-def meta_configured(monkeypatch):
-    monkeypatch.setattr(whatsapp_capabilities.meta_service, "is_configured", AsyncMock(return_value=True))
+def connected_channel(monkeypatch):
     monkeypatch.setattr(whatsapp_capabilities, "default_interactive_footer", AsyncMock(return_value="Clínica"))
     install_channel(monkeypatch, history=EvolutionHistoryReader())
 
@@ -61,6 +60,31 @@ async def test_capabilities_follow_the_active_channel(monkeypatch):
 
     assert (without_editor["edit_delete_supported"], without_editor["history_available"]) == (False, True)
     assert (with_editor["edit_delete_supported"], with_editor["history_available"]) == (True, False)
+
+
+async def test_capabilities_report_what_the_channel_says_about_itself(monkeypatch):
+    """El motivo lo redacta el adaptador: este módulo no sabe qué proveedor
+    está conectado ni qué le falta configurar."""
+    monkeypatch.setattr(evolution_service, "get_instance_capabilities", _evolution())
+    install_channel(monkeypatch, status=FakeChannelStatus(
+        configured=False, reason="Falta enchufar el canal",
+    ))
+
+    capabilities = await whatsapp_capabilities.get_whatsapp_capabilities()
+
+    assert capabilities["integration"] is None
+    assert capabilities["official_sending_supported"] is False
+    assert capabilities["reason"] == "Falta enchufar el canal"
+
+
+async def test_a_configured_channel_reports_its_integration_name(monkeypatch):
+    monkeypatch.setattr(evolution_service, "get_instance_capabilities", _evolution())
+    install_channel(monkeypatch, status=FakeChannelStatus(integration="OTRO-CANAL"))
+
+    capabilities = await whatsapp_capabilities.get_whatsapp_capabilities()
+
+    assert capabilities["integration"] == "OTRO-CANAL"
+    assert capabilities["reason"] is None
 
 
 async def test_history_route_refuses_when_channel_has_no_history(monkeypatch):

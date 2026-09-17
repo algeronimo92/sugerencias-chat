@@ -9,7 +9,7 @@ from models.schemas import SendTemplateRequest, StickerRequest
 from routers import chats, webhooks
 from models.webhook_schemas import NewMessageWebhookBody
 from services import chat_messaging
-from tests.conftest import patch_chats, patch_webhooks
+from tests.conftest import open_service_window, patch_chats, patch_webhooks
 from routers.chats.outbound import TEMPLATE_ERROR_STATUS
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
@@ -26,6 +26,7 @@ def broadcast(monkeypatch):
 
 async def test_sticker_is_queued_in_the_outbox_instead_of_sent_directly(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "get_media_asset", AsyncMock(return_value={
         "id": 3, "media_url": "/api/media/images/gato.png", "content_type": "image/png",
     }))
@@ -43,6 +44,7 @@ async def test_sticker_is_queued_in_the_outbox_instead_of_sent_directly(monkeypa
 
 async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "get_media_asset", AsyncMock(return_value={
         "id": 3, "media_url": "/api/media/documents/a.pdf", "content_type": "application/pdf",
     }))

@@ -1,5 +1,5 @@
 from services import meta_service
-from services.whatsapp_channel import ReactionTarget, SendReceipt
+from services.whatsapp_channel import ChannelAvailability, ReactionTarget, SendReceipt
 
 
 def _receipt(response: dict) -> SendReceipt:
@@ -69,3 +69,19 @@ class MetaConversationActions:
 
     async def mark_read(self, chat_id: str, provider_message_ids: list[str]) -> None:
         await meta_service.mark_messages_as_read(chat_id, provider_message_ids)
+
+
+MISSING_CONFIG_REASON = (
+    "Falta configurar el token, el phone number id y el WABA id de Meta Cloud "
+    "API en Configuración."
+)
+
+
+class MetaChannelStatus:
+    async def availability(self) -> ChannelAvailability:
+        configured = await meta_service.is_configured()
+        return ChannelAvailability(
+            integration="WHATSAPP-BUSINESS" if configured else None,
+            configured=configured,
+            reason=None if configured else MISSING_CONFIG_REASON,
+        )

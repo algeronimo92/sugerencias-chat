@@ -12,7 +12,7 @@ import pytest
 
 from models.schemas import SendMediaRequest
 from routers import chats
-from tests.conftest import patch_chats
+from tests.conftest import open_service_window, patch_chats
 import base64
 from fastapi import HTTPException
 from services.media_storage import AudioTranscodeError
@@ -40,6 +40,7 @@ def audio_route(monkeypatch):
         return original_encode(value)
 
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
     patch_chats(monkeypatch, "_resolve_reply_to", AsyncMock(return_value=None))
     patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[{"id": 1, "status": "PENDING"}]))
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
