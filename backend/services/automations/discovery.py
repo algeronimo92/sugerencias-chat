@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from time import monotonic
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import DateTime, cast, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from db.models import (
@@ -193,6 +193,29 @@ async def _discover_wait_any_replies() -> None:
     esa rama en vez de la del timer. Análoga a
     `_discover_recent_inbound_messages`, pero para ejecuciones que ya están
     corriendo (no dispara ejecuciones nuevas)."""
+    # El filtro de abajo es lo que hace barato correr esto seguido: sin él la
+    # query devolvía todas las ejecuciones en espera y había que preguntar por
+    # cada una si el cliente ya había contestado, una consulta por ejecución.
+    # Con el EXISTS vuelven solo las que tienen algo que reanudar, que en
+    # cualquier momento son unas pocas. De paso saca el hambre que causaba el
+    # limit: antes, con más de 200 esperando, las del fondo no se miraban nunca
+    # y salían por la rama del timeout como si el cliente no hubiera escrito.
+    waiting_since = cast(
+        AutomationExecution.flow_state["waiting_since"].astext, DateTime(timezone=True)
+    )
+    hay_respuesta = exists(
+        select(1).where(
+            WspMessage.chat_id == AutomationExecution.lead_id,
+            WspMessage.sender == "cliente",
+            WspMessage.sent_at > waiting_since,
+        )
+    )
+    lo_vigilado_se_vio = exists(
+        select(1).where(
+            WspMessage.wa_message_id == AutomationExecution.flow_state["watching_message_id"].astext,
+            WspMessage.status.in_(("READ", "PLAYED")),
+        )
+    )
     async with get_sessionmaker()() as session:
         waiting = (await session.execute(
             select(AutomationExecution.id, AutomationExecution.lead_id, AutomationExecution.flow_state)
@@ -203,7 +226,9 @@ async def _discover_wait_any_replies() -> None:
                     AutomationExecution.flow_state["awaiting_message"].astext == "true",
                     AutomationExecution.flow_state["watching_message_id"].astext.isnot(None),
                 ),
+                or_(hay_respuesta, lo_vigilado_se_vio),
             )
+            .order_by(AutomationExecution.id)
             .limit(200)
         )).all()
     resumed = False
@@ -537,9 +562,13 @@ async def watch_automations() -> None:
                 await _release_stale_executions()
                 await _discover_recent_inbound_messages()
                 await _discover_timed_events()
-                await _discover_wait_any_replies()
                 await _auto_close_idle_conversations()
                 next_housekeeping_at = now_mono + 60.0
+            # Fuera del bloque de housekeeping: un cliente que toca un botón
+            # despierta el bucle por `_wake`, y esperar hasta un minuto a que
+            # el bot conteste es la diferencia entre parecer un bot y parecer
+            # un cuelgue. Es una sola query, y filtrada.
+            await _discover_wait_any_replies()
             await process_due_automation_executions()
         except asyncio.CancelledError:
             raise

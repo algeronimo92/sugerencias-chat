@@ -38,7 +38,7 @@ def _last_message_subquery():
             WspMessage.deleted_at,
         )
         .where(WspMessage.chat_id == Lead.id)
-        .order_by(WspMessage.sent_at.desc())
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
         .lateral()
     )
@@ -265,7 +265,7 @@ def _matched_message_subquery(search: str, column=None):
             WspMessage.chat_id == Lead.id,
             _message_text_match(search),
         )
-        .order_by(WspMessage.sent_at.desc())
+        .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
         .correlate(Lead)
         .scalar_subquery()
