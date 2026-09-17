@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from config import settings
+from tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,22 @@ def _media_filename(media_url: str) -> str:
     return filename
 
 
+def _tenant_storage_segment() -> str | None:
+    context = get_current_tenant()
+    return str(context.organization_id) if context else None
+
+
+def _local_media_dir() -> Path:
+    segment = _tenant_storage_segment()
+    directory = MEDIA_DIR / "tenants" / segment if segment else MEDIA_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def _local_path_from_filename(filename: str) -> Path:
-    path = (MEDIA_DIR / filename).resolve()
-    if path.parent != MEDIA_DIR.resolve():
+    directory = _local_media_dir().resolve()
+    path = (directory / filename).resolve()
+    if path.parent != directory:
         raise MediaStorageError(f"Nombre multimedia inválido: {filename}")
     return path
 
@@ -104,9 +118,16 @@ def _media_category(filename: str, content_type: str | None = None) -> str:
 
 
 def _object_name_from_filename(filename: str, content_type: str | None = None) -> str:
-    prefix = settings.minio_prefix.strip().strip("/")
+    prefix = _object_prefix()
     relative_name = f"{_media_category(filename, content_type)}/{filename}"
     return f"{prefix}/{relative_name}" if prefix else relative_name
+
+
+def _object_prefix() -> str:
+    prefix = settings.minio_prefix.strip().strip("/")
+    segment = _tenant_storage_segment()
+    tenant_prefix = f"tenants/{segment}" if segment else ""
+    return "/".join(part for part in (prefix, tenant_prefix) if part)
 
 
 def _object_name(media_url: str) -> str:
@@ -123,7 +144,7 @@ def _object_name_candidates(media_url: str) -> tuple[str, ...]:
     compatibilidad sin cambiar las URLs almacenadas en PostgreSQL.
     """
     filename = _media_filename(media_url)
-    prefix = settings.minio_prefix.strip().strip("/")
+    prefix = _object_prefix()
 
     def object_name(category: str) -> str:
         relative_name = f"{category}/{filename}"

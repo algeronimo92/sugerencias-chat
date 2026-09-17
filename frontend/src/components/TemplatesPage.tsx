@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
-import type { LeadStage, MediaAsset, MessageTemplate, OfficialTemplateButton, TaskType, TemplateInteractiveButton, TemplateInteractiveSection } from '../types'
+import type { MediaAsset, MessageTemplate, OfficialTemplateButton } from '../types'
 import { LEAD_STAGES, isLeadStage } from '../types'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'

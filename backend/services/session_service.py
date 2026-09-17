@@ -21,11 +21,12 @@ from sqlalchemy import or_, select, update
 from config import settings
 from db.models import AuthSession, TrustedDevice, User
 from db.session import get_sessionmaker
+from tenancy.context import get_current_tenant
 
 
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
-_session_cache: dict[str, tuple[float, "SessionResolution"]] = {}
+_session_cache: dict[tuple[str | None, str], tuple[float, "SessionResolution"]] = {}
 
 
 class PinInvalidError(Exception):
@@ -105,18 +106,25 @@ def valid_login_pin(pin: str) -> bool:
 
 
 def invalidate_session_cache(*, user_id: int | None = None, session_id: str | None = None) -> None:
+    context = get_current_tenant()
+    organization_id = str(context.organization_id) if context else None
     if user_id is None and session_id is None:
-        _session_cache.clear()
+        for key in [key for key in _session_cache if key[0] == organization_id]:
+            _session_cache.pop(key, None)
         return
-    for digest, (_, resolved) in list(_session_cache.items()):
+    for cache_key, (_, resolved) in list(_session_cache.items()):
+        if cache_key[0] != organization_id:
+            continue
         if (user_id is not None and resolved.user.id == user_id) or (
             session_id is not None and resolved.session_id == session_id
         ):
-            _session_cache.pop(digest, None)
+            _session_cache.pop(cache_key, None)
 
 
 def _cached_resolution(digest: str) -> SessionResolution | None:
-    cached = _session_cache.get(digest)
+    context = get_current_tenant()
+    cache_key = (str(context.organization_id) if context else None, digest)
+    cached = _session_cache.get(cache_key)
     if cached is None:
         return None
     cache_expires_at, resolved = cached
@@ -126,7 +134,7 @@ def _cached_resolution(digest: str) -> SessionResolution | None:
         or resolved.idle_expires_at <= now
         or resolved.absolute_expires_at <= now
     ):
-        _session_cache.pop(digest, None)
+        _session_cache.pop(cache_key, None)
         return None
     return resolved
 
@@ -143,7 +151,9 @@ def _cache_resolution(digest: str, resolved: SessionResolution) -> None:
         idle_expires_at=resolved.idle_expires_at,
         rotated_token=None,
     )
-    _session_cache[digest] = (
+    context = get_current_tenant()
+    cache_key = (str(context.organization_id) if context else None, digest)
+    _session_cache[cache_key] = (
         monotonic() + max(0.0, settings.auth_user_cache_ttl_seconds),
         cached,
     )

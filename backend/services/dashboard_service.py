@@ -8,10 +8,11 @@ from sqlalchemy.orm import aliased
 from domain_types import TaskStatus
 from db.models import Lead, LeadStage, LeadTask, User, WspMessage
 from db.session import get_sessionmaker
+from tenancy.context import get_current_tenant
 
 
 _CACHE_TTL_SECONDS = 30.0
-_cache: dict[int, tuple[float, dict]] = {}
+_cache: dict[tuple[str | None, int], tuple[float, dict]] = {}
 _cache_lock = asyncio.Lock()
 
 
@@ -147,16 +148,18 @@ async def _compute_dashboard_metrics(days: int) -> dict:
 
 
 async def get_dashboard_metrics(days: int) -> dict:
-    cached = _cache.get(days)
+    context = get_current_tenant()
+    cache_key = (str(context.organization_id) if context else None, days)
+    cached = _cache.get(cache_key)
     now_mono = monotonic()
     if cached and cached[0] > now_mono:
         return cached[1]
 
     async with _cache_lock:
-        cached = _cache.get(days)
+        cached = _cache.get(cache_key)
         now_mono = monotonic()
         if cached and cached[0] > now_mono:
             return cached[1]
         result = await _compute_dashboard_metrics(days)
-        _cache[days] = (monotonic() + _CACHE_TTL_SECONDS, result)
+        _cache[cache_key] = (monotonic() + _CACHE_TTL_SECONDS, result)
         return result

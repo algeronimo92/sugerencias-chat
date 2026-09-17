@@ -40,6 +40,7 @@ from request_metrics import begin_request_metrics, finish_request_metrics
 from request_context import reset_request_id, set_request_id
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
 from services.settings_service import get_effective, migrate_settings_encryption
+from tenancy.middleware import TenantResolutionMiddleware
 
 logger = logging.getLogger(__name__)
 DATABASE_RETRY_MAX_SECONDS = 30
@@ -347,6 +348,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    TenantResolutionMiddleware,
+    enabled=settings.multitenancy_enabled,
+    platform_hosts=(
+        host.strip() for host in settings.tenant_platform_hosts.split(",") if host.strip()
+    ),
 )
 
 app.include_router(auth.router)

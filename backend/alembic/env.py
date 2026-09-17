@@ -24,13 +24,14 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from config import settings
 from db.models import Base
 from db.session import _to_async_url
+from tenancy.context import validate_schema_name
 
 config = context.config
 
@@ -79,22 +80,33 @@ def include_object(obj, name, type_, reflected, compare_to) -> bool:
 
 
 def _configure(connection: Connection) -> None:
+    tenant_schema = config.attributes.get("tenant_schema")
+    if tenant_schema:
+        tenant_schema = validate_schema_name(tenant_schema)
+        # El identificador ya pasó por una regex cerrada. SET LOCAL garantiza
+        # que esta conexión vuelva limpia al pool al terminar la transacción.
+        connection.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         include_object=include_object,
         compare_type=True,
         compare_server_default=True,
+        version_table_schema=tenant_schema,
     )
 
 
 def run_migrations_offline() -> None:
+    tenant_schema = config.attributes.get("tenant_schema")
+    if tenant_schema:
+        tenant_schema = validate_schema_name(tenant_schema)
     context.configure(
         url=_to_async_url(settings.database_url),
         target_metadata=target_metadata,
         include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=tenant_schema,
     )
     with context.begin_transaction():
         context.run_migrations()

@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import Depends, Header, HTTPException
 from db.models import LeadStage
 from services.db_service import ensure_lead_stub, record_lead_touch, update_lead, update_lead_stage
 from services.whatsapp_identity_service import lead_id_for_jid
@@ -9,9 +9,20 @@ from models.webhook_schemas import (
     LeadStageWebhookBody,
     EnsureLeadWebhookBody,
     LeadAnalysisWebhookBody,
+    LeadAnalysisResultWebhookBody,
     LeadInboundActivityWebhookBody,
 )
 from routers.webhooks.common import _parse_iso_datetime, webhooks_router
+from services.ai_context import fetch_context_revision
+from services.ai_job_tokens import AIJobClaims, require_ai_job_context
+from services.ai_jobs import (
+    AIJobConflict,
+    AIJobExpired,
+    AIJobNotFound,
+    finish_ai_job,
+    get_ai_job,
+    start_ai_job,
+)
 
 
 router = webhooks_router()
@@ -109,8 +120,27 @@ async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
 @router.post("/lead-analysis")
 async def lead_analysis_webhook(body: LeadAnalysisWebhookBody):
     """Reemplaza el UPDATE directo del nodo `update lead`: deja el cambio
-    auditado en lead_activity y avisa a los paneles abiertos."""
-    values = body.model_dump(exclude={"chat_id"}, exclude_none=True)
+    auditado en lead_activity y avisa a los paneles abiertos.
+
+    Contrato PATCH: un campo ausente se conserva y un ``null`` explÃ­cito
+    limpia una columna nullable. ``con_especialista`` es NOT NULL y por eso no
+    acepta ``null``. ``context_revision`` sigue opcional para compatibilidad
+    con el workflow anterior, pero el workflow a demanda debe enviarla.
+    """
+    if body.context_revision is not None:
+        current_revision = await fetch_context_revision(body.chat_id)
+        if current_revision is None:
+            raise HTTPException(status_code=404, detail="Lead no encontrado")
+        if current_revision != body.context_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "stale_ai_context", "current_revision": current_revision},
+            )
+
+    patch_fields = body.model_fields_set - {"chat_id", "context_revision", "job_id"}
+    values = body.model_dump(include=patch_fields)
+    if "con_especialista" in values and values["con_especialista"] is None:
+        raise HTTPException(status_code=422, detail="con_especialista no puede ser null")
     if not values:
         return {"status": "ok", "changed": False}
     lead = await update_lead(body.chat_id, values, actor_type="agent")
@@ -118,6 +148,111 @@ async def lead_analysis_webhook(body: LeadAnalysisWebhookBody):
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     await _broadcast_lead_updated(body.chat_id)
     return {"status": "ok", "changed": True}
+
+
+@router.post("/analysis-jobs/{job_id}/apply")
+async def apply_analysis_job_webhook(
+    job_id: str,
+    body: LeadAnalysisResultWebhookBody,
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Aplica una sola vez el resultado tenant-scoped del analista."""
+
+    if claims.job_id != job_id or x_job_id != job_id or claims.operation != "analyst":
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+
+    existing = await get_ai_job(job_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Job IA no encontrado")
+    if (
+        existing.operation != "analyst"
+        or existing.resource_id != body.chat_id
+        or existing.context_revision != body.context_revision
+    ):
+        raise HTTPException(status_code=409, detail="Job IA no coincide con el resultado")
+    if existing.status == "applied":
+        return existing.result or {"status": "ok", "applied": True, "idempotent": True}
+
+    try:
+        await start_ai_job(
+            job_id,
+            operation="analyst",
+            resource_id=body.chat_id,
+            context_revision=body.context_revision,
+        )
+    except AIJobNotFound as exc:
+        raise HTTPException(status_code=404, detail="Job IA no encontrado") from exc
+    except AIJobExpired as exc:
+        raise HTTPException(status_code=410, detail="Job IA vencido") from exc
+    except AIJobConflict as exc:
+        raise HTTPException(status_code=409, detail="Job IA no se puede aplicar") from exc
+
+    current_revision = await fetch_context_revision(body.chat_id)
+    if current_revision is None:
+        await finish_ai_job(job_id, status="failed", error="lead_not_found")
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if current_revision != body.context_revision:
+        await finish_ai_job(job_id, status="failed", error="stale_ai_context")
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "stale_ai_context", "current_revision": current_revision},
+        )
+
+    patch_fields = body.fields.model_fields_set
+    values = body.fields.model_dump(include=patch_fields)
+    if "con_especialista" in values and values["con_especialista"] is None:
+        await finish_ai_job(job_id, status="failed", error="invalid_patch")
+        raise HTTPException(status_code=422, detail="con_especialista no puede ser null")
+
+    stage = None
+    if body.estado is not None:
+        try:
+            stage = LeadStage(body.estado)
+        except ValueError as exc:
+            await finish_ai_job(job_id, status="failed", error="invalid_stage")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Estado invÃ¡lido: {body.estado!r}. VÃ¡lidos: {[s.value for s in LeadStage]}",
+            ) from exc
+
+    changed = False
+    if values:
+        lead = await update_lead(body.chat_id, values, actor_type="agent")
+        if lead is None:
+            await finish_ai_job(job_id, status="failed", error="lead_not_found")
+            raise HTTPException(status_code=404, detail="Lead no encontrado")
+        changed = True
+
+    stage_result = None
+    if stage is not None:
+        metadata = {"job_id": job_id}
+        if body.razonamiento:
+            metadata["reason"] = body.razonamiento
+        stage_result = await update_lead_stage(
+            body.chat_id,
+            stage,
+            actor_type="agent",
+            metadata=metadata,
+            include_chat=False,
+        )
+        if stage_result is None:
+            await finish_ai_job(job_id, status="failed", error="lead_not_found")
+            raise HTTPException(status_code=404, detail="Lead no encontrado")
+        changed = changed or bool(stage_result["changed"])
+
+    result = {
+        "status": "ok",
+        "job_id": job_id,
+        "applied": True,
+        "changed": changed,
+        "stage": stage.value if stage is not None else None,
+    }
+    await finish_ai_job(job_id, status="applied", result=result)
+    await _broadcast_lead_updated(body.chat_id)
+    if stage_result:
+        await notify_automations_scheduled(stage_result.get("automations_scheduled", 0))
+    return result
 
 
 @router.post("/lead-inbound-activity")

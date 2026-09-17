@@ -47,6 +47,11 @@ async def call_n8n(
     phone: str | None,
     refresh: bool = False,
     instruction: str | None = None,
+    *,
+    operation: str = "rag",
+    job_id: str | None = None,
+    context_revision: str | None = None,
+    tenant_context_token: str | None = None,
 ) -> SuggestionResponse:
     values = await get_effective_many(("n8n_webhook_url", "n8n_webhook_token"))
     webhook_url = values["n8n_webhook_url"]
@@ -57,11 +62,19 @@ async def call_n8n(
     headers = {}
     if webhook_token:
         headers["Authorization"] = f"Bearer {webhook_token}"
+    if job_id:
+        headers["X-Job-Id"] = job_id
+    if tenant_context_token:
+        headers["X-Tenant-Context"] = tenant_context_token
 
     # `refresh` marca los reintentos pedidos a mano por el vendedor: el
     # workflow puede usarlo para subir la temperatura del modelo o pedirle
     # alternativas distintas. Si lo ignora, la llamada funciona igual.
-    params = {"chat_id": chat_id}
+    params = {"chat_id": chat_id, "operation": operation}
+    if job_id:
+        params["job_id"] = job_id
+    if context_revision:
+        params["context_revision"] = context_revision
     if refresh:
         params["refresh"] = "true"
     # Indicación del asesor ("dar precio", "no dar precio", contexto del

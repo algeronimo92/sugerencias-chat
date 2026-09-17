@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, func, select, update
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
+from services.ai_context import make_context_revision
 
 
 async def get_cached_suggestion(chat_id: str) -> dict | None:
@@ -79,3 +80,42 @@ async def cache_suggestion(chat_id: str, suggestion: dict) -> bool:
         result = await session.execute(stmt)
         await session.commit()
     return result.rowcount > 0
+
+
+async def cache_suggestion_if_current(
+    chat_id: str,
+    suggestion: dict,
+    expected_context_revision: str,
+) -> str:
+    """Guarda solo si el contexto que vio el modelo sigue vigente.
+
+    Devuelve ``cached``, ``stale`` o ``missing``. El lock del lead coordina la
+    comprobaciÃ³n con ediciones del CRM; el id mÃ¡ximo detecta mensajes nuevos.
+    """
+
+    async with get_sessionmaker()() as session:
+        lead = (
+            await session.execute(
+                select(Lead.id, Lead.updated_at)
+                .where(Lead.id == chat_id)
+                .with_for_update()
+            )
+        ).mappings().first()
+        if lead is None:
+            return "missing"
+        latest_message_id = await session.scalar(
+            select(func.max(WspMessage.id)).where(WspMessage.chat_id == chat_id)
+        )
+        current_revision = make_context_revision(lead["updated_at"], latest_message_id)
+        if current_revision != expected_context_revision:
+            return "stale"
+        await session.execute(
+            update(Lead)
+            .where(Lead.id == chat_id)
+            .values(
+                cached_suggestion=suggestion,
+                cached_suggestion_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+    return "cached"

@@ -38,6 +38,277 @@ class Base(DeclarativeBase):
     pass
 
 
+class Organization(Base):
+    """Negocio registrado en el plano de control compartido."""
+
+    __tablename__ = "organizations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('provisioning', 'active', 'suspended', 'failed', 'deleting')",
+            name="organizations_status_check",
+        ),
+        CheckConstraint(
+            "schema_name ~ '^tenant_[0-9a-f]{32}$'",
+            name="organizations_schema_name_check",
+        ),
+        {"schema": "public"},
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="provisioning", server_default="provisioning"
+    )
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OrganizationDomain(Base):
+    __tablename__ = "organization_domains"
+    __table_args__ = (
+        CheckConstraint("hostname = lower(hostname)", name="organization_domains_lower_check"),
+        Index(
+            "uq_organization_domains_primary",
+            "organization_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+        {"schema": "public"},
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    organization_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("public.organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    hostname: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class WhatsAppConnection(Base):
+    """Conexión que permite resolver un webhook antes de conocer el tenant."""
+
+    __tablename__ = "whatsapp_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('provisioning', 'active', 'disabled', 'failed')",
+            name="whatsapp_connections_status_check",
+        ),
+        Index("idx_whatsapp_connections_organization", "organization_id"),
+        {"schema": "public"},
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    organization_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("public.organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    phone_number_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    waba_id: Mapped[str | None] = mapped_column(Text)
+    encrypted_credentials: Mapped[str | None] = mapped_column(Text)
+    secret_reference: Mapped[str | None] = mapped_column(Text)
+    credential_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="provisioning", server_default="provisioning"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TenantSchemaVersion(Base):
+    __tablename__ = "tenant_schema_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "migration_status IN ('pending', 'running', 'current', 'failed')",
+            name="tenant_schema_versions_status_check",
+        ),
+        {"schema": "public"},
+    )
+
+    organization_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("public.organizations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    revision: Mapped[str | None] = mapped_column(Text)
+    migration_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="pending", server_default="pending"
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WebhookInbox(Base):
+    """Evento durable previo al ACK del proveedor.
+
+    El payload vive temporalmente en public porque aún no se conoce el schema al
+    recibirlo. Solo el rol de integración debe leerlo y una política operativa
+    debe eliminar payloads procesados después de una retención corta.
+    """
+
+    __tablename__ = "webhook_inbox"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('received', 'processing', 'processed', 'failed')",
+            name="webhook_inbox_status_check",
+        ),
+        Index("uq_webhook_inbox_provider_event", "provider", "event_key", unique=True),
+        Index("idx_webhook_inbox_pending", "status", "received_at"),
+        {"schema": "public"},
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    event_key: Mapped[str] = mapped_column(Text, nullable=False)
+    connection_key: Mapped[str | None] = mapped_column(Text)
+    phone_number_id: Mapped[str | None] = mapped_column(Text)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="received", server_default="received"
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AIJob(Base):
+    """Autorización tenant-scoped para una invocación de IA/n8n.
+
+    No declara ``schema``: se crea y consulta dentro de cada schema tenant por
+    medio de ``tenant_session``. Nunca debe incorporarse al plano de control.
+    """
+
+    __tablename__ = "ai_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "operation IN ('rag', 'analyst', 'media_analysis')",
+            name="ai_jobs_operation_check",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'failed', 'expired', 'applied')",
+            name="ai_jobs_status_check",
+        ),
+        Index("idx_ai_jobs_status_expiry", "status", "expires_at"),
+        Index("idx_ai_jobs_chat_created", "chat_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    resource_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_id: Mapped[str | None] = mapped_column(Text)
+    # Revisión opaca (p.ej. v1:<sha256>), distinta de conversacion_version.
+    context_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="pending", server_default="pending"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    request_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class KnowledgeDocument(Base):
+    """Documento RAG aislado por el search_path del tenant."""
+
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str | None] = mapped_column(Text)
+    document_type: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class KnowledgeChunk(Base):
+    """Fragmento lexical; una futura columna vectorial no cambia el aislamiento."""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        Index("uq_knowledge_chunks_document_ordinal", "document_id", "ordinal", unique=True),
+        Index(
+            "idx_knowledge_chunks_search_es",
+            text("to_tsvector('spanish'::regconfig, content)"),
+            postgresql_using="gin",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    document_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Lead(Base):
     __tablename__ = "leads"
 

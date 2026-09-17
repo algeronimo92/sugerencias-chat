@@ -5,10 +5,10 @@ que viven en models/schemas.py: acá los campos se documentan por su nombre en
 el evento original de WhatsApp.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class LeadTouchWebhookBody(BaseModel):
@@ -114,6 +114,11 @@ class LeadAnalysisWebhookBody(BaseModel):
     solo se actualiza lo que el agente resolvió en esa corrida."""
 
     chat_id: str
+    # RevisiÃ³n opaca obtenida junto con el contexto. Cuando viene informada,
+    # el backend rechaza resultados calculados sobre mensajes o datos del lead
+    # que ya cambiaron. Es opcional solo para el workflow legado.
+    context_revision: str | None = None
+    job_id: str | None = None
     nombre: str | None = None
     telefono: str | None = None
     servicio_interes: str | None = None
@@ -121,6 +126,54 @@ class LeadAnalysisWebhookBody(BaseModel):
     razon_perdido: str | None = None
     fecha_recontacto: date | None = None
     tipo_objecion: str | None = None
+    proxima_cita: datetime | None = None
+    con_especialista: bool | None = None
+
+    # Si n8n intenta trasladar el UPDATE antiguo (que incluÃ­a
+    # conversacion_version/automatizacion_pausada) debe fallar de forma
+    # visible, no ignorar silenciosamente esos campos protegidos.
+    model_config = ConfigDict(extra="forbid")
+
+
+class LeadAnalysisPatch(BaseModel):
+    """Patch producido por el analista.
+
+    ``model_fields_set`` distingue ausente (conservar) de ``null`` explÃ­cito
+    (limpiar una columna nullable). Los controles internos de conversaciÃ³n y
+    automatizaciones no forman parte de este contrato.
+    """
+
+    nombre: str | None = None
+    telefono: str | None = None
+    servicio_interes: str | None = None
+    notas: str | None = None
+    razon_perdido: str | None = Field(default=None, max_length=500)
+    fecha_recontacto: date | None = None
+    tipo_objecion: str | None = None
+    proxima_cita: datetime | None = None
+    con_especialista: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class LeadAnalysisResultWebhookBody(BaseModel):
+    """Resultado completo de un job ``analyst`` ejecutado a demanda."""
+
+    chat_id: str
+    context_revision: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    fields: LeadAnalysisPatch = Field(default_factory=LeadAnalysisPatch)
+    estado: str | None = None
+    razonamiento: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RagSearchWebhookBody(BaseModel):
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+    context_revision: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    top_k: int = Field(default=5, ge=1, le=20)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class LeadInboundActivityWebhookBody(BaseModel):
@@ -129,6 +182,8 @@ class LeadInboundActivityWebhookBody(BaseModel):
     chat_id: str
     ultimo_emisor: str | None = None
     ultimo_mensaje_at: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class MetaMediaImportBody(BaseModel):

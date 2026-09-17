@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from routers.webhooks import (
     identity,
+    inbox,
     leads,
     messages,
     outgoing,
@@ -13,6 +14,7 @@ from routers.webhooks.identity import (  # noqa: F401
     resolve_whatsapp_identity_webhook,
 )
 from routers.webhooks.leads import (  # noqa: F401
+    apply_analysis_job_webhook,
     ensure_lead_webhook,
     lead_analysis_webhook,
     lead_inbound_activity_webhook,
@@ -34,10 +36,13 @@ from routers.webhooks.outgoing import (  # noqa: F401
     outgoing_webhook,
 )
 from routers.webhooks.raw import (  # noqa: F401
+    ai_catalog_webhook,
+    analysis_context_webhook,
     last_message_raw_webhook,
     lead_messages_raw_webhook,
     lead_raw_webhook,
     message_by_wa_id_raw_webhook,
+    rag_search_webhook,
 )
 from routers.webhooks.media import (  # noqa: F401
     meta_media_import_webhook,
@@ -46,6 +51,7 @@ from routers.webhooks.media import (  # noqa: F401
 router = APIRouter()
 
 router.include_router(identity.router)
+router.include_router(inbox.router)
 router.include_router(leads.router)
 router.include_router(messages.router)
 router.include_router(outgoing.router)

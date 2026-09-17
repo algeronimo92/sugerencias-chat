@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { AlertCircle, Loader2, MessagesSquare, RefreshCw, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
+import { AlertCircle, Loader2, MessagesSquare, RefreshCw, Search, SlidersHorizontal, Smartphone, UserPlus, X } from 'lucide-react'
 import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
 import { useCreateLead } from '../hooks/useChats'
 import { useChatSocketConnected } from '../hooks/useRealtime'
@@ -45,6 +45,10 @@ interface Props {
   isFetchingNextPage: boolean
   hasNextPageError: boolean
   onLoadMore: () => Promise<void> | void
+  // Muestra un llamado a conectar WhatsApp en el estado vacío (solo admin, y
+  // solo cuando la instancia no está vinculada).
+  showConnectWhatsapp?: boolean
+  onConnectWhatsapp?: () => void
 }
 
 const ROW_ESTIMATE_PX = 68
@@ -107,6 +111,8 @@ export function ChatList({
   isFetchingNextPage,
   hasNextPageError,
   onLoadMore,
+  showConnectWhatsapp = false,
+  onConnectWhatsapp,
 }: Props) {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false)
   const socketConnected = useChatSocketConnected()
@@ -605,6 +611,23 @@ export function ChatList({
                       : 'Sin leads todavía.'
               }
             />
+            {showConnectWhatsapp && filter === 'all' && !search && (
+              <div className="mx-4 mt-2 rounded-xl border border-wa-primary/30 bg-wa-primary/10 p-4 text-left dark:border-wa-primary/30 dark:bg-wa-primary/15">
+                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-wa-primary-strong dark:text-wa-primary">
+                  <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
+                </div>
+                <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
+                  Vinculá tu instancia escaneando el QR para empezar a recibir mensajes.
+                </p>
+                <button
+                  type="button"
+                  onClick={onConnectWhatsapp}
+                  className="rounded-lg bg-wa-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-wa-primary-strong"
+                >
+                  Conectar WhatsApp
+                </button>
+              </div>
+            )}
           </div>
         )}
         {!isLoading && chats.length > 0 && (

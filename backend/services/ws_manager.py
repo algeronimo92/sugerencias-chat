@@ -1,28 +1,68 @@
 import asyncio
 import logging
+from dataclasses import dataclass
+from uuid import UUID
 
 from fastapi import WebSocket
+
+from tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class SocketOwner:
+    """Identidad mínima de una conexión en tiempo real.
+
+    Los IDs de usuario se repiten entre schemas. Guardar sólo ``user_id`` hacía
+    que una notificación dirigida pudiera terminar en otro negocio y que un
+    broadcast llegara a todas las pestañas conectadas al proceso.
+    """
+
+    user_id: int
+    organization_id: UUID | None
+
+
+def _active_organization_id() -> UUID | None:
+    context = get_current_tenant()
+    return context.organization_id if context else None
+
+
 class ConnectionManager:
     def __init__(self) -> None:
-        self._connections: dict[WebSocket, int] = {}
+        self._connections: dict[WebSocket, SocketOwner] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, user_id: int) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        user_id: int,
+        organization_id: UUID | None = None,
+    ) -> None:
         await websocket.accept()
+        if organization_id is None:
+            organization_id = _active_organization_id()
         async with self._lock:
-            self._connections[websocket] = user_id
+            self._connections[websocket] = SocketOwner(user_id, organization_id)
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
             self._connections.pop(websocket, None)
 
-    async def broadcast(self, message: dict) -> None:
+    async def broadcast(
+        self,
+        message: dict,
+        *,
+        organization_id: UUID | None = None,
+    ) -> None:
+        if organization_id is None:
+            organization_id = _active_organization_id()
         async with self._lock:
-            connections = list(self._connections)
+            connections = [
+                websocket
+                for websocket, owner in self._connections.items()
+                if owner.organization_id == organization_id
+            ]
 
         async def deliver(websocket: WebSocket) -> WebSocket | None:
             try:
@@ -57,9 +97,21 @@ class ConnectionManager:
         async with self._lock:
             return len(self._connections)
 
-    async def send_to_user(self, user_id: int, message: dict) -> bool:
+    async def send_to_user(
+        self,
+        user_id: int,
+        message: dict,
+        *,
+        organization_id: UUID | None = None,
+    ) -> bool:
+        if organization_id is None:
+            organization_id = _active_organization_id()
         async with self._lock:
-            connections = [ws for ws, owner_id in self._connections.items() if owner_id == user_id]
+            connections = [
+                websocket
+                for websocket, owner in self._connections.items()
+                if owner.user_id == user_id and owner.organization_id == organization_id
+            ]
         if not connections:
             return False
         results = await asyncio.gather(*(

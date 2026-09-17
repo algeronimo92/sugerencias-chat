@@ -15,6 +15,7 @@ from services.secret_cipher import (
     is_encrypted,
     needs_reencryption,
 )
+from tenancy.context import get_current_tenant
 
 
 @dataclass(frozen=True)
@@ -129,8 +130,7 @@ SETTING_DEFS: list[SettingDef] = [
 ]
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0
-_effective_cache: dict[str, str] | None = None
-_effective_cache_expires_at = 0.0
+_effective_cache: dict[str | None, tuple[float, dict[str, str]]] = {}
 _effective_cache_lock = asyncio.Lock()
 
 
@@ -152,29 +152,46 @@ def _env_default(key: str) -> str:
     return getattr(env_settings, key, "") or ""
 
 
-def invalidate_settings_cache() -> None:
-    global _effective_cache, _effective_cache_expires_at
-    _effective_cache = None
-    _effective_cache_expires_at = 0.0
+def _cache_scope() -> str | None:
+    context = get_current_tenant()
+    return str(context.organization_id) if context else None
+
+
+def invalidate_settings_cache(*, all_tenants: bool = False) -> None:
+    """Invalida la configuración del tenant activo.
+
+    La caché histórica era global: durante su TTL, el segundo negocio recibía
+    tokens Meta, URLs n8n y políticas del primero. Sin contexto se conserva el
+    comportamiento legacy y ``all_tenants`` queda para rotaciones de plataforma.
+    """
+    if all_tenants:
+        _effective_cache.clear()
+    else:
+        _effective_cache.pop(_cache_scope(), None)
 
 
 async def _effective_values() -> dict[str, str]:
-    global _effective_cache, _effective_cache_expires_at
+    scope = _cache_scope()
     now = monotonic()
-    if _effective_cache is not None and now < _effective_cache_expires_at:
-        return _effective_cache
+    cached = _effective_cache.get(scope)
+    if cached is not None and now < cached[0]:
+        return cached[1]
 
     async with _effective_cache_lock:
         now = monotonic()
-        if _effective_cache is not None and now < _effective_cache_expires_at:
-            return _effective_cache
+        cached = _effective_cache.get(scope)
+        if cached is not None and now < cached[0]:
+            return cached[1]
         db_values = await _db_values()
-        _effective_cache = {
+        values = {
             key: db_values.get(key) or _env_default(key)
             for key in _DEFS_BY_KEY
         }
-        _effective_cache_expires_at = monotonic() + SETTINGS_CACHE_TTL_SECONDS
-        return _effective_cache
+        _effective_cache[scope] = (
+            monotonic() + SETTINGS_CACHE_TTL_SECONDS,
+            values,
+        )
+        return values
 
 
 async def get_effective_many(keys: Iterable[str]) -> dict[str, str]:

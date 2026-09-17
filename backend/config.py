@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     database_pool_size: int = 10
     database_max_overflow: int = 20
     database_pool_recycle_seconds: int = 1800
+    # Se activa solo después de registrar dominios y schemas de control. El
+    # default mantiene instalaciones single-tenant existentes sobre public
+    # mientras completan el cutover.
+    multitenancy_enabled: bool = False
+    # Hosts que sirven exclusivamente operaciones de plataforma. CSV evita que
+    # una variable de entorno requiera sintaxis JSON; en producción debe ser una
+    # lista explícita y mínima.
+    tenant_platform_hosts: str = "localhost,testserver"
     n8n_webhook_url: str = ""
     # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
     # webhook de n8n (dirección app -> n8n). Env var OUTBOUND_WEBHOOK_TOKEN a
@@ -32,6 +40,10 @@ class Settings(BaseSettings):
     # dirección opuesta) para que no se confundan al configurarlas.
     n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
+    # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
+    # en callbacks de jobs IA. Debe ser distinto de los tokens HTTP en
+    # despliegues multitenant; nunca contiene ni acepta nombres de schema.
+    ai_job_signing_secret: str = ""
     # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
     # el CRM). Distinto de n8n_webhook_url (sugerencias IA).
     n8n_citas_webhook_url: str = ""

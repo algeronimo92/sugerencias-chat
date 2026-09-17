@@ -64,6 +64,7 @@ from services.store.leads import (  # noqa: F401
 )
 from services.store.suggestions import (  # noqa: F401
     cache_suggestion,
+    cache_suggestion_if_current,
     get_cached_suggestion,
     get_suggestion_status,
 )
