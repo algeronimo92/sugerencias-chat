@@ -1302,12 +1302,17 @@ async def insert_message(
     quoted_wa_message_id: str | None = None,
     media_width: int | None = None,
     media_height: int | None = None,
+    # Qué usuario del CRM lo mandó. Solo lo pasan los envíos autenticados que
+    # salen de la app; los ecos del webhook lo dejan en None porque WhatsApp no
+    # identifica al autor (ver WspMessage.sent_by_user_id).
+    sent_by_user_id: int | None = None,
 ) -> dict:
     stmt = (
         insert(WspMessage)
         .values(
             chat_id=chat_id,
             sender=sender,
+            sent_by_user_id=sent_by_user_id,
             content=content,
             media_url=media_url,
             sent_at=sent_at or datetime.now(timezone.utc),

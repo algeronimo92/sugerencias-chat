@@ -1,13 +1,63 @@
+import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.orm import aliased
 
-from db.models import Appointment, User
+from db.models import Appointment, Lead, User
 from db.session import get_sessionmaker
+from services.phone_utils import (
+    PhoneValidationError,
+    digits_to_jid,
+    effective_country_code,
+    normalize_phone,
+)
+from services.whatsapp_identity_service import lead_id_for_jid
+
+logger = logging.getLogger(__name__)
 
 Creator = aliased(User)
+Owner = aliased(User)
+
+# Cola del número que se compara contra los leads cuando el alias de WhatsApp no
+# existe: en Perú son los 9 dígitos del celular, sin el código de país. Alcanza
+# para emparejar un teléfono escrito con o sin +51.
+PHONE_TAIL_DIGITS = 9
+
+
+async def resolve_lead_for_phone(telefono: str) -> str | None:
+    """El lead dueño de ese teléfono, o None si no se puede afirmar cuál es.
+
+    Primero por el alias de WhatsApp, que es la identidad canónica del CRM
+    (`whatsapp_identities`); si el número nunca chateó, cae a comparar la cola
+    del teléfono contra `leads`, y **solo** acepta el resultado cuando un único
+    lead coincide. Con dos candidatos devuelve None a propósito: una cita colgada
+    del lead equivocado es peor que una cita sin vincular.
+    """
+    try:
+        e164 = normalize_phone(telefono, await effective_country_code())
+    except PhoneValidationError:
+        return None
+    except Exception:
+        # La resolución del lead es un extra sobre el registro de la cita; que
+        # falle no puede impedir que la cita se guarde.
+        logger.exception("No se pudo normalizar el teléfono de la cita")
+        return None
+
+    lead_id = await lead_id_for_jid(digits_to_jid(e164))
+    if lead_id is not None:
+        return lead_id
+
+    tail = e164[-PHONE_TAIL_DIGITS:]
+    if len(tail) < PHONE_TAIL_DIGITS:
+        return None
+    lead_tail = func.right(func.regexp_replace(Lead.telefono, r"\D", "", "g"), PHONE_TAIL_DIGITS)
+    async with get_sessionmaker()() as session:
+        matches = (await session.execute(
+            select(Lead.id).where(Lead.telefono.is_not(None), lead_tail == tail).limit(2)
+        )).scalars().all()
+    return matches[0] if len(matches) == 1 else None
 
 
 def _ts(value):
@@ -19,6 +69,8 @@ def _serialize(row) -> dict:
         "id": row["id"],
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
+        "lead_id": row["lead_id"],
+        "lead_owner_name": row["lead_owner_name"],
         "nombre_completo": row["nombre_completo"],
         "dni": row["dni"],
         "telefono": row["telefono"],
@@ -44,6 +96,8 @@ def _query():
             Appointment.id,
             Appointment.created_by_user_id,
             Creator.name.label("created_by_name"),
+            Appointment.lead_id,
+            Owner.name.label("lead_owner_name"),
             Appointment.nombre_completo,
             Appointment.dni,
             Appointment.telefono,
@@ -62,6 +116,10 @@ def _query():
             Appointment.created_at,
         )
         .join(Creator, Creator.id == Appointment.created_by_user_id)
+        # Ambos por fuera: la cita puede no estar vinculada a un lead, y un lead
+        # vinculado puede no tener vendedor asignado.
+        .outerjoin(Lead, Lead.id == Appointment.lead_id)
+        .outerjoin(Owner, Owner.id == Lead.vendedor_id)
     )
 
 
@@ -75,6 +133,7 @@ async def list_appointments(limit: int = 300) -> list[dict]:
 async def create_appointment_record(
     *,
     created_by_user_id: int,
+    lead_id: str | None,
     nombre_completo: str,
     dni: str,
     telefono: str,
@@ -96,6 +155,7 @@ async def create_appointment_record(
         appointment_id = (await session.execute(
             insert(Appointment).values(
                 created_by_user_id=created_by_user_id,
+                lead_id=lead_id,
                 nombre_completo=nombre_completo,
                 dni=dni,
                 telefono=telefono,

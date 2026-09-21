@@ -50,6 +50,32 @@
   --color-wa-faint: #8696a0; /* metadatos dentro de burbujas (claro) */
   --color-wa-faint-dark: #667781;
 
+  /* Gráficos del dashboard. Dos pasos por rol (claro/oscuro), elegidos para
+     la superficie de cada modo y validados como conjunto: banda de luminosidad,
+     piso de croma, separación para daltonismo y contraste contra el fondo. No
+     se derivan uno del otro invirtiendo — cambiar un valor obliga a revalidar
+     el par completo.
+
+     Los estados de ejecución van SIEMPRE con leyenda y cifra visible: la
+     separación en visión tritán de verde↔azul queda por debajo del objetivo,
+     así que el color no puede ser el único que distinga un segmento. */
+  --color-viz-done: #008069; /* completado */
+  --color-viz-done-dark: #00a884;
+  --color-viz-active: #2a78d6; /* en curso o esperando */
+  --color-viz-active-dark: #3987e5;
+  --color-viz-failed: #dc2626; /* falló */
+  --color-viz-failed-dark: #e66767;
+  --color-viz-idle: #8696a0; /* omitido: neutro a propósito, no es una serie */
+  --color-viz-idle-dark: #667781;
+
+  /* Categóricas: se asignan en orden fijo y nunca se reciclan. */
+  --color-viz-1: #008069;
+  --color-viz-1-dark: #00a884;
+  --color-viz-2: #4a3aa7;
+  --color-viz-2-dark: #9085e9;
+  --color-viz-3: #b45309;
+  --color-viz-3-dark: #c98500;
+
   /* Radio de burbuja (~WhatsApp) */
   --radius-bubble: 7.5px;
 

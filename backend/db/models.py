@@ -292,6 +292,14 @@ class WspMessage(Base):
     # chat, igual que el límite real de WhatsApp (se aplica en db_service).
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Qué usuario del CRM mandó este mensaje. `sender` solo dice cliente o
+    # vendedor, que no alcanza para medir el trabajo de una persona cuando
+    # varias atienden el mismo chat. NULL en los mensajes del cliente y también
+    # en los ecos que llegan por webhook desde el celular del vendedor: ahí
+    # WhatsApp no dice qué usuario escribió y `human_outbound` es lo único que
+    # se sabe. Lo llenan los envíos que salen de la app — ver
+    # message_outbox.enqueue_messages y scheduled_message_service.
+    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (
         Index(
@@ -322,6 +330,14 @@ class WspMessage(Base):
             wa_message_id,
             unique=True,
             postgresql_where=text("wa_message_id IS NOT NULL"),
+        ),
+        # "Cuántos mensajes mandé esta semana". Parcial porque la enorme mayoría
+        # de las filas son del cliente o ecos sin autor conocido.
+        Index(
+            "idx_wsp_messages_author_sent",
+            sent_by_user_id,
+            sent_at.desc(),
+            postgresql_where=text("sent_by_user_id IS NOT NULL"),
         ),
     )
 
@@ -553,6 +569,8 @@ class LeadTagAssignment(Base):
     __table_args__ = (
         Index("idx_lead_tag_assignments_tag_lead", tag_id, lead_id),
         Index("idx_lead_tag_assignments_assigned_by", assigned_by),
+        # Etiquetas puestas en el período, para el panel de cobertura.
+        Index("idx_lead_tag_assignments_assigned_at", assigned_at.desc()),
     )
 
 
@@ -574,6 +592,15 @@ class LeadActivity(Base):
     __table_args__ = (
         Index("idx_lead_activity_lead_created", lead_id, created_at.desc()),
         Index("idx_lead_activity_actor_user", actor_user_id),
+        # "Qué hice esta semana": acciones de una persona ordenadas por
+        # fecha. Parcial porque los eventos de sistema y de n8n no llevan
+        # actor y son la mayoría de las filas.
+        Index(
+            "idx_lead_activity_actor_created",
+            actor_user_id,
+            created_at.desc(),
+            postgresql_where=text("actor_user_id IS NOT NULL"),
+        ),
     )
 
 
@@ -728,6 +755,12 @@ class Appointment(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    # Lead al que pertenece la cita, resuelto por teléfono al registrarla. NULL
+    # cuando ese número no coincide con ningún lead o coincide con más de uno:
+    # preferimos no vincularla antes que colgarla del lead equivocado.
+    lead_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
+    )
     nombre_completo: Mapped[str] = mapped_column(Text)
     dni: Mapped[str] = mapped_column(Text, default="")
     telefono: Mapped[str] = mapped_column(Text)
@@ -751,6 +784,15 @@ class Appointment(Base):
             name="ck_appointments_status",
         ),
         Index("idx_appointments_created", created_at.desc()),
+        Index(
+            "idx_appointments_lead_created",
+            lead_id,
+            created_at.desc(),
+            postgresql_where=text("lead_id IS NOT NULL"),
+        ),
+        # Citas del período por quien las registró: lo que agrupa el
+        # dashboard del vendedor (services/dashboard/appointments.py).
+        Index("idx_appointments_creator_created", created_by_user_id, created_at.desc()),
     )
 
 
@@ -1015,6 +1057,15 @@ class AutomationExecution(Base):
             postgresql_where=text(
                 "start_source = 'manual' AND status IN ('scheduled', 'running', 'paused')"
             ),
+        ),
+        # Flujos que disparó un vendedor en el período: el eje del dashboard
+        # de vendedores. Parcial porque started_by_user_id solo se llena en los
+        # disparos manuales, una fracción de las ejecuciones.
+        Index(
+            "idx_automation_executions_starter_created",
+            started_by_user_id,
+            created_at.desc(),
+            postgresql_where=text("started_by_user_id IS NOT NULL"),
         ),
         CheckConstraint(
             "start_source IN ('system', 'manual', 'flow')",

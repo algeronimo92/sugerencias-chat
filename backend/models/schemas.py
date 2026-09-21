@@ -612,6 +612,10 @@ class AppointmentItem(BaseModel):
     id: int
     created_by_user_id: int
     created_by_name: str
+    # None cuando el teléfono no identificó a un único lead — ver
+    # appointment_service.resolve_lead_for_phone.
+    lead_id: str | None = None
+    lead_owner_name: str | None = None
     nombre_completo: str
     dni: str
     telefono: str
