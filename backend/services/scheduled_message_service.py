@@ -197,6 +197,9 @@ async def _dispatch(scheduled_id: int) -> None:
                 sent_at=now,
                 status="PENDING",
                 message_type="text",
+                # Nadie estaba mirando la app cuando salió, pero el mensaje es
+                # obra de quien lo programó: se le cuenta a esa persona.
+                sent_by_user_id=scheduled.created_by_user_id,
             )
             session.add(message)
             await session.flush()

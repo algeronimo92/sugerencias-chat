@@ -36,6 +36,11 @@ export interface AppointmentListItem {
   id: number
   created_by_user_id: number
   created_by_name: string
+  /** Lead al que quedó vinculada la cita, resuelto por teléfono al registrarla.
+   *  null cuando ese número no identificó a un único lead. */
+  lead_id: string | null
+  /** Vendedor asignado a ese lead, si el lead está vinculado y tiene dueño. */
+  lead_owner_name: string | null
   nombre_completo: string
   dni: string
   telefono: string

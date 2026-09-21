@@ -732,6 +732,7 @@ async def send_sticker(
         wa_message_id=(response.get("key") or {}).get("id"),
         status="SERVER_ACK",
         message_type="sticker",
+        sent_by_user_id=user.id,
     )
     try:
         completed_tasks = await complete_reply_tasks(chat_id, user.id)

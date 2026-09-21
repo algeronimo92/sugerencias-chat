@@ -186,6 +186,9 @@ async def enqueue_messages(
             message = WspMessage(
                 chat_id=chat_id,
                 sender="vendedor",
+                # El payload ya llevaba el actor para decidir si el chat cuenta
+                # como visto; la columna lo vuelve consultable sin abrir JSONB.
+                sent_by_user_id=actor_user_id,
                 content=item.get("content"),
                 # IDs resuelven empates, pero microsegundos distintos también
                 # mantienen el orden al mezclar mensajes en clientes antiguos.

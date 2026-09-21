@@ -9,7 +9,11 @@ from db.models import User
 from domain_types import NotificationType
 from models.schemas import AppointmentCreate, AppointmentItem
 from routers.media import normalize_media_content_type
-from services.appointment_service import create_appointment_record, list_appointments
+from services.appointment_service import (
+    create_appointment_record,
+    list_appointments,
+    resolve_lead_for_phone,
+)
 from services.auth_service import get_current_user
 from services.issue_report_service import list_active_admin_ids
 from services.notification_service import create_system_notification
@@ -85,9 +89,14 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
             raise HTTPException(413, "El comprobante supera el máximo de 10 MB")
         files = {"Comprobante": (body.comprobante.filename, raw, content_type)}
 
+    # Se resuelve una sola vez, antes de llamar a n8n: `record` corre en varias
+    # ramas (éxito, rechazo, timeout) y todas deben guardar el mismo lead.
+    lead_id = await resolve_lead_for_phone(phone)
+
     async def record(status: str, n8n_status: str | None, message: str | None, event_link: str | None) -> dict:
         return await create_appointment_record(
             created_by_user_id=user.id,
+            lead_id=lead_id,
             nombre_completo=body.nombre_completo,
             dni=body.dni,
             telefono=body.telefono,

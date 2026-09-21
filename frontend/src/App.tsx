@@ -432,9 +432,12 @@ function MainLayout() {
           <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />
         ) : isIssueReports ? (
           <IssueReportsPage onCreate={() => setIsIssueReportOpen(true)} />
-        ) : isDashboard && me?.role === 'admin' ? (
+        ) : isDashboard ? (
           <DashboardPage
+            isAdmin={me?.role === 'admin'}
             onOpenTasks={() => navigate('/tasks')}
+            onOpenFlows={() => navigate('/mis-flujos')}
+            onOpenChat={(leadId) => navigate(`/chat/${leadId}`)}
             onFilterChats={(filters) => {
               setChatFilter('all')
               setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters })
@@ -664,7 +667,7 @@ function AuthGate() {
         <Route path="/mis-flujos" element={<MainLayout />} />
         <Route path="/templates" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/media-library" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
-        <Route path="/dashboard" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
+        <Route path="/dashboard" element={<MainLayout />} />
         <Route path="/automations" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/catalogs" element={me.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />} />
         <Route path="/citas/nueva" element={<MainLayout />} />
