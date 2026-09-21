@@ -40,6 +40,7 @@ EXPECTED_ROUTES = [
     ("POST", "/api/chats/{chat_id}/sticker", "send_sticker"),
     ("POST", "/api/chats/{chat_id}/templates/{template_id}", "send_template"),
     ("POST", "/api/chats/{chat_id}/location", "send_location"),
+    ("POST", "/api/chats/{chat_id}/contacts", "send_contacts"),
     ("POST", "/api/chats/{chat_id}/messages/forward", "forward_messages"),
     ("POST", "/api/chats/{chat_id}/messages/{message_id}/retry", "retry_message"),
     ("POST", "/api/chats/{chat_id}/messages/{message_id}/discard", "discard_message"),

@@ -84,12 +84,19 @@ def test_no_router_speaks_sql():
 
 # Los flujos de conversación hablan con el canal; estos módulos son los únicos
 # que tratan con Meta directamente, y son de administración de la cuenta
-# (plantillas del catálogo, import de media), no de mandar mensajes.
+# (plantillas del catálogo, import de media, conexión de la cuenta), no de
+# mandar mensajes.
 META_ALLOWED = {
     "services/meta_channel.py",
     "services/template_validation.py",
     "routers/templates.py",
     "routers/webhooks/media.py",
+    # Completa el embedded signup (intercambia el code, resuelve el
+    # phone_number_id): conexión/onboarding de la cuenta, no envío.
+    "routers/settings.py",
+    # Solo consulta is_configured() para decidir el estado a mostrar en la UI
+    # ("open"/"not_configured"); no manda mensajes.
+    "routers/whatsapp.py",
 }
 
 
@@ -98,11 +105,11 @@ def test_only_an_explicit_allow_list_talks_to_meta_directly():
     `meta_service`, así que cualquier módulo nuevo quedaba autorizado sin que
     nadie lo decidiera. Invertida, agregar un consumidor es una decisión."""
     culpables = {
-        str(path.relative_to(BACKEND))
+        path.relative_to(BACKEND).as_posix()
         for base in ("services", "routers")
         for path in (BACKEND / base).rglob("*.py")
         if any(name.startswith("services.meta_service") for name in _imported_modules(path))
-        and str(path.relative_to(BACKEND)) not in META_ALLOWED
+        and path.relative_to(BACKEND).as_posix() not in META_ALLOWED
     }
 
     assert culpables == set()

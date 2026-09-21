@@ -75,6 +75,13 @@ beforeEach(() => {
 })
 
 describe('ChatItem vista rápida', () => {
+  it('muestra el username antes que el pushname', () => {
+    renderItem(vi.fn(), vi.fn(), vi.fn(), { ...CHAT, username: '@gporta.21' } as Chat)
+
+    expect(screen.getByText('@gporta.21')).toBeInTheDocument()
+    expect(screen.queryByText('Ana Torres')).not.toBeInTheDocument()
+  })
+
   it('muestra las acciones del lead con clic derecho', () => {
     const { onClick, onPreview } = renderItem()
 

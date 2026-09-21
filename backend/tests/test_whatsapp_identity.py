@@ -36,6 +36,17 @@ def test_parse_lid_only_never_uses_sender_as_customer_phone():
     assert parsed.push_name == "Gerson P"
 
 
+def test_parse_meta_bsuid_lid_accepts_country_prefix():
+    """El BSUID de Meta (p.ej. "PE.1084026510784249") no es numerico puro
+    como el LID de Evolution/Baileys: se acepta igual, se usa como alias
+    opaco."""
+    parsed = parse_message_identity(_payload({"remoteJid": "PE.1084026510784249@lid"}))
+
+    assert parsed.jids == ("pe.1084026510784249@lid",)
+    assert parsed.lid_jid == "pe.1084026510784249@lid"
+    assert parsed.phone_jid is None
+
+
 def test_parse_phone_and_lid_aliases_deduplicates_values():
     parsed = parse_message_identity(_payload({
         "remoteJid": "267692862898397@lid",

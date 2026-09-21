@@ -643,7 +643,12 @@ export function MessageBubble({
                 )}
               </div>
             )}
-            <ReactionBadge reactions={reactions} isVendedor={isVendedor} />
+            <ReactionBadge
+              reactions={reactions}
+              isVendedor={isVendedor}
+              contactName={displayName(chat)}
+              onReact={onReact}
+            />
           </div>
           {(kind === "template" || kind === "interactive") && template && (
             <TemplateMessageButtons

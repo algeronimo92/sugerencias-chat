@@ -22,7 +22,7 @@ configure_logging()
 
 from config import settings
 from db.session import close_engine, get_engine
-from routers import appointments, auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
+from routers import appointments, auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, platform, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token, websocket_origin_allowed
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
@@ -39,8 +39,13 @@ from services.scheduled_message_service import watch_scheduled_messages
 from request_metrics import begin_request_metrics, finish_request_metrics
 from request_context import reset_request_id, set_request_id
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
-from services.settings_service import get_effective, migrate_settings_encryption
+from services.platform_settings import platform_setting
+from services.settings_service import migrate_settings_encryption
 from tenancy.middleware import TenantResolutionMiddleware
+from tenancy.dependencies import bind_integration_tenant
+from tenancy.context import tenant_context, validate_schema_name
+from tenancy.resolver import list_active_tenants
+from services.tenant_workers import WorkerSpec, supervise_tenant_workers
 
 logger = logging.getLogger(__name__)
 DATABASE_RETRY_MAX_SECONDS = 30
@@ -92,7 +97,7 @@ async def _verify_schema_is_current() -> None:
     try:
         async with get_engine().connect() as connection:
             current = (await connection.execute(text(
-                "SELECT version_num FROM alembic_version"
+                "SELECT version_num FROM public.alembic_version"
             ))).scalar()
     except (OSError, SQLAlchemyError):
         raise SchemaNotMigratedError(
@@ -108,6 +113,51 @@ async def _verify_schema_is_current() -> None:
             f"{head}. Ejecutar:\n"
             "    docker compose exec -T backend python -m scripts.migrate"
         )
+    if head and settings.multitenancy_enabled:
+        await _verify_active_tenant_schemas(head)
+
+
+async def _verify_active_tenant_schemas(head: str) -> None:
+    """Comprueba registro y alembic_version real de cada tenant activo."""
+
+    try:
+        async with get_engine().connect() as connection:
+            rows = (
+                await connection.execute(
+                    text(
+                        "SELECT o.id, o.schema_name, v.revision, v.migration_status "
+                        "FROM public.organizations o "
+                        "LEFT JOIN public.tenant_schema_versions v "
+                        "  ON v.organization_id = o.id "
+                        "WHERE o.status = 'active' ORDER BY o.id"
+                    )
+                )
+            ).mappings().all()
+            for row in rows:
+                schema_name = validate_schema_name(row["schema_name"])
+                if row["revision"] != head or row["migration_status"] != "current":
+                    raise SchemaNotMigratedError(
+                        f"El tenant {row['id']} no está marcado en la revisión {head}. "
+                        "Ejecutar scripts.migrate antes de arrancar."
+                    )
+                quoted = connection.dialect.identifier_preparer.quote(schema_name)
+                actual = (
+                    await connection.execute(
+                        text(f"SELECT version_num FROM {quoted}.alembic_version")
+                    )
+                ).scalar_one_or_none()
+                if actual != head:
+                    raise SchemaNotMigratedError(
+                        f"El schema del tenant {row['id']} está en {actual or 'ninguna'} "
+                        f"y este código espera {head}. Ejecutar scripts.migrate."
+                    )
+    except SchemaNotMigratedError:
+        raise
+    except (OSError, SQLAlchemyError, ValueError):
+        raise SchemaNotMigratedError(
+            "No se pudo validar la versión de todos los tenants activos. "
+            "Ejecutar scripts.migrate antes de arrancar."
+        ) from None
 
 
 def _alembic_head() -> str | None:
@@ -187,15 +237,16 @@ async def _require_inbound_webhook_token() -> None:
     los protege ese token. Con el valor vacío que traía backend/.env.example,
     `verify_webhook_token` dejaba pasar cualquier petición.
 
-    La comprobación es aquí y no en `config.py` porque el token también puede
-    venir de `app_settings` (es editable desde Configuración), así que hace
-    falta la base de datos para saber si está configurado de verdad.
+    La comprobación es aquí y no en `config.py` porque en single-tenant el token
+    también puede venir de `app_settings` (es editable desde Configuración), así
+    que hace falta la base de datos para saber si está configurado de verdad.
 
     Falla el arranque a propósito: en blue-green eso deja el color viejo
     sirviendo y el despliegue no promociona, que es preferible a promocionar
     una versión con los webhooks abiertos.
     """
-    if (await get_effective("inbound_webhook_token")).strip():
+    expected = await platform_setting("inbound_webhook_token")
+    if expected.strip():
         return
     raise RuntimeError(
         "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
@@ -249,50 +300,63 @@ async def lifespan(app: FastAPI):
     await _verify_schema_is_current()
     await _detect_search_capabilities()
 
-    encrypted_settings, decrypted_settings = await migrate_settings_encryption()
-    if encrypted_settings or decrypted_settings:
-        logger.info(
-            "Configuración persistida normalizada: secretos_cifrados=%s "
-            "públicos_descifrados=%s",
-            encrypted_settings,
-            decrypted_settings,
-        )
+    if settings.multitenancy_enabled:
+        for context in await list_active_tenants():
+            with tenant_context(context):
+                encrypted_settings, decrypted_settings = await migrate_settings_encryption()
+                if encrypted_settings or decrypted_settings:
+                    logger.info(
+                        "Configuración tenant normalizada organization_id=%s: "
+                        "secretos_cifrados=%s públicos_descifrados=%s",
+                        context.organization_id,
+                        encrypted_settings,
+                        decrypted_settings,
+                    )
+                await backfill_automation_state()
+    else:
+        encrypted_settings, decrypted_settings = await migrate_settings_encryption()
+        if encrypted_settings or decrypted_settings:
+            logger.info(
+                "Configuración persistida normalizada: secretos_cifrados=%s "
+                "públicos_descifrados=%s",
+                encrypted_settings,
+                decrypted_settings,
+            )
 
     # Después de normalizar app_settings: el token puede vivir ahí y no en el
     # entorno, así que antes de este punto la lectura daría un falso negativo.
     await _require_inbound_webhook_token()
     await _check_media_persistence()
 
-    if settings.admin_email and settings.admin_password:
+    if (
+        not settings.multitenancy_enabled
+        and settings.admin_email
+        and settings.admin_password
+    ):
         await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
 
-    await backfill_automation_state()
-
-    watcher_task = asyncio.create_task(watch_chats())
-    reminder_task = asyncio.create_task(watch_task_reminders())
-    automation_task = asyncio.create_task(watch_automations())
-    outbox_task = asyncio.create_task(watch_message_outbox())
-    scheduled_messages_task = asyncio.create_task(watch_scheduled_messages())
-    queue_metrics_task = asyncio.create_task(watch_queue_metrics())
+    worker_specs = (
+        WorkerSpec("chat-watcher", watch_chats),
+        WorkerSpec("task-reminders", watch_task_reminders),
+        WorkerSpec("automations", watch_automations),
+        WorkerSpec("message-outbox", watch_message_outbox),
+        WorkerSpec("scheduled-messages", watch_scheduled_messages),
+        WorkerSpec("queue-metrics", watch_queue_metrics),
+    )
+    if settings.multitenancy_enabled:
+        worker_tasks = [asyncio.create_task(supervise_tenant_workers(worker_specs))]
+    else:
+        await backfill_automation_state()
+        worker_tasks = [
+            asyncio.create_task(spec.run(), name=f"legacy:{spec.name}")
+            for spec in worker_specs
+        ]
     yield
-    watcher_task.cancel()
-    reminder_task.cancel()
-    automation_task.cancel()
-    outbox_task.cancel()
-    scheduled_messages_task.cancel()
-    queue_metrics_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await watcher_task
-    with contextlib.suppress(asyncio.CancelledError):
-        await reminder_task
-    with contextlib.suppress(asyncio.CancelledError):
-        await automation_task
-    with contextlib.suppress(asyncio.CancelledError):
-        await outbox_task
-    with contextlib.suppress(asyncio.CancelledError):
-        await scheduled_messages_task
-    with contextlib.suppress(asyncio.CancelledError):
-        await queue_metrics_task
+    for task in worker_tasks:
+        task.cancel()
+    for task in worker_tasks:
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     await close_evolution_client()
     await close_meta_client()
     await close_n8n_client()
@@ -358,6 +422,9 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+# El panel de plataforma trae su propia identidad y su propia cookie: el
+# middleware de tenancy solo lo deja responder en TENANT_PLATFORM_HOSTS.
+app.include_router(platform.router)
 app.include_router(users.router)
 app.include_router(chats.router, dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
@@ -380,8 +447,14 @@ app.include_router(dashboard.router)
 app.include_router(automations.router)
 # webhooks y media.upload los llama n8n directamente (autenticados con su
 # propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
-app.include_router(webhooks.router, dependencies=[Depends(verify_webhook_token)])
-app.include_router(media.router, dependencies=[Depends(verify_webhook_token)])
+app.include_router(
+    webhooks.router,
+    dependencies=[Depends(verify_webhook_token), Depends(bind_integration_tenant)],
+)
+app.include_router(
+    media.router,
+    dependencies=[Depends(verify_webhook_token), Depends(bind_integration_tenant)],
+)
 # /media/<archivo> sí es contenido de clientes (fotos, audios, documentos) y
 # solo lo consume el navegador del vendedor. La cookie es SameSite=Lax y tanto
 # dev como producción son same-site, así que <img>/<audio>/<video> la envían.

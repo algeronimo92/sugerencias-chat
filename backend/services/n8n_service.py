@@ -118,3 +118,54 @@ async def call_n8n(
             await asyncio.sleep(RETRY_DELAY_SECONDS)
 
     raise last_error
+
+
+async def call_n8n_analyst(
+    chat_id: str,
+    *,
+    job_id: str,
+    context_revision: str,
+    tenant_context_token: str,
+) -> dict:
+    """Dispatch a synchronous, on-demand analyst job.
+
+    The workflow must apply its result through the scoped callback before it
+    responds. Its response is informational; the persisted AIJob is the source
+    of truth for the outcome.
+    """
+
+    values = await get_effective_many(
+        ("n8n_analyst_webhook_url", "n8n_webhook_token")
+    )
+    webhook_url = values["n8n_analyst_webhook_url"]
+    if not webhook_url:
+        raise RuntimeError("n8n analyst workflow is not configured")
+    headers = {
+        "X-Job-Id": job_id,
+        "X-Tenant-Context": tenant_context_token,
+    }
+    if values["n8n_webhook_token"]:
+        headers["Authorization"] = f"Bearer {values['n8n_webhook_token']}"
+    started_at = perf_counter()
+    try:
+        response = await _client().get(
+            webhook_url,
+            params={
+                "operation": "analyst",
+                "chat_id": chat_id,
+                "job_id": job_id,
+                "context_revision": context_revision,
+            },
+            headers=headers,
+            # The workflow debounces before invoking the model, so the shared
+            # 30 second client timeout is too short for this synchronous path.
+            timeout=120.0,
+        )
+    finally:
+        record_external_duration("n8n", (perf_counter() - started_at) * 1000)
+    response.raise_for_status()
+    try:
+        data = response.json()
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {"output": data}

@@ -27,7 +27,7 @@ from services.ws_manager import manager
 from services.meta_service import (
     MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
     download_template_header_example, get_whatsapp_template, list_whatsapp_templates,
-    template_parameter_identifiers, update_whatsapp_template, upload_header_media,
+    update_whatsapp_template, upload_header_media,
 )
 from services.whatsapp_capabilities import get_whatsapp_capabilities
 from services.template_validation import (
@@ -35,6 +35,7 @@ from services.template_validation import (
     TemplateValidationError,
     build_meta_components,
     normalize_common_fields,
+    template_parameter_identifiers,
     validate_internal_variables,
     validate_template_values,
 )

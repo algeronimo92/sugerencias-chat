@@ -81,6 +81,8 @@ def include_object(obj, name, type_, reflected, compare_to) -> bool:
 
 def _configure(connection: Connection) -> None:
     tenant_schema = config.attributes.get("tenant_schema")
+    if not isinstance(tenant_schema, str):
+        tenant_schema = None
     if tenant_schema:
         tenant_schema = validate_schema_name(tenant_schema)
         # El identificador ya pasó por una regex cerrada. SET LOCAL garantiza
@@ -98,6 +100,8 @@ def _configure(connection: Connection) -> None:
 
 def run_migrations_offline() -> None:
     tenant_schema = config.attributes.get("tenant_schema")
+    if not isinstance(tenant_schema, str):
+        tenant_schema = None
     if tenant_schema:
         tenant_schema = validate_schema_name(tenant_schema)
     context.configure(
@@ -109,6 +113,8 @@ def run_migrations_offline() -> None:
         version_table_schema=tenant_schema,
     )
     with context.begin_transaction():
+        if tenant_schema:
+            context.execute(f'SET search_path TO "{tenant_schema}", public')
         context.run_migrations()
 
 

@@ -1,6 +1,6 @@
 import { useDeferredValue, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ExternalLink, Eye, File as FileIcon, FileText, Image, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
+import { ExternalLink, Eye, File as FileIcon, FileText, Film, FolderOpen, Images, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { useDeleteMediaAsset, useMediaLibrary, useRenameMediaAsset, useUploadMediaAsset } from '../hooks/useMediaLibrary'
 import { extractErrorMessage } from '../utils/errors'
@@ -48,15 +48,24 @@ function splitFilename(filename: string) {
 
 function AssetPreview({ asset, onPreview }: { asset: MediaAsset; onPreview: () => void }) {
   const url = resolveMediaUrl(asset.media_url) ?? ''
+  const [imageFailed, setImageFailed] = useState(false)
   if (asset.content_type.startsWith('image/')) {
+    if (imageFailed) {
+      return (
+        <div className="flex h-44 flex-col items-center justify-center gap-2 bg-wa-hover text-wa-muted dark:bg-wa-panel-dark">
+          <Images className="h-10 w-10 opacity-60" />
+          <span className="text-xs font-semibold">Vista previa no disponible</span>
+        </div>
+      )
+    }
     return (
       <button
         type="button"
         onClick={onPreview}
         aria-label={`Ver vista previa de ${asset.filename}`}
-        className="group relative block h-36 w-full overflow-hidden bg-wa-hover text-left dark:bg-wa-panel-dark"
+        className="group relative block h-44 w-full overflow-hidden bg-wa-hover text-left dark:bg-wa-panel-dark"
       >
-        <img src={url} alt={asset.filename} loading="lazy" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+        <img src={url} alt={asset.filename} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
         <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100 group-focus-visible:bg-black/30 group-focus-visible:opacity-100">
           <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold"><Eye className="h-4 w-4" />Vista previa</span>
         </span>
@@ -64,18 +73,18 @@ function AssetPreview({ asset, onPreview }: { asset: MediaAsset; onPreview: () =
     )
   }
   if (asset.content_type.startsWith('video/')) {
-    return <VideoPlayer src={url} className="h-36 w-full" />
+    return <VideoPlayer src={url} className="h-44 w-full" />
   }
   if (asset.content_type.startsWith('audio/')) {
     return (
-      <div className="flex h-36 flex-col items-center justify-center gap-3 bg-violet-50 px-3 dark:bg-violet-950/20">
+      <div className="flex h-44 flex-col items-center justify-center gap-3 bg-violet-50 px-3 dark:bg-violet-950/20">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">Archivo de audio</span>
         <AudioPlayer src={url} className="w-full" downloadName={asset.filename} />
       </div>
     )
   }
   return (
-    <div className="flex h-36 items-center justify-center bg-wa-hover dark:bg-wa-panel-dark">
+    <div className="flex h-44 items-center justify-center bg-wa-hover dark:bg-wa-panel-dark">
       <FileText className="h-12 w-12 text-wa-muted" />
     </div>
   )
@@ -98,6 +107,9 @@ export function MediaLibraryPage() {
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const dragDepth = useRef(0)
+  const imageCount = data.filter(asset => asset.content_type.startsWith('image/')).length
+  const mediaCount = data.filter(asset => asset.content_type.startsWith('video/') || asset.content_type.startsWith('audio/')).length
+  const documentCount = data.filter(asset => !asset.content_type.startsWith('image/') && !asset.content_type.startsWith('video/') && !asset.content_type.startsWith('audio/')).length
 
   async function uploadFiles(files: File[]) {
     setError(null)
@@ -186,136 +198,90 @@ export function MediaLibraryPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-5 flex items-center gap-2">
-          <Image className="h-5 w-5 text-wa-primary-strong" />
-          <div>
-            <h1 className="text-xl font-semibold text-wa-text dark:text-white">Biblioteca de archivos</h1>
-            <p className="text-xs text-wa-muted dark:text-wa-muted-dark">Archivos reutilizables para las plantillas del equipo</p>
+    <div className="relative h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
+      <main className="relative mx-auto max-w-[1240px] px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
+        <header style={{ marginBottom: 24 }}>
+          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-wa-primary-strong dark:text-wa-primary">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-wa-primary/12"><FolderOpen className="h-4 w-4" /></span>
+            Contenido del equipo
           </div>
-        </div>
+          <h1 className="text-3xl font-bold tracking-tight text-wa-text dark:text-white">Biblioteca de archivos</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Organiza imágenes, videos, audios y documentos reutilizables en las plantillas del equipo.</p>
+        </header>
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
-            {error}
-          </div>
-        )}
+        {error && <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">{error}</div>}
 
-        <div
+        <section className="mb-5 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }} aria-label="Resumen de archivos visibles">
+          {[
+            { label: 'Archivos visibles', value: data.length, icon: FolderOpen, tone: 'text-wa-primary-strong dark:text-wa-primary' },
+            { label: 'Imágenes', value: imageCount, icon: Images, tone: 'text-cyan-600 dark:text-cyan-300' },
+            { label: 'Audio y video', value: mediaCount, icon: Film, tone: 'text-violet-600 dark:text-violet-300' },
+            { label: 'Documentos', value: documentCount, icon: FileText, tone: 'text-amber-600 dark:text-amber-300' },
+          ].map(item => {
+            const Icon = item.icon
+            return <div key={item.label} className="flex items-center justify-between rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">{item.label}</p><p className="mt-1 text-xl font-bold text-wa-text dark:text-white">{item.value}</p></div><span className={`flex h-9 w-9 items-center justify-center rounded-xl bg-wa-field dark:bg-wa-head-dark ${item.tone}`}><Icon className="h-4 w-4" /></span></div>
+          })}
+        </section>
+
+        <section
           onDragEnter={handleDragEnter}
           onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`mb-5 rounded-xl border-2 border-dashed p-5 transition-colors ${
-            isDragging ? 'border-wa-primary bg-green-50 dark:bg-green-950/30' : 'border-gray-300 bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark'
-          }`}
+          className={`mb-5 rounded-2xl border-2 border-dashed p-4 transition sm:p-5 ${isDragging ? 'border-wa-primary bg-green-50 shadow-lg shadow-emerald-950/5 dark:bg-green-950/30' : 'border-wa-border bg-white/75 dark:border-wa-border-dark dark:bg-wa-panel-dark/75'}`}
         >
-          <label className="flex cursor-pointer flex-col items-center gap-1.5 text-center text-sm font-medium text-gray-600 hover:text-wa-primary-strong dark:text-gray-300">
-            {uploadingName ? <Loader2 className="h-7 w-7 animate-spin text-wa-primary-strong" /> : <UploadCloud className="h-7 w-7" />}
-            <span>{uploadingName ? `Subiendo ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Arrastra archivos o haz clic para subir'}</span>
-            <span className="text-xs font-normal text-wa-muted">Máximo 25 MB por archivo</span>
-            <input
-              type="file"
-              multiple
-              disabled={!!uploadingName}
-              accept={ACCEPTED_TYPES}
-              className="hidden"
-              onChange={event => {
-                void uploadFiles(Array.from(event.target.files ?? []))
-                event.target.value = ''
-              }}
-            />
+          <label className="flex cursor-pointer flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+            <span className="flex items-center gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">{uploadingName ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}</span>
+              <span><span className="block text-sm font-bold text-wa-text dark:text-white">{uploadingName ? `Subiendo ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Carga archivos a la biblioteca'}</span><span className="mt-1 block text-xs text-wa-muted">Arrastra varios archivos o selecciónalos · máximo 25 MB cada uno</span></span>
+            </span>
+            <span className="rounded-xl bg-wa-primary-strong px-4 py-2.5 text-xs font-bold text-white shadow-sm">Seleccionar archivos</span>
+            <input type="file" multiple disabled={!!uploadingName} accept={ACCEPTED_TYPES} className="hidden" onChange={event => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = '' }} />
           </label>
-        </div>
+        </section>
 
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-wa-muted" />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Buscar por nombre o tipo"
-              className="w-full rounded-lg border border-wa-border bg-white py-2 pl-9 pr-3 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-            />
+        <section className="mb-5 rounded-2xl border border-wa-border bg-white/80 p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative min-w-0 flex-1 sm:max-w-md">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" />
+              <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por nombre o tipo" className="h-11 w-full rounded-xl border border-wa-border bg-[#f7faf9] pl-10 pr-3 text-sm outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark" />
+            </div>
+            <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-wa-field p-1 dark:bg-wa-head-dark">
+              {FILTERS.map(filter => <button key={filter.value} type="button" onClick={() => setKind(filter.value)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition ${kind === filter.value ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-white dark:text-wa-muted-dark dark:hover:bg-wa-active-dark'}`}>{filter.label}</button>)}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map(filter => (
-              <button
-                key={filter.value}
-                type="button"
-                onClick={() => setKind(filter.value)}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${kind === filter.value ? 'bg-wa-primary text-white' : 'bg-white text-wa-muted hover:bg-wa-field dark:bg-wa-panel-dark dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        </section>
 
-        {isLoading ? (
-          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
-        ) : data.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 py-16 text-center text-sm text-wa-muted dark:border-wa-border-dark">
-            <FileIcon className="mx-auto mb-2 h-8 w-8" />
-            No hay archivos que coincidan
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {data.map(asset => {
-              const url = resolveMediaUrl(asset.media_url) ?? '#'
-              return (
-                <article key={asset.id} className="overflow-hidden rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-                  <AssetPreview asset={asset} onPreview={() => setPreviewAsset(asset)} />
-                  <div className="p-3">
-                    <a href={url} target="_blank" rel="noreferrer" title={asset.filename} className="block truncate text-sm font-medium text-gray-800 hover:text-wa-primary-strong dark:text-wa-text-dark">
-                      {asset.filename}
-                    </a>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-wa-muted">
-                      <span>{formatBytes(asset.size_bytes)}</span>
-                      <span>{asset.use_count ? `Usado ${asset.use_count}x` : 'Sin usar'}</span>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-2 dark:border-wa-border-dark">
-                      <span className="truncate text-[11px] text-wa-muted">{asset.uploaded_by_name ?? 'Archivo migrado'}</span>
-                      <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={rename.isPending || remove.isPending}
-                        onClick={() => openRename(asset)}
-                        title="Cambiar nombre"
-                        className="rounded p-1 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong disabled:opacity-40 dark:hover:bg-wa-active-dark"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <ConfirmDialog
-                        title={asset.use_count ? 'Archivo en uso' : 'Eliminar archivo'}
-                        description={asset.use_count
-                          ? `${asset.filename} está asociado a ${asset.use_count} plantilla(s). Quita primero esos adjuntos para evitar romper las plantillas.`
-                          : `¿Quieres eliminar ${asset.filename} de la biblioteca? Esta acción no se puede deshacer.`}
-                        confirmLabel={asset.use_count ? 'Entendido' : 'Eliminar archivo'}
-                        confirmVariant={asset.use_count ? 'secondary' : 'danger'}
-                        cancelLabel={asset.use_count ? 'Cerrar' : 'Cancelar'}
-                        disabled={remove.isPending}
-                        onConfirm={() => { if (!asset.use_count) deleteAsset(asset) }}
-                      >
-                        <button
-                          type="button"
-                          disabled={remove.isPending}
-                          title={asset.use_count ? `Usado en ${asset.use_count} plantilla(s)` : 'Eliminar archivo'}
-                          className="rounded p-1 text-wa-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </ConfirmDialog>
+        <section>
+          <div className="mb-4 flex items-end justify-between gap-3 px-1"><div><h2 className="text-base font-bold text-wa-text dark:text-white">Archivos</h2><p className="mt-0.5 text-xs text-wa-muted">Contenido disponible según tu búsqueda y filtros.</p></div><span className="rounded-full border border-wa-border bg-white/75 px-3 py-1.5 text-xs font-semibold text-wa-muted dark:border-wa-border-dark dark:bg-wa-panel-dark/75">{data.length} {data.length === 1 ? 'resultado' : 'resultados'}</span></div>
+          {isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-7 w-7 animate-spin text-wa-primary-strong" /></div> : data.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-wa-border bg-white/70 px-6 py-14 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark/60"><FileIcon className="mx-auto h-10 w-10 text-wa-muted" /><h3 className="mt-4 text-sm font-bold text-wa-text dark:text-white">No hay archivos que coincidan</h3><p className="mt-1 text-xs text-wa-muted">Prueba otra búsqueda, cambia el tipo o sube un archivo nuevo.</p></div>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))' }}>
+              {data.map(asset => {
+                const url = resolveMediaUrl(asset.media_url) ?? '#'
+                const typeLabel = asset.content_type.startsWith('image/') ? 'Imagen' : asset.content_type.startsWith('video/') ? 'Video' : asset.content_type.startsWith('audio/') ? 'Audio' : 'Documento'
+                return <article key={asset.id} className="group overflow-hidden rounded-2xl border border-wa-border bg-white/90 shadow-sm transition hover:-translate-y-0.5 hover:border-wa-primary/35 hover:shadow-md dark:border-wa-border-dark dark:bg-wa-head-dark/90">
+                  <div className="relative"><AssetPreview asset={asset} onPreview={() => setPreviewAsset(asset)} /><span className="absolute left-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">{typeLabel}</span></div>
+                  <div className="p-4">
+                    <a href={url} target="_blank" rel="noreferrer" title={asset.filename} className="block truncate text-sm font-bold text-wa-text hover:text-wa-primary-strong dark:text-white">{asset.filename}</a>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-wa-muted"><span>{formatBytes(asset.size_bytes)}</span><span className={`rounded-full px-2 py-0.5 ${asset.use_count ? 'bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary' : 'bg-wa-field dark:bg-wa-panel-dark'}`}>{asset.use_count ? `Usado ${asset.use_count}x` : 'Sin usar'}</span></div>
+                    <div className="mt-4 flex items-center justify-between border-t border-wa-border pt-3 dark:border-wa-border-dark">
+                      <span className="min-w-0 truncate text-[11px] text-wa-muted">{asset.uploaded_by_name ?? 'Archivo migrado'}</span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button type="button" disabled={rename.isPending || remove.isPending} onClick={() => openRename(asset)} title="Cambiar nombre" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong disabled:opacity-40 dark:hover:bg-wa-active-dark"><Pencil className="h-4 w-4" /></button>
+                        <ConfirmDialog title={asset.use_count ? 'Archivo en uso' : 'Eliminar archivo'} description={asset.use_count ? `${asset.filename} está asociado a ${asset.use_count} plantilla(s). Quita primero esos adjuntos para evitar romper las plantillas.` : `¿Quieres eliminar ${asset.filename} de la biblioteca? Esta acción no se puede deshacer.`} confirmLabel={asset.use_count ? 'Entendido' : 'Eliminar archivo'} confirmVariant={asset.use_count ? 'secondary' : 'danger'} cancelLabel={asset.use_count ? 'Cerrar' : 'Cancelar'} disabled={remove.isPending} onConfirm={() => { if (!asset.use_count) deleteAsset(asset) }}>
+                          <button type="button" disabled={remove.isPending} title={asset.use_count ? `Usado en ${asset.use_count} plantilla(s)` : 'Eliminar archivo'} className="rounded-lg p-2 text-wa-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30"><Trash2 className="h-4 w-4" /></button>
+                        </ConfirmDialog>
                       </div>
                     </div>
                   </div>
                 </article>
-              )
-            })}
-          </div>
-        )}
-      </div>
+              })}
+            </div>
+          )}
+        </section>
+      </main>
       <Dialog.Root open={renameAsset != null} onOpenChange={open => { if (!open) closeRename() }}>
         <Dialog.Portal>
           <Dialog.Overlay className={dialogOverlayClass} />

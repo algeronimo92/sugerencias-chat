@@ -69,7 +69,10 @@ def _media_filename(media_url: str) -> str:
 
 def _tenant_storage_segment() -> str | None:
     context = get_current_tenant()
-    return str(context.organization_id) if context else None
+    # `storage_path` es "<uuid>-<nombre>" y viene resuelto en el contexto, así
+    # que no cuesta una consulta por archivo servido. Cae al UUID pelado en los
+    # negocios anteriores a la columna.
+    return context.storage_path if context else None
 
 
 def _local_media_dir() -> Path:

@@ -16,8 +16,10 @@ from services.ai_jobs import (
     AIJobExpired,
     AIJobNotFound,
     finish_ai_job,
+    record_ai_job_step,
     start_ai_job,
 )
+from services.knowledge_search import search_knowledge_chunks
 
 
 router = webhooks_router()
@@ -28,7 +30,7 @@ def _raise_job_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail="Job IA no encontrado") from exc
     if isinstance(exc, AIJobExpired):
         raise HTTPException(status_code=410, detail="Job IA vencido") from exc
-    raise HTTPException(status_code=409, detail="Job IA no coincide con la operaciÃ³n") from exc
+    raise HTTPException(status_code=409, detail="Job IA no coincide con la operacion") from exc
 
 
 @router.get("/lead-raw")
@@ -96,7 +98,41 @@ async def analysis_context_webhook(
                 "current_revision": context["context_revision"],
             },
         )
+    await record_ai_job_step(x_job_id, "context_loaded")
     return {"operation": "analyst", "job_id": x_job_id, **context}
+
+
+@router.get("/rag-context")
+async def rag_context_webhook(
+    chat_id: str,
+    limit: int = Query(default=500, ge=1, le=500),
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Lead and message snapshot for a signed, tenant-scoped RAG job."""
+
+    if claims.job_id != x_job_id or claims.operation != "rag":
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+    try:
+        job = await start_ai_job(x_job_id, operation="rag", resource_id=chat_id)
+    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
+        _raise_job_http_error(exc)
+
+    context = await fetch_analysis_context(chat_id, limit=limit)
+    if context is None:
+        await finish_ai_job(x_job_id, status="failed", error="lead_not_found")
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if context["context_revision"] != job.context_revision:
+        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_ai_context",
+                "current_revision": context["context_revision"],
+            },
+        )
+    await record_ai_job_step(x_job_id, "context_loaded")
+    return {"operation": "rag", "job_id": x_job_id, **context}
 
 
 @router.post("/rag-search")
@@ -105,11 +141,7 @@ async def rag_search_webhook(
     x_job_id: str = Header(alias="X-Job-Id"),
     claims: AIJobClaims = Depends(require_ai_job_context),
 ):
-    """Contrato tenant-scoped para RAG.
-
-    El backend vectorial aislado aÃºn no existe. Fallar con 501 evita que el
-    workflow vuelva al vector store Supabase compartido por accidente.
-    """
+    """Retrieval lexical dentro del schema ligado al job RAG."""
 
     if claims.job_id != x_job_id or claims.operation != "rag":
         raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
@@ -123,11 +155,9 @@ async def rag_search_webhook(
     if current_revision != body.context_revision:
         await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
         raise HTTPException(status_code=409, detail={"code": "stale_ai_context"})
-    await finish_ai_job(x_job_id, status="failed", error="rag_backend_not_configured")
-    raise HTTPException(
-        status_code=501,
-        detail="RAG tenant-scoped no estÃ¡ configurado; el store compartido estÃ¡ deshabilitado",
-    )
+    matches = await search_knowledge_chunks(body.query, body.top_k)
+    await record_ai_job_step(x_job_id, "knowledge_searched")
+    return {"matches": matches, "count": len(matches)}
 
 
 @router.get("/catalog")
@@ -135,7 +165,7 @@ async def ai_catalog_webhook(
     x_job_id: str = Header(alias="X-Job-Id"),
     claims: AIJobClaims = Depends(require_ai_job_context),
 ):
-    """CatÃ¡logo del schema del job; no acepta tenant ni schema en el body."""
+    """Catalog from the job schema; tenant/schema are never accepted in input."""
 
     if claims.job_id != x_job_id or claims.operation not in {"rag", "analyst"}:
         raise HTTPException(status_code=403, detail="Job IA fuera de alcance")

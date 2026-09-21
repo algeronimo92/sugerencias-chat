@@ -162,11 +162,11 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
         onClick={() => setOpen(current => !current)}
         aria-label="Centro de notificaciones"
         title="Notificaciones"
-        className={`relative flex h-7 w-7 items-center justify-center rounded-md transition-colors ${open ? 'bg-white/15 text-white dark:bg-white/10 dark:text-wa-text-dark' : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'}`}
+        className={`relative flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${open ? 'bg-wa-primary/10 text-wa-primary-strong dark:bg-white/10 dark:text-wa-text-dark' : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'}`}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-wa-primary-strong dark:ring-wa-panel-dark">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white dark:ring-wa-panel-dark">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

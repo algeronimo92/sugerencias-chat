@@ -114,9 +114,8 @@ class LeadAnalysisWebhookBody(BaseModel):
     solo se actualiza lo que el agente resolvió en esa corrida."""
 
     chat_id: str
-    # RevisiÃ³n opaca obtenida junto con el contexto. Cuando viene informada,
-    # el backend rechaza resultados calculados sobre mensajes o datos del lead
-    # que ya cambiaron. Es opcional solo para el workflow legado.
+    # Opaque revision obtained with the context. The backend rejects results
+    # computed from lead or message data that has changed since then.
     context_revision: str | None = None
     job_id: str | None = None
     nombre: str | None = None
@@ -129,18 +128,17 @@ class LeadAnalysisWebhookBody(BaseModel):
     proxima_cita: datetime | None = None
     con_especialista: bool | None = None
 
-    # Si n8n intenta trasladar el UPDATE antiguo (que incluÃ­a
-    # conversacion_version/automatizacion_pausada) debe fallar de forma
-    # visible, no ignorar silenciosamente esos campos protegidos.
+    # Reject attempts to copy the old UPDATE, including protected conversation
+    # and automation state, instead of silently ignoring those fields.
     model_config = ConfigDict(extra="forbid")
 
 
 class LeadAnalysisPatch(BaseModel):
-    """Patch producido por el analista.
+    """Patch produced by the analyst.
 
-    ``model_fields_set`` distingue ausente (conservar) de ``null`` explÃ­cito
-    (limpiar una columna nullable). Los controles internos de conversaciÃ³n y
-    automatizaciones no forman parte de este contrato.
+    ``model_fields_set`` distinguishes absent (preserve) from explicit null
+    (clear a nullable column). Conversation and automation controls are not
+    part of this contract.
     """
 
     nombre: str | None = None

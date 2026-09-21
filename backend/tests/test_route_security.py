@@ -10,14 +10,28 @@ from services.auth_service import (
     verify_webhook_token,
     websocket_origin_allowed,
 )
+from services.platform_auth import get_current_platform_user
 
-AUTH_GUARDS = {get_current_user, require_admin, verify_webhook_token}
+# El panel de plataforma tiene su propia identidad (public.platform_users), así
+# que su guard es otro: sin incluirlo acá, sus rutas protegidas parecerían
+# abiertas y la prueba obligaría a declararlas públicas, que es justo lo
+# contrario de lo que son.
+AUTH_GUARDS = {
+    get_current_user,
+    require_admin,
+    verify_webhook_token,
+    get_current_platform_user,
+}
 
 PUBLIC_ROUTES = {
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("GET", "/api/auth/pin/status"),
     ("POST", "/api/auth/pin/login"),
+    # El login del panel no puede exigir sesión; el middleware de tenancy ya lo
+    # deja fuera del alcance de cualquier dominio de negocio.
+    ("POST", "/api/platform/auth/login"),
+    ("POST", "/api/platform/auth/logout"),
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/metrics"),

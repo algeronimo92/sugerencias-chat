@@ -11,9 +11,17 @@ export function formatExecutionDate(value: string | null) {
   return value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
 }
 
+/** Fecha local en 'YYYY-MM-DD' desplazada `days` días (negativo = pasado).
+ *  Local y no UTC a propósito: el backend interpreta el rango en la timezone
+ *  de negocio, así que "hoy" tiene que ser el hoy del usuario. */
+export function isoDateOffset(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function todayISODate() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return isoDateOffset(0)
 }
 
 export function executionTriggerLabel(value: AutomationTrigger) {

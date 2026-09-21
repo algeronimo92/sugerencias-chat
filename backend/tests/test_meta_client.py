@@ -112,6 +112,46 @@ async def test_send_text_strips_jid_suffix_and_carries_reply_context(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_send_contacts_builds_native_meta_contact_list(monkeypatch):
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+    )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({
+            "messages": [{"id": "wamid.CONTACTS"}],
+            "contacts": [{"wa_id": "51906471403"}],
+        }),
+    ])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
+
+    await meta_service.send_whatsapp_contacts(
+        "lead-1",
+        [
+            {"fullName": "Ana Torres", "phoneNumber": "+51 911 111 111"},
+            {"fullName": "Luis", "phoneNumber": "+51 922 222 222"},
+        ],
+        quoted={"wa_message_id": "wamid.ORIGINAL"},
+    )
+
+    payload = fake_client.calls[0]["json"]
+    assert payload["type"] == "contacts"
+    assert payload["context"] == {"message_id": "wamid.ORIGINAL"}
+    assert payload["contacts"] == [
+        {
+            "name": {"formatted_name": "Ana Torres", "first_name": "Ana", "last_name": "Torres"},
+            "phones": [{"phone": "+51911111111", "type": "CELL", "wa_id": "51911111111"}],
+        },
+        {
+            "name": {"formatted_name": "Luis", "first_name": "Luis"},
+            "phones": [{"phone": "+51922222222", "type": "CELL", "wa_id": "51922222222"}],
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_send_to_lid_only_lead_fails_explicitly(monkeypatch):
     """Un lead cuyo único identificador conocido es un @lid no se puede mandar
     directo por Meta (a diferencia de Evolution/Baileys, que lo resolvía a
@@ -563,27 +603,3 @@ def test_mediatype_from_content_type_defaults_to_document():
     assert mediatype_from_content_type("image/png") == "image"
 
 
-def test_template_parameter_identifiers_positional_deduplicates_positions():
-    assert meta_service.template_parameter_identifiers(
-        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}."
-    ) == ["1", "2"]
-
-
-def test_template_parameter_identifiers_named_keeps_each_occurrence():
-    assert meta_service.template_parameter_identifiers(
-        "Hola {{cliente}}, tu turno es {{fecha}}."
-    ) == ["cliente", "fecha"]
-
-
-def test_render_official_body_positional_reuses_value_for_repeated_position():
-    rendered = meta_service.render_official_body(
-        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}.", ["Ana", "martes"],
-    )
-    assert rendered == "Hola Ana, tu turno es martes. Gracias Ana."
-
-
-def test_render_official_body_named_substitutes_each_occurrence_in_order():
-    rendered = meta_service.render_official_body(
-        "Hola {{cliente}}, tu turno es {{fecha}}.", ["Ana", "martes"],
-    )
-    assert rendered == "Hola Ana, tu turno es martes."

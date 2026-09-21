@@ -10,15 +10,20 @@ const chat = (values: Partial<Chat>): Chat => ({
 } as Chat)
 
 describe('identidad visible del contacto', () => {
-  it('prioriza el nombre y luego el teléfono', () => {
+  it('prioriza el username y luego el pushname', () => {
+    expect(displayName(chat({ username: '@gporta.21', name: 'Gerson Portal' }))).toBe('@gporta.21')
+    expect(displayName(chat({ username: 'gporta.21', name: 'Gerson Portal' }))).toBe('@gporta.21')
     expect(displayName(chat({ name: 'Briss', phone: '51943663225' }))).toBe('Briss')
-    expect(displayName(chat({ phone: '51943663225' }))).toBe('51943663225')
   })
 
-  it('usa el UUID interno cuando tampoco existe teléfono', () => {
-    const lead = chat({})
+  it('usa el UUID interno cuando no existe username ni pushname', () => {
+    const lead = chat({ phone: '51943663225' })
 
     expect(displayName(lead)).toBe(`Lead #${lead.chat_id}`)
     expect(avatarInitial(lead)).toBe('#')
+  })
+
+  it('usa la primera letra útil del username en el avatar', () => {
+    expect(avatarInitial(chat({ username: '@gporta.21' }))).toBe('G')
   })
 })

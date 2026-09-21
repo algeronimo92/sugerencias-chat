@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 PHONE_SUFFIX = "@s.whatsapp.net"
 LID_SUFFIX = "@lid"
-_VALID_JID = re.compile(r"^[0-9]+@(s\.whatsapp\.net|lid)$")
+# El teléfono siempre son dígitos. El LID es numérico en Evolution/Baileys,
+# pero el BSUID de Meta (p.ej. "PE.1084026510784249") agrega un prefijo de
+# país y un punto -- se acepta igual porque para el LID no se interpretan
+# los caracteres, solo se usa como alias opaco.
+_VALID_JID = re.compile(r"^[0-9]+@s\.whatsapp\.net$|^[a-z0-9.]+@lid$")
 
 
 class InvalidWhatsAppIdentityError(ValueError):

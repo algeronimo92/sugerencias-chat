@@ -328,6 +328,27 @@ async def revoke_session_token(token: str | None) -> None:
         invalidate_session_cache(session_id=session_id)
 
 
+async def revoke_all_sessions_in_current_tenant() -> None:
+    """Revoca toda `auth_session` activa del tenant en contexto -- sin filtro
+    de usuario -- para cuando se suspende el negocio completo, no una cuenta
+    puntual (ver `tenancy/provisioning.suspend_organization`).
+
+    Debe llamarse dentro de un `tenant_context(...)` del negocio a suspender:
+    `get_sessionmaker()` aplica el schema del contextvar activo al abrir la
+    sesión, y `invalidate_session_cache()` sin argumentos limpia el cache en
+    memoria de ese mismo `organization_id` -- fuera de ese contexto revocaría
+    y cachearía contra el schema equivocado."""
+    now = utcnow()
+    async with get_sessionmaker()() as db:
+        await db.execute(
+            update(AuthSession)
+            .where(AuthSession.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        await db.commit()
+    invalidate_session_cache()
+
+
 async def revoke_all_for_user(user_id: int, *, include_devices: bool = True) -> None:
     now = utcnow()
     async with get_sessionmaker()() as db:

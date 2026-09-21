@@ -1,0 +1,723 @@
+{
+  "name": "rag",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-terra",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-terra",
+          "cachedResultUrl": ""
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 8000,
+          "reasoningEffort": "low",
+          "timeout": 60000,
+          "maxRetries": 2,
+          "promptCacheKey": "copiloto-ventas",
+          "serviceTier": "default"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        30672,
+        56240
+      ],
+      "id": "e017e7c8-1bf6-4319-9a56-5c5904b6ce34",
+      "name": "OpenAI Chat Model1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Busca fichas, politicas y guias del negocio autorizado para este job.",
+        "method": "POST",
+        "url": "={{ $('Config').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/rag-search' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-Context",
+              "value": "={{ $('normalizar solicitud RAG').item.json.tenant_context_token }}"
+            },
+            {
+              "name": "X-Job-Id",
+              "value": "={{ $('normalizar solicitud RAG').item.json.job_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query: $fromAI('query', 'Consulta para la base de conocimiento', 'string'),\n  context_revision: $('normalizar solicitud RAG').item.json.context_revision,\n  top_k: 5\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        30800,
+        56240
+      ],
+      "id": "f6ba307c-284b-4d39-a21c-d290b501b7d8",
+      "name": "RAG1"
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "sugerencia",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        28928,
+        56032
+      ],
+      "id": "d7a141a8-5ee8-4bbc-b894-2962fb4fe5d9",
+      "name": "Webhook1",
+      "webhookId": "0e50def2-d86d-4d7c-987a-b76a71518cdf"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        31584,
+        56016
+      ],
+      "id": "a168d89a-84a5-4477-8f1b-939945409ef3",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/rag-context' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('normalizar solicitud RAG').item.json.chat_id }}"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-Context",
+              "value": "={{ $('normalizar solicitud RAG').item.json.tenant_context_token }}"
+            },
+            {
+              "name": "X-Job-Id",
+              "value": "={{ $('normalizar solicitud RAG').item.json.job_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        29872,
+        55888
+      ],
+      "id": "a71db844-0cd2-4fe3-8429-59abe2e168db",
+      "name": "cargar contexto RAG",
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Devuelve el catalogo vigente del negocio autorizado. Consultalo antes de mencionar servicios o precios.",
+        "url": "={{ $('Config').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/catalog' }}",
+        "options": {},
+        "optimizeResponse": true,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-Context",
+              "value": "={{ $('normalizar solicitud RAG').item.json.tenant_context_token }}"
+            },
+            {
+              "name": "X-Job-Id",
+              "value": "={{ $('normalizar solicitud RAG').item.json.job_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        31088,
+        56240
+      ],
+      "id": "2ef7e453-ba05-4fdc-9f04-98ed29227894",
+      "name": "precios1"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"analisis\": { \"type\": \"string\" },\n    \"confianza\": { \"type\": \"string\", \"enum\": [\"alta\", \"media\", \"baja\"] },\n    \"senal_compra\": { \"type\": \"boolean\" },\n    \"alerta\": { \"type\": [\"string\", \"null\"] },\n    \"sugerencias\": {\n      \"type\": \"array\",\n      \"maxItems\": 3,\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"tactica\": { \"type\": \"string\" },\n          \"canal\": { \"type\": \"string\", \"enum\": [\"texto\", \"audio\"] },\n          \"texto\": { \"type\": \"string\" },\n          \"adjuntos\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"maxItems\": 3 },\n          \"motivo_adjuntos\": { \"type\": \"string\" },\n          \"porque\": { \"type\": \"string\" }\n        },\n        \"required\": [\"tactica\", \"canal\", \"texto\", \"adjuntos\", \"motivo_adjuntos\", \"porque\"],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"analisis\", \"confianza\", \"senal_compra\", \"alerta\", \"sugerencias\"],\n  \"additionalProperties\": false\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        31216,
+        56240
+      ],
+      "id": "d5a34155-9569-42d7-a08f-7e58ed8066d4",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        30320,
+        56016
+      ],
+      "id": "01aa118e-820c-4462-8882-7eb7151c58f1",
+      "name": "flyers1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Herramientas: 'precios' para TODO precio o pack (siempre, antes de citar cualquier cifra); 'RAG' para fichas, qué tratamiento aplica a cada problema, guiones y objeciones.\n\n<lead>\nEstado e información del lead (nombre, estado YA clasificado, tipo_objecion, servicio_interes, notas, con_especialista, contador_noshow, proxima_cita):\n{{ ({nombre: $json.nombre, estado: $json.estado, tipo_objecion: $json.tipo_objecion, servicio_interes: $json.servicio_interes, notas: $json.notas, con_especialista: $json.con_especialista, contador_noshow: $json.contador_noshow, proxima_cita: $json.proxima_cita}).toJsonString() }}\n</lead>\n\n<datos_temporales>\n- Fecha y hora actual: {{ $now.toISO() }}\n- Último mensaje enviado por: {{ $json.ultimo_emisor }}   (cliente | vendedor)\n- Horas desde el último mensaje: {{ Math.round(($now.toMillis() - new Date($json.ultimo_mensaje_at).getTime()) / 3600000 * 10) / 10 }}\n</datos_temporales>\n\n<recursos_disponibles>\n{{ ($json.recursos ?? []).toJsonString() }}\n</recursos_disponibles>\n\n<historial>\nConversación de WhatsApp (más antiguo arriba):\n{{ ($json.data ?? []).toJsonString() }}\n</historial>\n\n<indicacion_vendedor>\nIndicación puntual del vendedor para ESTA generación (vacío si no dio ninguna):\n{{ $('normalizar solicitud RAG').item.json.instruction || \"\" }}\n</indicacion_vendedor>\n\nAnaliza y devuelve el JSON según tu formato de salida.",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=# IDENTIDAD Y MISION\nEres el copiloto de ventas del negocio autorizado para este job. Asesoras a un vendedor humano: nunca escribes ni envias mensajes directamente al cliente y no cambias el estado del lead.\n\n# AISLAMIENTO\nUsa exclusivamente el lead, historial, catalogo y conocimiento obtenidos dentro del job actual. Nunca reutilices nombres, precios, moneda, ubicacion, politicas, servicios ni documentos de otro negocio. Si una herramienta no devuelve el dato, dilo y no lo inventes.\n\n# HERRAMIENTAS\n- precios: catalogo vigente y autorizado. Consultalo antes de citar un servicio o precio.\n- RAG: conocimiento, politicas, materiales y guias autorizados del negocio.\n\n# RESPUESTA\nEntrega solo el objeto exigido por el parser. Propone hasta tres jugadas concretas para el vendedor, adaptadas al estado y al ultimo mensaje. Cada sugerencia debe explicar por que conviene y puede incluir adjuntos solo si aparecen en recursos autorizados. Conserva un tono humano, claro y breve. No prometas resultados ni afirmes datos clinicos, comerciales o legales que no aparezcan en las herramientas."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        30784,
+        56016
+      ],
+      "id": "d0c6d60d-4015-40d9-951b-68feb5a31f6c",
+      "name": "Agente Copiloto Ventas1",
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "chat_id",
+              "value": "={{ $json.chat_id }}"
+            },
+            {
+              "key": "job_id",
+              "value": "={{ $json.job_id }}"
+            },
+            {
+              "key": "context_revision",
+              "value": "={{ $json.context_revision }}"
+            },
+            {
+              "key": "flow",
+              "value": "sugerencia"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        29152,
+        56032
+      ],
+      "id": "d7a2701b-b9ce-42f4-a819-35d5f33748df",
+      "name": "Execution Data1"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {
+          "maxOutputTokens": 8000,
+          "safetySettings": {
+            "values": [
+              {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        30544,
+        56240
+      ],
+      "id": "bc6011b0-c29f-4d17-abcc-d10301ee7f40",
+      "name": "Google Gemini Chat Model3"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.5",
+          "mode": "list",
+          "cachedResultName": "gpt-5.5",
+          "cachedResultUrl": ""
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        31296,
+        56448
+      ],
+      "id": "a96755aa-d956-4eb1-b1d8-ae5978e6568a",
+      "name": "OpenAI Chat Model5"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "operation",
+              "type": "string"
+            },
+            {
+              "name": "job_id",
+              "type": "string"
+            },
+            {
+              "name": "tenant_context_token",
+              "type": "string"
+            },
+            {
+              "name": "context_revision",
+              "type": "string"
+            },
+            {
+              "name": "chat_id",
+              "type": "string"
+            },
+            {
+              "name": "instruction",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        27376,
+        59520
+      ],
+      "id": "eebd4fa9-eb7c-47d3-92b2-838a70ff02ab",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "name": "normalizar solicitud RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1460,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst query = input.query || input;\nconst headers = input.headers || {};\nconst request = {\n  operation: query.operation || 'rag',\n  job_id: query.job_id || headers['x-job-id'],\n  tenant_context_token: input.query ? headers['x-tenant-context'] : query.tenant_context_token,\n  context_revision: query.context_revision,\n  chat_id: query.chat_id,\n  instruction: query.instruction || '',\n  invocation: input.query ? 'webhook' : 'subworkflow'\n};\nfor (const field of ['job_id', 'tenant_context_token', 'context_revision', 'chat_id']) {\n  if (request[field] === undefined || request[field] === null || String(request[field]).trim() === '') {\n    throw new Error('Falta input requerido: ' + field);\n  }\n}\nif (request.operation !== 'rag') throw new Error('operation debe ser rag');\nreturn [{ json: request }];"
+      }
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "name": "respuesta por webhook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1080,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "30000000-0000-4000-8000-000000000003",
+              "leftValue": "={{ $('normalizar solicitud RAG').item.json.invocation }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000004",
+      "name": "devolver resultado RAG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        -340
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000005",
+      "name": "contexto RAG vigente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -300,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "30000000-0000-4000-8000-000000000006",
+              "leftValue": "={{ $json.operation }}",
+              "rightValue": "rag",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "30000000-0000-4000-8000-000000000007",
+              "leftValue": "={{ String($json.job_id) }}",
+              "rightValue": "={{ String($('normalizar solicitud RAG').item.json.job_id) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "30000000-0000-4000-8000-000000000008",
+              "leftValue": "={{ String($json.context_revision) }}",
+              "rightValue": "={{ String($('normalizar solicitud RAG').item.json.context_revision) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000009",
+      "name": "preparar contexto RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "const context = $input.first().json;\nreturn [{ json: {\n  ...(context.lead || {}),\n  data: context.messages || [],\n  recursos: context.resources || [],\n  tenant_config: context.tenant_config || {},\n  job_id: context.job_id,\n  context_revision: context.context_revision,\n  message_cursor: context.message_cursor\n} }];"
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_DE_CONFIG",
+          "mode": "list",
+          "cachedResultName": "Config"
+        },
+        "options": {}
+      },
+      "id": "f0000000-b2b2-4000-8000-000000000001",
+      "name": "Config",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        29200,
+        55500
+      ]
+    }
+  ],
+  "connections": {
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "RAG1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "normalizar solicitud RAG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "normalizar solicitud RAG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "precios1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "flyers1": {
+      "main": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente Copiloto Ventas1": {
+      "main": [
+        [
+          {
+            "node": "respuesta por webhook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execution Data1": {
+      "main": [
+        [
+          {
+            "node": "cargar contexto RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente Copiloto Ventas1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "normalizar solicitud RAG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalizar solicitud RAG": {
+      "main": [
+        [
+          {
+            "node": "Execution Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "respuesta por webhook?": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "devolver resultado RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar contexto RAG": {
+      "main": [
+        [
+          {
+            "node": "contexto RAG vigente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "contexto RAG vigente?": {
+      "main": [
+        [
+          {
+            "node": "preparar contexto RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "preparar contexto RAG": {
+      "main": [
+        [
+          {
+            "node": "flyers1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d04a6150-026d-44cb-bbde-63d616938ae9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eaa95671179241194a1b6c88af919cdec9ae6ad1c2c579fcd668d9884ad68f89"
+  },
+  "nodeGroups": [],
+  "id": "rpSHUZd1Et3vkK4n",
+  "tags": []
+}

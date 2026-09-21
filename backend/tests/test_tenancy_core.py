@@ -17,6 +17,7 @@ from db.models import (
     KnowledgeDocument,
     Organization,
     OrganizationDomain,
+    PlatformSetting,
     TenantSchemaVersion,
     WebhookInbox,
     WhatsAppConnection,
@@ -150,6 +151,17 @@ async def test_explicit_factories_force_tenant_and_control_paths(monkeypatch) ->
     assert all(session.closed for session in sessions)
 
 
+@pytest.mark.asyncio
+async def test_tenant_session_rejects_cross_tenant_context() -> None:
+    token = set_current_tenant(TENANT_A)
+    try:
+        with pytest.raises(RuntimeError, match="different tenant"):
+            async with tenant_session(TENANT_B):
+                pass
+    finally:
+        reset_current_tenant(token)
+
+
 def _test_app() -> FastAPI:
     app = FastAPI()
 
@@ -175,7 +187,9 @@ def _test_app() -> FastAPI:
 
 def test_middleware_resolves_exact_host_and_fails_closed(monkeypatch) -> None:
     async def resolve(hostname: str):
-        return TENANT_A if hostname == TENANT_A.hostname else None
+        # Incluso si por error existiera un dominio de plataforma en la tabla,
+        # el middleware no debe servir rutas CRM desde ese host.
+        return TENANT_A if hostname in {TENANT_A.hostname, "platform.example.com"} else None
 
     monkeypatch.setattr(middleware_module, "resolve_tenant_by_hostname", resolve)
     client = TestClient(_test_app())
@@ -186,8 +200,10 @@ def test_middleware_resolves_exact_host_and_fails_closed(monkeypatch) -> None:
     assert get_current_tenant() is None
 
     assert client.get("/private", headers={"host": "unknown.example.com"}).status_code == 404
+    assert client.get("/private", headers={"host": "platform.example.com"}).status_code == 404
     assert client.get("/private", headers={"host": "127.0.0.1"}).status_code == 400
     assert client.get("/health", headers={"host": "unknown.example.com"}).status_code == 200
+    assert client.get("/health", headers={"host": "platform.example.com"}).status_code == 200
 
 
 def test_control_and_tenant_models_declare_the_correct_schema() -> None:
@@ -197,6 +213,7 @@ def test_control_and_tenant_models_declare_the_correct_schema() -> None:
         WhatsAppConnection,
         TenantSchemaVersion,
         WebhookInbox,
+        PlatformSetting,
     ):
         assert model.__table__.schema == "public"
     assert AIJob.__table__.schema is None

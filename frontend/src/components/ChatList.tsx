@@ -18,9 +18,9 @@ import { Skeleton } from './ui/Skeleton'
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
 const segmentClass = (active: boolean) =>
-  `flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+  `flex-1 rounded-lg px-3 py-2 text-xs font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
     active
-      ? 'bg-white text-wa-text shadow-sm dark:bg-wa-active-dark dark:text-wa-text-dark'
+      ? 'bg-white text-wa-primary-strong shadow-sm ring-1 ring-black/[0.03] dark:bg-wa-active-dark dark:text-wa-primary dark:ring-white/[0.04]'
       : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
   }`
 
@@ -51,7 +51,7 @@ interface Props {
   onConnectWhatsapp?: () => void
 }
 
-const ROW_ESTIMATE_PX = 68
+const ROW_ESTIMATE_PX = 72
 const HIGHLIGHT_DURATION_MS = 2000
 // Margen antes de mostrar el aviso de conexión degradada: cubre el parpadeo
 // del socket durante el arranque y las reconexiones automáticas (3s de retry).
@@ -342,34 +342,45 @@ export function ChatList({
 
 
   return (
-    <div className="flex h-full flex-col border-r border-wa-border bg-white dark:border-wa-muted-dark/30 dark:bg-wa-panel-dark">
+    <div className="flex h-full flex-col overflow-hidden rounded-none border border-wa-border bg-white shadow-sm md:rounded-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {/* Header */}
-      <div className="border-b border-wa-border px-3 py-3 dark:border-wa-border-dark">
-        <div className="-mx-3 -mt-3 mb-3 flex h-16 shrink-0 items-center justify-between border-b border-wa-border bg-wa-head px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
-          <h1 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Leads</h1>
+      <div className="border-b border-wa-border p-4 dark:border-wa-border-dark">
+        <div className="mb-4 flex shrink-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-[-0.025em] text-wa-text dark:text-white">Conversaciones</h1>
+              {!isLoading && (
+                <span className="rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-bold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
+                  {chats.length}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">Gestiona y responde a tus leads</p>
+          </div>
           <Button
-            variant="ghost"
+            variant="primary"
             size="sm"
             onClick={() => {
               setCreateError(null)
               setIsCreating(true)
             }}
-            aria-label="Agregar lead"
+            aria-label="Nuevo lead"
+            className="h-9 shrink-0 rounded-xl px-3 shadow-[0_8px_18px_-10px_rgba(0,168,132,0.8)]"
           >
             <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
-            Agregar
+            Nuevo
           </Button>
         </div>
         {/* Búsqueda en píldora gris, como WhatsApp */}
         <div className="relative">
-          <Search className="w-4 h-4 text-wa-muted dark:text-wa-muted-dark absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" />
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Buscar lead..."
+            placeholder="Buscar por nombre, teléfono o mensaje"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-full pl-10 pr-10 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
+            className="h-11 w-full rounded-xl border border-wa-border bg-wa-field/70 pl-10 pr-10 text-sm text-wa-text outline-none transition-all placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
           />
           {/* Vaciar la búsqueda: en el teléfono borrar a mano lo escrito es
               incómodo y el teclado tapa media pantalla. Solo aparece con algo
@@ -389,7 +400,7 @@ export function ChatList({
             </button>
           )}
         </div>
-        <div className="mt-2 flex rounded-lg bg-wa-field p-1 dark:bg-wa-field-dark" role="group" aria-label="Filtrar leads">
+        <div className="mt-3 flex rounded-xl bg-wa-field p-1 dark:bg-wa-field-dark" role="group" aria-label="Filtrar leads">
           <button
             type="button"
             onClick={() => onFilterChange('all')}
@@ -423,7 +434,7 @@ export function ChatList({
         <button
           type="button"
           onClick={() => setShowFilters((value) => !value)}
-          className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
             showFilters || activeAdvancedFilterCount > 0
               ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary'
               : 'border-wa-border text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark'
@@ -439,7 +450,7 @@ export function ChatList({
         </button>
 
         {showFilters && (
-          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-lg border border-wa-border bg-wa-field/60 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/40">
+          <div className="mt-2.5 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">Etapas</span>
               {activeAdvancedFilterCount > 0 && (
@@ -578,7 +589,7 @@ export function ChatList({
       )}
 
       {/* List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto py-1.5">
         {isLoading && (
           <div aria-label="Cargando leads" className="px-3 py-2 space-y-1">
             {Array.from({ length: 7 }).map((_, i) => (

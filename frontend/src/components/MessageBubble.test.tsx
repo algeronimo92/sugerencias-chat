@@ -37,6 +37,7 @@ interface Options {
   onToggleSelect?: () => void
   onRetry?: () => void
   onDiscard?: () => void
+  onReact?: (emoji: string) => void
   onDownload?: () => void
   onPin?: () => void
   onUnpin?: () => void
@@ -54,6 +55,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onToggleSelect = options.onToggleSelect ?? vi.fn()
   const onRetry = options.onRetry ?? vi.fn()
   const onDiscard = options.onDiscard ?? vi.fn()
+  const onReact = options.onReact ?? vi.fn()
   const onDownload = options.onDownload ?? vi.fn()
   const onPin = options.onPin ?? vi.fn()
   const onUnpin = options.onUnpin ?? vi.fn()
@@ -74,7 +76,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onRetry={onRetry}
       onDiscard={onDiscard}
       onStartReply={vi.fn()}
-      onReact={vi.fn()}
+      onReact={onReact}
       onEdit={onEdit}
       onDelete={vi.fn()}
       onForward={onForward}
@@ -89,7 +91,7 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       editDeleteSupported={options.editDeleteSupported}
     />,
   )
-  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onDownload, onPin, onUnpin }
+  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onReact, onDownload, onPin, onUnpin }
 }
 
 describe('MessageBubble', () => {
@@ -501,6 +503,34 @@ describe('MessageBubble', () => {
     renderBubble({ payload: { forwarded: true } })
 
     expect(screen.getByText('Reenviado')).toBeInTheDocument()
+  })
+
+  it('agrupa varias reacciones y muestra quién puso cada una', async () => {
+    const user = userEvent.setup()
+    renderBubble({
+      reactions: [
+        { emoji: '👍', from_me: true },
+        { emoji: '👍', from_me: false },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Ver 2 reacciones' }))
+
+    const dialog = screen.getByRole('dialog', { name: '2 reacciones' })
+    expect(within(dialog).getByText('Tú')).toBeInTheDocument()
+    expect(within(dialog).getByText('Ana Torres')).toBeInTheDocument()
+    expect(within(dialog).getAllByLabelText('Reaccionó con 👍')).toHaveLength(2)
+  })
+
+  it('permite quitar la reacción propia desde el detalle', async () => {
+    const user = userEvent.setup()
+    const onReact = vi.fn()
+    renderBubble({ reactions: [{ emoji: '❤️', from_me: true }] }, { onReact })
+
+    await user.click(screen.getByRole('button', { name: 'Ver 1 reacción' }))
+    await user.click(screen.getByRole('button', { name: /Tú/ }))
+
+    expect(onReact).toHaveBeenCalledWith('')
   })
 
   it('en modo selección la burbuja se tilda al tocarla y esconde las acciones', async () => {

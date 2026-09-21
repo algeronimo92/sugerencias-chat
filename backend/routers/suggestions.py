@@ -1,25 +1,64 @@
 from fastapi import APIRouter, HTTPException
-from db.models import LeadStage as DbLeadStage
-from models.schemas import SuggestionRequest, SuggestionResponse, SuggestionStatus
+from models.schemas import AnalysisRequest, SuggestionRequest, SuggestionResponse, SuggestionStatus
 from services.db_service import (
     cache_suggestion_if_current,
     get_cached_suggestion,
     get_suggestion_status,
-    update_lead_stage,
 )
-from services.n8n_service import call_n8n
+from services.n8n_service import call_n8n, call_n8n_analyst
 from services.ai_context import fetch_context_revision
 from services.ai_job_tokens import issue_ai_job_token
-from services.ai_jobs import AIJobConflict, create_ai_job, finish_ai_job
+from services.ai_jobs import AIJobConflict, create_ai_job, finish_ai_job, get_ai_job
 from tenancy.context import get_current_tenant
-from services.ws_manager import manager
-from services.automation_service import notify_automations_scheduled
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
+
+
+@router.post("/analyze")
+async def analyze_lead_on_demand(body: AnalysisRequest):
+    """Run the analyst only after an authenticated user asks for it."""
+
+    context_revision = await fetch_context_revision(body.chat_id)
+    if context_revision is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if get_current_tenant() is None:
+        raise HTTPException(status_code=503, detail="El contexto tenant es obligatorio para analizar")
+    try:
+        job, tenant = await create_ai_job(
+            "analyst",
+            body.chat_id,
+            chat_id=body.chat_id,
+            context_revision=context_revision,
+            request_metadata={"source": "user_request"},
+        )
+        tenant_token = issue_ai_job_token(
+            tenant.organization_id, job.id, "analyst", job.expires_at
+        )
+        await call_n8n_analyst(
+            body.chat_id,
+            job_id=job.id,
+            context_revision=context_revision,
+            tenant_context_token=tenant_token,
+        )
+    except AIJobConflict as exc:
+        raise HTTPException(status_code=503, detail="No se pudo crear el job IA") from exc
+    except Exception as exc:
+        if "job" in locals():
+            await finish_ai_job(job.id, status="failed", error="n8n_call_failed")
+        logger.exception("Error llamando al analista para el chat %s", body.chat_id)
+        raise HTTPException(status_code=502, detail="Error llamando al workflow analista") from exc
+
+    persisted = await get_ai_job(job.id)
+    if persisted is None:
+        raise HTTPException(status_code=502, detail="El job IA no pudo verificarse")
+    if persisted.status != "applied":
+        await finish_ai_job(job.id, status="failed", error="workflow_did_not_apply")
+        raise HTTPException(status_code=502, detail="El analista no aplico un resultado validado")
+    return persisted.result or {"status": "ok", "job_id": job.id, "applied": True}
 
 
 @router.get("/{chat_id}", response_model=SuggestionStatus)
@@ -83,6 +122,20 @@ async def get_suggestions(body: SuggestionRequest):
         logger.exception("Error llamando a n8n para el chat %s", body.chat_id)
         raise HTTPException(status_code=502, detail="Error llamando al workflow de n8n")
 
+    if job is not None:
+        persisted_job = await get_ai_job(job.id)
+        completed_steps = (
+            (persisted_job.request_metadata or {}).get("completed_steps", [])
+            if persisted_job is not None
+            else []
+        )
+        if "context_loaded" not in completed_steps:
+            await finish_ai_job(job.id, status="failed", error="scoped_context_not_loaded")
+            raise HTTPException(
+                status_code=502,
+                detail="El workflow RAG no uso el contexto tenant validado",
+            )
+
     cache_status = await cache_suggestion_if_current(
         body.chat_id, result.model_dump(), context_revision
     )
@@ -95,40 +148,11 @@ async def get_suggestions(body: SuggestionRequest):
             await finish_ai_job(job.id, status="failed", error="stale_ai_context")
         raise HTTPException(
             status_code=409,
-            detail={"code": "stale_ai_context", "message": "El chat cambiÃ³ durante la generaciÃ³n"},
+            detail={"code": "stale_ai_context", "message": "El chat cambio durante la generacion"},
         )
 
-    # Si el workflow manda `output.estado`, esa decisión es la única fuente
-    # de verdad para la etapa: se persiste al terminar la ejecución y luego
-    # se avisa a todos los paneles abiertos. El workflow actual ya no lo
-    # incluye siempre (ver senal_compra/alerta en SuggestionResponse), así
-    # que si no viene no se toca la etapa del lead.
-    stage_update = None
-    if result.estado is not None:
-        stage_update = await update_lead_stage(
-            body.chat_id,
-            DbLeadStage(result.estado),
-            actor_type="agent",
-            metadata={"confidence": result.confianza, "reason": result.analisis},
-            include_chat=False,
-        )
-        if stage_update is None:
-            raise HTTPException(status_code=404, detail="Lead no encontrado")
-
-    if result.estado is not None:
-        await manager.broadcast(
-            {
-                "type": "chats_updated",
-                "chat_id": body.chat_id,
-                "reason": "stage_changed",
-                "lead_stage_updated": {
-                    "chat_id": body.chat_id,
-                    "stage": result.estado,
-                },
-            }
-        )
-        if stage_update:
-            await notify_automations_scheduled(stage_update.get("automations_scheduled", 0))
+    # RAG only advises the seller. A legacy ``estado`` output remains in the
+    # response for compatibility but cannot mutate the lead stage.
     if job is not None:
         await finish_ai_job(job.id, status="succeeded", result=result.model_dump(mode="json"))
     return result

@@ -6,7 +6,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = next(iter(sorted(ROOT.glob("rag*.json"))), None)
-pytestmark = pytest.mark.skipif(WORKFLOW is None, reason="El workflow local no se versiona")
+LEGACY_INGESTION_PRESENT = False
+if WORKFLOW is not None:
+    LEGACY_INGESTION_PRESENT = "Switch Control type1" in WORKFLOW.read_text(encoding="utf-8")
+pytestmark = pytest.mark.skipif(
+    not LEGACY_INGESTION_PRESENT,
+    reason="la ingesta Evolution ya no forma parte del workflow RAG",
+)
 
 
 def test_priority_types_have_routes_and_fallback_stays_last():

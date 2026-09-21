@@ -9,12 +9,21 @@ async def active_connection() -> str:
     """Nombre de la conexión de WhatsApp en uso, tal como lo reportan los
     mensajes entrantes (``whatsapp_identities.instance``).
 
-    Se lee de su propia clave para no depender de Evolution: mientras no se
-    configure, se usa el nombre de instancia de Evolution, que es lo que
-    traen los datos existentes.
+    Se lee de su propia clave para permitir un override manual; si no se
+    configura, se deriva sola según el proveedor conectado: el
+    ``phone_number_id`` de Meta Cloud API, o si no, el nombre de instancia de
+    Evolution (compatibilidad con los alias que ya existían de esa etapa).
     """
-    values = await get_effective_many(("whatsapp_active_connection", "evolution_instance"))
-    return (values["whatsapp_active_connection"] or values["evolution_instance"]).strip()
+    values = await get_effective_many((
+        "whatsapp_active_connection",
+        "meta_phone_number_id",
+        "evolution_instance",
+    ))
+    return (
+        values["whatsapp_active_connection"]
+        or values["meta_phone_number_id"]
+        or values["evolution_instance"]
+    ).strip()
 
 
 async def connection_scope() -> tuple[str, ...] | None:

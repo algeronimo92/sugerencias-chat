@@ -12,7 +12,7 @@ import pytest
 
 from main import app
 
-WORKFLOWS = sorted((Path(__file__).resolve().parent.parent.parent / "docs").glob("rag*.json"))
+WORKFLOWS = sorted((Path(__file__).resolve().parent / "fixtures" / "n8n").glob("*.json"))
 
 # Nodo Postgres -> endpoint que lo reemplaza.
 REPLACEMENTS = {
@@ -40,8 +40,8 @@ def _postgres_nodes(path: Path) -> set[str]:
 
 @pytest.mark.skipif(not WORKFLOWS, reason="los workflows no están en este checkout")
 @pytest.mark.parametrize("workflow", WORKFLOWS, ids=lambda path: path.name)
-def test_every_postgres_node_has_a_documented_endpoint(workflow: Path):
-    assert _postgres_nodes(workflow) <= set(REPLACEMENTS)
+def test_workflows_do_not_access_postgres_directly(workflow: Path):
+    assert _postgres_nodes(workflow) == set()
 
 
 def test_the_replacement_endpoints_exist():

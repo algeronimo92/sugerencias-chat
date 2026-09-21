@@ -62,6 +62,11 @@ class Organization(Base):
         Text, nullable=False, default="provisioning", server_default="provisioning"
     )
     schema_name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # Carpeta del negocio en el almacenamiento de objetos: "<uuid>-<nombre>".
+    # Se calcula al aprovisionar y no se vuelve a tocar -- el nombre está solo
+    # para reconocerlo en la consola de MinIO, y recalcularlo al renombrar el
+    # negocio dejaría huérfanos todos sus archivos anteriores.
+    storage_prefix: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -164,6 +169,88 @@ class TenantSchemaVersion(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class PlatformSetting(Base):
+    """Credencial o configuración verdaderamente global de la plataforma —no
+    de un negocio—, como la app de Meta compartida (Tech Provider) que todos
+    los tenants usan para el Embedded Signup, la clave de cifrado o valores de
+    infraestructura. Distinta de `app_settings`, que vive dentro de cada
+    schema tenant y es por-negocio (ver services/settings_service.py).
+
+    El valor siempre viaja cifrado (a diferencia de `app_settings.value`, que
+    solo cifra las keys marcadas `secret=True`): acá no hay configuración en
+    claro, por eso la columna se llama `encrypted_value` y no `value`. Todavía
+    no tiene lector/escritor propio -sigue sin consumidores- porque nada migró
+    a este plano aún; ver docs/multi-tenant-saas-plan.md sección 3.
+    """
+
+    __tablename__ = "platform_settings"
+    __table_args__ = ({"schema": "public"},)
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    encrypted_value: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PlatformUser(Base):
+    """Operador de la plataforma: da de alta y administra negocios.
+
+    Vive en `public` y **no** es un usuario de ningún CRM. Los `users` de un
+    negocio están dentro de su schema y su rol `admin` solo manda ahí: que el
+    operador tuviera identidad de negocio convertiría cualquier CRM comprometido
+    en una vía de entrada al panel de todos los demás (ver
+    docs/multi-tenant-saas-plan.md sección 5.2).
+    """
+
+    __tablename__ = "platform_users"
+    __table_args__ = ({"schema": "public"},)
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlatformSession(Base):
+    """Sesión del panel de plataforma, separada de `auth_sessions`.
+
+    Deliberadamente más simple que la del CRM: sin dispositivos de confianza,
+    sin PIN y sin rotación de token. Son pocas sesiones, de vida corta y de
+    gente con permisos amplios; cuanto menos superficie, mejor.
+    """
+
+    __tablename__ = "platform_sessions"
+    __table_args__ = ({"schema": "public"},)
+
+    id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    platform_user_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("public.platform_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WebhookInbox(Base):

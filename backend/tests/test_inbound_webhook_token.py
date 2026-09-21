@@ -23,11 +23,11 @@ def configured_token(monkeypatch):
     """Sustituye la resolución del token, que normalmente consulta la base."""
 
     def _set(value: str) -> None:
-        async def _get_effective(key: str) -> str:
+        async def _platform_setting(key: str) -> str:
             assert key == "inbound_webhook_token"
             return value
 
-        monkeypatch.setattr("services.settings_service.get_effective", _get_effective)
+        monkeypatch.setattr("services.platform_settings.platform_setting", _platform_setting)
 
     return _set
 

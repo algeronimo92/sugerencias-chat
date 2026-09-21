@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models.schemas import SendTemplateRequest, StickerRequest
+from models.schemas import ContactShareItem, SendContactsRequest, SendTemplateRequest, StickerRequest
 from routers import chats, webhooks
 from models.webhook_schemas import NewMessageWebhookBody
 from services import chat_messaging
@@ -56,6 +56,33 @@ async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast
 
     assert exc.value.status_code == 400
     enqueue.assert_not_awaited()
+
+
+async def test_contacts_are_normalized_and_queued_as_one_message(monkeypatch, broadcast):
+    patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
+    patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
+    enqueue = AsyncMock(return_value=[{"id": 8, "status": "PENDING"}])
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+
+    result = await chats.send_contacts(
+        CHAT_ID,
+        SendContactsRequest(contacts=[
+            ContactShareItem(full_name="Ana Torres", phone_number="987 654 321"),
+            ContactShareItem(full_name="Luis Pérez", phone_number="+51 912 345 678"),
+        ]),
+        SELLER,
+    )
+
+    assert result == {"id": 8, "status": "PENDING"}
+    enqueue.assert_awaited_once_with(CHAT_ID, [{
+        "content": None,
+        "payload": {"type": "contact", "contacts": [
+            {"fullName": "Ana Torres", "phoneNumber": "+51987654321"},
+            {"fullName": "Luis Pérez", "phoneNumber": "+51912345678"},
+        ]},
+        "reply_to": None,
+    }], actor_user_id=SELLER.id)
 
 
 async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypatch, broadcast):

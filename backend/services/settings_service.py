@@ -26,6 +26,10 @@ class SettingDef:
     group_label: str
     secret: bool
     boolean: bool = False
+    # Sigue resolviéndose (DB/env) y siendo escribible por API, pero no se
+    # lista en la pestaña de configuración: es un ajuste interno que el
+    # usuario final no debe tocar.
+    hidden: bool = False
 
 
 # Fuente de verdad de qué keys son editables desde la app. Agregar una nueva
@@ -33,6 +37,7 @@ class SettingDef:
 # — el resto (endpoint, UI) las recorre genéricamente.
 SETTING_DEFS: list[SettingDef] = [
     SettingDef("n8n_webhook_url", "URL del webhook", "n8n", "n8n (sugerencias IA)", secret=False),
+    SettingDef("n8n_analyst_webhook_url", "URL del analista", "n8n", "n8n (sugerencias IA)", secret=False),
     SettingDef("n8n_webhook_token", "Token de autenticación", "n8n", "n8n (sugerencias IA)", secret=True),
     SettingDef(
         "inbound_webhook_token",
@@ -43,10 +48,11 @@ SETTING_DEFS: list[SettingDef] = [
     ),
     SettingDef(
         "whatsapp_active_connection",
-        "Conexión activa (vacío = la instancia de Evolution)",
+        "Conexión activa (vacío = se detecta sola: Meta)",
         "whatsapp",
         "WhatsApp (conexión de los leads)",
         secret=False,
+        hidden=True,
     ),
     SettingDef(
         "meta_app_id",
@@ -58,6 +64,13 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef(
         "meta_app_secret",
         "App Secret (Tech Provider, para Embedded Signup)",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=True,
+    ),
+    SettingDef(
+        "meta_verify_token",
+        "Verify Token (challenge de verificación del webhook)",
         "meta",
         "Meta Cloud API (WhatsApp)",
         secret=True,
@@ -213,6 +226,8 @@ async def list_settings() -> list[dict]:
     db_values = await _db_values()
     items = []
     for d in SETTING_DEFS:
+        if d.hidden:
+            continue
         db_value = db_values.get(d.key)
         effective = db_value if db_value else _env_default(d.key)
         items.append(

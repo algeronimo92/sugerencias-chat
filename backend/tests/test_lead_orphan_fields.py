@@ -109,6 +109,7 @@ def test_chat_schema_exposes_the_orphan_fields():
     """El DTO es lo único que el frontend ve: si un campo no está acá, la ficha
     no puede mostrarlo por más que la columna exista."""
     for field in (
+        "username",
         "con_especialista",
         "razon_perdido",
         "fecha_recontacto",

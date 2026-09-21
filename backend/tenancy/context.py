@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 import re
+import unicodedata
 from typing import Iterator
 from uuid import UUID
 
@@ -31,16 +32,55 @@ def validate_schema_name(schema_name: str) -> str:
     return schema_name
 
 
+STORAGE_SEGMENT_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-[a-z0-9]+(-[a-z0-9]+)*)?$")
+_STORAGE_SLUG_MAX = 40
+
+
+def _slugify(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")
+    return slug[:_STORAGE_SLUG_MAX].strip("-")
+
+
+def build_storage_segment(organization_id: UUID, name: str) -> str:
+    """Carpeta del negocio en el almacenamiento de objetos.
+
+    Lleva el nombre además del UUID solo para poder reconocer el negocio en la
+    consola de MinIO. El UUID va primero y es lo que la hace única: el nombre es
+    decorativo y **no** se recalcula nunca, porque la ruta se guarda una sola vez
+    (``organizations.storage_prefix``). Si el negocio se renombra, la carpeta
+    conserva el nombre viejo y los archivos siguen resolviendo; derivarla del
+    nombre actual dejaría huérfano todo lo subido antes del cambio.
+    """
+
+    slug = _slugify(name)
+    return f"{organization_id}-{slug}" if slug else str(organization_id)
+
+
+def validate_storage_segment(segment: str) -> str:
+    if not STORAGE_SEGMENT_RE.fullmatch(segment):
+        raise ValueError("invalid tenant storage segment")
+    return segment
+
+
 @dataclass(frozen=True, slots=True)
 class TenantContext:
     organization_id: UUID
     schema_name: str
     hostname: str
+    storage_segment: str | None = None
 
     def __post_init__(self) -> None:
         validate_schema_name(self.schema_name)
         if not self.hostname or self.hostname != self.hostname.lower():
             raise ValueError("tenant hostname must be normalized")
+        if self.storage_segment is not None:
+            validate_storage_segment(self.storage_segment)
+
+    @property
+    def storage_path(self) -> str:
+        """Los negocios anteriores a la columna usan el UUID pelado."""
+        return self.storage_segment or str(self.organization_id)
 
 
 _current_tenant: ContextVar[TenantContext | None] = ContextVar(

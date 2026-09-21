@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from services.automation_rules import render_variables
 from services.db_service import fetch_chat, lead_exists
 from services.message_outbox import enqueue_messages
-from services.meta_service import render_official_body, template_parameter_identifiers
 from services.template_service import list_templates, record_template_use
 from services.template_delivery import build_internal_template_items
+from services.template_validation import render_official_body, template_parameter_identifiers
 from services.whatsapp_rules import (
     MAX_TEXT_LENGTH,
     interactive_choices_summary,

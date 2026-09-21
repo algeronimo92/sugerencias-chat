@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services import meta_service
 from services.meta_service import MetaApiError
 from services.settings_service import list_settings, update_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -52,6 +56,9 @@ async def post_meta_embedded_signup(body: MetaEmbeddedSignupRequest):
     try:
         await meta_service.complete_embedded_signup(body.code, body.waba_id, body.phone_number_id)
     except MetaApiError as e:
+        # El detail viaja al frontend, pero un proxy intermedio puede reemplazar
+        # la respuesta 502 por su propia pantalla de error y perderlo.
+        logger.error("Meta rechazó el embedded signup: %s | error=%s", e, e.error)
         raise HTTPException(status_code=502, detail=str(e))
 
     return await list_settings()

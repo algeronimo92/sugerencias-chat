@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Activity, AlertTriangle, Ban, Bot, CheckCircle2, ChevronDown, Clock3, Copy,
-  GitBranch, History, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, ShieldCheck,
-  Trash2, Upload, XCircle,
+  FileJson, GitBranch, History, Layers3, Loader2, MessageCircle, Pencil, Plus, Power, RotateCcw, Save, ShieldCheck,
+  Sparkles, Trash2, XCircle,
 } from 'lucide-react'
 import type {
   AutomationAction, AutomationActionResult, AutomationActionType, AutomationConditions, AutomationExecution,
@@ -193,6 +193,8 @@ export function AutomationsPage() {
   const isSaving = create.isPending || update.isPending
   const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
+  const activeRulesCount = rules.filter(rule => rule.is_active).length
+  const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
   const hasCustomHistoryFilters = historyRuleId !== null || historyStatus !== null || !hideSkipped
     || historyActive !== null || historyDateFrom !== today || historyDateTo !== today
@@ -335,29 +337,43 @@ export function AutomationsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-wa-app p-4 dark:bg-wa-app-dark sm:p-6">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div><div className="flex items-center gap-2"><Bot className="h-5 w-5 text-wa-primary-strong" /><h1 className="text-xl font-semibold text-wa-text dark:text-white">Automatizaciones</h1></div><p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">Reglas simples, seguras y auditables para el trabajo comercial.</p></div>
-          <div className="flex items-center gap-2">
-            {tab === 'flows' && <button type="button" onClick={() => setImportFlowOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Upload className="h-4 w-4" />Importar JSON</button>}
-            <button type="button" onClick={() => tab === 'flows' ? setFlowBuilder({}) : openCreate()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-sm font-semibold text-white hover:bg-wa-primary-strong"><Plus className="h-4 w-4" />{tab === 'flows' ? 'Nuevo flujo visual' : 'Nueva automatización'}</button>
+    <div className="relative h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
+      <main className="relative mx-auto max-w-[1240px] px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
+        <header className="flex flex-col gap-5" style={{ marginBottom: 24 }}>
+          <div className="flex flex-wrap items-end justify-between gap-5">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-wa-primary-strong dark:text-wa-primary">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-wa-primary/12"><Sparkles className="h-4 w-4" /></span>
+                Centro de automatización
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-wa-text dark:text-white">Automatizaciones</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Diseña reglas y flujos visuales para acelerar el seguimiento comercial de forma segura y auditable.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {tab === 'flows' && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
+              <button type="button" onClick={() => tab === 'flows' ? setFlowBuilder({}) : openCreate()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'flows' ? 'Nuevo flujo visual' : 'Nueva automatización'}</button>
+            </div>
           </div>
-        </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
+            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Automatizaciones</p><p className="mt-1 text-xl font-bold text-wa-text dark:text-white">{rules.length}</p></div>
+            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Activas</p><p className="mt-1 text-xl font-bold text-wa-primary-strong dark:text-wa-primary">{activeRulesCount}</p></div>
+            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Ejecuciones históricas</p><p className="mt-1 text-xl font-bold text-wa-text dark:text-white">{totalExecutions.toLocaleString('es-PE')}</p></div>
+          </div>
+        </header>
 
-        <div className="mb-4 flex w-fit rounded-lg bg-wa-border p-1 dark:bg-wa-head-dark">
-          <button type="button" onClick={() => setTab('rules')} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${tab === 'rules' ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}><GitBranch className="h-3.5 w-3.5" />Reglas ({simpleRules.length})</button>
-          <button type="button" onClick={() => setTab('flows')} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${tab === 'flows' ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}><Bot className="h-3.5 w-3.5" />Flujos visuales ({visualRules.length})</button>
-          <button type="button" onClick={() => setTab('history')} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${tab === 'history' ? 'bg-white text-wa-text shadow dark:bg-wa-active-dark dark:text-white' : 'text-wa-muted dark:text-wa-muted-dark'}`}><History className="h-3.5 w-3.5" />Historial ({executions.length})</button>
-        </div>
+        <nav className="mb-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-wa-border bg-white/75 p-1.5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/75" aria-label="Secciones de automatizaciones">
+          <button type="button" onClick={() => setTab('rules')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'rules' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><GitBranch className="h-3.5 w-3.5" />Reglas <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'rules' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{simpleRules.length}</span></button>
+          <button type="button" onClick={() => setTab('flows')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'flows' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><Layers3 className="h-3.5 w-3.5" />Flujos visuales <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'flows' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{visualRules.length}</span></button>
+          <button type="button" onClick={() => setTab('history')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'history' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><History className="h-3.5 w-3.5" />Historial <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'history' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{executions.length}</span></button>
+        </nav>
 
         {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
         {tab === 'rules' ? (
           isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : simpleRules.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">Todavía no hay automatizaciones</p><p className="mt-1 text-xs text-wa-muted">Crea la primera regla para asignar, notificar o programar seguimientos.</p></div>
-          ) : <div className="grid gap-3 lg:grid-cols-2">{simpleRules.map(rule => (
-            <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border opacity-75 dark:border-wa-border-dark'}`}>
+          ) : <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{simpleRules.map(rule => (
+            <article key={rule.id} className={`rounded-2xl border bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-wa-panel-dark/90 ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border opacity-75 dark:border-wa-border-dark'}`}>
               <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : 'bg-wa-field text-wa-muted dark:bg-wa-head-dark'}`}><Bot className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-xs text-wa-muted">Cuando: {triggerLabel(rule.trigger_type)}{rule.trigger_config.minutes ? ` · ${rule.trigger_config.minutes} min` : ''}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex gap-1"><button type="button" onClick={() => openEdit(rule)} title="Editar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button><button type="button" disabled={update.isPending} aria-busy={update.isPending && update.variables?.id === rule.id} onClick={() => toggleRule(rule)} title={update.isPending && update.variables?.id === rule.id ? 'Actualizando…' : rule.is_active ? 'Desactivar' : 'Activar'} className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}>{update.isPending && update.variables?.id === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}</button>{deleteControl(rule)}</div></div>
                 <div className="mt-3 flex flex-wrap gap-1.5">{rule.actions.map((action, index) => <span key={index} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{index + 1}. {ACTION_LABELS[action.type]}</span>)}{rule.delay_minutes > 0 && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Espera {rule.delay_minutes} min</span>}{rule.max_executions_per_hour && <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Máx. {rule.max_executions_per_hour}/h</span>}</div>
                 <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span>{rule.last_execution_status && <span className={`rounded-full px-2 py-0.5 ${executionTone(rule.last_execution_status)}`}>{executionStatusLabel(rule.last_execution_status)}</span>}</div>
@@ -365,7 +381,7 @@ export function AutomationsPage() {
             </article>
           ))}</div>
         ) : tab === 'flows' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : visualRules.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">Todavía no hay flujos visuales</p><p className="mt-1 text-xs text-wa-muted">Conecta disparadores, condiciones, acciones y esperas en un lienzo.</p><button type="button" onClick={() => setFlowBuilder({})} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />Crear primer flujo</button></div> : <div className="grid gap-3 lg:grid-cols-2">{visualRules.map(rule => {
+          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : visualRules.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">Todavía no hay flujos visuales</p><p className="mt-1 text-xs text-wa-muted">Conecta disparadores, condiciones, acciones y esperas en un lienzo.</p><button type="button" onClick={() => setFlowBuilder({})} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />Crear primer flujo</button></div> : <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{visualRules.map(rule => {
             const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
             const hasPublished = !!rule.published_flow_definition
             const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
@@ -466,7 +482,7 @@ export function AutomationsPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
       {formOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onMouseDown={event => { if (event.target === event.currentTarget) closeForm() }}><form onSubmit={submit} className="automation-form flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
         <header className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark"><div><h2 className="font-semibold text-wa-text dark:text-white">{editingId == null ? 'Nueva automatización' : 'Editar automatización'}</h2><p className="text-xs text-wa-muted">Todas las condiciones configuradas deben cumplirse.</p></div><button type="button" onClick={closeForm} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><XCircle className="h-5 w-5" /></button></header>

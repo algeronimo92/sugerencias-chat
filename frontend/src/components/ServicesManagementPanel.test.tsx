@@ -32,7 +32,7 @@ describe('ServicesManagementPanel', () => {
     const user = userEvent.setup()
     render(<ServicesManagementPanel />)
 
-    await user.type(screen.getByPlaceholderText('Nombre del nuevo servicio'), 'Limpieza profunda')
+    await user.type(screen.getByRole('textbox', { name: 'Nombre del nuevo servicio' }), 'Limpieza profunda')
     await user.click(screen.getByRole('button', { name: 'Crear servicio' }))
 
     expect(mocks.create).toHaveBeenCalledWith('Limpieza profunda', expect.any(Object))
@@ -58,7 +58,7 @@ describe('ServicesManagementPanel', () => {
       expect.any(Object),
     )
 
-    await user.click(screen.getByRole('button', { name: 'Activo' }))
+    await user.click(screen.getByRole('button', { name: 'Desactivar Botox' }))
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 1, is_active: false },
       expect.any(Object),
@@ -69,7 +69,7 @@ describe('ServicesManagementPanel', () => {
     const user = userEvent.setup()
     render(<ServicesManagementPanel />)
 
-    await user.click(screen.getByRole('button', { name: 'Inactivo' }))
+    await user.click(screen.getByRole('button', { name: 'Activar Tratamiento anterior' }))
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 2, is_active: true },
       expect.any(Object),

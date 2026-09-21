@@ -23,7 +23,7 @@ def stored_media(monkeypatch):
 
 
 def test_every_outbound_kind_declares_fields_and_sender():
-    assert set(OUTBOUND_KINDS) == {"text", "audio", "media", "sticker", "location", "official_template", "interactive"}
+    assert set(OUTBOUND_KINDS) == {"text", "audio", "media", "sticker", "location", "contact", "official_template", "interactive"}
 
 
 def test_unknown_kind_is_rejected_at_enqueue_time():
@@ -90,6 +90,25 @@ async def test_location_and_official_template_jobs_reach_the_channel():
         ("send_location", (CHAT_ID, -12.1, -77.0), {"quoted": None}),
         ("send_template", (CHAT_ID, "appointment", "es_PE", [{"type": "body", "parameters": []}]), {}),
     ]
+
+
+async def test_contact_job_keeps_all_contacts_in_one_native_message():
+    sender = FakeSender()
+    contacts = [
+        {"fullName": "Ana Torres", "phoneNumber": "+51911111111"},
+        {"fullName": "Luis Pérez", "phoneNumber": "+51922222222"},
+    ]
+
+    assert outbound_message_fields({"type": "contact", "contacts": contacts}) == (
+        "contact", {"contacts": contacts},
+    )
+    await send_outbound(sender, CHAT_ID, {
+        "type": "contact", "contacts": contacts, "quoted": {"wa_message_id": "WA-1"},
+    })
+
+    assert sender.only_call() == (
+        "send_contacts", (CHAT_ID, contacts), {"quoted": {"wa_message_id": "WA-1"}},
+    )
 
 
 async def test_official_template_with_image_header_uploads_it_and_prepends_header_component(monkeypatch):

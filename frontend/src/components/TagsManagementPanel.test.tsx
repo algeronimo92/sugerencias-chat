@@ -32,7 +32,7 @@ describe('TagsManagementPanel', () => {
     const user = userEvent.setup()
     render(<TagsManagementPanel />)
 
-    await user.type(screen.getByPlaceholderText('Nombre de la nueva etiqueta'), 'Paciente frecuente')
+    await user.type(screen.getByRole('textbox', { name: 'Nombre de la nueva etiqueta' }), 'Paciente frecuente')
     await user.click(screen.getByRole('button', { name: 'Crear etiqueta' }))
 
     expect(mocks.create).toHaveBeenCalledWith(
@@ -61,7 +61,7 @@ describe('TagsManagementPanel', () => {
       expect.any(Object),
     )
 
-    await user.click(screen.getByRole('button', { name: 'Activa' }))
+    await user.click(screen.getByRole('button', { name: 'Desactivar VIP' }))
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 1, is_active: false },
       expect.any(Object),
@@ -72,7 +72,7 @@ describe('TagsManagementPanel', () => {
     const user = userEvent.setup()
     render(<TagsManagementPanel />)
 
-    await user.click(screen.getByRole('button', { name: 'Inactiva' }))
+    await user.click(screen.getByRole('button', { name: 'Activar Campaña antigua' }))
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 2, is_active: true },
       expect.any(Object),

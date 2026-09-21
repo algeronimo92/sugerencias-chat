@@ -8,6 +8,8 @@ from services.template_validation import (
     TemplateValidationError,
     build_meta_components,
     normalize_common_fields,
+    render_official_body,
+    template_parameter_identifiers,
     template_variables,
     validate_internal_variables,
     validate_template_values,
@@ -26,6 +28,32 @@ def official(**overrides):
 
 def test_the_two_button_registries_cover_the_same_types():
     assert set(OFFICIAL_BUTTON_RULES) == set(META_BUTTON_BUILDERS)
+
+
+def test_template_parameter_identifiers_positional_deduplicates_positions():
+    assert template_parameter_identifiers(
+        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}."
+    ) == ["1", "2"]
+
+
+def test_template_parameter_identifiers_named_keeps_each_occurrence():
+    assert template_parameter_identifiers(
+        "Hola {{cliente}}, tu turno es {{fecha}}."
+    ) == ["cliente", "fecha"]
+
+
+def test_render_official_body_positional_reuses_value_for_repeated_position():
+    rendered = render_official_body(
+        "Hola {{1}}, tu turno es {{2}}. Gracias {{1}}.", ["Ana", "martes"],
+    )
+    assert rendered == "Hola Ana, tu turno es martes. Gracias Ana."
+
+
+def test_render_official_body_named_substitutes_each_occurrence_in_order():
+    rendered = render_official_body(
+        "Hola {{cliente}}, tu turno es {{fecha}}.", ["Ana", "martes"],
+    )
+    assert rendered == "Hola Ana, tu turno es martes."
 
 
 def test_variables_are_found_inside_nested_config():

@@ -120,6 +120,9 @@ async def control_session():
 async def tenant_session(context: TenantContext):
     """Sesión transaccional con el schema tenant primero en ``search_path``."""
 
+    current = get_current_tenant()
+    if current is not None and current.organization_id != context.organization_id:
+        raise RuntimeError("cannot open a different tenant inside the current context")
     schema_name = validate_schema_name(context.schema_name)
     # El formato cerrado no necesita quoting y evita depender de interpolación
     # de identificadores, que PostgreSQL no admite como parámetros de valor.

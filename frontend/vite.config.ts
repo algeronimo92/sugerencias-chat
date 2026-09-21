@@ -27,10 +27,15 @@ export default defineConfig({
     // vuelve a mandarse en el siguiente pedido: SameSite=Lax la bloquea en
     // cualquier fetch cross-site, y el cambio de esquema http->https ya
     // cuenta como cross-site ("schemeful same-site").
+    // `changeOrigin: false` es obligatorio con multitenancy: el backend elige
+    // el schema del negocio a partir del Host (ver tenancy/middleware.py), y el
+    // default de Vite lo reescribe al del destino ("backend:8000"), que no es
+    // ningún tenant registrado -- toda la API respondía 404. Conservarlo hace
+    // que llegue el host real del navegador (ej. dermicapro.localhost:5173).
     proxy: {
-      "/api": "http://backend:8000",
-      "/media": "http://backend:8000",
-      "/ws": { target: "ws://backend:8000", ws: true },
+      "/api": { target: "http://backend:8000", changeOrigin: false },
+      "/media": { target: "http://backend:8000", changeOrigin: false },
+      "/ws": { target: "ws://backend:8000", ws: true, changeOrigin: false },
     },
   },
   plugins: [
@@ -75,5 +80,10 @@ export default defineConfig({
     // Storybook trae sus propios archivos *.stories.tsx; no son tests.
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     css: false,
+    // El default de 5s se queda corto en tests con varias interacciones
+    // reales de userEvent (escribir, subir archivo, abrir/cerrar diálogos)
+    // cuando la suite corre en paralelo bajo contención de CPU: no hay
+    // ningún bug detrás, el test solo necesita más margen para terminar.
+    testTimeout: 15000,
   },
 });

@@ -1,7 +1,14 @@
 import type { Chat } from '../types'
 
+export function displayUsername(chat: Chat): string | null {
+  const username = chat.username?.trim()
+  if (!username) return null
+  return username.startsWith('@') ? username : `@${username}`
+}
+
+/** Identidad principal del chat: username, pushname y UUID interno. */
 export function displayName(chat: Chat): string {
-  return chat.name ?? chat.phone ?? `Lead #${chat.chat_id}`
+  return displayUsername(chat) ?? (chat.name?.trim() || `Lead #${chat.chat_id}`)
 }
 
 export function displayPhone(chat: Chat): string {
@@ -9,7 +16,9 @@ export function displayPhone(chat: Chat): string {
 }
 
 export function avatarInitial(chat: Chat): string {
-  return (chat.name ?? chat.phone)?.[0]?.toUpperCase() ?? '#'
+  const username = displayUsername(chat)
+  if (username) return username[1]?.toUpperCase() ?? '#'
+  return chat.name?.trim()[0]?.toUpperCase() ?? '#'
 }
 
 export type WaitingTier = 'fresh' | 'warning' | 'urgent'

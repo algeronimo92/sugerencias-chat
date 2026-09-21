@@ -61,10 +61,10 @@ def test_nobody_reimplements_the_window_on_their_own():
     }
     culpables = set()
     for path in [*(BACKEND / "services").rglob("*.py"), *(BACKEND / "routers").rglob("*.py")]:
-        if str(path.relative_to(BACKEND)) in permitidos:
+        if path.relative_to(BACKEND).as_posix() in permitidos:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Name) and node.id == "CUSTOMER_SERVICE_WINDOW":
-                culpables.add(str(path.relative_to(BACKEND)))
+                culpables.add(path.relative_to(BACKEND).as_posix())
 
     assert culpables == set()

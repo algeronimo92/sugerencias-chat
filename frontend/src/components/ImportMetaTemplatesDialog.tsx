@@ -7,6 +7,7 @@ import { templateParameterIdentifiers } from '../utils/templates'
 import { extractErrorMessage } from '../utils/errors'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 import { Select } from './ui/Input'
+import './templates-page.css'
 
 interface Props {
   existingMetaIds: Set<string>
@@ -92,24 +93,24 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
     <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlayClass} />
-        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl flex-col rounded-xl bg-white shadow-2xl dark:bg-wa-panel-dark`}>
-          <div className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark">
+        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[88vh] w-[calc(100%-2rem)] max-w-2xl flex-col overflow-hidden rounded-3xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
+          <div className="flex items-center justify-between gap-3 border-b border-wa-border bg-[#f7faf9] px-5 py-5 dark:border-wa-border-dark dark:bg-wa-head-dark sm:px-6">
             <div className="flex items-center gap-2">
               {selectedId != null && (
                 <button type="button" onClick={backToList} className="rounded-md p-1 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark">
                   <ArrowLeft className="h-4 w-4" />
                 </button>
               )}
-              <Download className="h-5 w-5 text-wa-primary-strong" />
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary"><Download className="h-5 w-5" /></span>
               <div>
-                <Dialog.Title className="font-semibold text-wa-text dark:text-white">Importar desde Meta</Dialog.Title>
+                <Dialog.Title className="text-lg font-bold text-wa-text dark:text-white">Importar desde Meta</Dialog.Title>
                 <p className="text-xs text-wa-muted">Plantillas ya creadas en el WhatsApp Manager que aún no están vinculadas a la app</p>
               </div>
             </div>
             <button type="button" onClick={onClose} className="rounded-md p-1.5 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-5 w-5" /></button>
           </div>
 
-          <div className="overflow-y-auto p-4">
+          <div className="overflow-y-auto p-5 sm:p-6">
             {selectedId == null ? (
               isLoading ? (
                 <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
@@ -120,13 +121,14 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
               ) : pendingTemplates.length === 0 ? (
                 <p className="py-16 text-center text-sm text-wa-muted">No hay plantillas nuevas en Meta: todas ya están vinculadas a la app.</p>
               ) : (
-                <div className="grid gap-2">
+                <div className="grid gap-3">
+                  <div><h3 className="text-sm font-bold text-wa-text dark:text-white">Disponibles para importar</h3><p className="mt-1 text-xs text-wa-muted">Selecciona una plantilla para revisar su contenido y configurar sus variables.</p></div>
                   {pendingTemplates.map(item => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => pickTemplate(item.id, item.name)}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-wa-border p-3 text-left hover:border-wa-primary dark:border-wa-border-dark"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-wa-border bg-[#f9fbfa] p-4 text-left transition hover:border-wa-primary hover:bg-green-50/50 dark:border-wa-border-dark dark:bg-wa-head-dark dark:hover:bg-wa-active-dark"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-wa-text dark:text-white">{item.name}</p>
@@ -140,11 +142,12 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
             ) : isLoadingDetail ? (
               <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
             ) : (
-              <form onSubmit={handleSubmit} className="grid gap-3">
-                <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">
+              <form onSubmit={handleSubmit} className="templates-import-form grid gap-4">
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">
                   <p className="flex items-center gap-1.5 font-semibold"><BadgeCheck className="h-3.5 w-3.5" /> {detail?.name} · {detail?.language} · {detail?.category}</p>
                   <p className="mt-1 whitespace-pre-line">{bodyText}</p>
                 </div>
+                <div><h3 className="text-sm font-bold text-wa-text dark:text-white">Datos en el CRM</h3><p className="mt-1 text-xs text-wa-muted">Así encontrarán y usarán esta plantilla los miembros del equipo.</p></div>
                 {unsupportedButtons.length > 0 && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -162,25 +165,25 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
                   </div>
                 )}
                 {error && <div className="whitespace-pre-line rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">{error}</div>}
-                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Nombre en la app
+                <label className="templates-field">Nombre en la app
                   <input required maxLength={120} value={name} onChange={event => setName(event.target.value)} className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-field-dark" />
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Categoría
+                <label className="templates-field">Categoría
                   <Select value={category} onChange={event => setCategory(event.target.value)} className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-field-dark">
                     {categories.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
                   </Select>
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Atajo (opcional)
+                <label className="templates-field">Atajo (opcional)
                   <input maxLength={50} value={shortcut} onChange={event => setShortcut(event.target.value)} placeholder="ej. bienvenida" className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-field-dark" />
                 </label>
                 {variableCount > 0 && (
-                  <div className="grid gap-2">
+                  <div className="grid gap-3 rounded-2xl border border-wa-border bg-[#f9fbfa] p-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
+                    <h3 className="text-sm font-bold text-wa-text dark:text-white">Variables del mensaje</h3>
                     <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
                       Valor por defecto de cada variable — podés usar texto fijo o un placeholder interno: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}
                     </p>
                     {variableNames.map((variableName, index) => (
-                      <input
-                        key={index}
+                      <label key={index} className="templates-field">{`{{${variableName}}}`}<input
                         required
                         value={parameterValues[index] ?? ''}
                         onChange={event => setParameterValues(current => {
@@ -190,13 +193,13 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
                         })}
                         placeholder={`Valor de {{${variableName}}}`}
                         className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-field-dark"
-                      />
+                      /></label>
                     ))}
                   </div>
                 )}
-                <div className="mt-1 flex justify-end gap-2">
-                  <button type="button" onClick={backToList} className="rounded-md px-3 py-2 text-sm font-medium text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark">Volver</button>
-                  <button type="submit" disabled={importTemplate.isPending} className="flex items-center gap-2 rounded-md bg-wa-primary px-3 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong disabled:opacity-60">
+                <div className="mt-1 flex flex-wrap justify-end gap-2 border-t border-wa-border pt-4 dark:border-wa-border-dark">
+                  <button type="button" onClick={backToList} className="rounded-xl border border-wa-border px-4 py-2.5 text-sm font-semibold text-wa-muted hover:bg-wa-field dark:border-wa-border-dark dark:hover:bg-wa-head-dark">Volver</button>
+                  <button type="submit" disabled={importTemplate.isPending} className="flex items-center gap-2 rounded-xl bg-wa-primary-strong px-4 py-2.5 text-sm font-semibold text-white hover:bg-wa-primary disabled:opacity-60">
                     {importTemplate.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Importar
                   </button>
                 </div>

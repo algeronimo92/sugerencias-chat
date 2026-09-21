@@ -1,6 +1,6 @@
 """Envío de plantillas oficiales: armado de `components` según el formato de
 variable de la plantilla (posicional vs con nombre) -- ver 132012 en
-services/meta_service.template_parameter_identifiers."""
+services/template_validation.template_parameter_identifiers."""
 
 import pytest
 

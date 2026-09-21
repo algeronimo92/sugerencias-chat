@@ -60,6 +60,12 @@ async def _send_location(sender: MessageSender, chat_id: str, payload: dict) -> 
     ))
 
 
+async def _send_contacts(sender: MessageSender, chat_id: str, payload: dict) -> OutboundDelivery:
+    return OutboundDelivery(await sender.send_contacts(
+        chat_id, payload["contacts"], quoted=payload.get("quoted"),
+    ))
+
+
 async def _send_official_template(sender: MessageSender, chat_id: str, payload: dict) -> OutboundDelivery:
     components = list(payload.get("components") or [])
     header_media = payload.get("header_media")
@@ -171,6 +177,10 @@ OUTBOUND_KINDS: dict[str, OutboundKind] = {
     "location": OutboundKind(
         lambda payload: ("location", {"latitude": payload["latitude"], "longitude": payload["longitude"]}),
         _send_location,
+    ),
+    "contact": OutboundKind(
+        lambda payload: ("contact", {"contacts": payload["contacts"]}),
+        _send_contacts,
     ),
     "official_template": OutboundKind(_official_template_fields, _send_official_template),
     "interactive": OutboundKind(_interactive_fields, _send_interactive),

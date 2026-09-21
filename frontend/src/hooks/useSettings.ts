@@ -48,6 +48,9 @@ export function useCompleteMetaEmbeddedSignup() {
     mutationFn: completeMetaEmbeddedSignup,
     onSuccess: (data) => {
       queryClient.setQueryData(['settings'], data)
+      // El estado de WhatsApp se deriva de las credenciales de Meta: sin esto
+      // el CTA de "conectá tu WhatsApp" sigue visible hasta el próximo refetch.
+      queryClient.invalidateQueries({ queryKey: ['whatsapp', 'status'] })
     },
   })
 }

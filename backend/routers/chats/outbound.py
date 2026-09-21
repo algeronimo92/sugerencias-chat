@@ -9,6 +9,7 @@ from models.schemas import (
     Message,
     StickerRequest,
     SendLocationRequest,
+    SendContactsRequest,
     SendMediaRequest,
     SendMessageRequest,
     SendTemplateRequest,
@@ -20,6 +21,7 @@ from services.media_storage import (
     transcode_audio_to_ogg_opus,
 )
 from services.media_library_service import get_media_asset
+from services.phone_utils import PhoneValidationError, effective_country_code, normalize_phone
 from services.db_service import fetch_messages_to_forward, filter_existing_leads, fetch_reply_target
 from services.auth_service import get_current_user
 from services.message_media import mediatype_from_content_type as _mediatype_from_content_type
@@ -238,6 +240,37 @@ async def send_location(
             "latitude": body.latitude,
             "longitude": body.longitude,
         },
+        "reply_to": reply_to,
+    }], actor_user_id=user.id))[0]
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
+@router.post("/{chat_id}/contacts", response_model=Message)
+async def send_contacts(
+    chat_id: str,
+    body: SendContactsRequest,
+    user: User = Depends(get_current_user),
+):
+    """Comparte uno o varios leads como una sola lista de contactos nativa."""
+    await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
+    country_code = await effective_country_code()
+    contacts = []
+    try:
+        for item in body.contacts:
+            full_name = item.full_name.strip()
+            if not full_name:
+                raise HTTPException(400, "Cada contacto debe tener un nombre")
+            digits = normalize_phone(item.phone_number, country_code)
+            contacts.append({"fullName": full_name, "phoneNumber": f"+{digits}"})
+    except PhoneValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    message = (await enqueue_messages(chat_id, [{
+        "content": None,
+        "payload": {"type": "contact", "contacts": contacts},
         "reply_to": reply_to,
     }], actor_user_id=user.id))[0]
     await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})

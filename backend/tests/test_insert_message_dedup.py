@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 
 from services import db_service
 from tests.conftest import patch_store
@@ -64,6 +64,32 @@ def _fake_session(existing_row):
     return session
 
 
+class _EmptyMappingsResult:
+    def one(self):
+        raise NoResultFound()
+
+
+class _EmptyExecResult:
+    def mappings(self):
+        return _EmptyMappingsResult()
+
+
+def _fake_session_no_existing_row():
+    """El INSERT falla por un CHECK constraint (no por wa_message_id
+    duplicado): la fila de respaldo nunca existió."""
+    calls = {"n": 0}
+    session = AsyncMock()
+
+    async def execute(stmt):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise IntegrityError("insert", {}, Exception('violates check constraint "wsp_messages_message_type_check"'))
+        return _EmptyExecResult()
+
+    session.execute.side_effect = execute
+    return session
+
+
 @pytest.mark.asyncio
 async def test_insert_message_returns_existing_row_instead_of_raising(monkeypatch):
     session = _fake_session(EXISTING_ROW)
@@ -109,4 +135,31 @@ async def test_insert_message_without_wa_message_id_reraises(monkeypatch):
     with pytest.raises(IntegrityError):
         await db_service.insert_message(
             "chat-inexistente", "vendedor", "hola",
+        )
+
+
+@pytest.mark.asyncio
+async def test_insert_message_reraises_original_error_when_no_row_matches(monkeypatch):
+    """Bug real: message_type="contacts" viola el CHECK constraint (no es un
+    wa_message_id duplicado). La fila de respaldo no existe, y el error que
+    debe propagarse es el IntegrityError original, no un NoResultFound que no
+    dice nada del problema."""
+    session = _fake_session_no_existing_row()
+
+    class SessionContext:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *_args):
+            return False
+
+    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
+
+    with pytest.raises(IntegrityError, match="check constraint"):
+        await db_service.insert_message(
+            "d17d73fb-70aa-4750-bfa2-c069e37d78db",
+            "cliente",
+            "contacto compartido",
+            wa_message_id="wamid.unico",
+            message_type="contacts",
         )

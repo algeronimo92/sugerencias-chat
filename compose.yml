@@ -44,6 +44,10 @@ services:
       # La conexión no sale de la red Docker local. Producción conserva
       # DATABASE_SSL=require desde backend/.env y compose.prod.yml.
       - DATABASE_SSL=disable
+      # El negocio local ya vive en su propio schema (ver
+      # scripts/move_public_to_tenant.py): se entra por dermicapro.localhost,
+      # no por localhost, que queda reservado como host de plataforma.
+      - MULTITENANCY_ENABLED=true
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -77,7 +81,11 @@ services:
       # (cloudflared tunnel --url, hostname aleatorio en cada corrida) sin
       # tener que actualizar esto cada vez que se reinicia el túnel. Hace
       # falta para probar el Embedded Signup de Meta, que exige HTTPS.
-      - VITE_ALLOWED_HOSTS=.trycloudflare.com
+      #
+      # `.localhost` cubre los subdominios de los tenants locales: con
+      # multitenancy el backend resuelve el negocio por el Host, y Vite reenvía
+      # el original porque el proxy no usa changeOrigin.
+      - VITE_ALLOWED_HOSTS=.trycloudflare.com,.localhost
     ports:
       - "5173:5173"
     depends_on:

@@ -42,6 +42,11 @@ class MetaMessageSender:
     ) -> SendReceipt:
         return _receipt(await meta_service.send_whatsapp_location(chat_id, latitude, longitude, quoted=quoted))
 
+    async def send_contacts(
+        self, chat_id: str, contacts: list[dict], quoted: dict | None = None,
+    ) -> SendReceipt:
+        return _receipt(await meta_service.send_whatsapp_contacts(chat_id, contacts, quoted=quoted))
+
     async def send_template(self, chat_id: str, name: str, language: str, components: list[dict]) -> SendReceipt:
         return _receipt(await meta_service.send_whatsapp_template(chat_id, name, language, components))
 

@@ -56,13 +56,16 @@ export function SuggestionPanel({
     : null
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col bg-white dark:bg-wa-panel-dark">
       {/* Header */}
-      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-wa-border bg-wa-head px-4 py-2.5 dark:border-wa-border-dark dark:bg-wa-head-dark">
-        <Sparkles className="w-4 h-4 text-wa-primary" />
-        <p className="text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-text-dark/80">
-          Sugerencias IA
-        </p>
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-wa-border px-5 dark:border-wa-border-dark">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <span>
+          <span className="block text-xs font-bold text-wa-text dark:text-white">Copiloto IA</span>
+          <span className="block text-[10px] text-wa-muted dark:text-wa-muted-dark">Sugerencias para esta conversación</span>
+        </span>
         {/* "Generá otras" solo tiene sentido con sugerencias ya generadas. */}
         {data && (
           <Button

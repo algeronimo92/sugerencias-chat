@@ -1,9 +1,10 @@
 import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, SmilePlus } from 'lucide-react'
+import { Plus, SmilePlus, UserRound, X } from 'lucide-react'
 import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
 import type { MessageReaction } from '../types'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
+import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 
 // Las seis reacciones rápidas de WhatsApp.
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
@@ -11,36 +12,168 @@ const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
 // El picker completo es pesado: se carga al vuelo recién cuando se toca "+".
 const EmojiPicker = lazy(() => import('emoji-picker-react'))
 
+function reactionCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'reacción' : 'reacciones'}`
+}
+
 /** Badge de reacciones colgado en la esquina inferior de la burbuja, como en
- * WhatsApp: los emojis (a lo sumo uno por lado), agrupando repetidos con su
- * conteo. */
+ * WhatsApp. Al tocarlo abre el detalle de cada reacción y quién la puso. */
 export function ReactionBadge({
   reactions,
   isVendedor,
+  contactName,
+  onReact,
 }: {
   reactions: MessageReaction[]
   isVendedor: boolean
+  contactName: string
+  onReact: (emoji: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null)
   if (reactions.length === 0) return null
+
   const grouped = reactions.reduce<{ emoji: string; count: number }[]>((acc, r) => {
     const found = acc.find(g => g.emoji === r.emoji)
     if (found) found.count += 1
     else acc.push({ emoji: r.emoji, count: 1 })
     return acc
   }, [])
+
+  const visibleReactions = selectedEmoji
+    ? reactions.filter(reaction => reaction.emoji === selectedEmoji)
+    : reactions
+
   return (
-    <div
-      className={`absolute -bottom-2.5 z-10 flex items-center gap-0.5 rounded-full border border-wa-border bg-white px-1.5 py-0.5 text-xs leading-none shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark ${
-        isVendedor ? 'right-2' : 'left-2'
-      }`}
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setSelectedEmoji(null)
+      }}
     >
-      {grouped.map(g => (
-        <span key={g.emoji} className="flex items-center gap-0.5">
-          <span>{g.emoji}</span>
-          {g.count > 1 && <span className="text-[10px] text-wa-muted dark:text-wa-text-dark/70">{g.count}</span>}
-        </span>
-      ))}
-    </div>
+      <DialogPrimitive.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`Ver ${reactionCountLabel(reactions.length)}`}
+          className={`absolute -bottom-2.5 z-10 flex items-center gap-1 rounded-full border border-wa-border bg-white px-1.5 py-0.5 text-xs leading-none shadow-sm transition-colors hover:bg-wa-field focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:hover:bg-wa-field-dark ${
+            isVendedor ? 'right-2' : 'left-2'
+          }`}
+        >
+          <span aria-hidden="true">{grouped.map(group => group.emoji).join('')}</span>
+          {reactions.length > 1 && (
+            <span className="text-[10px] text-wa-muted dark:text-wa-text-dark/70">{reactions.length}</span>
+          )}
+        </button>
+      </DialogPrimitive.Trigger>
+
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className={dialogOverlayClass} />
+        <DialogPrimitive.Content
+          className={`${dialogContentPositionClass} w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+          aria-describedby={undefined}
+        >
+          <div className="flex items-center justify-between px-5 pb-2 pt-4">
+            <DialogPrimitive.Title className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
+              {reactionCountLabel(reactions.length)}
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <button
+                type="button"
+                aria-label="Cerrar reacciones"
+                className="rounded-full p-1.5 text-wa-muted hover:bg-wa-field hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-field-dark dark:hover:text-wa-text-dark"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
+            </DialogPrimitive.Close>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-wa-border px-4 pb-3 dark:border-wa-border-dark">
+            <button
+              type="button"
+              onClick={() => setSelectedEmoji(null)}
+              aria-label="Mostrar todas las reacciones"
+              aria-pressed={selectedEmoji === null}
+              className={`flex h-10 min-w-10 items-center justify-center rounded-full border px-3 text-sm font-medium transition-colors ${
+                selectedEmoji === null
+                  ? 'border-wa-primary bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary'
+                  : 'border-wa-border text-wa-muted hover:bg-wa-field dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-field-dark'
+              }`}
+            >
+              {reactions.length}
+            </button>
+            {grouped.map(group => (
+              <button
+                key={group.emoji}
+                type="button"
+                onClick={() => setSelectedEmoji(group.emoji)}
+                aria-label={`Mostrar ${group.count} con ${group.emoji}`}
+                aria-pressed={selectedEmoji === group.emoji}
+                className={`flex h-10 items-center gap-1.5 rounded-full border px-3 text-base transition-colors ${
+                  selectedEmoji === group.emoji
+                    ? 'border-wa-primary bg-wa-primary/10'
+                    : 'border-wa-border hover:bg-wa-field dark:border-wa-border-dark dark:hover:bg-wa-field-dark'
+                }`}
+              >
+                <span aria-hidden="true">{group.emoji}</span>
+                <span className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark">{group.count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="max-h-[55vh] overflow-y-auto py-1">
+            {visibleReactions.map((reaction, index) => {
+              const isOwn = reaction.from_me
+              const row = (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                      isOwn
+                        ? 'bg-[#7c4937] text-[#ffd4bd]'
+                        : 'bg-wa-primary/15 font-semibold text-wa-primary-strong dark:text-wa-primary'
+                    }`}
+                  >
+                    {isOwn ? <UserRound className="h-5 w-5" /> : contactName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+                      {isOwn ? 'Tú' : contactName}
+                    </span>
+                    {isOwn && (
+                      <span className="mt-0.5 block text-xs text-wa-muted dark:text-wa-muted-dark">
+                        Haz clic para quitarla
+                      </span>
+                    )}
+                  </span>
+                  <span aria-label={`Reaccionó con ${reaction.emoji}`} className="text-2xl">
+                    {reaction.emoji}
+                  </span>
+                </>
+              )
+
+              return isOwn ? (
+                <button
+                  key={`${reaction.emoji}-${index}`}
+                  type="button"
+                  onClick={() => {
+                    onReact('')
+                    setOpen(false)
+                  }}
+                  className="flex w-full items-center gap-3 px-5 py-3 hover:bg-wa-field dark:hover:bg-wa-field-dark"
+                >
+                  {row}
+                </button>
+              ) : (
+                <div key={`${reaction.emoji}-${index}`} className="flex items-center gap-3 px-5 py-3">
+                  {row}
+                </div>
+              )
+            })}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 

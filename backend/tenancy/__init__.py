@@ -16,6 +16,11 @@ _RESOLVER_EXPORTS = {
     "resolve_tenant_by_organization_id",
     "resolve_tenant_by_phone_number_id",
 }
+_PROVISIONING_EXPORTS = {
+    "TenantProvisioningError",
+    "provision_tenant",
+    "tenant_migration_head",
+}
 
 
 def __getattr__(name: str):
@@ -25,6 +30,10 @@ def __getattr__(name: str):
         from tenancy import resolver
 
         return getattr(resolver, name)
+    if name in _PROVISIONING_EXPORTS:
+        from tenancy import provisioning
+
+        return getattr(provisioning, name)
     raise AttributeError(name)
 
 __all__ = [
@@ -39,4 +48,7 @@ __all__ = [
     "resolve_tenant_by_hostname",
     "resolve_tenant_by_organization_id",
     "resolve_tenant_by_phone_number_id",
+    "TenantProvisioningError",
+    "provision_tenant",
+    "tenant_migration_head",
 ]

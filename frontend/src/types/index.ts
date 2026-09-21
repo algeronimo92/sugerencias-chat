@@ -204,6 +204,8 @@ export interface Chat {
   /** Número informativo (llamadas, contacto alternativo), distinto del que
    * WhatsApp usa para mandar mensajes. Texto libre, sin verificación. */
   secondary_phone: string | null
+  /** Username público informado por Meta. Puede ser nulo. */
+  username: string | null
   name: string | null
   servicio_interes: string | null
   vendedor_id: number | null

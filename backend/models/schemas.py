@@ -28,6 +28,9 @@ class Chat(BaseModel):
     # WhatsApp usa para enrutar mensajes. Texto libre, sin verificación contra
     # WhatsApp: puede ser un fijo, un celular de otra red, lo que sea.
     secondary_phone: str | None = None
+    # Username público de WhatsApp/Meta. No todos los contactos tienen uno y
+    # no es editable desde el CRM.
+    username: str | None = None
     name: str | None = None
     servicio_interes: str | None = None
     vendedor_id: int | None = None
@@ -366,6 +369,16 @@ class SendLocationRequest(BaseModel):
     reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
+class ContactShareItem(BaseModel):
+    full_name: str = Field(min_length=1, max_length=256)
+    phone_number: str = Field(min_length=8, max_length=32)
+
+
+class SendContactsRequest(BaseModel):
+    contacts: list[ContactShareItem] = Field(min_length=1, max_length=20)
+    reply_to_message_id: int | None = Field(default=None, ge=1)
+
+
 class EditMessageRequest(BaseModel):
     # Texto nuevo del mensaje. Mismo tope que un envío normal: es el mismo
     # mensaje de WhatsApp, solo que reescrito.
@@ -467,6 +480,10 @@ class SuggestionRequest(BaseModel):
         cleaned = "".join(ch for ch in cleaned if ch.isprintable())
         cleaned = cleaned[:SUGGESTION_INSTRUCTION_MAX_LENGTH].strip()
         return cleaned or None
+
+
+class AnalysisRequest(BaseModel):
+    chat_id: str
 
 
 class Sugerencia(BaseModel):

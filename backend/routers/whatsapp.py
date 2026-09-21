@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from services import meta_service
 from services.evolution_service import (
     EvolutionApiError,
     connect_instance,
@@ -18,6 +19,12 @@ _NOT_CONFIGURED = (
 
 @router.get("/status")
 async def whatsapp_status():
+    # Meta Cloud API es el proveedor actual: si está configurado el número ya
+    # está vinculado y no hay instancia que sondear (no existe el ciclo de
+    # QR/desconexión de Evolution). El camino de abajo queda para las
+    # instalaciones que todavía siguen en Evolution.
+    if await meta_service.is_configured():
+        return {"state": "open", "instance": None}
     # Sin credenciales no hay a quién preguntarle: se responde un estado
     # propio (no un error) para que la UI muestre el aviso de configuración.
     if not await is_configured():

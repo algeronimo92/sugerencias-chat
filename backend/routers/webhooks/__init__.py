@@ -5,6 +5,7 @@ from routers.webhooks import (
     inbox,
     leads,
     messages,
+    meta_auth,
     outgoing,
     raw,
     media,
@@ -42,6 +43,7 @@ from routers.webhooks.raw import (  # noqa: F401
     lead_messages_raw_webhook,
     lead_raw_webhook,
     message_by_wa_id_raw_webhook,
+    rag_context_webhook,
     rag_search_webhook,
 )
 from routers.webhooks.media import (  # noqa: F401
@@ -54,6 +56,7 @@ router.include_router(identity.router)
 router.include_router(inbox.router)
 router.include_router(leads.router)
 router.include_router(messages.router)
+router.include_router(meta_auth.router)
 router.include_router(outgoing.router)
 router.include_router(raw.router)
 router.include_router(media.router)

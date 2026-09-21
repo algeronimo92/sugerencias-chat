@@ -1,0 +1,1377 @@
+{
+  "name": "Webhook Meta Cloud API",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "meta/whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "50702372-3081-45fa-96ff-bbaa40e5ab75",
+      "name": "Meta verificacion (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1552,
+        32
+      ],
+      "webhookId": "3f9a1c40-8e21-4f6b-9d13-2c7e5a081b44",
+      "notesInFlow": true,
+      "notes": "Meta llama aca una sola vez al registrar la URL"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (GET)').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/meta/verify-challenge' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ mode: ($('Meta verificacion (GET)').item.json.query || $('Meta verificacion (GET)').item.json)['hub.mode'], verify_token: ($('Meta verificacion (GET)').item.json.query || $('Meta verificacion (GET)').item.json)['hub.verify_token'], challenge: ($('Meta verificacion (GET)').item.json.query || $('Meta verificacion (GET)').item.json)['hub.challenge'] }) }}",
+        "options": {}
+      },
+      "id": "1c2fb8dc-f6c2-4133-bf2d-86586d61ce8f",
+      "name": "verificar token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1120,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "57c7614a-17d8-4b7d-9ae4-8d899bb4af03",
+      "name": "token valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -896,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": {}
+      },
+      "id": "6165664a-d346-4df8-83aa-4002005f012a",
+      "name": "devolver challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -672,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "060889b4-c057-4e5a-af95-cd2a1c18ff94",
+      "name": "rechazar verificacion",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -672,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meta/whatsapp",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "37792822-556e-487d-bb26-8881d4668dff",
+      "name": "Meta eventos (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2304,
+        864
+      ],
+      "webhookId": "7b2d4e51-9c38-4a7f-8e26-1d5b3f902c68",
+      "notesInFlow": true,
+      "notes": "messages, statuses y reacciones entrantes"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "3f1fc612-5691-40f1-8059-6d2204c7dff8",
+      "name": "responder 200 a Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -896,
+        880
+      ],
+      "notesInFlow": true,
+      "notes": "Primero se responde: Meta deshabilita el webhook si tarda"
+    },
+    {
+      "parameters": {
+        "jsCode": "const backendUrl = String($('Config (POST)').item.json.backend_url || '').replace(/\\/$/, '');\nif (!backendUrl) throw new Error('BACKEND_URL no esta configurado');\n\nconst output = [];\nconst clean = (value) => value == null ? null : String(value).trim() || null;\nconst jid = (waId) => clean(waId) ? clean(waId) + '@s.whatsapp.net' : null;\n\nfor (const input of $('Meta eventos (POST)').all()) {\n  const body = input.json.body || input.json;\n  for (const entry of body.entry || []) {\n    for (const change of entry.changes || []) {\n      const value = change.value || {};\n      const phoneNumberId = clean(value.metadata && value.metadata.phone_number_id);\n      if (!phoneNumberId) throw new Error('Evento Meta sin metadata.phone_number_id');\n\n      const contacts = new Map((value.contacts || [])\n        .filter((contact) => clean(contact && contact.wa_id))\n        .map((contact) => [clean(contact.wa_id), contact]));\n\n      const base = (kind, eventId) => ({\n        _kind: kind,\n        provider: 'meta_cloud_api',\n        phone_number_id: phoneNumberId,\n        event_key: phoneNumberId + ':' + kind + ':' + clean(eventId),\n        backend_url: backendUrl,\n      });\n\n      for (const status of value.statuses || []) {\n        output.push({ json: {\n          ...base('status', status.id),\n          wa_message_id: clean(status.id),\n          status: clean(status.status),\n          chat_jid: jid(status.recipient_id),\n          from_me: true,\n          sent_at: status.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : null,\n          payload: { status },\n        }});\n      }\n\n      for (const message of value.messages || []) {\n        const from = clean(message.from);\n        const contact = contacts.get(from) || {};\n        const profile = contact.profile || {};\n        const rawUsername = clean(profile.username);\n        const common = {\n          ...base(message.type === 'reaction' ? 'reaction' : 'message', message.id),\n          wa_message_id: clean(message.id),\n          chat_jid: jid(from),\n          push_name: clean(profile.name),\n          username: rawUsername ? '@' + rawUsername.replace(/^@+/, '') : null,\n          sent_at: message.timestamp ? new Date(Number(message.timestamp) * 1000).toISOString() : null,\n          quoted_wa_message_id: clean(message.context && message.context.id),\n          origen: message.referral ? 'meta_ad' : 'meta_cloud_api',\n        };\n\n        if (message.type === 'reaction') {\n          output.push({ json: {\n            ...common,\n            target_wa_message_id: clean(message.reaction && message.reaction.message_id),\n            emoji: clean(message.reaction && message.reaction.emoji) || '',\n            payload: { reaction: message.reaction || {} },\n          }});\n          continue;\n        }\n\n        let content = null;\n        let mediaId = null;\n        let filename = null;\n        const type = clean(message.type) || 'unsupported';\n        if (type === 'text') content = clean(message.text && message.text.body);\n        else if (['image', 'video'].includes(type)) {\n          mediaId = clean(message[type] && message[type].id);\n          content = clean(message[type] && message[type].caption);\n        } else if (['audio', 'sticker'].includes(type)) {\n          mediaId = clean(message[type] && message[type].id);\n        } else if (type === 'document') {\n          mediaId = clean(message.document && message.document.id);\n          filename = clean(message.document && message.document.filename);\n          content = clean(message.document && (message.document.caption || message.document.filename));\n        } else if (type === 'location') {\n          const location = message.location || {};\n          content = clean(location.name || location.address) ||\n            (location.latitude != null && location.longitude != null\n              ? location.latitude + ',' + location.longitude : null);\n        } else if (type === 'contacts') {\n          content = JSON.stringify(message.contacts || []);\n        } else if (type === 'interactive') {\n          const reply = (message.interactive || {}).button_reply || (message.interactive || {}).list_reply || {};\n          content = clean(reply.title || reply.id);\n        } else if (type === 'button') {\n          content = clean(message.button && (message.button.text || message.button.payload));\n        }\n\n        output.push({ json: {\n          ...common,\n          message_type: type,\n          content,\n          media_id: mediaId,\n          filename,\n          payload: { message, referral: message.referral || null },\n        }});\n      }\n    }\n  }\n}\n\nreturn output;"
+      },
+      "id": "e155e088-280b-4bae-b090-00c070716e81",
+      "name": "normalizar eventos Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        864
+      ],
+      "notesInFlow": true,
+      "notes": "Aca vive todo el mapeo del formato de Meta"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-4000-8000-000000000001",
+                    "leftValue": "={{ $json._kind }}",
+                    "rightValue": "message",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "mensaje"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-4000-8000-000000000002",
+                    "leftValue": "={{ $json._kind }}",
+                    "rightValue": "status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "estado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-4000-8000-000000000003",
+                    "leftValue": "={{ $json._kind }}",
+                    "rightValue": "reaction",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reaccion"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "51134a45-70fe-4968-9f81-1087ad3772d6",
+      "name": "tipo de evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -256,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backend_url }}/api/webhooks/resolve-whatsapp-identity",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  provider: 'meta_cloud_api',\n  phone_number_id: $json.phone_number_id,\n  data: {\n    key: { remoteJid: $json.chat_jid, fromMe: false },\n    pushName: $json.push_name,\n    userName: $json.username\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "eaba8f3e-f2d0-41ef-8f3e-371d582490cf",
+      "name": "resolver identidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        640
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Devuelve el chat_id canonico y crea el lead si no existia"
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "wa_id",
+              "value": "={{ $json.chat_jid.split(\"@\")[0] || error(\"No se pudo obtener wa_id\")}}"
+            },
+            {
+              "key": "wa_message_id",
+              "value": "={{ $json.wa_message_id || error(\"No se pudo obtener wamid\") }}"
+            },
+            {
+              "key": "message_type",
+              "value": "={{ $json.message_type || $json._kind || error(\"No se pudo obtener message_type\") }}"
+            },
+            {
+              "key": "_kind",
+              "value": "={{ $json._kind || error(\"No se pudo obtener _kind\")}}"
+            },
+            {
+              "key": "phone_number_id",
+              "value": "={{ $json.phone_number_id || error(\"Falta phone_number_id\") }}"
+            },
+            {
+              "key": "event_key",
+              "value": "={{ $json.event_key || error(\"Falta event_key\") }}"
+            }
+          ]
+        }
+      },
+      "id": "d2478d2b-c488-4315-9241-e018b1fbea06",
+      "name": "etiquetar ejecucion",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [
+        -448,
+        880
+      ],
+      "notesInFlow": true,
+      "notes": "Metadatos para buscar la ejecucion en la lista"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/ensure-lead",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(\n{ \n  chat_id: $('resolver identidad').item.json.chat_id,\n  ultimo_mensaje_at: \n    $('evento Meta activo').item.json.sent_at, \n  origen: $('evento Meta activo').item.json.origen \n}) }}",
+        "options": {}
+      },
+      "id": "cf12cd76-58a4-4c1e-866b-414271519ab7",
+      "name": "asegurar lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        640
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Idempotente: solo escribe origen si el lead es nuevo"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/message-by-wa-id-raw",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wa_message_id",
+              "value": "={{ $('evento Meta activo').item.json.wa_message_id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "32f41d7b-7bcc-4d4c-bc03-5137ba0912fe",
+      "name": "buscar mensaje existente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        640
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Meta reintenta el webhook: sin esto se duplicarian mensajes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d1000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ Object.keys($json).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6cdf23cf-81f6-454d-9a93-772a9ea76a3e",
+      "name": "mensaje nuevo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        688,
+        640
+      ],
+      "notesInFlow": true,
+      "notes": "Respuesta vacia = todavia no esta guardado"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $('evento Meta activo').item.json.media_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "0ae75507-7519-43aa-bdb7-fb5e19c7bb9b",
+      "name": "tiene adjunto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/meta-media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ media_id: $('evento Meta activo').item.json.media_id, filename: $('evento Meta activo').item.json.filename }) }}",
+        "options": {}
+      },
+      "id": "b68d80a2-0e7f-41bd-b0c7-89c551b23810",
+      "name": "importar adjunto de Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1152,
+        448
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "El backend lo baja de Meta y lo guarda: n8n no ve el token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/save-inbound-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('resolver identidad').item.json.chat_id, sender: 'cliente', content: $('evento Meta activo').item.json.content, sent_at: $('evento Meta activo').item.json.sent_at, media_url: $('importar adjunto de Meta').isExecuted ? $('importar adjunto de Meta').item.json.media_url : null, wa_message_id: $('evento Meta activo').item.json.wa_message_id, quoted_wa_message_id: $('evento Meta activo').item.json.quoted_wa_message_id, message_type: $('evento Meta activo').item.json.message_type, payload: $('evento Meta activo').item.json.payload }) }}",
+        "options": {}
+      },
+      "id": "086d6cbe-68dc-486d-a3cc-8d14e0a53a56",
+      "name": "guardar mensaje",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1472,
+        656
+      ],
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ wa_message_id: $('evento Meta activo').item.json.wa_message_id }) }}",
+        "options": {}
+      },
+      "id": "f2c5f2d6-a44c-48ce-9db9-8ca406a8154a",
+      "name": "avisar al backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        992,
+        752
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Dispara el websocket del chat y las automatizaciones"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backend_url }}/api/webhooks/message-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ wa_message_id: $json.wa_message_id, status: $json.status, from_me: $json.from_me }) }}",
+        "options": {}
+      },
+      "id": "696778f7-4dee-472c-938f-0723239280b4",
+      "name": "actualizar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        880
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "sent/delivered/read/failed: el backend ya los entiende"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backend_url }}/api/webhooks/resolve-whatsapp-identity",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  provider: 'meta_cloud_api',\n  phone_number_id: $json.phone_number_id,\n  data: {\n    key: { remoteJid: $json.chat_jid, fromMe: false },\n    pushName: $json.push_name,\n    userName: $json.username\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "7d93b21c-7275-4cd5-99b4-bf26890eb38b",
+      "name": "resolver identidad (reaccion)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        1152
+      ],
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url }}/api/webhooks/reaction",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('resolver identidad (reaccion)').item.json.chat_id, target_wa_message_id: $('evento Meta activo').item.json.target_wa_message_id, emoji: $('evento Meta activo').item.json.emoji, from_me: false }) }}",
+        "options": {}
+      },
+      "id": "59801902-f63c-4ced-8d91-98ddff9047f2",
+      "name": "guardar reaccion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        1152
+      ],
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "content": "# Verificación de webhook",
+        "height": 544,
+        "width": 1216,
+        "color": 6
+      },
+      "id": "2cc88c04-d79d-4190-8fd4-ad2afd9aa070",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1648,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backend_url }}/api/webhooks/meta-events/inbox",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('normalizar eventos Meta').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('normalizar eventos Meta').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ events: [{\n    event_key: $json.event_key,\n    event_type: $json._kind,\n    phone_number_id: $json.phone_number_id,\n    payload: $json\n  }] }) }}",
+        "options": {}
+      },
+      "id": "e6a7a3a5-51f7-46e6-8657-6c7163dd1061",
+      "name": "registrar evento Meta en inbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1296,
+        992
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Dispara el websocket del chat y las automatizaciones"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "7116fd2b-a5f9-43b1-825f-d35735390952",
+      "name": "unir evento con resultado inbox",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1120,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\nfor (const item of $input.all()) {\n  const value = item.json;\n  if (Array.isArray(value.items)) {\n    const record = value.items.find((candidate) => candidate.event_key === value.event_key);\n    if (!record || !record.accepted) continue;\n    const payload = { ...value };\n    delete payload.items;\n    output.push({ json: { ...payload, inbox_id: record.id } });\n    continue;\n  }\n  if (value.id && value.payload) {\n    output.push({ json: { ...value.payload, inbox_id: value.id } });\n  }\n}\nreturn output;"
+      },
+      "id": "2dd842c2-dabd-4949-8d90-8c4a2396a642",
+      "name": "evento Meta activo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "8e3f88d3-9e60-4d43-b1c1-ba7db0f8da9c",
+      "name": "reintentar inbox Meta",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1552,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (retry)').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/meta-events/inbox/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05d474b7-ff77-4fa2-bbdd-32e1e1398baf",
+      "name": "reclamar eventos Meta pendientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1136,
+        1248
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Dispara el websocket del chat y las automatizaciones"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "id": "17765554-2ee3-4582-83ff-f2df79344967",
+      "name": "separar eventos Meta reclamados",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('evento Meta activo').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/meta-events/inbox/' + $('evento Meta activo').item.json.inbox_id + '/complete' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Phone-Number-Id",
+              "value": "={{ $('evento Meta activo').item.json.phone_number_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'processed' }) }}",
+        "options": {}
+      },
+      "id": "017f6123-a086-4002-8b50-39100f345e1c",
+      "name": "marcar evento Meta completo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1264,
+        1008
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "Dispara el websocket del chat y las automatizaciones"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (POST)').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/meta/verify-signature' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-hub-signature-256",
+              "value": "={{ ($json.headers || {})['x-hub-signature-256'] || ($json.headers || {})['X-Hub-Signature-256'] }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw_body }}",
+        "options": {}
+      },
+      "id": "df68d46a-da5e-405d-a25c-870ba56d8c72",
+      "name": "verificar firma Meta POST",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1808,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "jvbwhBWaAoNeyX0H",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/jvbwhBWaAoNeyX0H",
+          "cachedResultName": "Config"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "14557365-6caa-48fe-83a5-ded03e22a0f0",
+      "name": "Config (GET)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1328,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "jvbwhBWaAoNeyX0H",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/jvbwhBWaAoNeyX0H",
+          "cachedResultName": "Config"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "id": "6933aaf4-752a-4553-b2fe-8966004cc06e",
+      "name": "Config (POST)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -2048,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "jvbwhBWaAoNeyX0H",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/jvbwhBWaAoNeyX0H",
+          "cachedResultName": "Config"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "1ad8cc06-e2d6-467a-a065-cda28d54e257",
+      "name": "Config (retry)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1344,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Meta eventos (POST)').all().map((item, index) => {\n  let raw = null;\n  if (typeof item.json.rawBody === 'string') raw = item.json.rawBody;\n  else if (item.json.rawBody && item.json.rawBody.type === 'Buffer') raw = Buffer.from(item.json.rawBody.data).toString('utf8');\n  else if (item.binary && item.binary.data && item.binary.data.data) raw = Buffer.from(item.binary.data.data, 'base64').toString('utf8');\n  if (raw == null) throw new Error('Raw body no disponible: mantener Raw Body activo en el Webhook');\n  return { json: { ...item.json, raw_body: raw }, pairedItem: { item: index } };\n});"
+      },
+      "id": "e0000000-c3c3-4000-8000-000000000004",
+      "name": "preparar cuerpo crudo Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1936,
+        864
+      ]
+    }
+  ],
+  "connections": {
+    "Meta verificacion (GET)": {
+      "main": [
+        [
+          {
+            "node": "Config (GET)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verificar token": {
+      "main": [
+        [
+          {
+            "node": "token valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "token valido?": {
+      "main": [
+        [
+          {
+            "node": "devolver challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "rechazar verificacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta eventos (POST)": {
+      "main": [
+        [
+          {
+            "node": "Config (POST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "responder 200 a Meta": {
+      "main": [
+        [
+          {
+            "node": "evento Meta activo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalizar eventos Meta": {
+      "main": [
+        [
+          {
+            "node": "registrar evento Meta en inbox",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "unir evento con resultado inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tipo de evento": {
+      "main": [
+        [
+          {
+            "node": "resolver identidad",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "actualizar estado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "resolver identidad (reaccion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolver identidad": {
+      "main": [
+        [
+          {
+            "node": "asegurar lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "etiquetar ejecucion": {
+      "main": [
+        [
+          {
+            "node": "tipo de evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "asegurar lead": {
+      "main": [
+        [
+          {
+            "node": "buscar mensaje existente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "buscar mensaje existente": {
+      "main": [
+        [
+          {
+            "node": "mensaje nuevo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mensaje nuevo?": {
+      "main": [
+        [
+          {
+            "node": "tiene adjunto?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "avisar al backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tiene adjunto?": {
+      "main": [
+        [
+          {
+            "node": "importar adjunto de Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "guardar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "importar adjunto de Meta": {
+      "main": [
+        [
+          {
+            "node": "guardar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "guardar mensaje": {
+      "main": [
+        [
+          {
+            "node": "avisar al backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolver identidad (reaccion)": {
+      "main": [
+        [
+          {
+            "node": "guardar reaccion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "registrar evento Meta en inbox": {
+      "main": [
+        [
+          {
+            "node": "unir evento con resultado inbox",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "unir evento con resultado inbox": {
+      "main": [
+        [
+          {
+            "node": "responder 200 a Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reintentar inbox Meta": {
+      "main": [
+        [
+          {
+            "node": "Config (retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reclamar eventos Meta pendientes": {
+      "main": [
+        [
+          {
+            "node": "separar eventos Meta reclamados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "separar eventos Meta reclamados": {
+      "main": [
+        [
+          {
+            "node": "evento Meta activo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "evento Meta activo": {
+      "main": [
+        [
+          {
+            "node": "etiquetar ejecucion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "avisar al backend": {
+      "main": [
+        [
+          {
+            "node": "marcar evento Meta completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "actualizar estado": {
+      "main": [
+        [
+          {
+            "node": "marcar evento Meta completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "guardar reaccion": {
+      "main": [
+        [
+          {
+            "node": "marcar evento Meta completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verificar firma Meta POST": {
+      "main": [
+        [
+          {
+            "node": "normalizar eventos Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (POST)": {
+      "main": [
+        [
+          {
+            "node": "preparar cuerpo crudo Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (retry)": {
+      "main": [
+        [
+          {
+            "node": "reclamar eventos Meta pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (GET)": {
+      "main": [
+        [
+          {
+            "node": "verificar token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "preparar cuerpo crudo Meta": {
+      "main": [
+        [
+          {
+            "node": "verificar firma Meta POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7993aff3-d816-4c4f-b5e0-eadee7140574",
+  "meta": {
+    "instanceId": "eaa95671179241194a1b6c88af919cdec9ae6ad1c2c579fcd668d9884ad68f89"
+  },
+  "nodeGroups": [],
+  "id": "HgRCDjVZhR4zvpA1",
+  "tags": []
+}

@@ -153,6 +153,7 @@ def _identity_conditions(search: str) -> list:
         )),
         Lead.telefono.ilike(pattern, escape="\\"),
         Lead.telefono_secundario.ilike(pattern, escape="\\"),
+        _unaccent_ilike(Lead.nombre_usuario, pattern),
         _unaccent_ilike(Lead.nombre, pattern),
     ]
 
@@ -278,6 +279,7 @@ def _chat_columns(last_message):
         Lead.id.label("chat_id"),
         Lead.telefono.label("phone"),
         Lead.telefono_secundario.label("secondary_phone"),
+        Lead.nombre_usuario.label("username"),
         Lead.nombre.label("name"),
         Lead.servicio_interes,
         Lead.vendedor_id,

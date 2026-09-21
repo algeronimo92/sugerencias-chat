@@ -39,6 +39,7 @@ from routers.chats.outbound import (  # noqa: F401
     retry_message,
     send_audio,
     send_location,
+    send_contacts,
     send_media,
     send_message,
     send_sticker,

@@ -48,6 +48,7 @@ class TestEscapeLike:
 class TestCondicionDeBusqueda:
     def test_usa_unaccent_en_campos_de_texto(self):
         sql = _compile("jose")
+        assert "f_unaccent(leads.nombre_usuario)" in sql
         assert "f_unaccent(leads.nombre)" in sql
         assert "f_unaccent('%jose%')" in sql
 

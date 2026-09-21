@@ -1,20 +1,24 @@
 import { useState } from 'react'
-import { FileText, Headphones, Image, Loader2, MapPin, Paperclip } from 'lucide-react'
+import { Camera, ContactRound, FileText, Headphones, Image, Loader2, MapPin, Paperclip } from 'lucide-react'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 
 interface Props {
   disabled?: boolean
   isSending?: boolean
   onSelectDocument: () => void
+  onSelectCamera: () => void
   onSelectMedia: () => void
   onSelectAudio: () => void
+  onSelectContact: () => void
   onSelectLocation: () => void
 }
 
 const ITEMS = [
   { key: 'document', label: 'Documento', icon: FileText, color: 'bg-violet-600' },
+  { key: 'camera', label: 'Cámara', icon: Camera, color: 'bg-amber-500' },
   { key: 'media', label: 'Fotos y videos', icon: Image, color: 'bg-blue-500' },
   { key: 'audio', label: 'Audio', icon: Headphones, color: 'bg-pink-500' },
+  { key: 'contact', label: 'Contacto', icon: ContactRound, color: 'bg-cyan-600' },
   { key: 'location', label: 'Ubicación', icon: MapPin, color: 'bg-red-500' },
 ] as const
 
@@ -22,8 +26,10 @@ export function AttachMenu({
   disabled,
   isSending,
   onSelectDocument,
+  onSelectCamera,
   onSelectMedia,
   onSelectAudio,
+  onSelectContact,
   onSelectLocation,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false)
@@ -32,8 +38,10 @@ export function AttachMenu({
   function handleSelect(key: (typeof ITEMS)[number]['key']) {
     setIsOpen(false)
     if (key === 'document') onSelectDocument()
+    else if (key === 'camera') onSelectCamera()
     else if (key === 'media') onSelectMedia()
     else if (key === 'audio') onSelectAudio()
+    else if (key === 'contact') onSelectContact()
     else onSelectLocation()
   }
 

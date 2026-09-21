@@ -34,12 +34,19 @@ class Settings(BaseSettings):
     # lista explícita y mínima.
     tenant_platform_hosts: str = "localhost,testserver"
     n8n_webhook_url: str = ""
+    n8n_analyst_webhook_url: str = ""
     # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
     # webhook de n8n (dirección app -> n8n). Env var OUTBOUND_WEBHOOK_TOKEN a
     # propósito, distinta de INBOUND_WEBHOOK_TOKEN (n8n -> backend, la
     # dirección opuesta) para que no se confundan al configurarlas.
     n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
+    # Credenciales de la app de Meta (Tech Provider): son únicas para toda la
+    # instalación, no de un negocio. Las leen rutas que corren antes de resolver
+    # el tenant (challenge del webhook y firma HMAC), así que en multitenant no
+    # pueden salir de `app_settings` — ver services/platform_settings.py.
+    meta_verify_token: str = ""
+    meta_app_secret: str = ""
     # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
     # en callbacks de jobs IA. Debe ser distinto de los tokens HTTP en
     # despliegues multitenant; nunca contiene ni acepta nombres de schema.

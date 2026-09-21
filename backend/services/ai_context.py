@@ -1,8 +1,7 @@
-"""Contexto versionado que el backend entrega a los subworkflows de IA.
+"""Versioned context delivered by the backend to AI subworkflows.
 
-n8n recibe una proyecciÃ³n allowlist del CRM y una revisiÃ³n opaca. Nunca recibe
-un nombre de schema ni decide a quÃ© tenant conectarse: la sesiÃ³n activa ya fue
-resuelta por la capa HTTP antes de llegar a estos helpers.
+n8n receives an allowlisted CRM projection and an opaque revision. It never
+receives a schema name or chooses the tenant connection.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from services.store.common import _fmt_ts, _json_safe_row
 
 
 def make_context_revision(updated_at: datetime | None, latest_message_id: int | None) -> str:
-    """Firma opaca del lead y del Ãºltimo mensaje visible para la IA."""
+    """Build an opaque signature from the lead and latest visible message."""
 
     lead_part = updated_at.isoformat() if updated_at is not None else ""
     message_part = str(latest_message_id or 0)
@@ -27,13 +26,12 @@ def make_context_revision(updated_at: datetime | None, latest_message_id: int | 
 
 
 async def fetch_context_revision(chat_id: str) -> str | None:
-    """RevisiÃ³n actual, o ``None`` si el lead no existe."""
+    """Return the current revision, or ``None`` when the lead is missing."""
 
     async with get_sessionmaker()() as session:
         updated_at = await session.scalar(select(Lead.updated_at).where(Lead.id == chat_id))
         if updated_at is None:
-            # Los leads antiguos pueden no tener updated_at; se comprueba la
-            # existencia aparte para no confundirlos con un id inexistente.
+            # Old leads may not have updated_at. Check existence separately.
             exists = await session.scalar(select(Lead.id).where(Lead.id == chat_id))
             if exists is None:
                 return None
@@ -44,11 +42,7 @@ async def fetch_context_revision(chat_id: str) -> str | None:
 
 
 async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
-    """Snapshot allowlist para el agente analista.
-
-    Los mensajes conservan el orden descendente del SQL legado. Si existe un
-    resumen IA de un adjunto se concatena al texto como hacÃ­a ``get messages1``.
-    """
+    """Return the allowlisted analyst snapshot in legacy descending order."""
 
     lead_columns = (
         Lead.id,

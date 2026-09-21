@@ -32,7 +32,7 @@ describe('TemplateCategoriesManagementPanel', () => {
     const user = userEvent.setup()
     render(<TemplateCategoriesManagementPanel />)
 
-    await user.type(screen.getByPlaceholderText('Nombre de la nueva categoría'), 'Postventa')
+    await user.type(screen.getByRole('textbox', { name: 'Nombre de la nueva categoría' }), 'Postventa')
     await user.click(screen.getByRole('button', { name: 'Crear categoría' }))
 
     expect(mocks.create).toHaveBeenCalledWith('Postventa', expect.any(Object))
@@ -43,7 +43,7 @@ describe('TemplateCategoriesManagementPanel', () => {
     render(<TemplateCategoriesManagementPanel />)
 
     expect(screen.getByText('Creada por Lucía Ramos')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Activa' }))
+    await user.click(screen.getByRole('button', { name: 'Desactivar Seguimiento' }))
 
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 1, is_active: false },

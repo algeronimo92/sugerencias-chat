@@ -27,3 +27,7 @@ tests/
 .ruff_cache
 htmlcov
 .coverage
+
+# Fixture de test que queda con permisos restringidos (simula acceso
+# denegado) y bloqueaba el envío del contexto de build en Windows.
+.test-tmp

@@ -1,0 +1,670 @@
+{
+  "name": "analista",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "operation",
+              "type": "string"
+            },
+            {
+              "name": "job_id",
+              "type": "string"
+            },
+            {
+              "name": "tenant_context_token",
+              "type": "string"
+            },
+            {
+              "name": "expected_revision",
+              "type": "string"
+            },
+            {
+              "name": "chat_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -672,
+        256
+      ],
+      "id": "d8fff34e-4248-48ca-982a-d2f3b8aaaa04",
+      "name": "Datos del mensaje",
+      "notesInFlow": true,
+      "notes": "Recibe {chat_id, message_id, last_sender} desde `rag`."
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini",
+          "cachedResultUrl": ""
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0,
+          "timeout": 60000,
+          "maxRetries": 2,
+          "promptCacheKey": "analista-leads"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1712,
+        480
+      ],
+      "id": "9efa7075-0282-4e1b-a264-e1f604a7a90f",
+      "name": "OpenAI Chat Model6"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -208,
+        256
+      ],
+      "id": "96b77ea3-e1e5-4aba-a60c-b799ebe292f0",
+      "name": "debounce analista1",
+      "webhookId": "0d2ffe61-995d-4943-9e46-1b3f6ced734d"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"razonamiento\": { \"type\": \"string\" },\n    \"nombre\": { \"type\": \"string\" },\n    \"telefono\": { \"type\": \"string\" },\n    \"estado\": {\n      \"type\": \"string\",\n      \"enum\": [\"nuevo\", \"en_diagnostico\", \"calificado\", \"oferta_presentada\", \"en_objecion\", \"agendado\", \"cliente_activo\", \"postventa\", \"en_seguimiento\", \"en_nutricion\", \"perdido\", \"descalificado\", \"baja\"]\n    },\n    \"tipo_objecion\": {\n      \"type\": \"string\",\n      \"enum\": [\"indecision\", \"concreto\", \"no_especificado\"]\n    },\n    \"servicio_interes\": { \"type\": \"string\" },\n    \"razon_perdido\": { \"type\": \"string\" },\n    \"fecha_recontacto\": { \"type\": \"string\" },\n    \"proxima_cita\": { \"type\": \"string\" },\n    \"con_especialista\": { \"type\": \"boolean\" },\n    \"notas\": { \"type\": \"string\" }\n  },\n  \"required\": [\"razonamiento\", \"nombre\", \"telefono\", \"estado\", \"tipo_objecion\", \"servicio_interes\", \"razon_perdido\", \"fecha_recontacto\", \"proxima_cita\", \"con_especialista\", \"notas\"]\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1840,
+        480
+      ],
+      "id": "bf61a3ca-dd3f-4515-b3d8-dd37433cf8dc",
+      "name": "Structured Output Parser4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<lead>\nEstado e información del lead (incluye su estado actual):\n{{ $json.toJsonString() }}\n</lead>\n\n<datos_temporales>\n- Fecha y hora actual: {{ $now.toISO() }}\n- Último mensaje enviado por: {{ $json.ultimo_emisor }}   (cliente | vendedor)\n</datos_temporales>\n\n<historial>\nConversación de WhatsApp (más nuevo arriba):\n{{ $('preparar contexto analista').item.json.data.toJsonString() }}\n</historial>\n\nAnaliza y devuelve el JSON según tu formato de salida.",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=# ROL\nEres un analista de leads del negocio autorizado para este job. Clasificas la conversacion y propones campos estructurados; no envias mensajes al cliente.\n\n# AISLAMIENTO\ntenant_config es la unica fuente de identidad, servicios, moneda, ubicacion, politicas y reglas del negocio. Usa solo el lead y los mensajes recibidos en este contexto autorizado. Nunca mezcles datos ni supongas configuracion de otro negocio. Si falta informacion devuelve no_especificado.\n\n# ESTADOS\nDevuelve exactamente uno: nuevo, en_diagnostico, calificado, oferta_presentada, en_objecion, agendado, cliente_activo, postventa, en_seguimiento, en_nutricion, perdido, descalificado o baja.\nParte del estado actual y cambialo solo con evidencia concreta del historial. Mantiene etapas avanzadas ante preguntas de detalle. baja exige que el cliente pida no recibir mensajes. agendado exige confirmacion explicita de la reserva segun las reglas de tenant_config. perdido y descalificado exigen una razon concreta. El silencio y los cambios por tiempo pertenecen a automatizaciones deterministas, no al modelo.\n\n# CAMPOS\n- razonamiento: una frase que cite la evidencia del estado.\n- nombre y telefono: solo si el cliente los expresa; no derives el telefono del canal.\n- servicio_interes: solo un servicio presente en tenant_config; si no coincide, no_especificado.\n- tipo_objecion: concreto o indecision solo cuando estado sea en_objecion; en otro caso no_especificado.\n- razon_perdido: solo para perdido o descalificado.\n- fecha_recontacto: YYYY-MM-DD solo con una fecha futura sustentada.\n- proxima_cita: ISO 8601 con la zona configurada, solo con cita confirmada segun tenant_config.\n- con_especialista: true solo si la conversacion muestra derivacion o solicitud humana.\n- notas: resumen breve de necesidad, acuerdos y siguiente accion.\n\nGenera primero el razonamiento y despues el objeto exigido por el parser. No inventes evidencia, precios, servicios, fechas ni politicas."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1616,
+        256
+      ],
+      "id": "bf395a7f-2e4e-4881-8846-73b6c0d51365",
+      "name": "agente analista1",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": {
+          "maxOutputTokens": 4000,
+          "temperature": 0,
+          "safetySettings": {
+            "values": [
+              {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1584,
+        480
+      ],
+      "id": "4af4a006-5cde-43ca-9a72-eab3d0c84b48",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.6-flash",
+        "options": {
+          "maxOutputTokens": 4000,
+          "temperature": 0,
+          "safetySettings": {
+            "values": [
+              {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        688
+      ],
+      "id": "d3ab8f39-d1f2-4fc6-af42-e3052f8db4de",
+      "name": "Google Gemini Chat Model1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nodo Code 'Vaciar a null' del workflow del analista (rpSHUZd1Et3vkK4n).\n// Va entre 'agente analista1' y 'update lead'. Pegar TAL CUAL en n8n.\n//\n// POR QUE EXISTE: el schema de function calling de Gemini no acepta union types\n// (ningun campo del parser puede ser nullable, ver la nota del 30-jul-2026 en\n// prompts/agente-analista-leads.md), asi que el agente devuelve el centinela\n// \"no_especificado\" donde antes devolvia null. Aqui se rehidrata a null y se\n// aplican las reglas de coherencia antes de escribir en la BD.\n//\n// Mantiene el wrapper \"output\": 'update lead' y 'actualizar estado lead'\n// siguen leyendo $json.output.* sin cambios.\n\nconst ESTADOS = ['nuevo','en_diagnostico','calificado','oferta_presentada','en_objecion','agendado','cliente_activo','postventa','en_seguimiento','en_nutricion','perdido','descalificado','baja'];\n\n// Valores validos en la BD. El schema tambien permite 'no_especificado' (por la\n// prohibicion de nullables), y ese cae a null como cualquier otro centinela.\nconst TIPOS_OBJECION = ['indecision','concreto'];\n\n// El centinela del prompt (\"no_especificado\") mas las variantes que el modelo\n// podria improvisar. Se compara normalizado, asi que basta la forma en minusculas\n// y con espacios: \"No_Especificado.\" tambien entra.\nconst SIN_DATO = new Set(['no especificado','no aplica','no disponible','no hay','desconocido',\n  'ninguna','ninguno','ningun','null','nulo','none','undefined','n/a','na','nada',\n  'sin dato','sin datos','sin especificar','-','--','']);\n\n// minusculas, sin tildes, sin guiones bajos y sin puntuacion de borde:\n// \"No_Especificado.\" -> \"no especificado\"\nfunction clave(v) {\n  return String(v)\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/[_\\s]+/g, ' ')\n    .replace(/^[\\s\"'¿¡(]+/, '')\n    .replace(/[\\s\"'.,;:!?)]+$/, '')\n    .trim();\n}\n\n// Devuelve el valor tal cual lo escribio el modelo (con sus tildes), o null si\n// es un centinela de \"sin dato\".\nfunction aNull(v) {\n  if (v === null || v === undefined) return null;\n  const s = String(v).trim();\n  return SIN_DATO.has(clave(s)) ? null : s;\n}\n\nfunction aBool(v) {\n  if (typeof v === 'boolean') return v;\n  const s = clave(v);\n  return s === 'true' || s === 'si' || s === '1';\n}\n\n// fecha_recontacto -> YYYY-MM-DD, y solo si la fecha existe de verdad\n// (2026-02-31 la rechazaria Postgres y tumbaria el workflow).\nfunction fechaONull(v) {\n  const s = aNull(v);\n  if (!s) return null;\n  const m = s.match(/(\\d{4})-(\\d{2})-(\\d{2})/);\n  if (!m) return null;\n  const d = new Date(m[0] + 'T00:00:00Z');\n  if (isNaN(d.getTime()) || d.getUTCDate() !== Number(m[3]) || d.getUTCMonth() + 1 !== Number(m[2])) return null;\n  return m[0];\n}\n\n// proxima_cita -> se conserva tal cual (ISO 8601 con zona de Peru) si es parseable.\nfunction timestampONull(v) {\n  const s = aNull(v);\n  if (!s) return null;\n  if (!/\\d{4}-\\d{2}-\\d{2}/.test(s)) return null;\n  return isNaN(new Date(s.replace(' ', 'T')).getTime()) ? null : s;\n}\n\n// El agente entrega el objeto en .output. Si el parser viniera desactivado, el\n// texto llega como string (a veces envuelto en ```json): lo rescatamos.\nfunction salidaDelAgente(json) {\n  let d = (json && json.output !== undefined) ? json.output : json;\n  if (typeof d === 'string') {\n    let t = d.trim();\n    if (t.startsWith('```')) t = t.replace(/^```[a-z]*\\s*/i, '').replace(/```\\s*$/, '').trim();\n    try { d = JSON.parse(t); } catch (e) {\n      throw new Error('El agente no devolvio JSON parseable: ' + t.slice(0, 200));\n    }\n  }\n  if (!d || typeof d !== 'object') throw new Error('El agente no devolvio un objeto: ' + JSON.stringify(d));\n  return d;\n}\n\nconst salida = [];\n\nfor (const item of $input.all()) {\n  const d = salidaDelAgente(item.json);\n\n  // estado: unico campo sin fallback. Si no es valido, se corta la ejecucion sin\n  // escribir nada (guardarrail 4: jamas un estado por defecto).\n  const estado = clave(d.estado).replace(/ /g, '_');   // \"En Diagnóstico\" -> en_diagnostico\n  if (!ESTADOS.includes(estado)) {\n    throw new Error('Estado invalido devuelto por el modelo: ' + JSON.stringify(d.estado)\n      + ' · salida completa: ' + JSON.stringify(d).slice(0, 400));\n  }\n\n  // tipo_objecion solo tiene sentido en en_objecion\n  let tipo_objecion = aNull(d.tipo_objecion);\n  if (tipo_objecion) tipo_objecion = clave(tipo_objecion).replace(/ /g, '_');\n  if (!TIPOS_OBJECION.includes(tipo_objecion)) tipo_objecion = null;\n  if (estado !== 'en_objecion') tipo_objecion = null;\n\n  // razon_perdido solo en perdido / descalificado\n  let razon_perdido = aNull(d.razon_perdido);\n  if (estado !== 'perdido' && estado !== 'descalificado') razon_perdido = null;\n\n  // proxima_cita solo en agendado\n  let proxima_cita = timestampONull(d.proxima_cita);\n  if (estado !== 'agendado') proxima_cita = null;\n\n  // telefono: solo digitos, normalizado a E.164 como el resto del sistema\n  // (whatsapp_identity_service._phone_from_jid, migracion 022): '+' + codigo\n  // de pais + numero. Celular peruano sin codigo (9 digitos) asume 51, el\n  // mismo default que 'default_country_code' en Ajustes.\n  let telefono = aNull(d.telefono);\n  if (telefono) {\n    let digitos = telefono.replace(/\\D/g, '');\n    if (digitos.length < 6) {\n      telefono = null;\n    } else {\n      const teniaPrefijo = String(telefono).trim().startsWith('+');\n      telefono = teniaPrefijo ? '+' + digitos : digitos;\n    }\n  }\n\n  salida.push({\n    json: {\n      output: {\n        razonamiento: aNull(d.razonamiento),\n        nombre: aNull(d.nombre),\n        telefono: telefono,\n        estado: estado,\n        tipo_objecion: tipo_objecion,\n        servicio_interes: aNull(d.servicio_interes),\n        razon_perdido: razon_perdido,\n        fecha_recontacto: fechaONull(d.fecha_recontacto),\n        proxima_cita: proxima_cita,\n        con_especialista: aBool(d.con_especialista),\n        notas: aNull(d.notas)\n      }\n    }\n  });\n}\n\nreturn salida;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        256
+      ],
+      "id": "cd17ab6c-93bd-4321-99b3-d17eb4de3f03",
+      "name": "Vaciar a null"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "validar solicitud analista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1220,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst query = input.query || input;\nconst headers = input.headers || {};\nconst request = {\n  operation: query.operation || 'analyst',\n  job_id: query.job_id || headers['x-job-id'],\n  tenant_context_token: input.query ? headers['x-tenant-context'] : query.tenant_context_token,\n  expected_revision: query.expected_revision || query.context_revision,\n  chat_id: query.chat_id,\n  invocation: input.query ? 'webhook' : 'subworkflow'\n};\nconst required = ['job_id', 'tenant_context_token', 'expected_revision', 'chat_id'];\nif (request.operation !== 'analyst') throw new Error('operation debe ser analyst');\nfor (const field of required) {\n  if (request[field] === undefined || request[field] === null || String(request[field]).trim() === '') {\n    throw new Error('Falta input requerido: ' + field);\n  }\n}\nreturn [{ json: request }];"
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "name": "cargar contexto autorizado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -780,
+        160
+      ],
+      "parameters": {
+        "url": "={{ $('Config').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/analysis-context' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('validar solicitud analista').item.json.chat_id }}"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-Context",
+              "value": "={{ $('validar solicitud analista').item.json.tenant_context_token }}"
+            },
+            {
+              "name": "X-Job-Id",
+              "value": "={{ $('validar solicitud analista').item.json.job_id }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "name": "contexto vigente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -560,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "20000000-0000-4000-8000-000000000004",
+              "leftValue": "={{ $json.operation }}",
+              "rightValue": "analyst",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "20000000-0000-4000-8000-000000000005",
+              "leftValue": "={{ String($json.job_id) }}",
+              "rightValue": "={{ String($('validar solicitud analista').item.json.job_id) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "20000000-0000-4000-8000-000000000006",
+              "leftValue": "={{ String($json.context_revision) }}",
+              "rightValue": "={{ String($('validar solicitud analista').item.json.expected_revision) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000007",
+      "name": "preparar contexto analista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const context = $input.first().json;\nreturn [{ json: {\n  ...(context.lead || {}),\n  data: context.messages || [],\n  tenant_config: context.tenant_config || {},\n  job_id: context.job_id,\n  context_revision: context.context_revision,\n  chat_id: $('validar solicitud analista').item.json.chat_id,\n  tenant_context_token: $('validar solicitud analista').item.json.tenant_context_token\n} }];"
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000008",
+      "name": "aplicar analisis vigente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.backend_url.replace(/\\/$/, '') + '/api/webhooks/analysis-jobs/' + $('cargar contexto autorizado').item.json.job_id + '/apply' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const output = $json.output;\n  const fields = Object.fromEntries(Object.entries({\n    nombre: output.nombre,\n    telefono: output.telefono,\n    servicio_interes: output.servicio_interes,\n    notas: output.notas,\n    razon_perdido: output.razon_perdido,\n    fecha_recontacto: output.fecha_recontacto,\n    tipo_objecion: output.tipo_objecion,\n    proxima_cita: output.proxima_cita,\n    con_especialista: output.con_especialista\n  }).filter(([, value]) => value !== null && value !== undefined));\n  return JSON.stringify({\n    chat_id: $('validar solicitud analista').item.json.chat_id,\n    context_revision: $('cargar contexto autorizado').item.json.context_revision,\n    fields,\n    estado: output.estado,\n    razonamiento: output.razonamiento\n  });\n})() }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-Context",
+              "value": "={{ $('validar solicitud analista').item.json.tenant_context_token }}"
+            },
+            {
+              "name": "X-Job-Id",
+              "value": "={{ $('validar solicitud analista').item.json.job_id }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000009",
+      "name": "Webhook analista a demanda",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1480,
+        360
+      ],
+      "webhookId": "analista-on-demand",
+      "parameters": {
+        "multipleMethods": true,
+        "path": "analista",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000010",
+      "name": "respuesta analista por webhook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "20000000-0000-4000-8000-000000000011",
+              "leftValue": "={{ $('validar solicitud analista').item.json.invocation }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000012",
+      "name": "responder analisis aplicado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        740,
+        40
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      }
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000013",
+      "name": "devolver analisis aplicado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        740,
+        220
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_DE_CONFIG",
+          "mode": "list",
+          "cachedResultName": "Config"
+        },
+        "options": {}
+      },
+      "id": "f0000000-a1a1-4000-8000-000000000001",
+      "name": "Config",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1900,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "OpenAI Chat Model6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "agente analista1",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "debounce analista1": {
+      "main": [
+        [
+          {
+            "node": "cargar contexto autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser4": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "agente analista1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agente analista1": {
+      "main": [
+        [
+          {
+            "node": "Vaciar a null",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "agente analista1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser4",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vaciar a null": {
+      "main": [
+        [
+          {
+            "node": "aplicar analisis vigente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datos del mensaje": {
+      "main": [
+        [
+          {
+            "node": "validar solicitud analista",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validar solicitud analista": {
+      "main": [
+        [
+          {
+            "node": "debounce analista1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar contexto autorizado": {
+      "main": [
+        [
+          {
+            "node": "contexto vigente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "contexto vigente?": {
+      "main": [
+        [
+          {
+            "node": "preparar contexto analista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "preparar contexto analista": {
+      "main": [
+        [
+          {
+            "node": "agente analista1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook analista a demanda": {
+      "main": [
+        [
+          {
+            "node": "validar solicitud analista",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "validar solicitud analista",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aplicar analisis vigente": {
+      "main": [
+        [
+          {
+            "node": "respuesta analista por webhook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "respuesta analista por webhook?": {
+      "main": [
+        [
+          {
+            "node": "responder analisis aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "devolver analisis aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c50046d7-658b-47a1-8603-b7aad8f20744",
+  "meta": {
+    "instanceId": "eaa95671179241194a1b6c88af919cdec9ae6ad1c2c579fcd668d9884ad68f89"
+  },
+  "nodeGroups": [],
+  "id": "I7Yv10FvAeEXEWVO",
+  "tags": []
+}

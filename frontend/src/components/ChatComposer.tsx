@@ -9,6 +9,8 @@ import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
+import { CameraCaptureDialog } from './CameraCaptureDialog'
+import { ContactSendDialog } from './ContactSendDialog'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { FlowPicker } from './FlowPicker'
 import { LocationConfirmDialog } from './LocationConfirmDialog'
@@ -108,6 +110,8 @@ export function ChatComposer({
   const [isSendingMedia, setIsSendingMedia] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Última posición del cursor en el textarea: la fija el propio textarea (onSelect)
   // y la usa la inserción de emojis. Cuando queda no-null tras insertar, el efecto
@@ -193,6 +197,8 @@ export function ChatComposer({
     setLocationError(null)
     setStickerError(null)
     setPendingLocation(null)
+    setIsContactDialogOpen(false)
+    setIsCameraOpen(false)
     setSlashIndex(0)
     setSlashDismissed(false)
   }, [chat.chat_id])
@@ -231,12 +237,39 @@ export function ChatComposer({
     )
   }
 
-  function openFilePicker(accept: string, multiple = false) {
+  function openFilePicker(accept: string, multiple = false, capture?: 'environment' | 'user') {
     const input = fileInputRef.current
     if (!input) return
     input.accept = accept
     input.multiple = multiple
+    // El input es uno solo para todos los adjuntos: sin limpiar `capture`, la
+    // siguiente elección de archivo volvería a abrir la cámara del celular.
+    if (capture) input.setAttribute('capture', capture)
+    else input.removeAttribute('capture')
     input.click()
+  }
+
+  /** La cámara propia (getUserMedia) funciona igual en escritorio y celular y
+   * deja elegir entre frontal y trasera. Donde no existe —contexto inseguro
+   * (HTTP), navegador viejo— se cae al input nativo con `capture`, que en el
+   * celular abre la app de cámara del sistema. */
+  function handleOpenCamera() {
+    setMediaError(null)
+    // `mediaDevices` no existe fuera de un contexto seguro, aunque los tipos
+    // del DOM lo den siempre por presente.
+    const mediaDevices = typeof navigator === 'undefined' ? undefined : navigator.mediaDevices
+    if (mediaDevices && typeof mediaDevices.getUserMedia === 'function') {
+      setIsCameraOpen(true)
+      return
+    }
+    openFilePicker('image/*', false, 'environment')
+  }
+
+  function handleCameraCaptured(file: File) {
+    setIsCameraOpen(false)
+    // Misma pantalla de preview que un archivo del disco: epígrafe, recorte y
+    // dibujo antes de mandar.
+    openMediaPreview(file)
   }
 
   function toPendingItem(file: File): PendingMediaItem {
@@ -499,8 +532,10 @@ export function ChatComposer({
               disabled={isLocating}
               isSending={isLocating}
               onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
+              onSelectCamera={handleOpenCamera}
               onSelectMedia={() => openFilePicker(MEDIA_ACCEPT, true)}
               onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
+              onSelectContact={() => setIsContactDialogOpen(true)}
               onSelectLocation={handleSendLocation}
             />
           )}
@@ -584,6 +619,20 @@ export function ChatComposer({
           isSending={false}
           onConfirm={handleConfirmLocation}
           onCancel={() => setPendingLocation(null)}
+        />
+      )}
+
+      {isCameraOpen && (
+        <CameraCaptureDialog onCapture={handleCameraCaptured} onClose={() => setIsCameraOpen(false)} />
+      )}
+
+      {isContactDialogOpen && (
+        <ContactSendDialog
+          chatId={chat.chat_id}
+          targetName={displayName(chat)}
+          replyTo={replyTo}
+          onSent={() => onReplyChange(null)}
+          onClose={() => setIsContactDialogOpen(false)}
         />
       )}
 

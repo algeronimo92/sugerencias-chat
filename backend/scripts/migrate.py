@@ -25,14 +25,19 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from uuid import UUID
 
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
-from db.session import close_engine, get_engine
+from db.models import TenantSchemaVersion
+from db.session import close_engine, control_session, get_engine
+from tenancy.context import TenantContext, validate_schema_name
+from tenancy.provisioning import _mark_active, _mark_failed, _migrate_schema
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -113,6 +118,106 @@ def _run(connection, config: Config, check_only: bool) -> int:
     return 0
 
 
+async def _active_tenants(engine) -> list[tuple[TenantContext, str | None, str | None]]:
+    """Lee el inventario después de migrar el plano de control."""
+
+    async with engine.connect() as connection:
+        rows = (
+            await connection.execute(
+                text(
+                    "SELECT o.id, o.schema_name, d.hostname, "
+                    "v.revision, v.migration_status "
+                    "FROM public.organizations o "
+                    "JOIN public.organization_domains d "
+                    "  ON d.organization_id = o.id AND d.is_primary "
+                    "LEFT JOIN public.tenant_schema_versions v "
+                    "  ON v.organization_id = o.id "
+                    "WHERE o.status = 'active' ORDER BY o.id"
+                )
+            )
+        ).mappings().all()
+    return [
+        (
+            TenantContext(
+                UUID(str(row["id"])),
+                validate_schema_name(row["schema_name"]),
+                row["hostname"],
+            ),
+            row["revision"],
+            row["migration_status"],
+        )
+        for row in rows
+    ]
+
+
+async def _actual_tenant_revision(engine, context: TenantContext) -> str | None:
+    async with engine.connect() as connection:
+        quoted = connection.dialect.identifier_preparer.quote(
+            validate_schema_name(context.schema_name)
+        )
+        try:
+            return (
+                await connection.execute(
+                    text(f"SELECT version_num FROM {quoted}.alembic_version")
+                )
+            ).scalar_one_or_none()
+        except SQLAlchemyError:
+            await connection.rollback()
+            return None
+
+
+async def _mark_running(context: TenantContext) -> None:
+    async with control_session() as session:
+        version = await session.get(TenantSchemaVersion, str(context.organization_id))
+        if version is None:
+            version = TenantSchemaVersion(organization_id=str(context.organization_id))
+            session.add(version)
+        version.migration_status = "running"
+        version.last_error = None
+
+
+async def _check_tenants(engine, head: str) -> int:
+    pending = 0
+    for context, registered_revision, migration_status in await _active_tenants(engine):
+        actual_revision = await _actual_tenant_revision(engine, context)
+        if (
+            registered_revision != head
+            or migration_status != "current"
+            or actual_revision != head
+        ):
+            pending += 1
+            print(
+                f"Tenant pendiente {context.organization_id}: "
+                f"registro={registered_revision or 'ninguno'} "
+                f"schema={actual_revision or 'ninguno'} estado={migration_status or 'ninguno'}"
+            )
+    if not pending:
+        print("Todos los tenants activos están al día")
+    return 1 if pending else 0
+
+
+async def _upgrade_tenants(engine) -> int:
+    failures = 0
+    head = ScriptDirectory.from_config(_alembic_config()).get_current_head()
+    for context, registered_revision, migration_status in await _active_tenants(engine):
+        actual_revision = await _actual_tenant_revision(engine, context)
+        if registered_revision == head and migration_status == "current" and actual_revision == head:
+            continue
+        print(f"Migrando tenant {context.organization_id} ({context.schema_name})")
+        await _mark_running(context)
+        try:
+            await _migrate_schema(context)
+            await _mark_active(context)
+        except Exception as exc:  # el siguiente tenant debe poder continuar
+            failures += 1
+            await _mark_failed(context, exc)
+            print(
+                f"Falló tenant {context.organization_id}: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+    return 1 if failures else 0
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -132,12 +237,18 @@ async def main() -> int:
                     text("SELECT pg_advisory_lock(:id)"), {"id": MIGRATION_LOCK_ID}
                 )
             try:
-                return await connection.run_sync(_run, config, args.check)
+                control_result = await connection.run_sync(_run, config, args.check)
             finally:
                 if not args.check:
                     await connection.execute(
                         text("SELECT pg_advisory_unlock(:id)"), {"id": MIGRATION_LOCK_ID}
                     )
+        if control_result:
+            return control_result
+        head = ScriptDirectory.from_config(config).get_current_head()
+        if args.check:
+            return await _check_tenants(engine, head)
+        return await _upgrade_tenants(engine)
     finally:
         await close_engine()
 

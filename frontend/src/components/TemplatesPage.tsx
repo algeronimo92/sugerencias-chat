@@ -14,6 +14,7 @@ import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../domain/automatio
 import { EMPTY_TEMPLATE_FORM as EMPTY_FORM, validateTemplateForm, type TemplateFormState } from '../domain/templateForm'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { Select } from './ui/Input'
+import './templates-page.css'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -392,30 +393,38 @@ export function TemplatesPage() {
   const maxInteractiveButtons = 3
 
   return (
-    <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-wa-primary-strong" />
-            <h1 className="text-xl font-semibold text-wa-text dark:text-white">Plantillas</h1>
+    <div className="templates-page h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
+      <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
+        <header className="templates-hero">
+          <div>
+            <div className="templates-eyebrow"><span className="templates-eyebrow-icon"><FileText className="h-4 w-4" /></span> Biblioteca de mensajes</div>
+            <h1 className="text-3xl font-bold tracking-tight text-wa-text dark:text-white">Plantillas</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Prepara respuestas consistentes para el equipo y gestiona tus plantillas oficiales de WhatsApp.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="templates-hero-actions">
             <button
               type="button"
               onClick={() => setImportDialogOpen(true)}
-              className="flex items-center gap-2 rounded-md border border-wa-border px-3 py-2 text-sm font-medium text-wa-text hover:bg-wa-field dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark"
+              className="flex items-center justify-center gap-2 rounded-xl border border-wa-border bg-white/80 px-4 py-2.5 text-sm font-semibold text-wa-text hover:bg-wa-field dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark dark:hover:bg-wa-head-dark"
             >
               <Download className="h-4 w-4" /> Importar desde Meta
             </button>
             <button
               type="button"
               onClick={() => (open ? closeForm() : openCreateForm())}
-              className="flex items-center gap-2 rounded-md bg-wa-primary px-3 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong"
+              className="flex items-center justify-center gap-2 rounded-xl bg-wa-primary-strong px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-wa-primary"
             >
-              <Plus className="h-4 w-4" /> Nueva plantilla
+              <Plus className="h-4 w-4" /> {open ? 'Cerrar formulario' : 'Nueva plantilla'}
             </button>
           </div>
-        </div>
+        </header>
+
+        <section className="templates-summary" aria-label="Resumen de plantillas">
+          <div className="templates-summary-card"><span>Total</span><strong>{data.length}</strong><FileText className="h-5 w-5 text-wa-primary-strong dark:text-wa-primary" /></div>
+          <div className="templates-summary-card"><span>Internas</span><strong>{data.filter(template => template.template_type === 'internal').length}</strong><MessageSquareText className="h-5 w-5 text-cyan-600 dark:text-cyan-300" /></div>
+          <div className="templates-summary-card"><span>Oficiales</span><strong>{data.filter(template => template.template_type === 'official').length}</strong><BadgeCheck className="h-5 w-5 text-blue-600 dark:text-blue-300" /></div>
+          <div className="templates-summary-card"><span>Activas</span><strong>{data.filter(template => template.is_active).length}</strong><Power className="h-5 w-5 text-amber-600 dark:text-amber-300" /></div>
+        </section>
 
         {importDialogOpen && (
           <ImportMetaTemplatesDialog
@@ -427,7 +436,7 @@ export function TemplatesPage() {
         )}
 
         {capabilities && (
-          <div className={`mb-4 flex gap-2 rounded-xl border px-4 py-3 text-xs ${capabilities.official_sending_supported ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+          <div className={`templates-capability mb-4 flex gap-2 rounded-2xl border px-4 py-3 text-xs ${capabilities.official_sending_supported ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
             {capabilities.official_sending_supported ? <BadgeCheck className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
             <div><p className="font-semibold">Evolution: {capabilities.integration ?? 'integración no detectada'}</p><p className="mt-0.5">{capabilities.official_sending_supported ? 'La conexión admite el envío de plantillas oficiales de Meta.' : capabilities.reason}</p></div>
           </div>
@@ -440,16 +449,15 @@ export function TemplatesPage() {
         )}
 
         {open && (
-          <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-xl border border-wa-border bg-white p-4 text-wa-text shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-wa-text-dark">
-              {editingId != null ? 'Editar plantilla' : 'Nueva plantilla'}
-            </h2>
+          <form onSubmit={handleSubmit} className="templates-form mb-6 grid gap-5 rounded-3xl border border-wa-border bg-white p-4 text-wa-text shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark sm:p-6">
+            <div className="templates-form-heading"><div><span className="templates-form-kicker">Editor de mensajes</span><h2 className="mt-1 text-xl font-bold text-wa-text dark:text-white">{editingId != null ? 'Editar plantilla' : 'Nueva plantilla'}</h2><p className="mt-1 text-sm text-wa-muted">Configura el contenido y dónde estará disponible para el equipo.</p></div><span className="templates-form-step">01 / 03</span></div>
+            <div className="templates-section-label"><span>01</span><div><strong>Tipo de plantilla</strong><p>Elige cómo se enviará este mensaje.</p></div></div>
             <div className="grid gap-2 md:grid-cols-2">
               <button
                 type="button"
                 disabled={editingId != null}
                 onClick={() => setForm(f => ({ ...f, templateType: 'internal' }))}
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'internal' ? 'border-wa-primary bg-green-50 dark:bg-green-950/30' : 'border-wa-border dark:border-wa-border-dark'}`}
+                className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'internal' ? 'border-wa-primary bg-green-50 ring-1 ring-wa-primary/30 dark:bg-green-950/30' : 'border-wa-border hover:border-wa-primary/50 dark:border-wa-border-dark'}`}
               >
                 <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-wa-primary-strong" />
                 <span><span className="block text-sm font-semibold">Plantilla interna</span><span className="block text-xs text-wa-muted dark:text-wa-muted-dark">Respuesta rápida; requiere ventana abierta.</span></span>
@@ -458,14 +466,14 @@ export function TemplatesPage() {
                 type="button"
                 disabled={editingId != null}
                 onClick={() => setForm(f => ({ ...f, templateType: 'official' }))}
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'official' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-wa-border dark:border-wa-border-dark'}`}
+                className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed ${form.templateType === 'official' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/30 dark:bg-blue-950/30' : 'border-wa-border hover:border-blue-500/50 dark:border-wa-border-dark'}`}
               >
                 <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
                 <span><span className="block text-sm font-semibold">Plantilla oficial</span><span className="block text-xs text-wa-muted dark:text-wa-muted-dark">Aprobada por Meta; puede reabrir una conversación.</span></span>
               </button>
             </div>
             {form.templateType === 'internal' && (
-              <div className="grid grid-cols-3 gap-2 rounded-xl bg-wa-hover p-1.5 dark:bg-wa-panel-dark/50">
+              <div className="grid grid-cols-3 gap-2 rounded-xl bg-wa-hover p-1.5 dark:bg-wa-panel-dark/50" aria-label="Formato del mensaje interno">
                 {([
                   ['none', MessageSquareText, 'Texto'],
                   ['buttons', MousePointerClick, 'Botones'],
@@ -477,6 +485,7 @@ export function TemplatesPage() {
             )}
             {form.templateType === 'official' && (
               <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20 md:grid-cols-2">
+                <div className="md:col-span-2"><h3 className="text-sm font-bold text-blue-800 dark:text-blue-300">Configuración de Meta</h3><p className="mt-1 text-xs text-wa-muted">Datos que Meta revisará antes de permitir el envío.</p></div>
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Nombre para Meta
                   <input required disabled={editingTemplate?.meta_template_id != null} maxLength={512} pattern="[a-z0-9_]+" value={form.officialName} onChange={event => setForm(f => ({ ...f, officialName: event.target.value.toLowerCase() }))} placeholder="seguimiento_cliente" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-blue-900 dark:bg-wa-panel-dark" />
                 </label>
@@ -490,7 +499,7 @@ export function TemplatesPage() {
                   <Select value={form.officialHeaderType} onChange={event => setForm(f => ({ ...f, officialHeaderType: event.target.value as MessageTemplate['official_header_type'] }))} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark"><option value="none">Sin encabezado</option><option value="text">Texto</option><option value="image">Imagen</option></Select>
                 </label>
                 {form.officialHeaderType === 'text' && (
-                  <input required maxLength={60} value={form.officialHeaderText} onChange={event => setForm(f => ({ ...f, officialHeaderText: event.target.value }))} placeholder="Título breve, sin variables" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm md:col-span-2 dark:border-blue-900 dark:bg-wa-panel-dark" />
+                  <label className="templates-field md:col-span-2">Texto del encabezado<input required maxLength={60} value={form.officialHeaderText} onChange={event => setForm(f => ({ ...f, officialHeaderText: event.target.value }))} placeholder="Título breve, sin variables" className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm dark:border-blue-900 dark:bg-wa-panel-dark" /></label>
                 )}
                 {form.officialHeaderType === 'image' && (
                   <div className="md:col-span-2">
@@ -532,7 +541,7 @@ export function TemplatesPage() {
                         <input required value={button.phone_number ?? ''} onChange={event => setForm(f => ({ ...f, officialButtons: f.officialButtons.map((item, itemIndex) => itemIndex === index ? { ...item, phone_number: event.target.value } : item) }))} placeholder="+51987654321" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                       )}
                       {button.type === 'quick_reply' && <div />}
-                      <button type="button" onClick={() => setForm(f => ({ ...f, officialButtons: f.officialButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500"><Trash2 className="h-4 w-4" /></button>
+                        <button type="button" aria-label={`Quitar botón ${index + 1}`} onClick={() => setForm(f => ({ ...f, officialButtons: f.officialButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   ))}
                   <p className="text-[11px] text-wa-muted">Máximo 3 de respuesta rápida, o 2 combinando URL/teléfono. No se pueden mezclar.</p>
@@ -544,25 +553,26 @@ export function TemplatesPage() {
                 </p>
               </div>
             )}
+            <div className="templates-section-label"><span>02</span><div><strong>Contenido del mensaje</strong><p>Define el nombre, atajo y texto que verá el cliente.</p></div></div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input
+              <label className="templates-field">Nombre de la plantilla <span aria-hidden="true">*</span><input
                 required
                 maxLength={120}
                 placeholder="Nombre"
                 value={form.name}
                 onChange={(event) => setForm((f) => ({ ...f, name: event.target.value }))}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-              />
-              <input
+              /></label>
+              <label className="templates-field">Atajo <small>Opcional · úsalo escribiendo /atajo</small><input
                 maxLength={50}
                 pattern="[a-zA-Z0-9_-]*"
                 placeholder="Atajo, ej. cotizacion"
                 value={form.shortcut}
                 onChange={(event) => setForm((f) => ({ ...f, shortcut: event.target.value }))}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-              />
+              /></label>
             </div>
-            <textarea
+            <label className="templates-field">Mensaje <span aria-hidden="true">*</span><textarea
               required
               maxLength={form.templateType === 'official' || form.interactiveType !== 'none' ? 1024 : 4096}
               rows={4}
@@ -576,9 +586,11 @@ export function TemplatesPage() {
                   : f.officialParameterValues,
               }))}
               className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-            />
+            /><small>{form.content.length}/{form.templateType === 'official' || form.interactiveType !== 'none' ? 1024 : 4096} caracteres</small></label>
+            <div className="templates-section-label"><span>03</span><div><strong>Organización y uso</strong><p>Clasifica la plantilla para encontrarla y aplicarla con rapidez.</p></div></div>
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="grid gap-1">
+              <div className="templates-field">
+                <span>Categoría <span aria-hidden="true">*</span></span>
                 <div className="flex items-center gap-2">
                   <Select
                     required
@@ -629,22 +641,22 @@ export function TemplatesPage() {
                   </div>
                 )}
               </div>
-              <Select
+              <label className="templates-field">Etapa del lead<Select
                 value={form.stage}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier etapa</option>
                 {LEAD_STAGES.map((x) => <option key={x} value={x}>{x}</option>)}
-              </Select>
-              <Select
+              </Select></label>
+              <label className="templates-field">Tipo de tarea<Select
                 value={form.taskType}
                 onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, taskType: value === '' || isTaskType(value) ? value : f.taskType })) }}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier tarea</option>
                 {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-              </Select>
+              </Select></label>
             </div>
             {form.templateType === 'official' ? (
               <div className="grid gap-2 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
@@ -660,6 +672,7 @@ export function TemplatesPage() {
             )}
             {form.templateType === 'internal' && form.interactiveType !== 'none' && (
               <div className="grid gap-3 rounded-xl border border-green-200 bg-green-50/50 p-3 dark:border-green-900 dark:bg-green-950/20">
+                <div><h3 className="text-sm font-bold text-wa-primary-strong dark:text-wa-primary">Opciones interactivas</h3><p className="mt-1 text-xs text-wa-muted">Configura las respuestas que podrá elegir el cliente.</p></div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Título interactivo
                     <input required maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
@@ -704,12 +717,13 @@ export function TemplatesPage() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
+              className={`rounded-2xl border-2 border-dashed p-4 transition-colors ${
                 isDraggingFiles
                   ? 'border-wa-primary bg-green-50 dark:border-wa-primary dark:bg-green-950/30'
                   : 'border-gray-300 dark:border-gray-600'
               }`}
             >
+              <div className="mb-2 text-center"><h3 className="text-sm font-bold text-wa-text dark:text-white">Adjuntos</h3><p className="mt-1 text-xs text-wa-muted">Añade archivos a esta respuesta rápida.</p></div>
               <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 py-2 text-center text-sm font-medium text-gray-600 hover:text-wa-primary-strong dark:text-gray-300 dark:hover:text-wa-primary">
                 {isDraggingFiles ? <UploadCloud className="h-7 w-7 text-wa-primary-strong" /> : <ImagePlus className="h-6 w-6" />}
                 <span>{isDraggingFiles ? 'Suelta los archivos aquí' : 'Arrastra archivos aquí o haz clic para seleccionarlos'}</span>
@@ -789,17 +803,17 @@ export function TemplatesPage() {
                 onClose={() => setLibraryOpen(false)}
               />
             )}
-            <div className="flex gap-2">
+            <div className="templates-form-actions flex flex-wrap gap-2">
               <button type="submit"
                 disabled={isSaving}
-                className="flex items-center justify-center gap-1.5 rounded-md bg-wa-primary px-4 py-2 text-sm font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-wa-primary-strong px-5 py-2.5 text-sm font-semibold text-white hover:bg-wa-primary disabled:opacity-40"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId != null ? 'Guardar cambios' : 'Guardar plantilla'}
               </button>
               <button
                 type="button"
                 onClick={closeForm}
-                className="rounded-md px-4 py-2 text-sm font-medium text-wa-muted hover:text-gray-700 dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
+                className="rounded-xl border border-wa-border px-5 py-2.5 text-sm font-semibold text-wa-muted hover:bg-wa-field dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
               >
                 Cancelar
               </button>
@@ -807,12 +821,13 @@ export function TemplatesPage() {
           </form>
         )}
 
+        <div className="templates-list-heading"><div><h2 className="text-lg font-bold text-wa-text dark:text-white">Plantillas del equipo</h2><p className="mt-1 text-sm text-wa-muted">Administra el contenido disponible para tus conversaciones.</p></div><span>{data.length} {data.length === 1 ? 'plantilla' : 'plantillas'}</span></div>
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-wa-muted" />
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {data.map((template) => {
               const isTogglingActive = updateTemplate.isPending
                 && updateTemplate.variables?.id === template.id
@@ -823,7 +838,7 @@ export function TemplatesPage() {
               <article
                 key={template.id}
                 aria-busy={isTogglingActive || isDeleting}
-                className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark ${!template.is_active ? 'opacity-60' : ''}`}
+                className={`templates-card rounded-2xl border border-wa-border bg-white p-5 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark ${!template.is_active ? 'opacity-60' : ''}`}
               >
                 <div className="flex justify-between gap-2">
                   <div className="min-w-0">
@@ -915,19 +930,17 @@ export function TemplatesPage() {
                     </ConfirmDialog>
                   </div>
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{template.content}</p>
+                <p className="templates-card-content mt-4 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{template.content}</p>
                 {template.attachments.length>0&&<div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400"><ImagePlus className="h-3.5 w-3.5"/>{template.attachments.length} adjunto{template.attachments.length===1?'':'s'}</div>}
               </article>
               )
             })}
             {data.length === 0 && (
-              <p className="rounded-xl border border-dashed border-wa-border p-4 text-center text-sm text-wa-muted dark:border-wa-border-dark md:col-span-2">
-                Sin plantillas
-              </p>
+              <div className="templates-empty md:col-span-2"><span><MessageSquareText className="h-7 w-7" /></span><h3>Aún no hay plantillas</h3><p>Crea una respuesta para el equipo o importa las que ya tengas aprobadas en Meta.</p>{!open && <button type="button" onClick={openCreateForm}><Plus className="h-4 w-4" /> Crear primera plantilla</button>}</div>
             )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

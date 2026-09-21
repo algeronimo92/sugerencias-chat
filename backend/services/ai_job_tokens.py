@@ -1,8 +1,4 @@
-"""Tokens breves para devolver un job IA al tenant que lo creÃ³.
-
-El token liga organizaciÃ³n, job y operaciÃ³n. No contiene ``schema_name``; el
-schema siempre se vuelve a resolver en el plano de control.
-"""
+"""Short-lived tokens that bind an AI job to its tenant and operation."""
 
 from __future__ import annotations
 
@@ -42,12 +38,11 @@ def _signing_key() -> bytes:
     secret = settings.ai_job_signing_secret
     if not secret:
         if settings.multitenancy_enabled:
-            raise RuntimeError("falta AI_JOB_SIGNING_SECRET para jobs IA multitenant")
-        # Compatibilidad temporal para instalaciones single-tenant. El modo
-        # multitenant falla cerrado y exige una clave dedicada.
+            raise RuntimeError("AI_JOB_SIGNING_SECRET is required for multitenant AI jobs")
+        # Temporary compatibility for single-tenant installations.
         secret = settings.inbound_webhook_token or settings.n8n_webhook_token
     if not secret:
-        raise RuntimeError("no hay una clave configurada para firmar jobs IA")
+        raise RuntimeError("no signing key is configured for AI jobs")
     return secret.encode("utf-8")
 
 
@@ -92,7 +87,7 @@ def decode_ai_job_token(token: str) -> AIJobClaims:
             expires_at=expires_at,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=401, detail="Contexto de job IA invÃ¡lido") from exc
+        raise HTTPException(status_code=401, detail="Contexto de job IA invalido") from exc
     if claims.expires_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Contexto de job IA vencido")
     return claims
@@ -101,12 +96,12 @@ def decode_ai_job_token(token: str) -> AIJobClaims:
 async def require_ai_job_context(
     x_tenant_context: str = Header(alias="X-Tenant-Context"),
 ) -> AsyncIterator[AIJobClaims]:
-    """Resuelve y propaga el tenant firmado durante un callback de n8n."""
+    """Resolve and propagate the signed tenant during an n8n callback."""
 
     claims = decode_ai_job_token(x_tenant_context)
     context = await resolve_tenant_by_organization_id(claims.organization_id)
     if context is None:
-        raise HTTPException(status_code=401, detail="Contexto de job IA invÃ¡lido")
+        raise HTTPException(status_code=401, detail="Contexto de job IA invalido")
     token = set_current_tenant(context)
     try:
         yield claims

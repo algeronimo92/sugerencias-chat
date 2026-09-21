@@ -60,6 +60,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "chat_id": row["chat_id"],
         "phone": row["phone"],
         "secondary_phone": row["secondary_phone"] if "secondary_phone" in row else None,
+        "username": row["username"] if "username" in row else None,
         "name": row["name"],
         "servicio_interes": row["servicio_interes"],
         "vendedor_id": row["vendedor_id"],

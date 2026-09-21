@@ -224,15 +224,15 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
         }
       }}
       title="Mantén pulsado o usa clic derecho para vista rápida"
-      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200 ${
+      className={`mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wa-primary/60 ${
         isSelected
-          ? 'bg-wa-active dark:bg-wa-active-dark'
+          ? 'bg-wa-primary/10 shadow-sm ring-1 ring-inset ring-wa-primary/15 dark:bg-wa-primary/15 dark:ring-wa-primary/20'
           : isHighlighted
             ? 'bg-amber-50 dark:bg-amber-900/40 ring-1 ring-inset ring-amber-400 dark:ring-amber-500'
             : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
       }`}
     >
-      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-base shrink-0">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-wa-primary to-wa-primary-strong text-sm font-bold text-white shadow-sm">
         {avatarInitial(chat)}
       </div>
       <div className="flex-1 min-w-0">

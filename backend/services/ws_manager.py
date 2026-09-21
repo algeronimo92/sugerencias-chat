@@ -93,6 +93,29 @@ class ConnectionManager:
                     # falla de forma rutinaria, no es un error de la app.
                     logger.debug("No se pudo cerrar una conexión WebSocket ya marcada como caída", exc_info=True)
 
+    async def disconnect_organization(self, organization_id: UUID) -> None:
+        """Corta toda conexión ya abierta de un negocio -- a diferencia de
+        `broadcast`, que solo da de baja las que fallan al *enviar*, esta
+        cierra las que siguen vivas. Se usa al suspender un tenant: el
+        middleware ya niega conexiones nuevas para ese host, pero un socket
+        abierto antes de la suspensión no vuelve a pasar por él hasta que se
+        corta y el navegador reconecta."""
+        async with self._lock:
+            connections = [
+                websocket
+                for websocket, owner in self._connections.items()
+                if owner.organization_id == organization_id
+            ]
+            for websocket in connections:
+                self._connections.pop(websocket, None)
+        for websocket in connections:
+            try:
+                await websocket.close()
+            except Exception:
+                logger.debug(
+                    "No se pudo cerrar una conexión WebSocket al suspender el tenant", exc_info=True,
+                )
+
     async def connection_count(self) -> int:
         async with self._lock:
             return len(self._connections)

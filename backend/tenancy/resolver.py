@@ -59,6 +59,7 @@ async def resolve_tenant_by_hostname(hostname: str) -> TenantContext | None:
             select(
                 Organization.id.label("organization_id"),
                 Organization.schema_name,
+                Organization.storage_prefix,
                 OrganizationDomain.hostname,
             )
             .join(
@@ -77,6 +78,7 @@ async def resolve_tenant_by_hostname(hostname: str) -> TenantContext | None:
         organization_id=UUID(str(row["organization_id"])),
         schema_name=row["schema_name"],
         hostname=row["hostname"],
+        storage_segment=row["storage_prefix"],
     )
 
 
@@ -88,6 +90,7 @@ async def resolve_tenant_by_phone_number_id(phone_number_id: str) -> TenantConte
             select(
                 Organization.id.label("organization_id"),
                 Organization.schema_name,
+                Organization.storage_prefix,
                 OrganizationDomain.hostname,
             )
             .join(
@@ -112,6 +115,7 @@ async def resolve_tenant_by_phone_number_id(phone_number_id: str) -> TenantConte
         organization_id=UUID(str(row["organization_id"])),
         schema_name=row["schema_name"],
         hostname=row["hostname"],
+        storage_segment=row["storage_prefix"],
     )
 
 
@@ -125,6 +129,7 @@ async def resolve_tenant_by_organization_id(
             select(
                 Organization.id.label("organization_id"),
                 Organization.schema_name,
+                Organization.storage_prefix,
                 OrganizationDomain.hostname,
             )
             .join(
@@ -144,6 +149,7 @@ async def resolve_tenant_by_organization_id(
         organization_id=UUID(str(row["organization_id"])),
         schema_name=row["schema_name"],
         hostname=row["hostname"],
+        storage_segment=row["storage_prefix"],
     )
 
 
@@ -155,6 +161,7 @@ async def list_active_tenants() -> list[TenantContext]:
             select(
                 Organization.id.label("organization_id"),
                 Organization.schema_name,
+                Organization.storage_prefix,
                 OrganizationDomain.hostname,
             )
             .join(
@@ -173,6 +180,7 @@ async def list_active_tenants() -> list[TenantContext]:
             organization_id=UUID(str(row["organization_id"])),
             schema_name=row["schema_name"],
             hostname=row["hostname"],
+            storage_segment=row["storage_prefix"],
         )
         for row in rows
     ]

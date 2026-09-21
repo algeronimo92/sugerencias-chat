@@ -736,6 +736,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/{chat_id}/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Contacts
+         * @description Comparte uno o varios leads como una sola lista de contactos nativa.
+         */
+        post: operations["send_contacts_api_chats__chat_id__contacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats/{chat_id}/media": {
         parameters: {
             query?: never;
@@ -2993,6 +3013,8 @@ export interface components {
              * @default 0
              */
             unread_count: number;
+            /** Username */
+            username?: string | null;
             /** Vendedor */
             vendedor?: string | null;
             /** Vendedor Id */
@@ -3004,6 +3026,13 @@ export interface components {
             has_more: boolean;
             /** Items */
             items: components["schemas"]["Chat"][];
+        };
+        /** ContactShareItem */
+        ContactShareItem: {
+            /** Full Name */
+            full_name: string;
+            /** Phone Number */
+            phone_number: string;
         };
         /** CreateUserRequest */
         CreateUserRequest: {
@@ -3974,6 +4003,13 @@ export interface components {
             name: string;
             /** Role */
             role: string;
+        };
+        /** SendContactsRequest */
+        SendContactsRequest: {
+            /** Contacts */
+            contacts: components["schemas"]["ContactShareItem"][];
+            /** Reply To Message Id */
+            reply_to_message_id?: number | null;
         };
         /** SendLocationRequest */
         SendLocationRequest: {
@@ -6004,6 +6040,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SendLocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_contacts_api_chats__chat_id__contacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendContactsRequest"];
             };
         };
         responses: {

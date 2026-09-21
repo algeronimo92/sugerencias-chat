@@ -53,6 +53,9 @@ docs/rag-v2.json
 /webhooks-evolution*.json
 /FORM-*.json
 /Health-checks*.json
+# La copia local de `config.json` (el sub-workflow que expone backend_url).
+# La version versionable y sanitizada vive en backend/tests/fixtures/n8n/.
+/config.json
 
 # Cache de Python de los scripts de mantenimiento (los tests los importan).
 scripts/__pycache__/

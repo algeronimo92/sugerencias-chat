@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, MessageCircle, MessageCircleOff, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
+import { AtSign, CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, MessageCircle, MessageCircleOff, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
 import { LEAD_STAGE_META } from '../domain/leadStageMeta'
 import { useMarkNoShow, useUpdateLead } from '../hooks/useChats'
-import { displayPhone } from '../utils/chat'
+import { displayPhone, displayUsername } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { LeadFormDialog } from './LeadFormDialog'
 
@@ -61,6 +61,7 @@ export function LeadInfo({ chat }: Props) {
   // así que los números se formatean a string acá (un 0 tiene que verse) y los
   // booleanos se resuelven a null cuando no hay nada que contar.
   const fields: LeadInfoField[] = [
+    { label: 'Username', value: displayUsername(chat), icon: AtSign },
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
     { label: 'Teléfono secundario', value: chat.secondary_phone, icon: Phone },

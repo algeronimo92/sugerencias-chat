@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, case, func, insert, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
@@ -86,7 +86,7 @@ async def insert_message(
 
             await session.execute(touch_ultimo_mensaje_stmt(chat_id, now))
             await session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await session.rollback()
             if wa_message_id is None:
                 raise
@@ -96,9 +96,15 @@ async def insert_message(
             # antes de que esta llamada termine. La fila ya existe con el
             # mismo wa_message_id — se devuelve esa en vez de romper al
             # llamador (p. ej. una acción de automatización).
-            row = (await session.execute(
-                select(*_INSERT_MESSAGE_COLUMNS).where(WspMessage.wa_message_id == wa_message_id)
-            )).mappings().one()
+            try:
+                row = (await session.execute(
+                    select(*_INSERT_MESSAGE_COLUMNS).where(WspMessage.wa_message_id == wa_message_id)
+                )).mappings().one()
+            except NoResultFound:
+                # El IntegrityError no fue por wa_message_id duplicado (p. ej.
+                # un message_type fuera del CHECK constraint): no lo tapes con
+                # un NoResultFound que no dice nada del problema real.
+                raise exc from None
 
     return {
         "id": row["id"],

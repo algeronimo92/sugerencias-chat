@@ -650,3 +650,50 @@ export function useSendLocation(chatId: string) {
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
+
+export interface ContactShareInput {
+  fullName: string
+  phoneNumber: string
+}
+
+interface ContactsPayload {
+  contacts: ContactShareInput[]
+  replyTo?: ReplyTarget | null
+}
+
+async function sendContacts(chatId: string, { contacts, replyTo }: ContactsPayload): Promise<Message> {
+  const { data } = await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/contacts`, {
+    contacts: contacts.map(contact => ({
+      full_name: contact.fullName,
+      phone_number: contact.phoneNumber,
+    })),
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return data
+}
+
+/** Comparte uno o varios contactos dentro de un único mensaje nativo. */
+export function useSendContacts(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, ContactsPayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: payload => orderedRequest(chatId, () => sendContacts(chatId, payload)),
+    onMutate: async payload => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content: null,
+        message_type: 'contact',
+        payload: {
+          contacts: payload.contacts.map(contact => ({
+            fullName: contact.fullName,
+            phoneNumber: contact.phoneNumber,
+          })),
+        },
+        reply_to: payload.replyTo,
+      }])
+    },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
+  })
+}

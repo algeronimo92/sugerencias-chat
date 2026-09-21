@@ -138,9 +138,9 @@ async def verify_webhook_token(
     authorization: str | None = Header(default=None),
     x_webhook_token: str | None = Header(default=None),
 ) -> None:
-    from services.settings_service import get_effective
+    from services.platform_settings import platform_setting
 
-    expected = await get_effective("inbound_webhook_token")
+    expected = await platform_setting("inbound_webhook_token")
     if not expected:
         # Falla cerrado. Antes esto hacía `return`, de modo que con el token
         # vacío —el valor de backend/.env.example— /api/webhooks/* y la subida

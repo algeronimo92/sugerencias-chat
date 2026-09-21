@@ -7,6 +7,12 @@ encabezado, pie y botones siguen el formato de la Graph API.
 
 Contraparte de `services/automations/rule_validation.py` para plantillas: acá
 no se conoce HTTP, se lanzan errores de dominio y el router los traduce.
+
+También vive acá el resuelto de variables de una plantilla oficial
+(`template_parameter_identifiers`/`render_official_body`): son puramente de
+formato -sin red-, así que quedan junto al resto del conocimiento sobre cómo
+Meta arma una plantilla, en vez de en `services/meta_service.py` (reservado
+para lo que sí hace una llamada HTTP) o reimplementados en el flujo de envío.
 """
 
 import asyncio
@@ -58,6 +64,52 @@ INTERNAL_DEFAULTS = {
     "official_footer": None,
     "official_buttons": [],
 }
+
+
+def template_parameter_identifiers(content: str) -> list[str]:
+    """Identificadores de variable del body de una plantilla oficial, en el
+    orden en que Meta los espera al armar el `components` de un envío.
+
+    Meta soporta dos formatos de variable en el body de una plantilla:
+    posicional (`{{1}}`, `{{2}}`, ...) y con nombre (`{{customer_name}}`).
+    Esta app solo arma plantillas posicionales al crearlas acá, pero una
+    importada desde el WhatsApp Manager (ver `routers/templates.py
+    _parse_meta_template`) puede venir en cualquiera de los dos formatos, y
+    hay que distinguirlos: un envío con parámetros posicionales llanos
+    (`{"type": "text", "text": ...}`) contra una plantilla con nombre falla
+    con el código 132012 ("Parameter format does not match format in the
+    created template") -- para esas hace falta agregar `parameter_name` a
+    cada parámetro (ver `services/chat_messaging.py`/`routers/chats.py`).
+
+    Si todas las variables encontradas son numéricas se asume posicional
+    clásico y se devuelve una entrada por posición distinta (1..máximo,
+    tolerando que una posición se repita en el texto); si alguna tiene
+    nombre, se devuelve cada aparición literal en el orden del texto, porque
+    ese es el orden en el que se le va a pedir el valor al admin/vendedor."""
+    matches = re.findall(r"\{\{\s*([^{}]+?)\s*\}\}", content)
+    if matches and all(match.isdigit() for match in matches):
+        highest = max(int(match) for match in matches)
+        return [str(position) for position in range(1, highest + 1)]
+    return matches
+
+
+def render_official_body(content: str, parameter_values: list[str]) -> str:
+    """Sustituye cada variable del body de una plantilla oficial por su valor
+    real, para guardar/mostrar el mensaje tal como se lo mandó a Meta.
+
+    Es la única fuente confiable de "qué se mandó": ni el webhook de
+    entrada (n8n reenvía eventos del cliente y cambios de estado, nunca el
+    contenido de un mensaje que la propia app mandó) ni la respuesta de
+    `POST /messages` (`_send` solo devuelve `{contacts, messages:[{id}]}`,
+    sin el body) tienen el texto ya resuelto -- Meta jamás lo hace eco. Hay
+    que armarlo acá, con el mismo criterio posicional/con nombre que
+    `template_parameter_identifiers`, antes de encolar el envío."""
+    identifiers = template_parameter_identifiers(content)
+    if identifiers and all(name.isdigit() for name in identifiers):
+        mapping = dict(zip(identifiers, parameter_values))
+        return re.sub(r"\{\{\s*(\d+)\s*\}\}", lambda m: mapping.get(m.group(1), m.group(0)), content)
+    values = iter(parameter_values)
+    return re.sub(r"\{\{\s*[^{}]+?\s*\}\}", lambda _match: next(values, _match.group(0)), content)
 
 
 def template_variables(value: object) -> set[str]:

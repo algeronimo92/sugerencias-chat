@@ -72,6 +72,29 @@ async def test_direct_message_scopes_repeated_user_ids_by_tenant() -> None:
 
 
 @pytest.mark.asyncio
+async def test_disconnect_organization_closes_only_that_tenants_sockets() -> None:
+    """Al suspender un negocio hay que cortar lo que ya estaba conectado, no
+    solo dejar de aceptar conexiones nuevas -- ver
+    `tenancy/provisioning.suspend_organization`."""
+    manager = ConnectionManager()
+    tenant_a = _tenant("a")
+    tenant_b = _tenant("b")
+    socket_a = FakeWebSocket()
+    socket_b = FakeWebSocket()
+
+    with tenant_context(tenant_a):
+        await manager.connect(socket_a, user_id=1)
+    with tenant_context(tenant_b):
+        await manager.connect(socket_b, user_id=2)
+
+    await manager.disconnect_organization(tenant_a.organization_id)
+
+    assert socket_a.closed is True
+    assert socket_b.closed is False
+    assert await manager.connection_count() == 1
+
+
+@pytest.mark.asyncio
 async def test_legacy_connections_remain_isolated_from_tenant_connections() -> None:
     manager = ConnectionManager()
     tenant = _tenant("tenant")

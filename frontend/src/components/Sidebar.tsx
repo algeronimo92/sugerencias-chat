@@ -7,13 +7,15 @@ type Props = {
   unreadCount: number
 }
 
-const SIDEBAR_WIDTH_CLASS = 'w-14'
+// Solo iconos: el nombre de cada vista vive en el tooltip. Sin las etiquetas
+// el riel no necesita ancho para texto y le devuelve ese espacio al chat.
+const SIDEBAR_WIDTH_CLASS = 'w-[60px]'
 
 const itemClass = (active: boolean) =>
-  `flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
+  `group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${
     active
-      ? 'bg-white/25 text-white dark:bg-wa-field-dark dark:text-white dark:ring-1 dark:ring-white/[0.06]'
-      : 'text-white/80 hover:bg-white/10 hover:text-white dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
+      ? 'bg-wa-primary/12 text-wa-primary-strong shadow-sm ring-1 ring-wa-primary/15 dark:bg-wa-primary/15 dark:text-wa-primary dark:ring-wa-primary/20'
+      : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
   }`
 
 /**
@@ -29,7 +31,7 @@ export function Sidebar({ isAdmin, unreadCount }: Props) {
   return (
     <nav
       aria-label="Vista principal"
-      className={`flex ${SIDEBAR_WIDTH_CLASS} shrink-0 flex-col items-center gap-0.5 border-r border-wa-primary-deep bg-wa-primary-strong py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+      className={`flex ${SIDEBAR_WIDTH_CLASS} shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-wa-border bg-white py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark`}
     >
       {items.map((item, index) => {
         const Icon = item.icon
@@ -40,13 +42,13 @@ export function Sidebar({ isAdmin, unreadCount }: Props) {
 
         return (
           <div key={item.path} className="flex flex-col items-center">
-            {showDivider && <div className="my-1 h-px w-8 bg-white/15 dark:bg-white/10" />}
+            {showDivider && <div className="my-1.5 h-px w-10 bg-wa-border dark:bg-wa-border-dark" />}
             <Tooltip content={item.label} side="right">
               <button type="button" onClick={() => navigate(item.path)} aria-label={item.label} className={itemClass(active)}>
                 <span className="relative">
-                  <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />
+                  <Icon className="h-5.25 w-5.25" strokeWidth={active ? 2.4 : 1.8} />
                   {showBadge && (
-                    <span className="absolute -right-2.5 -top-1 flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-wa-primary-strong dark:bg-wa-primary dark:text-white">
+                    <span className="absolute -right-3 -top-2 flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white dark:ring-wa-panel-dark">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}

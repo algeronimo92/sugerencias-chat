@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 from time import perf_counter
 from typing import Any
 
@@ -10,6 +9,7 @@ from request_metrics import record_external_duration
 from services.settings_service import get_effective_many, update_settings
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError
 from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
+from tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -114,52 +114,6 @@ async def close_meta_client() -> None:
         _http_client = None
 
 
-def template_parameter_identifiers(content: str) -> list[str]:
-    """Identificadores de variable del body de una plantilla oficial, en el
-    orden en que Meta los espera al armar el `components` de un envío.
-
-    Meta soporta dos formatos de variable en el body de una plantilla:
-    posicional (`{{1}}`, `{{2}}`, ...) y con nombre (`{{customer_name}}`).
-    Esta app solo arma plantillas posicionales al crearlas acá, pero una
-    importada desde el WhatsApp Manager (ver `routers/templates.py
-    _parse_meta_template`) puede venir en cualquiera de los dos formatos, y
-    hay que distinguirlos: un envío con parámetros posicionales llanos
-    (`{"type": "text", "text": ...}`) contra una plantilla con nombre falla
-    con el código 132012 ("Parameter format does not match format in the
-    created template") -- para esas hace falta agregar `parameter_name` a
-    cada parámetro (ver `send_whatsapp_template`/`routers/chats.py`).
-
-    Si todas las variables encontradas son numéricas se asume posicional
-    clásico y se devuelve una entrada por posición distinta (1..máximo,
-    tolerando que una posición se repita en el texto); si alguna tiene
-    nombre, se devuelve cada aparición literal en el orden del texto, porque
-    ese es el orden en el que se le va a pedir el valor al admin/vendedor."""
-    matches = re.findall(r"\{\{\s*([^{}]+?)\s*\}\}", content)
-    if matches and all(match.isdigit() for match in matches):
-        highest = max(int(match) for match in matches)
-        return [str(position) for position in range(1, highest + 1)]
-    return matches
-
-
-def render_official_body(content: str, parameter_values: list[str]) -> str:
-    """Sustituye cada variable del body de una plantilla oficial por su valor
-    real, para guardar/mostrar el mensaje tal como se lo mandó a Meta.
-
-    Es la única fuente confiable de "qué se mandó": ni el webhook de
-    entrada (n8n reenvía eventos del cliente y cambios de estado, nunca el
-    contenido de un mensaje que la propia app mandó) ni la respuesta de
-    `POST /messages` (`_send` solo devuelve `{contacts, messages:[{id}]}`,
-    sin el body) tienen el texto ya resuelto -- Meta jamás lo hace eco. Hay
-    que armarlo acá, con el mismo criterio posicional/con nombre que
-    `template_parameter_identifiers`, antes de encolar el envío."""
-    identifiers = template_parameter_identifiers(content)
-    if identifiers and all(name.isdigit() for name in identifiers):
-        mapping = dict(zip(identifiers, parameter_values))
-        return re.sub(r"\{\{\s*(\d+)\s*\}\}", lambda m: mapping.get(m.group(1), m.group(0)), content)
-    values = iter(parameter_values)
-    return re.sub(r"\{\{\s*[^{}]+?\s*\}\}", lambda _match: next(values, _match.group(0)), content)
-
-
 async def _config() -> tuple[str, str, str]:
     """-> (access_token, phone_number_id, waba_id)."""
     values = await get_effective_many((
@@ -252,6 +206,22 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
         "meta_waba_id": waba_id,
         "meta_phone_number_id": phone_number_id,
     })
+
+    # Los webhooks entrantes llegan a una URL común y se rutean por
+    # `phone_number_id`, que se resuelve en el plano de control antes de conocer
+    # el schema. Guardar el token en el `app_settings` del negocio no alcanza:
+    # sin esta fila activa, los eventos de este número no encuentran su tenant.
+    context = get_current_tenant()
+    if context is not None:
+        # Import local: provisioning arrastra db_service/ws_manager y este
+        # módulo lo cargan ellos de vuelta al enviar mensajes.
+        from tenancy.provisioning import sync_whatsapp_connection
+
+        await sync_whatsapp_connection(
+            context.organization_id,
+            phone_number_id=phone_number_id,
+            waba_id=waba_id,
+        )
 
 
 def _graph_url(path: str) -> str:
@@ -673,6 +643,42 @@ async def send_whatsapp_location(
         "to": await _destination_digits(chat_id),
         "type": "location",
         "location": location,
+    }
+    if quoted and quoted.get("wa_message_id"):
+        payload["context"] = {"message_id": quoted["wa_message_id"]}
+    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
+
+
+async def send_whatsapp_contacts(
+    chat_id: str,
+    contacts: list[dict],
+    quoted: dict | None = None,
+) -> dict:
+    """Envía una o varias tarjetas de contacto nativas de WhatsApp.
+
+    El outbox conserva una forma pequeña y común con el frontend
+    (``fullName``/``phoneNumber``). Acá se traduce al objeto Contact de la
+    Graph API: nombre estructurado y una lista de teléfonos con ``wa_id``.
+    """
+    token, phone_number_id, _waba_id = await _config()
+    meta_contacts = []
+    for contact in contacts:
+        full_name = str(contact["fullName"]).strip()
+        digits = "".join(char for char in str(contact["phoneNumber"]) if char.isdigit())
+        first_name, separator, last_name = full_name.partition(" ")
+        name = {"formatted_name": full_name, "first_name": first_name}
+        if separator and last_name:
+            name["last_name"] = last_name
+        meta_contacts.append({
+            "name": name,
+            "phones": [{"phone": f"+{digits}", "type": "CELL", "wa_id": digits}],
+        })
+
+    payload: dict = {
+        "messaging_product": "whatsapp",
+        "to": await _destination_digits(chat_id),
+        "type": "contacts",
+        "contacts": meta_contacts,
     }
     if quoted and quoted.get("wa_message_id"):
         payload["context"] = {"message_id": quoted["wa_message_id"]}

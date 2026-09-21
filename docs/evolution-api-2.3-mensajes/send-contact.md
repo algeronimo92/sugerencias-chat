@@ -40,4 +40,6 @@ Cada elemento de `contact`:
 
 - Evolution genera el vCard internamente a partir de estos campos.
 - Con varios elementos en `contact` WhatsApp lo muestra como lista de contactos en un solo mensaje.
-- No usado por la app actualmente.
+- El CRM usa este formato conceptual para enviar uno o varios leads como una
+  sola lista de contactos; en Meta Cloud API el adaptador lo traduce al objeto
+  `contacts` nativo antes de despacharlo.
