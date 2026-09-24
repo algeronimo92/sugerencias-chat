@@ -27,6 +27,7 @@ from services.automations.common import (
     _render,
 )
 from services.message_media import mediatype_from_content_type
+from services.meta_outbound import interactive_item, media_item, text_item
 from services.template_delivery import build_internal_template_items
 from services.service_window import SERVICE_WINDOW_CLOSED_ERROR
 
@@ -253,9 +254,7 @@ async def _action_send_message(action, chat, execution, rule, deps) -> dict:
         raise ValueError("El mensaje no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado del mensaje no es válido")
-    sent = await deps.enqueue_messages(
-        chat["chat_id"], [{"content": text, "payload": {"type": "text", "text": text}}],
-    )
+    sent = await deps.enqueue_messages(chat["chat_id"], [text_item(text)])
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
@@ -270,17 +269,9 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
         raise ValueError("No hay un mensaje confirmado del cliente al que reaccionar")
 
     emoji = action["emoji"]
-    key = {
-        "remoteJid": chat["chat_id"],
-        "fromMe": False,
-        "id": target["wa_message_id"],
-    }
     # Igual que la reacción manual: primero WhatsApp y luego el badge local,
     # para no mostrar como enviada una reacción que el cliente nunca recibió.
-    await deps.send_reaction(key, emoji)
-    message = await deps.set_message_reaction(
-        chat["chat_id"], target["wa_message_id"], emoji, from_me=True,
-    )
+    message = await deps.send_reaction(chat["chat_id"], target["wa_message_id"], emoji)
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "reaction"})
     return {
         "status": AutomationExecutionStatus.COMPLETED,
@@ -322,10 +313,9 @@ async def _action_send_audio(action, chat, execution, rule, deps) -> dict:
     if not asset.content_type.startswith("audio/"):
         raise ValueError("El archivo elegido ya no es un audio")
     await _require_service_window(chat, execution, deps)
-    sent = await deps.enqueue_messages(chat["chat_id"], [{
-        "media_url": asset.media_url,
-        "payload": {"type": "audio", "media_url": asset.media_url},
-    }])
+    sent = await deps.enqueue_messages(chat["chat_id"], [
+        media_item(asset.media_url, "audio", content_type=asset.content_type),
+    ])
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
@@ -338,13 +328,9 @@ async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
     asset = await _fetch_media_asset(action, deps)
     await _require_service_window(chat, execution, deps)
     mediatype = mediatype_from_content_type(asset.content_type)
-    sent = await deps.enqueue_messages(chat["chat_id"], [{
-        "media_url": asset.media_url,
-        "payload": {
-            "type": "media", "media_url": asset.media_url,
-            "mediatype": mediatype, "filename": asset.filename,
-        },
-    }])
+    sent = await deps.enqueue_messages(chat["chat_id"], [
+        media_item(asset.media_url, mediatype, filename=asset.filename, content_type=asset.content_type),
+    ])
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
@@ -363,28 +349,15 @@ async def _action_send_media(action, chat, execution, rule, deps) -> dict:
         raise ValueError("El caption renderizado admite máximo 1024 caracteres")
 
     mediatype = mediatype_from_content_type(asset.content_type)
-    if mediatype == "audio":
-        items = [{
-            "media_url": asset.media_url,
-            "payload": {"type": "audio", "media_url": asset.media_url},
-        }]
-        if caption:
-            items.append({
-                "content": caption,
-                "payload": {"type": "text", "text": caption},
-            })
-    else:
-        items = [{
-            "content": caption or None,
-            "media_url": asset.media_url,
-            "payload": {
-                "type": "media",
-                "media_url": asset.media_url,
-                "mediatype": mediatype,
-                "filename": asset.filename,
-                "caption": caption or None,
-            },
-        }]
+    items = [media_item(
+        asset.media_url,
+        mediatype,
+        filename=asset.filename,
+        caption=caption or None,
+        content_type=asset.content_type,
+    )]
+    if mediatype == "audio" and caption:
+        items.append(text_item(caption))
 
     sent = await deps.enqueue_messages(chat["chat_id"], items)
     await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
@@ -395,27 +368,24 @@ async def _action_send_media(action, chat, execution, rule, deps) -> dict:
 
 
 async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
-    """Manda un mensaje con botones nativos si la integración es WhatsApp
-    Business; si no, cae al fallback de texto numerado (mismo que usa el
-    envío manual de plantillas interactivas). Devuelve el mensaje encolado.
-    Compartido por el nodo `question` (única forma de mandar botones desde
-    un flujo: la acción `send_buttons` se reemplazó por ese nodo, que sí
-    puede ramificar según la respuesta).
+    """Manda la pregunta de un nodo ``question`` como mensaje interactivo de
+    botones de Meta. ``buttons`` son ``{id, title}``; el id vuelve literal en
+    ``interactive.button_reply.id`` cuando el cliente toca uno.
 
-    A diferencia de la versión anterior, no decide acá mismo entre botones
-    nativos y el fallback de texto numerado: encola un payload interactive y
-    deja que el worker del outbox (message_outbox._send_payload) resuelva
-    las capacidades en el momento real del envío — la misma lógica ya
-    centralizada y probada que usa el envío manual de plantillas
-    interactivas, en vez de reimplementarla acá."""
-    sent = await deps.enqueue_messages(chat["chat_id"], [{
-        "content": text,
-        "payload": {
-            "type": "interactive", "interactive_type": "buttons",
-            "description": "",
-            "config": {"title": text, "buttons": buttons},
+    Si la pregunta no cabe en un interactivo (más de tres botones, títulos
+    largos) el envío se rechaza: Meta no lo aceptaría y un texto numerado no
+    es lo que el flujo le prometió al cliente."""
+    interactive = {
+        "type": "button",
+        "body": {"text": text},
+        "action": {
+            "buttons": [
+                {"type": "reply", "reply": {"id": button["id"], "title": button["title"]}}
+                for button in buttons
+            ],
         },
-    }])
+    }
+    sent = await deps.enqueue_messages(chat["chat_id"], [interactive_item(interactive, content=text)])
     return sent[0]
 
 

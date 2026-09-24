@@ -17,17 +17,11 @@ def test_image_template_uses_content_as_native_caption():
         [attachment("image/jpeg", "promo.jpg", "/media/promo.jpg")],
     )
 
-    assert items == [{
-        "content": "Promoción de agosto",
-        "media_url": "/media/promo.jpg",
-        "payload": {
-            "type": "media",
-            "media_url": "/media/promo.jpg",
-            "mediatype": "image",
-            "filename": "promo.jpg",
-            "caption": "Promoción de agosto",
-        },
-    }]
+    assert len(items) == 1
+    assert items[0]["content"] == "Promoción de agosto"
+    assert items[0]["media_url"] == "/media/promo.jpg"
+    assert items[0]["message"] == {"type": "image", "image": {"caption": "Promoción de agosto"}}
+    assert items[0]["media"] == {"media_url": "/media/promo.jpg", "filename": "promo.jpg", "as_sticker": False}
 
 
 def test_dict_attachments_are_supported_by_manual_template_route():
@@ -38,21 +32,19 @@ def test_dict_attachments_are_supported_by_manual_template_route():
     }])
 
     assert len(items) == 1
-    assert items[0]["payload"]["mediatype"] == "video"
-    assert items[0]["payload"]["caption"] == "Mira el video"
+    assert items[0]["message"] == {"type": "video", "video": {"caption": "Mira el video"}}
 
 
 def test_long_content_falls_back_to_text_without_truncation():
     text = "x" * 1025
     items = build_internal_template_items(text, [attachment("image/png")])
 
-    assert items[0] == {"content": text, "payload": {"type": "text", "text": text}}
-    assert items[1]["payload"]["caption"] is None
+    assert items[0] == {"content": text, "message": {"type": "text", "text": {"body": text}}}
+    assert items[1]["message"] == {"type": "image", "image": {}}
 
 
 def test_audio_does_not_receive_native_caption():
     items = build_internal_template_items("Escucha esto", [attachment("audio/ogg")])
 
-    assert items[0]["payload"] == {"type": "text", "text": "Escucha esto"}
-    assert items[1]["payload"]["mediatype"] == "audio"
-    assert items[1]["payload"]["caption"] is None
+    assert items[0]["message"] == {"type": "text", "text": {"body": "Escucha esto"}}
+    assert items[1]["message"] == {"type": "audio", "audio": {"voice": True}}

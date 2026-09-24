@@ -121,7 +121,7 @@ class TestStartInvokedFlow:
         parent = SimpleNamespace(
             id=100,
             rule_id=1,
-            lead_id="51999@s.whatsapp.net",
+            lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
             event_payload={"message_id": "WA-1", "content": "Hollywood Peel"},
             flow_state={},
             started_by_user_id=7,
@@ -151,7 +151,7 @@ class TestStartInvokedFlow:
         session = ChildSession(target, inserted_id=None, existing_id=777)
         child_deps = replace(deps, session_factory=lambda: lambda: session)
         parent = SimpleNamespace(
-            id=100, rule_id=1, lead_id="51999@s.whatsapp.net",
+            id=100, rule_id=1, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
             event_payload={}, flow_state={}, started_by_user_id=None,
         )
 
@@ -161,7 +161,7 @@ class TestStartInvokedFlow:
 
     async def test_runtime_ancestry_stops_legacy_cycles(self, deps):
         parent = SimpleNamespace(
-            id=100, rule_id=2, lead_id="51999@s.whatsapp.net",
+            id=100, rule_id=2, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
             event_payload={"flow_ancestry": [1]}, flow_state={}, started_by_user_id=None,
         )
         with pytest.raises(ValueError, match="ciclo"):

@@ -1,6 +1,5 @@
 import logging
 
-import httpx
 
 from fastapi import Depends, HTTPException, Query
 from db.models import User
@@ -41,11 +40,8 @@ from services.db_service import (
 from services.auth_service import get_current_user, require_admin
 from services.lead_merge import LeadMergeError, merge_leads
 from services.lead_stages import InvalidLeadStageError
-from services.evolution_service import check_whatsapp_numbers
-from services.whatsapp_channel import ChannelError
 from services.phone_utils import (
     PhoneValidationError,
-    digits_to_jid,
     effective_country_code,
     normalize_phone,
 )
@@ -160,24 +156,6 @@ async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depe
     return lead
 
 
-async def _verify_whatsapp_number(digits: str) -> tuple[bool | None, str | None]:
-    """(existe, jid canónico). existe=None significa que no se pudo verificar
-    (Evolution caída o sin configurar): se sigue adelante igual — bloquear el
-    alta de leads porque WhatsApp está desconectado dejaría el CRM inusable."""
-    try:
-        rows = await check_whatsapp_numbers([digits])
-    except (ChannelError, httpx.HTTPError):
-        logger.warning("No se pudo verificar el número %s en WhatsApp; se continúa igual", digits, exc_info=True)
-        return None, None
-    row = rows[0] if rows and isinstance(rows[0], dict) else None
-    if row is None:
-        return None, None
-    jid = row.get("jid")
-    if not (isinstance(jid, str) and jid.endswith("@s.whatsapp.net")):
-        jid = None
-    return bool(row.get("exists")), jid
-
-
 @router.post("", response_model=Chat, status_code=201)
 async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     name = body.name.strip()
@@ -191,10 +169,9 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     if user.role != "admin" and body.vendedor_id not in (None, user.id):
         raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
 
-    exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
-    if exists_wa is False:
-        raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
-
+    # Meta no ofrece consultar si un número tiene WhatsApp: el wa_id tipeado
+    # se usa tal cual y, si Meta lo normaliza al enviar, el outbox suma el
+    # que informe como alias del lead.
     try:
         lead = await create_lead(
             phone=digits,
@@ -205,7 +182,6 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
             notas=body.notas,
             secondary_phone=body.secondary_phone,
             actor_user_id=user.id,
-            remote_jid=canonical_jid,
         )
     except LeadAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
@@ -234,12 +210,8 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
             digits = normalize_phone(new_phone, await effective_country_code())
         except PhoneValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        new_jid = digits_to_jid(digits)
-        exists_wa, canonical_jid = await _verify_whatsapp_number(digits)
-        if exists_wa is False:
-            raise HTTPException(status_code=422, detail="Ese número no tiene WhatsApp. Revisalo e intentá de nuevo.")
         try:
-            rekeyed = await rekey_lead_phone(chat_id, digits, canonical_jid or new_jid, user.id)
+            rekeyed = await rekey_lead_phone(chat_id, digits, user.id)
         except LeadAlreadyExistsError:
             raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
         if rekeyed is None:

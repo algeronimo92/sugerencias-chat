@@ -4,75 +4,82 @@ import pytest
 
 from services import whatsapp_rules
 from services.whatsapp_rules import (
-    INTERACTIVE_RULES,
-    LIMITS,
     InteractiveRuleError,
-    buttons_text_fallback,
-    interactive_choices_summary,
+    build_interactive,
+    interactive_choices,
+    interactive_errors,
     normalize_interactive_config,
-    rendered_interactive_errors,
-    resolve_interactive_footer,
+    resolve_default_footer,
 )
 
-BUTTONS = {"title": "Turnos", "buttons": [{"type": "reply", "displayText": "Mañana"}]}
+BUTTON = {
+    "header": {"type": "text", "text": "Turnos"},
+    "action": {"buttons": [{"type": "reply", "reply": {"id": "manana", "title": "Mañana"}}]},
+}
 LIST = {
-    "title": "Tratamientos", "buttonText": "Ver",
-    "sections": [{"title": "Faciales", "rows": [{"title": "Limpieza", "description": "60 min", "rowId": "l1"}]}],
+    "header": {"type": "text", "text": "Tratamientos"},
+    "action": {
+        "button": "Ver",
+        "sections": [{"title": "Faciales", "rows": [{"id": "l1", "title": "Limpieza", "description": "60 min"}]}],
+    },
 }
 
 
-def test_every_interactive_type_has_a_rule():
-    assert set(INTERACTIVE_RULES) == {"buttons", "list"}
+def test_templates_store_only_button_and_list():
+    assert normalize_interactive_config("button", BUTTON, "Clínica") == BUTTON
+    assert normalize_interactive_config("list", LIST, "Clínica") == LIST
+    assert normalize_interactive_config("none", BUTTON, "Clínica") == {}
+    for subtype in ("buttons", "product", "flow", "carousel"):
+        with pytest.raises(InteractiveRuleError):
+            normalize_interactive_config(subtype, BUTTON, "Clínica")
 
 
-def test_normalization_applies_default_footer_to_the_type_specific_field():
-    assert normalize_interactive_config("buttons", BUTTONS, "Clínica")["footer"] == "Clínica"
-    assert normalize_interactive_config("list", LIST, "Clínica")["footerText"] == "Clínica"
-    assert normalize_interactive_config("none", BUTTONS, "Clínica") == {}
+def test_normalization_drops_type_body_and_empty_header():
+    config = {**BUTTON, "type": "button", "body": {"text": "x"}, "header": {"type": "text", "text": " "}}
+    assert normalize_interactive_config("button", config, "Clínica") == {"action": BUTTON["action"]}
 
 
-def test_normalization_enforces_limits():
-    too_long = {**BUTTONS, "buttons": [{"type": "reply", "displayText": "x" * (LIMITS.button_text + 1)}]}
+def test_limits_come_from_the_meta_contract():
+    too_long = {"action": {"buttons": [{"type": "reply", "reply": {"id": "a", "title": "x" * 21}}]}}
+    with pytest.raises(InteractiveRuleError, match="20"):
+        normalize_interactive_config("button", too_long, "Clínica")
 
-    with pytest.raises(InteractiveRuleError, match=str(LIMITS.button_text)):
-        normalize_interactive_config("buttons", too_long, "Clínica")
+
+def test_non_reply_buttons_are_rejected():
+    url = {"action": {"buttons": [{"type": "url", "url": "https://x.com"}]}}
+    with pytest.raises(InteractiveRuleError, match="reply"):
+        normalize_interactive_config("button", url, "Clínica")
 
 
-def test_unknown_interactive_type_is_rejected():
-    with pytest.raises(InteractiveRuleError):
-        normalize_interactive_config("carousel", {}, "Clínica")
+def test_build_adds_body_and_default_footer():
+    assert build_interactive("button", BUTTON, "¿Cuándo?", "Clínica") == {
+        "type": "button",
+        **BUTTON,
+        "body": {"text": "¿Cuándo?"},
+        "footer": {"text": "Clínica"},
+    }
+    own_footer = {**LIST, "footer": {"text": "Propio"}}
+    assert build_interactive("list", own_footer, "Elegí", "Clínica")["footer"] == {"text": "Propio"}
 
 
 def test_rendered_values_report_every_problem():
-    config = {"title": "", "buttons": [{"type": "url", "displayText": "Abrir", "url": "http://no-https"}]}
-
-    errors = rendered_interactive_errors("buttons", "", config, "Clínica")
-
-    assert "la descripción quedó vacía" in errors
-    assert "el título quedó vacío" in errors
-    assert "la URL del botón 1 no es válida" in errors
+    errors = interactive_errors("button", {"action": {"buttons": []}}, "", "Clínica")
+    assert "El cuerpo es obligatorio" in errors
+    assert any("entre 1 y 3" in error for error in errors)
 
 
-def test_choices_summary_by_type():
-    assert interactive_choices_summary("buttons", BUTTONS) == "Mañana"
-    assert interactive_choices_summary("list", LIST) == "Limpieza"
-
-
-def test_text_fallback_numbers_reply_buttons_and_lists_links():
-    reply = buttons_text_fallback("T", "D", "Pie", [{"type": "reply", "displayText": "Sí"}])
-    link = buttons_text_fallback("T", "D", "", [{"type": "url", "displayText": "Web", "url": "https://x.com"}])
-
-    assert "1. Sí" in reply and "Responde con el número" in reply and reply.endswith("Pie")
-    assert "• Web: https://x.com" in link and "Responde con el número" not in link
+def test_choices_by_type():
+    assert interactive_choices("button", BUTTON) == ["Mañana"]
+    assert interactive_choices("list", LIST) == ["Limpieza"]
 
 
 async def test_footer_setting_is_only_read_when_the_config_has_none(monkeypatch):
     default = AsyncMock(return_value="Clínica")
     monkeypatch.setattr(whatsapp_rules, "default_interactive_footer", default)
 
-    assert await resolve_interactive_footer("buttons", {**BUTTONS, "footer": "Propio"}) == "Propio"
+    assert await resolve_default_footer({**BUTTON, "footer": {"text": "Propio"}}) == ""
     default.assert_not_awaited()
-    assert await resolve_interactive_footer("list", LIST) == "Clínica"
+    assert await resolve_default_footer(LIST) == "Clínica"
 
 
 async def test_default_footer_is_the_business_brand_not_another_business(monkeypatch):
@@ -100,4 +107,3 @@ async def test_configured_footer_wins_over_the_brand(monkeypatch):
 
     assert await whatsapp_rules.default_interactive_footer() == "Te esperamos"
     brand.assert_not_awaited()
-

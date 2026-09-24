@@ -20,7 +20,7 @@ from services.lead_updates import LEAD_FIELD_TO_COLUMN
 from tests.conftest import patch_chats
 
 
-CHAT_ID = "51906471403@s.whatsapp.net"
+CHAT_ID = "ade6fb90-6b65-5edd-8d8a-8ff1cf733e69"
 ADMIN = SimpleNamespace(role="admin", id=1)
 
 

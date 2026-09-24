@@ -75,8 +75,8 @@ class TestGuard:
         )
         assert result["message_ids"] == [1]
         assert outbox.enqueued == [(
-            "51999@s.whatsapp.net",
-            [{"content": "Hola Ana", "payload": {"type": "text", "text": "Hola Ana"}}],
+            "4316bc30-f78c-57a2-8f98-bff9087678d6",
+            [{"content": "Hola Ana", "message": {"type": "text", "text": {"body": "Hola Ana"}}}],
         )]
 
     async def test_la_autorizacion_no_alcanza_a_otra_ejecucion(self, deps, outbox):
@@ -173,7 +173,7 @@ class TestNotification:
             10,
             "Automatización con error: Hollywood peel",
             SERVICE_WINDOW_CLOSED_ERROR,
-            "/chat/51999@s.whatsapp.net",
+            "/chat/4316bc30-f78c-57a2-8f98-bff9087678d6",
             tag="execution-failed-100",
         )
 

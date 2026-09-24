@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import db_service, media_storage
+from services import media_storage
+from services.store import message_history
 from services.media_storage import _mp4_dimensions
 
 IDENTITY_MATRIX = struct.pack(
@@ -75,7 +76,7 @@ async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
         "media_height": None,
     }]
 
-    await db_service._fill_media_dimensions(session, rows)
+    await message_history._fill_media_dimensions(session, rows)
 
     assert rows[0]["media_width"] == 640
     assert rows[0]["media_height"] == 480

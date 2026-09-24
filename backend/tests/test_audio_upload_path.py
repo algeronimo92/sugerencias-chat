@@ -17,7 +17,7 @@ import base64
 from fastapi import HTTPException
 from services.media_storage import AudioTranscodeError
 
-CHAT_ID = "51999@s.whatsapp.net"
+CHAT_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
 SELLER = SimpleNamespace(id=7, role="vendedor")
 RAW = b"WEBM-AUDIO"
 # Se codifica antes de que el fixture instrumente base64.

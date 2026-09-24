@@ -13,7 +13,11 @@ from sqlalchemy import func, select
 
 from db.models import Lead, WspMessage
 from db.session import get_sessionmaker
+from services.meta_text import message_text
 from services.store.common import _fmt_ts, _json_safe_row
+
+# Raíces de Meta que no son mensajes del cliente ni del negocio.
+NON_CONVERSATIONAL_TYPES = frozenset({"system"})
 
 
 def make_context_revision(updated_at: datetime | None, latest_message_id: int | None) -> str:
@@ -63,10 +67,14 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         WspMessage.id,
         WspMessage.chat_id,
         WspMessage.sender,
+        WspMessage.direction,
         WspMessage.sent_at,
-        WspMessage.status,
+        WspMessage.outbox_status,
+        WspMessage.meta_status,
         WspMessage.media_url,
         WspMessage.message_type,
+        WspMessage.message_subtype,
+        WspMessage.provider_payload,
         WspMessage.content,
         WspMessage.analysis,
         WspMessage.wa_message_id,
@@ -108,6 +116,7 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         "context_revision": revision,
         "lead": lead,
         "messages": messages,
+        "system_events": system_events,
         "message_cursor": (
             {
                 "id": str(latest["id"]),

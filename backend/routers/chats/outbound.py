@@ -7,6 +7,7 @@ from models.schemas import (
     ForwardMessagesRequest,
     ForwardMessagesResponse,
     Message,
+    SendInteractiveRequest,
     StickerRequest,
     SendLocationRequest,
     SendContactsRequest,
@@ -29,8 +30,16 @@ from services.ws_manager import manager
 from services.message_outbox import (
     discard_failed_message,
     enqueue_messages,
-    enqueue_text_message,
     retry_failed_message,
+)
+from services.meta_outbound import (
+    OutboundRejected,
+    contacts_item,
+    interactive_item,
+    location_item,
+    media_item,
+    sticker_item,
+    text_item,
 )
 from services import chat_messaging
 from services.chat_messaging import (
@@ -70,6 +79,22 @@ async def _resolve_reply_to(chat_id: str, message_id: int | None) -> dict | None
     return target
 
 
+async def _enqueue_one(chat_id: str, item: dict, user: User, reply_to: dict | None = None) -> dict:
+    """Encola un envío del vendedor y avisa a los paneles.
+
+    Una salida que Meta no acepta (tipo, forma o capacidad de la cuenta) se
+    rechaza con 422 antes de crear nada en el outbox.
+    """
+    try:
+        message = (await enqueue_messages(
+            chat_id, [{**item, "reply_to": reply_to}], actor_user_id=user.id,
+        ))[0]
+    except OutboundRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    return message
+
+
 @router.post("/{chat_id}/messages", response_model=Message)
 async def send_message(
     chat_id: str,
@@ -82,9 +107,7 @@ async def send_message(
     await _require_existing_lead(chat_id)
     await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
-    message = await enqueue_text_message(chat_id, text, reply_to, actor_user_id=user.id)
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await _enqueue_one(chat_id, text_item(text), user, reply_to)
 
 
 @router.post("/{chat_id}/audio", response_model=Message)
@@ -93,7 +116,7 @@ async def send_audio(
     body: SendMediaRequest,
     user: User = Depends(get_current_user),
 ):
-    """Guarda y encola una nota de voz (PTT) sin esperar a Evolution."""
+    """Guarda y encola una nota de voz sin esperar a Meta."""
     await _require_existing_lead(chat_id)
     await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
@@ -121,14 +144,9 @@ async def send_audio(
     except MediaStorageError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    message = (await enqueue_messages(chat_id, [{
-        "content": None,
-        "media_url": media_url,
-        "payload": {"type": "audio", "media_url": media_url},
-        "reply_to": reply_to,
-    }], actor_user_id=user.id))[0]
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await _enqueue_one(
+        chat_id, media_item(media_url, "audio", content_type=content_type), user, reply_to,
+    )
 
 
 @router.post("/{chat_id}/media", response_model=Message)
@@ -137,7 +155,7 @@ async def send_media(
     body: SendMediaRequest,
     user: User = Depends(get_current_user),
 ):
-    """Guarda y encola un adjunto sin esperar a Evolution."""
+    """Guarda y encola un adjunto sin esperar a Meta."""
     await _require_existing_lead(chat_id)
     await _require_open_service_window(chat_id)
     mediatype = _mediatype_from_content_type(body.content_type)
@@ -155,26 +173,22 @@ async def send_media(
     except MediaStorageError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    # El tipo y el nombre del archivo los deriva enqueue_messages a partir del
-    # payload de despacho (message_type = mediatype; el filename de un documento
-    # va a la columna payload). El caption (epígrafe) va como content del mensaje
-    # y en el payload de despacho para que Evolution lo mande bajo la imagen.
+    # El caption (epígrafe) va dentro del objeto de Meta y como content del
+    # mensaje, para la lista de chats y la búsqueda.
     caption = (body.caption or "").strip() or None
-    message = (await enqueue_messages(chat_id, [{
-        "content": caption,
-        "media_url": media_url,
-        "payload": {
-            "type": "media",
-            "media_url": media_url,
-            "mediatype": mediatype,
-            "filename": body.filename,
-            "caption": caption,
-            "album_id": body.album_id,
-        },
-        "reply_to": reply_to,
-    }], actor_user_id=user.id))[0]
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await _enqueue_one(
+        chat_id,
+        media_item(
+            media_url,
+            mediatype,
+            filename=body.filename,
+            caption=caption,
+            content_type=body.content_type,
+            album_id=body.album_id,
+        ),
+        user,
+        reply_to,
+    )
 
 
 @router.post("/{chat_id}/sticker", response_model=Message)
@@ -193,12 +207,7 @@ async def send_sticker(
     if not str(asset.get("content_type") or "").startswith("image/"):
         raise HTTPException(400, "Solo se puede mandar una imagen como sticker")
 
-    message = (await enqueue_messages(chat_id, [{
-        "media_url": asset["media_url"],
-        "payload": {"type": "sticker", "media_url": asset["media_url"]},
-    }], actor_user_id=user.id))[0]
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await _enqueue_one(chat_id, sticker_item(asset["media_url"]), user)
 
 
 TEMPLATE_ERROR_STATUS: dict[type[ChatMessagingError], int] = {
@@ -220,6 +229,8 @@ async def send_template(
         return await chat_messaging.send_template(chat_id, template_id, body.text, body.parameters, user.id)
     except ChatMessagingError as exc:
         raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
+    except OutboundRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/{chat_id}/location", response_model=Message)
@@ -231,19 +242,7 @@ async def send_location(
     await _require_existing_lead(chat_id)
     await _require_open_service_window(chat_id)
     reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
-    # lat/lon van a la columna payload (los deriva enqueue_messages del payload
-    # de despacho); el content queda vacío.
-    message = (await enqueue_messages(chat_id, [{
-        "content": None,
-        "payload": {
-            "type": "location",
-            "latitude": body.latitude,
-            "longitude": body.longitude,
-        },
-        "reply_to": reply_to,
-    }], actor_user_id=user.id))[0]
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await _enqueue_one(chat_id, location_item(body.latitude, body.longitude), user, reply_to)
 
 
 @router.post("/{chat_id}/contacts", response_model=Message)
@@ -263,18 +262,28 @@ async def send_contacts(
             full_name = item.full_name.strip()
             if not full_name:
                 raise HTTPException(400, "Cada contacto debe tener un nombre")
-            digits = normalize_phone(item.phone_number, country_code)
-            contacts.append({"fullName": full_name, "phoneNumber": f"+{digits}"})
+            contacts.append({"full_name": full_name, "phone": normalize_phone(item.phone_number, country_code)})
     except PhoneValidationError as exc:
         raise HTTPException(400, str(exc)) from exc
+    return await _enqueue_one(chat_id, contacts_item(contacts), user, reply_to)
 
-    message = (await enqueue_messages(chat_id, [{
-        "content": None,
-        "payload": {"type": "contact", "contacts": contacts},
-        "reply_to": reply_to,
-    }], actor_user_id=user.id))[0]
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+
+@router.post("/{chat_id}/interactive", response_model=Message)
+async def send_interactive(
+    chat_id: str,
+    body: SendInteractiveRequest,
+    user: User = Depends(get_current_user),
+):
+    """Envía un objeto ``interactive`` de Meta tal cual (botones, lista,
+    productos, catálogo, Flow o pedido de permiso de llamada).
+
+    El subtipo tiene que estar en la allowlist de salida y, si depende de la
+    cuenta (catálogo, Flow publicado, llamadas), la cuenta tiene que tenerlo.
+    """
+    await _require_existing_lead(chat_id)
+    await _require_open_service_window(chat_id)
+    reply_to = await _resolve_reply_to(chat_id, body.reply_to_message_id)
+    return await _enqueue_one(chat_id, interactive_item(body.interactive), user, reply_to)
 
 
 @router.post("/{chat_id}/messages/forward", response_model=ForwardMessagesResponse)
@@ -311,7 +320,10 @@ async def forward_messages(
         raise HTTPException(404, "Ninguno de los chats destino existe")
 
     for target in targets:
-        await enqueue_messages(target, items, actor_user_id=user.id)
+        try:
+            await enqueue_messages(target, items, actor_user_id=user.id)
+        except OutboundRejected as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         await manager.broadcast({
             "type": "chats_updated", "chat_id": target, "reason": "outbound_queued",
         })

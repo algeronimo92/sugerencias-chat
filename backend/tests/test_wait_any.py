@@ -394,42 +394,41 @@ class TestNormalizeQuestion:
 class TestMatchQuestionButton:
     BUTTONS = [{"id": "btn_1", "label": "Sí"}, {"id": "btn_2", "label": "No"}]
 
-    def test_matches_by_selected_id_from_a_native_button_click(self):
-        assert _match_question_button(self.BUTTONS, "interactive", "Sí", {"selected_id": "btn_2"}) == "btn_2"
+    def test_matches_by_the_meta_button_reply_id(self):
+        assert _match_question_button(self.BUTTONS, "btn_2", "Sí") == "btn_2"
 
-    def test_matches_by_position_number_from_the_text_fallback(self):
-        assert _match_question_button(self.BUTTONS, "text", "2", None) == "btn_2"
+    def test_an_unknown_reply_id_falls_back_to_the_text(self):
+        assert _match_question_button(self.BUTTONS, "otro_boton", "No") == "btn_2"
+
+    def test_matches_by_position_number_when_the_customer_types(self):
+        assert _match_question_button(self.BUTTONS, None, "2") == "btn_2"
 
     def test_matches_by_label_case_and_accent_insensitive(self):
-        assert _match_question_button(self.BUTTONS, "text", " SI ", None) == "btn_1"
+        assert _match_question_button(self.BUTTONS, None, " SI ") == "btn_1"
 
     def test_falls_back_to_other_when_nothing_matches(self):
-        assert _match_question_button(self.BUTTONS, "text", "tal vez", None) == "other"
+        assert _match_question_button(self.BUTTONS, None, "tal vez") == "other"
 
     def test_a_photo_goes_to_its_own_branch_when_connected(self):
         # 9 de cada 10 fotos llegan sin caption: por texto no matchearía
         # ningún botón y caería en "otra respuesta" —la rama del cliente que
         # NO mandó lo pedido— si no se resolviera antes por tipo.
         assert _match_question_button(
-            self.BUTTONS, "image", None, None,
-            kind="media_received", has_media_handle=True,
+            self.BUTTONS, None, None, kind="media_received", has_media_handle=True,
         ) == "media"
 
     def test_a_photo_falls_back_to_other_when_the_flow_did_not_connect_media(self):
         # Un flujo publicado antes de que existiera la salida "media" no debe
         # cambiar de comportamiento: sigue siendo "otra respuesta".
         assert _match_question_button(
-            self.BUTTONS, "image", None, None,
-            kind="media_received", has_media_handle=False,
+            self.BUTTONS, None, None, kind="media_received", has_media_handle=False,
         ) == "other"
 
 
 class TestRunVisualExecutionQuestion:
     async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox):
-        # Ya no resuelve acá si son botones nativos o el fallback de texto:
-        # eso quedó a cargo del worker del outbox en el momento real del
-        # envío (ver _send_buttons_message), así que este test no necesita
-        # mockear nada de esa decisión.
+        # La pregunta sale como interactivo de botones de Meta; el id de cada
+        # botón vuelve literal en button_reply.id cuando el cliente toca uno.
         FakeSession, calls = capturing_session()
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
@@ -444,12 +443,15 @@ class TestRunVisualExecutionQuestion:
 
         assert len(outbox.enqueued) == 1
         chat_id, items = outbox.enqueued[0]
-        assert chat_id == "51999@s.whatsapp.net"
-        payload = items[0]["payload"]
-        assert payload["type"] == "interactive"
-        assert payload["interactive_type"] == "buttons"
-        assert payload["config"]["title"] == "¿Te gustó, Ana?"
-        assert [b["displayText"] for b in payload["config"]["buttons"]] == ["Sí", "No"]
+        assert chat_id == "4316bc30-f78c-57a2-8f98-bff9087678d6"
+        message = items[0]["message"]
+        assert message["type"] == "interactive"
+        assert message["interactive"]["type"] == "button"
+        assert message["interactive"]["body"] == {"text": "¿Te gustó, Ana?"}
+        assert message["interactive"]["action"]["buttons"] == [
+            {"type": "reply", "reply": {"id": "btn_1", "title": "Sí"}},
+            {"type": "reply", "reply": {"id": "btn_2", "title": "No"}},
+        ]
         assert len(calls) == 1
         state = calls[0]["flow_state"]
         assert state["waiting_at_node"] == "q"
@@ -521,23 +523,23 @@ class TestDiscoverWaitAnyReplies:
     `_run_visual_execution` así que necesita su propia sesión falsa (ver
     `_DiscoverSession` arriba)."""
 
-    async def test_album_envelope_is_skipped_and_the_photo_that_follows_resumes(self, monkeypatch):
-        # Un envío de varias fotos manda primero el sobre `albumMessage`
-        # (unsupported, sin media) y milisegundos después la imagen real. Sin
-        # filtrarlo, el sobre vacío sería el que reanuda el flujo.
+    async def test_system_notice_is_skipped_and_the_photo_that_follows_resumes(self, monkeypatch):
+        # Un aviso de sistema de Meta (cambio de número) no es una respuesta
+        # del cliente: el flujo sigue esperando y lo reanuda la foto.
         session = _DiscoverSession([
-            _Rows([(100, "51999@s.whatsapp.net", {
+            _Rows([(100, "4316bc30-f78c-57a2-8f98-bff9087678d6", {
                 "waiting_since": "2026-01-01T00:00:00+00:00",
                 "awaiting": ["media_received"],
             })]),
             _Rows([
                 {
-                    "id": 1, "wa_message_id": "ALBUM-1", "message_type": "unsupported",
-                    "content": None, "payload": {"original_type": "albumMessage"}, "analysis": None,
+                    "id": 1, "wa_message_id": "SYSTEM-1", "message_type": "system",
+                    "message_subtype": "user_changed_number", "provider_payload": {}, "content": None,
+                    "analysis": None,
                 },
                 {
                     "id": 2, "wa_message_id": "PHOTO-1", "message_type": "image",
-                    "content": None, "payload": None,
+                    "content": None, "message_subtype": None, "provider_payload": None,
                     "analysis": {"summary": "Primer plano de un rostro"},
                 },
             ]),
@@ -557,18 +559,18 @@ class TestDiscoverWaitAnyReplies:
         # despertarse con un "ahorita te la mando": sigue esperando hasta que
         # llegue el adjunto de verdad, sin importar el orden de llegada.
         session = _DiscoverSession([
-            _Rows([(100, "51999@s.whatsapp.net", {
+            _Rows([(100, "4316bc30-f78c-57a2-8f98-bff9087678d6", {
                 "waiting_since": "2026-01-01T00:00:00+00:00",
                 "awaiting": ["media_received"],
             })]),
             _Rows([
                 {
                     "id": 1, "wa_message_id": "TXT-1", "message_type": "text",
-                    "content": "ahorita te la mando", "payload": None, "analysis": None,
+                    "content": "ahorita te la mando", "message_subtype": None, "provider_payload": None, "analysis": None,
                 },
                 {
                     "id": 2, "wa_message_id": "PHOTO-1", "message_type": "image",
-                    "content": None, "payload": None,
+                    "content": None, "message_subtype": None, "provider_payload": None,
                     "analysis": {"summary": "Comprobante de pago Yape"},
                 },
             ]),
@@ -587,14 +589,14 @@ class TestDiscoverWaitAnyReplies:
         # "message" (el caso de siempre), no cambia nada — resuelve con la
         # primera respuesta, sea texto o foto.
         session = _DiscoverSession([
-            _Rows([(100, "51999@s.whatsapp.net", {
+            _Rows([(100, "4316bc30-f78c-57a2-8f98-bff9087678d6", {
                 "waiting_since": "2026-01-01T00:00:00+00:00",
                 "awaiting": ["message"],
             })]),
             _Rows([
                 {
                     "id": 1, "wa_message_id": "TXT-1", "message_type": "text",
-                    "content": "ahorita te la mando", "payload": None, "analysis": None,
+                    "content": "ahorita te la mando", "message_subtype": None, "provider_payload": None, "analysis": None,
                 },
             ]),
             None,

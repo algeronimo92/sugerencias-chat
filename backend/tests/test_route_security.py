@@ -45,6 +45,11 @@ PUBLIC_ROUTES = {
     ("GET", "/api/branding"),
     ("GET", "/api/branding/logo"),
     ("GET", "/api/branding/manifest.webmanifest"),
+    # Webhook de Meta: Meta no manda sesión ni el token de las integraciones.
+    # La suscripción se valida con el verify token y cada POST con la firma
+    # HMAC del cuerpo crudo (ver routers/meta_webhook.py).
+    ("GET", "/api/webhooks/meta/whatsapp"),
+    ("POST", "/api/webhooks/meta/whatsapp"),
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/metrics"),

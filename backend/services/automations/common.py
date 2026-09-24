@@ -32,7 +32,7 @@ MAX_CONCURRENT_EXECUTIONS = 5
 # las reanudaciones normales de una pausa (wait/wait_any), solo las
 # recuperaciones que hace _release_stale_executions.
 MAX_EXECUTION_ATTEMPTS = 3
-# Un flujo visual legítimo (varias llamadas a Evolution API de 30-60s) puede
+# Un flujo visual legítimo (varias llamadas a Meta de 30-60s) puede
 # superar los 10 minutos; con menos margen se re-agendaría una ejecución viva.
 STALE_EXECUTION_MINUTES = 15
 # Cuando una regla alcanza su max_executions_per_hour, las ejecuciones que
@@ -75,7 +75,7 @@ MAX_CONDITIONS_PER_NODE = 30
 
 # Los triggers de los routers lo activan para que watch_automations procese la
 # cola de inmediato sin bloquear la request HTTP del usuario (una acción
-# send_template puede tardar hasta 30s esperando a Evolution API).
+# send_template puede tardar hasta 30s esperando a Meta).
 _wake = asyncio.Event()
 
 _render = render_variables

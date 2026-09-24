@@ -1,8 +1,8 @@
 import contextlib
 """Dobles de prueba para los colaboradores externos del motor.
 
-Permiten ejercitar la ejecución de acciones sin PostgreSQL ni Evolution API:
-lo que antes obligaba a mandar WhatsApps reales para probar un cambio.
+Permiten ejercitar la ejecución de acciones sin PostgreSQL ni Meta: lo que
+antes obligaba a mandar WhatsApps reales para probar un cambio.
 """
 
 from dataclasses import dataclass, field
@@ -16,18 +16,18 @@ from services.automation_deps import AutomationDeps
 
 @dataclass
 class FakeWhatsApp:
-    """Registra las reacciones en vez de llamar a Evolution API. Los envíos
-    de mensaje pasan por FakeOutbox (ver abajo), no por acá — el motor de
+    """Registra las reacciones en vez de mandarlas a Meta. Los envíos de
+    mensaje pasan por FakeOutbox (ver abajo), no por acá — el motor de
     automatizaciones los encola en vez de mandarlos directo."""
 
-    reactions: list[tuple[dict, str]] = field(default_factory=list)
+    reactions: list[tuple[str, str, str]] = field(default_factory=list)
     fail_with: Exception | None = None
 
-    async def send_reaction(self, key: dict, emoji: str) -> dict:
+    async def send_reaction(self, chat_id: str, target_wa_message_id: str, emoji: str) -> dict:
         if self.fail_with:
             raise self.fail_with
-        self.reactions.append((key, emoji))
-        return {"key": key}
+        self.reactions.append((chat_id, target_wa_message_id, emoji))
+        return {"id": 1, "wa_message_id": target_wa_message_id, "reactions": [{"emoji": emoji, "from_me": True}]}
 
 
 @dataclass
@@ -45,7 +45,7 @@ class FakeOutbox:
         self.enqueued.append((chat_id, items))
         start = sum(len(sent_items) for _, sent_items in self.enqueued[:-1])
         return [
-            {"id": start + position + 1, "chat_id": chat_id, "status": "PENDING", **item}
+            {"id": start + position + 1, "chat_id": chat_id, "outbox_status": "queued", **item}
             for position, item in enumerate(items)
         ]
 
@@ -86,7 +86,7 @@ def make_execution(**overrides):
     defaults = {
         "id": 100,
         "rule_id": 1,
-        "lead_id": "51999@s.whatsapp.net",
+        "lead_id": "4316bc30-f78c-57a2-8f98-bff9087678d6",
         "event_payload": {},
         "action_results": [],
         "flow_state": {},
@@ -102,7 +102,7 @@ def make_execution(**overrides):
 
 def make_chat(**overrides):
     defaults = {
-        "chat_id": "51999@s.whatsapp.net",
+        "chat_id": "4316bc30-f78c-57a2-8f98-bff9087678d6",
         "name": "Ana",
         "phone": "51999",
         "stage": "nuevo",
@@ -205,17 +205,16 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         send_to_user=send_to_user,
         get_customer_service_window=open_window,
         fetch_latest_customer_message_target=latest_customer_message,
-        set_message_reaction=set_message_reaction,
         enqueue_messages=outbox.enqueue_messages,
         send_reaction=whatsapp.send_reaction,
     )
 
 
 class FakeSender:
-    """Canal saliente que registra cada llamada y devuelve un recibo propio."""
+    """Canal saliente que registra cada cuerpo de Meta y devuelve un recibo."""
 
     def __init__(self, fail_with: Exception | None = None, media_id: str = "MEDIA-1"):
-        self.calls: list[tuple[str, tuple, dict]] = []
+        self.calls: list[tuple[str, dict]] = []
         self.uploads: list[tuple[bytes, str, str]] = []
         self.fail_with = fail_with
         self.media_id = media_id
@@ -224,56 +223,29 @@ class FakeSender:
         self.uploads.append((content, content_type, filename))
         return self.media_id
 
-    def __getattr__(self, method: str):
-        if not method.startswith("send_"):
-            raise AttributeError(method)
+    async def send(self, chat_id: str, message: dict):
+        from services.whatsapp_channel import SendReceipt
 
-        async def record(*args, **kwargs):
-            self.calls.append((method, args, kwargs))
-            if self.fail_with:
-                raise self.fail_with
-            from services.whatsapp_channel import SendReceipt
-            return SendReceipt(provider_message_id=f"WA-{method}")
+        self.calls.append((chat_id, message))
+        if self.fail_with:
+            raise self.fail_with
+        body = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": "51900000000", **message}
+        return SendReceipt(provider_message_id=f"WA-{message.get('type')}", sent_body=body)
 
-        return record
-
-    def only_call(self) -> tuple[str, tuple, dict]:
+    def only_call(self) -> tuple[str, dict]:
         assert len(self.calls) == 1, self.calls
         return self.calls[0]
 
 
 @dataclass
 class FakeConversationActions:
-    reactions: list = field(default_factory=list)
     reads: list = field(default_factory=list)
     fail_with: Exception | None = None
-
-    async def react(self, target, emoji):
-        if self.fail_with:
-            raise self.fail_with
-        self.reactions.append((target, emoji))
 
     async def mark_read(self, chat_id, provider_message_ids):
         if self.fail_with:
             raise self.fail_with
         self.reads.append((chat_id, provider_message_ids))
-
-
-@dataclass
-class FakeEditor:
-    edits: list = field(default_factory=list)
-    deletes: list = field(default_factory=list)
-    fail_with: Exception | None = None
-
-    async def edit(self, chat_id, provider_message_id, text):
-        if self.fail_with:
-            raise self.fail_with
-        self.edits.append((chat_id, provider_message_id, text))
-
-    async def delete(self, chat_id, provider_message_id):
-        if self.fail_with:
-            raise self.fail_with
-        self.deletes.append((chat_id, provider_message_id))
 
 
 @dataclass
@@ -303,8 +275,6 @@ def install_channel(monkeypatch, **components):
         sender=components.get("sender") or FakeSender(),
         actions=components.get("actions") or FakeConversationActions(),
         status=components.get("status") or FakeChannelStatus(),
-        editor=components.get("editor"),
-        history=components.get("history"),
     )
     monkeypatch.setitem(whatsapp_channels.CHANNELS, whatsapp_channels.ACTIVE_CHANNEL, channel)
     return channel
@@ -356,15 +326,6 @@ def open_service_window(monkeypatch, is_open: bool = True):
 def patch_webhooks(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del router de webhooks que lo usan."""
     _patch_everywhere(monkeypatch, _package_modules("routers.webhooks", "routers.webhooks"), name, value)
-
-
-def patch_history(monkeypatch, name, value):
-    """Reemplaza un colaborador en todos los módulos del historial de WhatsApp."""
-    _patch_everywhere(
-        monkeypatch,
-        _package_modules("services.whatsapp_history", "services.whatsapp_history"),
-        name, value,
-    )
 
 
 @contextlib.contextmanager

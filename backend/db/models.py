@@ -482,14 +482,11 @@ class Lead(Base):
         default=lambda: str(uuid4()),
         server_default=func.gen_random_uuid(),
     )
-    # Compatibilidad transitoria para integraciones antiguas durante el
-    # despliegue coordinado con n8n. Ya no participa en relaciones internas.
-    legacy_remote_jid: Mapped[str | None] = mapped_column("remote_jid", Text, unique=True)
+    # wa_id del contacto, para mostrar y buscar. El envío no lo lee de acá
+    # sino de whatsapp_identities.
     telefono: Mapped[str | None] = mapped_column(Text)
     # Número informativo (llamadas, contacto alternativo) distinto del que usa
-    # WhatsApp para enrutar mensajes. A diferencia de `telefono`, no pasa por
-    # whatsapp_identities ni por los triggers de la migración 028 — es un dato
-    # de texto libre que se muestra en el CRM, sin efecto sobre el envío.
+    # WhatsApp para enrutar mensajes: texto libre, sin efecto sobre el envío.
     telefono_secundario: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str | None] = mapped_column(Text)
     nombre_usuario: Mapped[str | None] = mapped_column(Text)
@@ -572,19 +569,19 @@ class Lead(Base):
 
 
 class WhatsAppIdentity(Base):
-    """Alias de WhatsApp que apunta al lead canónico del CRM.
+    """Identificador de Meta (``wa_id`` o ``user_id``) que apunta a un lead.
 
-    WhatsApp puede representar a la misma persona mediante un JID telefónico
-    (``@s.whatsapp.net``) o mediante un LID privado (``@lid``). El lead conserva
-    un identificador interno estable; esta tabla permite resolver cualquiera
-    de los dos identificadores sin crear otro lead.
+    Los valores son los literales que manda Meta, sin sufijos. Un contacto
+    puede tener los dos; cualquiera de ellos resuelve al mismo lead.
+    ``phone_number_id`` es el número del negocio por el que se lo vio, o
+    ``'*'`` si el lead se creó a mano y todavía no llegó ningún evento.
     """
 
     __tablename__ = "whatsapp_identities"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    instance: Mapped[str] = mapped_column(Text, nullable=False)
-    jid: Mapped[str] = mapped_column(Text, nullable=False)
+    phone_number_id: Mapped[str] = mapped_column(Text, nullable=False)
+    identifier: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     lead_id: Mapped[str] = mapped_column(
         PG_UUID(as_uuid=False),
@@ -599,8 +596,8 @@ class WhatsAppIdentity(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("kind IN ('phone', 'lid')", name="whatsapp_identities_kind_check"),
-        Index("uq_whatsapp_identities_instance_jid", instance, jid, unique=True),
+        CheckConstraint("kind IN ('wa_id', 'user_id')", name="whatsapp_identities_kind_check"),
+        Index("uq_whatsapp_identities_kind_identifier", kind, identifier, unique=True),
         Index("idx_whatsapp_identities_lead", lead_id),
     )
 
@@ -609,7 +606,7 @@ class WhatsappAdConversion(Base):
     """Clic a un anuncio de WhatsApp (Click-to-WhatsApp) y, si el contacto
     termina comprando, el resultado de esa venta. Llega vía webhook/n8n desde
     la plataforma de anuncios; ctwaclid es la clave que la correlaciona con el
-    ad_referral embebido en el primer mensaje de wsp_messages.payload. lead_id
+    ``referral`` del primer mensaje (wsp_messages.provider_payload). lead_id
     se resuelve por telefono contra whatsapp_identities al insertar, pero
     puede quedar NULL si todavía no existe un lead con ese número.
     """
@@ -658,6 +655,10 @@ class WhatsappAdConversion(Base):
 
 class WspMessage(Base):
     __tablename__ = "wsp_messages"
+    # ``direction`` la calcula la base: sin esto SQLAlchemy la invalida en
+    # cada UPDATE y serializar la fila después del commit dispara una carga
+    # perezosa fuera del contexto async.
+    __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(
@@ -667,29 +668,21 @@ class WspMessage(Base):
     content: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     media_url: Mapped[str | None] = mapped_column(Text)
-    # ID del mensaje en WhatsApp (key.id de Evolution API) — permite matchear
-    # los eventos de cambio de estado (entregado/leído) contra esta fila.
+    # ``messages[].id`` literal de Meta (``wamid...``). Es la clave que
+    # comparten los estados, las reacciones y las citas.
     wa_message_id: Mapped[str | None] = mapped_column(Text)
-    # SERVER_ACK / DELIVERY_ACK / READ / PLAYED, tal cual lo manda Evolution
-    # API. En mensajes del cliente, READ/PLAYED también permite sincronizar la
-    # lectura hecha desde un dispositivo vinculado (p. ej. WhatsApp Web).
-    status: Mapped[str | None] = mapped_column(Text)
     # Dimensiones de la imagen adjunta, calculadas de forma perezosa al servir
     # el chat: el frontend reserva el espacio exacto antes de que cargue.
     # 0/0 significa "no se pudo medir, no reintentar"; NULL, "todavía no".
     media_width: Mapped[int | None] = mapped_column(Integer)
     media_height: Mapped[int | None] = mapped_column(Integer)
-    # Mensaje al que responde este (cita estilo WhatsApp). Se guarda el
-    # wa_message_id y no la clave primaria porque es el único identificador
-    # que comparten la app, Evolution y n8n: en las respuestas del cliente
-    # llega como contextInfo.stanzaId. La fila local se resuelve por
-    # (chat_id, wa_message_id) al servir el historial, apoyándose en el índice
-    # único de wa_message_id declarado más abajo.
+    # Mensaje al que responde este (``context.id`` de Meta). Se guarda el
+    # wa_message_id y no la clave primaria: la fila local se resuelve por
+    # (chat_id, wa_message_id) al servir el historial.
     quoted_wa_message_id: Mapped[str | None] = mapped_column(Text)
-    # Discriminador de tipo (taxonomía completa de WhatsApp/Evolution). Reemplaza
-    # a los pseudo-tags que antes vivían embebidos en `content`. El CHECK de la
-    # base lo restringe a MESSAGE_TYPES; el frontend elige ícono/render por acá.
-    # NULL sólo en filas legadas todavía sin backfillear.
+    # ``messages[].type`` literal de Meta. Sin CHECK: la base guarda un tipo
+    # que Meta agregue mañana; contracts/meta_messages.json dice cuáles tienen
+    # renderer. NULL solo en filas muy antiguas.
     message_type: Mapped[str | None] = mapped_column(Text)
     # Enriquecimiento generado con IA para adjuntos (descripción de imagen/video,
     # transcripción de audio, OCR de documento). Estructura:
@@ -699,15 +692,14 @@ class WspMessage(Base):
     # none_as_null: sin él, un None de Python se guarda como el literal JSON
     # `null` (no SQL NULL), y las consultas `IS NULL`/`->>'summary'` fallan.
     analysis: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
-    # Datos estructurados propios de cada tipo que antes se metían a la fuerza en
-    # `content` o se perdían: lat/lon de ubicación, filename de documento,
-    # opciones de encuesta, contactos, config de listas/botones, etc. NULL si el
-    # tipo no lo necesita (texto, sticker).
+    # Proyección del CRM para la UI: lo que el cuerpo de Meta no trae (datos
+    # de la plantilla enviada, reenviado, álbum, imagen del anuncio
+    # rehospedada). Lo canónico está en provider_payload.
     payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     # Reacciones sobre ESTE mensaje (badge estilo WhatsApp, no una fila aparte):
     # lista de {emoji, from_me}, a lo sumo una entrada por lado en un chat 1:1.
-    # Las escribe set_message_reaction, tanto desde el webhook entrante como
-    # desde el envío del vendedor. NULL cuando nadie reaccionó.
+    # Es la proyección de los eventos de reacción (whatsapp_message_events).
+    # NULL cuando nadie reaccionó.
     reactions: Mapped[list | None] = mapped_column(JSONB(none_as_null=True))
     # Última vez que se reescribió el texto (WhatsApp permite editar un mensaje
     # propio de texto dentro de los 15 minutos). `content` guarda el texto
@@ -717,14 +709,9 @@ class WspMessage(Base):
     # CRM, pero la API deja de servir contenido y adjunto (ver _mask_deleted en
     # db_service) y el hilo pinta la lápida, igual que WhatsApp.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # messageContextInfo.messageSecret del mensaje ORIGINAL (crudo, sin API que
-    # lo exponga). Lo guardaba la vieja integración con Evolution para poder
-    # descifrar una edición nativa futura de WhatsApp; ya no se descifra nada
-    # con esto, la columna queda solo por las filas históricas que la tienen.
-    message_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
-    # Fijado nativo del CRM: WhatsApp no expone ningún endpoint para fijar un
-    # mensaje del lado de quien envía (ni Evolution API ni Baileys lo tienen),
-    # así que esto vive solo acá — no se replica hacia WhatsApp. Hasta 3 por
+    # Fijado nativo del CRM: Meta no expone forma de fijar un mensaje del
+    # lado de quien envía, así que esto vive solo acá — no se replica hacia
+    # WhatsApp. Hasta 3 por
     # chat, igual que el límite real de WhatsApp (se aplica en db_service).
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -765,8 +752,8 @@ class WspMessage(Base):
             pinned_at,
             postgresql_where=text("pinned_at IS NOT NULL"),
         ),
-        # UNIQUE, no sólo índice: Evolution API reenvía el mismo webhook cuando
-        # no recibe confirmación, y sin la restricción el reintento inserta el
+        # UNIQUE, no sólo índice: Meta reenvía el mismo webhook cuando no
+        # recibe confirmación, y sin la restricción el reintento inserta el
         # mensaje una segunda vez. Parcial porque los mensajes que envía el CRM
         # se guardan antes de conocer su id de WhatsApp, y varios NULL a la vez
         # son legítimos.
@@ -911,7 +898,7 @@ class ScheduledMessage(Base):
 
 class AppSetting(Base):
     """Configuración editable desde la app (API keys de servicios externos:
-    n8n, Evolution API, ElevenLabs, y los que se vayan sumando). Los valores acá
+    n8n, Meta, ElevenLabs, y los que se vayan sumando). Los valores acá
     tienen prioridad sobre las variables de entorno homónimas — ver
     services/settings_service.py."""
 

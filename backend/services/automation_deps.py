@@ -1,7 +1,7 @@
 """Colaboradores externos del motor de automatizaciones, agrupados para poder
 sustituirlos en los tests.
 
-El motor toca base de datos, Evolution API, el sistema de archivos, el reloj y
+El motor toca base de datos, Meta, el sistema de archivos, el reloj y
 los websockets. Con esos accesos incrustados no se puede ejercitar la lógica
 sin una base real y sin mandar WhatsApps de verdad, así que se resuelven a
 través de este objeto: producción usa `default_deps()` y los tests construyen
@@ -24,13 +24,11 @@ from services.db_service import (
     fetch_latest_customer_message_target,
     get_customer_service_window,
     remove_tag,
-    set_message_reaction,
     update_lead,
     update_lead_stage,
 )
-from services.whatsapp_channel import ReactionTarget
-from services.whatsapp_channels import current_channel
 from services.message_outbox import enqueue_messages
+from services.reactions import send_reaction
 from services.notification_service import create_system_notification
 from services.task_service import create_task
 from services.template_service import record_template_use
@@ -40,13 +38,6 @@ from services.ws_manager import manager
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-async def _send_reaction(key: dict, emoji: str) -> None:
-    await current_channel().actions.react(
-        ReactionTarget(chat_id=key["remoteJid"], provider_message_id=key["id"], from_me=bool(key.get("fromMe"))),
-        emoji,
-    )
 
 
 async def _broadcast(payload: dict) -> None:
@@ -68,7 +59,6 @@ class AutomationDeps:
     update_lead_stage: Callable[..., Awaitable[dict | None]] = update_lead_stage
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
-    set_message_reaction: Callable[..., Awaitable[dict | None]] = set_message_reaction
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
 
     create_task: Callable[..., Awaitable[dict]] = create_task
@@ -76,14 +66,15 @@ class AutomationDeps:
     create_notification: Callable[..., Awaitable[dict]] = create_system_notification
     send_push: Callable[..., Awaitable[None]] = send_push_to_user
 
-    # Encola en message_outbox en vez de llamar a Evolution API directo: da a
-    # las automatizaciones los mismos reintentos con backoff y la misma
+    # Encola en message_outbox en vez de llamar a Meta directo: da a las
+    # automatizaciones los mismos reintentos con backoff y la misma
     # serialización estricta por chat que ya tiene cualquier mensaje manual
     # del vendedor. Las reacciones quedan afuera (send_reaction, abajo): no
     # tienen orden que preservar contra otros mensajes salientes y son
     # idempotentes (WhatsApp reemplaza la reacción propia).
     enqueue_messages: Callable[[str, list[dict]], Awaitable[list[dict]]] = enqueue_messages
-    send_reaction: Callable[[dict, str], Awaitable[None]] = _send_reaction
+    # (chat_id, wa_message_id objetivo, emoji) -> mensaje con el badge nuevo.
+    send_reaction: Callable[[str, str, str], Awaitable[dict | None]] = send_reaction
 
     broadcast: Callable[[dict], Awaitable[None]] = _broadcast
     send_to_user: Callable[[int, dict], Awaitable[None]] = _send_to_user

@@ -28,10 +28,8 @@ from routers.chats.leads import (  # noqa: F401
     update_chat,
 )
 from routers.chats.reading import (  # noqa: F401
-    get_history_availability,
     get_messages,
     get_service_window,
-    get_whatsapp_history,
 )
 from routers.chats.outbound import (  # noqa: F401
     discard_message,
@@ -40,14 +38,13 @@ from routers.chats.outbound import (  # noqa: F401
     send_audio,
     send_location,
     send_contacts,
+    send_interactive,
     send_media,
     send_message,
     send_sticker,
     send_template,
 )
 from routers.chats.message_actions import (  # noqa: F401
-    delete_message,
-    edit_message,
     get_pinned_messages,
     pin_chat_message,
     react_to_message,

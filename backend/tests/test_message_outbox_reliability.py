@@ -11,12 +11,21 @@ from services import message_outbox, meta_service, whatsapp_channel
 from services.media_storage import MediaNotFoundError
 from services.message_outbox import SendOutcome, classify_send_failure, is_final_failure
 from services.meta_service import MetaApiError, WhatsAppWindowClosedError
-from services.outbound_kinds import OutboundDelivery
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, SendReceipt
+from services.whatsapp_identity_service import Destination
+from tests.conftest import FakeSender, install_channel
 
 
-DELIVERY = OutboundDelivery(SendReceipt("WA-1"))
-QUICK_DELIVERY = OutboundDelivery(SendReceipt("WA-QUICK"))
+def _text(body: str) -> dict:
+    return {"type": "text", "text": {"body": body}}
+
+
+def _receipt(message_id: str, body: str = "Hola") -> SendReceipt:
+    return SendReceipt(message_id, sent_body={"to": "51999", "messaging_product": "whatsapp", **_text(body)})
+
+
+DELIVERY = _receipt("WA-1")
+QUICK_DELIVERY = _receipt("WA-QUICK", "rápido")
 
 
 def _job(**overrides):
@@ -25,9 +34,26 @@ def _job(**overrides):
         "message_id": 20,
         "chat_id": "lead-1",
         "attempts": 0,
-        "payload": {"type": "text", "text": "Hola"},
+        "payload": {"message": _text("Hola")},
         **overrides,
     }
+
+
+class _ScriptedSender(FakeSender):
+    """Devuelve o lanza lo que el test indique en cada envío."""
+
+    def __init__(self, handler):
+        super().__init__()
+        self.handler = handler
+
+    async def send(self, chat_id, message):
+        self.calls.append((chat_id, message))
+        return await self.handler(chat_id, message)
+
+
+def _install_sender(monkeypatch, handler):
+    install_channel(monkeypatch, sender=_ScriptedSender(handler))
+    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
 
 
 @pytest.mark.parametrize(("exc", "expected"), [
@@ -54,23 +80,31 @@ def test_only_retryable_failures_get_more_attempts():
     assert is_final_failure(1, SendOutcome.UNCONFIRMED) is True
 
 
+def _mock_meta_send(monkeypatch, error):
+    monkeypatch.setattr(meta_service, "_config", AsyncMock(return_value=("token", "PHONE1", "WABA1")))
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination", AsyncMock(return_value=Destination("51999", None)),
+    )
+    monkeypatch.setattr(meta_service, "_request", AsyncMock(side_effect=error))
+
+
 @pytest.mark.parametrize("transport_error", [
     httpx.ReadTimeout("timeout"),
     httpx.RemoteProtocolError("desconectado"),
     ValueError("json inválido"),
 ])
 async def test_meta_send_without_readable_answer_is_unconfirmed(monkeypatch, transport_error):
-    monkeypatch.setattr(meta_service, "_request", AsyncMock(side_effect=transport_error))
+    _mock_meta_send(monkeypatch, transport_error)
 
     with pytest.raises(DeliveryUnconfirmedError):
-        await meta_service._send("lead-1", "token", "PHONE1", {"to": "51999"}, timeout=30.0)
+        await meta_service.send_message("lead-1", _text("Hola"))
 
 
 async def test_meta_send_that_never_connected_keeps_the_transport_error(monkeypatch):
-    monkeypatch.setattr(meta_service, "_request", AsyncMock(side_effect=httpx.ConnectError("sin red")))
+    _mock_meta_send(monkeypatch, httpx.ConnectError("sin red"))
 
     with pytest.raises(httpx.ConnectError):
-        await meta_service._send("lead-1", "token", "PHONE1", {"to": "51999"}, timeout=30.0)
+        await meta_service.send_message("lead-1", _text("Hola"))
 
 
 def test_unconfirmed_delivery_is_explained_to_the_seller():
@@ -81,7 +115,7 @@ def test_unconfirmed_delivery_is_explained_to_the_seller():
 
 async def test_accepted_message_is_never_requeued_when_recording_it_fails(monkeypatch):
     monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0, 0))
-    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(return_value=DELIVERY))
+    _install_sender(monkeypatch, AsyncMock(return_value=DELIVERY))
     record = AsyncMock(side_effect=[RuntimeError("db"), RuntimeError("db"), False])
     announce = AsyncMock()
     mark_failed = AsyncMock()
@@ -98,7 +132,7 @@ async def test_accepted_message_is_never_requeued_when_recording_it_fails(monkey
 
 async def test_accepted_message_stays_out_of_retry_even_if_it_never_gets_recorded(monkeypatch):
     monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0))
-    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(return_value=DELIVERY))
+    _install_sender(monkeypatch, AsyncMock(return_value=DELIVERY))
     monkeypatch.setattr(message_outbox, "_record_sent", AsyncMock(side_effect=RuntimeError("db")))
     mark_failed = AsyncMock()
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
@@ -110,7 +144,7 @@ async def test_accepted_message_stays_out_of_retry_even_if_it_never_gets_recorde
 
 async def test_failed_send_is_recorded_with_its_outcome(monkeypatch):
     exc = DeliveryUnconfirmedError("sin respuesta")
-    monkeypatch.setattr(message_outbox, "send_outbound", AsyncMock(side_effect=exc))
+    _install_sender(monkeypatch, AsyncMock(side_effect=exc))
     mark_failed = AsyncMock()
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
 
@@ -123,20 +157,20 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
     monkeypatch.setattr(message_outbox, "SHUTDOWN_GRACE_SECONDS", 0.05)
     release_quick = asyncio.Event()
 
-    async def send(_sender, chat_id, payload):
-        if payload["text"] == "rápido":
+    async def send(chat_id, message):
+        if message["text"]["body"] == "rápido":
             await release_quick.wait()
             return QUICK_DELIVERY
         await asyncio.Event().wait()
 
     persist = AsyncMock(return_value=True)
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "send_outbound", send)
+    _install_sender(monkeypatch, send)
     monkeypatch.setattr(message_outbox, "_persist_sent", persist)
     monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
 
-    quick = _job(id=1, message_id=1, payload={"type": "text", "text": "rápido"})
-    stuck = _job(id=2, message_id=2, payload={"type": "text", "text": "colgado"})
+    quick = _job(id=1, message_id=1, payload={"message": _text("rápido")})
+    stuck = _job(id=2, message_id=2, payload={"message": _text("colgado")})
     worker = asyncio.create_task(message_outbox._process_batch([quick, stuck]))
     await asyncio.sleep(0)
     worker.cancel()
@@ -155,7 +189,7 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
 
 
 async def test_stale_processing_jobs_are_marked_unconfirmed_instead_of_resent(monkeypatch):
-    stale = {"id": 3, "message_id": 30, "chat_id": "lead-1", "payload": {"type": "text"}, "attempts": 0}
+    stale = {"id": 3, "message_id": 30, "chat_id": "lead-1", "payload": {"message": _text("x")}, "attempts": 0}
     session = AsyncMock()
     session.execute = AsyncMock(return_value=SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: [stale])))
 
@@ -181,7 +215,7 @@ async def test_stale_processing_jobs_are_marked_unconfirmed_instead_of_resent(mo
 async def test_enqueue_with_known_dedupe_key_returns_the_existing_message(monkeypatch):
     existing = WspMessage(
         id=55, chat_id="lead-1", sender="vendedor", content="Hola",
-        sent_at=datetime(2026, 9, 15, tzinfo=timezone.utc), status="PENDING", message_type="text",
+        sent_at=datetime(2026, 9, 15, tzinfo=timezone.utc), outbox_status="queued", message_type="text",
     )
     session = AsyncMock()
     session.add = lambda _obj: pytest.fail("no debe insertar un mensaje ya encolado")
@@ -195,10 +229,11 @@ async def test_enqueue_with_known_dedupe_key_returns_the_existing_message(monkey
             return False
 
     monkeypatch.setattr(message_outbox, "get_sessionmaker", lambda: _Context)
+    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
 
     sent = await message_outbox.enqueue_messages("lead-1", [{
         "content": "Hola",
-        "payload": {"type": "text", "text": "Hola"},
+        "message": _text("Hola"),
         "dedupe_key": "automation:1:1:0:0",
     }])
 

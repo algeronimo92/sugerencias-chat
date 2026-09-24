@@ -1,4 +1,4 @@
-"""Tests de la ejecución de acciones, con Evolution API y la base sustituidas.
+"""Tests de la ejecución de acciones, con Meta y la base sustituidas.
 
 Cubre sobre todo el envío de plantillas: es la única acción que produce un
 efecto irreversible hacia afuera (un WhatsApp al cliente).
@@ -43,7 +43,7 @@ def media_asset(**overrides):
 
 def resumable_execution(action_results):
     return SimpleNamespace(
-        id=1, rule_id=1, lead_id="51999@s.whatsapp.net",
+        id=1, rule_id=1, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
         action_results=action_results,
         event_payload={}, flow_state={}, window_override_by_user_id=None,
     )
@@ -207,7 +207,7 @@ class TestTagsAndStage:
         action = {"type": AutomationActionType.ADD_TAG, "tag_id": 3}
         result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert result["status"] == AutomationExecutionStatus.COMPLETED
-        assert recorder.tags_added == [("51999@s.whatsapp.net", 3)]
+        assert recorder.tags_added == [("4316bc30-f78c-57a2-8f98-bff9087678d6", 3)]
 
     async def test_manual_flow_attributes_lead_change_to_its_initiator(self, deps):
         received = None
@@ -227,7 +227,7 @@ class TestTagsAndStage:
         )
 
         assert received == (
-            "51999@s.whatsapp.net",
+            "4316bc30-f78c-57a2-8f98-bff9087678d6",
             {"servicio_interes": "Botox premium"},
             "user",
             7,
@@ -248,7 +248,7 @@ class TestTagsAndStage:
         chat = make_chat(stage="nuevo")
         action = {"type": AutomationActionType.CHANGE_STAGE, "stage": "oferta_presentada"}
         await _execute_action(action, chat, make_execution(), make_rule(), deps)
-        assert recorder.stage_changes == [("51999@s.whatsapp.net", "oferta_presentada")]
+        assert recorder.stage_changes == [("4316bc30-f78c-57a2-8f98-bff9087678d6", "oferta_presentada")]
         # El chat en memoria se actualiza para que una acción posterior de la
         # misma ejecución vea la etapa nueva.
         assert chat["stage"] == "oferta_presentada"
@@ -257,13 +257,13 @@ class TestTagsAndStage:
         chat = make_chat(servicio_interes="Botox")
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Hollywood Peel"}
         await _execute_action(action, chat, make_execution(), make_rule(), deps)
-        assert recorder.lead_updates == [("51999@s.whatsapp.net", {"servicio_interes": "Hollywood Peel"})]
+        assert recorder.lead_updates == [("4316bc30-f78c-57a2-8f98-bff9087678d6", {"servicio_interes": "Hollywood Peel"})]
         assert chat["servicio_interes"] == "Hollywood Peel"
 
     async def test_change_service_with_none_clears_it(self, deps, recorder):
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": None}
         await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
-        assert recorder.lead_updates == [("51999@s.whatsapp.net", {"servicio_interes": None})]
+        assert recorder.lead_updates == [("4316bc30-f78c-57a2-8f98-bff9087678d6", {"servicio_interes": None})]
 
     async def test_change_service_fails_when_lead_is_gone(self, deps):
         async def not_found(chat_id, values, actor_type="system", actor_user_id=None):
@@ -317,7 +317,7 @@ class TestConversationState:
 
         assert result["status"] == AutomationExecutionStatus.COMPLETED
         assert recorder.lead_updates == [(
-            "51999@s.whatsapp.net", {"conversacion_abierta": True},
+            "4316bc30-f78c-57a2-8f98-bff9087678d6", {"conversacion_abierta": True},
         )]
         assert chat["conversacion_abierta"] is True
         assert recorder.broadcasts[-1]["reason"] == "conversation_opened"
@@ -335,7 +335,7 @@ class TestConversationState:
 
         assert result["status"] == AutomationExecutionStatus.COMPLETED
         assert recorder.lead_updates == [(
-            "51999@s.whatsapp.net", {"conversacion_abierta": False},
+            "4316bc30-f78c-57a2-8f98-bff9087678d6", {"conversacion_abierta": False},
         )]
         assert chat["conversacion_abierta"] is False
         assert recorder.broadcasts[-1]["reason"] == "conversation_closed"
@@ -389,8 +389,8 @@ class TestSendTemplate:
             action, make_chat(), make_execution(), make_rule(), deps_with_template(deps, template()),
         )
         assert outbox.enqueued == [(
-            "51999@s.whatsapp.net",
-            [{"content": "Hola Ana", "payload": {"type": "text", "text": "Hola Ana"}}],
+            "4316bc30-f78c-57a2-8f98-bff9087678d6",
+            [{"content": "Hola Ana", "message": {"type": "text", "text": {"body": "Hola Ana"}}}],
         )]
         assert result["message_ids"] == [1]
 
@@ -416,17 +416,12 @@ class TestSendTemplate:
         # llamada a enqueue_messages.
         assert len(outbox.enqueued) == 1
         chat_id, items = outbox.enqueued[0]
-        assert chat_id == "51999@s.whatsapp.net"
+        assert chat_id == "4316bc30-f78c-57a2-8f98-bff9087678d6"
         assert len(items) == 2
         assert items[0]["content"] == "Hola Ana"
-        assert items[0]["payload"] == {
-            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "image",
-            "filename": "foto.jpg", "caption": "Hola Ana",
-        }
-        assert items[1]["payload"] == {
-            "type": "media", "media_url": "/media/foto.jpg", "mediatype": "document",
-            "filename": "guia.pdf", "caption": None,
-        }
+        assert items[0]["message"] == {"type": "image", "image": {"caption": "Hola Ana"}}
+        assert items[0]["media"]["media_url"] == "/media/foto.jpg"
+        assert items[1]["message"] == {"type": "document", "document": {"filename": "guia.pdf"}}
 
     async def test_audio_only_template_keeps_text_as_separate_message(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
@@ -437,9 +432,9 @@ class TestSendTemplate:
         )
 
         _, items = outbox.enqueued[0]
-        assert items[0] == {"content": "Hola Ana", "payload": {"type": "text", "text": "Hola Ana"}}
-        assert items[1]["payload"]["mediatype"] == "audio"
-        assert items[1]["payload"]["caption"] is None
+        assert items[0] == {"content": "Hola Ana", "message": {"type": "text", "text": {"body": "Hola Ana"}}}
+        # Meta no admite epígrafe en audio: el texto va aparte.
+        assert items[1]["message"] == {"type": "audio", "audio": {"voice": True}}
 
     async def test_attachment_only_template_needs_no_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
@@ -447,12 +442,12 @@ class TestSendTemplate:
         await _execute_action(action, make_chat(), make_execution(), make_rule(), only_media)
         _, items = outbox.enqueued[0]
         assert len(items) == 1
-        assert items[0]["payload"]["type"] == "media"
+        assert items[0]["message"]["type"] == "image"
 
     @pytest.mark.parametrize("bad", [
         {"is_active": False},
         {"template_type": "official"},
-        {"interactive_type": "buttons"},
+        {"interactive_type": "button"},
     ])
     async def test_rejects_templates_that_are_no_longer_automatable(self, deps, outbox, bad):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
@@ -476,8 +471,8 @@ class TestSendMessage:
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola {{nombre}}, ¿seguimos?"}
         result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert outbox.enqueued == [(
-            "51999@s.whatsapp.net",
-            [{"content": "Hola Ana, ¿seguimos?", "payload": {"type": "text", "text": "Hola Ana, ¿seguimos?"}}],
+            "4316bc30-f78c-57a2-8f98-bff9087678d6",
+            [{"content": "Hola Ana, ¿seguimos?", "message": {"type": "text", "text": {"body": "Hola Ana, ¿seguimos?"}}}],
         )]
         assert result["message_ids"] == [1]
 
@@ -511,15 +506,8 @@ class TestReactToLastCustomerMessage:
 
         result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
-        assert whatsapp.reactions == [({
-            "remoteJid": "51999@s.whatsapp.net",
-            "fromMe": False,
-            "id": "CLIENT-WA-42",
-        }, "❤️")]
-        assert recorder.reactions == [(
-            "51999@s.whatsapp.net", "CLIENT-WA-42", "❤️", True,
-        )]
-        assert result["message_id"] == 42
+        assert whatsapp.reactions == [("4316bc30-f78c-57a2-8f98-bff9087678d6", "CLIENT-WA-42", "❤️")]
+        assert result["message_id"] == 1
         assert result["emoji"] == "❤️"
         assert recorder.broadcasts[-1]["reason"] == "reaction"
 
@@ -540,15 +528,16 @@ class TestReactToLastCustomerMessage:
         assert whatsapp.reactions == []
 
     async def test_does_not_persist_if_whatsapp_rejects_reaction(self, deps, recorder, whatsapp):
-        whatsapp.fail_with = RuntimeError("Evolution no disponible")
+        whatsapp.fail_with = RuntimeError("Meta no disponible")
         action = {
             "type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE,
             "emoji": "😂",
         }
 
-        with pytest.raises(RuntimeError, match="Evolution no disponible"):
+        with pytest.raises(RuntimeError, match="Meta no disponible"):
             await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
-        assert recorder.reactions == []
+        assert whatsapp.reactions == []
+        assert recorder.broadcasts == []
 
 
 class TestSendAudio:
@@ -559,8 +548,9 @@ class TestSendAudio:
             deps_with_media_asset(deps, media_asset()),
         )
         chat_id, items = outbox.enqueued[0]
-        assert chat_id == "51999@s.whatsapp.net"
-        assert items == [{"media_url": "/media/audio.ogg", "payload": {"type": "audio", "media_url": "/media/audio.ogg"}}]
+        assert chat_id == "4316bc30-f78c-57a2-8f98-bff9087678d6"
+        assert [item["message"] for item in items] == [{"type": "audio", "audio": {"voice": True}}]
+        assert items[0]["media"]["media_url"] == "/media/audio.ogg"
         assert result["message_ids"] == [1]
 
     async def test_rejects_when_asset_is_not_audio(self, deps):
@@ -591,17 +581,16 @@ class TestSendAttachment:
         asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
         await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
         _, items = outbox.enqueued[0]
-        assert "content" not in items[0]
-        assert items[0]["payload"]["mediatype"] == "image"
-        assert items[0]["payload"]["filename"] == "foto.jpg"
+        assert items[0]["content"] is None
+        assert items[0]["message"] == {"type": "image", "image": {}}
+        assert items[0]["media"]["filename"] == "foto.jpg"
 
     async def test_sends_document_with_filename_in_payload(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
         asset = media_asset(content_type="application/pdf", filename="guia.pdf")
         await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
         _, items = outbox.enqueued[0]
-        assert items[0]["payload"]["mediatype"] == "document"
-        assert items[0]["payload"]["filename"] == "guia.pdf"
+        assert items[0]["message"] == {"type": "document", "document": {"filename": "guia.pdf"}}
 
 
 class TestSendMedia:
@@ -623,17 +612,11 @@ class TestSendMedia:
         )
 
         _, items = outbox.enqueued[0]
-        assert items == [{
-            "content": "Hola Ana, mira este video",
-            "media_url": "/media/demo.mp4",
-            "payload": {
-                "type": "media",
-                "media_url": "/media/demo.mp4",
-                "mediatype": "video",
-                "filename": "demo.mp4",
-                "caption": "Hola Ana, mira este video",
-            },
-        }]
+        assert [(item["content"], item["media_url"], item["message"]) for item in items] == [(
+            "Hola Ana, mira este video",
+            "/media/demo.mp4",
+            {"type": "video", "video": {"caption": "Hola Ana, mira este video"}},
+        )]
         assert result["message_ids"] == [1]
 
     async def test_sends_audio_then_companion_text(self, deps, outbox):
@@ -649,15 +632,9 @@ class TestSendMedia:
         )
 
         _, items = outbox.enqueued[0]
-        assert items == [
-            {
-                "media_url": "/media/audio.ogg",
-                "payload": {"type": "audio", "media_url": "/media/audio.ogg"},
-            },
-            {
-                "content": "Escucha esta indicación",
-                "payload": {"type": "text", "text": "Escucha esta indicación"},
-            },
+        assert [item["message"] for item in items] == [
+            {"type": "audio", "audio": {"voice": True}},
+            {"type": "text", "text": {"body": "Escucha esta indicación"}},
         ]
         assert result["message_ids"] == [1, 2]
 
@@ -676,7 +653,7 @@ class TestSendMedia:
 
         _, items = outbox.enqueued[0]
         assert items[0]["content"] is None
-        assert items[0]["payload"]["caption"] is None
+        assert items[0]["message"] == {"type": "image", "image": {}}
 
 
 class TestDispatch:

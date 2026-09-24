@@ -213,6 +213,15 @@ async def trigger_inbound_message(message: dict) -> None:
     cancelled = await _cancel_customer_response_deadlines(lead_id)
     if cancelled:
         await manager.broadcast({"type": "automations_updated"})
+    # El contexto del mensaje viaja con el evento: las condiciones del flujo
+    # pueden mirar su tipo literal y el id que eligió el cliente.
+    message_context = {
+        "message_id": message_key,
+        "content": message.get("content"),
+        "message_type": message.get("message_type"),
+        "message_subtype": message.get("message_subtype"),
+        "reply_id": message.get("reply_id"),
+    }
     conversation = await open_conversation_from_inbound(lead_id, message_key, message.get("content"))
     if conversation is not None:
         await schedule_automation_event(
@@ -220,8 +229,7 @@ async def trigger_inbound_message(message: dict) -> None:
             lead_id,
             f"conversation:{lead_id}:{conversation['version']}",
             {
-                "message_id": message_key,
-                "content": message.get("content"),
+                **message_context,
                 "conversation_version": conversation["version"],
                 "conversation_opened_at": conversation["opened_at"],
             },
@@ -230,7 +238,7 @@ async def trigger_inbound_message(message: dict) -> None:
         AutomationTrigger.MESSAGE_RECEIVED,
         lead_id,
         f"message:{message_key}",
-        {"message_id": message_key, "content": message.get("content")},
+        message_context,
     )
     async with get_sessionmaker()() as session:
         message_count = await session.scalar(

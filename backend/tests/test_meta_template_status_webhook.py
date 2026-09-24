@@ -1,11 +1,23 @@
+"""Cambios de plantillas que Meta informa por webhook (field de la WABA)."""
+
 import pytest
 
-from routers.webhooks import templates
+from services.meta_webhook import processor
+from services.meta_webhook.inbox import InboxEvent, split_changes
 from services.template_service import _meta_managed_template_values
+from tests.meta_fixtures import WABA_ID, webhook_body
 
 
+def _template_event(field: str, value: dict) -> InboxEvent:
+    change = split_changes(webhook_body(value, field=field))[0]
+    return InboxEvent(id="evt-1", event_type=field, payload=change, attempts=1)
+
+
+@pytest.mark.parametrize(
+    "field", ["message_template_status_update", "template_category_update", "message_template_components_update"]
+)
 @pytest.mark.asyncio
-async def test_template_put_fetches_full_meta_state_replaces_and_broadcasts(monkeypatch) -> None:
+async def test_template_change_fetches_full_meta_state_replaces_and_broadcasts(monkeypatch, field) -> None:
     remote = {
         "id": "META_1",
         "name": "recordatorio_cita",
@@ -15,7 +27,7 @@ async def test_template_put_fetches_full_meta_state_replaces_and_broadcasts(monk
         "components": [{"type": "BODY", "text": "Contenido recategorizado"}],
     }
     received = None
-    broadcast = None
+    broadcasts = []
 
     async def fake_get(meta_template_id):
         assert meta_template_id == "META_1"
@@ -27,26 +39,22 @@ async def test_template_put_fetches_full_meta_state_replaces_and_broadcasts(monk
         return [7]
 
     async def fake_broadcast(payload):
-        nonlocal broadcast
-        broadcast = payload
+        broadcasts.append(payload)
 
-    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get)
-    monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(processor.meta_service, "get_whatsapp_template", fake_get)
+    monkeypatch.setattr(processor, "replace_official_template_from_meta", fake_replace)
+    monkeypatch.setattr(processor.manager, "broadcast", fake_broadcast)
 
-    result = await templates.replace_template_from_meta_webhook("META_1")
+    event = _template_event(field, {"event": "APPROVED", "message_template_id": "META_1"})
+    assert event.payload["entry_id"] == WABA_ID
+    await processor.process_change(event)
 
     assert received == ("META_1", remote)
-    assert broadcast == {
-        "type": "templates_updated",
-        "template_ids": [7],
-        "source": "meta_webhook",
-    }
-    assert result == {"status": "ok", "matched": True, "updated_count": 1}
+    assert broadcasts == [{"type": "templates_updated", "template_ids": [7], "source": "meta_webhook"}]
 
 
 @pytest.mark.asyncio
-async def test_template_put_unlinked_event_is_acknowledged_without_broadcast(monkeypatch) -> None:
+async def test_template_change_unlinked_is_acknowledged_without_broadcast(monkeypatch) -> None:
     async def fake_get(_meta_template_id):
         return {"id": "META_EXTERNAL", "components": []}
 
@@ -56,13 +64,13 @@ async def test_template_put_unlinked_event_is_acknowledged_without_broadcast(mon
     async def unexpected_broadcast(_payload):
         raise AssertionError("No debe emitir si no existe una plantilla local vinculada")
 
-    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get)
-    monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(templates.manager, "broadcast", unexpected_broadcast)
+    monkeypatch.setattr(processor.meta_service, "get_whatsapp_template", fake_get)
+    monkeypatch.setattr(processor, "replace_official_template_from_meta", fake_replace)
+    monkeypatch.setattr(processor.manager, "broadcast", unexpected_broadcast)
 
-    result = await templates.replace_template_from_meta_webhook("META_EXTERNAL")
-
-    assert result == {"status": "ok", "matched": False, "updated_count": 0}
+    await processor.process_change(
+        _template_event("message_template_status_update", {"message_template_id": "META_EXTERNAL"})
+    )
 
 
 def test_full_meta_mapper_replaces_category_status_content_and_components() -> None:

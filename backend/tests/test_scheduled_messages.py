@@ -15,7 +15,7 @@ async def test_schedule_route_trims_text_and_broadcasts(monkeypatch):
     future = datetime.now(timezone.utc) + timedelta(hours=1)
     item = {
         "id": 9,
-        "lead_id": "51999999999@s.whatsapp.net",
+        "lead_id": "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
         "text": "¿Pudiste realizar el pago?",
         "scheduled_at": future.isoformat(),
         "status": "scheduled",
@@ -31,21 +31,21 @@ async def test_schedule_route_trims_text_and_broadcasts(monkeypatch):
     monkeypatch.setattr(scheduled_messages.manager, "broadcast", broadcast)
 
     result = await scheduled_messages.post_scheduled_message(
-        "51999999999@s.whatsapp.net",
+        "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
         ScheduledMessageCreate(text="  ¿Pudiste realizar el pago?  ", scheduled_at=future),
         SimpleNamespace(id=4, role="seller"),
     )
 
     assert result == item
     create.assert_awaited_once_with(
-        "51999999999@s.whatsapp.net",
+        "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
         "¿Pudiste realizar el pago?",
         future,
         4,
     )
     broadcast.assert_awaited_once_with({
         "type": "scheduled_messages_updated",
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
         "status": "scheduled",
     })
 
@@ -54,7 +54,7 @@ async def test_schedule_route_trims_text_and_broadcasts(monkeypatch):
 async def test_past_schedule_is_rejected_before_touching_database():
     with pytest.raises(ValueError, match="hora futura"):
         await scheduled_message_service.create_scheduled_message(
-            "51999999999@s.whatsapp.net",
+            "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
             "Mensaje",
             datetime.now(timezone.utc) - timedelta(minutes=1),
             4,
@@ -71,7 +71,7 @@ async def test_schedule_route_maps_invalid_time_to_400(monkeypatch):
 
     with pytest.raises(HTTPException) as exc:
         await scheduled_messages.post_scheduled_message(
-            "51999999999@s.whatsapp.net",
+            "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6",
             ScheduledMessageCreate(
                 text="Mensaje",
                 scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),

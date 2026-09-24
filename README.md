@@ -11,7 +11,7 @@ cp backend/.env.example backend/.env      # completar DATABASE_URL, N8N_WEBHOOK_
 cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 ```
 
-`DATABASE_URL` y `CORS_ORIGINS` solo se configuran acá (son necesarios para que la app arranque). El resto de las claves de servicios externos (n8n, Evolution API, ElevenLabs) se pueden completar en este archivo como semilla inicial, pero también se pueden cargar y editar después desde la propia app: ícono de engranaje ⚙️ en la barra superior → "Configuración" (solo visible para usuarios admin). Lo que se guarde ahí desde la UI tiene prioridad sobre el `.env`.
+`DATABASE_URL` y `CORS_ORIGINS` solo se configuran acá (son necesarios para que la app arranque). El resto de las claves de servicios externos (n8n, Meta, ElevenLabs) se pueden completar en este archivo como semilla inicial, pero también se pueden cargar y editar después desde la propia app: ícono de engranaje ⚙️ en la barra superior → "Configuración" (solo visible para usuarios admin). Lo que se guarde ahí desde la UI tiene prioridad sobre el `.env`.
 
 **Primer login:** la app requiere iniciar sesión. Para crear la primera cuenta (admin), completá `SECRET_KEY` (generarla con `openssl rand -hex 32`), `ADMIN_EMAIL` y `ADMIN_PASSWORD` en `backend/.env` antes de levantar el backend por primera vez — se crea automáticamente al arrancar si la tabla `users` está vacía. Después de loguearte podés borrar `ADMIN_PASSWORD` del archivo (no se vuelve a leer una vez que existe algún usuario). Desde "Configuración → Usuarios" el admin invita al resto del equipo por correo; cada persona crea su propia contraseña desde un enlace de un solo uso.
 
@@ -232,152 +232,54 @@ Compose fuerza `DATABASE_SSL=disable` únicamente para este entorno local. Los
 despliegues con `compose.prod.yml` conservan `DATABASE_SSL=require` y la base
 separada descrita arriba.
 
-### Mensajes leídos de WhatsApp (n8n + Evolution API)
+### Integración con Meta WhatsApp Cloud API
 
-Cuando n8n inserta un mensaje entrante en `wsp_messages`, también debe guardar
-el ID de WhatsApp en `wa_message_id`. Para el payload actual de n8n, el mapeo es:
+El contrato completo (tipos, subtipos, estados y decisiones) está en
+[docs/refactor-integracion-meta-cloud-api-nativa.md](docs/refactor-integracion-meta-cloud-api-nativa.md)
+y la lista de tipos vive en `backend/contracts/meta_messages.json`.
 
-```text
-wa_message_id = {{ $json.instance.message_id }}
-```
+**Webhook.** En la app de Meta se registra
+`https://<dominio del backend>/api/webhooks/meta/whatsapp` con el verify token
+del panel de plataforma. El backend verifica la firma `X-Hub-Signature-256`,
+guarda cada `change` sin tocarlo en `public.webhook_inbox`, responde 200 y un
+worker lo procesa: resuelve el negocio por `phone_number_id` (o por la WABA en
+los cambios de plantillas), guarda el mensaje con su `type` y subtipo
+literales y el objeto completo en `provider_payload`, baja los adjuntos y
+dispara las automatizaciones. Un reintento de Meta se descarta por el hash del
+cambio y por el `wa_message_id` único. Si n8n tiene que quedar delante, el
+workflow `meta-cloud-api` es un relay que reenvía cuerpo y firma sin
+modificarlos.
 
-Si el nodo todavía conserva el payload original de Evolution API, el mismo dato
-suele estar en `key.id`; se debe usar el campo que contenga ese ID en el punto
-exacto donde se ejecuta el `INSERT`. No se debe usar el ID interno/autonumérico
-de `wsp_messages`.
+**Identidad.** Un contacto se identifica con los valores exactos de Meta:
+`wa_id` (su teléfono) y `user_id` (identificador por negocio), en
+`whatsapp_identities`. Cualquiera de los dos resuelve al mismo lead.
 
-Al abrir un chat, el frontend llama `POST /api/chats/{remoteJid}/read`. El backend
-busca los `wa_message_id` pendientes del cliente y envía a Evolution API:
+**Estados.** `outbox_status` describe la cola propia (`queued`, `sending`,
+`sent`, `retryable_failed`, `failed`, `discarded`) y `meta_status` el valor
+literal que informa Meta (`sent`, `delivered`, `read`, `failed`), con el evento
+completo en `status_payload`. Cada estado y cada reacción se guardan como
+evento en `whatsapp_message_events`, así una entrega repetida o fuera de orden
+no deja el mensaje en un estado que Meta nunca informó. Al abrir un chat, el
+frontend llama `POST /api/chats/{chat_id}/read` y el backend marca como leídos
+en Meta los mensajes pendientes del cliente.
 
-```text
-POST {EVOLUTION_API_URL}/chat/markMessageAsRead/{EVOLUTION_INSTANCE}
-```
+**Salida.** Todo envío arma el cuerpo de Meta con `services/meta_outbound.py` y
+se valida contra la allowlist del contrato al encolar (422 si Meta no lo
+acepta) y otra vez en el worker. Los adjuntos se suben a Meta recién al enviar
+y `provider_payload` guarda el cuerpo exacto que salió. Productos, catálogo,
+Flows y el pedido de permiso de llamada solo se ofrecen si la cuenta los tiene
+configurados (`meta_catalog_id`, `meta_published_flow_ids`,
+`meta_call_permission_enabled`).
 
-Los mensajes históricos que tengan `wa_message_id` en `NULL` no pueden marcarse
-como leídos en WhatsApp; el flujo comenzará a funcionar para los mensajes nuevos
-después de agregar el mapeo al nodo de inserción de n8n.
-
-Si una integración guardó mensajes con `sender` en `NULL` pero conservó su
-`wa_message_id`, se puede recuperar `key.fromMe` directamente desde Evolution.
-Primero ejecutar la simulación, que no escribe en PostgreSQL:
-
-```bash
-docker compose exec -T backend python -m scripts.backfill_message_senders
-```
-
-El reporte solo muestra conteos y nunca imprime contenido, credenciales ni IDs
-de WhatsApp. Después de revisar cuántos registros se resolvieron, aplicar el
-resultado explícitamente:
-
-```bash
-docker compose exec -T backend python -m scripts.backfill_message_senders --apply
-```
-
-Se pueden usar `--limit 5`, `--chat-id <remoteJid>` y `--concurrency 5` para
-hacer una prueba acotada. Solo se actualizan filas que todavía tengan
-`sender IS NULL` y cuya respuesta contenga un `fromMe` booleano inequívoco.
-Después del backfill, aplicar
-`backend/migrations/019_wsp_message_sender_not_null.sql` para que PostgreSQL
-rechace cualquier nuevo mensaje que no indique `cliente` o `vendedor`.
-
-### Doble check de mensajes enviados
-
-La instancia de Evolution debe tener habilitado el evento `MESSAGES_UPDATE`
-(`RABBITMQ_EVENTS_MESSAGES_UPDATE=true` si la instancia publica por cola en vez
-de por webhook; en ese caso el evento llega a `q.wsp.status`, ver
-[docs/rabbitmq-ingesta-n8n-plan.md](docs/rabbitmq-ingesta-n8n-plan.md)).
-n8n puede reenviar el JSON original, sin transformarlo, a:
-
-```text
-POST https://chat.dermicapro.app/api/webhooks/message-status
-Authorization: Bearer <mismo valor de INBOUND_WEBHOOK_TOKEN>
-Content-Type: application/json
-```
-
-El endpoint también acepta el contrato plano
-`{"wa_message_id": "...", "status": "READ", "from_me": false}`. Los cambios
-se publican por WebSocket y el chat muestra un check gris al enviar, dos grises
-al entregar y dos azules al leer. Si `READ`/`PLAYED` llega con `from_me=false`,
-el backend interpreta que un dispositivo vinculado (por ejemplo WhatsApp Web)
-leyó un mensaje del cliente y avanza `last_read_at` hasta la fecha exacta de ese
-mensaje; no marca como vistos mensajes posteriores. La migración manual para instalaciones existentes es
-`backend/migrations/016_message_delivery_status.sql`; el backend también la
-aplica de forma idempotente al arrancar.
-
-### Responder a un mensaje en específico
-
-En el chat, al pasar el mouse por una burbuja aparece un botón de responder;
-el mensaje elegido queda citado sobre el compositor (Esc lo cancela) y se
-manda con el texto, el audio, el adjunto o la ubicación que se envíe a
-continuación. La cita viaja a WhatsApp en el campo `quoted` de Evolution, así
-que el cliente la ve igual que si se hubiera respondido desde el teléfono.
-Tocar el recuadro citado salta al mensaje original, paginando hacia atrás si
-hace falta.
-
-Se guarda `wsp_messages.quoted_wa_message_id` — el `key.id` de WhatsApp del
-mensaje citado, no la clave primaria interna: es el único identificador que
-comparten la app, Evolution y n8n. Solo se pueden citar mensajes que ya
-existen en WhatsApp; en uno todavía en la outbox el botón no aparece y la API
+**Citas.** Responder a un mensaje manda `context.message_id` con el
+`wa_message_id` del citado; las respuestas del cliente llegan con
+`context.id` y se guardan en `quoted_wa_message_id`. Solo se pueden citar
+mensajes que ya existen en WhatsApp: sobre uno todavía en la outbox la API
 responde 409.
 
-**Para que las respuestas del cliente también se vean citadas**, el workflow
-de n8n tiene que rellenar esa columna al insertar el mensaje entrante, con
-`contextInfo.stanzaId` del evento de Evolution (viene en
-`data.message.extendedTextMessage.contextInfo.stanzaId`, y en el equivalente
-de cada tipo de adjunto). Sin ese cambio la función queda operativa solo en
-sentido saliente: las respuestas del vendedor se ven citadas en el teléfono
-del cliente, pero las del cliente llegan al CRM sin el recuadro. La migración
-manual es `backend/migrations/023_quoted_messages.sql`; el despliegue la
-aplica solo vía Alembic.
-
-### Editar y eliminar un mensaje enviado
-
-Al pasar el mouse por una burbuja propia aparecen, además de responder y
-reaccionar, un lápiz y un tacho. Ambos actúan sobre WhatsApp de verdad, no solo
-sobre el CRM: el cliente ve el texto corregido con la marca "Editado", o
-"Se eliminó este mensaje" en el lugar del original.
-
-Los límites los pone WhatsApp y la app los replica para no ofrecer un botón que
-va a fallar:
-
-- **Editar**: solo mensajes propios, de texto y dentro de los **15 minutos**
-  posteriores al envío. Pasado ese margen el lápiz desaparece; si igual se
-  intenta, la API responde 409. Un adjunto no se puede reescribir.
-- **Eliminar para todos**: solo mensajes propios, de cualquier tipo y sin
-  límite de tiempo. El "eliminar para todos" de un mensaje ajeno no existe en
-  un chat 1:1.
-- En los dos casos el mensaje tiene que estar confirmado en WhatsApp: sobre uno
-  todavía en la outbox los botones no aparecen y la API responde 409.
-
-Primero se llama a Evolution y recién después se toca la base. Si Evolution
-falla, no se cambia nada y el endpoint responde 502 — una corrección que solo
-existiera de nuestro lado sería peor que no corregir.
-
-El borrado es lógico: `wsp_messages.deleted_at` marca la fila y el backend deja
-de servir contenido, adjunto y análisis de ese mensaje (tampoco aparece en la
-búsqueda ni en el preview de la lista). El registro de que hubo un mensaje ahí
-se conserva para la auditoría del CRM. La edición guarda el texto vigente en
-`content` y la fecha en `edited_at`; no se guardan versiones anteriores.
-
-**Para reflejar lo que se edita o borra desde el teléfono** (o lo que hace el
-propio cliente), el workflow de n8n tiene que reenviar el `protocolMessage`
-correspondiente a:
-
-```text
-POST https://chat.dermicapro.app/api/webhooks/message-edited
-{"chat_id": "<lead.id>", "wa_message_id": "<id del original>", "text": "<texto nuevo>"}
-
-POST https://chat.dermicapro.app/api/webhooks/message-deleted
-{"chat_id": "<lead.id>", "wa_message_id": "<id del original>"}
-```
-
-El `wa_message_id` es el del mensaje **apuntado** por el `protocolMessage`, no
-el del aviso en sí. Sin ese cambio en n8n la función queda operativa solo en
-sentido saliente: lo que se edita o elimina desde el CRM sí llega al cliente.
-La migración es `a2f7b4c81d63`, que aplica Alembic en el despliegue.
-
-Detalle de los endpoints de Evolution:
-[docs/evolution-api-2.3-mensajes/edit-delete-message.md](docs/evolution-api-2.3-mensajes/edit-delete-message.md).
+Meta Cloud API no permite editar ni eliminar un mensaje enviado, así que el CRM
+no lo ofrece. Los mensajes eliminados antes de la migración conservan su
+lápida (`deleted_at`).
 
 ### Búsqueda estilo WhatsApp
 
@@ -472,7 +374,7 @@ para el resto del equipo. La migración explícita está en
 Las plantillas globales también pueden incluir hasta diez imágenes, videos,
 audios o documentos de 25 MB cada uno. El chat presenta una vista previa y
 solicita confirmación antes de enviar el texto y los archivos en secuencia por
-Evolution API. La migración explícita está en
+Meta. La migración explícita está en
 `backend/migrations/006_template_attachments.sql`.
 
 La confirmación utiliza una vista previa completa en dos paneles: permite
@@ -497,7 +399,7 @@ la migración equivalente está en `backend/migrations/007_media_library.sql`.
 
 Desde el compositor de cada conversación se puede cambiar de "Mensaje de
 WhatsApp" a "Nota interna". Estas notas aparecen en la línea de tiempo con un
-estilo diferenciado y nunca se envían por Evolution API. Al escribir `@` se
+estilo diferenciado y nunca se envían a WhatsApp. Al escribir `@` se
 muestran los usuarios activos del CRM para mencionarlos.
 
 Las menciones generan un aviso dentro del CRM y, cuando está permitido, una
@@ -538,35 +440,32 @@ categoría, estado de aprobación y el mapeo de cada variable numérica (`{{1}}`
 Con la ventana cerrada, el selector del chat oculta respuestas internas y
 muestra únicamente plantillas oficiales con estado `APPROVED`. El cuerpo
 aprobado no puede editarse durante el envío; solo pueden ajustarse sus valores.
-El backend las envía mediante `message/sendTemplate` y vuelve a comprobar tipo,
-estado y cantidad de parámetros.
-
-Evolution API solo implementa ese envío para instancias con integración
-`WHATSAPP-BUSINESS` (Meta Cloud API). Si la instancia usa
-`WHATSAPP-BAILEYS`, el CRM conserva y administra las plantillas, pero muestra
-el motivo y bloquea el envío oficial. La migración correspondiente está en
+El backend las envía como `type: "template"` de Meta y vuelve a comprobar tipo,
+estado y cantidad de parámetros. La migración correspondiente está en
 `backend/migrations/010_official_templates.sql`.
 
 ### Botones y listas interactivas
 
-Las plantillas internas pueden enviarse como texto normal, mensaje con botones
-o mensaje de lista. Los botones admiten respuesta, URL, llamada o copia de
-código; los de respuesta se limitan a tres y no se mezclan con otros tipos.
-Las listas permiten varias secciones y hasta diez opciones con IDs únicos.
+Las plantillas internas pueden enviarse como texto normal o como mensaje
+interactivo de Meta: `button` (hasta tres botones de respuesta) o `list`
+(varias secciones y hasta diez opciones con IDs únicos). La configuración se
+guarda con la estructura nativa de Meta (`header`, `footer`, `action`). Un
+interactivo suelto de Meta no admite botones de URL, llamada o copiar código:
+esos quedan para las plantillas oficiales.
 
 El editor configura la estructura, la vista previa simula la tarjeta y el
-desplegable de WhatsApp, y el backend vuelve a validar los límites antes de
-usar `message/sendButtons` o `message/sendList` en Evolution API. Las variables
-del CRM también se resuelven en títulos, pies, botones, secciones y opciones.
+desplegable de WhatsApp, y el backend vuelve a validar los límites del
+contrato antes de encolar. Las variables del CRM también se resuelven en
+títulos, pies, botones, secciones y opciones.
 Estos mensajes requieren que la ventana de atención esté abierta. La migración
 correspondiente está en `backend/migrations/011_interactive_templates.sql`.
 
 ### Envío asíncrono y diagnóstico de latencia
 
-Los mensajes de texto se registran primero como `PENDING` junto con una fila
-durable en `message_outbox`. El request HTTP responde sin esperar a Evolution
-API; un worker integrado los envía en segundo plano, conserva el orden por chat
-y hace hasta tres intentos antes de marcar el mensaje como `FAILED`. Esto no
+Los mensajes se registran primero con `outbox_status = queued` junto con una
+fila durable en `message_outbox`. El request HTTP responde sin esperar a Meta;
+un worker integrado los envía en segundo plano, conserva el orden por chat y
+hace hasta tres intentos antes de marcar el envío como `failed`. Esto no
 requiere RabbitMQ para el volumen actual y evita perder trabajos si el backend
 se reinicia. La migración manual equivalente está en
 `backend/migrations/017_message_outbox.sql`.
@@ -574,11 +473,11 @@ se reinicia. La migración manual equivalente está en
 Desde el panel de un lead también puede programarse un texto para una fecha y
 hora futuras. El registro permanece en `scheduled_messages` y puede cancelarse
 mientras siga programado. Al vencer, el worker comprueba la ventana de atención
-de 24 horas y recién entonces crea el mensaje `PENDING` y su trabajo de outbox.
+de 24 horas y recién entonces encola el mensaje y su trabajo de outbox.
 La vista muestra si quedó programado, está enviándose, fue enviado o falló. La
 migración manual está en `backend/migrations/018_scheduled_messages.sql`.
 
 Cada respuesta HTTP expone `Server-Timing` y `X-DB-Queries` para separar tiempo
-total, PostgreSQL y llamadas a Evolution, n8n o ElevenLabs desde DevTools. La
+total, PostgreSQL y llamadas a Meta, n8n o ElevenLabs desde DevTools. La
 ruta `/health` comprueba que el proceso vive y `/health/ready` verifica además
 la conexión con la base; los healthchecks de Docker usan esta última.

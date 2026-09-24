@@ -2,7 +2,7 @@
 
 Está separada de automation_service para poder testear las reglas —
 sustitución de variables, normalización de condiciones y validación del grafo
-del flujo visual— sin levantar PostgreSQL ni Evolution API.
+del flujo visual— sin levantar PostgreSQL ni llamar a Meta.
 
 Todo lo que necesite I/O (ventana de WhatsApp, existencia de un vendedor,
 envío de mensajes) vive en automation_service y recibe sus colaboradores por
@@ -70,34 +70,17 @@ def is_business_hours(now: datetime) -> bool:
     return now.weekday() < 5 and BUSINESS_START_HOUR <= now.hour < BUSINESS_END_HOUR
 
 
-# Tipos de `wsp_messages` que cuentan como "el cliente mandó una foto o un
-# archivo". El sticker queda fuera a propósito: es una reacción, nadie
-# responde con uno a un "mandame una foto de la zona".
-MEDIA_MESSAGE_TYPES = frozenset({"image", "video", "ptv", "document", "view_once"})
+# Raíces de Meta que cuentan como "el cliente mandó una foto o un archivo".
+# El sticker queda fuera a propósito: es una reacción, nadie responde con uno
+# a un "mandame una foto de la zona".
+MEDIA_MESSAGE_TYPES = frozenset({"image", "video", "document"})
 
-# Eventos que WhatsApp emite alrededor de un mensaje pero que no son una
-# respuesta del cliente, y que hoy llegan como `unsupported` (el tipo original
-# queda en `payload.original_type`):
-#
-# - `albumMessage` y `associatedChildMessage` son el sobre de un envío de
-#   varias fotos juntas. Medido sobre 39 casos, el 100% viene acompañado de la
-#   imagen real dentro de ±60 s — pero el sobre llega ANTES, así que sin este
-#   filtro es el sobre vacío el que despierta la pausa y el flujo avanza
-#   creyendo que ya vio la foto.
-# - `secretEncryptedMessage` es una acción cifrada sobre un mensaje nuestro
-#   (`targetMessageKey.fromMe: true`) que Evolution no descifra: no hay
-#   contenido del cliente que leer, ni ahora ni arreglando el normalizador.
-#
-# Cualquier otro `unsupported` sí cuenta como respuesta: es un tipo que
-# todavía no sabemos leer, no ruido conocido.
-IGNORED_ORIGINAL_TYPES = frozenset({
-    "albumMessage", "associatedChildMessage", "secretEncryptedMessage",
-})
+# Raíces de Meta que no son una respuesta del cliente: un aviso de sistema
+# (cambio de número) no debe despertar a un flujo que espera su respuesta.
+NON_REPLY_MESSAGE_TYPES = frozenset({"system"})
 
 
-def classify_customer_reply(
-    message_type: str | None, payload: object = None,
-) -> str | None:
+def classify_customer_reply(message_type: str | None) -> str | None:
     """Qué clase de respuesta es un mensaje del cliente, para decidir por qué
     rama sigue un bloque que está esperando.
 
@@ -107,8 +90,7 @@ def classify_customer_reply(
     """
     if message_type in MEDIA_MESSAGE_TYPES:
         return WaitAnyConditionKind.MEDIA_RECEIVED
-    original_type = payload.get("original_type") if isinstance(payload, dict) else None
-    if message_type == "unsupported" and original_type in IGNORED_ORIGINAL_TYPES:
+    if message_type in NON_REPLY_MESSAGE_TYPES:
         return None
     return WaitAnyConditionKind.MESSAGE
 

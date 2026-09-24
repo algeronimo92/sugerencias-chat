@@ -31,13 +31,11 @@ def test_every_lead_fk_targets_internal_id():
 def update_deps(monkeypatch):
     updated = AsyncMock(return_value={"chat_id": CHAT_ID})
     rekeyed = AsyncMock(return_value=CHAT_ID)
-    check = AsyncMock(return_value=[{"exists": True, "jid": None}])
     patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
-    patch_chats(monkeypatch, "check_whatsapp_numbers", check)
     patch_chats(monkeypatch, "update_lead", updated)
     patch_chats(monkeypatch, "rekey_lead_phone", rekeyed)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    return SimpleNamespace(update_lead=updated, rekey=rekeyed, check=check)
+    return SimpleNamespace(update_lead=updated, rekey=rekeyed)
 
 
 @pytest.mark.asyncio
@@ -46,7 +44,7 @@ async def test_same_number_refreshes_alias_without_changing_id(update_deps):
 
     await chats.update_chat(CHAT_ID, body, ADMIN)
 
-    update_deps.rekey.assert_awaited_once_with(CHAT_ID, "51906471403", "51906471403@s.whatsapp.net", ADMIN.id)
+    update_deps.rekey.assert_awaited_once_with(CHAT_ID, "51906471403", ADMIN.id)
     values = update_deps.update_lead.await_args.args[1]
     assert "telefono" not in values
     assert values["nombre"] == "Ana"
@@ -58,13 +56,13 @@ async def test_different_number_triggers_rekey(update_deps):
 
     result = await chats.update_chat(CHAT_ID, body, ADMIN)
 
-    update_deps.rekey.assert_awaited_once_with(CHAT_ID, "51999888777", "51999888777@s.whatsapp.net", ADMIN.id)
+    update_deps.rekey.assert_awaited_once_with(CHAT_ID, "51999888777", ADMIN.id)
     assert result["chat_id"] == CHAT_ID
 
 
 @pytest.mark.asyncio
 async def test_rekey_collision_maps_to_409(update_deps):
-    update_deps.rekey.side_effect = LeadAlreadyExistsError("51999888777@s.whatsapp.net")
+    update_deps.rekey.side_effect = LeadAlreadyExistsError("51999888777")
 
     with pytest.raises(HTTPException) as exc:
         await chats.update_chat(CHAT_ID, LeadUpdate(phone="999888777"), ADMIN)

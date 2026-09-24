@@ -2,8 +2,6 @@ import pytest
 
 from services.phone_utils import (
     PhoneValidationError,
-    digits_to_jid,
-    jid_to_digits,
     normalize_phone,
 )
 
@@ -83,8 +81,3 @@ def test_leading_zero_rejected():
 def test_invalid_default_country_code_falls_back():
     # Un default corrupto no puede romper el alta: cae al fallback 51.
     assert normalize_phone("906471403", "") == "51906471403"
-
-
-def test_jid_roundtrip():
-    assert digits_to_jid("51906471403") == "51906471403@s.whatsapp.net"
-    assert jid_to_digits("51906471403@s.whatsapp.net") == "51906471403"

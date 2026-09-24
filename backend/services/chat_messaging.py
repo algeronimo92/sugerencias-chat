@@ -4,14 +4,15 @@ from dataclasses import dataclass
 from services.automation_rules import render_variables
 from services.db_service import fetch_chat, lead_exists
 from services.message_outbox import enqueue_messages
+from services.meta_outbound import interactive_item, location_item, media_item, sticker_item, template_item, text_item
 from services.template_service import list_templates, record_template_use
 from services.template_delivery import build_internal_template_items
 from services.template_validation import render_official_body, template_parameter_identifiers
 from services.whatsapp_rules import (
     MAX_TEXT_LENGTH,
-    interactive_choices_summary,
-    rendered_interactive_errors,
-    resolve_interactive_footer,
+    build_interactive,
+    interactive_errors,
+    resolve_default_footer,
 )
 from services.ws_manager import manager
 
@@ -71,32 +72,28 @@ async def _official_items(template: dict, chat_id: str, text: str, parameters: l
     header_media = None
     if template.get("official_header_type") == "image" and template.get("official_header_media_url"):
         # El id de medio de Meta no se sube acá: subirlo ahora dejaría un id
-        # que puede tardar en consumirse (reintentos del outbox) y que Meta
-        # invalida pasado un tiempo. Solo viaja la referencia al archivo
-        # local; el envío real sube la imagen y arma el componente HEADER
-        # recién al momento del despacho (ver services/outbound_kinds.py).
+        # que puede vencer mientras el trabajo espera en el outbox. Solo viaja
+        # la referencia al archivo; el worker sube la imagen y arma el
+        # componente HEADER al momento del despacho.
         header_media = {
             "media_url": template["official_header_media_url"],
-            "content_type": template["official_header_media_content_type"],
             "filename": template["official_header_media_filename"],
         }
-    return [{
-        "content": render_official_body(template["content"], values) if values else (text or template["content"]),
-        "payload": {
-            "type": "official_template",
-            "name": template["official_name"],
-            "language": template["official_language"],
-            "components": components,
-            "header_media": header_media,
-            # Nada de esto viaja a Meta (que ya conoce la plantilla aprobada
-            # por nombre+idioma): es solo lo que necesita el CRM para pintar
-            # la burbuja completa -header, pie y botones- tal como la ve el
-            # cliente en WhatsApp, en vez de mostrar únicamente el body.
+    return [template_item(
+        name=template["official_name"],
+        language=template["official_language"],
+        components=components,
+        rendered_body=render_official_body(template["content"], values) if values else (text or template["content"]),
+        header_media=header_media,
+        # Lo que el cliente ve de la plantilla y el cuerpo enviado no trae
+        # (Meta ya la conoce por nombre e idioma).
+        display={
             "header_text": template.get("official_header_text") if template.get("official_header_type") == "text" else None,
+            "header_image_url": template.get("official_header_media_url") if header_media else None,
             "footer": template.get("official_footer"),
             "buttons": template.get("official_buttons") or [],
         },
-    }]
+    )]
 
 
 async def _interactive_items(template: dict, chat_id: str, text: str, parameters: list[str]) -> list[dict]:
@@ -105,22 +102,12 @@ async def _interactive_items(template: dict, chat_id: str, text: str, parameters
         raise LeadNotFoundError("Lead no encontrado")
     interactive_type = template["interactive_type"]
     config = render_interactive_config(template["interactive_config"], chat)
-    description = text or render_variables(template["content"], chat)
-    errors = rendered_interactive_errors(
-        interactive_type, description, config, await resolve_interactive_footer(interactive_type, config),
-    )
+    body = text or render_variables(template["content"], chat)
+    default_footer = await resolve_default_footer(config)
+    errors = interactive_errors(interactive_type, config, body, default_footer)
     if errors:
         raise InvalidTemplateInputError("La plantilla no se puede enviar: " + "; ".join(errors))
-    choices = interactive_choices_summary(interactive_type, config)
-    return [{
-        "content": f"{config['title']}\n{description}\nOpciones: {choices}",
-        "payload": {
-            "type": "interactive",
-            "interactive_type": interactive_type,
-            "description": description,
-            "config": config,
-        },
-    }]
+    return [interactive_item(build_interactive(interactive_type, config, body, default_footer), content=body)]
 
 
 async def _internal_items(template: dict, chat_id: str, text: str, parameters: list[str]) -> list[dict]:
@@ -156,44 +143,45 @@ def _media_forward(mediatype: str) -> Callable[[dict], dict | None]:
     def build(source: dict) -> dict | None:
         if not source["media_url"]:
             return None
+        media = source["provider_payload"].get(mediatype) or {}
         return {
-            "content": source["content"],
-            "media_url": source["media_url"],
-            "payload": {
-                "type": "media",
-                "media_url": source["media_url"],
-                "mediatype": mediatype,
-                "filename": source["payload"].get("filename"),
-                "caption": source["content"],
-            },
+            **media_item(
+                source["media_url"],
+                mediatype,
+                filename=media.get("filename"),
+                caption=source["content"] if mediatype != "audio" else None,
+                content_type=media.get("mime_type"),
+            ),
             "forwarded": True,
         }
 
     return build
 
 
-def _stored_media_forward(kind: str) -> Callable[[dict], dict | None]:
-    def build(source: dict) -> dict | None:
-        if not source["media_url"]:
-            return None
-        return {
-            "content": None,
-            "media_url": source["media_url"],
-            "payload": {"type": kind, "media_url": source["media_url"]},
-            "forwarded": True,
-        }
-
-    return build
+def _sticker_forward(source: dict) -> dict | None:
+    if not source["media_url"]:
+        return None
+    return {**sticker_item(source["media_url"]), "forwarded": True}
 
 
 def _location_forward(source: dict) -> dict | None:
-    latitude = source["payload"].get("latitude")
-    longitude = source["payload"].get("longitude")
+    location = source["provider_payload"].get("location") or {}
+    latitude, longitude = location.get("latitude"), location.get("longitude")
     if latitude is None or longitude is None:
         return None
     return {
-        "content": None,
-        "payload": {"type": "location", "latitude": latitude, "longitude": longitude},
+        **location_item(latitude, longitude, name=location.get("name"), address=location.get("address")),
+        "forwarded": True,
+    }
+
+
+def _contacts_forward(source: dict) -> dict | None:
+    contacts = source["provider_payload"].get("contacts")
+    if not isinstance(contacts, list) or not contacts:
+        return None
+    return {
+        "content": source["content"],
+        "message": {"type": "contacts", "contacts": contacts},
         "forwarded": True,
     }
 
@@ -201,23 +189,17 @@ def _location_forward(source: dict) -> dict | None:
 def _text_forward(source: dict) -> dict | None:
     if not source["content"]:
         return None
-    return {
-        "content": source["content"],
-        "payload": {"type": "text", "text": source["content"]},
-        "forwarded": True,
-    }
+    return {**text_item(source["content"]), "forwarded": True}
 
 
 FORWARD_RULES: dict[str, ForwardRule] = {
     "image": ForwardRule(_media_forward("image")),
     "video": ForwardRule(_media_forward("video")),
-    # Un video-nota sale como video normal: WhatsApp no deja crear uno nuevo
-    # desde la API, y mandarlo como video conserva el contenido.
-    "ptv": ForwardRule(_media_forward("video")),
     "document": ForwardRule(_media_forward("document")),
-    "audio": ForwardRule(_stored_media_forward("audio")),
-    "sticker": ForwardRule(_stored_media_forward("sticker")),
+    "audio": ForwardRule(_media_forward("audio")),
+    "sticker": ForwardRule(_sticker_forward),
     "location": ForwardRule(_location_forward, text_fallback=False),
+    "contacts": ForwardRule(_contacts_forward),
 }
 
 
@@ -240,7 +222,7 @@ def forward_item(message: dict) -> dict | None:
         "kind": message["message_type"],
         "content": (message["content"] or "").strip() or None,
         "media_url": message["media_url"],
-        "payload": message["payload"] or {},
+        "provider_payload": message.get("provider_payload") or {},
     }
     rule = FORWARD_RULES.get(source["kind"])
     if rule is None:

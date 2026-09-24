@@ -270,71 +270,57 @@ class LeadMergeRequest(BaseModel):
     other_id: str
 
 
-MessageType = Literal[
-    "text",
-    "image",
-    "video",
-    "ptv",
-    "audio",
-    "document",
-    "location",
-    "sticker",
-    "contact",
-    "poll",
-    "reaction",
-    "pin",
-    "interactive",
-    "button",
-    "template",
-    "order",
-    "product",
-    "payment",
-    "view_once",
-    "unsupported",
-]
-
-
 class Message(BaseModel):
+    """Un mensaje del hilo con el contrato de Meta.
+
+    ``message_type``/``message_subtype`` son los literales de Meta y
+    ``provider_payload`` el objeto que Meta mandó o el cuerpo exacto que se le
+    envió: el frontend renderiza desde ahí. Un tipo que el contrato no conoce
+    llega igual, con su nombre, para que la UI muestre lo disponible.
+    ``content``, ``media_url`` y ``payload`` son proyecciones del CRM.
+    """
+
     id: int
     sender: str
+    direction: str | None = None
     content: str | None = None
     sent_at: str | None = None
     media_url: str | None = None
     wa_message_id: str | None = None
-    status: str | None = None
-    # Tipo del mensaje. NULL sólo en filas legadas sin backfillear: el frontend
-    # cae entonces al parseo de pseudo-tags de `content`.
-    message_type: MessageType | None = None
+    # Estado interno del envío (outbox) y el que informa Meta, por separado.
+    outbox_status: str | None = None
+    meta_status: str | None = None
+    # Último evento de estado completo de Meta (errores, pricing, conversation).
+    status_payload: dict | None = None
+    message_type: str | None = None
+    message_subtype: str | None = None
+    provider_payload: dict | None = None
     # Enriquecimiento IA del adjunto (descripción/transcripción/OCR). Se sirve
     # aparte para mostrarlo bajo demanda, no dentro de la burbuja.
     analysis: dict | None = None
-    # Datos estructurados propios del tipo (lat/lon, filename, opciones…).
+    # Proyección del CRM: lo que el cuerpo de Meta no trae (datos de plantilla,
+    # reenviado, álbum, imagen de anuncio rehospedada).
     payload: dict | None = None
-    # Reacciones sobre este mensaje (badge estilo WhatsApp): lista de
-    # {emoji, from_me}. None cuando nadie reaccionó.
+    # Reacciones sobre este mensaje (badge estilo WhatsApp), derivadas de los
+    # eventos de reacción: lista de {emoji, from_me}. None si nadie reaccionó.
     reactions: list[dict] | None = None
-    # Última edición del texto. None = nunca se editó; con valor, la burbuja
-    # muestra "Editado" como en WhatsApp.
     edited_at: str | None = None
-    # Eliminado para todos. Con valor, el resto de los campos de contenido
-    # vienen vacíos (el backend no los sirve) y el hilo pinta la lápida.
+    # Eliminado para todos (histórico). Con valor, el resto de los campos de
+    # contenido vienen vacíos y el hilo pinta la lápida.
     deleted_at: str | None = None
     # Dimensiones de la imagen adjunta: el frontend reserva el espacio exacto
     # antes de que cargue, para que la conversación no se mueva.
     media_width: int | None = None
     media_height: int | None = None
     # Mensaje citado, ya resuelto a la fila local. Viene en None cuando el
-    # mensaje no responde a nada, o cuando el citado no está en nuestra base
-    # (histórico anterior a la integración, o enviado desde el teléfono).
+    # mensaje no responde a nada o el citado no está en nuestra base.
     quoted_message_id: int | None = None
     quoted_sender: str | None = None
     quoted_content: str | None = None
-    # Fijado nativo del CRM (no existe forma de replicarlo hacia WhatsApp, ver
-    # pin_message en db_service). None = no está fijado.
+    quoted_message_type: str | None = None
+    # Fijado nativo del CRM: no existe forma de replicarlo hacia WhatsApp.
     pinned_at: str | None = None
-    # Motivo real de un status='FAILED' (el last_error del job del outbox).
-    # None para cualquier otro estado, o cuando el mensaje no pasó por el
-    # outbox (entrantes).
+    # Motivo real de un envío que el outbox dio por fallido (su last_error).
     error_detail: str | None = None
 
 
@@ -345,27 +331,6 @@ class MessagePage(BaseModel):
 
 class PinnedMessagesResponse(BaseModel):
     items: list[Message]
-
-
-class HistoryMessage(BaseModel):
-    """Mensaje leído de WhatsApp que no está registrado en la base.
-
-    No tiene `id` local ni estado de entrega, y de los adjuntos solo se
-    conserva el tipo y el epígrafe: el archivo nunca se descarga.
-    """
-    wa_message_id: str
-    sender: Literal["cliente", "vendedor"]
-    content: str | None = None
-    sent_at: str
-    message_type: MessageType | None = None
-    payload: dict | None = None
-
-
-class HistoryPage(BaseModel):
-    items: list[HistoryMessage]
-    has_more: bool
-    # Cursor opaco de Evolution: el frontend lo devuelve tal cual.
-    next_page: int | None = None
 
 
 class ScheduledMessageCreate(BaseModel):
@@ -391,12 +356,6 @@ class CustomerServiceWindow(BaseModel):
     last_customer_message_at: str | None = None
     expires_at: str | None = None
     seconds_remaining: int = 0
-
-
-class MessageStatusUpdate(BaseModel):
-    wa_message_id: str
-    status: str
-    from_me: bool | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -435,10 +394,11 @@ class SendContactsRequest(BaseModel):
     reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
-class EditMessageRequest(BaseModel):
-    # Texto nuevo del mensaje. Mismo tope que un envío normal: es el mismo
-    # mensaje de WhatsApp, solo que reescrito.
-    text: str = Field(min_length=1, max_length=4096)
+class SendInteractiveRequest(BaseModel):
+    # Objeto ``interactive`` de Meta tal cual (con ``type``: button, list,
+    # product, product_list, catalog_message, flow o call_permission_request).
+    interactive: dict
+    reply_to_message_id: int | None = Field(default=None, ge=1)
 
 
 class ForwardMessagesRequest(BaseModel):
@@ -807,7 +767,7 @@ class TemplateCreate(BaseModel):
     official_header_media_asset_id: int | None = None
     official_footer: str | None = None
     official_buttons: list[dict] = Field(default_factory=list)
-    interactive_type: Literal["none", "buttons", "list"] = "none"
+    interactive_type: Literal["none", "button", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
 
 
@@ -836,7 +796,7 @@ class TemplateUpdate(BaseModel):
     official_header_media_asset_id: int | None = None
     official_footer: str | None = None
     official_buttons: list[dict] | None = None
-    interactive_type: Literal["none", "buttons", "list"] | None = None
+    interactive_type: Literal["none", "button", "list"] | None = None
     interactive_config: dict | None = None
 
 
@@ -867,7 +827,7 @@ class TemplateItem(BaseModel):
     official_header_media_filename: str | None = None
     official_footer: str | None = None
     official_buttons: list[dict] = Field(default_factory=list)
-    interactive_type: Literal["none", "buttons", "list"] = "none"
+    interactive_type: Literal["none", "button", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
     imported_from_meta: bool = False
     is_favorite: bool = False
@@ -953,15 +913,13 @@ class InteractiveLimits(BaseModel):
 class TemplateCapabilities(BaseModel):
     integration: str | None = None
     official_sending_supported: bool = False
-    # Ninguna de las dos se consume todavía en el frontend (Etapa 2.3 del
-    # plan de migración a Meta Cloud API: falta que MessageBubble.tsx y
-    # /chats/{id}/history/availability las respeten). Van en la respuesta
-    # desde ya porque es la misma llamada a Evolution, sin costo extra.
-    history_available: bool = False
-    edit_delete_supported: bool = False
     reason: str | None = None
     interactive_limits: InteractiveLimits
     interactive_default_footer: str = ""
+    # Salidas que dependen de la cuenta (contracts/meta_messages.json).
+    catalog_enabled: bool = False
+    flows_enabled: bool = False
+    call_permission_enabled: bool = False
 
 
 class TemplateFavoriteUpdate(BaseModel):

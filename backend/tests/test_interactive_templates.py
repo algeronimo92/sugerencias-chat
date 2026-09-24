@@ -1,7 +1,7 @@
 """Botones de una plantilla interna: Meta solo acepta "reply" fuera de una
 plantilla oficial (URL, llamada o copiar código rechazan siempre con
 "interactive.action.buttons.N.reply is required", confirmado con tráfico
-real) -- ver services/message_outbox.py y la nota en routers/templates.py."""
+real). La configuración se guarda con la estructura nativa de Meta."""
 
 from types import SimpleNamespace
 
@@ -18,8 +18,12 @@ def _buttons_payload(buttons, **overrides):
         content="Elige una opción",
         category="Seguimiento",
         template_type="internal",
-        interactive_type="buttons",
-        interactive_config={"title": "Elige una opción", "footer": "DermicaPro", "buttons": buttons},
+        interactive_type="button",
+        interactive_config={
+            "header": {"type": "text", "text": "Elige una opción"},
+            "footer": {"text": "DermicaPro"},
+            "action": {"buttons": buttons},
+        },
     )
     values.update(overrides)
     return TemplateCreate(**values)
@@ -34,14 +38,14 @@ async def test_internal_buttons_reject_url_type(monkeypatch):
     monkeypatch.setattr(templates, "get_template_category_by_name", _category_found)
 
     payload = _buttons_payload([
-        {"type": "url", "displayText": "Abrir enlace", "url": "https://cliniventas.com/"},
+        {"type": "url", "url": "https://cliniventas.com/"},
     ])
 
     with pytest.raises(HTTPException) as error:
         await templates.post_template(payload, SimpleNamespace(id=11))
 
     assert error.value.status_code == 400
-    assert "respuesta rápida" in error.value.detail
+    assert "reply" in error.value.detail
 
 
 @pytest.mark.asyncio
@@ -61,10 +65,10 @@ async def test_internal_buttons_accept_reply_only(monkeypatch):
     monkeypatch.setattr(templates, "create_template", fake_create_template)
     monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
 
-    payload = _buttons_payload([{"type": "reply", "displayText": "Mañana", "id": "reply_1"}])
+    payload = _buttons_payload([{"type": "reply", "reply": {"id": "reply_1", "title": "Mañana"}}])
 
     await templates.post_template(payload, SimpleNamespace(id=11))
 
-    assert received["interactive_config"]["buttons"] == [
-        {"type": "reply", "displayText": "Mañana", "id": "reply_1"},
+    assert received["interactive_config"]["action"]["buttons"] == [
+        {"type": "reply", "reply": {"id": "reply_1", "title": "Mañana"}},
     ]

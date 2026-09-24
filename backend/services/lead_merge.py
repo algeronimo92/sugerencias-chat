@@ -1,15 +1,9 @@
 """Fusión de dos leads que son la misma persona.
 
-Existe por el direccionamiento por LID de WhatsApp: los mensajes entrantes
-llegan identificados solo con un ``@lid`` y sin el teléfono, así que crean un
-lead provisional; los salientes van dirigidos al JID telefónico y usan otro. La
-misma conversación termina partida en dos fichas, una con el historial del
-cliente y otra con el teléfono y los datos comerciales.
-
-``services.whatsapp_identity_service.learn_send_aliases`` evita que sigan
-apareciendo pares nuevos, pero no puede unir los que ya existen: un envío no
-debe decidir por su cuenta que dos historiales son de la misma persona. Eso se
-resuelve acá, explícitamente y sobre un par ya verificado.
+Un contacto puede quedar partido en dos fichas: por ejemplo, uno que escribió
+primero solo con su ``user_id`` (nombre de usuario activo, sin teléfono) y
+otro creado a mano con su número. La identidad nunca une dos historiales por
+su cuenta: eso se resuelve acá, explícitamente y sobre un par ya verificado.
 
 Todo el movimiento va en una sola transacción: o el lead queda entero en el
 destino, o no se movió nada. Un merge a medias dejaría mensajes sin ficha.
@@ -159,46 +153,20 @@ async def merge_leads(source_id: str, target_id: str, apply: bool = False) -> Me
 
 
 async def _move_aliases(session, source_id: str, target_id: str) -> tuple[str, ...]:
-    """Reapunta los JID del origen al destino, sin duplicar los que ya tiene.
+    """Reapunta los identificadores de Meta del origen al destino.
 
-    El índice único es (instance, jid), así que un mismo JID registrado con dos
-    instancias distintas convive en las dos fichas. Al fusionar, esas copias
-    sobran: se descartan las del origen y se conservan las del destino.
+    ``(kind, identifier)`` es único, así que dos fichas nunca comparten un
+    mismo ``wa_id`` o ``user_id``: todos los del origen pasan al destino.
     """
-    ya_en_destino = set(
-        (
-            await session.execute(
-                select(WhatsAppIdentity.jid).where(WhatsAppIdentity.lead_id == target_id)
-            )
-        ).scalars().all()
-    )
-    del_origen = (
-        await session.execute(
-            select(WhatsAppIdentity.id, WhatsAppIdentity.jid).where(
-                WhatsAppIdentity.lead_id == source_id
-            )
-        )
-    ).all()
-
-    movidos: list[str] = []
-    repetidos: list[int] = []
-    for alias_id, jid in del_origen:
-        if jid in ya_en_destino:
-            repetidos.append(alias_id)
-        else:
-            movidos.append(jid)
-
-    if repetidos:
-        await session.execute(
-            delete(WhatsAppIdentity).where(WhatsAppIdentity.id.in_(repetidos))
-        )
-    if movidos:
+    moved = (
         await session.execute(
             update(WhatsAppIdentity)
             .where(WhatsAppIdentity.lead_id == source_id)
             .values(lead_id=target_id, updated_at=datetime.now(timezone.utc))
+            .returning(WhatsAppIdentity.identifier)
         )
-    return tuple(movidos)
+    ).scalars().all()
+    return tuple(moved)
 
 
 async def _move_owned_rows(session, source_id: str, target_id: str) -> dict[str, int]:

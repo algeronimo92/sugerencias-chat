@@ -1,37 +1,33 @@
-"""Resolución de identidades LID/teléfono de WhatsApp.
+"""Identidad de un contacto de WhatsApp con los valores exactos de Meta.
 
-Evolution/Baileys no siempre entrega el mismo JID para una persona. Este módulo
-convierte todos los JID disponibles en alias de un único ``leads.id``.
-No intenta interpretar los dígitos de un LID como teléfono.
+Meta identifica a la persona con ``wa_id`` (su teléfono) y, desde que existen
+los nombres de usuario, con ``user_id`` (identificador por negocio). Cualquiera
+de los dos puede faltar: un contacto con nombre de usuario activo puede llegar
+sin teléfono. Este módulo guarda ambos como alias de un único ``leads.id`` y
+nunca deriva uno del otro.
 """
 
 from __future__ import annotations
 
 import logging
-import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from db.models import Lead, WhatsAppIdentity
 from db.session import get_sessionmaker
 from services.lead_assignment import pick_next_vendedor_id
 from services.settings_service import get_effective
-from services.whatsapp_connection import ANY_CONNECTION, active_connection, connection_scope
+from services.whatsapp_connection import ANY_CONNECTION
 
 
 logger = logging.getLogger(__name__)
 
-PHONE_SUFFIX = "@s.whatsapp.net"
-LID_SUFFIX = "@lid"
-# El teléfono siempre son dígitos. El LID es numérico en Evolution/Baileys,
-# pero el BSUID de Meta (p.ej. "PE.1084026510784249") agrega un prefijo de
-# país y un punto -- se acepta igual porque para el LID no se interpretan
-# los caracteres, solo se usa como alias opaco.
-_VALID_JID = re.compile(r"^[0-9]+@s\.whatsapp\.net$|^[a-z0-9.]+@lid$")
+WA_ID = "wa_id"
+USER_ID = "user_id"
 
 
 class InvalidWhatsAppIdentityError(ValueError):
@@ -39,131 +35,115 @@ class InvalidWhatsAppIdentityError(ValueError):
 
 
 class WhatsAppIdentityConflictError(RuntimeError):
-    """Los alias recibidos ya apuntan a dos leads distintos.
+    """Los identificadores recibidos ya apuntan a dos leads distintos.
 
     Se detiene el procesamiento en vez de mezclar historiales automáticamente.
     """
 
     def __init__(self, lead_ids: set[str]):
         self.lead_ids = sorted(lead_ids)
-        super().__init__(f"Los alias ya pertenecen a leads distintos: {self.lead_ids}")
+        super().__init__(f"Los identificadores ya pertenecen a leads distintos: {self.lead_ids}")
 
 
-@dataclass(frozen=True)
-class ParsedWhatsAppIdentity:
-    instance: str
-    jids: tuple[str, ...]
-    phone_jid: str | None
-    lid_jid: str | None
-    push_name: str | None
-    username: str | None
-
-
-@dataclass(frozen=True)
-class ResolvedWhatsAppIdentity:
-    chat_id: str
-    send_jid: str
-    phone: str | None
-    phone_jid: str | None
-    lid_jid: str | None
-    aliases: tuple[str, ...]
-    unresolved: bool
-    lead_created: bool
-
-    def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["aliases"] = list(self.aliases)
-        return payload
-
-
-def _clean_jid(value: Any) -> str | None:
+def _clean(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
-    jid = value.strip().lower()
-    return jid if _VALID_JID.fullmatch(jid) else None
+    return value.strip() or None
 
 
-def _unique(values: list[str | None]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(value for value in values if value))
+@dataclass(frozen=True)
+class ContactIdentity:
+    """Quién es el contacto según un evento de Meta.
+
+    ``profile_name`` y ``username`` solo se completan con datos del propio
+    contacto (``value.contacts[].profile``), nunca con los del negocio.
+    """
+
+    phone_number_id: str
+    wa_id: str | None
+    user_id: str | None
+    profile_name: str | None = None
+    username: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.wa_id and not self.user_id:
+            raise InvalidWhatsAppIdentityError("El evento no trae wa_id ni user_id del contacto")
+
+    def aliases(self) -> list[tuple[str, str]]:
+        values = [(WA_ID, self.wa_id), (USER_ID, self.user_id)]
+        return [(kind, value) for kind, value in values if value]
 
 
-def parse_message_identity(payload: dict[str, Any]) -> ParsedWhatsAppIdentity:
-    """Extrae identidades de un webhook nativo o del item completo de n8n."""
-    evolution = payload.get("body") if isinstance(payload.get("body"), dict) else payload
-    data = evolution.get("data") if isinstance(evolution.get("data"), dict) else {}
-    key = data.get("key") if isinstance(data.get("key"), dict) else {}
-
-    raw_remote_jid = str(key.get("remoteJid") or "").strip().lower()
-    if raw_remote_jid.endswith("@g.us") or raw_remote_jid.endswith("@broadcast"):
-        raise InvalidWhatsAppIdentityError(
-            "El webhook corresponde a un grupo o broadcast, no a un lead individual"
-        )
-
-    instance = str(evolution.get("instance") or "").strip()
-    if not instance:
-        raise InvalidWhatsAppIdentityError("El webhook no contiene 'instance'")
-
-    remote_jid = _clean_jid(key.get("remoteJid"))
-    remote_jid_alt = _clean_jid(key.get("remoteJidAlt"))
-    participant = _clean_jid(key.get("participant"))
-    participant_alt = _clean_jid(key.get("participantAlt"))
-    jids = _unique([remote_jid, remote_jid_alt, participant, participant_alt])
-    if not jids:
-        raise InvalidWhatsAppIdentityError(
-            "El webhook no contiene un JID individual compatible"
-        )
-
-    phone_jid = next((jid for jid in jids if jid.endswith(PHONE_SUFFIX)), None)
-    lid_jid = next((jid for jid in jids if jid.endswith(LID_SUFFIX)), None)
-    # En eventos salientes Evolution suele usar el nombre de la propia cuenta
-    # ("Você", "DermicaPro", etc.). Nunca debe convertirse en el nombre del
-    # contacto. pushName solo es confiable cuando el mensaje viene del cliente.
-    from_me = key.get("fromMe") is True
-    push_name = None if from_me else (str(data.get("pushName") or "").strip() or None)
-    username = str(data.get("userName") or "") or None
-    return ParsedWhatsAppIdentity(instance, jids, phone_jid, lid_jid, push_name, username)
+def _matching_contact(contacts: list[Any], wa_id: str | None, user_id: str | None) -> dict:
+    for contact in contacts:
+        if not isinstance(contact, dict):
+            continue
+        if (wa_id and _clean(contact.get("wa_id")) == wa_id) or (
+            user_id and _clean(contact.get("user_id")) == user_id
+        ):
+            return contact
+    return {}
 
 
-def add_phone_jid(
-    identity: ParsedWhatsAppIdentity, phone_jid: str | None
-) -> ParsedWhatsAppIdentity:
-    """Añade un teléfono obtenido por una consulta auxiliar a Evolution."""
-    clean_phone = _clean_jid(phone_jid)
-    if clean_phone is None or not clean_phone.endswith(PHONE_SUFFIX):
-        return identity
-    return ParsedWhatsAppIdentity(
-        instance=identity.instance,
-        jids=_unique([*identity.jids, clean_phone]),
-        phone_jid=identity.phone_jid or clean_phone,
-        lid_jid=identity.lid_jid,
-        push_name=identity.push_name,
-        username=identity.username,
+def identity_from_inbound(phone_number_id: str, message: dict, contacts: list[Any]) -> ContactIdentity:
+    """Remitente de ``value.messages[]``: ``from`` y ``from_user_id``."""
+    wa_id = _clean(message.get("from"))
+    user_id = _clean(message.get("from_user_id"))
+    contact = _matching_contact(contacts, wa_id, user_id)
+    profile = contact.get("profile") if isinstance(contact.get("profile"), dict) else {}
+    return ContactIdentity(
+        phone_number_id=phone_number_id,
+        wa_id=wa_id or _clean(contact.get("wa_id")),
+        user_id=user_id or _clean(contact.get("user_id")),
+        profile_name=_clean(profile.get("name")),
+        username=_clean(profile.get("username")),
     )
 
 
-def _phone_from_jid(phone_jid: str | None) -> str | None:
-    return phone_jid.removesuffix(PHONE_SUFFIX) if phone_jid else None
+def identity_from_echo(phone_number_id: str, message: dict) -> ContactIdentity:
+    """Destinatario de ``value.message_echoes[]``: lo que el negocio mandó
+    desde la app de WhatsApp Business. El perfil no es del contacto."""
+    return ContactIdentity(
+        phone_number_id=phone_number_id,
+        wa_id=_clean(message.get("to")),
+        user_id=_clean(message.get("to_user_id")),
+    )
 
 
-async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIdentity:
+@dataclass(frozen=True)
+class ResolvedIdentity:
+    chat_id: str
+    lead_created: bool
+
+
+def _display_username(username: str | None) -> str | None:
+    # nombre_usuario es un dato de presentación del lead: se muestra con '@'.
+    return "@" + username.lstrip("@") if username else None
+
+
+def _alias_filter(identity: ContactIdentity):
+    return or_(*(
+        and_(WhatsAppIdentity.kind == kind, WhatsAppIdentity.identifier == value)
+        for kind, value in identity.aliases()
+    ))
+
+
+async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedIdentity | None:
     now = datetime.now(timezone.utc)
+    # Se lee antes de abrir la transacción: no tiene sentido tener tomado el
+    # lock del contacto mientras se consulta la configuración.
+    auto_assign = create and (await get_effective("auto_assign_leads_enabled")) == "true"
     async with get_sessionmaker()() as session:
         async with session.begin():
-            # Serializa eventos que ya comparten algún alias. El UNIQUE sigue
-            # siendo la última defensa frente a carreras entre workers.
-            lock_key = f"{identity.instance}|{'|'.join(sorted(identity.jids))}"
+            # Serializa eventos que comparten algún identificador. El UNIQUE
+            # sigue siendo la última defensa frente a carreras entre workers.
+            lock_key = "|".join(sorted(f"{kind}:{value}" for kind, value in identity.aliases()))
             await session.execute(
                 select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
             )
-
             aliases = (
                 await session.execute(
-                    select(WhatsAppIdentity)
-                    .where(
-                        WhatsAppIdentity.instance.in_((identity.instance, "*")),
-                        WhatsAppIdentity.jid.in_(identity.jids),
-                    )
-                    .with_for_update()
+                    select(WhatsAppIdentity).where(_alias_filter(identity)).with_for_update()
                 )
             ).scalars().all()
 
@@ -176,35 +156,23 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                 chat_id = next(iter(lead_ids))
                 lead = await session.get(Lead, chat_id, with_for_update=True)
                 if lead is None:
-                    # Una FK válida hace este caso imposible; se conserva el
-                    # error explícito para detectar corrupción de datos.
                     raise WhatsAppIdentityConflictError(lead_ids)
             else:
-                # remote_jid queda únicamente como puente temporal para una
-                # versión antigua de n8n. La identidad real nace en Lead.id.
-                legacy_jid = identity.phone_jid or identity.lid_jid
-                if legacy_jid is None:
-                    raise InvalidWhatsAppIdentityError("No se pudo elegir un JID canónico")
-
+                if not create:
+                    return None
                 vendedor_id = None
-                if (await get_effective("auto_assign_leads_enabled")) == "true":
-                    # Serializa la asignación entre leads nuevos concurrentes:
-                    # sin este lock, dos altas en paralelo podrían leer el
-                    # mismo "último asignado" y caer en el mismo vendedor.
+                if auto_assign:
+                    # Serializa la asignación entre leads nuevos concurrentes.
                     await session.execute(
-                        select(
-                            func.pg_advisory_xact_lock(
-                                func.hashtextextended("lead_round_robin_assignment", 0)
-                            )
-                        )
+                        select(func.pg_advisory_xact_lock(
+                            func.hashtextextended("lead_round_robin_assignment", 0)
+                        ))
                     )
                     vendedor_id = await pick_next_vendedor_id(session)
-
                 lead = Lead(
-                    legacy_remote_jid=legacy_jid,
-                    telefono=_phone_from_jid(identity.phone_jid),
-                    nombre=identity.push_name,
-                    nombre_usuario=identity.username,
+                    telefono=identity.wa_id,
+                    nombre=identity.profile_name,
+                    nombre_usuario=_display_username(identity.username),
                     vendedor_id=vendedor_id,
                     created_at=now,
                     updated_at=now,
@@ -214,251 +182,122 @@ async def _resolve_once(identity: ParsedWhatsAppIdentity) -> ResolvedWhatsAppIde
                 chat_id = lead.id
                 lead_created = True
 
-            phone = _phone_from_jid(identity.phone_jid)
-            bogus_lid_phone = (
-                bool(lead.legacy_remote_jid)
-                and lead.legacy_remote_jid.endswith(LID_SUFFIX)
-                and lead.telefono is not None
-                and re.sub(r"\D", "", lead.telefono)
-                == lead.legacy_remote_jid.removesuffix(LID_SUFFIX)
-            )
-            if phone and (not lead.telefono or bogus_lid_phone):
-                lead.telefono = phone
+            if identity.wa_id and not lead.telefono:
+                lead.telefono = identity.wa_id
                 lead.updated_at = now
-            if identity.push_name and not lead.nombre:
-                lead.nombre = identity.push_name
+            if identity.profile_name and not lead.nombre:
+                lead.nombre = identity.profile_name
                 lead.updated_at = now
-            if identity.username and not lead.nombre_usuario:
-                lead.nombre_usuario = identity.username
+            username = _display_username(identity.username)
+            if username and not lead.nombre_usuario:
+                lead.nombre_usuario = username
                 lead.updated_at = now
 
-            known_aliases = {(alias.instance, alias.jid): alias for alias in aliases}
-            for jid in identity.jids:
-                existing = known_aliases.get((identity.instance, jid)) or known_aliases.get(("*", jid))
+            known = {(alias.kind, alias.identifier): alias for alias in aliases}
+            for kind, value in identity.aliases():
+                existing = known.get((kind, value))
                 if existing is None:
-                    session.add(
-                        WhatsAppIdentity(
-                            instance=identity.instance,
-                            jid=jid,
-                            kind="phone" if jid.endswith(PHONE_SUFFIX) else "lid",
-                            lead_id=chat_id,
-                        )
-                    )
-                elif existing.instance == "*" and identity.instance != "*":
-                    # Nace de create_lead/rekey_lead_phone sin instancia real;
-                    # ahora que llega un webhook con la instancia verdadera se
-                    # normaliza en vez de sumar una fila redundante (dejaba
-                    # dos alias del mismo jid y ensuciaba el order_by de envío).
-                    existing.instance = identity.instance
+                    session.add(WhatsAppIdentity(
+                        phone_number_id=identity.phone_number_id,
+                        identifier=value,
+                        kind=kind,
+                        lead_id=chat_id,
+                    ))
+                elif existing.phone_number_id == ANY_CONNECTION:
+                    # Alias creado a mano sin número conocido: el primer evento
+                    # de Meta dice por cuál llega.
+                    existing.phone_number_id = identity.phone_number_id
                     existing.updated_at = now
             await session.flush()
 
-            send_jid = identity.phone_jid
-            if send_jid is None:
-                send_jid = await session.scalar(
-                    select(WhatsAppIdentity.jid)
-                    .where(
-                        WhatsAppIdentity.instance.in_((identity.instance, "*")),
-                        WhatsAppIdentity.lead_id == chat_id,
-                        WhatsAppIdentity.kind == "phone",
-                    )
-                    .order_by(WhatsAppIdentity.updated_at.desc())
-                    .limit(1)
-                )
-            send_jid = send_jid or identity.lid_jid or identity.jids[0]
-
-        return ResolvedWhatsAppIdentity(
-            chat_id=chat_id,
-            send_jid=send_jid,
-            phone=phone or lead.telefono,
-            phone_jid=identity.phone_jid,
-            lid_jid=identity.lid_jid,
-            aliases=identity.jids,
-            unresolved=identity.phone_jid is None and send_jid.endswith(LID_SUFFIX),
-            lead_created=lead_created,
-        )
+        return ResolvedIdentity(chat_id=chat_id, lead_created=lead_created)
 
 
-async def resolve_whatsapp_identity(
-    identity: ParsedWhatsAppIdentity,
-) -> ResolvedWhatsAppIdentity:
-    """Resuelve y registra alias; reintenta una carrera de inserción una vez."""
-    try:
-        return await _resolve_once(identity)
-    except IntegrityError:
-        # Otro worker pudo crear el lead/alias entre SELECT e INSERT. La
-        # transacción anterior ya fue revertida al salir del context manager.
-        return await _resolve_once(identity)
+async def resolve_whatsapp_identity(identity: ContactIdentity, *, create: bool = True) -> ResolvedIdentity | None:
+    """Lead dueño de la identidad; lo crea si no existe y ``create`` lo pide.
 
-
-async def resolve_whatsapp_destination(chat_id: str) -> str:
-    """Devuelve el mejor JID conocido para enviar a un lead interno.
-
-    Se limita a la instancia de Evolution activa (más el ``"*"`` sintético de
-    los alias creados sin webhook, ver ``db_service.create_lead`` /
-    ``rekey_lead_phone``). Un lead con alias de más de una instancia real
-    —por ejemplo durante una migración— podía elegir el más reciente sin
-    importar si esa instancia seguía conectada; con el filtro solo se
-    considera la que está en uso. Sin instancia configurada no se filtra: no
-    hay forma de saber cuál es la activa.
+    Registra los identificadores que falten. Reintenta una vez si otro worker
+    insertó el mismo alias entre el SELECT y el INSERT.
     """
-    instances = await connection_scope()
+    try:
+        return await _resolve_once(identity, create=create)
+    except IntegrityError:
+        return await _resolve_once(identity, create=create)
 
+
+@dataclass(frozen=True)
+class Destination:
+    wa_id: str | None
+    user_id: str | None
+
+
+async def resolve_whatsapp_destination(chat_id: str) -> Destination:
+    """Identificadores conocidos para escribirle a un lead.
+
+    Se prefieren los más recientes: un contacto que cambió de número llega
+    con su ``wa_id`` nuevo y ese es el que sirve.
+    """
     async with get_sessionmaker()() as session:
-        phone_stmt = (
-            select(WhatsAppIdentity.jid)
-            .where(WhatsAppIdentity.lead_id == chat_id, WhatsAppIdentity.kind == "phone")
-            .order_by(WhatsAppIdentity.updated_at.desc())
-            .limit(1)
+        rows = (
+            await session.execute(
+                select(WhatsAppIdentity.kind, WhatsAppIdentity.identifier)
+                .where(WhatsAppIdentity.lead_id == chat_id)
+                .order_by(WhatsAppIdentity.updated_at.desc(), WhatsAppIdentity.id.desc())
+            )
+        ).all()
+    values: dict[str, str] = {}
+    for kind, identifier in rows:
+        values.setdefault(kind, identifier)
+    if not values:
+        raise InvalidWhatsAppIdentityError(
+            f"El lead {chat_id} no tiene una identidad de WhatsApp asociada"
         )
-        any_stmt = (
-            select(WhatsAppIdentity.jid)
-            .where(WhatsAppIdentity.lead_id == chat_id)
-            .order_by(WhatsAppIdentity.updated_at.desc())
-            .limit(1)
-        )
-        if instances is not None:
-            phone_stmt = phone_stmt.where(WhatsAppIdentity.instance.in_(instances))
-            any_stmt = any_stmt.where(WhatsAppIdentity.instance.in_(instances))
-
-        phone_jid = await session.scalar(phone_stmt)
-        if phone_jid:
-            return phone_jid
-        any_jid = await session.scalar(any_stmt)
-    if any_jid:
-        return any_jid
-    raise InvalidWhatsAppIdentityError(
-        f"El lead {chat_id} no tiene una identidad de WhatsApp asociada"
-    )
+    return Destination(wa_id=values.get(WA_ID), user_id=values.get(USER_ID))
 
 
-async def lead_id_for_jid(jid: str) -> str | None:
-    """El lead dueño de ese JID, o None si no está registrado como alias."""
+async def lead_id_for_identifier(identifier: str) -> str | None:
+    """Lead dueño de un ``wa_id`` o ``user_id``, o None si no está registrado."""
     async with get_sessionmaker()() as session:
         return await session.scalar(
-            select(WhatsAppIdentity.lead_id).where(WhatsAppIdentity.jid == jid).limit(1)
-        )
-
-
-async def is_known_alias(jid: str) -> bool:
-    """Si ese JID ya está asociado a algún lead.
-
-    Sirve para saltear los rescates caros —preguntarle los contactos a
-    Evolution— en los mensajes de una conversación que ya tiene ficha, que son
-    la enorme mayoría: sin este corte se gasta una llamada HTTP por cada
-    mensaje entrante de todo chat direccionado por LID.
-    """
-    async with get_sessionmaker()() as session:
-        return bool(
-            await session.scalar(select(exists().where(WhatsAppIdentity.jid == jid)))
-        )
-
-
-async def resolve_history_jid(chat_id: str) -> str:
-    """JID bajo el que Evolution indexa los mensajes del chat.
-
-    No siempre coincide con el de envío. Con el direccionamiento por LID,
-    WhatsApp guarda toda la conversación bajo el ``@lid`` aunque los envíos se
-    dirijan al teléfono, así que pedir el historial por el JID telefónico
-    devuelve cero registros con HTTP 200 — indistinguible de un chat sin
-    historial. Se prefiere el LID; el teléfono queda de respaldo para los chats
-    que nunca fueron direccionados así.
-    """
-    async with get_sessionmaker()() as session:
-        lid_jid = await session.scalar(
-            select(WhatsAppIdentity.jid)
-            .where(
-                WhatsAppIdentity.lead_id == chat_id,
-                WhatsAppIdentity.kind == "lid",
-            )
-            .order_by(WhatsAppIdentity.updated_at.desc())
+            select(WhatsAppIdentity.lead_id)
+            .where(WhatsAppIdentity.identifier == identifier)
             .limit(1)
         )
-    return lid_jid or await resolve_whatsapp_destination(chat_id)
 
 
-def aliases_from_send_key(key: Any) -> tuple[str, ...]:
-    """JIDs aprovechables de la ``key`` que Evolution devuelve al enviar.
+async def add_identity_alias(chat_id: str, phone_number_id: str, kind: str, identifier: str) -> bool:
+    """Suma un identificador que Meta informó para un lead ya conocido.
 
-    Es la única fuente que empareja el ``@lid`` de un contacto con su teléfono.
-    Con el direccionamiento por LID de WhatsApp, los mensajes entrantes llegan
-    solo con ``remoteJid`` en formato ``@lid`` y sin ``remoteJidAlt``, y los
-    contactos de Evolution no exponen el número. En cambio, al enviar al JID
-    telefónico Baileys resuelve el direccionamiento y responde con el JID real
-    del chat en ``remoteJid`` y su equivalente en ``remoteJidAlt``.
+    Lo usan el aviso de cambio de número (``system.new_wa_id``) y la respuesta
+    de un envío (``contacts[].wa_id``). Si el identificador ya es de otro lead
+    no se toca: fusionar historiales es una decisión con datos de por medio.
     """
-    if not isinstance(key, dict):
-        return ()
-    return _unique([_clean_jid(key.get("remoteJid")), _clean_jid(key.get("remoteJidAlt"))])
-
-
-async def learn_send_aliases(chat_id: str, response: Any) -> tuple[str, ...]:
-    """Registra como alias del lead los JID con los que WhatsApp direccionó el envío.
-
-    Cierra el agujero por el que un mismo contacto termina partido en dos
-    leads: el entrante crea uno con el LID y el saliente usa otro con el
-    teléfono.
-
-    Solo agrega alias libres. Si el JID ya pertenece a otro lead se deja como
-    está y se registra en el log: fusionar dos historiales es una decisión con
-    datos de por medio, no algo que deba resolver un envío.
-
-    Devuelve los alias efectivamente aprendidos.
-    """
-    jids = aliases_from_send_key(response.get("key") if isinstance(response, dict) else None)
-    if not jids:
-        return ()
-
-    instance = await active_connection() or ANY_CONNECTION
-    learned: list[str] = []
+    identifier = _clean(identifier)
+    if identifier is None or kind not in {WA_ID, USER_ID}:
+        return False
     try:
         async with get_sessionmaker()() as session:
             async with session.begin():
-                owners = dict(
-                    (
-                        await session.execute(
-                            select(WhatsAppIdentity.jid, WhatsAppIdentity.lead_id).where(
-                                WhatsAppIdentity.jid.in_(jids)
-                            )
-                        )
-                    ).all()
-                )
-
-                for jid in jids:
-                    owner = owners.get(jid)
-                    if owner == chat_id:
-                        continue
-                    if owner is not None:
-                        logger.warning(
-                            "El alias %s ya pertenece al lead %s y no a %s: "
-                            "la conversación está duplicada en dos leads",
-                            jid, owner, chat_id,
-                        )
-                        continue
-                    session.add(
-                        WhatsAppIdentity(
-                            instance=instance,
-                            jid=jid,
-                            kind="phone" if jid.endswith(PHONE_SUFFIX) else "lid",
-                            lead_id=chat_id,
-                        )
+                owner = await session.scalar(
+                    select(WhatsAppIdentity.lead_id).where(
+                        WhatsAppIdentity.kind == kind,
+                        WhatsAppIdentity.identifier == identifier,
                     )
-                    learned.append(jid)
-
-                # Un lead nacido de un LID no tiene teléfono: este envío es la
-                # primera vez que se lo conoce. Mismo criterio que _resolve_once.
-                phone_jid = next(
-                    (jid for jid in learned if jid.endswith(PHONE_SUFFIX)), None
                 )
-                if phone_jid is not None:
-                    lead = await session.get(Lead, chat_id, with_for_update=True)
-                    if lead is not None and not lead.telefono:
-                        lead.telefono = _phone_from_jid(phone_jid)
-                        lead.updated_at = datetime.now(timezone.utc)
+                if owner == chat_id:
+                    return False
+                if owner is not None:
+                    logger.warning(
+                        "El %s %s ya pertenece al lead %s y no a %s",
+                        kind, identifier, owner, chat_id,
+                    )
+                    return False
+                session.add(WhatsAppIdentity(
+                    phone_number_id=phone_number_id or ANY_CONNECTION,
+                    identifier=identifier,
+                    kind=kind,
+                    lead_id=chat_id,
+                ))
     except IntegrityError:
-        # Otro worker registró el mismo alias entre el SELECT y el INSERT. El
-        # resultado buscado ya está en la base, así que no hay nada que rehacer.
-        logger.info("Los alias del envío a %s ya habían sido registrados", chat_id)
-        return ()
-
-    return tuple(learned)
+        return False
+    return True

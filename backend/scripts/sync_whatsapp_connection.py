@@ -55,7 +55,7 @@ async def _main() -> int:
         help="por defecto se lee del app_settings del negocio",
     )
     parser.add_argument("--waba-id", help="por defecto se lee del app_settings del negocio")
-    parser.add_argument("--provider", default="meta", choices=("meta", "evolution"))
+    parser.add_argument("--provider", default="meta", choices=("meta",))
     args = parser.parse_args()
 
     try:

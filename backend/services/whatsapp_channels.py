@@ -1,4 +1,3 @@
-from services.evolution_channel import EvolutionHistoryReader
 from services.meta_channel import MetaChannelStatus, MetaConversationActions, MetaMessageSender
 from services.whatsapp_channel import WhatsAppChannel
 
@@ -10,8 +9,6 @@ CHANNELS: dict[str, WhatsAppChannel] = {
         sender=MetaMessageSender(),
         actions=MetaConversationActions(),
         status=MetaChannelStatus(),
-        editor=None,
-        history=EvolutionHistoryReader(),
     ),
 }
 

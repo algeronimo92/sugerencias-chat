@@ -24,7 +24,12 @@ from domain_types import (
     TaskStatus,
     WaitAnyConditionKind,
 )
-from services.automation_rules import classify_customer_reply
+from services.automation_rules import NON_REPLY_MESSAGE_TYPES, classify_customer_reply
+from services.meta_webhook.projection import reply_identifier
+
+# Meta informa que el cliente vio lo enviado con ``read``: no distingue una
+# nota de voz reproducida de un mensaje leído.
+SEEN_META_STATUS = "read"
 from services.automations.common import (
     AUTOMATION_POLL_SECONDS,
     MAX_AUTO_CLOSE_PER_SWEEP,
@@ -64,8 +69,18 @@ async def _discover_recent_inbound_messages() -> None:
         if not has_rules:
             return
         rows = (await session.execute(
-            select(WspMessage.id, WspMessage.wa_message_id, WspMessage.chat_id, WspMessage.content).where(
-                WspMessage.sender == "cliente", WspMessage.sent_at >= since
+            select(
+                WspMessage.id,
+                WspMessage.wa_message_id,
+                WspMessage.chat_id,
+                WspMessage.content,
+                WspMessage.message_type,
+                WspMessage.message_subtype,
+                WspMessage.provider_payload,
+            ).where(
+                WspMessage.sender == "cliente",
+                WspMessage.sent_at >= since,
+                WspMessage.message_type.not_in(NON_REPLY_MESSAGE_TYPES),
             ).order_by(WspMessage.sent_at.asc(), WspMessage.id.asc()).limit(200)
         )).mappings().all()
     for row in rows:
@@ -73,7 +88,13 @@ async def _discover_recent_inbound_messages() -> None:
             AutomationTrigger.MESSAGE_RECEIVED,
             row["chat_id"],
             f"message:{row['wa_message_id'] or row['id']}",
-            {"message_id": str(row["wa_message_id"] or row["id"]), "content": row["content"]},
+            {
+                "message_id": str(row["wa_message_id"] or row["id"]),
+                "content": row["content"],
+                "message_type": row["message_type"],
+                "message_subtype": row["message_subtype"],
+                "reply_id": reply_identifier(row["message_type"], row["provider_payload"]),
+            },
         )
 
     # La apertura queda auditada en la misma transacción que cambia el lead.
@@ -112,16 +133,15 @@ async def _discover_recent_inbound_messages() -> None:
 
 def _match_question_button(
     buttons: list[dict],
-    message_type: str | None,
+    reply_id: str | None,
     content: str | None,
-    payload: dict | None,
     kind: str | None = None,
     has_media_handle: bool = False,
 ) -> str:
-    """Resuelve a qué botón corresponde la respuesta del cliente: por
-    `selected_id` si tocó un botón nativo, si no por número de posición o por
-    el texto del botón (el fallback de texto numerado usa exactamente ese
-    esquema); si no matchea nada, "otra respuesta".
+    """Resuelve a qué botón corresponde la respuesta del cliente: por el id
+    que Meta devuelve en ``interactive.button_reply.id`` si tocó un botón; si
+    escribió en vez de tocar, por número de posición o por el texto del botón;
+    si no matchea nada, "otra respuesta".
 
     Una foto se resuelve antes de mirar texto y sale por su propia salida:
     9 de cada 10 llegan sin caption, así que por texto no matchea nada y
@@ -131,10 +151,8 @@ def _match_question_button(
     """
     if kind == WaitAnyConditionKind.MEDIA_RECEIVED and has_media_handle:
         return QuestionHandle.MEDIA
-    if message_type == "interactive" and isinstance(payload, dict):
-        selected_id = payload.get("selected_id")
-        if selected_id and any(button["id"] == selected_id for button in buttons):
-            return selected_id
+    if reply_id and any(button["id"] == reply_id for button in buttons):
+        return reply_id
     normalized = _normalize_reply_text(content or "")
     if normalized.isdigit():
         index = int(normalized) - 1
@@ -147,9 +165,9 @@ def _match_question_button(
 
 
 # Cuántos mensajes del cliente se miran por ejecución al buscar el que reanuda.
-# Sólo se necesita mirar más de uno cuando los primeros son ruido (el sobre de
-# un álbum) o no satisfacen ninguna rama declarada (un "ahorita te la mando"
-# en un bloque que espera únicamente la foto).
+# Sólo se necesita mirar más de uno cuando los primeros no son respuestas (un
+# aviso de sistema) o no satisfacen ninguna rama declarada (un "ahorita te la
+# mando" en un bloque que espera únicamente la foto).
 MAX_REPLIES_SCANNED = 20
 
 
@@ -188,7 +206,7 @@ async def _discover_wait_any_replies() -> None:
     """Reanuda ejecuciones pausadas en un bloque Pausa (wait_any, condición
     "hasta recibir mensaje" o "hasta que se reproduce lo enviado") o Pregunta
     (question): si el lead escribió después de entrar a la espera, o si el
-    mensaje que se vigila ya quedó en READ/PLAYED, adelanta `scheduled_for` a
+    mensaje que se vigila ya figura leído en Meta, adelanta `scheduled_for` a
     ahora y marca `resume_reason` para que `_run_visual_execution` siga por
     esa rama en vez de la del timer. Análoga a
     `_discover_recent_inbound_messages`, pero para ejecuciones que ya están
@@ -213,7 +231,7 @@ async def _discover_wait_any_replies() -> None:
     lo_vigilado_se_vio = exists(
         select(1).where(
             WspMessage.wa_message_id == AutomationExecution.flow_state["watching_message_id"].astext,
-            WspMessage.status.in_(("READ", "PLAYED")),
+            WspMessage.meta_status == SEEN_META_STATUS,
         )
     )
     async with get_sessionmaker()() as session:
@@ -247,8 +265,9 @@ async def _discover_wait_any_replies() -> None:
                         WspMessage.id,
                         WspMessage.wa_message_id,
                         WspMessage.message_type,
+                        WspMessage.message_subtype,
+                        WspMessage.provider_payload,
                         WspMessage.content,
-                        WspMessage.payload,
                         WspMessage.analysis,
                     ).where(
                         WspMessage.chat_id == lead_id,
@@ -259,17 +278,17 @@ async def _discover_wait_any_replies() -> None:
                 )).mappings().all()
                 question_buttons = flow_state.get("question_buttons")
                 for reply in replies:
-                    kind = classify_customer_reply(reply["message_type"], reply["payload"])
+                    kind = classify_customer_reply(reply["message_type"])
                     if kind is None:
-                        # Ruido de WhatsApp (el sobre de un álbum, una acción
-                        # cifrada): no es una respuesta, se sigue esperando.
+                        # Un aviso de sistema no es una respuesta del
+                        # cliente: se sigue esperando.
                         continue
+                    reply_id = reply_identifier(reply["message_type"], reply["provider_payload"])
                     if question_buttons:
                         branch = _match_question_button(
                             question_buttons,
-                            reply["message_type"],
+                            reply_id,
                             reply["content"],
-                            reply["payload"],
                             kind,
                             WaitAnyConditionKind.MEDIA_RECEIVED in awaiting,
                         )
@@ -282,6 +301,8 @@ async def _discover_wait_any_replies() -> None:
                         "message_id": str(reply["wa_message_id"] or reply["id"]),
                         "content": reply["content"],
                         "message_type": reply["message_type"],
+                        "message_subtype": reply["message_subtype"],
+                        "reply_id": reply_id,
                         # La descripción que la IA generó del adjunto, que es
                         # sobre lo que puede condicionar el flujo más adelante.
                         "analysis_summary": analysis.get("summary"),
@@ -291,9 +312,9 @@ async def _discover_wait_any_replies() -> None:
             watching_message_id = flow_state.get("watching_message_id")
             if resume_reason is None and watching_message_id:
                 status = await session.scalar(
-                    select(WspMessage.status).where(WspMessage.wa_message_id == watching_message_id)
+                    select(WspMessage.meta_status).where(WspMessage.wa_message_id == watching_message_id)
                 )
-                if status in ("READ", "PLAYED"):
+                if status == SEEN_META_STATUS:
                     resume_reason = WaitAnyConditionKind.MEDIA_PLAYED
             if resume_reason is None:
                 continue

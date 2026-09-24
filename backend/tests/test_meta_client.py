@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services import meta_service
-from services.message_media import media_message_fields, mediatype_from_content_type
+from services.message_media import mediatype_from_content_type
+from services.whatsapp_identity_service import Destination
 from services.whatsapp_channel import describe_send_failure
 
 
@@ -114,273 +115,46 @@ async def test_embedded_signup_combines_platform_app_with_tenant_connection(monk
 
 
 @pytest.mark.asyncio
-async def test_send_text_strips_jid_suffix_and_carries_reply_context(monkeypatch):
+async def test_send_message_adds_the_envelope_with_the_exact_wa_id(monkeypatch):
     _mock_config(monkeypatch)
     monkeypatch.setattr(
         meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+        AsyncMock(return_value=Destination(wa_id="51906471403", user_id="PE.1")),
     )
     fake_client = _FakeGraphClient([
         _FakeGraphResponse({
             "messages": [{"id": "wamid.XYZ"}],
-            "contacts": [{"wa_id": "51906471403"}],
+            "contacts": [{"input": "51906471403", "wa_id": "51906471403"}],
         }),
     ])
     monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
+    message = {"type": "text", "text": {"body": "hola"}, "context": {"message_id": "wamid.ORIGINAL"}}
 
-    result = await meta_service.send_whatsapp_text(
-        "lead-1", "hola", quoted={"wa_message_id": "wamid.ORIGINAL"},
-    )
+    result = await meta_service.send_message("lead-1", message)
 
-    payload = fake_client.calls[0]["json"]
-    assert payload["to"] == "51906471403"
-    assert payload["type"] == "text"
-    assert payload["text"] == {"body": "hola"}
-    assert payload["context"] == {"message_id": "wamid.ORIGINAL"}
-    assert result["key"]["id"] == "wamid.XYZ"
-    assert result["key"]["remoteJid"] == "51906471403@s.whatsapp.net"
-
-
-@pytest.mark.asyncio
-async def test_send_contacts_builds_native_meta_contact_list(monkeypatch):
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({
-            "messages": [{"id": "wamid.CONTACTS"}],
-            "contacts": [{"wa_id": "51906471403"}],
-        }),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-
-    await meta_service.send_whatsapp_contacts(
-        "lead-1",
-        [
-            {"fullName": "Ana Torres", "phoneNumber": "+51 911 111 111"},
-            {"fullName": "Luis", "phoneNumber": "+51 922 222 222"},
-        ],
-        quoted={"wa_message_id": "wamid.ORIGINAL"},
-    )
-
-    payload = fake_client.calls[0]["json"]
-    assert payload["type"] == "contacts"
-    assert payload["context"] == {"message_id": "wamid.ORIGINAL"}
-    assert payload["contacts"] == [
-        {
-            "name": {"formatted_name": "Ana Torres", "first_name": "Ana", "last_name": "Torres"},
-            "phones": [{"phone": "+51911111111", "type": "CELL", "wa_id": "51911111111"}],
-        },
-        {
-            "name": {"formatted_name": "Luis", "first_name": "Luis"},
-            "phones": [{"phone": "+51922222222", "type": "CELL", "wa_id": "51922222222"}],
-        },
-    ]
-
-
-@pytest.mark.asyncio
-async def test_send_to_lid_only_lead_fails_explicitly(monkeypatch):
-    """Un lead cuyo único identificador conocido es un @lid no se puede mandar
-    directo por Meta (a diferencia de Evolution/Baileys, que lo resolvía a
-    nivel de protocolo) — debe fallar claro, no con un error genérico."""
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="267692862898397@lid"),
-    )
-
-    with pytest.raises(meta_service.MetaApiError):
-        await meta_service.send_whatsapp_text("lead-1", "hola")
-
-
-def _mock_media_send(monkeypatch, wamid="wamid.MEDIA"):
-    """send_whatsapp_media hace dos llamadas: primero sube el archivo
-    (POST /{phone_number_id}/media) y después manda el mensaje."""
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({"id": "MEDIA-1"}),
-        _FakeGraphResponse({"messages": [{"id": wamid}], "contacts": [{"wa_id": "51906471403"}]}),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-    return fake_client
-
-
-@pytest.mark.asyncio
-async def test_send_audio_marks_ogg_opus_as_a_voice_note(monkeypatch):
-    fake_client = _mock_media_send(monkeypatch)
-
-    await meta_service.send_whatsapp_audio("lead-1", b"OGG-BYTES", "audio/ogg", "nota.ogg")
-
-    payload = fake_client.calls[1]["json"]
-    assert payload["type"] == "audio"
-    assert payload["audio"] == {"id": "MEDIA-1", "voice": True}
-
-
-@pytest.mark.asyncio
-async def test_send_audio_tolerates_codec_parameters_in_the_content_type(monkeypatch):
-    """El navegador manda `audio/ogg; codecs=opus`: comparar el string entero
-    contra "audio/ogg" perdería el flag y degradaría la nota de voz a adjunto."""
-    fake_client = _mock_media_send(monkeypatch)
-
-    await meta_service.send_whatsapp_audio(
-        "lead-1", b"OGG-BYTES", "audio/ogg; codecs=opus", "nota.ogg",
-    )
-
-    assert fake_client.calls[1]["json"]["audio"]["voice"] is True
-
-
-@pytest.mark.asyncio
-async def test_send_audio_degrades_to_plain_attachment_for_other_formats(monkeypatch):
-    """Meta solo acepta `voice: true` sobre Ogg/Opus. Si ffmpeg no estaba y el
-    archivo quedó en el formato del navegador, reclamar el flag igual haría que
-    Meta rechace el envío entero en vez de entregarlo como adjunto de audio."""
-    fake_client = _mock_media_send(monkeypatch)
-
-    await meta_service.send_whatsapp_audio("lead-1", b"WEBM-BYTES", "audio/webm", "nota.weba")
-
-    assert fake_client.calls[1]["json"]["audio"] == {"id": "MEDIA-1"}
-
-
-@pytest.mark.asyncio
-async def test_send_media_never_leaks_voice_flag_into_other_types(monkeypatch):
-    """`voice` solo existe dentro del objeto `audio` de la Cloud API. Mandarlo
-    en un image/video/document viola el schema y Meta rechaza el envío entero
-    con el error 100, así que ni siquiera debe aparecer como false."""
-    fake_client = _mock_media_send(monkeypatch)
-
-    await meta_service.send_whatsapp_media(
-        "lead-1", b"JPG-BYTES", "image/jpeg", "image", filename="foto.jpg", voice=True,
-    )
-
-    assert fake_client.calls[1]["json"]["image"] == {"id": "MEDIA-1"}
-
-
-@pytest.mark.asyncio
-async def test_send_media_omits_voice_flag_by_default(monkeypatch):
-    fake_client = _mock_media_send(monkeypatch)
-
-    await meta_service.send_whatsapp_media(
-        "lead-1", b"OGG-BYTES", "audio/ogg", "audio", filename="nota.ogg",
-    )
-
-    assert fake_client.calls[1]["json"]["audio"] == {"id": "MEDIA-1"}
-
-
-@pytest.mark.asyncio
-async def test_send_buttons_populates_header_body_and_footer_separately(monkeypatch):
-    """Regresión del bug de Evolution (evolution-foundation/evolution-api#2723):
-    su canal de Meta Cloud API solo mandaba `title` como cuerpo del mensaje e
-    ignoraba description/footer. Acá los tres campos deben ir a header/body/
-    footer por separado."""
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({"messages": [{"id": "wamid.BTN"}], "contacts": [{"wa_id": "51906471403"}]}),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-
-    await meta_service.send_whatsapp_buttons(
-        "lead-1", "Titulo", "Hola Gerson P lee esto", "DermicaPro",
-        [
-            {"type": "reply", "displayText": "opcion a", "id": "reply_1"},
-            {"type": "reply", "displayText": "opcion b", "id": "reply_2"},
-        ],
-    )
-
-    interactive = fake_client.calls[0]["json"]["interactive"]
-    assert interactive["header"] == {"type": "text", "text": "Titulo"}
-    assert interactive["body"] == {"text": "Hola Gerson P lee esto"}
-    assert interactive["footer"] == {"text": "DermicaPro"}
-    assert interactive["action"]["buttons"] == [
-        {"type": "reply", "reply": {"id": "reply_1", "title": "opcion a"}},
-        {"type": "reply", "reply": {"id": "reply_2", "title": "opcion b"}},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_send_buttons_omits_footer_when_blank(monkeypatch):
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({"messages": [{"id": "wamid.BTN"}], "contacts": [{"wa_id": "51906471403"}]}),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-
-    await meta_service.send_whatsapp_buttons(
-        "lead-1", "Titulo", "Cuerpo", "   ", [{"type": "reply", "displayText": "ok", "id": "r1"}],
-    )
-
-    assert "footer" not in fake_client.calls[0]["json"]["interactive"]
-
-
-@pytest.mark.asyncio
-async def test_send_list_translates_row_id_field_to_meta_id(monkeypatch):
-    """El DTO de Evolution usa `rowId`; la Graph API de Meta espera `id`."""
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({"messages": [{"id": "wamid.LIST"}], "contacts": [{"wa_id": "51906471403"}]}),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-
-    await meta_service.send_whatsapp_list(
-        "lead-1", "Tratamientos", "Elegí uno", "DermicaPro", "Ver opciones",
-        [{"title": "Faciales", "rows": [
-            {"title": "Limpieza", "description": "60 min", "rowId": "trat_limpieza"},
-        ]}],
-    )
-
-    sections = fake_client.calls[0]["json"]["interactive"]["action"]["sections"]
-    assert sections == [{"title": "Faciales", "rows": [
-        {"id": "trat_limpieza", "title": "Limpieza", "description": "60 min"},
-    ]}]
-
-
-@pytest.mark.asyncio
-async def test_send_template_wraps_language_code(monkeypatch):
-    _mock_config(monkeypatch)
-    monkeypatch.setattr(
-        meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
-    )
-    fake_client = _FakeGraphClient([
-        _FakeGraphResponse({"messages": [{"id": "wamid.TPL"}], "contacts": [{"wa_id": "51906471403"}]}),
-    ])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    monkeypatch.setattr(meta_service, "learn_send_aliases", AsyncMock(return_value=()))
-
-    await meta_service.send_whatsapp_template(
-        "lead-1", "appointment", "es_PE", [{"type": "body", "parameters": []}],
-    )
-
-    payload = fake_client.calls[0]["json"]
-    assert payload["type"] == "template"
-    assert payload["template"] == {
-        "name": "appointment",
-        "language": {"code": "es_PE"},
-        "components": [{"type": "body", "parameters": []}],
+    body = fake_client.calls[0]["json"]
+    assert body == {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "51906471403",
+        **message,
     }
+    assert result["body"] == body
+    assert result["response"]["messages"][0]["id"] == "wamid.XYZ"
+
+
+@pytest.mark.asyncio
+async def test_send_to_a_user_id_only_lead_fails_explicitly(monkeypatch):
+    """Un contacto que solo se conoce por su user_id no tiene número al que
+    este envío pueda apuntar: falla claro, no con un error genérico."""
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value=Destination(wa_id=None, user_id="PE.1084026510784249")),
+    )
+
+    with pytest.raises(meta_service.MetaApiError, match="user_id"):
+        await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
 
 
 @pytest.mark.asyncio
@@ -388,7 +162,7 @@ async def test_raise_meta_error_classifies_window_closed(monkeypatch):
     _mock_config(monkeypatch)
     monkeypatch.setattr(
         meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+        AsyncMock(return_value=Destination(wa_id="51906471403", user_id=None)),
     )
     fake_client = _FakeGraphClient([
         _FakeGraphResponse(
@@ -403,7 +177,7 @@ async def test_raise_meta_error_classifies_window_closed(monkeypatch):
     monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
 
     with pytest.raises(meta_service.WhatsAppWindowClosedError):
-        await meta_service.send_whatsapp_text("lead-1", "hola")
+        await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
 
 
 @pytest.mark.asyncio
@@ -411,7 +185,7 @@ async def test_raise_meta_error_generic_for_other_codes(monkeypatch):
     _mock_config(monkeypatch)
     monkeypatch.setattr(
         meta_service, "resolve_whatsapp_destination",
-        AsyncMock(return_value="51906471403@s.whatsapp.net"),
+        AsyncMock(return_value=Destination(wa_id="51906471403", user_id=None)),
     )
     fake_client = _FakeGraphClient([
         _FakeGraphResponse(
@@ -422,7 +196,7 @@ async def test_raise_meta_error_generic_for_other_codes(monkeypatch):
     monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
 
     with pytest.raises(meta_service.MetaApiError) as excinfo:
-        await meta_service.send_whatsapp_text("lead-1", "hola")
+        await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
     assert not isinstance(excinfo.value, meta_service.WhatsAppWindowClosedError)
     assert "Invalid parameter" in str(excinfo.value)
     assert excinfo.value.error["code"] == 100
@@ -472,7 +246,7 @@ async def test_upload_media_posts_multipart_and_returns_id(monkeypatch):
 async def test_download_media_resolves_signed_url_then_fetches_bytes(monkeypatch):
     """Bajar un adjunto entrante de Meta son dos llamadas: la metadata da una
     URL firmada temporal, y esa URL igual exige el mismo Bearer (no es
-    pública). Evolution resolvía todo esto en un solo endpoint."""
+    pública)."""
     _mock_config(monkeypatch)
     metadata = _FakeGraphResponse({
         "url": "https://lookaside.fbsbx.com/whatsapp/MEDIA1",
@@ -577,37 +351,6 @@ async def test_mark_messages_as_read_sends_one_request_per_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_reaction_uses_jid_digits_directly_when_already_a_jid(monkeypatch):
-    _mock_config(monkeypatch)
-    fake_client = _FakeGraphClient([_FakeGraphResponse({"success": True})])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-
-    await meta_service.send_whatsapp_reaction(
-        {"remoteJid": "51906471403@s.whatsapp.net", "fromMe": False, "id": "WA-1"}, "❤️",
-    )
-
-    payload = fake_client.calls[0]["json"]
-    assert payload["to"] == "51906471403"
-    assert payload["reaction"] == {"message_id": "WA-1", "emoji": "❤️"}
-
-
-@pytest.mark.asyncio
-async def test_send_reaction_resolves_lead_id_when_remote_jid_is_not_a_jid(monkeypatch):
-    _mock_config(monkeypatch)
-    fake_client = _FakeGraphClient([_FakeGraphResponse({"success": True})])
-    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
-    resolve = AsyncMock(return_value="51906471403@s.whatsapp.net")
-    monkeypatch.setattr(meta_service, "resolve_whatsapp_destination", resolve)
-
-    await meta_service.send_whatsapp_reaction(
-        {"remoteJid": "7b08f4d9-855f-4718-b95f-9c021da52f77", "fromMe": False, "id": "WA-1"}, "❤️",
-    )
-
-    resolve.assert_awaited_once_with("7b08f4d9-855f-4718-b95f-9c021da52f77")
-    assert fake_client.calls[0]["json"]["to"] == "51906471403"
-
-
-@pytest.mark.asyncio
 async def test_http_client_is_reused_and_closed(monkeypatch):
     client = AsyncMock()
     client.is_closed = False
@@ -621,12 +364,6 @@ async def test_http_client_is_reused_and_closed(monkeypatch):
     await meta_service.close_meta_client()
     client.aclose.assert_awaited_once_with()
     assert meta_service._http_client is None
-
-
-def test_media_message_fields_document_keeps_filename():
-    assert media_message_fields("document", "factura.pdf") == (
-        "document", {"filename": "factura.pdf"},
-    )
 
 
 def test_mediatype_from_content_type_defaults_to_document():

@@ -7,35 +7,25 @@ from fastapi import HTTPException
 from models.schemas import SendMessageRequest
 from routers import chats
 from services import message_outbox
-from services.outbound_kinds import send_outbound
-from tests.conftest import FakeSender, open_service_window, patch_chats
+from tests.conftest import open_service_window, patch_chats
 from routers.chats.outbound import _resolve_reply_to
 
+CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 USER = SimpleNamespace(id=7)
 
 
-def test_quoted_context_lleva_el_wa_message_id_del_original():
-    """Meta solo necesita el wa_message_id del mensaje citado -a diferencia
-    de Evolution/Baileys, no hace falta armar una key/message falsa con el
-    texto recortado: la Graph API resuelve el resto del lado del cliente."""
-    quoted = message_outbox.quoted_context({
-        "id": 5, "sender": "vendedor", "content": "Te paso el precio",
-        "wa_message_id": "WA-1",
-    })
-
-    assert quoted == {"wa_message_id": "WA-1"}
-
-
 @pytest.mark.asyncio
-async def test_el_envio_lleva_la_cita_al_canal():
-    sender = FakeSender()
-    quoted = {"wa_message_id": "WA-2"}
+async def test_la_cita_viaja_como_context_de_meta(monkeypatch):
+    """Meta solo necesita el wa_message_id del citado en ``context``."""
+    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
+    prepared = await message_outbox.prepare_items([{
+        "message": {"type": "text", "text": {"body": "Sale 200"}},
+        "reply_to": {"id": 5, "sender": "cliente", "content": "¿Cuánto?", "wa_message_id": "WA-2"},
+    }])
 
-    await send_outbound(sender, "51999@s.whatsapp.net", {
-        "type": "text", "text": "Sale 200", "quoted": quoted,
-    })
-
-    assert sender.only_call() == ("send_text", ("51999@s.whatsapp.net", "Sale 200"), {"quoted": quoted})
+    assert prepared[0]["message"] == {
+        "type": "text", "text": {"body": "Sale 200"}, "context": {"message_id": "WA-2"},
+    }
 
 
 @pytest.mark.asyncio
@@ -43,7 +33,7 @@ async def test_responder_a_un_mensaje_inexistente_es_404(monkeypatch):
     patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as error:
-        await _resolve_reply_to("51999@s.whatsapp.net", 42)
+        await _resolve_reply_to(CHAT_ID, 42)
 
     assert error.value.status_code == 404
 
@@ -57,7 +47,7 @@ async def test_responder_a_un_mensaje_aun_en_la_outbox_es_409(monkeypatch):
     }))
 
     with pytest.raises(HTTPException) as error:
-        await _resolve_reply_to("51999@s.whatsapp.net", 42)
+        await _resolve_reply_to(CHAT_ID, 42)
 
     assert error.value.status_code == 409
 
@@ -68,16 +58,14 @@ async def test_el_texto_se_encola_con_el_mensaje_citado(monkeypatch):
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
-    enqueue = AsyncMock(return_value={"id": 90, "status": "PENDING"})
-    patch_chats(monkeypatch, "enqueue_text_message", enqueue)
+    enqueue = AsyncMock(return_value=[{"id": 90, "outbox_status": "queued"}])
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    await chats.send_message(
-        "51999999999@s.whatsapp.net",
-        SendMessageRequest(text="Sale 200", reply_to_message_id=42),
-        USER,
-    )
+    await chats.send_message(CHAT_ID, SendMessageRequest(text="Sale 200", reply_to_message_id=42), USER)
 
     enqueue.assert_awaited_once_with(
-        "51999999999@s.whatsapp.net", "Sale 200", target, actor_user_id=USER.id,
+        CHAT_ID,
+        [{"content": "Sale 200", "message": {"type": "text", "text": {"body": "Sale 200"}}, "reply_to": target}],
+        actor_user_id=USER.id,
     )

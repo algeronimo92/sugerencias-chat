@@ -177,7 +177,7 @@ class TestRunExecutionStopsAfterCancellation:
         self, monkeypatch, deps,
     ):
         execution = SimpleNamespace(
-            id=1, rule_id=1, lead_id="51999@s.whatsapp.net", action_results=[],
+            id=1, rule_id=1, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6", action_results=[],
             event_payload={}, flow_state={},
         )
         rule = make_rule(

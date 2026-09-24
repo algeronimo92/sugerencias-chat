@@ -8,9 +8,9 @@ from models.schemas import ForwardMessagesRequest
 from routers import chats
 from tests.conftest import patch_chats
 
-CHAT_ID = "51999999999@s.whatsapp.net"
-TARGET = "51888888888@s.whatsapp.net"
-OTHER_TARGET = "51777777777@s.whatsapp.net"
+CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
+TARGET = "ae6ec286-8f50-52f1-94c0-89e92f3c0e1e"
+OTHER_TARGET = "26b3350d-169d-5d67-89f6-ab65487e91bf"
 USER = SimpleNamespace(id=7)
 
 

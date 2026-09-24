@@ -72,11 +72,3 @@ def normalize_phone(raw: str, default_country_code: str) -> str:
 async def effective_country_code() -> str:
     value = re.sub(r"\D", "", await get_effective("default_country_code"))
     return value or FALLBACK_COUNTRY_CODE
-
-
-def digits_to_jid(digits: str) -> str:
-    return f"{digits}@s.whatsapp.net"
-
-
-def jid_to_digits(jid: str) -> str:
-    return re.sub(r"\D", "", jid.split("@", 1)[0])

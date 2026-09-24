@@ -21,7 +21,7 @@ async def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True)
     parser.add_argument("--hostname", required=True)
-    parser.add_argument("--provider", choices=("meta", "evolution"))
+    parser.add_argument("--provider", choices=("meta",))
     parser.add_argument("--phone-number-id")
     parser.add_argument("--waba-id")
     parser.add_argument("--admin-email")

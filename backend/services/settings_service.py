@@ -70,6 +70,30 @@ SETTING_DEFS: list[SettingDef] = [
         "Meta Cloud API (WhatsApp)",
         secret=False,
     ),
+    # Salidas que Meta solo acepta si la cuenta las tiene (ver
+    # services/meta_outbound.require_capabilities).
+    SettingDef(
+        "meta_catalog_id",
+        "Catálogo de Meta (habilita productos y catálogo)",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=False,
+    ),
+    SettingDef(
+        "meta_published_flow_ids",
+        "Flows publicados (ids o nombres separados por coma)",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=False,
+    ),
+    SettingDef(
+        "meta_call_permission_enabled",
+        "Pedir permiso de llamada (la cuenta tiene Calling API)",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=False,
+        boolean=True,
+    ),
     SettingDef("elevenlabs_api_key", "API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
     SettingDef("elevenlabs_voice_id", "ID de voz", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_model_id", "Modelo", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),

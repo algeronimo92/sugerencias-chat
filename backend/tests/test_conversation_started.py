@@ -85,6 +85,9 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
         {
             "message_id": "wamid-7",
             "content": "Hola de nuevo",
+            "message_type": None,
+            "message_subtype": None,
+            "reply_id": None,
             "conversation_version": 3,
             "conversation_opened_at": "2026-08-05T14:30:00.000000Z",
         },

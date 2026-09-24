@@ -11,7 +11,8 @@ from services.account_actions import try_send_operational_alert
 from services.platform_settings import platform_setting, platform_settings_many
 from services.settings_service import get_effective_many, update_settings
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError
-from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
+from services.meta_webhook import metrics
+from services.whatsapp_identity_service import resolve_whatsapp_destination
 from tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -25,9 +26,8 @@ _META_ERROR_CODE_AUTH = 190  # token vencido o inválido
 
 
 class MetaApiError(ChannelError):
-    """Rechazo real de la Graph API (HTTP 4xx/5xx), a diferencia del Evolution
-    de antes -que a veces devolvía un rechazo de Meta como HTTP 200- acá el
-    status code siempre es confiable."""
+    """Rechazo real de la Graph API (HTTP 4xx/5xx). ``error`` es el objeto
+    ``error`` de Meta sin modificar."""
 
     def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
         super().__init__(message, status_code=status_code)
@@ -53,11 +53,7 @@ class MetaInvalidTokenException(MetaApiError):
 
 def describe_template_error(exc: Exception) -> str:
     """Convierte un rechazo de la Graph API al crear/editar una plantilla en un
-    mensaje apto para el admin.
-
-    A diferencia de Evolution (que solo daba un string con el JSON crudo
-    incrustado y había que reparsearlo), acá `MetaApiError.error` ya trae el
-    objeto `error` de Meta sin tocar."""
+    mensaje apto para el admin, leyendo el objeto ``error`` de Meta."""
     if not isinstance(exc, MetaApiError):
         return str(exc)
     error = exc.error
@@ -78,6 +74,7 @@ def _raise_meta_error(response: httpx.Response) -> None:
     error = error if isinstance(error, dict) else {}
     code = error.get("code")
     message = error.get("message") or response.text
+    metrics.outbound_meta_errors.labels(code=str(code)).inc()
     if code == _META_ERROR_CODE_WINDOW_CLOSED:
         raise WhatsAppWindowClosedError(
             "La ventana de 24 h para responder libremente a este contacto está "
@@ -275,66 +272,48 @@ async def _request(
     return response.json()
 
 
-async def _destination_digits(chat_id: str) -> str:
-    """Dígitos E.164 puros (sin '+', sin sufijo JID) para el campo `to` de Meta.
+async def _recipient(chat_id: str) -> str:
+    """``wa_id`` exacto del lead para el campo ``to``.
 
-    Evolution/Baileys resolvía un `@lid` de forma transparente a nivel de
-    protocolo; la Graph API de Meta no acepta LIDs en `to`, solo el teléfono
-    real. Un lead cuyo único identificador conocido es un `@lid` (sin teléfono
-    resuelto aún) no se puede mandar por acá — falla explícito en vez de
-    intentar algo que Meta rechazaría de forma confusa."""
-    jid = await resolve_whatsapp_destination(chat_id)
-    if jid.endswith("@s.whatsapp.net"):
-        return jid.removesuffix("@s.whatsapp.net")
+    Un contacto conocido solo por su ``user_id`` (nombre de usuario activo,
+    sin teléfono informado) no tiene un destino al que este envío pueda
+    apuntar: falla explícito en vez de mandar algo que Meta rechazaría.
+    """
+    destination = await resolve_whatsapp_destination(chat_id)
+    if destination.wa_id:
+        return destination.wa_id
     raise MetaApiError(
-        f"El lead {chat_id} solo tiene un identificador interno de WhatsApp (LID), "
-        "sin teléfono resuelto; no se puede enviar directo por Meta Cloud API."
+        f"El lead {chat_id} solo tiene user_id de WhatsApp, sin wa_id; "
+        "Meta no permite enviarle por número todavía."
     )
 
 
-async def _send(chat_id: str, token: str, phone_number_id: str, payload: dict, timeout: float) -> dict:
-    """POST a /messages + aprendizaje de alias.
+async def send_message(chat_id: str, message: dict) -> dict:
+    """POST /{phone_number_id}/messages con el cuerpo Meta ya validado.
 
-    La respuesta se envuelve con la forma `{"key": {...}}` que ya esperaban
-    `message_outbox`/`whatsapp_identity_service.learn_send_aliases` de
-    Evolution, para no tener que tocar esos consumidores. `contacts[0].wa_id`
-    de Meta normalmente ya son los mismos dígitos del teléfono (no un LID),
-    así que `learn_send_aliases` no tiene mucho que aprender de acá en
-    adelante — la fuente real de alias sigue siendo lo entrante."""
+    Devuelve ``{"body": cuerpo exacto enviado, "response": respuesta de Meta}``.
+    """
+    token, phone_number_id, _waba_id = await _config()
+    body = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": await _recipient(chat_id),
+        **message,
+    }
     url = _graph_url(f"{phone_number_id}/messages")
     try:
-        raw = await _request("POST", url, token, json_body=payload, timeout=timeout)
+        response = await _request("POST", url, token, json_body=body, timeout=60.0)
     except _REQUEST_NOT_SENT_ERRORS:
         raise
     except (httpx.TransportError, ValueError) as exc:
         raise DeliveryUnconfirmedError() from exc
-    messages = raw.get("messages") or []
-    contacts = raw.get("contacts") or []
-    wa_id = (contacts[0].get("wa_id") if contacts else None) or payload.get("to")
-    result = {
-        "key": {
-            "id": messages[0].get("id") if messages else None,
-            "remoteJid": f"{wa_id}@s.whatsapp.net" if wa_id else None,
-            "fromMe": True,
-        },
-        "raw": raw,
-    }
-    try:
-        await learn_send_aliases(chat_id, result)
-    except Exception:
-        # El mensaje ya salió: un fallo anotando alias no puede convertir un
-        # envío exitoso en un error para el vendedor.
-        logger.exception("No se pudieron registrar los alias del envío a %s", chat_id)
-    return result
+    return {"body": body, "response": response}
 
 
 async def upload_media(content: bytes, content_type: str, filename: str) -> str:
     """Sube un adjunto de mensaje normal (no encabezado de plantilla) a Meta y
-    devuelve el media id para referenciarlo en el mensaje. Evolution nos
-    ocultaba este paso -recibía base64 y lo resolvía ella misma-; hablando
-    directo con la Graph API hace falta subir primero
-    (`POST /{phone_number_id}/media`, multipart) y recién después mandar el
-    mensaje con `{mediatype: {"id": media_id}}`."""
+    devuelve el media id: ``POST /{phone_number_id}/media`` (multipart) y
+    recién después el mensaje con ``{tipo: {"id": media_id}}``."""
     token, phone_number_id, _waba_id = await _config()
     started_at = perf_counter()
     try:
@@ -357,9 +336,6 @@ async def upload_media(content: bytes, content_type: str, filename: str) -> str:
 
 async def download_media(media_id: str) -> tuple[bytes, str]:
     """Baja un adjunto entrante de Meta y devuelve (bytes, content_type).
-
-    Es un flujo de dos pasos, a diferencia de Evolution -que exponía un solo
-    endpoint (`getBase64FromMediaMessage`) y devolvía el base64 ya resuelto:
 
     1. `GET /{media_id}` -> metadata con una URL firmada temporal.
     2. `GET <esa URL>` -> los bytes. La URL igual exige el mismo Bearer, no
@@ -466,8 +442,7 @@ async def create_whatsapp_template(
 ) -> dict:
     """Da de alta una plantilla en Meta para revisión: `POST
     /{waba_id}/message_templates`. Devuelve la respuesta nativa de Meta,
-    `{"id","status","category"}` — sin el wrapper `{"templateId","template"}`
-    que armaba Evolution."""
+    `{"id","status","category"}`."""
     token, _phone_number_id, waba_id = await _config()
     url = _graph_url(f"{waba_id}/message_templates")
     payload = {
@@ -498,8 +473,7 @@ async def get_whatsapp_template(meta_template_id: str) -> dict:
 async def list_whatsapp_templates() -> list[dict]:
     """Trae del lado de Meta el estado real de las plantillas de la WABA
     conectada (`GET /{waba_id}/message_templates`), siguiendo `paging.next`
-    hasta agotarlo — Evolution nunca paginaba esto, una WABA con más de 100
-    plantillas rompía `/sync` en silencio para las que quedaban afuera."""
+    hasta agotarlo: una WABA puede tener más de 100 plantillas."""
     token, _phone_number_id, waba_id = await _config()
     url = _graph_url(f"{waba_id}/message_templates")
     params: dict | None = {"fields": "id,name,status,category,language,rejected_reason", "limit": 100}
@@ -548,240 +522,10 @@ async def delete_whatsapp_template(name: str, meta_template_id: str | None = Non
     return await _request("DELETE", url, token, params=params, timeout=20.0)
 
 
-async def send_whatsapp_template(
-    chat_id: str, name: str, language: str, components: list[dict],
-) -> dict:
-    token, phone_number_id, _waba_id = await _config()
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "template",
-        "template": {
-            "name": name,
-            "language": {"code": language},
-            "components": components,
-        },
-    }
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_buttons(
-    chat_id: str, title: str, description: str, footer: str, buttons: list[dict],
-) -> dict:
-    """Mensaje interactivo de botones — a diferencia de Evolution, que en su
-    canal de Meta Cloud API solo mandaba `title` como cuerpo del mensaje
-    (`buttonMessage()` en `whatsapp.business.service.ts`, confirmado leyendo
-    su código fuente de la 2.3.7) e ignoraba `description`/`footer` por
-    completo, acá los tres campos van a donde corresponden en la Graph API:
-    `header.text`, `body.text`, `footer.text`. Ver
-    evolution-foundation/evolution-api#2723."""
-    token, phone_number_id, _waba_id = await _config()
-    interactive: dict = {"type": "button", "body": {"text": description}}
-    if title:
-        interactive["header"] = {"type": "text", "text": title}
-    footer_text = footer.strip()
-    if footer_text:
-        interactive["footer"] = {"text": footer_text}
-    interactive["action"] = {
-        "buttons": [
-            {"type": "reply", "reply": {"id": button["id"], "title": button["displayText"]}}
-            for button in buttons
-        ],
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "interactive",
-        "interactive": interactive,
-    }
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_list(
-    chat_id: str, 
-    title: str, 
-    description: str, 
-    footer_text: str, 
-    button_text: str, 
-    sections: list[dict],
-) -> dict:
-    """`sections[].rows[].rowId` es el nombre de campo propio del DTO de
-    Evolution — la Graph API de Meta espera `id`, así que se traduce acá."""
-    token, phone_number_id, _waba_id = await _config()
-    meta_sections = [
-        {
-            "title": section.get("title"),
-            "rows": [
-                {
-                    "id": row.get("rowId"),
-                    "title": row.get("title"),
-                    "description": row.get("description"),
-                }
-                for row in section.get("rows", [])
-            ],
-        }
-        for section in sections
-    ]
-    interactive: dict = {
-        "type": "list",
-        "body": {"text": description},
-        "action": {"button": button_text, "sections": meta_sections},
-    }
-    if title:
-        interactive["header"] = {"type": "text", "text": title}
-    footer_stripped = footer_text.strip()
-    if footer_stripped:
-        interactive["footer"] = {"text": footer_stripped}
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "interactive",
-        "interactive": interactive,
-    }
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_text(chat_id: str, text: str, quoted: dict | None = None) -> dict:
-    token, phone_number_id, _waba_id = await _config()
-    payload: dict = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "text",
-        "text": {"body": text},
-    }
-    if quoted and quoted.get("wa_message_id"):
-        payload["context"] = {"message_id": quoted["wa_message_id"]}
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_location(
-    chat_id: str,
-    latitude: float,
-    longitude: float,
-    name: str | None = None,
-    address: str | None = None,
-    quoted: dict | None = None,
-) -> dict:
-    token, phone_number_id, _waba_id = await _config()
-    location: dict = {"latitude": latitude, "longitude": longitude}
-    if name:
-        location["name"] = name
-    if address:
-        location["address"] = address
-    payload: dict = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "location",
-        "location": location,
-    }
-    if quoted and quoted.get("wa_message_id"):
-        payload["context"] = {"message_id": quoted["wa_message_id"]}
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_contacts(
-    chat_id: str,
-    contacts: list[dict],
-    quoted: dict | None = None,
-) -> dict:
-    """Envía una o varias tarjetas de contacto nativas de WhatsApp.
-
-    El outbox conserva una forma pequeña y común con el frontend
-    (``fullName``/``phoneNumber``). Acá se traduce al objeto Contact de la
-    Graph API: nombre estructurado y una lista de teléfonos con ``wa_id``.
-    """
-    token, phone_number_id, _waba_id = await _config()
-    meta_contacts = []
-    for contact in contacts:
-        full_name = str(contact["fullName"]).strip()
-        digits = "".join(char for char in str(contact["phoneNumber"]) if char.isdigit())
-        first_name, separator, last_name = full_name.partition(" ")
-        name = {"formatted_name": full_name, "first_name": first_name}
-        if separator and last_name:
-            name["last_name"] = last_name
-        meta_contacts.append({
-            "name": name,
-            "phones": [{"phone": f"+{digits}", "type": "CELL", "wa_id": digits}],
-        })
-
-    payload: dict = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "contacts",
-        "contacts": meta_contacts,
-    }
-    if quoted and quoted.get("wa_message_id"):
-        payload["context"] = {"message_id": quoted["wa_message_id"]}
-    return await _send(chat_id, token, phone_number_id, payload, timeout=30.0)
-
-
-async def send_whatsapp_media(
-    chat_id: str,
-    content: bytes,
-    content_type: str,
-    mediatype: str,
-    filename: str | None = None,
-    caption: str | None = None,
-    quoted: dict | None = None,
-    voice: bool = False
-) -> dict:
-    token, phone_number_id, _waba_id = await _config()
-    media_id = await upload_media(content, content_type, filename or "archivo")
-    media_object: dict = {"id": media_id}
-    if voice and mediatype == "audio":
-        media_object["voice"] = voice
-    if caption:
-        media_object["caption"] = caption
-    if filename and mediatype == "document":
-        media_object["filename"] = filename
-    payload: dict = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": mediatype,
-        mediatype: media_object,
-    }
-    if quoted and quoted.get("wa_message_id"):
-        payload["context"] = {"message_id": quoted["wa_message_id"]}
-    return await _send(chat_id, token, phone_number_id, payload, timeout=60.0)
-
-
-VOICE_NOTE_CONTENT_TYPE = "audio/ogg"
-
-async def send_whatsapp_audio(
-    chat_id: str,
-    content: bytes,
-    content_type: str,
-    filename: str | None = None,
-    quoted: dict | None = None,
-) -> dict:
-    is_voice_note = content_type.split(";", 1)[0].strip().lower() == VOICE_NOTE_CONTENT_TYPE
-    return await send_whatsapp_media(
-        chat_id, content, content_type, "audio",
-        filename=filename, quoted=quoted, voice=is_voice_note,
-    )
-
-
-async def send_whatsapp_sticker(chat_id: str, sticker_bytes: bytes) -> dict:
-    """Manda un sticker. `sticker_bytes` debe ser un WEBP (512×512,
-    transparente) — la conversión la hace media_storage.image_to_sticker_webp
-    antes de llamar."""
-    token, phone_number_id, _waba_id = await _config()
-    media_id = await upload_media(sticker_bytes, "image/webp", "sticker.webp")
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": await _destination_digits(chat_id),
-        "type": "sticker",
-        "sticker": {"id": media_id},
-    }
-    return await _send(chat_id, token, phone_number_id, payload, timeout=60.0)
-
-
 async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict:
     """Le avisa a WhatsApp que ya se vieron estos mensajes del cliente —
-    hace que le aparezcan los tiques azules de "leído" de su lado.
-
-    Meta no tiene una versión batch como el `readMessages` array de Evolution:
-    hay que marcar uno por uno."""
+    hace que le aparezcan los tiques azules de "leído" de su lado. Meta no
+    tiene una versión en lote: se marcan uno por uno."""
     token, phone_number_id, _waba_id = await _config()
     url = _graph_url(f"{phone_number_id}/messages")
     results = await asyncio.gather(*(
@@ -793,25 +537,3 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
         for wa_message_id in wa_message_ids
     ))
     return {"results": list(results)}
-
-
-async def send_whatsapp_reaction(key: dict, emoji: str) -> dict:
-    """Reacciona a un mensaje con un emoji (o lo quita si `emoji` es "").
-
-    `key` identifica el mensaje reaccionado tal como lo espera el resto de la
-    app: {remoteJid, fromMe, id} — mismo shape que usaban los callers de
-    Evolution, para no tener que tocarlos."""
-    token, phone_number_id, _waba_id = await _config()
-    remote_jid = key.get("remoteJid")
-    if isinstance(remote_jid, str) and "@" in remote_jid:
-        digits = remote_jid.split("@", 1)[0]
-    else:
-        digits = await _destination_digits(str(remote_jid or ""))
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": digits,
-        "type": "reaction",
-        "reaction": {"message_id": key.get("id"), "emoji": emoji},
-    }
-    url = _graph_url(f"{phone_number_id}/messages")
-    return await _request("POST", url, token, json_body=payload, timeout=30.0)

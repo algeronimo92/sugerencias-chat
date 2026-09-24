@@ -260,8 +260,7 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
             )
         except MetaApiError as exc:
             raise HTTPException(502, describe_template_error(exc))
-        # Meta devuelve el shape nativo directo ({"id","status","category"}),
-        # ya no el wrapper {"templateId","template":{...}} que armaba Evolution.
+        # Meta devuelve {"id","status","category"}.
         values["meta_template_id"] = created.get("id")
         values["official_status"] = created.get("status") or "PENDING"
     try:

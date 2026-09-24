@@ -24,7 +24,7 @@ def _failed_message():
         sent_at=datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc),
         media_url=None,
         wa_message_id=None,
-        status="FAILED",
+        outbox_status="failed",
         message_type="text",
         analysis=None,
         payload=None,
@@ -58,19 +58,19 @@ async def test_discard_closes_the_job_and_marks_the_message(monkeypatch):
     broadcast = AsyncMock()
     monkeypatch.setattr(message_outbox, "manager", SimpleNamespace(broadcast=broadcast))
 
-    result = await message_outbox.discard_failed_message("51999@s.whatsapp.net", 42)
+    result = await message_outbox.discard_failed_message("4316bc30-f78c-57a2-8f98-bff9087678d6", 42)
 
     # El job sale de "failed": es lo que lo saca de la métrica outbox_failed.
     assert job.status == "discarded"
-    assert message.status == "DISCARDED"
-    assert result["status"] == "DISCARDED"
+    assert message.outbox_status == "discarded"
+    assert result["outbox_status"] == "discarded"
     broadcast.assert_awaited_once()
-    assert broadcast.await_args[0][0]["message_statuses"] == [{"id": 42, "status": "DISCARDED"}]
+    assert broadcast.await_args[0][0]["message_statuses"] == [{"id": 42, "outbox_status": "discarded"}]
 
 
 @pytest.mark.asyncio
 async def test_discard_ignores_a_message_that_is_not_failed(monkeypatch):
-    """El WHERE exige failed/FAILED, así que un mensaje ya enviado —o ya
+    """El WHERE exige el job y el mensaje en failed, así que uno ya enviado —o ya
     descartado— no encuentra job y el router responde 409 en vez de tocar
     nada."""
     session = _fake_session(None, None)
@@ -78,7 +78,7 @@ async def test_discard_ignores_a_message_that_is_not_failed(monkeypatch):
     broadcast = AsyncMock()
     monkeypatch.setattr(message_outbox, "manager", SimpleNamespace(broadcast=broadcast))
 
-    result = await message_outbox.discard_failed_message("51999@s.whatsapp.net", 42)
+    result = await message_outbox.discard_failed_message("4316bc30-f78c-57a2-8f98-bff9087678d6", 42)
 
     assert result is None
     session.commit.assert_not_awaited()

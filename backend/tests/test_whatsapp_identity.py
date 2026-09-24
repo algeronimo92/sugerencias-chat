@@ -1,151 +1,66 @@
+"""Identidad del contacto con los identificadores exactos de Meta."""
+
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
 from services import whatsapp_identity_service
-
 from services.whatsapp_identity_service import (
+    ContactIdentity,
     InvalidWhatsAppIdentityError,
-    aliases_from_send_key,
-    learn_send_aliases,
-    parse_message_identity,
-    resolve_history_jid,
+    identity_from_echo,
+    identity_from_inbound,
     resolve_whatsapp_destination,
 )
-
-LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
-
-
-def _payload(key: dict, push_name: str = "Gerson P") -> dict:
-    return {
-        "instance": "dermicapro",
-        "data": {"key": key, "pushName": push_name},
-        # Es el número de la instancia, no el lead. Debe ignorarse siempre.
-        "sender": "51974637783@s.whatsapp.net",
-    }
+from tests.meta_fixtures import PHONE_NUMBER_ID, inbound_cases
 
 
-def test_parse_lid_only_never_uses_sender_as_customer_phone():
-    parsed = parse_message_identity(_payload({"remoteJid": "267692862898397@lid"}))
+def test_inbound_takes_wa_id_user_id_and_profile_literally():
+    case = inbound_cases()["text_with_user_id"]
+    identity = identity_from_inbound(PHONE_NUMBER_ID, case["message"], [case["contact"]])
 
-    assert parsed.instance == "dermicapro"
-    assert parsed.jids == ("267692862898397@lid",)
-    assert parsed.lid_jid == "267692862898397@lid"
-    assert parsed.phone_jid is None
-    assert parsed.push_name == "Gerson P"
-
-
-def test_parse_meta_bsuid_lid_accepts_country_prefix():
-    """El BSUID de Meta (p.ej. "PE.1084026510784249") no es numerico puro
-    como el LID de Evolution/Baileys: se acepta igual, se usa como alias
-    opaco."""
-    parsed = parse_message_identity(_payload({"remoteJid": "PE.1084026510784249@lid"}))
-
-    assert parsed.jids == ("pe.1084026510784249@lid",)
-    assert parsed.lid_jid == "pe.1084026510784249@lid"
-    assert parsed.phone_jid is None
-
-
-def test_parse_phone_and_lid_aliases_deduplicates_values():
-    parsed = parse_message_identity(_payload({
-        "remoteJid": "267692862898397@lid",
-        "remoteJidAlt": "51943663225@s.whatsapp.net",
-        "participantAlt": "51943663225@s.whatsapp.net",
-    }))
-
-    assert parsed.jids == (
-        "267692862898397@lid",
-        "51943663225@s.whatsapp.net",
-    )
-    assert parsed.phone_jid == "51943663225@s.whatsapp.net"
-    assert parsed.lid_jid == "267692862898397@lid"
-
-
-@pytest.mark.parametrize("own_name", ["Você", "Voce", "DermicaPro"])
-def test_outgoing_push_name_is_never_used_as_contact_name(own_name):
-    parsed = parse_message_identity(_payload({
-        "remoteJid": "51943663225@s.whatsapp.net",
-        "fromMe": True,
-    }, push_name=own_name))
-
-    assert parsed.push_name is None
-
-
-def test_accepts_complete_n8n_item_wrapper():
-    parsed = parse_message_identity({
-        "body": _payload({"remoteJid": "51943663225@s.whatsapp.net"})
-    })
-
-    assert parsed.phone_jid == "51943663225@s.whatsapp.net"
-
-
-def test_group_event_is_not_converted_into_a_lead():
-    with pytest.raises(InvalidWhatsAppIdentityError, match="grupo"):
-        parse_message_identity(_payload({
-            "remoteJid": "120363419787208859@g.us",
-            "participant": "51943663225@s.whatsapp.net",
-        }))
-
-
-@pytest.mark.asyncio
-async def test_destination_is_resolved_from_internal_lead_id(monkeypatch):
-    session = type("Session", (), {})()
-    session.scalar = AsyncMock(return_value="51943663225@s.whatsapp.net")
-
-    class SessionContext:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *_args):
-            return False
-
-    monkeypatch.setattr(
-        whatsapp_identity_service,
-        "get_sessionmaker",
-        lambda: SessionContext,
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "active_connection", AsyncMock(return_value="dermicapro")
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "connection_scope", AsyncMock(return_value=("dermicapro", "*"))
+    assert identity == ContactIdentity(
+        phone_number_id=PHONE_NUMBER_ID,
+        wa_id="51955544433",
+        user_id="PE.1084026510784249",
+        profile_name="Rosa",
+        username="rosa.p",
     )
 
-    assert await resolve_whatsapp_destination(LEAD_ID) == "51943663225@s.whatsapp.net"
+
+def test_inbound_without_phone_keeps_only_the_user_id():
+    case = inbound_cases()["text_user_id_only"]
+    identity = identity_from_inbound(PHONE_NUMBER_ID, case["message"], [case["contact"]])
+
+    assert identity.wa_id is None
+    assert identity.user_id == "PE.1084026510784249"
+    assert identity.aliases() == [("user_id", "PE.1084026510784249")]
 
 
-# --- Alias aprendidos al enviar -------------------------------------------
-#
-# Con el direccionamiento por LID de WhatsApp, la respuesta de un envío es la
-# única fuente que empareja el @lid de un contacto con su teléfono: los
-# entrantes llegan solo con el LID y los contactos de Evolution no traen el
-# número.
+def test_profile_of_another_contact_is_not_used():
+    message = {"from": "51911111111", "id": "wamid.A", "type": "text", "text": {"body": "hola"}}
+    other = {"profile": {"name": "Otra persona"}, "wa_id": "51922222222"}
+    identity = identity_from_inbound(PHONE_NUMBER_ID, message, [other])
 
-LID_JID = "269685694173263@lid"
-PHONE_JID = "51997511558@s.whatsapp.net"
-OTHER_LEAD_ID = "b1c2d3e4-0000-4000-8000-000000000000"
+    assert identity.profile_name is None
+    assert identity.wa_id == "51911111111"
 
 
-def _send_key(**extra) -> dict:
-    return {"id": "3EB0BACE97A664E65339A5", "fromMe": True, **extra}
+def test_echo_identifies_the_recipient_and_never_the_business_profile():
+    echo = {"from": "51999000111", "to": "51987654321", "to_user_id": "PE.1", "id": "wamid.E", "type": "text"}
+    identity = identity_from_echo(PHONE_NUMBER_ID, echo)
+
+    assert (identity.wa_id, identity.user_id, identity.profile_name) == ("51987654321", "PE.1", None)
 
 
-class _FakeResult:
+def test_an_event_without_any_identifier_is_rejected():
+    with pytest.raises(InvalidWhatsAppIdentityError):
+        identity_from_inbound(PHONE_NUMBER_ID, {"id": "wamid.X", "type": "text"}, [])
+
+
+class _Session:
     def __init__(self, rows):
-        self._rows = rows
-
-    def all(self):
-        return self._rows
-
-
-class _FakeSession:
-    """Sesión mínima para ejercitar learn_send_aliases sin PostgreSQL."""
-
-    def __init__(self, owners=None, lead=None):
-        self.owners = owners or []
-        self.lead = lead
-        self.added = []
+        self.rows = rows
 
     async def __aenter__(self):
         return self
@@ -153,130 +68,23 @@ class _FakeSession:
     async def __aexit__(self, *_args):
         return False
 
-    # No hay transacción real: el mismo objeto sirve de contexto para begin().
-    def begin(self):
-        return self
-
-    async def execute(self, _stmt):
-        return _FakeResult(self.owners)
-
-    def add(self, obj):
-        self.added.append(obj)
-
-    async def get(self, _model, _pk, **_kwargs):
-        return self.lead
-
-
-def _fake_db(monkeypatch, session):
-    monkeypatch.setattr(
-        whatsapp_identity_service, "get_sessionmaker", lambda: lambda: session
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "active_connection", AsyncMock(return_value="dermicapro")
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "connection_scope", AsyncMock(return_value=("dermicapro", "*"))
-    )
-
-
-def test_send_key_pairs_the_lid_with_the_phone():
-    key = _send_key(
-        remoteJid=LID_JID, remoteJidAlt=PHONE_JID, addressingMode="lid"
-    )
-
-    assert aliases_from_send_key(key) == (LID_JID, PHONE_JID)
-
-
-@pytest.mark.parametrize(
-    "key",
-    [None, "no es un dict", {}, _send_key(remoteJid="120363419787208859@g.us")],
-)
-def test_send_key_without_usable_jids_is_ignored(key):
-    assert aliases_from_send_key(key) == ()
+    async def execute(self, _statement):
+        return SimpleNamespace(all=lambda: self.rows)
 
 
 @pytest.mark.asyncio
-async def test_learn_registers_the_lid_used_for_the_chat(monkeypatch):
-    """El caso que parte los chats: el lead solo conocía su teléfono."""
-    session = _FakeSession(owners=[(PHONE_JID, LEAD_ID)])
-    _fake_db(monkeypatch, session)
+async def test_destination_prefers_the_most_recent_identifier_of_each_kind(monkeypatch):
+    rows = [("wa_id", "51900011122"), ("user_id", "PE.9"), ("wa_id", "51987654321")]
+    monkeypatch.setattr(whatsapp_identity_service, "get_sessionmaker", lambda: lambda: _Session(rows))
 
-    learned = await learn_send_aliases(
-        LEAD_ID, {"key": _send_key(remoteJid=LID_JID, remoteJidAlt=PHONE_JID)}
-    )
+    destination = await resolve_whatsapp_destination("lead-1")
 
-    assert learned == (LID_JID,)
-    assert [(a.jid, a.kind, a.lead_id) for a in session.added] == [
-        (LID_JID, "lid", LEAD_ID)
-    ]
+    assert (destination.wa_id, destination.user_id) == ("51900011122", "PE.9")
 
 
 @pytest.mark.asyncio
-async def test_learn_does_not_steal_an_alias_from_another_lead(monkeypatch):
-    """El LID ya es de un lead provisional: fusionar no le toca a un envío."""
-    session = _FakeSession(owners=[(LID_JID, OTHER_LEAD_ID)])
-    _fake_db(monkeypatch, session)
+async def test_lead_without_identifiers_has_no_destination(monkeypatch):
+    monkeypatch.setattr(whatsapp_identity_service, "get_sessionmaker", lambda: lambda: _Session([]))
 
-    learned = await learn_send_aliases(
-        LEAD_ID, {"key": _send_key(remoteJid=LID_JID, remoteJidAlt=PHONE_JID)}
-    )
-
-    assert learned == (PHONE_JID,)
-    assert [a.jid for a in session.added] == [PHONE_JID]
-
-
-@pytest.mark.asyncio
-async def test_learn_fills_the_phone_of_a_lead_born_from_a_lid(monkeypatch):
-    lead = SimpleNamespace(telefono=None, updated_at=None)
-    session = _FakeSession(owners=[(LID_JID, LEAD_ID)], lead=lead)
-    _fake_db(monkeypatch, session)
-
-    learned = await learn_send_aliases(
-        LEAD_ID, {"key": _send_key(remoteJid=LID_JID, remoteJidAlt=PHONE_JID)}
-    )
-
-    assert learned == (PHONE_JID,)
-    assert lead.telefono == "51997511558"
-
-
-@pytest.mark.asyncio
-async def test_history_is_asked_by_the_lid_that_evolution_indexes(monkeypatch):
-    """Pedirlo por el teléfono devuelve cero registros con HTTP 200."""
-    session = _FakeSession()
-    session.scalar = AsyncMock(return_value=LID_JID)
-    monkeypatch.setattr(
-        whatsapp_identity_service, "get_sessionmaker", lambda: lambda: session
-    )
-
-    assert await resolve_history_jid(LEAD_ID) == LID_JID
-
-
-@pytest.mark.asyncio
-async def test_history_falls_back_to_the_phone_when_there_is_no_lid(monkeypatch):
-    session = _FakeSession()
-    # Sin alias LID; el respaldo lo resuelve resolve_whatsapp_destination.
-    session.scalar = AsyncMock(side_effect=[None, PHONE_JID])
-    monkeypatch.setattr(
-        whatsapp_identity_service, "get_sessionmaker", lambda: lambda: session
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "active_connection", AsyncMock(return_value="dermicapro")
-    )
-    monkeypatch.setattr(
-        whatsapp_identity_service, "connection_scope", AsyncMock(return_value=("dermicapro", "*"))
-    )
-
-    assert await resolve_history_jid(LEAD_ID) == PHONE_JID
-
-
-@pytest.mark.asyncio
-async def test_learn_writes_nothing_when_both_aliases_are_known(monkeypatch):
-    session = _FakeSession(owners=[(LID_JID, LEAD_ID), (PHONE_JID, LEAD_ID)])
-    _fake_db(monkeypatch, session)
-
-    learned = await learn_send_aliases(
-        LEAD_ID, {"key": _send_key(remoteJid=LID_JID, remoteJidAlt=PHONE_JID)}
-    )
-
-    assert learned == ()
-    assert session.added == []
+    with pytest.raises(InvalidWhatsAppIdentityError):
+        await resolve_whatsapp_destination("lead-1")

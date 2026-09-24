@@ -5,14 +5,10 @@ from services.store import message_history
 
 
 @pytest.mark.asyncio
-async def test_unsupported_message_without_original_type_stays_visible(monkeypatch):
-    """Solo se oculta un sobre de album identificado de forma explicita.
-
-    En PostgreSQL, ``NOT (TRUE AND NULL)`` devuelve ``NULL`` y una clausula
-    ``WHERE`` descarta esa fila. Las respuestas de boton de Meta se guardan
-    como ``unsupported`` pero su payload no contiene ``original_type``; el
-    filtro debe tratar ese caso como visible.
-    """
+async def test_thread_serves_every_meta_type_and_hides_only_reactions(monkeypatch):
+    """Un tipo que el contrato no conoce se sirve igual (con su nombre
+    literal); las reacciones no, porque se muestran como badge del mensaje
+    al que apuntan."""
     statements = []
 
     class FakeResult:
@@ -42,5 +38,7 @@ async def test_unsupported_message_without_original_type_stays_visible(monkeypat
         dialect=postgresql.dialect(),
         compile_kwargs={"literal_binds": True},
     ))
-    assert "wsp_messages.message_type = 'unsupported'" in sql
-    assert "IS NOT true" in sql
+    assert "wsp_messages.message_type IS DISTINCT FROM 'reaction'" in sql
+    assert "unsupported" not in sql
+    for column in ("provider_payload", "message_subtype", "outbox_status", "meta_status", "status_payload"):
+        assert f"wsp_messages.{column}" in sql

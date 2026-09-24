@@ -21,7 +21,7 @@ from tests.conftest import open_service_window, patch_chats
 
 BACKEND = Path(__file__).resolve().parent.parent
 SELLER = SimpleNamespace(id=7, role="vendedor")
-CHAT_ID = "51999999999@s.whatsapp.net"
+CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
 
 
 @pytest.mark.parametrize(("window", "esperado"), [
@@ -39,7 +39,7 @@ async def test_a_manual_send_with_the_window_closed_is_refused_before_queueing(m
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch, is_open=False)
     enqueue = AsyncMock()
-    patch_chats(monkeypatch, "enqueue_text_message", enqueue)
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
 
     with pytest.raises(HTTPException) as exc:
         await chats.send_message(CHAT_ID, SendMessageRequest(text="Hola"), SELLER)

@@ -19,8 +19,9 @@ from services.store.common import (
     _activity_safe,
     _fmt_ts,
     _json_safe_row,
-    _phone_to_jid,
 )
+from services.whatsapp_connection import ANY_CONNECTION
+from services.whatsapp_identity_service import WA_ID
 
 logger = logging.getLogger(__name__)
 
@@ -215,13 +216,11 @@ async def create_lead(
     notas: str | None = None,
     secondary_phone: str | None = None,
     actor_user_id: int | None = None,
-    remote_jid: str | None = None,
 ) -> dict:
-    # phone llega ya normalizado (solo dígitos E.164). Si Evolution devolvió el
-    # JID canónico se usa ese — puede diferir del tipeado (p. ej. México/AR) y
-    # entonces telefono se deriva del JID, que es la identidad real del chat.
-    external_jid = remote_jid or _phone_to_jid(phone)
-    digits = re.sub(r"\D", "", external_jid.split("@", 1)[0]) or re.sub(r"\D", "", phone)
+    # phone llega ya normalizado (solo dígitos E.164): es el wa_id con el que
+    # Meta identifica al contacto. El número por el que llegará todavía no se
+    # conoce, así que el alias queda en '*' hasta el primer evento.
+    wa_id = re.sub(r"\D", "", phone)
     seller_name = None
     if vendedor_id is not None:
         async with get_sessionmaker()() as lookup_session:
@@ -230,8 +229,7 @@ async def create_lead(
                 raise ValueError("Vendedor no encontrado o inactivo")
             seller_name = seller.name
     stmt = insert(Lead).values(
-        legacy_remote_jid=external_jid,
-        telefono=digits,
+        telefono=wa_id,
         telefono_secundario=secondary_phone,
         nombre=name,
         servicio_interes=servicio_interes,
@@ -244,7 +242,7 @@ async def create_lead(
         try:
             lead_id = (await session.execute(stmt)).scalar_one()
             await session.execute(insert(WhatsAppIdentity).values(
-                instance="*", jid=external_jid, kind="phone", lead_id=lead_id,
+                phone_number_id=ANY_CONNECTION, identifier=wa_id, kind=WA_ID, lead_id=lead_id,
             ))
             await _record_activity(
                 session,
@@ -252,12 +250,12 @@ async def create_lead(
                 AutomationTrigger.LEAD_CREATED,
                 "user" if actor_user_id is not None else "system",
                 actor_user_id,
-                new_value={"name": name, "phone": digits},
+                new_value={"name": name, "phone": wa_id},
             )
             await session.commit()
         except IntegrityError:
             await session.rollback()
-            raise LeadAlreadyExistsError(external_jid)
+            raise LeadAlreadyExistsError(wa_id)
 
     return await fetch_chat(lead_id)
 
@@ -281,8 +279,7 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
 
 async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
     """Filas crudas de ``wsp_messages`` de un chat, más recientes primero.
-    Reemplaza al nodo Postgres ``get messages`` de n8n. Sin
-    ``message_secret`` (bytes, no serializable y sin uso fuera de la app)."""
+    Reemplaza al nodo Postgres ``get messages`` de n8n."""
     async with get_sessionmaker()() as session:
         rows = (
             await session.execute(
@@ -293,12 +290,7 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
                 {"chat_id": chat_id, "limit": limit},
             )
         ).mappings().all()
-    result = []
-    for row in rows:
-        data = _json_safe_row(dict(row))
-        data.pop("message_secret", None)
-        result.append(data)
-    return result
+    return [_json_safe_row(dict(row)) for row in rows]
 
 
 async def ensure_lead_stub(
@@ -440,41 +432,39 @@ async def open_conversation_from_inbound(
 async def rekey_lead_phone(
     lead_id: str,
     new_digits: str,
-    new_jid: str | None = None,
     actor_user_id: int | None = None,
 ) -> dict | None:
-    """Cambia el teléfono/alias sin cambiar la identidad interna del lead."""
-    target_jid = new_jid or _phone_to_jid(new_digits)
-    # Igual que en create_lead: si el JID canónico difiere de lo tipeado,
-    # telefono se deriva del JID, que es la identidad real del chat.
-    new_digits = re.sub(r"\D", "", target_jid.split("@", 1)[0]) or new_digits
+    """Cambia el wa_id del lead sin cambiar su identidad interna."""
+    new_wa_id = re.sub(r"\D", "", new_digits)
     async with get_sessionmaker()() as session:
         lead = await session.get(Lead, lead_id, with_for_update=True)
         if lead is None:
             return None
 
         collision = await session.scalar(select(exists().where(
-            WhatsAppIdentity.jid == target_jid,
+            WhatsAppIdentity.kind == WA_ID,
+            WhatsAppIdentity.identifier == new_wa_id,
             WhatsAppIdentity.lead_id != lead_id,
         )))
         if collision:
-            raise LeadAlreadyExistsError(target_jid)
+            raise LeadAlreadyExistsError(new_wa_id)
 
         old_phone = lead.telefono
-        phone_aliases = (await session.execute(select(WhatsAppIdentity).where(
+        wa_aliases = (await session.execute(select(WhatsAppIdentity).where(
             WhatsAppIdentity.lead_id == lead_id,
-            WhatsAppIdentity.kind == "phone",
+            WhatsAppIdentity.kind == WA_ID,
         ).with_for_update())).scalars().all()
-        if phone_aliases:
-            for alias in phone_aliases:
-                alias.jid = target_jid
-                alias.updated_at = datetime.now(timezone.utc)
+        if wa_aliases:
+            keep, *rest = wa_aliases
+            keep.identifier = new_wa_id
+            keep.updated_at = datetime.now(timezone.utc)
+            for alias in rest:
+                await session.delete(alias)
         else:
             session.add(WhatsAppIdentity(
-                instance="*", jid=target_jid, kind="phone", lead_id=lead_id,
+                phone_number_id=ANY_CONNECTION, identifier=new_wa_id, kind=WA_ID, lead_id=lead_id,
             ))
-        lead.legacy_remote_jid = target_jid
-        lead.telefono = new_digits
+        lead.telefono = new_wa_id
         lead.updated_at = datetime.now(timezone.utc)
 
         await _record_activity(
@@ -484,7 +474,7 @@ async def rekey_lead_phone(
             "user" if actor_user_id is not None else "system",
             actor_user_id,
             {"phone": old_phone},
-            {"phone": new_digits},
+            {"phone": new_wa_id},
         )
         await session.commit()
 

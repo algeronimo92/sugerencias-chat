@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
 from typing import Protocol
 
 UNCONFIRMED_DELIVERY_MESSAGE = (
@@ -30,75 +29,22 @@ def describe_send_failure(exc: Exception, action: str) -> str:
 
 @dataclass(frozen=True)
 class SendReceipt:
+    """Resultado de un envío: el id que asignó Meta, el cuerpo exacto que se
+    mandó y el ``wa_id`` con el que Meta identificó al destinatario."""
+
     provider_message_id: str | None
-    recipient_jid: str | None = None
-
-
-@dataclass(frozen=True)
-class ReactionTarget:
-    chat_id: str
-    provider_message_id: str
-    from_me: bool
+    sent_body: dict = field(default_factory=dict)
+    recipient_wa_id: str | None = None
 
 
 class MessageSender(Protocol):
-    async def send_text(self, chat_id: str, text: str, quoted: dict | None = None) -> SendReceipt: ...
-
-    async def send_media(
-        self,
-        chat_id: str,
-        content: bytes,
-        content_type: str,
-        mediatype: str,
-        *,
-        filename: str | None = None,
-        caption: str | None = None,
-        quoted: dict | None = None,
-    ) -> SendReceipt: ...
-
-    async def send_audio(
-        self, chat_id: str, content: bytes, content_type: str, filename: str | None = None, quoted: dict | None = None,
-    ) -> SendReceipt: ...
-
-    async def send_sticker(self, chat_id: str, sticker_bytes: bytes) -> SendReceipt: ...
-
-    async def send_location(
-        self, chat_id: str, latitude: float, longitude: float, quoted: dict | None = None,
-    ) -> SendReceipt: ...
-
-    async def send_contacts(
-        self, chat_id: str, contacts: list[dict], quoted: dict | None = None,
-    ) -> SendReceipt: ...
-
-    async def send_template(self, chat_id: str, name: str, language: str, components: list[dict]) -> SendReceipt: ...
+    async def send(self, chat_id: str, message: dict) -> SendReceipt: ...
 
     async def upload_media(self, content: bytes, content_type: str, filename: str) -> str: ...
 
-    async def send_buttons(
-        self, chat_id: str, title: str, description: str, footer: str, buttons: list[dict],
-    ) -> SendReceipt: ...
-
-    async def send_list(
-        self, chat_id: str, title: str, description: str, footer: str, button_text: str, sections: list[dict],
-    ) -> SendReceipt: ...
-
 
 class ConversationActions(Protocol):
-    async def react(self, target: ReactionTarget, emoji: str) -> None: ...
-
     async def mark_read(self, chat_id: str, provider_message_ids: list[str]) -> None: ...
-
-
-class MessageEditor(Protocol):
-    async def edit(self, chat_id: str, provider_message_id: str, text: str) -> None: ...
-
-    async def delete(self, chat_id: str, provider_message_id: str) -> None: ...
-
-
-class HistoryReader(Protocol):
-    async def is_available(self) -> bool: ...
-
-    async def fetch(self, chat_id: str, page: int | None, before_ts: datetime | None) -> dict: ...
 
 
 @dataclass(frozen=True)
@@ -124,5 +70,3 @@ class WhatsAppChannel:
     sender: MessageSender
     actions: ConversationActions
     status: ChannelStatus
-    editor: MessageEditor | None = None
-    history: HistoryReader | None = None

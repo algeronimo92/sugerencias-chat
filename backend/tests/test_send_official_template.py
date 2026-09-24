@@ -63,8 +63,9 @@ async def test_send_positional_template_sends_plain_text_parameters(monkeypatch,
 
     await chat_messaging.send_template("lead-1", 9, None, ["Ana", "martes"], 11)
 
-    components = send_deps()[0]["payload"]["components"]
-    assert components == [{
+    template = send_deps()[0]["message"]["template"]
+    assert template["name"] and template["language"] == {"code": template["language"]["code"]}
+    assert template["components"] == [{
         "type": "body",
         "parameters": [{"type": "text", "text": "Ana"}, {"type": "text", "text": "martes"}],
     }]
@@ -80,7 +81,7 @@ async def test_send_named_template_includes_parameter_name(monkeypatch, send_dep
 
     await chat_messaging.send_template("lead-1", 9, None, ["Ana", "martes"], 11)
 
-    components = send_deps()[0]["payload"]["components"]
+    components = send_deps()[0]["message"]["template"]["components"]
     assert components == [{
         "type": "body",
         "parameters": [
@@ -94,8 +95,8 @@ async def test_send_named_template_includes_parameter_name(monkeypatch, send_dep
 @pytest.mark.asyncio
 async def test_send_image_header_template_carries_header_media_reference(monkeypatch, send_deps):
     """Una plantilla con encabezado de imagen no sube el archivo acá: solo
-    deja la referencia al medio local en el payload. Subirlo recién al
-    despachar (`services/outbound_kinds.py`) evita dejar un media id de Meta
+    deja la referencia al medio local en el ítem. Subirlo recién al despachar
+    (``message_outbox.build_final_message``) evita dejar un media id de Meta
     que puede invalidarse antes del envío real (ver 132012 en
     services/meta_service.py)."""
     template = _official_template(
@@ -109,11 +110,11 @@ async def test_send_image_header_template_carries_header_media_reference(monkeyp
 
     await chat_messaging.send_template("lead-1", 9, None, ["Ana"], 11)
 
-    assert send_deps()[0]["payload"]["header_media"] == {
+    assert send_deps()[0]["header_media"] == {
         "media_url": "/api/media/images/encabezado.jpg",
-        "content_type": "image/jpeg",
         "filename": "encabezado.jpg",
     }
+    assert send_deps()[0]["payload"]["template"]["header_image_url"] == "/api/media/images/encabezado.jpg"
 
 
 @pytest.mark.asyncio
@@ -123,15 +124,15 @@ async def test_send_template_without_image_header_omits_header_media(monkeypatch
 
     await chat_messaging.send_template("lead-1", 9, None, ["Ana"], 11)
 
-    assert send_deps()[0]["payload"]["header_media"] is None
+    assert send_deps()[0]["header_media"] is None
 
 
 @pytest.mark.asyncio
 async def test_send_template_carries_header_text_footer_and_buttons_for_display(monkeypatch, send_deps):
-    """El CRM necesita header/pie/botones para pintar la burbuja completa (ver
-    parseOutboundOfficialTemplate en frontend/src/utils/message.ts) aunque
-    Meta no los necesite para el envío en sí -ya los conoce por la plantilla
-    aprobada- así que tienen que viajar en el payload igual."""
+    """El CRM necesita header/pie/botones para pintar la burbuja completa
+    aunque Meta no los necesite para el envío -ya los conoce por la plantilla
+    aprobada-: viajan en la proyección ``payload.template``, nunca en el
+    cuerpo que se manda a Meta."""
     template = _official_template(
         "Hola {{1}}", ["Ana"],
         official_header_type="text", official_header_text="DermicaPro",
@@ -142,7 +143,8 @@ async def test_send_template_carries_header_text_footer_and_buttons_for_display(
 
     await chat_messaging.send_template("lead-1", 9, None, ["Ana"], 11)
 
-    payload = send_deps()[0]["payload"]
-    assert payload["header_text"] == "DermicaPro"
-    assert payload["footer"] == "Gracias por tu preferencia"
-    assert payload["buttons"] == [{"type": "quick_reply", "text": "Confirmar"}]
+    display = send_deps()[0]["payload"]["template"]
+    assert display["header_text"] == "DermicaPro"
+    assert display["footer"] == "Gracias por tu preferencia"
+    assert display["buttons"] == [{"type": "quick_reply", "text": "Confirmar"}]
+    assert "header_text" not in send_deps()[0]["message"]["template"]

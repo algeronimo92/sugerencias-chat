@@ -7,7 +7,7 @@ línea de log. Un módulo aparte evita el import circular entre los dos.
 
 Antes de esto no había forma de correlacionar los logs de una misma request
 entre sí, ni de rastrear un flujo completo (webhook -> automatización ->
-Evolution -> outbox) que atraviesa varias tareas async.
+outbox -> Meta) que atraviesa varias tareas async.
 """
 
 from contextvars import ContextVar, Token

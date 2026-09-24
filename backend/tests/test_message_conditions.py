@@ -224,7 +224,7 @@ class TestMessageContext:
         )
         assert _execution_message_context(execution) == {
             "message_id": "reply", "content": "respuesta nueva",
-            "message_type": None, "analysis_summary": None,
+            "message_type": None, "message_subtype": None, "reply_id": None, "analysis_summary": None,
         }
 
     def test_non_text_reply_clears_the_previous_text_context(self):
@@ -234,7 +234,7 @@ class TestMessageContext:
         )
         assert _execution_message_context(execution) == {
             "message_id": "reply", "content": None,
-            "message_type": None, "analysis_summary": None,
+            "message_type": None, "message_subtype": None, "reply_id": None, "analysis_summary": None,
         }
 
     async def test_visual_condition_routes_using_trigger_message(self, deps):

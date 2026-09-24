@@ -17,6 +17,7 @@ from domain_types import (
 from services.automation_rules import is_stage_key, normalize_conditions, normalize_flow_position
 from services.automation_scheduling import TRIGGER_TYPES
 from services.lead_stages import InvalidLeadStageError, verify_stage_keys
+from services.meta_contract import limit
 from services.automations.common import (
     ACTION_TYPES,
     AUTOMATION_RECIPIENTS,
@@ -346,7 +347,7 @@ def _normalize_wait_any_conditions(data: dict, position: int) -> dict:
     return {"conditions": conditions}
 
 
-MAX_QUESTION_BUTTONS = 3
+MAX_QUESTION_BUTTONS = limit("max_buttons")
 
 
 def _question_button_label(raw_button: object) -> str:
@@ -354,9 +355,9 @@ def _question_button_label(raw_button: object) -> str:
     visual siempre manda esto último para poder asignarle un id estable al
     handle del grafo."""
     if isinstance(raw_button, dict):
-        return str(raw_button.get("label") or "").strip()[:20]
+        return str(raw_button.get("label") or "").strip()[:limit("button_title")]
     if isinstance(raw_button, str):
-        return raw_button.strip()[:20]
+        return raw_button.strip()[:limit("button_title")]
     return ""
 
 
@@ -369,8 +370,9 @@ def _normalize_question(data: dict, position: int) -> dict:
     text = str(data.get("text") or "").strip()
     if not text:
         raise ValueError(f"Pregunta {position}: escribe el mensaje")
-    if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
-        raise ValueError(f"Pregunta {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
+    # Va como cuerpo de un interactivo de botones de Meta.
+    if len(text) > limit("body"):
+        raise ValueError(f"Pregunta {position}: el mensaje admite máximo {limit('body')} caracteres")
     raw_buttons = data.get("buttons")
     labels = [
         label for label in (
@@ -446,6 +448,10 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
         )
         if not value or len(value) > max_length:
             raise ValueError(f"Condición {position}: escribe un valor de hasta {max_length} caracteres")
+    elif condition_type in {FlowConditionType.REPLY_ID_EQUALS, FlowConditionType.MESSAGE_TYPE_EQUALS}:
+        value = str(value or "").strip()
+        if not value or len(value) > limit("button_id"):
+            raise ValueError(f"Condición {position}: escribe un valor de hasta {limit('button_id')} caracteres")
     elif condition_type == FlowConditionType.SELLER_EQUALS:
         user_id = int(value or 0)
         if not user_id:

@@ -22,14 +22,14 @@ configure_logging()
 
 from config import settings
 from db.session import close_engine, get_engine
-from routers import ai_assistant, appointments, auth, branding, automations, chats, custom_fields, dashboard, internal_notes, issue_reports, lead_services, lead_stages, media, media_library, notifications, platform, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
+from routers import ai_assistant, appointments, auth, branding, automations, chats, custom_fields, dashboard, internal_notes, issue_reports, lead_services, lead_stages, media, media_library, meta_webhook, notifications, platform, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token, websocket_origin_allowed
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
 from services.ws_manager import manager
 from services.task_reminder import watch_task_reminders
 from services.automation_service import backfill_automation_state, watch_automations
-from services.evolution_service import close_evolution_client
+from services.meta_webhook.worker import watch_meta_webhook_inbox
 from services.meta_service import close_meta_client
 from services.n8n_service import close_n8n_client
 from services.tts_service import close_tts_client
@@ -252,7 +252,7 @@ async def _require_inbound_webhook_token() -> None:
         "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
         "subida de media quedarían abiertos a Internet. Generá uno con "
         "`openssl rand -hex 32`, ponelo en backend/.env o en Plataforma y "
-        "configurá el mismo valor en n8n y en Evolution API."
+        "configurá el mismo valor en n8n."
     )
 
 
@@ -357,13 +357,15 @@ async def lifespan(app: FastAPI):
             asyncio.create_task(spec.run(), name=f"legacy:{spec.name}")
             for spec in worker_specs
         ]
+    # El inbox de Meta vive en el plano de control: un solo worker para toda
+    # la plataforma, que abre el contexto de cada negocio por evento.
+    worker_tasks.append(asyncio.create_task(watch_meta_webhook_inbox(), name="meta-webhook-inbox"))
     yield
     for task in worker_tasks:
         task.cancel()
     for task in worker_tasks:
         with contextlib.suppress(asyncio.CancelledError):
             await task
-    await close_evolution_client()
     await close_meta_client()
     await close_n8n_client()
     await close_tts_client()
@@ -457,8 +459,11 @@ app.include_router(notifications.router)
 app.include_router(push.router)
 app.include_router(dashboard.router)
 app.include_router(automations.router)
-# webhooks y media.upload los llama n8n directamente (autenticados con su
-# propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
+# El webhook de Meta se autentica con la firma HMAC de Meta, no con el token
+# compartido: Meta no lo manda.
+app.include_router(meta_webhook.router)
+# webhooks y media.upload los llaman los workflows de IA de n8n (autenticados
+# con su propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(
     webhooks.router,
     dependencies=[Depends(verify_webhook_token), Depends(bind_integration_tenant)],

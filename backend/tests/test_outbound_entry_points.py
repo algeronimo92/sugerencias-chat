@@ -3,43 +3,47 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
 
-from models.schemas import ContactShareItem, SendContactsRequest, SendTemplateRequest, StickerRequest
-from routers import chats, webhooks
-from models.webhook_schemas import NewMessageWebhookBody
+from models.schemas import (
+    ContactShareItem,
+    SendContactsRequest,
+    SendInteractiveRequest,
+    SendTemplateRequest,
+    StickerRequest,
+)
+from routers import chats
 from services import chat_messaging
-from tests.conftest import open_service_window, patch_chats, patch_webhooks
+from services.meta_outbound import OutboundRejected
+from tests.conftest import open_service_window, patch_chats
+from tests.meta_fixtures import outbound_cases
 from routers.chats.outbound import TEMPLATE_ERROR_STATUS
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
-CHAT_ID = "51999@s.whatsapp.net"
+CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 @pytest.fixture
 def broadcast(monkeypatch):
     mock = AsyncMock()
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
-    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
     return mock
 
 
-async def test_sticker_is_queued_in_the_outbox_instead_of_sent_directly(monkeypatch, broadcast):
+async def test_sticker_is_queued_as_a_meta_sticker(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "get_media_asset", AsyncMock(return_value={
         "id": 3, "media_url": "/api/media/images/gato.png", "content_type": "image/png",
     }))
-    enqueue = AsyncMock(return_value=[{"id": 1, "status": "PENDING"}])
+    enqueue = AsyncMock(return_value=[{"id": 1, "outbox_status": "queued"}])
     patch_chats(monkeypatch, "enqueue_messages", enqueue)
 
     result = await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
 
-    assert result == {"id": 1, "status": "PENDING"}
-    enqueue.assert_awaited_once_with(CHAT_ID, [{
-        "media_url": "/api/media/images/gato.png",
-        "payload": {"type": "sticker", "media_url": "/api/media/images/gato.png"},
-    }], actor_user_id=SELLER.id)
+    assert result == {"id": 1, "outbox_status": "queued"}
+    [item] = enqueue.await_args.args[1]
+    assert item["message"] == {"type": "sticker", "sticker": {}}
+    assert item["media"] == {"media_url": "/api/media/images/gato.png", "filename": "sticker.webp", "as_sticker": True}
 
 
 async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast):
@@ -58,14 +62,14 @@ async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast
     enqueue.assert_not_awaited()
 
 
-async def test_contacts_are_normalized_and_queued_as_one_message(monkeypatch, broadcast):
+async def test_contacts_are_normalized_into_one_meta_contacts_message(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
-    enqueue = AsyncMock(return_value=[{"id": 8, "status": "PENDING"}])
+    enqueue = AsyncMock(return_value=[{"id": 8, "outbox_status": "queued"}])
     patch_chats(monkeypatch, "enqueue_messages", enqueue)
 
-    result = await chats.send_contacts(
+    await chats.send_contacts(
         CHAT_ID,
         SendContactsRequest(contacts=[
             ContactShareItem(full_name="Ana Torres", phone_number="987 654 321"),
@@ -74,15 +78,38 @@ async def test_contacts_are_normalized_and_queued_as_one_message(monkeypatch, br
         SELLER,
     )
 
-    assert result == {"id": 8, "status": "PENDING"}
-    enqueue.assert_awaited_once_with(CHAT_ID, [{
-        "content": None,
-        "payload": {"type": "contact", "contacts": [
-            {"fullName": "Ana Torres", "phoneNumber": "+51987654321"},
-            {"fullName": "Luis Pérez", "phoneNumber": "+51912345678"},
-        ]},
-        "reply_to": None,
-    }], actor_user_id=SELLER.id)
+    [item] = enqueue.await_args.args[1]
+    assert item["message"]["type"] == "contacts"
+    assert [contact["phones"][0]["wa_id"] for contact in item["message"]["contacts"]] == [
+        "51987654321", "51912345678",
+    ]
+    assert item["content"] == "Ana Torres, Luis Pérez"
+
+
+async def test_interactive_is_sent_as_the_meta_object(monkeypatch, broadcast):
+    patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
+    enqueue = AsyncMock(return_value=[{"id": 9}])
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    interactive = outbound_cases()["interactive_list"]["interactive"]
+
+    await chats.send_interactive(CHAT_ID, SendInteractiveRequest(interactive=interactive), SELLER)
+
+    [item] = enqueue.await_args.args[1]
+    assert item["message"] == {"type": "interactive", "interactive": interactive}
+
+
+async def test_outbound_rejected_by_meta_rules_is_422(monkeypatch, broadcast):
+    patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
+    open_service_window(monkeypatch)
+    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(side_effect=OutboundRejected("no")))
+
+    with pytest.raises(HTTPException) as exc:
+        await chats.send_interactive(
+            CHAT_ID, SendInteractiveRequest(interactive={"type": "button_reply"}), SELLER,
+        )
+
+    assert exc.value.status_code == 422
 
 
 async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypatch, broadcast):
@@ -102,24 +129,6 @@ async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypa
     enqueue.assert_not_awaited()
 
 
-@pytest.mark.parametrize("body", [{}, {"wa_message_id": ""}, {"wa_message_id": "   "}])
-def test_inbound_message_webhook_requires_the_message_id(body):
-    with pytest.raises(ValidationError):
-        NewMessageWebhookBody(**body)
-
-
-async def test_unknown_inbound_id_never_falls_back_to_another_chats_message(monkeypatch, broadcast):
-    patch_webhooks(monkeypatch, "fetch_message_by_wa_id", AsyncMock(return_value=None))
-    patch_webhooks(monkeypatch, "rehost_ad_thumbnail", AsyncMock())
-    trigger = AsyncMock()
-    patch_webhooks(monkeypatch, "trigger_inbound_message", trigger)
-
-    await webhooks.new_message_webhook(NewMessageWebhookBody(wa_message_id="WA-X"))
-
-    trigger.assert_not_awaited()
-    broadcast.assert_awaited_once_with({"type": "chats_updated", "reason": "inbound_message"})
-
-
 def test_every_template_kind_and_error_has_a_mapping():
     assert set(chat_messaging.TEMPLATE_ITEM_BUILDERS) == {"official", "interactive", "internal"}
     assert set(TEMPLATE_ERROR_STATUS) == set(chat_messaging.ChatMessagingError.__subclasses__())
@@ -127,7 +136,7 @@ def test_every_template_kind_and_error_has_a_mapping():
 
 @pytest.mark.parametrize(("template", "kind"), [
     ({"template_type": "official", "interactive_type": "none"}, "official"),
-    ({"template_type": "internal", "interactive_type": "buttons"}, "interactive"),
+    ({"template_type": "internal", "interactive_type": "button"}, "interactive"),
     ({"template_type": "internal", "interactive_type": "none"}, "internal"),
 ])
 def test_template_kind(template, kind):

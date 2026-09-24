@@ -435,7 +435,7 @@ class QuestionNode(FlowNodeHandler):
         if not text:
             raise ValueError("La pregunta no tiene contenido para enviar")
         await _require_service_window(run.chat, run.execution, run.deps)
-        buttons = [{"type": "reply", "displayText": button["label"], "id": button["id"]} for button in buttons_data]
+        buttons = [{"id": button["id"], "title": button["label"]} for button in buttons_data]
         message = await _send_buttons_message(
             run.chat, text, buttons, _with_outbox_dedupe(run.deps, run.execution.id, len(run.results) + 1),
         )

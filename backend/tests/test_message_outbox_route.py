@@ -10,10 +10,11 @@ from services.media_storage import AudioTranscodeError
 from tests.conftest import open_service_window, patch_chats
 
 USER = SimpleNamespace(id=7)
+CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 @pytest.mark.asyncio
-async def test_text_send_returns_queued_message_without_waiting_for_evolution(monkeypatch):
+async def test_text_send_returns_queued_message_without_waiting_for_meta(monkeypatch):
     queued = {
         "id": 77,
         "sender": "vendedor",
@@ -21,41 +22,43 @@ async def test_text_send_returns_queued_message_without_waiting_for_evolution(mo
         "sent_at": "2026-07-21T12:00:00.000000Z",
         "media_url": None,
         "wa_message_id": None,
-        "status": "PENDING",
+        "outbox_status": "queued",
     }
     require_lead = AsyncMock()
-    enqueue = AsyncMock(return_value=queued)
+    enqueue = AsyncMock(return_value=[queued])
     broadcast = AsyncMock()
     patch_chats(monkeypatch, "_require_existing_lead", require_lead)
     open_service_window(monkeypatch)
-    patch_chats(monkeypatch, "enqueue_text_message", enqueue)
+    patch_chats(monkeypatch, "enqueue_messages", enqueue)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await chats.send_message(
-        "51999999999@s.whatsapp.net",
+        CHAT_ID,
         SendMessageRequest(text="  Hola  "),
         USER,
     )
 
     assert result == queued
-    require_lead.assert_awaited_once_with("51999999999@s.whatsapp.net")
+    require_lead.assert_awaited_once_with(CHAT_ID)
     enqueue.assert_awaited_once_with(
-        "51999999999@s.whatsapp.net", "Hola", None, actor_user_id=USER.id,
+        CHAT_ID,
+        [{"content": "Hola", "message": {"type": "text", "text": {"body": "Hola"}}, "reply_to": None}],
+        actor_user_id=USER.id,
     )
     broadcast.assert_awaited_once_with({
         "type": "chats_updated",
-        "chat_id": "51999999999@s.whatsapp.net",
+        "chat_id": CHAT_ID,
         "reason": "outbound_queued",
     })
 
 
 @pytest.mark.asyncio
-async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monkeypatch):
+async def test_audio_send_stores_then_queues_without_waiting_for_meta(monkeypatch):
     queued = {
-        "id": 78, "sender": "vendedor", "content": "<audio></audio>",
+        "id": 78, "sender": "vendedor", "content": None,
         "sent_at": "2026-07-21T12:00:00.000000Z",
         "media_url": "/api/media/audio/voice.ogg", "wa_message_id": None,
-        "status": "PENDING",
+        "outbox_status": "queued",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
@@ -66,18 +69,16 @@ async def test_audio_send_stores_then_queues_without_waiting_for_evolution(monke
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await chats.send_audio(
-        "51999999999@s.whatsapp.net",
+        CHAT_ID,
         SendMediaRequest(content_type="audio/ogg", data_base64="QUJD"),
         USER,
     )
 
     assert result == queued
-    enqueue.assert_awaited_once_with("51999999999@s.whatsapp.net", [{
-        "content": None,
-        "media_url": "/api/media/audio/voice.ogg",
-        "payload": {"type": "audio", "media_url": "/api/media/audio/voice.ogg"},
-        "reply_to": None,
-    }], actor_user_id=USER.id)
+    [item] = enqueue.await_args.args[1]
+    assert item["message"] == {"type": "audio", "audio": {"voice": True}}
+    assert item["media"]["media_url"] == "/api/media/audio/voice.ogg"
+    assert item["media_url"] == "/api/media/audio/voice.ogg"
     broadcast.assert_awaited_once()
 
 
@@ -89,10 +90,10 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
     Por eso se convierte a Ogg/Opus antes de guardar, salvo que ya venga en
     ese formato."""
     queued = {
-        "id": 79, "sender": "vendedor", "content": "<audio></audio>",
+        "id": 79, "sender": "vendedor", "content": None,
         "sent_at": "2026-07-21T12:00:00.000000Z",
         "media_url": "/api/media/audio/voice.ogg", "wa_message_id": None,
-        "status": "PENDING",
+        "outbox_status": "queued",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
@@ -107,7 +108,7 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_audio(
-        "51999999999@s.whatsapp.net",
+        CHAT_ID,
         SendMediaRequest(content_type="audio/webm;codecs=opus", data_base64="QUJD"),
         USER,
     )
@@ -120,10 +121,10 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
     """Si ffmpeg no está disponible o falla, mejor mandar el audio original
     (aunque quizás no marque doble check) que no mandar nada."""
     queued = {
-        "id": 80, "sender": "vendedor", "content": "<audio></audio>",
+        "id": 80, "sender": "vendedor", "content": None,
         "sent_at": "2026-07-21T12:00:00.000000Z",
         "media_url": "/api/media/audio/voice.webm", "wa_message_id": None,
-        "status": "PENDING",
+        "outbox_status": "queued",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
@@ -141,7 +142,7 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_audio(
-        "51999999999@s.whatsapp.net",
+        CHAT_ID,
         SendMediaRequest(content_type="audio/webm;codecs=opus", data_base64="QUJD"),
         USER,
     )
@@ -153,9 +154,9 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
 async def test_location_send_returns_pending_job(monkeypatch):
     queued = {
         "id": 79, "sender": "vendedor",
-        "content": "<location>-12.1,-77.0</location>",
+        "content": None,
         "sent_at": "2026-07-21T12:00:00.000000Z", "media_url": None,
-        "wa_message_id": None, "status": "PENDING",
+        "wa_message_id": None, "outbox_status": "queued",
     }
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
@@ -164,12 +165,12 @@ async def test_location_send_returns_pending_job(monkeypatch):
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     result = await chats.send_location(
-        "51999999999@s.whatsapp.net",
+        CHAT_ID,
         SendLocationRequest(latitude=-12.1, longitude=-77.0),
         USER,
     )
 
-    assert result["status"] == "PENDING"
+    assert result["outbox_status"] == "queued"
     enqueue.assert_awaited_once()
 
 
@@ -178,13 +179,13 @@ async def test_retry_reuses_failed_message_instead_of_creating_a_duplicate(monke
     retried = {
         "id": 80, "sender": "vendedor", "content": "Hola",
         "sent_at": "2026-07-21T12:00:00.000000Z", "media_url": None,
-        "wa_message_id": None, "status": "PENDING",
+        "wa_message_id": None, "outbox_status": "queued",
     }
     retry = AsyncMock(return_value=retried)
     patch_chats(monkeypatch, "retry_failed_message", retry)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    result = await chats.retry_message("51999999999@s.whatsapp.net", 80)
+    result = await chats.retry_message(CHAT_ID, 80)
 
     assert result["id"] == 80
-    retry.assert_awaited_once_with("51999999999@s.whatsapp.net", 80)
+    retry.assert_awaited_once_with(CHAT_ID, 80)

@@ -144,32 +144,26 @@ class TestMatchesStaticConditions:
 
 
 class TestClassifyCustomerReply:
-    @pytest.mark.parametrize("message_type", ["image", "video", "ptv", "document", "view_once"])
+    @pytest.mark.parametrize("message_type", ["image", "video", "document"])
     def test_media_types_are_media_received(self, message_type):
-        assert classify_customer_reply(message_type, None) == "media_received"
+        assert classify_customer_reply(message_type) == "media_received"
 
     def test_text_is_message(self):
-        assert classify_customer_reply("text", None) == "message"
+        assert classify_customer_reply("text") == "message"
 
     def test_sticker_is_message_not_media(self):
         # Nadie responde con un sticker a "mandame una foto de la zona": no
         # cuenta como el adjunto que el flujo está esperando.
-        assert classify_customer_reply("sticker", None) == "message"
+        assert classify_customer_reply("sticker") == "message"
 
-    @pytest.mark.parametrize("original_type", [
-        "albumMessage", "associatedChildMessage", "secretEncryptedMessage",
-    ])
-    def test_known_whatsapp_envelopes_are_ignored(self, original_type):
-        # El sobre de un álbum o una acción cifrada sobre un mensaje propio:
-        # no es una respuesta del cliente, hay que seguir esperando.
-        assert classify_customer_reply("unsupported", {"original_type": original_type}) is None
+    def test_a_system_notice_is_not_a_reply(self):
+        # Un cambio de número no es algo que el cliente respondió.
+        assert classify_customer_reply("system") is None
 
-    def test_unknown_unsupported_still_counts_as_a_message(self):
-        # Un tipo que todavía no sabemos leer es señal real, no ruido conocido.
-        assert classify_customer_reply("unsupported", {"original_type": "liveLocationMessage"}) == "message"
-
-    def test_unsupported_without_payload_counts_as_a_message(self):
-        assert classify_customer_reply("unsupported", None) == "message"
+    @pytest.mark.parametrize("message_type", ["unknown", "unsupported", "poll_v9", None])
+    def test_types_without_renderer_still_count_as_a_message(self, message_type):
+        # Un tipo que todavía no sabemos mostrar es señal real del cliente.
+        assert classify_customer_reply(message_type) == "message"
 
 
 class TestNormalizeEdges:

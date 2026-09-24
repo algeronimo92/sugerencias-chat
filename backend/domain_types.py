@@ -73,6 +73,12 @@ class FlowConditionType(StrEnum):
     # (wsp_messages.analysis->>'summary'), no sobre el texto del cliente: es
     # lo que permite separar una foto de rostro de un comprobante de pago.
     MEDIA_ANALYSIS_CONTAINS = "media_analysis_contains"
+    # Sobre la estructura de Meta del mensaje, no sobre su texto: el id que
+    # eligió el cliente (button_reply.id, list_reply.id o el payload del
+    # botón de una plantilla) y el tipo literal (``order``,
+    # ``interactive/nfm_reply``...).
+    REPLY_ID_EQUALS = "reply_id_equals"
+    MESSAGE_TYPE_EQUALS = "message_type_equals"
     SELLER_EQUALS = "seller_equals"
     TAG_PRESENT = "tag_present"
     WHATSAPP_WINDOW_OPEN = "whatsapp_window_open"
@@ -161,25 +167,22 @@ class MessageSender(StrEnum):
     SELLER = "vendedor"
 
 
-class MessageStatus(StrEnum):
-    """Estados de entrega que reporta Evolution API para los mensajes salientes."""
+class MessageOutboxStatus(StrEnum):
+    """Estado interno de un envío en ``wsp_messages.outbox_status``.
 
-    PENDING = "PENDING"
-    FAILED = "FAILED"
-    DISCARDED = "DISCARDED"
-    SERVER_ACK = "SERVER_ACK"
-    DELIVERY_ACK = "DELIVERY_ACK"
-    READ = "READ"
-    PLAYED = "PLAYED"
-    # Meta Cloud API: el mensaje SE DESPACHÓ (tiene wa_message_id) pero Meta
-    # avisó después, de forma asíncrona, que no pudo entregarlo (fuera de
-    # ventana de 24h, plantilla no aprobada, número inválido, etc.). No tiene
-    # equivalente en Baileys. Deliberadamente distinto de "FAILED" —el estado
-    # que usa el outbox para un mensaje que nunca llegó a salir y sí admite
-    # reintento/descarte (ver message_outbox.retry_failed_message): acá ya
-    # existe un wa_message_id real, reintentar significaría mandar un mensaje
-    # nuevo, no reactivar el job.
-    REJECTED = "REJECTED"
+    Describe nuestra cola, no WhatsApp: lo que pasó del lado de Meta vive en
+    ``meta_status`` con el valor literal que informa Meta.
+    """
+
+    QUEUED = "queued"
+    SENDING = "sending"
+    SENT = "sent"
+    # Falló un intento y queda otro programado.
+    RETRYABLE_FAILED = "retryable_failed"
+    # Agotó los intentos o el error no admite reintento automático.
+    FAILED = "failed"
+    # Un fallo que alguien revisó y decidió no reenviar.
+    DISCARDED = "discarded"
 
 
 class TemplateType(StrEnum):
@@ -188,8 +191,10 @@ class TemplateType(StrEnum):
 
 
 class InteractiveType(StrEnum):
+    """Subtipo interactivo de una plantilla del CRM: el literal de Meta."""
+
     NONE = "none"
-    BUTTONS = "buttons"
+    BUTTON = "button"
     LIST = "list"
 
 

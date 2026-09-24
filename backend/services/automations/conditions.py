@@ -64,26 +64,20 @@ def _execution_message_context(execution: AutomationExecution) -> dict:
     """El mensaje del cliente que trajo la ejecución hasta el nodo actual: el
     que la reanudó de una pausa si lo hubo, y si no el que la disparó.
 
-    `message_type` y `analysis_summary` sólo existen para las reanudaciones —
-    el disparador no los guarda— así que toda condición que dependa de ellos
-    tiene que tolerar que falten."""
+    Los campos del contrato (`message_type`, `message_subtype`, `reply_id`)
+    pueden faltar en ejecuciones creadas antes de que se guardaran, así que
+    toda condición que dependa de ellos tiene que tolerar que falten."""
     state = execution.flow_state or {}
     resumed_message = state.get("message_context")
     if isinstance(resumed_message, dict) and "content" in resumed_message:
-        return {
-            "message_id": resumed_message.get("message_id"),
-            "content": resumed_message.get("content"),
-            "message_type": resumed_message.get("message_type"),
-            "analysis_summary": resumed_message.get("analysis_summary"),
-        }
-    payload = execution.event_payload or {}
-    return {
-        "message_id": payload.get("message_id"),
-        "content": payload.get("content"),
+        source = resumed_message
+    else:
         # Un flujo invocado recibe el contexto del padre en su event_payload,
-        # así que la condición sobre el adjunto también funciona ahí dentro.
-        "message_type": payload.get("message_type"),
-        "analysis_summary": payload.get("analysis_summary"),
+        # así que las condiciones sobre el mensaje también funcionan ahí.
+        source = execution.event_payload or {}
+    return {
+        field: source.get(field)
+        for field in ("message_id", "content", "message_type", "message_subtype", "reply_id", "analysis_summary")
     }
 
 
@@ -136,6 +130,20 @@ async def _matches_flow_condition(
             return False, "El mensaje no es un adjunto con descripción"
         matches = _normalize_reply_text(str(value)) in _normalize_reply_text(str(summary))
         return matches, f"La descripción del archivo {'contiene' if matches else 'no contiene'}: {value}"
+    if condition_type == FlowConditionType.REPLY_ID_EQUALS:
+        reply_id = context.get("reply_id")
+        if not reply_id:
+            return False, "El mensaje no es una respuesta a botones o listas"
+        matches = reply_id == value
+        return matches, f"La respuesta {'es' if matches else 'no es'} {value}"
+    if condition_type == FlowConditionType.MESSAGE_TYPE_EQUALS:
+        message_type = context.get("message_type")
+        if not message_type:
+            return False, "No hay un mensaje de cliente disponible en el contexto del flujo"
+        subtype = context.get("message_subtype")
+        literal = f"{message_type}/{subtype}" if subtype else message_type
+        matches = value in {message_type, literal}
+        return matches, f"El mensaje {'es' if matches else 'no es'} de tipo {value}"
     if condition_type == FlowConditionType.SELLER_EQUALS:
         matches = chat.get("vendedor_id") == value
         return matches, "Vendedor coincide" if matches else "Vendedor no coincide"

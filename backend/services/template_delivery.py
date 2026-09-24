@@ -2,9 +2,11 @@ from collections.abc import Iterable
 from typing import Any
 
 from services.message_media import mediatype_from_content_type
+from services.meta_contract import limit
+from services.meta_outbound import media_item, text_item
 
 
-MEDIA_CAPTION_MAX_LENGTH = 1024
+MEDIA_CAPTION_MAX_LENGTH = limit("caption")
 _NATIVE_CAPTION_MEDIA_TYPES = frozenset({"image", "video", "document"})
 
 
@@ -15,10 +17,9 @@ def _field(item: Any, name: str):
 def build_internal_template_items(text: str, attachments: Iterable[Any]) -> list[dict]:
     """Construye la cola de una plantilla interna con caption cuando aplica.
 
-    Evolution envía imagen/video/documento por ``sendMedia`` y acepta el
-    caption en ese mismo request. Audio no tiene caption nativo en WhatsApp;
-    si solo hay audios (o el texto supera el límite del caption), el contenido
-    conserva el envío separado de texto para no truncarlo ni perderlo.
+    Imagen, video y documento aceptan el caption en el mismo mensaje. Audio
+    no tiene caption en WhatsApp; si solo hay audios (o el texto supera el
+    límite del caption), el texto va como mensaje aparte para no truncarlo.
     """
     normalized_text = text.strip()
     media = list(attachments)
@@ -33,24 +34,15 @@ def build_internal_template_items(text: str, attachments: Iterable[Any]) -> list
 
     items: list[dict] = []
     if normalized_text and caption_index is None:
-        items.append({
-            "content": normalized_text,
-            "payload": {"type": "text", "text": normalized_text},
-        })
+        items.append(text_item(normalized_text))
 
     for index, attachment in enumerate(media):
-        media_url = _field(attachment, "media_url")
-        mediatype = mediatype_from_content_type(_field(attachment, "content_type"))
-        caption = normalized_text if index == caption_index else None
-        items.append({
-            "content": caption,
-            "media_url": media_url,
-            "payload": {
-                "type": "media",
-                "media_url": media_url,
-                "mediatype": mediatype,
-                "filename": _field(attachment, "filename"),
-                "caption": caption,
-            },
-        })
+        content_type = _field(attachment, "content_type")
+        items.append(media_item(
+            _field(attachment, "media_url"),
+            mediatype_from_content_type(content_type),
+            filename=_field(attachment, "filename"),
+            caption=normalized_text if index == caption_index else None,
+            content_type=content_type,
+        ))
     return items

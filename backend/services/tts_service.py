@@ -57,7 +57,7 @@ async def synthesize_speech(text: str) -> bytes:
     headers = {"xi-api-key": api_key}
 
     # output_format por default (mp3_44100_128) — mismo formato que ya
-    # maneja el resto del flujo de envío de audio (Evolution API, preview).
+    # maneja el resto del flujo de envío de audio (Meta, preview).
     started_at = perf_counter()
     try:
         response = await _client().post(url, json=payload, headers=headers)

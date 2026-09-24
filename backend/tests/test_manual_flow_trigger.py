@@ -15,7 +15,7 @@ from services.automation_service import start_manual_flow_execution
 from tests.conftest import automations_patch
 
 RULE_ID = 42
-LEAD_ID = "51999@s.whatsapp.net"
+LEAD_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
 
 
 def manual_rule(**overrides):

@@ -13,7 +13,7 @@ import pytest
 from domain_types import ScheduledMessageStatus
 from services import scheduled_message_service as sched
 
-CHAT_ID = "51999999999@s.whatsapp.net"
+CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
 
 
 class _SessionContext:

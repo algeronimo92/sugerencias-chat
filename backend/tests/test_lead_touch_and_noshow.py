@@ -18,19 +18,19 @@ from models.webhook_schemas import LeadTouchWebhookBody
 from tests.conftest import patch_chats, patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
-JID = "51987654321@s.whatsapp.net"
+WA_ID = "51987654321"
 ADMIN = SimpleNamespace(role="admin", id=1)
 
 
 @pytest.mark.asyncio
 async def test_lead_touch_increments_and_broadcasts(monkeypatch):
-    patch_webhooks(monkeypatch, "lead_id_for_jid", AsyncMock(return_value=LEAD_ID))
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
     record_touch = AsyncMock(return_value=True)
     patch_webhooks(monkeypatch, "record_lead_touch", record_touch)
     broadcast = AsyncMock()
     patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    result = await webhooks.lead_touch_webhook(LeadTouchWebhookBody(jid=JID))
+    result = await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     record_touch.assert_awaited_once_with(LEAD_ID)
     broadcast.assert_awaited_once_with(
@@ -40,13 +40,13 @@ async def test_lead_touch_increments_and_broadcasts(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_lead_touch_unknown_jid_returns_404(monkeypatch):
-    patch_webhooks(monkeypatch, "lead_id_for_jid", AsyncMock(return_value=None))
+async def test_lead_touch_unknown_identifier_returns_404(monkeypatch):
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=None))
     record_touch = AsyncMock()
     patch_webhooks(monkeypatch, "record_lead_touch", record_touch)
 
     with pytest.raises(HTTPException) as exc:
-        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(jid=JID))
+        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
     record_touch.assert_not_awaited()
@@ -55,11 +55,11 @@ async def test_lead_touch_unknown_jid_returns_404(monkeypatch):
 @pytest.mark.asyncio
 async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(monkeypatch):
     """El alias seguía apuntando a un lead que ya no existe (fusión, borrado)."""
-    patch_webhooks(monkeypatch, "lead_id_for_jid", AsyncMock(return_value=LEAD_ID))
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
     patch_webhooks(monkeypatch, "record_lead_touch", AsyncMock(return_value=False))
 
     with pytest.raises(HTTPException) as exc:
-        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(jid=JID))
+        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
 

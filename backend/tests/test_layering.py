@@ -52,7 +52,8 @@ def test_a_router_never_reaches_into_another_router():
 
 @pytest.mark.parametrize("module", [
     "services/message_outbox.py",
-    "services/outbound_kinds.py",
+    "services/meta_outbound.py",
+    "services/reactions.py",
     "services/automations/actions.py",
     "services/automations/engine.py",
     "services/automation_deps.py",
@@ -83,14 +84,16 @@ def test_no_router_speaks_sql():
 
 
 # Los flujos de conversación hablan con el canal; estos módulos son los únicos
-# que tratan con Meta directamente, y son de administración de la cuenta
-# (plantillas del catálogo, import de media, conexión de la cuenta), no de
-# mandar mensajes.
+# que tratan con Meta directamente, y son de administración de la cuenta o de
+# recepción (plantillas del catálogo, adjuntos entrantes, conexión de la
+# cuenta), no de mandar mensajes.
 META_ALLOWED = {
     "services/meta_channel.py",
     "services/template_validation.py",
     "routers/templates.py",
-    "routers/webhooks/media.py",
+    # Ingesta del webhook: baja los adjuntos entrantes y la plantilla completa
+    # cuando Meta avisa un cambio. No manda mensajes.
+    "services/meta_webhook/processor.py",
     # Completa el embedded signup (intercambia el code, resuelve el
     # phone_number_id): conexión/onboarding de la cuenta, no envío.
     "routers/settings.py",
@@ -148,7 +151,7 @@ def test_the_capabilities_module_names_no_provider_at_all():
     """Existe para que el resto no sepa qué canal está conectado: si nombra a
     uno, la respuesta miente en cuanto se conecte otro."""
     imported = _imported_modules(BACKEND / "services/whatsapp_capabilities.py")
-    proveedores = {"services.meta_service", "services.evolution_service"}
+    proveedores = {"services.meta_service"}
 
     assert not {name for name in imported if name in proveedores}
 
@@ -161,9 +164,3 @@ def test_automation_modules_never_import_their_facade():
     }
 
     assert violations == set()
-
-
-def test_lead_visibility_does_not_depend_on_the_evolution_client():
-    imported = _imported_modules(BACKEND / "services" / "store" / "chat_queries.py")
-
-    assert not any(name.startswith("services.evolution_service") for name in imported)

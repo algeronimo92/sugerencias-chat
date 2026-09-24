@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import copy
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -10,16 +11,24 @@ from sqlalchemy import exists, select, update
 from sqlalchemy.orm import aliased
 
 from db.models import MessageOutbox, ScheduledMessage, WspMessage
-from domain_types import MessageStatus, OutboxStatus, ScheduledMessageStatus
+from domain_types import MessageOutboxStatus, OutboxStatus, ScheduledMessageStatus
 from db.session import get_sessionmaker
 from services.lead_touch import touch_automated_reply_stmt, touch_last_read_stmt
-from services.media_storage import MediaNotFoundError
-from services.outbound_kinds import OutboundDelivery, outbound_message_fields, send_outbound
+from services.media_storage import MediaNotFoundError, image_to_sticker_webp, read_media_bytes, stat_media
+from services.meta_outbound import (
+    OutboundRejected,
+    message_subtype,
+    require_capabilities,
+    validate_message,
+    with_context,
+)
+from services.meta_webhook import metrics
+from services.store.message_serialization import serialize_message
 from services.task_service import complete_reply_tasks
-from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, describe_send_failure
+from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, SendReceipt, describe_send_failure
 from services.whatsapp_channels import current_channel
+from services.whatsapp_identity_service import WA_ID, add_identity_alias
 from services.ws_manager import manager
-from services.time_format import iso_utc_micros
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +42,9 @@ RECORD_SENT_RETRY_DELAYS = (0.0, 0.5, 1.0, 2.0, 4.0)
 # `_process_batch` procesa cada tanda con `asyncio.gather`: un solo job que se
 # cuelgue (sin lanzar excepción, sin timeout propio) nunca deja terminar ese
 # `gather`, así que el loop jamás vuelve a reclamar tandas nuevas -- todo el
-# outbox queda congelado, no solo ese mensaje. Encontrado en vivo con un envío
-# de plantilla con encabezado de imagen que se quedó en "processing" para
-# siempre. Distinto del barrido de `_recover_stale_jobs` (que repone jobs
-# huérfanos porque el proceso murió): este timeout cubre un proceso vivo con
-# un job colgado, para que el resto del outbox pueda seguir andando.
+# outbox queda congelado, no solo ese mensaje. Distinto del barrido de
+# `_recover_stale_jobs` (que repone jobs huérfanos porque el proceso murió):
+# este timeout cubre un proceso vivo con un job colgado.
 JOB_TIMEOUT_SECONDS = 90
 
 
@@ -56,6 +63,7 @@ def _rejection_outcome(exc: ChannelError) -> SendOutcome:
 SEND_FAILURE_OUTCOMES: tuple[tuple[type[Exception], Callable[[Exception], SendOutcome]], ...] = (
     (DeliveryUnconfirmedError, lambda _exc: SendOutcome.UNCONFIRMED),
     (ChannelError, _rejection_outcome),
+    (OutboundRejected, lambda _exc: SendOutcome.DEFINITIVE),
     (MediaNotFoundError, lambda _exc: SendOutcome.DEFINITIVE),
     (KeyError, lambda _exc: SendOutcome.DEFINITIVE),
     (ValueError, lambda _exc: SendOutcome.DEFINITIVE),
@@ -73,8 +81,8 @@ def is_final_failure(attempts: int, outcome: SendOutcome) -> bool:
     return outcome is not SendOutcome.RETRYABLE or attempts >= MAX_ATTEMPTS
 
 # El worker dormía IDLE_POLL_SECONDS entre rondas, así que un mensaje recién
-# encolado esperaba hasta un segundo antes de salir hacia Evolution aunque el
-# worker estuviera ocioso. Este aviso lo despierta en cuanto hay trabajo.
+# encolado esperaba hasta un segundo antes de salir aunque el worker estuviera
+# ocioso. Este aviso lo despierta en cuanto hay trabajo.
 #
 # Es in-process: vale mientras la API corra en un solo proceso. Con varias
 # réplicas hace falta LISTEN/NOTIFY de PostgreSQL; el poll se conserva como
@@ -107,36 +115,18 @@ async def enqueue_text_message(
     actor_user_id: int | None = None,
     dedupe_key: str | None = None,
 ) -> dict:
+    from services.meta_outbound import text_item
+
     return (await enqueue_messages(chat_id, [{
-        "content": text,
-        "payload": {"type": "text", "text": text},
+        **text_item(text),
         "reply_to": reply_to,
         "dedupe_key": dedupe_key,
     }], actor_user_id=actor_user_id))[0]
 
 
-def quoted_context(target: dict) -> dict:
-    """Contexto que Meta necesita para que la cita se vea en WhatsApp.
-
-    A diferencia de Evolution/Baileys (que exigía una key/message falsa con
-    el texto recortado del original), la Graph API de Meta solo pide el
-    wa_message_id del mensaje citado -ella misma resuelve el resto del lado
-    del cliente- ver meta_service.send_whatsapp_text."""
-    return {"wa_message_id": target["wa_message_id"]}
-
-
 def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
     return {
-        "id": message.id,
-        "sender": message.sender,
-        "content": message.content,
-        "sent_at": iso_utc_micros(message.sent_at),
-        "media_url": message.media_url,
-        "wa_message_id": message.wa_message_id,
-        "status": message.status,
-        "message_type": message.message_type,
-        "analysis": message.analysis,
-        "payload": message.payload,
+        **serialize_message(message),
         # La respuesta del POST ya trae la cita resuelta: la burbuja optimista
         # del frontend se reemplaza por esta sin perder el recuadro citado ni
         # esperar al siguiente refetch del historial.
@@ -144,6 +134,26 @@ def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
         "quoted_sender": reply_to["sender"] if reply_to else None,
         "quoted_content": reply_to.get("content") if reply_to else None,
     }
+
+
+async def prepare_items(items: list[dict]) -> list[dict]:
+    """Valida cada ítem contra la allowlist y las capacidades de la cuenta.
+
+    Se llama antes de abrir la transacción: un tipo que Meta no acepta se
+    rechaza (422 en la API) sin haber creado nada en el outbox.
+    """
+    prepared = []
+    for item in items:
+        reply_to = item.get("reply_to")
+        message = with_context(item["message"], reply_to["wa_message_id"] if reply_to else None)
+        try:
+            validate_message(message)
+            await require_capabilities(message)
+        except OutboundRejected as exc:
+            metrics.outbound_rejected.labels(reason=exc.reason).inc()
+            raise
+        prepared.append({**item, "message": message})
+    return prepared
 
 
 async def enqueue_messages(
@@ -154,8 +164,11 @@ async def enqueue_messages(
 ) -> list[dict]:
     """Guarda uno o más mensajes y sus trabajos en una sola transacción.
 
-    El payload contiene únicamente metadatos pequeños. Los archivos ya deben
-    estar en el almacenamiento multimedia y se referencian por ``media_url``.
+    Cada ítem trae ``message`` (el cuerpo Meta, ver services/meta_outbound) y
+    sus proyecciones para el CRM: ``content``, ``media_url`` y ``payload``.
+    Los adjuntos ya deben estar en el almacenamiento propio y viajan en
+    ``media``/``header_media`` como referencia; el worker los sube a Meta al
+    enviar.
 
     ``reply_to`` (opcional) es el mensaje citado ya resuelto por el llamador
     —ver ``db_service.fetch_reply_target``—; debe traer ``wa_message_id``.
@@ -169,6 +182,7 @@ async def enqueue_messages(
     """
     if not items:
         return []
+    items = await prepare_items(items)
     now = datetime.now(timezone.utc)
     queued: list[tuple[WspMessage, dict | None]] = []
     inserted = False
@@ -181,14 +195,10 @@ async def enqueue_messages(
             if existing is not None:
                 queued.append((existing, reply_to))
                 continue
-            payload = item["payload"]
-            if actor_user_id is not None:
-                payload = {**payload, "_actor_user_id": actor_user_id}
-            message_type, db_payload = outbound_message_fields(payload)
+            message_body = item["message"]
+            payload = item.get("payload")
             if item.get("forwarded"):
-                db_payload = {**(db_payload or {}), "forwarded": True}
-            if reply_to:
-                payload = {**payload, "quoted": quoted_context(reply_to)}
+                payload = {**(payload or {}), "forwarded": True}
             message = WspMessage(
                 chat_id=chat_id,
                 sender="vendedor",
@@ -197,17 +207,26 @@ async def enqueue_messages(
                 # mantienen el orden al mezclar mensajes en clientes antiguos.
                 sent_at=now + timedelta(microseconds=position),
                 media_url=item.get("media_url"),
-                status=MessageStatus.PENDING,
+                outbox_status=MessageOutboxStatus.QUEUED,
                 quoted_wa_message_id=reply_to["wa_message_id"] if reply_to else None,
-                message_type=message_type,
-                payload=db_payload,
+                message_type=message_body["type"],
+                message_subtype=message_subtype(message_body),
+                # Provisorio hasta el envío: el worker lo reemplaza por el
+                # cuerpo exacto que salió (con destinatario e ids de medios).
+                provider_payload=message_body,
+                payload=payload,
             )
             session.add(message)
             await session.flush()
             session.add(MessageOutbox(
                 message_id=message.id,
                 chat_id=chat_id,
-                payload=payload,
+                payload={
+                    "message": message_body,
+                    "media": item.get("media"),
+                    "header_media": item.get("header_media"),
+                    "actor_user_id": actor_user_id,
+                },
                 status=OutboxStatus.PENDING,
                 next_attempt_at=now,
                 dedupe_key=item.get("dedupe_key"),
@@ -229,6 +248,8 @@ async def enqueue_messages(
         )
         await session.execute(stmt)
         await session.commit()
+        for message, _reply_to in queued:
+            await session.refresh(message)
     notify_new_work()
     return [_message_dict(message, reply_to) for message, reply_to in queued]
 
@@ -255,7 +276,7 @@ async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
                 MessageOutbox.message_id == message_id,
                 MessageOutbox.chat_id == chat_id,
                 MessageOutbox.status == OutboxStatus.FAILED,
-                WspMessage.status == MessageStatus.FAILED,
+                WspMessage.outbox_status == MessageOutboxStatus.FAILED,
             )
             .with_for_update()
         )).scalar_one_or_none()
@@ -269,13 +290,14 @@ async def retry_failed_message(chat_id: str, message_id: int) -> dict | None:
         job.next_attempt_at = now
         job.last_error = None
         job.updated_at = now
-        message.status = MessageStatus.PENDING
+        message.outbox_status = MessageOutboxStatus.QUEUED
         message.wa_message_id = None
         # La cita se relee antes del commit para que la respuesta del reintento
         # traiga el mismo recuadro citado que traía el envío original; el
         # payload de la outbox ya la conserva intacta.
         reply_to = await _quoted_message(session, chat_id, message.quoted_wa_message_id)
         await session.commit()
+        await session.refresh(message)
         notify_new_work()
         return _message_dict(message, reply_to)
 
@@ -284,9 +306,9 @@ async def discard_failed_message(chat_id: str, message_id: int) -> dict | None:
     """Cierra un envío fallido que ya no vale la pena reintentar.
 
     Es la contraparte de ``retry_failed_message``: misma precondición (job
-    fallido con su mensaje en FAILED), decisión opuesta. El job sale de
+    fallido con su mensaje en ``failed``), decisión opuesta. El job sale de
     ``failed`` —por eso deja de contar en ``outbox_failed``, que solo mira ese
-    estado— y el mensaje queda en DISCARDED, sin botón de reintento.
+    estado— y el mensaje queda en ``discarded``, sin botón de reintento.
 
     No se borra nada, y el estado es distinto de "enviado" a propósito: el
     mensaje nunca llegó al cliente y el historial tiene que seguir diciéndolo.
@@ -300,7 +322,7 @@ async def discard_failed_message(chat_id: str, message_id: int) -> dict | None:
                 MessageOutbox.message_id == message_id,
                 MessageOutbox.chat_id == chat_id,
                 MessageOutbox.status == OutboxStatus.FAILED,
-                WspMessage.status == MessageStatus.FAILED,
+                WspMessage.outbox_status == MessageOutboxStatus.FAILED,
             )
             .with_for_update()
         )).scalar_one_or_none()
@@ -311,14 +333,15 @@ async def discard_failed_message(chat_id: str, message_id: int) -> dict | None:
             return None
         job.status = OutboxStatus.DISCARDED
         job.updated_at = now
-        message.status = MessageStatus.DISCARDED
+        message.outbox_status = MessageOutboxStatus.DISCARDED
         reply_to = await _quoted_message(session, chat_id, message.quoted_wa_message_id)
         await session.commit()
+        await session.refresh(message)
     await manager.broadcast({
         "type": "chats_updated",
         "chat_id": chat_id,
         "reason": "message_status",
-        "message_statuses": [{"id": message_id, "status": MessageStatus.DISCARDED}],
+        "message_statuses": [{"id": message_id, "outbox_status": MessageOutboxStatus.DISCARDED}],
     })
     return _message_dict(message, reply_to)
 
@@ -394,13 +417,78 @@ async def _claim_batch() -> list[dict]:
                 "payload": job.payload,
                 "attempts": job.attempts,
             })
+        if claimed:
+            await session.execute(
+                update(WspMessage)
+                .where(WspMessage.id.in_([job["message_id"] for job in claimed]))
+                .values(outbox_status=MessageOutboxStatus.SENDING)
+            )
         await session.commit()
     return claimed
 
 
-async def _record_sent(job: dict, delivery: OutboundDelivery) -> bool:
-    wa_id = delivery.receipt.provider_message_id
-    delivered_content = delivery.delivered_content
+async def _upload_stored_media(media: dict) -> str:
+    info = await asyncio.to_thread(stat_media, media["media_url"])
+    content = await asyncio.to_thread(read_media_bytes, media["media_url"])
+    content_type = info.content_type
+    filename = media.get("filename") or media["media_url"].rsplit("/", 1)[-1]
+    if media.get("as_sticker"):
+        content = await asyncio.to_thread(image_to_sticker_webp, content)
+        content_type = "image/webp"
+    return await current_channel().sender.upload_media(content, content_type, filename)
+
+
+async def build_final_message(job_payload: dict) -> dict:
+    """Completa el cuerpo guardado con lo que solo se sabe al enviar.
+
+    Sube el adjunto (o el encabezado de imagen de la plantilla) recién acá:
+    un id de Meta subido al encolar podría vencer mientras el trabajo espera.
+    Un trabajo sin ``message`` es de un formato anterior y no se envía.
+    """
+    if not isinstance(job_payload.get("message"), dict):
+        raise OutboundRejected("El trabajo del outbox no tiene un cuerpo Meta", reason="legacy_job")
+    message = copy.deepcopy(job_payload["message"])
+    validate_message(message)
+    media = job_payload.get("media")
+    if media:
+        root = message["type"]
+        message[root] = {**message.get(root, {}), "id": await _upload_stored_media(media)}
+    header_media = job_payload.get("header_media")
+    if header_media:
+        media_id = await _upload_stored_media(header_media)
+        template = message["template"]
+        template["components"] = [
+            {"type": "header", "parameters": [{"type": "image", "image": {"id": media_id}}]},
+            *(template.get("components") or []),
+        ]
+    validate_message(message, final=True)
+    await require_capabilities(message)
+    return message
+
+
+def _payload_matches(stored: dict, sent: dict) -> bool:
+    """El cuerpo enviado debe ser el guardado más lo que se completa al enviar:
+    el sobre (destinatario), el id del adjunto y el encabezado de la plantilla."""
+    envelope = {"messaging_product", "recipient_type", "to"}
+    sent_message = {key: value for key, value in sent.items() if key not in envelope}
+    root = sent_message.get("type")
+    nested = sent_message.get(root)
+    if isinstance(nested, dict) and "id" in nested and "id" not in (stored.get(root) or {}):
+        sent_message[root] = {key: value for key, value in nested.items() if key != "id"}
+    if root == "template":
+        stored_components = stored["template"].get("components") or []
+        sent_components = sent_message["template"].get("components") or []
+        if len(sent_components) == len(stored_components) + 1 and sent_components[0].get("type") == "header":
+            template = {**sent_message["template"]}
+            if sent_components[1:]:
+                template["components"] = sent_components[1:]
+            else:
+                template.pop("components", None)
+            sent_message["template"] = template
+    return sent_message == stored
+
+
+async def _record_sent(job: dict, receipt: SendReceipt) -> bool:
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:
         await session.execute(
@@ -408,13 +496,14 @@ async def _record_sent(job: dict, delivery: OutboundDelivery) -> bool:
             .where(MessageOutbox.id == job["id"])
             .values(status=OutboxStatus.SENT, attempts=job["attempts"] + 1, last_error=None, updated_at=now)
         )
-        message_values = {"wa_message_id": wa_id, "status": MessageStatus.SERVER_ACK}
-        if delivered_content is not None:
-            message_values["content"] = delivered_content
         await session.execute(
             update(WspMessage)
             .where(WspMessage.id == job["message_id"])
-            .values(**message_values)
+            .values(
+                wa_message_id=receipt.provider_message_id,
+                outbox_status=MessageOutboxStatus.SENT,
+                provider_payload=receipt.sent_body,
+            )
         )
         scheduled_result = await session.execute(
             update(ScheduledMessage)
@@ -426,7 +515,7 @@ async def _record_sent(job: dict, delivery: OutboundDelivery) -> bool:
 
 
 async def _announce_sent(job: dict, scheduled_updated: bool) -> None:
-    actor_user_id = job["payload"].get("_actor_user_id")
+    actor_user_id = job["payload"].get("actor_user_id")
     completed_tasks = 0
     if actor_user_id is not None:
         try:
@@ -441,7 +530,7 @@ async def _announce_sent(job: dict, scheduled_updated: bool) -> None:
             "type": "chats_updated",
             "chat_id": job["chat_id"],
             "reason": "outbound_message",
-            "message_statuses": [{"id": job["message_id"], "status": MessageStatus.SERVER_ACK}],
+            "message_statuses": [{"id": job["message_id"], "outbox_status": MessageOutboxStatus.SENT}],
         })
         if completed_tasks:
             await manager.broadcast({"type": "tasks_updated"})
@@ -455,11 +544,11 @@ async def _announce_sent(job: dict, scheduled_updated: bool) -> None:
         logger.exception("No se pudo avisar el envío del mensaje %s", job["message_id"])
 
 
-async def _persist_sent(job: dict, delivery: OutboundDelivery) -> bool:
+async def _persist_sent(job: dict, receipt: SendReceipt) -> bool:
     for delay in RECORD_SENT_RETRY_DELAYS:
         await asyncio.sleep(delay)
         try:
-            scheduled_updated = await _record_sent(job, delivery)
+            scheduled_updated = await _record_sent(job, receipt)
         except Exception:
             logger.warning(
                 "WhatsApp aceptó el mensaje %s pero no se pudo registrar como enviado",
@@ -480,7 +569,11 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
     exhausted = is_final_failure(attempts, outcome)
     now = datetime.now(timezone.utc)
     delay = timedelta(seconds=2 ** attempts)
-    error = describe_send_failure(exc, "enviar el mensaje a WhatsApp")[:2000]
+    error = describe_send_failure(exc, "enviar el mensaje a WhatsApp")
+    if isinstance(exc, OutboundRejected):
+        error = str(exc)
+        metrics.outbound_rejected.labels(reason=exc.reason).inc()
+    error = error[:2000]
     scheduled_updated = False
     async with get_sessionmaker()() as session:
         job_result = await session.execute(
@@ -497,12 +590,14 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
         if not job_result.rowcount:
             await session.rollback()
             return
-        if exhausted:
-            await session.execute(
-                update(WspMessage)
-                .where(WspMessage.id == job["message_id"])
-                .values(status=MessageStatus.FAILED)
+        await session.execute(
+            update(WspMessage)
+            .where(WspMessage.id == job["message_id"])
+            .values(
+                outbox_status=MessageOutboxStatus.FAILED if exhausted else MessageOutboxStatus.RETRYABLE_FAILED
             )
+        )
+        if exhausted:
             scheduled_result = await session.execute(
                 update(ScheduledMessage)
                 .where(ScheduledMessage.queued_message_id == job["message_id"])
@@ -515,7 +610,7 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
             "type": "chats_updated",
             "chat_id": job["chat_id"],
             "reason": "message_status",
-            "message_statuses": [{"id": job["message_id"], "status": MessageStatus.FAILED}],
+            "message_statuses": [{"id": job["message_id"], "outbox_status": MessageOutboxStatus.FAILED}],
         })
         if scheduled_updated:
             await manager.broadcast({
@@ -525,12 +620,22 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
             })
 
 
+async def _learn_recipient(job: dict, receipt: SendReceipt) -> None:
+    """Si Meta informa otro ``wa_id`` para el destinatario (por ejemplo, un
+    número con formato local que Meta normaliza), se suma como alias."""
+    to = receipt.sent_body.get("to")
+    if receipt.recipient_wa_id and receipt.recipient_wa_id != to:
+        with contextlib.suppress(Exception):
+            await add_identity_alias(job["chat_id"], "", WA_ID, receipt.recipient_wa_id)
+
+
 async def _process_job(job: dict) -> None:
     started_at = perf_counter()
     payload = job["payload"]
     try:
-        delivery = await asyncio.wait_for(
-            send_outbound(current_channel().sender, job["chat_id"], payload),
+        message = await build_final_message(payload)
+        receipt = await asyncio.wait_for(
+            current_channel().sender.send(job["chat_id"], message),
             timeout=JOB_TIMEOUT_SECONDS,
         )
     except asyncio.CancelledError:
@@ -545,12 +650,16 @@ async def _process_job(job: dict) -> None:
         )
         await _mark_failed(job, exc, outcome)
         return
+    if not _payload_matches(payload["message"], receipt.sent_body):
+        metrics.outbound_payload_mismatch.inc()
+        logger.warning("El cuerpo enviado del mensaje %s difiere del registrado en el outbox", job["message_id"])
     logger.info(
         "Mensaje %s del outbox (%s) enviado vía Meta en %.0fms",
-        job["message_id"], payload.get("type"),
+        job["message_id"], payload["message"].get("type"),
         (perf_counter() - started_at) * 1000,
     )
-    await asyncio.shield(_persist_sent(job, delivery))
+    await asyncio.shield(_persist_sent(job, receipt))
+    await _learn_recipient(job, receipt)
 
 
 async def _process_batch(jobs: list[dict]) -> None:

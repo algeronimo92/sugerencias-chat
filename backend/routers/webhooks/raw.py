@@ -3,7 +3,6 @@ from fastapi import Depends, Header, HTTPException, Query
 from services.db_service import (
     fetch_lead_raw,
     fetch_last_wa_message_id,
-    fetch_message_by_wa_id,
     fetch_messages_raw,
 )
 from models.webhook_schemas import RagSearchWebhookBody
@@ -63,14 +62,6 @@ async def lead_messages_raw_webhook(chat_id: str, limit: int = 500):
     ventas, workflow `sugerencia`): últimos `limit` mensajes de un chat,
     crudos y más recientes primero."""
     return {"messages": await fetch_messages_raw(chat_id, limit=limit)}
-
-
-@router.get("/message-by-wa-id-raw")
-async def message_by_wa_id_raw_webhook(wa_message_id: str):
-    """Reemplaza al nodo Postgres `buscar mensaje existente1` (chequeo de
-    duplicado antes de insertar un mensaje entrante). `{}` si no existe."""
-    message = await fetch_message_by_wa_id(wa_message_id)
-    return message or {}
 
 
 @router.get("/last-message-raw")

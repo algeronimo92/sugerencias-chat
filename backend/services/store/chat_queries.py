@@ -95,15 +95,11 @@ def _has_tag_condition(tag_id: int):
 
 
 async def _visible_lead_condition():
-    """Un lead solo se lista si tiene un alias de la conexión de WhatsApp
-    activa (o el `"*"` sintético de los leads creados a mano).
+    """Un lead solo se lista si tiene un identificador visto en el número de
+    WhatsApp activo (o el `"*"` de los leads creados a mano).
 
-    Al migrar de instancia (nuevo número/reconexión), `_resolve_once` crea
-    leads nuevos a propósito en vez de fusionarlos con los de la instancia
-    anterior — ver `services.whatsapp_identity_service`. Sin este filtro esos
-    leads viejos quedan mezclados para siempre con los de la instancia en
-    uso. Si no hay ninguna instancia configurada no se filtra nada: no hay
-    forma de saber cuál es "la activa".
+    Si no hay ningún número configurado no se filtra nada: no hay forma de
+    saber cuál es "el activo".
     """
     scope = await connection_scope()
     if scope is None:
@@ -112,7 +108,7 @@ async def _visible_lead_condition():
         select(WhatsAppIdentity.id)
         .where(
             WhatsAppIdentity.lead_id == Lead.id,
-            WhatsAppIdentity.instance.in_(scope),
+            WhatsAppIdentity.phone_number_id.in_(scope),
         )
         .correlate(Lead)
     )
@@ -143,13 +139,13 @@ def _unaccent_ilike(column, pattern: str):
 
 
 def _identity_conditions(search: str) -> list:
-    """Nombre/teléfono/JID del lead: lo que busca el usuario la mayoría de
-    las veces, y lo que WhatsApp muestra primero."""
+    """Nombre, teléfono o identificador de WhatsApp del lead: lo que busca el
+    usuario la mayoría de las veces, y lo que WhatsApp muestra primero."""
     pattern = f"%{_escape_like(search)}%"
     conditions = [
         exists(select(WhatsAppIdentity.id).where(
             WhatsAppIdentity.lead_id == Lead.id,
-            WhatsAppIdentity.jid.ilike(pattern, escape="\\"),
+            WhatsAppIdentity.identifier.ilike(pattern, escape="\\"),
         )),
         Lead.telefono.ilike(pattern, escape="\\"),
         Lead.telefono_secundario.ilike(pattern, escape="\\"),
@@ -170,7 +166,8 @@ def _identity_conditions(search: str) -> list:
         )
         conditions.append(exists(select(WhatsAppIdentity.id).where(
             WhatsAppIdentity.lead_id == Lead.id,
-            func.regexp_replace(WhatsAppIdentity.jid, r"\D", "", "g").like(digits_pattern),
+            WhatsAppIdentity.kind == "wa_id",
+            WhatsAppIdentity.identifier.like(digits_pattern),
         )))
     return conditions
 

@@ -1,12 +1,11 @@
 from fastapi import Depends, Header, HTTPException
-from services.db_service import ensure_lead_stub, record_lead_touch, update_lead, update_lead_stage
-from services.whatsapp_identity_service import lead_id_for_jid
+from services.db_service import record_lead_touch, update_lead, update_lead_stage
+from services.whatsapp_identity_service import lead_id_for_identifier
 from services.ws_manager import manager
 from services.automation_service import notify_automations_scheduled
 from models.webhook_schemas import (
     LeadTouchWebhookBody,
     LeadStageWebhookBody,
-    EnsureLeadWebhookBody,
     LeadAnalysisWebhookBody,
     LeadAnalysisResultWebhookBody,
     LeadInboundActivityWebhookBody,
@@ -34,9 +33,9 @@ async def lead_touch_webhook(body: LeadTouchWebhookBody):
     mensaje de seguimiento (recordatorio de cita, cadencia de nutrición,
     etc.) — incrementa `leads.toques_seguimiento` y actualiza
     `fecha_ultimo_toque`."""
-    lead_id = await lead_id_for_jid(body.jid)
+    lead_id = await lead_id_for_identifier(body.identifier)
     if lead_id is None or not await record_lead_touch(lead_id):
-        raise HTTPException(status_code=404, detail="No hay un lead asociado a ese JID")
+        raise HTTPException(status_code=404, detail="No hay un lead asociado a ese identificador")
     await manager.broadcast({"type": "chats_updated", "chat_id": lead_id, "reason": "lead_updated"})
     return {"status": "ok", "chat_id": lead_id}
 
@@ -104,15 +103,6 @@ async def lead_stage_webhook(
         await _broadcast_lead_updated(body.chat_id)
 
     return {"status": "ok", "changed": result["changed"], "stage": stage}
-
-
-@router.post("/ensure-lead")
-async def ensure_lead_webhook(body: EnsureLeadWebhookBody):
-    """Reemplaza al nodo Postgres `create lead`: alta idempotente de un lead
-    mínimo cuando llega un mensaje de un chat todavía no registrado."""
-    return await ensure_lead_stub(
-        body.chat_id, _parse_iso_datetime(body.ultimo_mensaje_at), body.origen
-    )
 
 
 @router.post("/lead-analysis")

@@ -1,4 +1,3 @@
-import re
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select, true
@@ -47,11 +46,6 @@ def _activity_safe(values: dict) -> dict:
         key: value.isoformat() if isinstance(value, (date, datetime)) else value
         for key, value in values.items()
     }
-
-
-def _phone_to_jid(phone: str) -> str:
-    digits = re.sub(r"\D", "", phone)
-    return f"{digits}@s.whatsapp.net"
 
 
 def _row_to_chat(row, tags: list[dict] | None = None) -> dict:

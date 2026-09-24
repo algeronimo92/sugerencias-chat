@@ -103,7 +103,7 @@ def get_media_file(
 
 @router.post("/upload")
 async def upload_media(body: MediaUpload):
-    """Llamado por n8n con el base64 del archivo (imagen/video/audio) justo después de descargarlo de Evolution API."""
+    """Llamado por n8n con el base64 de un archivo (imagen/video/audio) para guardarlo en el almacenamiento propio."""
     try:
         media_url = await asyncio.to_thread(save_media_file, body.content_type, body.data_base64)
     except ValueError as e:

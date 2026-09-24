@@ -13,7 +13,6 @@ from services.store.common import (  # noqa: F401
     _fmt_ts,
     _json_safe_row,
     _parse_ts,
-    _phone_to_jid,
     _row_to_chat,
     _tag_dict,
     _tags_by_lead,
@@ -69,31 +68,22 @@ from services.store.suggestions import (  # noqa: F401
     get_suggestion_status,
 )
 from services.store.messages import (  # noqa: F401
-    _INSERT_MESSAGE_COLUMNS,
     _message_notification_payload,
     _message_notification_stmt,
-    count_wa_messages,
-    existing_wa_message_ids,
     fetch_chat_signature,
     fetch_last_wa_message_id,
     fetch_latest_message_cursor,
-    fetch_message_ad_payload,
     fetch_message_by_wa_id,
     fetch_messages_after_cursor,
-    insert_message,
-    update_message_payload,
-    update_message_status,
 )
 from services.store.read_state import (  # noqa: F401
     fetch_total_unread_chat_count,
     fetch_unread_wa_message_ids,
     mark_chat_read,
-    mark_chat_read_from_whatsapp_receipt,
     mark_chat_unread,
     record_lead_touch,
 )
 from services.store.message_history import (  # noqa: F401
-    ALBUM_ENVELOPE_TYPES,
     JUMP_TO_MESSAGE_MAX,
     _resolve_quoted_messages,
     fetch_latest_customer_message_target,
@@ -110,22 +100,9 @@ from services.store.message_edits import (  # noqa: F401
     _mask_deleted,
     _message_payload,
     fetch_pinned_messages,
-    mark_message_deleted,
-    merge_poll_results_payload,
     pin_message,
     set_message_reaction,
     unpin_message,
-    update_message_content,
-    update_message_content_from_secret,
-    update_poll_results,
-)
-from services.store.outgoing_reconcile import (  # noqa: F401
-    OUTGOING_ANALYSIS_WINDOW,
-    OUTGOING_FUZZY_RECONCILE_TYPES,
-    OUTGOING_RECONCILE_WINDOW,
-    _fill_media_dimensions,
-    attach_outgoing_analysis,
-    reconcile_outgoing_message,
 )
 from services.store.catalogs import (  # noqa: F401
     _rename_service_references,

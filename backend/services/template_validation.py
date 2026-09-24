@@ -26,12 +26,12 @@ from services.meta_service import (
     describe_template_error,
     upload_header_media,
 )
+from services.meta_contract import limit
 from services.whatsapp_rules import (
-    LIMITS as INTERACTIVE_LIMITS,
     MAX_TEXT_LENGTH,
     InteractiveRuleError,
     normalize_interactive_config,
-    resolve_interactive_footer,
+    resolve_default_footer,
 )
 
 
@@ -148,7 +148,7 @@ def normalize_common_fields(values: dict) -> None:
         )
 
     interactive = values.get("template_type", "internal") == "internal" and values.get("interactive_type") != "none"
-    content_limit = INTERACTIVE_LIMITS.body if interactive or values.get("template_type") == "official" else MAX_TEXT_LENGTH
+    content_limit = limit("body") if interactive or values.get("template_type") == "official" else MAX_TEXT_LENGTH
     if len(content) > content_limit:
         raise TemplateValidationError(
             f"El contenido admite máximo {content_limit} caracteres para este tipo de plantilla"
@@ -161,7 +161,7 @@ async def _validate_interactive_config(values: dict) -> None:
     interactive_type = values.get("interactive_type") or "none"
     config = values.get("interactive_config") or {}
     try:
-        footer = "" if interactive_type == "none" else await resolve_interactive_footer(interactive_type, config)
+        footer = "" if interactive_type == "none" else await resolve_default_footer(config)
         values["interactive_config"] = normalize_interactive_config(interactive_type, config, footer)
     except InteractiveRuleError as exc:
         raise TemplateValidationError(str(exc)) from exc
@@ -361,13 +361,10 @@ async def validate_template_values(values: dict) -> dict:
 
 async def build_meta_components(values: dict) -> list[dict]:
     """Arma el `components` que espera la Graph API de Meta a partir de los
-    campos ya validados de una plantilla oficial. Evolution lo pasa tal cual
-    (confirmado en `template.service.ts` 2.3.7), así que el formato acá tiene
-    que ser exactamente el de Meta, no el interno de esta app.
+    campos ya validados de una plantilla oficial.
 
     Un encabezado de imagen exige que Meta ya tenga el archivo antes de crear
-    la plantilla (el `header_handle` del resumable upload) — Evolution no
-    tiene equivalente de esto, así que acá se sube directo a la Graph API."""
+    la plantilla (el `header_handle` del resumable upload): se sube acá."""
     components: list[dict] = []
     header_type = values.get("official_header_type")
     if header_type == "text" and values.get("official_header_text"):

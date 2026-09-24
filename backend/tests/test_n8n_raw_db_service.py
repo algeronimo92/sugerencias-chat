@@ -80,10 +80,10 @@ async def test_fetch_lead_raw_json_safes_datetime_and_drops_bytes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fetch_messages_raw_orders_and_strips_secret(monkeypatch):
+async def test_fetch_messages_raw_keeps_the_order_of_the_query(monkeypatch):
     rows = [
-        {"id": 2, "chat_id": LEAD_ID, "content": "b", "message_secret": b"shh"},
-        {"id": 1, "chat_id": LEAD_ID, "content": "a", "message_secret": None},
+        {"id": 2, "chat_id": LEAD_ID, "content": "b"},
+        {"id": 1, "chat_id": LEAD_ID, "content": "a"},
     ]
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_ExecResult(rows=rows))
@@ -92,7 +92,6 @@ async def test_fetch_messages_raw_orders_and_strips_secret(monkeypatch):
     result = await db_service.fetch_messages_raw(LEAD_ID, limit=500)
 
     assert [r["id"] for r in result] == [2, 1]
-    assert all("message_secret" not in r for r in result)
 
 
 @pytest.mark.asyncio
