@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
-from db.models import LeadStage, LeadTag, MediaAsset, MessageTemplate, User
+from db.models import LeadTag, MediaAsset, MessageTemplate, User
 from db.session import get_sessionmaker
 from domain_types import (
     AutomationActionType,
@@ -14,8 +14,9 @@ from domain_types import (
     TaskType,
     WaitAnyConditionKind,
 )
-from services.automation_rules import normalize_conditions, normalize_flow_position
+from services.automation_rules import is_stage_key, normalize_conditions, normalize_flow_position
 from services.automation_scheduling import TRIGGER_TYPES
+from services.lead_stages import InvalidLeadStageError, verify_stage_keys
 from services.automations.common import (
     ACTION_TYPES,
     AUTOMATION_RECIPIENTS,
@@ -46,6 +47,8 @@ class ActionReferences:
     tags: set[int] = field(default_factory=set)
     templates: set[int] = field(default_factory=set)
     media_assets: set[int] = field(default_factory=set)
+    # Etapas destino de "cambiar etapa": tienen que existir y estar activas.
+    stages: set[str] = field(default_factory=set)
 
 
 def _normalize_create_task(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
@@ -89,8 +92,9 @@ def _normalize_tag_action(action_type: str, raw: dict, position: int, refs: Acti
 
 def _normalize_change_stage(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     stage = str(raw.get("stage") or "")
-    if stage not in {item.value for item in LeadStage}:
+    if not is_stage_key(stage):
         raise ValueError(f"Acción {position}: etapa inválida")
+    refs.stages.add(stage)
     return {"type": action_type, "stage": stage}
 
 
@@ -243,6 +247,17 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
     if normalized_conditions["tag_id"]:
         refs.tags.add(normalized_conditions["tag_id"])
     async with get_sessionmaker()() as session:
+        try:
+            # Etapas del negocio: el destino de "cambiar etapa" debe estar
+            # activo; la condición solo tiene que existir (filtrar por una
+            # etapa desactivada que todavía tiene leads es válido).
+            await verify_stage_keys(session, refs.stages, active_only=True)
+            if normalized_conditions["stage"]:
+                await verify_stage_keys(
+                    session, {normalized_conditions["stage"]}, active_only=False
+                )
+        except InvalidLeadStageError as exc:
+            raise ValueError(f"Etapa inválida: {exc}") from exc
         if refs.users:
             found = set((await session.execute(
                 select(User.id).where(User.id.in_(refs.users), User.is_active.is_(True))
@@ -408,7 +423,9 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
     tag_id = None
     if condition_type == FlowConditionType.STAGE_EQUALS:
         value = str(value or "")
-        if value not in {stage.value for stage in LeadStage}:
+        # La existencia en el negocio la verifica flow_validation con el
+        # resto de las referencias del flujo.
+        if not is_stage_key(value):
             raise ValueError(f"Condición {position}: etapa inválida")
     elif condition_type in {
         FlowConditionType.ORIGIN_CONTAINS,

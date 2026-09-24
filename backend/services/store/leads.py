@@ -6,10 +6,11 @@ from sqlalchemy import exists, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from db.models import Lead, LeadActivity, LeadStage, User, WhatsAppIdentity, WspMessage
+from db.models import Lead, LeadActivity, User, WhatsAppIdentity, WspMessage
 from db.session import get_sessionmaker
-from domain_types import AutomationTrigger
+from domain_types import INITIAL_LEAD_STAGE, AutomationTrigger
 from services.automation_scheduling import schedule_automation_event_in_session
+from services.lead_stages import load_stage_rules, require_destination
 from services.store.chat_queries import (
     fetch_chat,
 )
@@ -79,7 +80,7 @@ async def _schedule_stage_automations(
 
 async def update_lead_stage(
     chat_id: str,
-    stage: LeadStage,
+    stage: str,
     actor_type: str = "system",
     actor_user_id: int | None = None,
     metadata: dict | None = None,
@@ -96,17 +97,23 @@ async def update_lead_stage(
             return None
         changed = old_stage != stage
         if changed:
+            # Solo se valida al mover: un lead puede seguir en una etapa que
+            # el negocio desactivó, pero nadie (usuario, automatización o
+            # analista) puede mandarlo a una inactiva o inexistente.
+            rules = await load_stage_rules(session, {old_stage, stage})
+            target = require_destination(rules, stage)
+            previous = rules.get(old_stage)
             # La razón de pérdida describe la situación actual del lead, no su
-            # historia: entra al pasar a `perdido` y se limpia al salir. Lo
-            # dicho queda igual en lead_activity (metadata.reason), que es lo
-            # que muestra el hilo del chat.
+            # historia: entra al pasar a una etapa `lost` y se limpia al salir
+            # hacia una que no lo es. Lo dicho queda igual en lead_activity
+            # (metadata.reason), que es lo que muestra el hilo del chat.
             extra: dict = {}
             razon = (razon_perdido or "").strip()
-            if stage == LeadStage.perdido:
+            if target.is_lost:
                 if razon:
                     extra["razon_perdido"] = razon
                     metadata = {**(metadata or {}), "reason": razon}
-            elif old_stage == LeadStage.perdido:
+            elif previous is not None and previous.is_lost:
                 extra["razon_perdido"] = None
             await session.execute(
                 update(Lead)
@@ -136,8 +143,8 @@ async def update_lead_stage(
                         "sent_at": _fmt_ts(trigger["sent_at"]),
                     },
                 }
-            old_value = {"stage": old_stage.value if isinstance(old_stage, LeadStage) else old_stage}
-            new_value = {"stage": stage.value}
+            old_value = {"stage": old_stage}
+            new_value = {"stage": stage}
             activity_id = (await session.execute(_activity_insert(
                 chat_id, AutomationTrigger.STAGE_CHANGED, actor_type, actor_user_id,
                 old_value, new_value, metadata,
@@ -151,7 +158,7 @@ async def update_lead_stage(
     if not include_chat:
         return {
             "chat_id": chat_id,
-            "stage": stage.value,
+            "stage": stage,
             "changed": changed,
             "automations_scheduled": automations_scheduled,
         }
@@ -306,7 +313,7 @@ async def ensure_lead_stub(
     stmt = (
         pg_insert(Lead)
         .values(
-            id=chat_id, estado=LeadStage.nuevo, origen=origen, conversacion_version=0,
+            id=chat_id, estado=INITIAL_LEAD_STAGE, origen=origen, conversacion_version=0,
             ultimo_mensaje_at=ultimo_mensaje_at,
         )
         .on_conflict_do_nothing(index_elements=[Lead.id])

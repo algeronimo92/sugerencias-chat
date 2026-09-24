@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { Chat, LeadActivity, Tag } from '../types'
 
-export function useTags(includeInactive = false) {
+export function useTags(includeInactive = false, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['tags', { includeInactive }],
     queryFn: async () => (await client.get<Tag[]>(includeInactive ? '/api/tags/all' : '/api/tags')).data,
+    enabled,
     staleTime: 60_000,
   })
 }

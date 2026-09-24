@@ -30,6 +30,40 @@ export function useSaveSettings() {
   })
 }
 
+export interface BusinessTimezoneItem {
+  id: string
+  label: string
+  offset_minutes: number
+}
+
+export function useBusinessTimezones(enabled = true) {
+  return useQuery({
+    queryKey: ['settings', 'timezones'],
+    queryFn: async () => (
+      await client.get<BusinessTimezoneItem[]>('/api/settings/timezones')
+    ).data,
+    enabled,
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export interface MetaPublicConfig {
+  app_id: string | null
+  config_id: string | null
+}
+
+async function fetchMetaPublicConfig(): Promise<MetaPublicConfig> {
+  const { data } = await client.get<MetaPublicConfig>('/api/settings/meta/public-config')
+  return data
+}
+
+export function useMetaPublicConfig() {
+  return useQuery({
+    queryKey: ['platform-meta-public-config'],
+    queryFn: fetchMetaPublicConfig,
+  })
+}
+
 export interface MetaEmbeddedSignupPayload {
   code: string
   waba_id: string

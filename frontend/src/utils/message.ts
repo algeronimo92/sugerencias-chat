@@ -49,6 +49,7 @@ const KIND_META: Record<
   reaction: { icon: SmilePlus, label: "Reacción" },
   pin: { icon: Pin, label: "Mensaje fijado" },
   interactive: { icon: List, label: "Interactivo" },
+  button: { icon: CornerUpLeft, label: "Respuesta" },
   template: { icon: Megaphone, label: "Plantilla" },
   order: { icon: ReceiptText, label: "Pedido" },
   product: { icon: ShoppingBag, label: "Producto" },

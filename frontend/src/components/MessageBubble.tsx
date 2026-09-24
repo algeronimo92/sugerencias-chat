@@ -236,7 +236,7 @@ function DeletedBody({ isVendedor }: { isVendedor: boolean }) {
 
 /** Una burbuja del hilo: texto, media, ubicación, documento o plantilla, con
  *  su cita, su hora y sus tiques de entrega. El cuerpo lo elige el registro
- *  de renderers por tipo (messageBody). */
+ *  de renderers por tipo (MessageBody). */
 export function MessageBubble({
   chat,
   message: m,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Link2, Loader2 } from "lucide-react";
-import { useCompleteMetaEmbeddedSignup } from "../hooks/useSettings";
+import { useCompleteMetaEmbeddedSignup, useMetaPublicConfig } from "../hooks/useSettings";
 import { useFacebookSdk } from "../hooks/useFacebookSdk";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
 import { extractErrorMessage } from "../utils/errors";
@@ -10,10 +10,11 @@ interface Props {
   onGoToClaves: () => void;
 }
 
-const META_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID as string | undefined;
-const META_CONFIG_ID = import.meta.env.VITE_FACEBOOK_CONFIG_ID as
-  | string
-  | undefined;
+// Compatibilidad de despliegue durante la migración al panel global. Los
+// valores del backend ganan; estas variables se pueden retirar cuando la
+// configuración de plataforma ya esté cargada.
+const LEGACY_META_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID as string | undefined;
+const LEGACY_META_CONFIG_ID = import.meta.env.VITE_FACEBOOK_CONFIG_ID as string | undefined;
 
 interface EmbeddedSignupData {
   phone_number_id?: string;
@@ -35,7 +36,10 @@ function isEmbeddedSignupMessage(
 // desconectarlo de ahí. Completa las mismas credenciales que se pueden
 // tipear a mano en la pestaña Claves (meta_access_token/waba_id/phone_number_id).
 function MetaEmbeddedSignupPanel() {
-  const sdkReady = useFacebookSdk(META_APP_ID);
+  const { data: metaConfig, isLoading: isLoadingMetaConfig } = useMetaPublicConfig();
+  const metaAppId = metaConfig?.app_id || LEGACY_META_APP_ID;
+  const metaConfigId = metaConfig?.config_id || LEGACY_META_CONFIG_ID;
+  const sdkReady = useFacebookSdk(metaAppId);
   const { data: whatsappStatus } = useWhatsappStatus();
   const isLinked = whatsappStatus?.state === "open";
   const { mutate: complete, isPending } = useCompleteMetaEmbeddedSignup();
@@ -104,7 +108,7 @@ function MetaEmbeddedSignupPanel() {
   }, []);
 
   function handleLogin() {
-    if (!window.FB || !META_CONFIG_ID) return;
+    if (!window.FB || !metaConfigId) return;
     setError(null);
     setSuccess(false);
     window.FB.login(
@@ -119,7 +123,7 @@ function MetaEmbeddedSignupPanel() {
         trySubmit();
       },
       {
-        config_id: META_CONFIG_ID,
+        config_id: metaConfigId,
         response_type: "code",
         override_default_response_type: true,
         extras: {
@@ -131,7 +135,21 @@ function MetaEmbeddedSignupPanel() {
     );
   }
 
-  if (!META_APP_ID || !META_CONFIG_ID) return null;
+  if (isLoadingMetaConfig) return null;
+
+  if (!metaAppId || !metaConfigId) {
+    return (
+      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+        <div className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
+          <Link2 className="h-4 w-4" />
+          Coexistencia con Meta
+        </div>
+        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+          El operador de plataforma todavía no configuró el App ID y el Configuration ID de Embedded Signup.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2 rounded-xl border border-wa-border p-4 dark:border-wa-border-dark">

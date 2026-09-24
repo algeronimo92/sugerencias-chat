@@ -3,7 +3,7 @@
 n8n no puede crear variables de entorno en su plan actual. En vez de que el
 Code node de n8n compare el verify token o recalcule el HMAC con un secreto
 propio, reenvía acá el challenge/la firma y el backend responde con la
-configuración que ya vive en ``app_settings``.
+configuración global cifrada que vive en ``public.platform_settings``.
 """
 
 from typing import Any

@@ -1,11 +1,13 @@
 from datetime import date, datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from domain_types import (
-    LeadStage as DomainLeadStage,
+    INITIAL_LEAD_STAGE,
+    LEAD_STAGE_KEY_PATTERN,
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
@@ -18,7 +20,13 @@ from domain_types import (
 )
 
 
-LeadStage = Literal[tuple(stage.value for stage in DomainLeadStage)]
+# Clave de una etapa del embudo del negocio (lead_stages.key). Ya no es una
+# lista cerrada: aquí solo se valida la forma; que exista y esté activa lo
+# decide services/lead_stages.py contra las etapas del tenant.
+LeadStageKey = Annotated[str, StringConstraints(pattern=LEAD_STAGE_KEY_PATTERN)]
+LeadStageKindValue = Literal["open", "won", "lost"]
+StageColor = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{6}$", to_lower=True)]
+StageName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
 
 
 class Chat(BaseModel):
@@ -37,7 +45,7 @@ class Chat(BaseModel):
     vendedor: str | None = None
     origen: str | None = None
     notas: str | None = None
-    stage: LeadStage = "nuevo"
+    stage: LeadStageKey = INITIAL_LEAD_STAGE
     con_especialista: bool = False
     automatizacion_pausada: bool = False
     conversacion_abierta: bool = False
@@ -100,6 +108,9 @@ class LeadServiceItem(BaseModel):
     id: int
     name: str
     is_active: bool = True
+    description: str | None = None
+    price: Decimal | None = None
+    price_notes: str | None = None
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     created_at: str | None = None
@@ -112,6 +123,11 @@ class LeadServiceCreate(BaseModel):
 class LeadServiceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
+    # Catálogo que consulta el asistente IA. La moneda es la del perfil del
+    # negocio; ``price_notes`` cubre packs, promociones o rangos.
+    description: str | None = Field(default=None, max_length=1000)
+    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    price_notes: str | None = Field(default=None, max_length=500)
 
 
 class TemplateCategoryItem(BaseModel):
@@ -199,14 +215,53 @@ class KanbanPage(BaseModel):
 
 
 class KanbanSnapshot(BaseModel):
-    counts: dict[LeadStage, int]
-    stages: dict[LeadStage, KanbanPage]
+    # Una entrada por cada etapa del negocio (activas e inactivas), en orden.
+    counts: dict[str, int]
+    stages: dict[str, KanbanPage]
 
 
 class LeadStageUpdate(BaseModel):
-    stage: LeadStage
-    # Solo se persiste al pasar a `perdido`; se ignora en cualquier otra etapa.
+    stage: LeadStageKey
+    # Solo se persiste al pasar a una etapa de tipo `lost` (como `perdido`);
+    # se ignora en cualquier otra.
     razon_perdido: str | None = Field(default=None, max_length=500)
+
+
+class LeadStageItem(BaseModel):
+    """Etapa del embudo tal como la ve cualquier usuario del negocio."""
+
+    key: str
+    name: str
+    color: str
+    position: int
+    kind: LeadStageKindValue
+    is_active: bool
+    description: str | None = None
+    # La etapa inicial: no se puede borrar, desactivar ni volver no abierta.
+    is_system: bool = False
+
+
+class LeadStageAdminItem(LeadStageItem):
+    lead_count: int = 0
+
+
+class LeadStageCreate(BaseModel):
+    name: StageName
+    color: StageColor
+    kind: LeadStageKindValue = "open"
+    description: str | None = Field(default=None, max_length=500)
+
+
+class LeadStagePatch(BaseModel):
+    name: StageName | None = None
+    color: StageColor | None = None
+    kind: LeadStageKindValue | None = None
+    is_active: bool | None = None
+    description: str | None = Field(default=None, max_length=500)
+
+
+class LeadStageOrder(BaseModel):
+    keys: list[LeadStageKey] = Field(min_length=1, max_length=100)
 
 
 class LeadMergeRequest(BaseModel):
@@ -229,6 +284,7 @@ MessageType = Literal[
     "reaction",
     "pin",
     "interactive",
+    "button",
     "template",
     "order",
     "product",
@@ -498,10 +554,9 @@ class Sugerencia(BaseModel):
 class SuggestionResponse(BaseModel):
     # `estado` es opcional: el workflow de n8n dejó de incluirlo en su salida
     # (ver senal_compra/alerta más abajo) y solo mandaba tipo_objecion en
-    # versiones previas. Si algún día vuelve a mandarlo, debe coincidir con
-    # el enum `lead_estado` — Pydantic rechaza cualquier etapa inventada
-    # antes de que llegue a PostgreSQL.
-    estado: LeadStage | None = None
+    # versiones previas. Si algún día vuelve a mandarlo, se ignora: el
+    # copiloto no mueve etapas (ver routers/suggestions.py).
+    estado: str | None = None
     tipo_objecion: str | None = None
     senal_compra: bool = False
     alerta: str | None = None
@@ -599,12 +654,17 @@ class AppointmentCreate(BaseModel):
     nombre_completo: str = Field(min_length=1, max_length=200)
     dni: str = Field(default="", max_length=20)
     telefono: str = Field(min_length=1, max_length=30)
-    tratamiento: str = Field(min_length=1, max_length=100)
+    # Nombre neutral del servicio o motivo. Se conserva ``tratamiento`` en el
+    # contrato para no romper clientes existentes, pero ya no sale de una
+    # lista clínica fija.
+    tratamiento: str = Field(min_length=1, max_length=120)
     detalle: str = Field(default="", max_length=500)
     fecha: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     hora: str = Field(min_length=1, max_length=10)
     vendedor: str = Field(min_length=1, max_length=50)
     adelanto: float = Field(default=0, ge=0)
+    duration_minutes: int = Field(default=60, ge=5, le=1440)
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     comprobante: AppointmentAttachment | None = None
     # Solo admins pueden activarlo (ver routers/appointments.py): manda
     # formMode="test" en vez de "production" en el payload a n8n, igual que
@@ -625,13 +685,56 @@ class AppointmentItem(BaseModel):
     hora: str
     vendedor: str
     adelanto: float
+    duration_minutes: int = 60
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     comprobante_filename: str | None = None
     test_mode: bool
     status: Literal["created", "duplicate", "created_with_errors", "error"]
     n8n_status: str | None = None
     message: str | None = None
     event_link: str | None = None
+    calendar_event_id: str | None = None
+    calendar_sync_status: Literal["not_configured", "pending", "synced", "error", "skipped"] = "not_configured"
+    calendar_sync_error: str | None = None
     created_at: str
+
+
+CustomFieldEntity = Literal["lead", "appointment"]
+CustomFieldType = Literal["text", "textarea", "number", "date", "datetime", "boolean", "select"]
+
+
+class CustomFieldDefinitionCreate(BaseModel):
+    entity_type: CustomFieldEntity
+    label: str = Field(min_length=1, max_length=80)
+    key: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,39}$")
+    field_type: CustomFieldType = "text"
+    required: bool = False
+    options: list[str] = Field(default_factory=list, max_length=50)
+    position: int = Field(default=0, ge=0, le=10000)
+
+
+class CustomFieldDefinitionUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    required: bool | None = None
+    options: list[str] | None = Field(default=None, max_length=50)
+    position: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = None
+
+
+class CustomFieldDefinitionItem(BaseModel):
+    id: int
+    entity_type: CustomFieldEntity
+    key: str
+    label: str
+    field_type: CustomFieldType
+    required: bool
+    options: list[str]
+    position: int
+    is_active: bool
+
+
+class CustomFieldValues(BaseModel):
+    values: dict[str, Any] = Field(default_factory=dict)
 
 
 class IssueReportAttachmentItem(BaseModel):
@@ -689,8 +792,8 @@ class TemplateCreate(BaseModel):
     name: str
     content: str
     shortcut: str | None = None
-    category: str = "general"
-    stage: LeadStage | None = None
+    category: str = "General"
+    stage: LeadStageKey | None = None
     task_type: TaskType | None = None
     service: str | None = None
     template_type: Literal["internal", "official"] = "internal"
@@ -719,7 +822,7 @@ class TemplateUpdate(BaseModel):
     content: str | None = None
     shortcut: str | None = None
     category: str | None = None
-    stage: LeadStage | None = None
+    stage: LeadStageKey | None = None
     task_type: TaskType | None = None
     service: str | None = None
     is_active: bool | None = None
@@ -743,7 +846,7 @@ class TemplateItem(BaseModel):
     content: str
     shortcut: str | None = None
     category: str
-    stage: LeadStage | None = None
+    stage: LeadStageKey | None = None
     task_type: TaskType | None = None
     service: str | None = None
     is_active: bool
@@ -822,6 +925,7 @@ class MediaAssetItem(BaseModel):
     uploaded_by_name: str | None = None
     created_at: str
     use_count: int = 0
+    ai_description: str | None = None
 
 
 class SendTemplateRequest(BaseModel):

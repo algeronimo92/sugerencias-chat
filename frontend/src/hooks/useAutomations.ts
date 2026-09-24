@@ -52,10 +52,10 @@ interface AutomationExecutionFilters {
   mine?: boolean
 }
 
-// No hay evento de WebSocket dedicado a cambios de automation_executions: con
-// un chat abierto se hace poll corto mientras haya una ejecución manual en
-// vuelo, para que el pill "Flujo en curso" y su botón de cancelar reflejen el
-// avance sin que el vendedor tenga que recargar.
+// Cada cambio de estado de una ejecución emite automations_updated, que
+// invalida estas queries. El poll corto es solo el respaldo con el WebSocket
+// caído y un chat abierto con una ejecución en vuelo, para que el pill "Flujo
+// en curso" y su botón de cancelar no queden congelados.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
 export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false }: AutomationExecutionFilters = {}) {
@@ -69,6 +69,7 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
       },
     })).data,
     refetchInterval: (query) => {
+      if (connected) return false
       if (chatId) {
         const hasActiveExecution = query.state.data?.some(
           (execution) => execution.status === 'scheduled'
@@ -81,7 +82,7 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
         if (hasActiveExecution) return ACTIVE_EXECUTION_POLL_MS
         return false
       }
-      return connected ? false : 60_000
+      return 60_000
     },
   })
 }
@@ -93,12 +94,16 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
  *  un flujo ya en curso para ese chat). Sin chatId trae el catálogo completo
  *  de flujos manuales, como usa la pantalla "Flujos enviados" para el filtro
  *  por automatización. */
-export function useManualFlows(chatId?: string) {
+export function useManualFlows(chatId?: string, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['automation-manual-flows', chatId ?? 'all'],
     queryFn: async () => (await client.get<AutomationRule[]>('/api/automations/manual', {
       params: { chat_id: chatId },
     })).data,
+    enabled,
+    // Catálogo que cambia solo al editar flujos, y eso llega por
+    // automations_updated.
+    staleTime: 5 * 60_000,
   })
 }
 

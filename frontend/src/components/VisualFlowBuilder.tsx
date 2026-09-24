@@ -17,7 +17,8 @@ import type {
   AutomationFlowNodeType, AutomationRule, MediaAsset, MessageTemplate, QuestionButton,
   RoundRobinOutput, Tag, WaitAnyCondition,
 } from '../types'
-import { isLeadStage, LEAD_STAGES } from '../types'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
+import { conditionStageOptions, INITIAL_LEAD_STAGE, stageOptions } from '../domain/leadStageMeta'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -111,7 +112,8 @@ function defaultAction(type: AutomationActionType): AutomationAction {
     case ActionType.RemoveTag:
       return { type, tag_id: null }
     case ActionType.ChangeStage:
-      return { type, stage: 'en_diagnostico' }
+      // La etapa inicial existe en todo negocio; el resto las define cada uno.
+      return { type, stage: INITIAL_LEAD_STAGE }
     case ActionType.Notify:
       return { type, recipient: AutomationRecipient.Seller, user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
     case ActionType.SendTemplate:
@@ -819,6 +821,7 @@ interface ConditionGroupsEditorProps {
 }
 
 function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroupsEditorProps) {
+  const stageCatalog = useLeadStageCatalog()
   const totalConditions = groups.reduce((sum, group) => sum + group.conditions.length, 0)
 
   function updateCondition(groupId: string, conditionId: string, patch: Partial<AutomationFlowConditionItem>) {
@@ -871,7 +874,7 @@ function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroup
           <div className="flex items-start gap-1.5">
             <div className="min-w-0 flex-1 space-y-2">
               <Select value={condition.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) changeConditionType(group.id, condition.id, value) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
-              {condition.condition_type === ConditionType.StageEquals && <Select value={String(condition.value ?? 'nuevo')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
+              {condition.condition_type === ConditionType.StageEquals && <Select value={String(condition.value ?? INITIAL_LEAD_STAGE)} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{conditionStageOptions(stageCatalog, String(condition.value ?? INITIAL_LEAD_STAGE)).map(stage => <option key={stage.key} value={stage.key}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select>}
               {condition.condition_type === ConditionType.OriginContains && <label className="grid gap-1 text-[10px] text-wa-muted">Origen a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} /></label>}
               {condition.condition_type === ConditionType.ServiceContains && <label className="grid gap-1 text-[10px] text-wa-muted">Servicio a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} /></label>}
               {MESSAGE_CONDITION_TYPES.has(condition.condition_type) && <label className="grid gap-1 text-[10px] text-wa-muted">{condition.condition_type === ConditionType.MediaAnalysisContains ? 'Texto en la descripción del archivo' : 'Contenido del mensaje'}<input maxLength={500} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder={condition.condition_type === ConditionType.MediaAnalysisContains ? 'Ej. comprobante de pago' : 'Ej. Hollywood Peel'} className={fieldClass} /></label>}
@@ -1048,15 +1051,16 @@ interface EntryConditionsEditorProps {
 }
 
 function EntryConditionsEditor({ conditions, updateConditions, users, tags }: EntryConditionsEditorProps) {
+  const stageCatalog = useLeadStageCatalog()
   return <div className="space-y-4">
     <div className="flex items-start gap-2">
       <ListFilter className="mt-0.5 h-4 w-4 shrink-0 text-wa-primary-strong" />
       <div><p className="text-xs font-semibold text-wa-text dark:text-white">Condiciones de entrada</p><p className="mt-1 text-[10px] leading-relaxed text-wa-muted">Todas las condiciones configuradas deben cumplirse antes de iniciar el flujo. Para crear rutas Sí/No, utiliza un bloque Condición.</p></div>
     </div>
     <label className="grid gap-1 text-[10px] text-wa-muted">Etapa
-      <Select value={conditions.stage ?? ''} onChange={event => { const value = event.target.value; updateConditions({ ...conditions, stage: isLeadStage(value) ? value : null }) }} className={fieldClass}>
+      <Select value={conditions.stage ?? ''} onChange={event => updateConditions({ ...conditions, stage: event.target.value || null })} className={fieldClass}>
         <option value="">Cualquiera</option>
-        {LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+        {conditionStageOptions(stageCatalog, conditions.stage).map(stage => <option key={stage.key} value={stage.key}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}
       </Select>
     </label>
     <label className="grid gap-1 text-[10px] text-wa-muted">Origen contiene
@@ -1110,6 +1114,7 @@ function TemplatePreview({ template }: { template: MessageTemplate }) {
 
 function ActionEditor({ action, updateAction, users, tags, leadServices, templates, mediaAssets }: ActionEditorProps) {
   const [creatingTemplate, setCreatingTemplate] = useState(false)
+  const stageCatalog = useLeadStageCatalog()
   const selectedTemplate = action.type === ActionType.SendTemplate
     ? templates.find(template => template.id === action.template_id) ?? null
     : null
@@ -1117,7 +1122,7 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
     {action.type === ActionType.CreateTask && <><label className="grid gap-1 text-[10px] text-wa-muted">Título<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-wa-muted">Descripción<textarea rows={2} value={action.description ?? ''} onChange={event => updateAction({ ...action, description: event.target.value })} className={fieldClass} /></label><div className="grid grid-cols-2 gap-2"><label className="grid gap-1 text-[10px] text-wa-muted">Tipo<Select value={action.task_type} onChange={event => { const value = event.target.value; if (isTaskType(value)) updateAction({ ...action, task_type: value }) }} className={fieldClass}>{TASK_TYPES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted">Prioridad<Select value={action.priority} onChange={event => { const value = event.target.value; if (isTaskPriority(value)) updateAction({ ...action, priority: value }) }} className={fieldClass}>{TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted">Vence en min<input type="number" min={1} max={43200} value={action.due_minutes} onChange={event => updateAction({ ...action, due_minutes: Number(event.target.value) })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-wa-muted">Recordar antes<input type="number" min={0} value={action.remind_minutes_before} onChange={event => updateAction({ ...action, remind_minutes_before: Number(event.target.value) })} className={fieldClass} /></label></div><label className="grid gap-1 text-[10px] text-wa-muted">Responsable<Select value={action.assigned_user_id ?? ''} onChange={event => updateAction({ ...action, assigned_user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Vendedor del lead</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select></label></>}
     {action.type === ActionType.AssignSeller && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
     {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
-    {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => { const value = event.target.value; if (isLeadStage(value)) updateAction({ ...action, stage: value }) }} className={fieldClass}>{LEAD_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}</Select>}
+    {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => updateAction({ ...action, stage: event.target.value })} className={fieldClass}>{stageOptions(stageCatalog, action.stage).map(stage => <option key={stage.key} value={stage.key} disabled={!stage.is_active}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select>}
     {action.type === ActionType.ChangeService && <><Select value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} className={fieldClass}><option value="">Quitar servicio de interés</option>{action.service && !leadServices.some(service => service.name === action.service) && <option value={action.service}>{action.service} (valor actual)</option>}{leadServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</Select><p className="text-[10px] text-wa-muted">Selecciona un servicio del catálogo o deja vacío para quitar el actual.</p></>}
     {action.type === ActionType.SetConversationState && <><Select value={action.state} onChange={event => updateAction({ ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className={fieldClass}><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select><p className="text-[10px] text-wa-muted">No dispara “Conversación nueva”; ese evento queda reservado para mensajes entrantes del cliente.</p></>}
     {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => updateAction({ ...action, media_asset_id: id })} />}

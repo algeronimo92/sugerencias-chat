@@ -458,7 +458,7 @@ async def _release_stale_executions() -> None:
             error="Interrumpida demasiadas veces; no se volverá a reintentar",
             finished_at=now,
         ).returning(AutomationExecution.id))).scalars().all()
-        await session.execute(update(AutomationExecution).where(
+        released = (await session.execute(update(AutomationExecution).where(
             AutomationExecution.status == AutomationExecutionStatus.RUNNING,
             AutomationExecution.started_at < cutoff,
         ).values(
@@ -466,8 +466,12 @@ async def _release_stale_executions() -> None:
             started_at=None,
             error="Reintentando una ejecución interrumpida",
             attempts=AutomationExecution.attempts + 1,
-        ))
+        ).returning(AutomationExecution.id))).scalars().all()
         await session.commit()
+    # El frontend ya no sondea las ejecuciones con el WebSocket conectado:
+    # todo cambio de estado tiene que avisarse.
+    if exhausted or released:
+        await manager.broadcast({"type": "automations_updated"})
     for execution_id in exhausted:
         async with get_sessionmaker()() as session:
             execution = await session.get(AutomationExecution, execution_id)

@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import func, insert, select, true, update
+from sqlalchemy import func, insert, select, true
 from sqlalchemy.exc import IntegrityError
 
-from db.models import MessageTemplate, TemplateCategory, User
+from db.models import TemplateCategory, User
 from db.session import get_sessionmaker
 from services.time_format import iso_utc
 
@@ -78,14 +78,7 @@ async def update_template_category(category_id: int, values: dict) -> dict | Non
         category = await session.get(TemplateCategory, category_id, with_for_update=True)
         if category is None:
             return None
-        old_name = category.name
         try:
-            if "name" in values and values["name"] != old_name:
-                await session.execute(
-                    update(MessageTemplate)
-                    .where(func.lower(func.btrim(MessageTemplate.category)) == old_name.casefold())
-                    .values(category=values["name"], updated_at=datetime.now(timezone.utc))
-                )
             for key, value in values.items():
                 setattr(category, key, value)
             await session.commit()

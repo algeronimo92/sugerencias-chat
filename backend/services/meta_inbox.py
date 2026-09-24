@@ -40,8 +40,8 @@ async def receive_meta_events(events: Iterable[dict[str, Any]]) -> dict[str, Any
                 .values(
                     provider="meta",
                     event_key=event["event_key"],
-                    connection_key=event["phone_number_id"],
-                    phone_number_id=event["phone_number_id"],
+                    connection_key=event.get("phone_number_id") or event.get("waba_id"),
+                    phone_number_id=event.get("phone_number_id"),
                     event_type=event["event_type"],
                     payload=event["payload"],
                     status="processing",

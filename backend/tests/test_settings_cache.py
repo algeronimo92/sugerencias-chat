@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,27 +17,27 @@ def empty_settings_cache():
 @pytest.mark.asyncio
 async def test_effective_settings_are_loaded_once_and_reused(monkeypatch):
     load_values = AsyncMock(return_value={
-        "n8n_webhook_url": "https://n8n.test/webhook",
+        "elevenlabs_voice_id": "voice-1",
         "n8n_citas_webhook_url": "https://n8n.test/citas",
     })
     monkeypatch.setattr(settings_service, "_db_values", load_values)
     monkeypatch.setattr(
         settings_service,
         "_env_default",
-        lambda key: "secret-from-env" if key == "n8n_webhook_token" else "",
+        lambda key: "secret-from-env" if key == "elevenlabs_api_key" else "",
     )
 
     first = await settings_service.get_effective_many((
-        "n8n_webhook_url", "n8n_webhook_token", "n8n_citas_webhook_url",
+        "elevenlabs_voice_id", "elevenlabs_api_key", "n8n_citas_webhook_url",
     ))
-    second = await settings_service.get_effective("n8n_webhook_url")
+    second = await settings_service.get_effective("elevenlabs_voice_id")
 
     assert first == {
-        "n8n_webhook_url": "https://n8n.test/webhook",
-        "n8n_webhook_token": "secret-from-env",
+        "elevenlabs_voice_id": "voice-1",
+        "elevenlabs_api_key": "secret-from-env",
         "n8n_citas_webhook_url": "https://n8n.test/citas",
     }
-    assert second == "https://n8n.test/webhook"
+    assert second == "voice-1"
     load_values.assert_awaited_once_with()
 
 
@@ -78,7 +79,7 @@ async def test_updating_secret_setting_never_persists_plaintext(monkeypatch):
         base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
     )
 
-    await settings_service.update_settings({"n8n_webhook_token": "plain-secret"})
+    await settings_service.update_settings({"elevenlabs_api_key": "plain-secret"})
 
     params = statements[0].compile().params
     serialized_params = " ".join(str(value) for value in params.values())
@@ -105,8 +106,8 @@ async def test_updating_public_setting_persists_usable_plaintext(monkeypatch):
 
     monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
 
-    public_url = "https://n8n.example.test/webhook"
-    await settings_service.update_settings({"n8n_webhook_url": public_url})
+    public_url = "https://n8n.example.test/citas"
+    await settings_service.update_settings({"n8n_citas_webhook_url": public_url})
 
     params = statements[0].compile().params
     serialized_params = " ".join(str(value) for value in params.values())
@@ -137,16 +138,16 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
         "settings_encryption_key",
         base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
     )
-    public_url = "https://n8n.example.test/webhook"
+    public_url = "https://n8n.example.test/citas"
     encrypted_public_url = secret_cipher.encrypt_secret(
-        "n8n_webhook_url", public_url
+        "n8n_citas_webhook_url", public_url
     )
     monkeypatch.setattr(
         settings_service,
         "_raw_db_values",
         AsyncMock(return_value={
-            "n8n_webhook_url": encrypted_public_url,
-            "n8n_webhook_token": "legacy-plaintext-token",
+            "n8n_citas_webhook_url": encrypted_public_url,
+            "elevenlabs_api_key": "legacy-plaintext-token",
             "an_old_removed_key": "already-plain",
         }),
     )
@@ -166,13 +167,73 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
 @pytest.mark.asyncio
 async def test_secret_values_are_never_returned_by_settings_api_model(monkeypatch):
     monkeypatch.setattr(settings_service, "_db_values", AsyncMock(return_value={
-        "n8n_webhook_url": "https://n8n.test/webhook",
-        "n8n_webhook_token": "decrypted-in-backend-only",
+        "elevenlabs_voice_id": "voice-1",
+        "elevenlabs_api_key": "decrypted-in-backend-only",
     }))
     monkeypatch.setattr(settings_service, "_env_default", lambda _key: "")
 
     items = {item["key"]: item for item in await settings_service.list_settings()}
 
-    assert items["n8n_webhook_url"]["value"] == "https://n8n.test/webhook"
-    assert items["n8n_webhook_token"]["configured"] is True
-    assert items["n8n_webhook_token"]["value"] is None
+    assert items["elevenlabs_voice_id"]["value"] == "voice-1"
+    assert items["elevenlabs_api_key"]["configured"] is True
+    assert items["elevenlabs_api_key"]["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_tenant_settings_exclude_platform_credentials(monkeypatch):
+    monkeypatch.setattr(settings_service, "_db_values", AsyncMock(return_value={}))
+    monkeypatch.setattr(settings_service, "_env_default", lambda _key: "")
+
+    keys = {item["key"] for item in await settings_service.list_settings()}
+
+    assert {"meta_access_token", "meta_waba_id", "meta_phone_number_id"} <= keys
+    assert {
+        "meta_app_id",
+        "meta_app_secret",
+        "meta_verify_token",
+        "inbound_webhook_token",
+        "n8n_webhook_url",
+        "n8n_analyst_webhook_url",
+        "n8n_webhook_token",
+    }.isdisjoint(keys)
+
+
+@pytest.mark.asyncio
+async def test_platform_managed_integrations_are_hidden_from_the_tenant(monkeypatch):
+    monkeypatch.setattr(settings_service, "_db_values", AsyncMock(return_value={
+        "n8n_citas_webhook_url": "https://n8n.test/citas",
+    }))
+    monkeypatch.setattr(settings_service, "_env_default", lambda _key: "")
+
+    keys = {item["key"] for item in await settings_service.list_settings()}
+
+    assert keys.isdisjoint(settings_service.PLATFORM_MANAGED_TENANT_KEYS)
+    # Siguen resolviéndose para el negocio: lo oculto es la configuración.
+    assert await settings_service.get_effective("n8n_citas_webhook_url") == "https://n8n.test/citas"
+
+
+def test_ai_workflow_settings_belong_to_the_platform():
+    from services.platform_settings import PLATFORM_KEYS
+
+    ai_keys = {"n8n_webhook_url", "n8n_analyst_webhook_url", "n8n_webhook_token"}
+    assert ai_keys <= PLATFORM_KEYS
+    assert ai_keys.isdisjoint(definition.key for definition in settings_service.SETTING_DEFS)
+
+
+def test_business_timezones_use_iana_names_and_current_gmt_offset():
+    items = settings_service.list_business_timezones(
+        datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
+    )
+    by_id = {item["id"]: item for item in items}
+
+    assert by_id["America/Lima"]["label"] == "America/Lima (GMT-05:00)"
+    assert by_id["America/Lima"]["offset_minutes"] == -300
+    assert "Etc/GMT+5" not in by_id
+
+
+def test_business_timezone_validation_rejects_unknown_or_technical_zones():
+    assert settings_service.validate_business_timezone(" America/Lima ") == "America/Lima"
+    with pytest.raises(ValueError, match="IANA"):
+        settings_service.validate_business_timezone("America/No_Existe")
+    with pytest.raises(ValueError, match="geográfica"):
+        settings_service.validate_business_timezone("Etc/GMT+5")

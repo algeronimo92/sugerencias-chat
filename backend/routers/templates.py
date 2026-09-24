@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from db.models import User
 from models.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from services.auth_service import get_current_user, require_admin
+from services.db_service import get_lead_service_by_name
 from services.template_service import (
     add_template_attachment,
     create_personal_template,
@@ -15,6 +16,7 @@ from services.template_service import (
     delete_template as delete_template_record,
     list_templates,
     record_template_use,
+    replace_official_template_from_meta,
     remove_template_attachment,
     set_template_favorite,
     update_template,
@@ -55,6 +57,15 @@ def _template_errors():
         yield
     except tuple(TEMPLATE_ERROR_STATUS) as exc:
         raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
+
+
+async def _canonical_service(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    service = await get_lead_service_by_name(value)
+    if service is None:
+        raise HTTPException(400, "Selecciona un servicio activo del catálogo")
+    return service["name"]
 
 
 
@@ -216,6 +227,7 @@ async def post_import_meta_template(
     if category is None:
         raise HTTPException(400, "Selecciona una categoría activa del catálogo")
     values["category"] = category["name"]
+    values["service"] = await _canonical_service(values.get("service"))
     try:
         item = await create_template(values, admin.id)
     except ValueError as exc:
@@ -238,6 +250,7 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
     if category is None:
         raise HTTPException(400, "Selecciona una categoría activa del catálogo")
     values["category"] = category["name"]
+    values["service"] = await _canonical_service(values.get("service"))
     if values["template_type"] == "official":
         with _template_errors():
             components = await build_meta_components(values)
@@ -408,6 +421,8 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         if category is None:
             raise HTTPException(400, "Selecciona una categoría activa del catálogo")
         merged["category"] = category["name"]
+    if "service" in values:
+        merged["service"] = await _canonical_service(merged.get("service"))
     if merged.get("interactive_type") != "none" and current["attachments"]:
         raise HTTPException(400, "Quita los adjuntos antes de convertir la plantilla en interactiva")
     if current["template_type"] == "official" and current.get("meta_template_id"):
@@ -438,7 +453,7 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
                 )
             except MetaApiError as exc:
                 raise HTTPException(502, describe_template_error(exc))
-    for key in ("name", "content", "category", "shortcut"):
+    for key in ("name", "content", "category", "shortcut", "service"):
         if key in values:
             values[key] = merged[key]
     for key in (
@@ -484,26 +499,23 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
 
 @router.post("/{template_id}/sync", response_model=TemplateItem)
 async def post_sync_template(template_id: int, admin: User = Depends(require_admin)):
-    """Refresca `official_status` consultando el estado real de la plantilla
-    en Meta, en vez de que el admin lo tipee a mano tras revisar el WhatsApp
-    Manager."""
+    """Reemplaza los campos administrados por Meta con su version vigente."""
     current = next((item for item in await list_templates(admin.id, True) if item["id"] == template_id), None)
     if current is None:
         raise HTTPException(404, "Plantilla no encontrada")
     if current["template_type"] != "official" or not current.get("meta_template_id"):
         raise HTTPException(400, "Esta plantilla no está vinculada a Meta")
     try:
-        remote_templates = await list_whatsapp_templates()
+        remote = await get_whatsapp_template(current["meta_template_id"])
     except MetaApiError as exc:
         raise HTTPException(502, describe_template_error(exc))
-    remote = next((row for row in remote_templates if row.get("id") == current["meta_template_id"]), None)
-    if remote is None:
-        raise HTTPException(404, "Meta ya no tiene esta plantilla; puede haber sido borrada desde el WhatsApp Manager")
-    status = remote.get("status")
-    reason = remote.get("rejected_reason")
-    reason = reason if reason and reason != "NONE" else None
-    item = await update_template(
-        template_id, {"official_status": status, "official_rejected_reason": reason},
-    ) if status else current
+    updated_ids = await replace_official_template_from_meta(current["meta_template_id"], remote)
+    if template_id not in updated_ids:
+        raise HTTPException(404, "Plantilla local no encontrada")
+    item = next(
+        candidate
+        for candidate in await list_templates(admin.id, True)
+        if candidate["id"] == template_id
+    )
     await manager.broadcast({"type": "templates_updated"})
     return item

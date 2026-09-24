@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Download, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
@@ -9,7 +9,6 @@ import {
 } from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
-import { ForwardMessageDialog } from './ForwardMessageDialog'
 import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
@@ -18,13 +17,8 @@ import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
 import { messageMediaFilename, triggerMediaDownload } from '../utils/media'
 import { AlbumBubble } from './AlbumBubble'
 import { ConfirmDialog } from './ui/ConfirmDialog'
-import { MediaLightbox } from './MediaLightbox'
-import { StickerPreviewDialog } from './StickerPreviewDialog'
-import { SaveAsTemplateDialog } from './SaveAsTemplateDialog'
-import { TemplateSendDialog } from './TemplateSendDialog'
 import { ChatComposer } from './ChatComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
-import { MessageEditDialog } from './MessageEditDialog'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { InternalNoteCard } from './InternalNoteCard'
 import { useChatTimeline } from '../hooks/useChatTimeline'
@@ -35,6 +29,14 @@ import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
 import { LeadAutomationPanel } from './LeadAutomationPanel'
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const ForwardMessageDialog = lazy(() => import('./ForwardMessageDialog').then(m => ({ default: m.ForwardMessageDialog })))
+const MediaLightbox = lazy(() => import('./MediaLightbox').then(m => ({ default: m.MediaLightbox })))
+const StickerPreviewDialog = lazy(() => import('./StickerPreviewDialog').then(m => ({ default: m.StickerPreviewDialog })))
+const SaveAsTemplateDialog = lazy(() => import('./SaveAsTemplateDialog').then(m => ({ default: m.SaveAsTemplateDialog })))
+const TemplateSendDialog = lazy(() => import('./TemplateSendDialog').then(m => ({ default: m.TemplateSendDialog })))
+const MessageEditDialog = lazy(() => import('./MessageEditDialog').then(m => ({ default: m.MessageEditDialog })))
 
 interface Props {
   chat: Chat
@@ -759,50 +761,52 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         />
       )}
 
-      {openMedia && (
-        <MediaLightbox
-          src={openMedia.src}
-          kind={openMedia.kind}
-          alt={openMedia.alt}
-          filename={openMedia.filename}
-          items={chatMediaItems}
-          onClose={() => setOpenMedia(null)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {openMedia && (
+          <MediaLightbox
+            src={openMedia.src}
+            kind={openMedia.kind}
+            alt={openMedia.alt}
+            filename={openMedia.filename}
+            items={chatMediaItems}
+            onClose={() => setOpenMedia(null)}
+          />
+        )}
 
-      {previewSticker && (
-        <StickerPreviewDialog
-          mediaSrc={previewSticker.src}
-          mediaUrl={previewSticker.mediaUrl}
-          onClose={() => setPreviewSticker(null)}
-        />
-      )}
+        {previewSticker && (
+          <StickerPreviewDialog
+            mediaSrc={previewSticker.src}
+            mediaUrl={previewSticker.mediaUrl}
+            onClose={() => setPreviewSticker(null)}
+          />
+        )}
 
 
-      {templateContentToSave && (
-        <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
-      )}
+        {templateContentToSave && (
+          <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
+        )}
 
-      {messageToEdit && (
-        <MessageEditDialog
-          chatId={chat.chat_id}
-          message={messageToEdit}
-          onClose={() => setMessageToEdit(null)}
-        />
-      )}
+        {messageToEdit && (
+          <MessageEditDialog
+            chatId={chat.chat_id}
+            message={messageToEdit}
+            onClose={() => setMessageToEdit(null)}
+          />
+        )}
 
-      {multimediaTemplate && (
-        <TemplateSendDialog chat={chat} template={multimediaTemplate} onClose={() => setMultimediaTemplate(null)} />
-      )}
+        {multimediaTemplate && (
+          <TemplateSendDialog chat={chat} template={multimediaTemplate} onClose={() => setMultimediaTemplate(null)} />
+        )}
 
-      {messageIdsToForward && (
-        <ForwardMessageDialog
-          chatId={chat.chat_id}
-          messageIds={messageIdsToForward}
-          onClose={() => setMessageIdsToForward(null)}
-          onForwarded={clearSelection}
-        />
-      )}
+        {messageIdsToForward && (
+          <ForwardMessageDialog
+            chatId={chat.chat_id}
+            messageIds={messageIdsToForward}
+            onClose={() => setMessageIdsToForward(null)}
+            onForwarded={clearSelection}
+          />
+        )}
+      </Suspense>
     </div>
   )
 }

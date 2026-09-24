@@ -232,6 +232,30 @@
               },
               "renameOutput": true,
               "outputKey": "reaccion"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-4000-8000-000000000004",
+                    "leftValue": "={{ $json._kind }}",
+                    "rightValue": "template_sync",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sincronizar plantilla"
             }
           ]
         },
@@ -709,17 +733,17 @@
           "parameters": [
             {
               "name": "X-Meta-Phone-Number-Id",
-              "value": "={{ $('normalizar eventos Meta').item.json.phone_number_id }}"
+              "value": "={{ $json.phone_number_id || '' }}"
             },
             {
               "name": "X-Meta-Event-Id",
-              "value": "={{ $('normalizar eventos Meta').item.json.event_key }}"
+              "value": "={{ $json.event_key }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ events: [{\n    event_key: $json.event_key,\n    event_type: $json._kind,\n    phone_number_id: $json.phone_number_id,\n    payload: $json\n  }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ events: [{\n    event_key: $json.event_key,\n    event_type: $json._kind,\n    phone_number_id: $json.phone_number_id || null,\n    waba_id: $json.waba_id || null,\n    payload: $json\n  }] }) }}",
         "options": {}
       },
       "id": "e6a7a3a5-51f7-46e6-8657-6c7163dd1061",
@@ -988,6 +1012,87 @@
         -1936,
         864
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f1000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ (($('Meta eventos (POST)').item.json.body || $('Meta eventos (POST)').item.json).entry || []).some(entry => (entry.changes || []).some(change => ['message_template_status_update', 'template_category_update', 'message_template_components_update'].includes(change.field))) ? 'template' : 'other' }}",
+              "rightValue": "template",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1000000-0000-4000-8000-000000000002",
+      "name": "es cambio de plantilla?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1696,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const backendUrl = String($('Config (POST)').item.json.backend_url || '').replace(/\\\/$/, '');\nif (!backendUrl) throw new Error('BACKEND_URL no esta configurado');\nconst clean = (value) => value == null ? null : String(value).trim() || null;\nconst templateFields = new Set(['message_template_status_update', 'template_category_update', 'message_template_components_update']);\nconst output = [];\nfor (const input of $('Meta eventos (POST)').all()) {\n  const body = input.json.body || input.json;\n  for (const entry of body.entry || []) {\n    const wabaId = clean(entry.id);\n    for (const change of entry.changes || []) {\n      if (!templateFields.has(change.field)) continue;\n      const value = change.value || {};\n      const templateId = clean(value.message_template_id || value.template_id || value.id);\n      if (!wabaId || !templateId) throw new Error('Evento de plantilla Meta incompleto');\n      output.push({ json: {\n        _kind: 'template_sync',\n        provider: 'meta_cloud_api',\n        phone_number_id: null,\n        waba_id: wabaId,\n        event_key: [wabaId, 'template_sync', change.field, templateId, clean(entry.time)].filter(Boolean).join(':'),\n        meta_template_id: templateId,\n        template_name: clean(value.message_template_name),\n        template_language: clean(value.message_template_language),\n        change_field: change.field,\n        payload: { field: change.field, value },\n        backend_url: backendUrl\n      }});\n    }\n  }\n}\nreturn output;"
+      },
+      "id": "f1000000-0000-4000-8000-000000000003",
+      "name": "normalizar cambio plantilla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        1088
+      ],
+      "notesInFlow": true,
+      "notes": "Normaliza cambios de estado, categoria y componentes usando entry.id como WABA"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.backend_url + '/api/webhooks/templates/' + $json.meta_template_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Meta-Waba-Id",
+              "value": "={{ $('evento Meta activo').item.json.waba_id }}"
+            },
+            {
+              "name": "X-Meta-Event-Id",
+              "value": "={{ $('evento Meta activo').item.json.event_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1000000-0000-4000-8000-000000000004",
+      "name": "sincronizar plantilla completa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        1376
+      ],
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "notes": "El backend consulta la plantilla completa en Meta, reemplaza sus campos y emite templates_updated por WebSocket"
     }
   ],
   "connections": {
@@ -1088,6 +1193,13 @@
         [
           {
             "node": "resolver identidad (reaccion)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "sincronizar plantilla completa",
             "type": "main",
             "index": 0
           }
@@ -1295,6 +1407,17 @@
         ]
       ]
     },
+    "sincronizar plantilla completa": {
+      "main": [
+        [
+          {
+            "node": "marcar evento Meta completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "guardar reaccion": {
       "main": [
         [
@@ -1310,7 +1433,41 @@
       "main": [
         [
           {
+            "node": "es cambio de plantilla?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "es cambio de plantilla?": {
+      "main": [
+        [
+          {
+            "node": "normalizar cambio plantilla",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "normalizar eventos Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalizar cambio plantilla": {
+      "main": [
+        [
+          {
+            "node": "registrar evento Meta en inbox",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "unir evento con resultado inbox",
             "type": "main",
             "index": 0
           }

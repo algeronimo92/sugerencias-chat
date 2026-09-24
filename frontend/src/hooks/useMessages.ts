@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import client from '../api/client'
 import type { JsonObject, Message, MessageReaction, MessageType } from '../types'
+import { useChatSocketConnected } from './useRealtime'
 
 interface MessagePage {
   items: Message[]
@@ -29,6 +30,7 @@ async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: nu
 // estaba cacheado sin el mensaje buscado, ChatThread pagina hacia atrás hasta
 // encontrarlo.
 export function useMessages(chatId: string | null, untilId?: number | null) {
+  const connected = useChatSocketConnected()
   return useInfiniteQuery({
     queryKey: ['messages', chatId],
     queryFn: ({ pageParam }) => fetchMessages(chatId as string, pageParam, untilId),
@@ -41,11 +43,11 @@ export function useMessages(chatId: string | null, untilId?: number | null) {
       return { cursorTs: oldest.sent_at, cursorId: oldest.id }
     },
     staleTime: 15_000,
-    // Respaldo del WebSocket: algunas instalaciones de n8n actualizan el
-    // estado directamente en PostgreSQL sin llamar al webhook de la app.
-    // Solo la conversación visible se consulta y el navegador pausa este
-    // intervalo cuando la pestaña queda en segundo plano.
-    refetchInterval: 5_000,
+    // Respaldo solo con el WebSocket caído: con el socket arriba, los estados
+    // llegan por applyMessageStatuses y el resto de cambios invalida esta
+    // query. Es un infinite query, así que cada tick repide todas las páginas
+    // cargadas. El navegador lo pausa con la pestaña en segundo plano.
+    refetchInterval: connected ? false : 15_000,
     refetchIntervalInBackground: false,
     retry: false,
   })

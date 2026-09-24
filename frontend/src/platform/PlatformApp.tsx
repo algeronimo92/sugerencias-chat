@@ -6,7 +6,7 @@
  * backend solo lo atiende en los hosts de plataforma; en el dominio de un
  * negocio estas rutas devuelven 404 y acá se ve como "panel no disponible".
  */
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import {
@@ -23,14 +23,17 @@ import {
   LockKeyhole,
   Mail,
   Moon,
+  Palette,
   Plus,
   Search,
   ShieldCheck,
+  Sparkles,
   Sun,
   UserRound,
   X,
 } from "lucide-react";
 import client from "../api/client";
+import { BackendUnavailable } from "../components/BackendUnavailable";
 import { useTheme } from "../hooks/useTheme";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -49,12 +52,37 @@ type Organization = {
   revision: string | null;
   migration_status: string | null;
   up_to_date: boolean;
+  ai_enabled: boolean;
+  ai_monthly_quota: number | null;
   domains: Domain[];
+};
+
+type AsistenteNegocio = {
+  enabled: boolean;
+  monthly_quota: number | null;
+  used_this_month: number;
+};
+
+type IntegracionNegocio = {
+  key: string;
+  label: string;
+  configured: boolean;
+  value: string | null;
 };
 
 type OperadorActual = { id: string; email: string; name: string };
 
+type PlatformSetting = {
+  key: string;
+  label: string;
+  secret: boolean;
+  configured: boolean;
+  source: "platform" | "environment" | "legacy" | "missing";
+  value: string | null;
+};
+
 const ORGANIZACIONES = ["platform", "organizations"] as const;
+const CONFIGURACION_PLATAFORMA = ["platform", "settings"] as const;
 
 function mensajeDeError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -518,6 +546,429 @@ function Dominios({ organizacion }: { organizacion: Organization }) {
   );
 }
 
+/**
+ * Lo que el operador decide por negocio y el negocio no puede tocar: si tiene
+ * el asistente IA y con qué cuota, y sus workflows propios (citas). Se carga
+ * al abrir la sección: cada lectura entra al schema del negocio.
+ */
+type MarcaGuardada = {
+  name: string;
+  display_name: string | null;
+  primary_color: string;
+  has_logo: boolean;
+  version: number;
+  contrast_with_white: number;
+};
+
+// Mismo mínimo que valida el backend (services/branding.py): los botones del
+// CRM llevan texto blanco sobre el color principal.
+const CONTRASTE_MINIMO = 3;
+
+function contrasteConBlanco(hex: string): number | null {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  const canales = [1, 3, 5].map((inicio) => {
+    const valor = parseInt(hex.slice(inicio, inicio + 2), 16) / 255;
+    return valor <= 0.03928 ? valor / 12.92 : ((valor + 0.055) / 1.055) ** 2.4;
+  });
+  const luminancia = 0.2126 * canales[0] + 0.7152 * canales[1] + 0.0722 * canales[2];
+  return 1.05 / (luminancia + 0.05);
+}
+
+function leerComoBase64(archivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(String(lector.result).split(",", 2)[1] ?? "");
+    lector.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    lector.readAsDataURL(archivo);
+  });
+}
+
+/**
+ * Marca con la que el negocio ve su CRM (acceso, encabezado, app instalada y
+ * pie por defecto de sus botones y listas de WhatsApp). La edita el operador.
+ */
+function MarcaNegocio({ organizacion }: { organizacion: Organization }) {
+  const formId = useId();
+  const queryClient = useQueryClient();
+  const [abierta, setAbierta] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [color, setColor] = useState("#00a884");
+  const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
+  const clave = ["platform", "organizations", organizacion.id, "branding"];
+
+  const marca = useQuery({
+    queryKey: clave,
+    queryFn: async () =>
+      (await client.get<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`)).data,
+    enabled: abierta,
+  });
+
+  useEffect(() => {
+    if (!marca.data) return;
+    setNombre(marca.data.display_name ?? "");
+    setColor(marca.data.primary_color);
+  }, [marca.data]);
+
+  const guardar = useMutation({
+    mutationFn: async () =>
+      (
+        await client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`, {
+          display_name: nombre,
+          primary_color: color,
+        })
+      ).data,
+    onSuccess: (data) => queryClient.setQueryData(clave, data),
+  });
+
+  const subirLogo = useMutation({
+    mutationFn: async (archivo: File) =>
+      (
+        await client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`, {
+          data_base64: await leerComoBase64(archivo),
+        })
+      ).data,
+    onSuccess: (data) => queryClient.setQueryData(clave, data),
+  });
+
+  const quitarLogo = useMutation({
+    mutationFn: async () =>
+      (await client.delete<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`)).data,
+    onSuccess: (data) => queryClient.setQueryData(clave, data),
+  });
+
+  const contraste = contrasteConBlanco(color);
+  const colorValido = contraste !== null && contraste >= CONTRASTE_MINIMO;
+  const errorLogo =
+    errorArchivo ??
+    (subirLogo.isError ? mensajeDeError(subirLogo.error) : quitarLogo.isError ? mensajeDeError(quitarLogo.error) : null);
+
+  return (
+    <details
+      className="mt-4 border-t border-wa-border pt-3 text-sm dark:border-wa-border-dark"
+      onToggle={(evento) => setAbierta(evento.currentTarget.open)}
+    >
+      <summary className="w-fit cursor-pointer rounded font-semibold text-wa-text hover:text-wa-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary dark:text-white dark:hover:text-wa-primary">
+        <span className="inline-flex items-center gap-2">
+          <Palette className="h-4 w-4 text-wa-primary-strong dark:text-wa-primary" aria-hidden="true" />
+          Marca
+        </span>
+      </summary>
+
+      {marca.isLoading && <p className="mt-3 text-xs text-wa-muted dark:text-wa-muted-dark">Cargando marca…</p>}
+      {marca.isError && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{mensajeDeError(marca.error)}</p>}
+
+      {marca.data && (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <form
+            className="rounded-lg border border-wa-border p-4 dark:border-wa-border-dark"
+            onSubmit={(evento) => {
+              evento.preventDefault();
+              guardar.mutate();
+            }}
+          >
+            <h4 className="font-semibold text-wa-text dark:text-white">Nombre y color</h4>
+            <p className="mt-1 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
+              Se ven en el acceso, el encabezado y la app instalada del negocio, y son el pie por defecto de sus botones y listas de WhatsApp.
+            </p>
+            <label htmlFor={`${formId}-nombre`} className="mt-3 block text-xs font-semibold text-wa-text dark:text-wa-text-dark">
+              Nombre visible
+            </label>
+            <Input
+              id={`${formId}-nombre`}
+              value={nombre}
+              onChange={(evento) => setNombre(evento.target.value)}
+              maxLength={60}
+              placeholder={organizacion.name}
+              className="mt-1.5 h-10 border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-head-dark"
+            />
+            <label htmlFor={`${formId}-color`} className="mt-3 block text-xs font-semibold text-wa-text dark:text-wa-text-dark">
+              Color principal
+            </label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <input
+                type="color"
+                value={/^#[0-9a-f]{6}$/i.test(color) ? color : "#00a884"}
+                onChange={(evento) => setColor(evento.target.value)}
+                aria-label="Elegir color principal"
+                className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-wa-border bg-white p-1 dark:border-wa-border-dark dark:bg-wa-head-dark"
+              />
+              <Input
+                id={`${formId}-color`}
+                value={color}
+                onChange={(evento) => setColor(evento.target.value.trim())}
+                maxLength={7}
+                aria-invalid={!colorValido}
+                className="h-10 max-w-32 border-wa-border bg-white font-mono dark:border-wa-border-dark dark:bg-wa-head-dark"
+              />
+              <span
+                className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-white"
+                style={{ backgroundColor: contraste !== null ? color : "#667781" }}
+                aria-hidden="true"
+              >
+                Botón
+              </span>
+            </div>
+            <p className={`mt-2 text-xs ${colorValido ? "text-wa-muted dark:text-wa-muted-dark" : "text-red-600 dark:text-red-300"}`}>
+              {contraste === null
+                ? "Usa el formato #RRGGBB."
+                : `Contraste con texto blanco: ${contraste.toFixed(1)}:1${colorValido ? "" : ` (mínimo ${CONTRASTE_MINIMO}:1, elige un tono más oscuro)`}`}
+            </p>
+            {guardar.isError && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{mensajeDeError(guardar.error)}</p>}
+            <div className="mt-4 flex items-center justify-end gap-3">
+              {guardar.isSuccess && <span className="text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">Guardado</span>}
+              <Button type="submit" size="sm" disabled={guardar.isPending || !colorValido}>
+                {guardar.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Guardar marca
+              </Button>
+            </div>
+          </form>
+
+          <div className="rounded-lg border border-wa-border p-4 dark:border-wa-border-dark">
+            <h4 className="font-semibold text-wa-text dark:text-white">Logo</h4>
+            <p className="mt-1 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
+              PNG, JPG o WEBP de hasta 2 MB. Se ajusta a un cuadrado y también es el ícono de la app instalada.
+            </p>
+            <div className="mt-3 flex items-center gap-4">
+              <span className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-wa-border bg-white dark:border-wa-border-dark">
+                {marca.data.has_logo ? (
+                  <img
+                    src={`/api/platform/organizations/${organizacion.id}/branding/logo?v=${marca.data.version}`}
+                    alt={`Logo de ${marca.data.name}`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-xs text-wa-muted">Sin logo</span>
+                )}
+              </span>
+              <div className="flex flex-col gap-2">
+                <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-wa-border px-3 text-sm font-semibold text-wa-text transition hover:border-wa-primary/40 hover:bg-wa-primary/5 focus-within:ring-2 focus-within:ring-wa-primary dark:border-wa-border-dark dark:text-wa-text-dark">
+                  {subirLogo.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                  {marca.data.has_logo ? "Cambiar logo" : "Subir logo"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    disabled={subirLogo.isPending}
+                    onChange={(evento) => {
+                      const archivo = evento.target.files?.[0];
+                      evento.target.value = "";
+                      if (!archivo) return;
+                      if (archivo.size > 2 * 1024 * 1024) {
+                        setErrorArchivo("El logo supera los 2 MB.");
+                        return;
+                      }
+                      setErrorArchivo(null);
+                      subirLogo.mutate(archivo);
+                    }}
+                  />
+                </label>
+                {marca.data.has_logo && (
+                  <Button variant="ghost" size="sm" onClick={() => quitarLogo.mutate()} disabled={quitarLogo.isPending}>
+                    Quitar logo
+                  </Button>
+                )}
+              </div>
+            </div>
+            {errorLogo && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{errorLogo}</p>}
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
+function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) {
+  const formId = useId();
+  const queryClient = useQueryClient();
+  const [abierta, setAbierta] = useState(false);
+  const [habilitado, setHabilitado] = useState(organizacion.ai_enabled);
+  const [cuota, setCuota] = useState(organizacion.ai_monthly_quota?.toString() ?? "");
+  const [integraciones, setIntegraciones] = useState<Record<string, string>>({});
+  const [errorCuota, setErrorCuota] = useState<string | null>(null);
+  const claveAsistente = ["platform", "organizations", organizacion.id, "ai"];
+  const claveIntegraciones = ["platform", "organizations", organizacion.id, "integrations"];
+
+  const asistente = useQuery({
+    queryKey: claveAsistente,
+    queryFn: async () =>
+      (await client.get<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`)).data,
+    enabled: abierta,
+  });
+  const integracionesQuery = useQuery({
+    queryKey: claveIntegraciones,
+    queryFn: async () =>
+      (await client.get<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`)).data,
+    enabled: abierta,
+  });
+
+  useEffect(() => {
+    if (!asistente.data) return;
+    setHabilitado(asistente.data.enabled);
+    setCuota(asistente.data.monthly_quota?.toString() ?? "");
+  }, [asistente.data]);
+
+  useEffect(() => {
+    if (!integracionesQuery.data) return;
+    setIntegraciones(Object.fromEntries(integracionesQuery.data.map((item) => [item.key, item.value ?? ""])));
+  }, [integracionesQuery.data]);
+
+  const guardarAsistente = useMutation({
+    mutationFn: async (monthlyQuota: number | null) =>
+      (
+        await client.put<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`, {
+          enabled: habilitado,
+          monthly_quota: monthlyQuota,
+        })
+      ).data,
+    onSuccess: (data) => {
+      queryClient.setQueryData(claveAsistente, data);
+      queryClient.invalidateQueries({ queryKey: ORGANIZACIONES, exact: true });
+    },
+  });
+
+  const guardarIntegraciones = useMutation({
+    mutationFn: async () =>
+      (
+        await client.put<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`, {
+          values: integraciones,
+        })
+      ).data,
+    onSuccess: (data) => queryClient.setQueryData(claveIntegraciones, data),
+  });
+
+  const etiquetaIA = !organizacion.ai_enabled
+    ? "IA deshabilitada"
+    : organizacion.ai_monthly_quota === null
+      ? "IA sin límite"
+      : `IA · ${organizacion.ai_monthly_quota} al mes`;
+
+  return (
+    <details
+      className="mt-4 border-t border-wa-border pt-3 text-sm dark:border-wa-border-dark"
+      onToggle={(evento) => setAbierta(evento.currentTarget.open)}
+    >
+      <summary className="w-fit cursor-pointer rounded font-semibold text-wa-text hover:text-wa-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary dark:text-white dark:hover:text-wa-primary">
+        <span className="inline-flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-wa-primary-strong dark:text-wa-primary" aria-hidden="true" />
+          Asistente IA e integraciones
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${organizacion.ai_enabled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-gray-500/10 text-gray-600 dark:text-gray-300"}`}>
+            {etiquetaIA}
+          </span>
+        </span>
+      </summary>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <form
+          className="rounded-lg border border-wa-border p-4 dark:border-wa-border-dark"
+          onSubmit={(evento) => {
+            evento.preventDefault();
+            const texto = cuota.trim();
+            const valor = texto === "" ? null : Number(texto);
+            if (valor !== null && (!Number.isInteger(valor) || valor < 0)) {
+              setErrorCuota("La cuota debe ser un número entero mayor o igual a cero.");
+              return;
+            }
+            setErrorCuota(null);
+            guardarAsistente.mutate(valor);
+          }}
+        >
+          <h4 className="font-semibold text-wa-text dark:text-white">Asistente IA</h4>
+          <p className="mt-1 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
+            Sugerencias y analista usan los workflows de la plataforma. La cuota cuenta generaciones por mes (UTC); vacía es sin límite.
+          </p>
+          {asistente.isLoading && <p className="mt-3 text-xs text-wa-muted dark:text-wa-muted-dark">Cargando uso…</p>}
+          {asistente.isError && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{mensajeDeError(asistente.error)}</p>}
+          {asistente.data && (
+            <p className="mt-3 text-xs text-wa-text dark:text-wa-text-dark">
+              Este mes: <span className="font-semibold">{asistente.data.used_this_month}</span>
+              {asistente.data.monthly_quota !== null && ` de ${asistente.data.monthly_quota}`} generaciones
+            </p>
+          )}
+          <label className="mt-3 flex items-center gap-2 text-sm text-wa-text dark:text-wa-text-dark">
+            <input
+              type="checkbox"
+              checked={habilitado}
+              onChange={(evento) => setHabilitado(evento.target.checked)}
+              className="h-4 w-4 accent-wa-primary"
+            />
+            Habilitado para este negocio
+          </label>
+          <label htmlFor={`${formId}-cuota`} className="mt-3 block text-xs font-semibold text-wa-text dark:text-wa-text-dark">
+            Cuota mensual
+          </label>
+          <Input
+            id={`${formId}-cuota`}
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={cuota}
+            onChange={(evento) => setCuota(evento.target.value)}
+            placeholder="Sin límite"
+            aria-invalid={errorCuota !== null}
+            className="mt-1.5 h-10 max-w-40 border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-head-dark"
+          />
+          {(errorCuota || guardarAsistente.isError) && (
+            <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">
+              {errorCuota ?? mensajeDeError(guardarAsistente.error)}
+            </p>
+          )}
+          <div className="mt-4 flex items-center justify-end gap-3">
+            {guardarAsistente.isSuccess && <span className="text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">Guardado</span>}
+            <Button type="submit" size="sm" disabled={guardarAsistente.isPending || asistente.isLoading}>
+              {guardarAsistente.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+              Guardar asistente
+            </Button>
+          </div>
+        </form>
+
+        <form
+          className="rounded-lg border border-wa-border p-4 dark:border-wa-border-dark"
+          onSubmit={(evento) => {
+            evento.preventDefault();
+            guardarIntegraciones.mutate();
+          }}
+        >
+          <h4 className="font-semibold text-wa-text dark:text-white">Integraciones del negocio</h4>
+          <p className="mt-1 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
+            Workflows propios de este negocio. El negocio los usa, pero no los ve ni los edita.
+          </p>
+          {integracionesQuery.isLoading && <p className="mt-3 text-xs text-wa-muted dark:text-wa-muted-dark">Cargando…</p>}
+          {integracionesQuery.isError && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{mensajeDeError(integracionesQuery.error)}</p>}
+          <div className="mt-3 space-y-3">
+            {integracionesQuery.data?.map((item) => (
+              <div key={item.key}>
+                <label htmlFor={`${formId}-${item.key}`} className="block text-xs font-semibold text-wa-text dark:text-wa-text-dark">
+                  {item.label}
+                </label>
+                <Input
+                  id={`${formId}-${item.key}`}
+                  type="url"
+                  value={integraciones[item.key] ?? ""}
+                  onChange={(evento) => setIntegraciones((actual) => ({ ...actual, [item.key]: evento.target.value }))}
+                  placeholder="https://n8n.ejemplo.com/webhook/…"
+                  autoComplete="off"
+                  className="mt-1.5 h-10 border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-head-dark"
+                />
+              </div>
+            ))}
+          </div>
+          {guardarIntegraciones.isError && (
+            <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-300">{mensajeDeError(guardarIntegraciones.error)}</p>
+          )}
+          <div className="mt-4 flex items-center justify-end gap-3">
+            {guardarIntegraciones.isSuccess && <span className="text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">Guardado</span>}
+            <Button type="submit" size="sm" disabled={guardarIntegraciones.isPending || !integracionesQuery.data}>
+              {guardarIntegraciones.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+              Guardar integraciones
+            </Button>
+          </div>
+        </form>
+      </div>
+    </details>
+  );
+}
+
 function Negocio({ organizacion }: { organizacion: Organization }) {
   const queryClient = useQueryClient();
   const suspendido = organizacion.status === "suspended";
@@ -585,6 +1036,8 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
       )}
 
       <Dominios organizacion={organizacion} />
+      <ConfiguracionNegocio organizacion={organizacion} />
+      <MarcaNegocio organizacion={organizacion} />
       <details className="mt-4 border-t border-wa-border pt-3 text-sm dark:border-wa-border-dark">
         <summary className="w-fit cursor-pointer rounded text-wa-muted hover:text-wa-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary dark:text-wa-muted-dark dark:hover:text-wa-text-dark">Datos técnicos</summary>
         <dl className="mt-3 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
@@ -595,6 +1048,122 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
         </dl>
       </details>
     </li>
+  );
+}
+
+function CredencialesPlataforma() {
+  const formId = useId();
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: CONFIGURACION_PLATAFORMA,
+    queryFn: async () => {
+      const { data } = await client.get<PlatformSetting[]>("/api/platform/settings");
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (!settingsQuery.data) return;
+    setDraft((previous) => {
+      const next = { ...previous };
+      for (const item of settingsQuery.data) {
+        if (!item.secret) next[item.key] = item.value ?? "";
+      }
+      return next;
+    });
+  }, [settingsQuery.data]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const values: Record<string, string> = {};
+      for (const item of settingsQuery.data ?? []) {
+        const value = draft[item.key] ?? "";
+        if (!item.secret || value) values[item.key] = value;
+      }
+      const { data } = await client.put<PlatformSetting[]>("/api/platform/settings", { values });
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(CONFIGURACION_PLATAFORMA, data);
+      setDraft((previous) => {
+        const next = { ...previous };
+        for (const item of data) if (item.secret) delete next[item.key];
+        return next;
+      });
+      setSaved(true);
+    },
+  });
+
+  return (
+    <section className="mt-8 rounded-xl border border-wa-border bg-white p-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4.5 w-4.5 text-wa-primary" aria-hidden="true" />
+            <h2 className="text-lg font-bold text-wa-text dark:text-white">Credenciales globales</h2>
+          </div>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+            App Tech Provider de Cliniventas y workflows de IA en n8n. Se comparten con todos los negocios; las WABA y sus tokens permanecen dentro de cada tenant, y cada job de IA viaja firmado con su negocio.
+          </p>
+        </div>
+        {saved && !save.isPending && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Guardado
+          </span>
+        )}
+      </div>
+
+      {settingsQuery.isLoading && <p className="mt-4 text-sm text-wa-muted">Cargando credenciales…</p>}
+      {settingsQuery.isError && <div className="mt-4"><AvisoError mensaje={mensajeDeError(settingsQuery.error)} /></div>}
+
+      {settingsQuery.data && (
+        <form
+          className="mt-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSaved(false);
+            save.mutate();
+          }}
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            {settingsQuery.data.map((item) => {
+              const inputId = `${formId}-${item.key}`;
+              return (
+                <div key={item.key}>
+                  <label htmlFor={inputId} className="flex items-center gap-2 text-xs font-semibold text-wa-text dark:text-wa-text-dark">
+                    {item.label}
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.configured ? "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300" : "bg-wa-field text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark"}`}>
+                      {item.configured ? (item.source === "environment" ? "Desde entorno" : "Configurada") : "Pendiente"}
+                    </span>
+                  </label>
+                  <Input
+                    id={inputId}
+                    type={item.secret ? "password" : "text"}
+                    value={draft[item.key] ?? ""}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setDraft((previous) => ({ ...previous, [item.key]: event.target.value }));
+                    }}
+                    autoComplete="off"
+                    placeholder={item.secret && item.configured ? "•••• sin cambios" : "Sin configurar"}
+                    className="mt-1.5 h-10 border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-head-dark"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {save.isError && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{mensajeDeError(save.error)}</p>}
+          <div className="mt-5 flex justify-end">
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              Guardar credenciales
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -669,6 +1238,8 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
           <Metrica label="Por actualizar" value={negocios.isLoading ? "—" : pendientes} />
         </section>
 
+        <CredencialesPlataforma />
+
         <section className="mt-8">
           <div className="flex flex-col gap-4 border-b border-wa-border pb-4 sm:flex-row sm:items-end sm:justify-between dark:border-wa-border-dark">
             <div>
@@ -714,6 +1285,10 @@ function Metrica({ label, value }: { label: string; value: number | string }) {
 
 export function PlatformApp() {
   const queryClient = useQueryClient();
+  // El panel no toma la marca de ningún negocio (ver main.tsx).
+  useEffect(() => {
+    document.title = "Cliniventas · Panel de plataforma";
+  }, []);
   const sesion = useQuery({
     queryKey: ["platform", "me"],
     queryFn: async () => {
@@ -743,7 +1318,17 @@ export function PlatformApp() {
     );
   }
   if (sesion.isError) {
-    return <main className="flex h-full items-center justify-center bg-wa-app p-4 dark:bg-wa-app-dark"><div className="w-full max-w-md space-y-4"><AvisoError mensaje={mensajeDeError(sesion.error)} /><Button variant="secondary" onClick={recargarSesion}>Volver a intentar</Button></div></main>;
+    const detail =
+      axios.isAxiosError(sesion.error) && !sesion.error.response
+        ? "No se pudo establecer conexión con el servidor."
+        : mensajeDeError(sesion.error);
+    return (
+      <BackendUnavailable
+        detail={detail}
+        isRetrying={sesion.isFetching}
+        onRetry={recargarSesion}
+      />
+    );
   }
   if (!sesion.data) {
     return <Login onEntrar={recargarSesion} />;

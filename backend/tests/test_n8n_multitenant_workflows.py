@@ -86,7 +86,10 @@ def test_meta_verifies_signature_and_persists_before_ack():
     assert targets(workflow, "Meta eventos (POST)") == ["Config (POST)"]
     assert targets(workflow, "Config (POST)") == ["preparar cuerpo crudo Meta"]
     assert targets(workflow, "preparar cuerpo crudo Meta") == ["verificar firma Meta POST"]
-    assert targets(workflow, "verificar firma Meta POST") == ["normalizar eventos Meta"]
+    assert targets(workflow, "verificar firma Meta POST") == ["es cambio de plantilla?"]
+    assert targets(workflow, "es cambio de plantilla?") == [
+        "normalizar cambio plantilla", "normalizar eventos Meta",
+    ]
 
     assert "Meta eventos (POST)" in raw_body_prep["parameters"]["jsCode"]
     assert "binary" in raw_body_prep["parameters"]["jsCode"]
@@ -122,7 +125,10 @@ def test_meta_has_durable_replay_and_completes_only_terminal_branches():
     complete = by_name["marcar evento Meta completo"]
     assert "/meta-events/inbox/" in complete["parameters"]["url"]
     assert complete["parameters"]["jsonBody"] == "={{ JSON.stringify({ status: 'processed' }) }}"
-    for terminal in ("avisar al backend", "actualizar estado", "guardar reaccion"):
+    for terminal in (
+        "avisar al backend", "actualizar estado", "guardar reaccion",
+        "sincronizar plantilla completa",
+    ):
         assert targets(workflow, terminal) == ["marcar evento Meta completo"]
     assert targets(workflow, "mensaje nuevo?")[1] == "avisar al backend"
 
@@ -147,6 +153,73 @@ def test_meta_callbacks_keep_connection_and_event_context_without_ai():
     for name in callback_names:
         assert {"X-Meta-Phone-Number-Id", "X-Meta-Event-Id"} <= header_names(by_name[name]), name
 
+    template_callback = by_name["sincronizar plantilla completa"]
+    assert {"X-Meta-Waba-Id", "X-Meta-Event-Id"} <= header_names(template_callback)
+    assert template_callback["parameters"]["method"] == "PUT"
+    assert "/api/webhooks/templates/" in template_callback["parameters"]["url"]
+    assert "sendBody" not in template_callback["parameters"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js no esta disponible")
+def test_meta_template_change_normalizer_uses_waba_routing():
+    payload = [{
+        "body": {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "WABA_1",
+                "time": 1770000000,
+                "changes": [{
+                    "field": "template_category_update",
+                    "value": {
+                        "message_template_id": "META_TEMPLATE_1",
+                        "message_template_name": "recordatorio_cita",
+                        "message_template_language": "es",
+                        "previous_category": "UTILITY",
+                        "new_category": "MARKETING",
+                    },
+                }],
+            }],
+        },
+    }]
+    harness = r"""
+const fs = require('fs');
+const workflow = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+const code = workflow.nodes.find((node) => node.name === 'normalizar cambio plantilla').parameters.jsCode;
+const values = JSON.parse(fs.readFileSync(0, 'utf8'));
+const items = values.map((json) => ({ json }));
+const byNodeName = {
+  'Meta eventos (POST)': { all: () => items },
+  'Config (POST)': { item: { json: { backend_url: 'https://backend.test/' } } },
+};
+const $ = (name) => byNodeName[name];
+const execute = new Function('$', code);
+Promise.resolve(execute($))
+  .then((result) => process.stdout.write(JSON.stringify(result.map((item) => item.json))))
+  .catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+    completed = subprocess.run(
+        [shutil.which("node"), "-e", harness, str(META_PATH)],
+        input=json.dumps(payload), text=True, capture_output=True, check=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result == [{
+        "_kind": "template_sync",
+        "provider": "meta_cloud_api",
+        "phone_number_id": None,
+        "waba_id": "WABA_1",
+        "event_key": "WABA_1:template_sync:template_category_update:META_TEMPLATE_1:1770000000",
+        "meta_template_id": "META_TEMPLATE_1",
+        "template_name": "recordatorio_cita",
+        "template_language": "es",
+        "change_field": "template_category_update",
+        "payload": {
+            "field": "template_category_update",
+            "value": payload[0]["body"]["entry"][0]["changes"][0]["value"],
+        },
+        "backend_url": "https://backend.test",
+    }]
+
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js no esta disponible")
 def test_meta_normalizer_handles_missing_and_mixed_profiles_per_phone_number():
@@ -165,6 +238,7 @@ def test_meta_normalizer_handles_missing_and_mixed_profiles_per_phone_number():
                                 {"id": "m1", "from": "111", "timestamp": "1", "type": "text", "text": {"body": "uno"}},
                                 {"id": "m2", "from": "222", "timestamp": "2", "type": "text", "text": {"body": "dos"}},
                                 {"id": "m3", "from": "333", "timestamp": "3", "type": "text", "text": {"body": "tres"}},
+                                {"id": "m4", "from": "333", "timestamp": "4", "type": "button", "button": {"text": "OpcionA", "payload": "OpcionA"}},
                             ],
                         }
                     },
@@ -200,11 +274,13 @@ Promise.resolve(execute($))
     )
     result = json.loads(completed.stdout)
 
-    assert [item["phone_number_id"] for item in result] == ["PHONE_A"] * 3 + ["PHONE_B"]
+    assert [item["phone_number_id"] for item in result] == ["PHONE_A"] * 4 + ["PHONE_B"]
     assert result[0]["push_name"] is None and result[0]["username"] is None
     assert result[1]["push_name"] == "Dos" and result[1]["username"] is None
     assert result[2]["push_name"] == "Tres" and result[2]["username"] == "@tres"
-    assert result[3]["event_key"] == "PHONE_B:status:s1"
+    assert result[3]["message_type"] == "button"
+    assert result[3]["content"] == "OpcionA"
+    assert result[4]["event_key"] == "PHONE_B:status:s1"
 
 
 def test_rag_is_only_an_authorized_on_demand_copilot():
@@ -226,6 +302,12 @@ def test_rag_is_only_an_authorized_on_demand_copilot():
     )
     for name in ("RAG1", "precios1", "cargar contexto RAG"):
         assert {"X-Tenant-Context", "X-Job-Id"} <= header_names(by_name[name]), name
+    # El workflow es uno solo para todos los negocios: lo que sabe de cada uno
+    # llega en el contexto del job, no escrito en el prompt.
+    prompt = by_name["Agente Copiloto Ventas1"]["parameters"]["text"]
+    assert "$json.tenant_config" in prompt
+    assert "$json.recursos" in prompt
+    assert "tenant_config" in by_name["preparar contexto RAG"]["parameters"]["jsCode"]
 
 
 def test_analyst_is_sql_free_on_demand_and_revision_guarded():
@@ -238,7 +320,10 @@ def test_analyst_is_sql_free_on_demand_and_revision_guarded():
     assert "automatizacion_pausada" not in workflow_text
     assert has_path(workflow, "Datos del mensaje", "agente analista1")
     assert has_path(workflow, "Webhook analista a demanda", "agente analista1")
-    assert by_name["debounce analista1"]["parameters"]["unit"] == "seconds"
+    # El analista solo corre a pedido del vendedor: no hay mensajes que
+    # esperar, y un Wait sin unidad explícita espera horas (default de n8n).
+    assert not any(node["type"] == "n8n-nodes-base.wait" for node in workflow["nodes"])
+    assert has_path(workflow, "validar solicitud analista", "cargar contexto autorizado")
 
     trigger_inputs = {
         value["name"]
@@ -252,3 +337,21 @@ def test_analyst_is_sql_free_on_demand_and_revision_guarded():
     assert "context_revision" in apply["parameters"]["jsonBody"]
     assert {"X-Tenant-Context", "X-Job-Id"} <= header_names(context)
     assert {"X-Tenant-Context", "X-Job-Id"} <= header_names(apply)
+
+
+def test_analyst_uses_the_business_stages_not_a_fixed_list():
+    """Cada negocio configura sus etapas: el workflow las recibe en el
+    contexto (analysis-context -> stages) y valida contra ellas."""
+    workflow = load(ANALYST_PATH)
+    by_name = nodes(workflow)
+
+    schema = json.loads(by_name["Structured Output Parser4"]["parameters"]["inputSchema"])
+    assert "enum" not in schema["properties"]["estado"]
+    assert "context.stages" in by_name["preparar contexto analista"]["parameters"]["jsCode"]
+    agent = by_name["agente analista1"]["parameters"]
+    assert "etapas" in agent["text"]
+    assert "en_nutricion" not in agent["options"]["systemMessage"]
+    cleanup = by_name["Vaciar a null"]["parameters"]["jsCode"]
+    assert "'en_nutricion'" not in cleanup
+    assert "preparar contexto analista" in cleanup
+    assert "kind === 'lost'" in cleanup

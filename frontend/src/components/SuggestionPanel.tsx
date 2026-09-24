@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Sparkles, AlertTriangle, TrendingUp, MessageSquareDot } from 'lucide-react'
 import type { Chat, SuggestionResponse } from '../types'
+import { LeadAnalysisAction } from './LeadAnalysisAction'
 import { LeadInfo } from './LeadInfo'
 import { SuggestionCard } from './SuggestionCard'
 import { SuggestionInstructionBox } from './SuggestionInstructionBox'
@@ -25,6 +26,9 @@ interface Props {
   /** Generación con IA en curso — siempre iniciada por el vendedor. */
   isGenerating: boolean
   error: string | null
+  /** Falso cuando reintentar no sirve (plan sin IA, cuota agotada, asistente
+   * sin configurar): el aviso explica el motivo y no ofrece "Reintentar". */
+  errorRetryable?: boolean
   /** Genera sugerencias a demanda; `force` pide otras ignorando lo guardado.
    * `instruction` es la indicación opcional del asesor para orientar a la IA. */
   onGenerate: (force?: boolean, instruction?: string) => void
@@ -38,6 +42,7 @@ export function SuggestionPanel({
   isLoading,
   isGenerating,
   error,
+  errorRetryable = true,
   onGenerate,
 }: Props) {
   // Indicación opcional del asesor para la IA. Vive acá porque los tres CTA
@@ -105,14 +110,21 @@ export function SuggestionPanel({
           </div>
         )}
 
-        {error && !isGenerating && (
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl p-4 text-sm text-red-700 dark:text-red-400 space-y-3">
+        {error && !isGenerating && (errorRetryable ? (
+          <div role="alert" className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl p-4 text-sm text-red-700 dark:text-red-400 space-y-3">
             <p>{error}</p>
             <Button variant="secondary" size="sm" onClick={() => handleGenerate(!!data && !isStale)}>
               Reintentar
             </Button>
           </div>
-        )}
+        ) : (
+          // No es una falla pasajera: tono de aviso, no de error, y sin
+          // "Reintentar" porque daría el mismo resultado.
+          <div role="status" className="flex gap-2.5 rounded-xl border border-amber-300/60 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p>{error}</p>
+          </div>
+        ))}
 
         {/* Estado vacío: invita a generar a demanda, sin gastar IA de entrada */}
         {!data && !isLoading && !isGenerating && !error && (
@@ -237,6 +249,7 @@ export function SuggestionPanel({
             Ficha del lead
           </h3>
           <div className="space-y-3">
+            <LeadAnalysisAction chatId={chat.chat_id} />
             <LeadInfo chat={chat} />
             <LeadTaskCard chat={chat} />
             <ScheduledMessageCard chat={chat} />

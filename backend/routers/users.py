@@ -2,15 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db.models import User
-from services.auth_service import hash_password, invalidate_user_cache, require_admin
+from services.account_actions import invite_user, request_password_reset
+from services.auth_service import invalidate_user_cache, require_admin
 from services.db_service import (
     EmailAlreadyExistsError,
     LastAdminError,
-    create_user,
+    get_user_by_id,
     list_users,
-    set_user_password,
     update_user,
 )
+from services.email_service import EmailDeliveryError, EmailNotConfiguredError
 from services.session_service import revoke_all_for_user
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
@@ -27,17 +28,12 @@ class UserItem(BaseModel):
 class CreateUserRequest(BaseModel):
     email: str
     name: str
-    password: str
     role: str = "vendedor"
 
 
 class UpdateUserRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
-
-
-class ResetPasswordRequest(BaseModel):
-    new_password: str
 
 
 @router.get("", response_model=list[UserItem])
@@ -49,20 +45,24 @@ async def get_users():
 async def add_user(body: CreateUserRequest):
     if body.role not in ("admin", "vendedor"):
         raise HTTPException(status_code=400, detail="Rol inválido")
-    if not body.password:
-        raise HTTPException(status_code=400, detail="La contraseña no puede estar vacía")
+    if not body.email.strip() or not body.name.strip():
+        raise HTTPException(status_code=400, detail="Nombre y correo son obligatorios")
 
     try:
-        user = await create_user(
+        user = await invite_user(
             email=body.email.strip().lower(),
             name=body.name.strip(),
-            password_hash=hash_password(body.password),
             role=body.role,
         )
         invalidate_user_cache(user["id"])
         return user
     except EmailAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
+    except (EmailNotConfiguredError, EmailDeliveryError):
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo enviar la invitación. Revisa la configuración de correo.",
+        )
 
 
 @router.patch("/{user_id}", response_model=UserItem)
@@ -87,14 +87,26 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
     return user
 
 
-@router.post("/{user_id}/reset-password")
-async def reset_password(user_id: int, body: ResetPasswordRequest):
-    if not body.new_password:
-        raise HTTPException(status_code=400, detail="La contraseña no puede estar vacía")
-
-    ok = await set_user_password(user_id, hash_password(body.new_password))
-    if not ok:
+@router.post("/{user_id}/send-password-reset", status_code=202)
+async def send_password_reset(user_id: int):
+    user = await get_user_by_id(user_id)
+    if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    invalidate_user_cache(user_id)
-    await revoke_all_for_user(user_id, include_devices=True)
+    await request_password_reset(user.email)
     return {"status": "ok"}
+
+
+@router.post("/{user_id}/resend-invitation", response_model=UserItem)
+async def resend_invitation(user_id: int):
+    user = await get_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.is_active:
+        raise HTTPException(status_code=409, detail="El usuario ya activó su cuenta")
+    try:
+        return await invite_user(email=user.email, name=user.name, role=user.role)
+    except (EmailNotConfiguredError, EmailDeliveryError):
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo reenviar la invitación. Revisa la configuración de correo.",
+        )

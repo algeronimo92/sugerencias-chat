@@ -30,6 +30,9 @@ DEFAULT_EXEMPT_PREFIXES = ("/api/webhooks/",)
 # plataforma y nunca en el dominio de un negocio. Si respondiera ahí, el CRM de
 # un cliente sería una puerta al panel que administra a todos los demás.
 PLATFORM_PREFIX = "/api/platform/"
+# Marca pública (nombre, color, logo, manifest de la PWA). En un host de
+# plataforma no hay negocio y responde con la marca de la plataforma.
+BRANDING_PREFIX = "/api/branding"
 
 
 class TenantResolutionMiddleware:
@@ -88,13 +91,14 @@ class TenantResolutionMiddleware:
             await self._reject(scope, receive, send, 400)
             return
 
-        es_plataforma = scope.get("path", "").startswith(PLATFORM_PREFIX)
+        path = scope.get("path", "")
+        es_plataforma = path.startswith(PLATFORM_PREFIX)
         if hostname in self.platform_hosts:
             # Un host de plataforma no puede caer al schema legacy ``public``
             # para rutas CRM. Sus rutas permitidas ya salieron por _is_exempt,
             # salvo el panel, que es justamente lo que estos hosts sirven y no
             # necesita contexto de tenant (opera sobre el plano de control).
-            if es_plataforma:
+            if es_plataforma or path == BRANDING_PREFIX or path.startswith(BRANDING_PREFIX + "/"):
                 await self.app(scope, receive, send)
                 return
             await self._reject(scope, receive, send, 404)

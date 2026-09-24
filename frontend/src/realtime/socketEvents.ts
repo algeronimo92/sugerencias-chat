@@ -13,6 +13,7 @@ export const REALTIME_EVENT_TYPES = [
   'templates_updated',
   'media_library_updated',
   'automations_updated',
+  'lead_stages_updated',
 ] as const
 export type RealtimeEventType = typeof REALTIME_EVENT_TYPES[number]
 
@@ -49,7 +50,7 @@ const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
 
 const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
   'text', 'image', 'video', 'ptv', 'audio', 'document', 'location', 'sticker',
-  'contact', 'poll', 'reaction', 'pin', 'interactive', 'template', 'order', 'product',
+  'contact', 'poll', 'reaction', 'pin', 'interactive', 'button', 'template', 'order', 'product',
   'payment', 'view_once', 'unsupported',
 ])
 
@@ -76,7 +77,7 @@ export interface CreatedNotification {
   metadata: { author_name?: string; issue_report_id?: number } | null
 }
 
-type SignalEventType = 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' | 'issue_reports_updated'
+type SignalEventType = 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' | 'issue_reports_updated' | 'lead_stages_updated'
 
 export type ChatSocketEvent =
   | { [K in SignalEventType]: { type: K } }[SignalEventType]
@@ -209,6 +210,7 @@ const SOCKET_EVENT_PARSERS: Record<RealtimeEventType, SocketEventParser> = {
   notifications_updated: signal('notifications_updated'),
   automations_updated: signal('automations_updated'),
   issue_reports_updated: signal('issue_reports_updated'),
+  lead_stages_updated: signal('lead_stages_updated'),
   scheduled_messages_updated: parsed => ({
     type: 'scheduled_messages_updated',
     chat_id: typeof parsed.chat_id === 'string' ? parsed.chat_id : undefined,

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -10,7 +10,9 @@ import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotA
 import { extractErrorMessage } from '../utils/errors'
 import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 import { ConfirmDialog } from './ui/ConfirmDialog'
-import { MergeLeadDialog } from './MergeLeadDialog'
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const MergeLeadDialog = lazy(() => import('./MergeLeadDialog').then(m => ({ default: m.MergeLeadDialog })))
 
 interface Props {
   chat: Chat
@@ -402,9 +404,11 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
       confirmLabel="Eliminar"
       onConfirm={handleDelete}
     />
-    {showMergeDialog && (
-      <MergeLeadDialog chat={chat} onClose={() => setShowMergeDialog(false)} />
-    )}
+    <Suspense fallback={null}>
+      {showMergeDialog && (
+        <MergeLeadDialog chat={chat} onClose={() => setShowMergeDialog(false)} />
+      )}
+    </Suspense>
     </>
   )
 }

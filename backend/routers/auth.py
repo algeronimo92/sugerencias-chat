@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from db.models import User
 from services.auth_service import (
@@ -15,6 +15,14 @@ from services.auth_service import (
     verify_password,
 )
 from services.db_service import get_user_by_email
+from services.account_actions import (
+    INVITATION,
+    PASSWORD_RESET,
+    InvalidActionTokenError,
+    consume_action_token,
+    describe_action_token,
+    request_password_reset,
+)
 from services.session_service import (
     PIN_LENGTH,
     PinInvalidError,
@@ -75,6 +83,28 @@ class SessionOut(BaseModel):
     created_at: datetime
     last_used_at: datetime
     absolute_expires_at: datetime
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class CompleteActionRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=10, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def password_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("La contraseña no puede estar vacía")
+        return value
+
+
+class ActionTokenOut(BaseModel):
+    purpose: str
+    email: str
+    name: str
 
 
 def _to_user_out(user: User) -> UserOut:
@@ -232,3 +262,43 @@ async def logout_all(
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return _to_user_out(user)
+
+
+@router.post("/forgot-password", status_code=202)
+async def forgot_password(body: ForgotPasswordRequest):
+    # La respuesta es deliberadamente idéntica si el usuario no existe, está
+    # desactivado, falta SMTP o el proveedor rechaza el mensaje.
+    await request_password_reset(body.email)
+    return {
+        "message": "Si existe una cuenta activa con ese correo, recibirás un enlace para restablecerla."
+    }
+
+
+@router.get("/action-token/{token}", response_model=ActionTokenOut)
+async def action_token(token: str):
+    try:
+        return await describe_action_token(token)
+    except InvalidActionTokenError:
+        raise HTTPException(status_code=400, detail="El enlace no es válido o ya venció")
+
+
+@router.post("/accept-invitation")
+async def accept_invitation(body: CompleteActionRequest):
+    try:
+        await consume_action_token(
+            token=body.token, purpose=INVITATION, password=body.password
+        )
+    except InvalidActionTokenError:
+        raise HTTPException(status_code=400, detail="El enlace no es válido o ya venció")
+    return {"status": "ok"}
+
+
+@router.post("/reset-password")
+async def complete_password_reset(body: CompleteActionRequest):
+    try:
+        await consume_action_token(
+            token=body.token, purpose=PASSWORD_RESET, password=body.password
+        )
+    except InvalidActionTokenError:
+        raise HTTPException(status_code=400, detail="El enlace no es válido o ya venció")
+    return {"status": "ok"}

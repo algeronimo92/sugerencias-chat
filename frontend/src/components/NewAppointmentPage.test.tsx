@@ -6,10 +6,12 @@ import { NewAppointmentPage } from './NewAppointmentPage'
 
 vi.mock('../hooks/useAuth', () => ({ useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../hooks/useUsers', () => ({ useSellers: () => ({ data: [] }) }))
+vi.mock('../hooks/useCustomFields', () => ({ useCustomFields: () => ({ data: [] }) }))
 vi.mock('../hooks/useAppointments', () => ({
   useCreateAppointment: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 vi.mock('./AppointmentHistoryList', () => ({ AppointmentHistoryList: () => null }))
+vi.mock('./AppointmentCalendar', () => ({ AppointmentCalendar: () => null }))
 
 // La cámara real ya tiene sus propios tests; acá solo importa que la página la
 // abra y se quede con la foto que devuelve.

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2, Trash2, X } from 'lucide-react'
 import type { SettingItem } from '../types'
-import { useSaveSettings, useSettings } from '../hooks/useSettings'
+import { useBusinessTimezones, useSaveSettings, useSettings } from '../hooks/useSettings'
 import { extractErrorMessage } from '../utils/errors'
 import { Checkbox } from './ui/Checkbox'
+import { Select } from './ui/Input'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
@@ -37,6 +38,7 @@ function groupItems(items: SettingItem[]): { group: string; groupLabel: string; 
 export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const { data, isLoading, error } = useSettings(tab === 'claves')
+  const { data: timezones = [], isLoading: timezonesLoading } = useBusinessTimezones(tab === 'claves')
   const { mutate: save, isPending: isSaving } = useSaveSettings()
 
   // Valores no-secretos precargados con lo ya guardado (URLs, nombres de
@@ -53,7 +55,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
       const next = { ...prev }
       for (const item of data) {
         if (!item.secret && !(item.key in next)) {
-          next[item.key] = item.value ?? ''
+          next[item.key] = item.value || (item.key === 'business_timezone' ? 'America/Lima' : '')
         }
       }
       return next
@@ -113,6 +115,17 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
   }
 
   const groups = data ? groupItems(data) : []
+  const calendarRequiredKeys = [
+    'google_calendar_id',
+    'google_calendar_client_id',
+    'google_calendar_client_secret',
+    'google_calendar_refresh_token',
+  ]
+  const calendarReady = calendarRequiredKeys.every((key) => {
+    const item = data?.find((candidate) => candidate.key === key)
+    return Boolean(draft[key]?.trim()) || Boolean(item?.configured)
+  })
+  const calendarEnabled = draft.google_calendar_enabled === 'true'
 
   return (
     <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
@@ -162,9 +175,43 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               <h3 className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide mb-2">
                 {g.groupLabel}
               </h3>
+              {g.group === 'calendar' && (
+                <div className={`mb-3 rounded-lg border px-3 py-2 text-xs ${
+                  calendarEnabled && calendarReady
+                    ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300'
+                    : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
+                }`}>
+                  {calendarEnabled
+                    ? calendarReady
+                      ? 'Google Calendar está listo para sincronizar citas.'
+                      : 'La integración está activada, pero faltan credenciales o el ID del calendario.'
+                    : 'Google Calendar está desactivado. Actívalo y guarda para enviar las citas.'}
+                </div>
+              )}
               <div className="space-y-2.5">
                 {g.items.map((item) => (
-                  item.boolean ? (
+                  item.key === 'business_timezone' ? (
+                    <div key={item.key}>
+                      <label htmlFor="business-timezone" className="mb-1 block text-xs text-gray-600 dark:text-gray-300">
+                        {item.label}
+                      </label>
+                      <Select
+                        id="business-timezone"
+                        value={draft[item.key] || 'America/Lima'}
+                        onChange={(event) => setField(item.key, event.target.value)}
+                        disabled={timezonesLoading}
+                        className="w-full bg-wa-hover text-sm dark:bg-wa-head-dark"
+                      >
+                        {timezonesLoading && <option value="America/Lima">Cargando zonas horarias…</option>}
+                        {!timezonesLoading && timezones.map((timezone) => (
+                          <option key={timezone.id} value={timezone.id}>{timezone.label}</option>
+                        ))}
+                      </Select>
+                      <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
+                        El GMT mostrado es el vigente hoy e incorpora horario de verano cuando aplica.
+                      </p>
+                    </div>
+                  ) : item.boolean ? (
                     <label key={item.key} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                       <Checkbox
                         checked={(draft[item.key] ?? '') === 'true'}

@@ -77,10 +77,17 @@ async def _compute_dashboard_metrics(days: int) -> dict:
                 next_seller_response.is_not(None),
             ).scalar_subquery().label("avg_response_seconds"),
     )
+    # Todas las etapas del negocio en orden del embudo, con sus leads. Una
+    # etapa inactiva sin leads no aporta nada al gráfico y se omite.
     stage_stmt = (
-        select(Lead.estado.label("name"), func.count(Lead.id).label("value"))
-            .group_by(Lead.estado)
-            .order_by(func.count(Lead.id).desc())
+        select(
+            LeadStage.key.label("name"),
+            LeadStage.is_active,
+            func.count(Lead.id).label("value"),
+        )
+            .outerjoin(Lead, Lead.estado == LeadStage.key)
+            .group_by(LeadStage.key, LeadStage.position, LeadStage.is_active)
+            .order_by(LeadStage.position.asc(), LeadStage.key.asc())
     )
     origin_label = func.coalesce(Lead.origen, "Sin origen")
     origin_stmt = (
@@ -120,10 +127,11 @@ async def _compute_dashboard_metrics(days: int) -> dict:
     summary = summary_rows[0]
     avg_response_seconds = summary["avg_response_seconds"]
 
-    stages = {stage.value: 0 for stage in LeadStage}
-    for row in stage_rows:
-        key = row["name"].value if isinstance(row["name"], LeadStage) else str(row["name"])
-        stages[key] = int(row["value"])
+    stages = [
+        {"name": row["name"], "value": int(row["value"])}
+        for row in stage_rows
+        if row["is_active"] or row["value"]
+    ]
 
     def items(rows):
         return [{"name": str(row["name"]), "value": int(row["value"])} for row in rows]
@@ -138,7 +146,7 @@ async def _compute_dashboard_metrics(days: int) -> dict:
             "completed_tasks": int(summary["completed_tasks"] or 0),
             "avg_response_minutes": round(float(avg_response_seconds) / 60, 1) if avg_response_seconds is not None else None,
         },
-        "stages": [{"name": stage.value, "value": stages[stage.value]} for stage in LeadStage],
+        "stages": stages,
         "origins": items(origin_rows),
         "services": items(service_rows),
         "sellers": items(seller_rows),

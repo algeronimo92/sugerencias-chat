@@ -73,3 +73,31 @@ async def test_footer_setting_is_only_read_when_the_config_has_none(monkeypatch)
     assert await resolve_interactive_footer("buttons", {**BUTTONS, "footer": "Propio"}) == "Propio"
     default.assert_not_awaited()
     assert await resolve_interactive_footer("list", LIST) == "Clínica"
+
+
+async def test_default_footer_is_the_business_brand_not_another_business(monkeypatch):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from services.branding import Branding
+
+    org = UUID("68b010ae-8f9b-4f47-ab57-c74048923081")
+    monkeypatch.setattr(whatsapp_rules, "get_effective", AsyncMock(return_value=""))
+    monkeypatch.setattr(whatsapp_rules, "get_current_tenant", lambda: SimpleNamespace(organization_id=org))
+    monkeypatch.setattr(
+        whatsapp_rules,
+        "get_branding",
+        AsyncMock(return_value=Branding("Clínica Norte", "#00a884", False, 0)),
+    )
+
+    assert await whatsapp_rules.default_interactive_footer() == "Clínica Norte"
+
+
+async def test_configured_footer_wins_over_the_brand(monkeypatch):
+    monkeypatch.setattr(whatsapp_rules, "get_effective", AsyncMock(return_value="  Te esperamos  "))
+    brand = AsyncMock()
+    monkeypatch.setattr(whatsapp_rules, "get_branding", brand)
+
+    assert await whatsapp_rules.default_interactive_footer() == "Te esperamos"
+    brand.assert_not_awaited()
+

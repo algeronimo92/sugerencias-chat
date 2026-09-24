@@ -109,7 +109,7 @@ async def fetch_messages(
             .where(not_(and_(
                 WspMessage.message_type == "unsupported",
                 WspMessage.payload["original_type"].astext.in_(ALBUM_ENVELOPE_TYPES),
-            )))
+            ).is_(True)))
             .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
             .limit(limit + 1)
         )

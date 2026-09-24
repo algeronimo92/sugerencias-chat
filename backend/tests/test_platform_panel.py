@@ -41,6 +41,17 @@ def _app() -> FastAPI:
     async def private():
         return {"ok": True}
 
+    @app.get("/api/branding/manifest.webmanifest")
+    async def manifest():
+        from tenancy.context import get_current_tenant
+
+        context = get_current_tenant()
+        return {"tenant": context.hostname if context else None}
+
+    @app.get("/api/brandingx")
+    async def lookalike():
+        return {"ok": True}
+
     app.add_middleware(
         TenantResolutionMiddleware,
         enabled=True,
@@ -97,6 +108,17 @@ def test_el_host_de_plataforma_sigue_sin_servir_rutas_del_crm(client):
     """El espejo de la primera garantía: el panel no da acceso a datos de negocio."""
     assert client.get("/private", headers={"host": "admin.example.com"}).status_code == 404
     assert client.get("/private", headers={"host": TENANT.hostname}).status_code == 200
+
+
+def test_la_marca_publica_responde_en_ambos_hosts_sin_mezclar_negocios(client):
+    """El panel necesita su manifest; en su host no hay negocio que resolver."""
+    plataforma = client.get("/api/branding/manifest.webmanifest", headers={"host": "admin.example.com"})
+    negocio = client.get("/api/branding/manifest.webmanifest", headers={"host": TENANT.hostname})
+
+    assert plataforma.status_code == 200 and plataforma.json() == {"tenant": None}
+    assert negocio.json() == {"tenant": TENANT.hostname}
+    # Solo el prefijo exacto: una ruta que empieza igual sigue siendo del CRM.
+    assert client.get("/api/brandingx", headers={"host": "admin.example.com"}).status_code == 404
 
 
 def test_la_cookie_del_panel_es_distinta_a_la_del_crm():

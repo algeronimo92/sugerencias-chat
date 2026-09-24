@@ -94,7 +94,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const { subscribed: pushSubscribed, subscribe: subscribeToPush } = usePushSubscription()
   const [open, setOpen] = useState(false)
   const [unreadOnly, setUnreadOnly] = useState(false)
-  const { data, isLoading, isError, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useNotificationHistory(unreadOnly)
+  const { data, isLoading, isError, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useNotificationHistory(unreadOnly, open ? 50 : 1)
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const rootRef = useRef<HTMLDivElement>(null)

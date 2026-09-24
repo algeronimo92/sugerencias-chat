@@ -6,8 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from routers import webhooks
-from db.models import LeadStage
 from models.webhook_schemas import LeadStageWebhookBody
+from services.lead_stages import InvalidLeadStageError
 from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
@@ -41,7 +41,7 @@ async def test_stage_change_records_reason_and_broadcasts(monkeypatch):
 
     update_stage.assert_awaited_once_with(
         LEAD_ID,
-        LeadStage.en_seguimiento,
+        "en_seguimiento",
         actor_type="agent",
         metadata={"reason": "El vendedor habló último y pasaron 24 horas sin respuesta."},
         include_chat=False,
@@ -100,13 +100,20 @@ async def test_null_stage_only_notifies_panels(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_invalid_stage_returns_422_with_valid_options(monkeypatch):
+async def test_stage_unknown_to_the_business_returns_422(monkeypatch):
+    """Las etapas son de cada negocio: la validación la hace el servicio contra
+    lead_stages, no una lista fija en el webhook."""
+    patch_webhooks(
+        monkeypatch,
+        "update_lead_stage",
+        AsyncMock(side_effect=InvalidLeadStageError("cierre")),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await webhooks.lead_stage_webhook(_body(estado="cierre"))
 
     assert exc.value.status_code == 422
-    assert "en_seguimiento" in exc.value.detail
+    assert "cierre" in exc.value.detail
 
 
 @pytest.mark.asyncio

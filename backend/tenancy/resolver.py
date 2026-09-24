@@ -119,6 +119,51 @@ async def resolve_tenant_by_phone_number_id(phone_number_id: str) -> TenantConte
     )
 
 
+async def resolve_tenant_by_waba_id(waba_id: str) -> TenantContext | None:
+    """Resuelve eventos de cuenta que no incluyen ``phone_number_id``.
+
+    Los cambios de plantillas pertenecen a la WABA completa. Una
+    WABA puede tener varios numeros, por eso se deduplica por organizacion y
+    se falla cerrado si el identificador apunta a mas de un tenant.
+    """
+
+    async with control_session() as session:
+        result = await session.execute(
+            select(
+                Organization.id.label("organization_id"),
+                Organization.schema_name,
+                Organization.storage_prefix,
+                OrganizationDomain.hostname,
+            )
+            .join(
+                WhatsAppConnection,
+                WhatsAppConnection.organization_id == Organization.id,
+            )
+            .join(
+                OrganizationDomain,
+                OrganizationDomain.organization_id == Organization.id,
+            )
+            .where(
+                WhatsAppConnection.waba_id == waba_id,
+                WhatsAppConnection.status == "active",
+                Organization.status == "active",
+                OrganizationDomain.is_primary.is_(True),
+            )
+            .distinct()
+            .limit(2)
+        )
+        rows = result.mappings().all()
+    if len(rows) != 1:
+        return None
+    row = rows[0]
+    return TenantContext(
+        organization_id=UUID(str(row["organization_id"])),
+        schema_name=row["schema_name"],
+        hostname=row["hostname"],
+        storage_segment=row["storage_prefix"],
+    )
+
+
 async def resolve_tenant_by_organization_id(
     organization_id: UUID,
 ) -> TenantContext | None:

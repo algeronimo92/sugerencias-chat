@@ -81,9 +81,14 @@ class TestNormalizeConditions:
         assert result["origin_contains"] is None
         assert result["seller_id"] is None
 
-    def test_rejects_unknown_stage(self):
+    def test_rejects_a_malformed_stage_key(self):
         with pytest.raises(ValueError, match="Etapa"):
-            normalize_conditions({"stage": "etapa_inventada"})
+            normalize_conditions({"stage": "Etapa Inventada"})
+
+    def test_accepts_a_custom_stage_key(self):
+        """Las etapas son de cada negocio: si la clave existe lo verifica
+        rule_validation contra la base, no esta función pura."""
+        assert normalize_conditions({"stage": "cita_pagada"})["stage"] == "cita_pagada"
 
     def test_cooldown_is_clamped_to_supported_range(self):
         assert normalize_conditions({"cooldown_minutes": 999999})["cooldown_minutes"] == 43200

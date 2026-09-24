@@ -6,7 +6,7 @@ from time import perf_counter
 import httpx
 from models.schemas import SuggestionResponse
 from request_metrics import record_external_duration
-from services.settings_service import get_effective_many
+from services.platform_settings import platform_settings_many
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,9 @@ async def call_n8n(
     context_revision: str | None = None,
     tenant_context_token: str | None = None,
 ) -> SuggestionResponse:
-    values = await get_effective_many(("n8n_webhook_url", "n8n_webhook_token"))
+    # Un único workflow para todos los negocios: la URL y el token son de la
+    # plataforma, y el tenant viaja en X-Tenant-Context.
+    values = await platform_settings_many(("n8n_webhook_url", "n8n_webhook_token"))
     webhook_url = values["n8n_webhook_url"]
     webhook_token = values["n8n_webhook_token"]
     if not webhook_url:
@@ -134,7 +136,7 @@ async def call_n8n_analyst(
     of truth for the outcome.
     """
 
-    values = await get_effective_many(
+    values = await platform_settings_many(
         ("n8n_analyst_webhook_url", "n8n_webhook_token")
     )
     webhook_url = values["n8n_analyst_webhook_url"]

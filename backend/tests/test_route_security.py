@@ -28,10 +28,23 @@ PUBLIC_ROUTES = {
     ("POST", "/api/auth/logout"),
     ("GET", "/api/auth/pin/status"),
     ("POST", "/api/auth/pin/login"),
+    # Invitaciones y recuperación se consumen antes de iniciar sesión. Los
+    # tokens son opacos, expiran y se invalidan de forma atómica al usarlos;
+    # forgot-password responde igual exista o no la cuenta.
+    ("POST", "/api/auth/forgot-password"),
+    ("GET", "/api/auth/action-token/{token}"),
+    ("POST", "/api/auth/accept-invitation"),
+    ("POST", "/api/auth/reset-password"),
     # El login del panel no puede exigir sesión; el middleware de tenancy ya lo
     # deja fuera del alcance de cualquier dominio de negocio.
     ("POST", "/api/platform/auth/login"),
     ("POST", "/api/platform/auth/logout"),
+    # Marca del negocio: la pantalla de acceso y el manifest de la PWA la
+    # necesitan sin sesión. Solo exponen nombre, color y logo, lo mismo que ya
+    # muestra el login.
+    ("GET", "/api/branding"),
+    ("GET", "/api/branding/logo"),
+    ("GET", "/api/branding/manifest.webmanifest"),
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/metrics"),

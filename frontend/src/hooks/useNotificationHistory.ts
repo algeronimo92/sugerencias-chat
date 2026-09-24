@@ -3,12 +3,16 @@ import client from '../api/client'
 import type { NotificationPage } from '../types'
 import { useChatSocketConnected } from './useRealtime'
 
-export function useNotificationHistory(unreadOnly = false) {
+/** `limit` chico con el panel cerrado: ahí solo hacen falta el contador de
+ * no leídas (el backend lo calcula aparte, no depende del límite) y la más
+ * reciente, para avisar de una mención nueva. La lista completa se pide al
+ * abrir el panel. */
+export function useNotificationHistory(unreadOnly = false, limit = 50) {
   const connected = useChatSocketConnected()
   return useInfiniteQuery({
-    queryKey: ['notifications', unreadOnly],
+    queryKey: ['notifications', unreadOnly, limit],
     queryFn: async ({ pageParam }) => (await client.get<NotificationPage>('/api/notifications', {
-      params: { unread_only: unreadOnly, limit: 50, offset: pageParam },
+      params: { unread_only: unreadOnly, limit, offset: pageParam },
     })).data,
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => lastPage.has_more

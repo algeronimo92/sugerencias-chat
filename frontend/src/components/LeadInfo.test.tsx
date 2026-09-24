@@ -9,6 +9,16 @@ vi.mock('../hooks/useChats', () => ({
   useUpdateLead: () => ({ mutate: vi.fn(), isPending: false }),
   useMarkNoShow: () => ({ mutate: vi.fn(), isPending: false }),
 }))
+vi.mock('../hooks/useCustomFields', () => ({
+  useCustomFields: () => ({ data: [] }),
+  useLeadCustomFieldValues: () => ({ data: {} }),
+  useUpdateLeadCustomFieldValues: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+// Las etapas son del negocio; la ficha solo necesita rotular la del lead.
+vi.mock('../hooks/useLeadStages', async () => {
+  const { buildStageCatalog, DEFAULT_LEAD_STAGES } = await import('../domain/leadStageMeta')
+  return { useLeadStageCatalog: () => buildStageCatalog(DEFAULT_LEAD_STAGES) }
+})
 
 describe('LeadInfo', () => {
   it('muestra el username de Meta cuando existe', () => {
@@ -27,5 +37,6 @@ describe('LeadInfo', () => {
 
     expect(screen.getByText('Username')).toBeInTheDocument()
     expect(screen.getByText('@gporta.21')).toBeInTheDocument()
+    expect(screen.getByText('Nuevo')).toBeInTheDocument()
   })
 })

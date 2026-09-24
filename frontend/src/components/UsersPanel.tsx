@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Check, Loader2, ShieldCheck, User as UserIcon } from 'lucide-react'
+import { Check, Loader2, Mail, ShieldCheck, User as UserIcon } from 'lucide-react'
 import type { AppUser, UserRole } from '../types'
 import { useMe } from '../hooks/useAuth'
-import { useCreateUser, useResetPassword, useUpdateUser, useUsers } from '../hooks/useUsers'
+import { useCreateUser, useResendInvitation, useSendPasswordReset, useUpdateUser, useUsers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { Select } from './ui/Input'
 const FIELD_CLASS =
@@ -11,7 +11,6 @@ const FIELD_CLASS =
 function NewUserForm() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('vendedor')
   const { mutate: createUser, isPending, error } = useCreateUser()
   const [done, setDone] = useState(false)
@@ -19,12 +18,11 @@ function NewUserForm() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     createUser(
-      { email: email.trim(), name: name.trim(), password, role },
+      { email: email.trim(), name: name.trim(), role },
       {
         onSuccess: () => {
           setEmail('')
           setName('')
-          setPassword('')
           setRole('vendedor')
           setDone(true)
           setTimeout(() => setDone(false), 2000)
@@ -55,15 +53,10 @@ function NewUserForm() {
           className={FIELD_CLASS}
         />
       </div>
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Contraseña"
-          required
-          className={FIELD_CLASS}
-        />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+        <p className="self-center text-xs leading-relaxed text-wa-muted dark:text-wa-muted-dark">
+          Le enviaremos un enlace seguro para crear su contraseña.
+        </p>
         <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={FIELD_CLASS}>
           <option value="vendedor">Vendedor</option>
           <option value="admin">Admin</option>
@@ -76,61 +69,30 @@ function NewUserForm() {
       >
         {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         {done ? <Check className="w-3.5 h-3.5" /> : null}
-        Crear usuario
+        {done ? 'Invitación enviada' : 'Enviar invitación'}
       </button>
     </form>
   )
 }
 
-function ResetPasswordControl({ userId }: { userId: number }) {
-  const [open, setOpen] = useState(false)
-  const [password, setPassword] = useState('')
-  const { mutate: resetPassword, isPending, isSuccess } = useResetPassword()
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="text-xs text-wa-muted dark:text-wa-muted-dark hover:text-wa-primary-strong dark:hover:text-wa-primary transition-colors"
-      >
-        Restablecer contraseña
-      </button>
-    )
-  }
-
+function EmailAccessControl({ user }: { user: AppUser }) {
+  const reset = useSendPasswordReset()
+  const resend = useResendInvitation()
+  const mutation = user.is_active ? reset : resend
   return (
-    <div className="flex items-center gap-1.5">
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Nueva contraseña"
-        autoFocus
-        className="text-xs bg-white dark:bg-wa-panel-dark border border-wa-border dark:border-wa-border-dark rounded px-2 py-1 outline-none focus:ring-2 focus:ring-wa-primary/60 w-32"
-      />
-      <button
-        type="button"
-        onClick={() =>
-          resetPassword(
-            { id: userId, newPassword: password },
-            { onSuccess: () => setPassword('') }
-          )
-        }
-        disabled={isPending || !password}
-        className="text-xs px-2 py-1 rounded bg-wa-primary text-white hover:bg-wa-primary-strong disabled:opacity-50 flex items-center gap-1"
-      >
-        {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : isSuccess ? <Check className="w-3 h-3" /> : null}
-        Guardar
-      </button>
-      <button
-        type="button"
-        onClick={() => setOpen(false)}
-        className="text-xs text-wa-muted hover:text-gray-600 dark:hover:text-gray-300"
-      >
-        Cancelar
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={() => mutation.mutate(user.id)}
+      disabled={mutation.isPending}
+      className="flex items-center gap-1 text-xs text-wa-muted transition-colors hover:text-wa-primary-strong disabled:opacity-50 dark:text-wa-muted-dark dark:hover:text-wa-primary"
+    >
+      {mutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : mutation.isSuccess ? <Check className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+      {mutation.isSuccess
+        ? 'Correo enviado'
+        : user.is_active
+          ? 'Enviar restablecimiento'
+          : 'Reenviar invitación'}
+    </button>
   )
 }
 
@@ -154,7 +116,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
         </div>
         {!user.is_active && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-wa-field dark:bg-wa-head-dark text-wa-muted dark:text-wa-muted-dark font-medium shrink-0">
-            Desactivado
+            {user.is_active ? 'Activo' : 'Invitación pendiente / desactivado'}
           </span>
         )}
       </div>
@@ -182,7 +144,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
             {user.is_active ? 'Desactivar' : 'Activar'}
           </button>
         </div>
-        <ResetPasswordControl userId={user.id} />
+        <EmailAccessControl user={user} />
       </div>
     </div>
   )

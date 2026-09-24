@@ -16,7 +16,12 @@ class _SuccessfulSession:
         return False
 
     async def execute(self, _statement):
-        return SimpleNamespace(rowcount=1)
+        # `all()` responde a la verificación de etapas del negocio que hace la
+        # validación de "cambiar etapa" (services/lead_stages.load_stage_rules).
+        return SimpleNamespace(
+            rowcount=1,
+            all=lambda: [("nuevo", "open", True), ("en_diagnostico", "open", True)],
+        )
 
     async def commit(self):
         pass

@@ -2,8 +2,12 @@ import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
+from services.branding import OrganizationNotFound, get_branding
 from services.settings_service import get_effective
+from tenancy.context import get_current_tenant
 
+# Solo para la instalación single-tenant, que no tiene marca en el plano de
+# control. Con negocio activo el pie por defecto es el nombre de su marca.
 FALLBACK_INTERACTIVE_FOOTER = "DermicaPro"
 MAX_TEXT_LENGTH = 4096
 
@@ -33,7 +37,20 @@ class InteractiveRuleError(ValueError):
 
 
 async def default_interactive_footer() -> str:
-    return (await get_effective("interactive_default_footer")).strip() or FALLBACK_INTERACTIVE_FOOTER
+    """Pie de botones y listas cuando el negocio no configuró uno: lo ve el
+    cliente final en WhatsApp, así que es el nombre del negocio, nunca el de
+    otro."""
+    configured = (await get_effective("interactive_default_footer")).strip()
+    if configured:
+        return configured
+    context = get_current_tenant()
+    if context is None:
+        return FALLBACK_INTERACTIVE_FOOTER
+    try:
+        name = (await get_branding(context.organization_id)).name
+    except OrganizationNotFound:
+        return FALLBACK_INTERACTIVE_FOOTER
+    return name[: LIMITS.footer]
 
 
 def interactive_limits_payload() -> dict:

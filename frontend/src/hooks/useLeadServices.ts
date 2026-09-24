@@ -22,7 +22,14 @@ export function useCreateLeadService() {
 export function useUpdateLeadService() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, ...values }: { id: number; name?: string; is_active?: boolean }) =>
+    mutationFn: async ({ id, ...values }: {
+      id: number
+      name?: string
+      is_active?: boolean
+      description?: string
+      price?: string | null
+      price_notes?: string
+    }) =>
       (await client.patch<LeadService>(`/api/services/${id}`, values)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lead-services'] }),
   })

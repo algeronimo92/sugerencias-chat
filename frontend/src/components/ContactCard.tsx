@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Copy, Loader2, MessageCircle, X } from "lucide-react";
 
@@ -6,12 +6,14 @@ import type { LeadUpdateInput } from "../types";
 import type { SharedContact } from "../utils/message";
 import { useCreateLead, useFindLeadByPhone } from "../hooks/useChats";
 import { extractErrorMessage } from "../utils/errors";
-import { LeadFormDialog } from "./LeadFormDialog";
 import {
   DialogPrimitive as Dialog,
   dialogContentPositionClass,
   dialogOverlayClass,
 } from "./ui/Dialog";
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const LeadFormDialog = lazy(() => import("./LeadFormDialog").then(m => ({ default: m.LeadFormDialog })));
 
 /** Tarjeta de un contacto compartido, con las mismas acciones que WhatsApp:
  * abrir la conversación con ese número (creándole el lead si todavía no lo
@@ -189,25 +191,27 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
         />
       )}
 
-      {isCreating && (
-        <LeadFormDialog
-          title="Agregar lead"
-          submitLabel="Agregar"
-          requirePhoneAndName
-          initial={{ phone: selectedPhone ?? phones[0] ?? "", name: contact.name }}
-          isSubmitting={isCreatingLead}
-          error={error}
-          onSubmit={handleCreateLead}
-          onCancel={() => {
-            setIsCreating(false);
-            setError(null);
-          }}
-          onOpenExisting={(chat) => {
-            setIsCreating(false);
-            navigate(`/chat/${chat.chat_id}`);
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {isCreating && (
+          <LeadFormDialog
+            title="Agregar lead"
+            submitLabel="Agregar"
+            requirePhoneAndName
+            initial={{ phone: selectedPhone ?? phones[0] ?? "", name: contact.name }}
+            isSubmitting={isCreatingLead}
+            error={error}
+            onSubmit={handleCreateLead}
+            onCancel={() => {
+              setIsCreating(false);
+              setError(null);
+            }}
+            onOpenExisting={(chat) => {
+              setIsCreating(false);
+              navigate(`/chat/${chat.chat_id}`);
+            }}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

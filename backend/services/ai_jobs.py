@@ -7,10 +7,11 @@ from uuid import uuid4
 
 from sqlalchemy import func, select
 
-from db.models import AIJob, Lead, LeadActivity, LeadStage, WspMessage
+from db.models import AIJob, Lead, LeadActivity, WspMessage
 from db.session import get_sessionmaker
 from domain_types import AutomationTrigger
 from services.ai_context import make_context_revision
+from services.lead_stages import InvalidLeadStageError, load_stage_rules, require_destination
 from services.store.common import _activity_safe, _fmt_ts
 from services.store.leads import _activity_insert, _record_activity, _schedule_stage_automations
 from tenancy.context import TenantContext, get_current_tenant
@@ -158,7 +159,7 @@ async def apply_analysis_job_atomic(
     chat_id: str,
     context_revision: str,
     values: dict,
-    stage: LeadStage | None,
+    stage: str | None,
     reasoning: str | None,
 ) -> tuple[dict, int]:
     """Validate the cursor and persist fields, stage, audit and job atomically."""
@@ -203,6 +204,21 @@ async def apply_analysis_job_atomic(
             await session.commit()
             raise AIContextStale(current_revision)
 
+        # Antes de tocar el lead: un resultado con una etapa que el negocio no
+        # tiene (o desactivó) no aplica nada. Conservar la etapa actual es
+        # válido aunque esté inactiva, porque no la mueve.
+        stage_changed = stage is not None and lead.estado != stage
+        if stage_changed:
+            rules = await load_stage_rules(session, {lead.estado, stage})
+            try:
+                target = require_destination(rules, stage)
+            except InvalidLeadStageError:
+                job.status = "failed"
+                job.error = "invalid_stage"
+                await session.commit()
+                raise
+            previous = rules.get(lead.estado)
+
         changed_values = {
             key: value for key, value in values.items() if getattr(lead, key) != value
         }
@@ -220,14 +236,13 @@ async def apply_analysis_job_atomic(
                 metadata={"job_id": job_id},
             )
 
-        stage_changed = stage is not None and lead.estado != stage
         if stage_changed:
             old_stage = lead.estado
-            if stage == LeadStage.perdido:
+            if target.is_lost:
                 reason = str(values.get("razon_perdido") or reasoning or "").strip()
                 if reason:
                     lead.razon_perdido = reason
-            elif old_stage == LeadStage.perdido and "razon_perdido" not in values:
+            elif previous is not None and previous.is_lost and "razon_perdido" not in values:
                 lead.razon_perdido = None
             lead.estado = stage
             metadata = {"job_id": job_id}
@@ -248,8 +263,8 @@ async def apply_analysis_job_atomic(
                     "content": content[:300] + ("..." if len(content) > 300 else ""),
                     "sent_at": _fmt_ts(trigger["sent_at"]),
                 }
-            old_value = {"stage": getattr(old_stage, "value", old_stage)}
-            new_value = {"stage": stage.value}
+            old_value = {"stage": old_stage}
+            new_value = {"stage": stage}
             activity_id = (
                 await session.execute(
                     _activity_insert(
@@ -275,7 +290,7 @@ async def apply_analysis_job_atomic(
             "job_id": job_id,
             "applied": True,
             "changed": changed,
-            "stage": stage.value if stage is not None else None,
+            "stage": stage,
         }
         job.status = "applied"
         job.result = result

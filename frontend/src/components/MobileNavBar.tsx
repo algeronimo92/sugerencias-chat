@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { MoreHorizontal } from 'lucide-react'
 import { isNavItemActive, visibleNavItems } from '../domain/navigation'
 import type { NavItem } from '../domain/navigation'
@@ -53,7 +53,7 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
       <AnimatePresence>
         {isMoreOpen && (
           <>
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -65,7 +65,7 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
               aria-hidden="true"
               className="fixed inset-0 z-85 bg-black/40"
             />
-            <motion.div
+            <m.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -96,7 +96,7 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
                   )
                 })}
               </div>
-            </motion.div>
+            </m.div>
           </>
         )}
       </AnimatePresence>

@@ -20,6 +20,7 @@ def _asset(row) -> dict:
         "uploaded_by_name": row["uploaded_by_name"],
         "created_at": created_at.isoformat().replace("+00:00", "Z"),
         "use_count": int(row["use_count"] or 0),
+        "ai_description": row["ai_description"],
     }
 
 
@@ -34,6 +35,7 @@ def _asset_query():
             MediaAsset.uploaded_by_user_id,
             User.name.label("uploaded_by_name"),
             MediaAsset.created_at,
+            MediaAsset.ai_description,
             func.count(TemplateAttachment.id).label("use_count"),
         )
         .outerjoin(User, User.id == MediaAsset.uploaded_by_user_id)
@@ -127,6 +129,23 @@ async def rename_media_asset(asset_id: int, filename: str) -> dict | None:
         await session.execute(update(TemplateAttachment).where(
             TemplateAttachment.library_asset_id == asset_id
         ).values(filename=normalized))
+        await session.commit()
+    return await get_media_asset(asset_id)
+
+
+async def set_media_asset_ai_description(asset_id: int, description: str | None) -> dict | None:
+    """Con descripción el asistente IA puede proponer el archivo como adjunto;
+    ``None`` o vacío lo saca de sus recursos."""
+    normalized = " ".join((description or "").split()) or None
+    async with get_sessionmaker()() as session:
+        result = await session.execute(
+            update(MediaAsset)
+            .where(MediaAsset.id == asset_id)
+            .values(ai_description=normalized)
+            .returning(MediaAsset.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
         await session.commit()
     return await get_media_asset(asset_id)
 

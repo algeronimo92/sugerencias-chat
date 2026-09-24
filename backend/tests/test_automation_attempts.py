@@ -96,21 +96,18 @@ async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(monkeyp
 async def test_reviving_a_stale_execution_increments_attempts(monkeypatch):
     session = AsyncMock()
 
-    class _ExhaustedResult:
-        def scalars(self):
-            return self
-
-        def all(self):
-            return []
-
-    session.execute = AsyncMock(side_effect=[_ExhaustedResult(), SimpleNamespace()])
+    session.execute = AsyncMock(side_effect=[_ClaimResult([]), _ClaimResult([7])])
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+    broadcast = AsyncMock()
+    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     await automation_service._release_stale_executions()
 
     revive_sql = _compile(session.execute.await_args_list[1].args[0])
     assert "attempts=(automation_executions.attempts + 1)" in revive_sql
     assert "'scheduled'" in revive_sql
+    # El frontend no sondea con el socket arriba: el cambio se avisa.
+    broadcast.assert_awaited_once_with({"type": "automations_updated"})
 
 
 @pytest.mark.asyncio

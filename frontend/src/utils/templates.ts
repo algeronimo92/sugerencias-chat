@@ -1,4 +1,5 @@
 import type { Chat, MessageTemplate, TemplateInteractiveConfig } from '../types'
+import { currentBrandName } from '../branding'
 
 export function renderTemplate(template: MessageTemplate, chat: Chat): string {
   return renderTemplateText(template.content, chat)
@@ -73,7 +74,8 @@ export function renderInteractiveConfig(template: MessageTemplate, chat: Chat): 
       })),
     })),
   }
-  if (template.interactive_type === 'buttons') rendered.footer = rendered.footer?.trim() || 'DermicaPro'
-  if (template.interactive_type === 'list') rendered.footerText = rendered.footerText?.trim() || 'DermicaPro'
+  // Mismo pie por defecto que aplica el backend: el nombre del negocio.
+  if (template.interactive_type === 'buttons') rendered.footer = rendered.footer?.trim() || currentBrandName()
+  if (template.interactive_type === 'list') rendered.footerText = rendered.footerText?.trim() || currentBrandName()
   return rendered
 }

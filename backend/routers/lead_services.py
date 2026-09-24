@@ -47,6 +47,10 @@ async def patch_service(
         values["name"] = " ".join(values["name"].split())
         if not values["name"]:
             raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    # En los textos del catálogo IA, vacío equivale a borrar el dato.
+    for key in ("description", "price_notes"):
+        if key in values:
+            values[key] = " ".join((values[key] or "").split()) or None
     try:
         service = await update_lead_service(service_id, values, admin.id)
     except LeadServiceAlreadyExistsError:

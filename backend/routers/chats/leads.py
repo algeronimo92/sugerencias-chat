@@ -3,7 +3,7 @@ import logging
 import httpx
 
 from fastapi import Depends, HTTPException, Query
-from db.models import LeadStage as DbLeadStage, User
+from db.models import User
 from models.schemas import (
     Chat,
     ChatPage,
@@ -11,7 +11,7 @@ from models.schemas import (
     KanbanSnapshot,
     LeadCreate,
     LeadMergeRequest,
-    LeadStage,
+    LeadStageKey,
     LeadStageUpdate,
     LeadUpdate,
     LeadActivityItem,
@@ -40,6 +40,7 @@ from services.db_service import (
 )
 from services.auth_service import get_current_user, require_admin
 from services.lead_merge import LeadMergeError, merge_leads
+from services.lead_stages import InvalidLeadStageError
 from services.evolution_service import check_whatsapp_numbers
 from services.whatsapp_channel import ChannelError
 from services.phone_utils import (
@@ -83,7 +84,9 @@ async def get_chats(
     automation_paused: bool = False,
 ):
     try:
-        parsed_stages = [DbLeadStage(value) for value in stages.split(",") if value] if stages else None
+        # Una clave inexistente no es un error: simplemente no filtra nada
+        # (puede venir de un filtro guardado antes de borrar la etapa).
+        parsed_stages = [value for value in stages.split(",") if value] if stages else None
         parsed_tag_ids = [int(value) for value in tag_ids.split(",") if value] if tag_ids else None
         return await fetch_chats(
             search.strip() if search else None,
@@ -116,7 +119,7 @@ async def get_unread_count():
     return {"count": await fetch_total_unread_chat_count()}
 
 
-@router.get("/kanban/counts", response_model=dict[LeadStage, int])
+@router.get("/kanban/counts", response_model=dict[str, int])
 async def get_kanban_counts(search: str | None = None):
     return await fetch_kanban_counts(search.strip() if search else None)
 
@@ -128,13 +131,13 @@ async def get_kanban_snapshot(search: str | None = None):
 
 @router.get("/kanban/{stage}", response_model=KanbanPage)
 async def get_kanban_stage(
-    stage: LeadStage,
+    stage: LeadStageKey,
     search: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=KANBAN_PAGE_SIZE, ge=1, le=100),
 ):
     return await fetch_kanban_stage(
-        DbLeadStage(stage),
+        stage,
         search.strip() if search else None,
         offset,
         limit,
@@ -143,9 +146,12 @@ async def get_kanban_stage(
 
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
-    lead = await update_lead_stage(
-        chat_id, DbLeadStage(body.stage), "user", user.id, razon_perdido=body.razon_perdido
-    )
+    try:
+        lead = await update_lead_stage(
+            chat_id, body.stage, "user", user.id, razon_perdido=body.razon_perdido
+        )
+    except InvalidLeadStageError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 

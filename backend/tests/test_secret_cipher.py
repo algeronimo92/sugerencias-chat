@@ -43,6 +43,18 @@ def test_plaintext_is_marked_for_migration(dedicated_key):
     assert secret_cipher.needs_reencryption("evolution_api_key", "legacy-secret")
 
 
+def test_platform_ciphertext_cannot_be_replayed_as_tenant_setting(dedicated_key):
+    encrypted = secret_cipher.encrypt_secret(
+        "meta_app_secret", "platform-secret", namespace="platform_settings",
+    )
+
+    assert secret_cipher.decrypt_secret(
+        "meta_app_secret", encrypted, namespace="platform_settings",
+    ) == "platform-secret"
+    with pytest.raises(secret_cipher.SecretCipherError):
+        secret_cipher.decrypt_secret("meta_app_secret", encrypted)
+
+
 def test_fallback_ciphertext_can_rotate_to_dedicated_key(monkeypatch):
     monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", "")
     monkeypatch.setattr(secret_cipher.settings, "secret_key", "jwt-key-for-tests")

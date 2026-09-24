@@ -1,5 +1,4 @@
 from fastapi import Depends, Header, HTTPException
-from db.models import LeadStage
 from services.db_service import ensure_lead_stub, record_lead_touch, update_lead, update_lead_stage
 from services.whatsapp_identity_service import lead_id_for_jid
 from services.ws_manager import manager
@@ -14,6 +13,7 @@ from models.webhook_schemas import (
 )
 from routers.webhooks.common import _parse_iso_datetime, webhooks_router
 from services.ai_context import fetch_context_revision
+from services.lead_stages import InvalidLeadStageError
 from services.ai_job_tokens import AIJobClaims, require_ai_job_context
 from services.ai_jobs import (
     AIContextStale,
@@ -76,18 +76,16 @@ async def lead_stage_webhook(
         await _broadcast_lead_updated(body.chat_id)
         return {"status": "ok", "changed": False, "stage": None}
 
-    try:
-        stage = LeadStage(body.estado)
-    except ValueError:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Estado inválido: {body.estado!r}. Válidos: {[s.value for s in LeadStage]}",
-        )
-
+    stage = body.estado
     metadata = {"reason": body.razonamiento} if body.razonamiento else None
-    result = await update_lead_stage(
-        body.chat_id, stage, actor_type="agent", metadata=metadata, include_chat=False
-    )
+    try:
+        result = await update_lead_stage(
+            body.chat_id, stage, actor_type="agent", metadata=metadata, include_chat=False
+        )
+    except InvalidLeadStageError as exc:
+        # Las etapas son de cada negocio: la lista válida la da
+        # /api/webhooks/analysis-context, no una lista fija.
+        raise HTTPException(status_code=422, detail=f"Estado inválido: {exc}") from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
 
@@ -97,7 +95,7 @@ async def lead_stage_webhook(
                 "type": "chats_updated",
                 "chat_id": body.chat_id,
                 "reason": "stage_changed",
-                "lead_stage_updated": {"chat_id": body.chat_id, "stage": stage.value},
+                "lead_stage_updated": {"chat_id": body.chat_id, "stage": stage},
             }
         )
         await notify_automations_scheduled(result.get("automations_scheduled", 0))
@@ -105,7 +103,7 @@ async def lead_stage_webhook(
         # La etapa no se movió, pero el analista sí tocó el resto del lead.
         await _broadcast_lead_updated(body.chat_id)
 
-    return {"status": "ok", "changed": result["changed"], "stage": stage.value}
+    return {"status": "ok", "changed": result["changed"], "stage": stage}
 
 
 @router.post("/ensure-lead")
@@ -168,16 +166,9 @@ async def apply_analysis_job_webhook(
         await finish_ai_job(job_id, status="failed", error="invalid_patch")
         raise HTTPException(status_code=422, detail="con_especialista no puede ser null")
 
-    stage = None
-    if body.estado is not None:
-        try:
-            stage = LeadStage(body.estado)
-        except ValueError as exc:
-            await finish_ai_job(job_id, status="failed", error="invalid_stage")
-            raise HTTPException(
-                status_code=422,
-                detail=f"Estado invalido: {body.estado!r}. Valid values: {[s.value for s in LeadStage]}",
-            ) from exc
+    # La clave se valida contra las etapas del negocio dentro de la misma
+    # transacción que aplica el resultado (ver apply_analysis_job_atomic).
+    stage = body.estado or None
 
     try:
         result, automations_scheduled = await apply_analysis_job_atomic(
@@ -188,6 +179,8 @@ async def apply_analysis_job_webhook(
             stage=stage,
             reasoning=body.razonamiento,
         )
+    except InvalidLeadStageError as exc:
+        raise HTTPException(status_code=422, detail=f"Estado invalido: {exc}") from exc
     except AIJobNotFound as exc:
         raise HTTPException(status_code=404, detail="Job IA o lead no encontrado") from exc
     except AIJobExpired as exc:

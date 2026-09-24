@@ -338,7 +338,7 @@ async def fetch_chats(
     cursor_id: str | None = None,
     limit: int = CHATS_PAGE_SIZE,
     unread_only: bool = False,
-    stages: list[LeadStage] | None = None,
+    stages: list[str] | None = None,
     tag_ids: list[int] | None = None,
     tag_mode: str = "any",
     service: str | None = None,
@@ -488,6 +488,17 @@ async def lead_exists(chat_id: str) -> bool:
         return bool(await session.scalar(stmt))
 
 
+async def _ordered_stage_keys(session) -> list[str]:
+    """Claves de las etapas del negocio en el orden del embudo."""
+    return list(
+        (
+            await session.execute(
+                select(LeadStage.key).order_by(LeadStage.position.asc(), LeadStage.key.asc())
+            )
+        ).scalars().all()
+    )
+
+
 async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
     """Conteos del embudo. Con búsqueda se aplica el mismo filtro que a las
     tarjetas, incluido el último mensaje, para que los encabezados coincidan."""
@@ -502,11 +513,12 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
         stmt = stmt.where(_chat_search_condition(search))
 
     async with get_sessionmaker()() as session:
+        stage_keys = await _ordered_stage_keys(session)
         rows = (await session.execute(stmt)).all()
 
-    counts = {stage.value: 0 for stage in LeadStage}
+    counts = {key: 0 for key in stage_keys}
     for stage, total in rows:
-        counts[stage.value if isinstance(stage, LeadStage) else stage] = total
+        counts[stage] = total
     return counts
 
 
@@ -554,19 +566,18 @@ async def fetch_kanban_snapshot(
     )
 
     async with get_sessionmaker()() as session:
+        stage_keys = await _ordered_stage_keys(session)
         rows = (await session.execute(stmt)).mappings().all()
         tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in rows])
 
-    counts = {stage.value: 0 for stage in LeadStage}
-    stages = {
-        stage.value: {"items": [], "has_more": False}
-        for stage in LeadStage
-    }
+    # Una columna por cada etapa del negocio, aunque esté vacía o inactiva: el
+    # frontend decide cuáles mostrar (las inactivas, solo si tienen leads).
+    counts = {key: 0 for key in stage_keys}
+    stages = {key: {"items": [], "has_more": False} for key in stage_keys}
     for row in rows:
-        stage = row["stage"]
-        stage_key = stage.value if isinstance(stage, LeadStage) else stage
+        stage_key = row["stage"]
         counts[stage_key] = row["stage_total"]
-        stages[stage_key]["items"].append(
+        stages.setdefault(stage_key, {"items": [], "has_more": False})["items"].append(
             _row_to_chat(row, tags_by_lead.get(row["chat_id"]))
         )
 
@@ -576,7 +587,7 @@ async def fetch_kanban_snapshot(
 
 
 async def fetch_kanban_stage(
-    stage: LeadStage,
+    stage: str,
     search: str | None = None,
     offset: int = 0,
     limit: int = KANBAN_PAGE_SIZE,

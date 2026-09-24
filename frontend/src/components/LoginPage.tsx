@@ -24,8 +24,11 @@ import {
   useLogin,
   usePinLogin,
   usePinStatus,
+  useRequestPasswordReset,
 } from "../hooks/useAuth";
+import { useBrand } from "../branding";
 import { useTheme } from "../hooks/useTheme";
+import { BrandLogo } from "./BrandLogo";
 import { extractErrorMessage } from "../utils/errors";
 import { Button } from "./ui/Button";
 import { Checkbox } from "./ui/Checkbox";
@@ -47,23 +50,19 @@ const authFieldClass =
   "h-12 rounded-xl border-wa-border bg-white pl-11 pr-4 text-[15px] shadow-sm placeholder:text-wa-muted/80 hover:border-gray-300 focus:border-wa-primary focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-head-dark dark:hover:border-wa-muted/50 dark:focus:border-wa-primary dark:focus:bg-wa-head-dark";
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
+  const brand = useBrand();
   return (
     <div className="flex items-center gap-3">
-      <span
-        className={`flex shrink-0 items-center justify-center rounded-xl bg-wa-primary text-white shadow-[0_8px_24px_rgba(0,168,132,0.22)] ${compact ? "h-9 w-9" : "h-11 w-11"}`}
-      >
-        <MessagesSquare
-          className={compact ? "h-4.5 w-4.5" : "h-5 w-5"}
-          strokeWidth={2.2}
-          aria-hidden="true"
-        />
-      </span>
+      <BrandLogo
+        sizeClass={compact ? "h-9 w-9" : "h-11 w-11"}
+        iconClass={compact ? "h-4.5 w-4.5" : "h-5 w-5"}
+      />
       <span>
         <span className="block text-[15px] font-bold leading-tight tracking-[-0.02em] text-wa-text dark:text-white">
-          CliniVentas
+          {brand.name}
         </span>
         <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-wa-muted dark:text-wa-muted-dark">
-          CRM clínico
+          CRM
         </span>
       </span>
     </div>
@@ -98,12 +97,12 @@ function Feature({
 }) {
   return (
     <div className="flex items-start gap-3.5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-emerald-100 backdrop-blur-sm">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white/90 backdrop-blur-sm">
         <Icon className="h-4.5 w-4.5" aria-hidden="true" />
       </span>
       <span>
         <span className="block text-sm font-semibold text-white">{title}</span>
-        <span className="mt-0.5 block text-xs leading-relaxed text-emerald-50/65">
+        <span className="mt-0.5 block text-xs leading-relaxed text-white/65">
           {description}
         </span>
       </span>
@@ -111,7 +110,57 @@ function Feature({
   );
 }
 
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const requestReset = useRequestPasswordReset();
+
+  if (requestReset.isSuccess) {
+    return (
+      <div className="py-8">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">
+          <Mail className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <h1 className="mt-7 text-3xl font-bold tracking-[-0.035em] text-wa-text dark:text-white">Revisa tu correo</h1>
+        <p className="mt-3 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+          Si existe una cuenta activa con ese correo, recibirás un enlace de un solo uso para restablecerla.
+        </p>
+        <Button type="button" variant="secondary" className="mt-7 h-12 w-full" onClick={onBack}>Volver al acceso</Button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (email.trim()) requestReset.mutate(email.trim());
+      }}
+    >
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">
+        <KeyRound className="h-6 w-6" aria-hidden="true" />
+      </div>
+      <p className="mt-7 text-xs font-semibold uppercase tracking-[0.14em] text-wa-primary-strong dark:text-wa-primary">Recuperar acceso</p>
+      <h1 className="mt-2 text-3xl font-bold tracking-[-0.035em] text-wa-text dark:text-white">Olvidé mi contraseña</h1>
+      <p className="mt-2 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Te enviaremos un enlace seguro si el correo pertenece a una cuenta activa.</p>
+      <div className="mt-7 space-y-4">
+        {requestReset.error && <ErrorNotice message={extractErrorMessage(requestReset.error)} />}
+        <label htmlFor="reset-email" className="block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Correo electrónico</label>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-wa-muted" aria-hidden="true" />
+          <Input id="reset-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" autoFocus required className={authFieldClass} />
+        </div>
+        <Button type="submit" disabled={!email.trim() || requestReset.isPending} className="h-12 w-full">
+          {requestReset.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Enviar enlace
+        </Button>
+        <button type="button" onClick={onBack} className="w-full rounded-md py-2 text-sm font-semibold text-wa-primary-strong focus-visible:ring-2 focus-visible:ring-wa-primary/50 dark:text-wa-primary">Volver al acceso</button>
+      </div>
+    </form>
+  );
+}
+
 export function LoginPage() {
+  const brand = useBrand();
   const { data: pinStatus, isLoading: isLoadingPinStatus } = usePinStatus();
   const { mutate: login, isPending, error, reset: resetLogin } = useLogin();
   const {
@@ -123,6 +172,7 @@ export function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const [showPassword, setShowPassword] = useState(false);
   const [usePassword, setUsePassword] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
   const [pin, setPin] = useState("");
   const {
     register,
@@ -155,7 +205,7 @@ export function LoginPage() {
         aria-hidden="true"
       >
         <div className="absolute -left-24 -top-32 h-96 w-96 rounded-full bg-wa-primary/10 blur-3xl dark:bg-wa-primary/8" />
-        <div className="absolute -bottom-48 -right-32 h-[32rem] w-[32rem] rounded-full bg-emerald-200/25 blur-3xl dark:bg-emerald-900/10" />
+        <div className="absolute -bottom-48 -right-32 h-[32rem] w-[32rem] rounded-full bg-wa-primary/15 blur-3xl dark:bg-wa-primary/10" />
         <div
           className="absolute inset-0 opacity-[0.025] dark:opacity-[0.04]"
           style={{
@@ -190,7 +240,7 @@ export function LoginPage() {
 
         <div className="flex flex-1 items-center py-4 sm:py-5 xl:py-8">
           <section className="mx-auto grid w-full max-w-[1080px] overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_24px_80px_-28px_rgba(15,43,36,0.28)] lg:grid-cols-[1.03fr_0.97fr] dark:border-white/10 dark:bg-wa-panel-dark dark:shadow-[0_28px_90px_-32px_rgba(0,0,0,0.8)]">
-            <div className="relative hidden min-h-[600px] overflow-hidden bg-[#075e52] p-12 lg:flex lg:flex-col xl:p-14">
+            <div className="relative hidden min-h-[600px] overflow-hidden bg-wa-primary-deep p-12 lg:flex lg:flex-col xl:p-14">
               <div
                 className="pointer-events-none absolute inset-0"
                 aria-hidden="true"
@@ -216,9 +266,9 @@ export function LoginPage() {
               </div>
 
               <div className="relative">
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-50 backdrop-blur-sm">
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm">
                   <Sparkles
-                    className="h-3.5 w-3.5 text-emerald-200"
+                    className="h-3.5 w-3.5 text-white/80"
                     aria-hidden="true"
                   />
                   Tu operación, en un solo lugar
@@ -226,7 +276,7 @@ export function LoginPage() {
                 <h1 className="mt-7 max-w-md text-[38px] font-semibold leading-[1.08] tracking-[-0.045em] text-white xl:text-[42px]">
                   Convierte cada conversación en una mejor experiencia.
                 </h1>
-                <p className="mt-5 max-w-md text-sm leading-6 text-emerald-50/70">
+                <p className="mt-5 max-w-md text-sm leading-6 text-white/70">
                   Centraliza la atención, organiza a tu equipo y acompaña a cada
                   paciente desde el primer mensaje hasta su cita.
                 </p>
@@ -251,9 +301,9 @@ export function LoginPage() {
               </div>
 
               <div className="relative mt-auto pt-10">
-                <div className="rounded-2xl border border-white/10 bg-[#064f46]/80 p-4 backdrop-blur-sm">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-300/15 text-emerald-100">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white/90">
                       <Check
                         className="h-4 w-4"
                         strokeWidth={2.5}
@@ -264,7 +314,7 @@ export function LoginPage() {
                       <p className="text-xs font-semibold text-white">
                         Todo listo para continuar
                       </p>
-                      <p className="mt-0.5 text-[11px] text-emerald-50/55">
+                      <p className="mt-0.5 text-[11px] text-white/55">
                         Tus conversaciones y tareas te esperan.
                       </p>
                     </div>
@@ -295,6 +345,8 @@ export function LoginPage() {
                       Esto solo tomará un momento.
                     </p>
                   </div>
+                ) : forgotMode ? (
+                  <ForgotPasswordForm onBack={() => setForgotMode(false)} />
                 ) : showPin ? (
                   <form
                     onSubmit={(event) => {
@@ -367,7 +419,7 @@ export function LoginPage() {
                       <Button
                         type="submit"
                         disabled={isPinPending || pin.length !== PIN_LENGTH}
-                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_rgba(0,168,132,0.8)]"
+                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--color-wa-primary)]"
                       >
                         {isPinPending ? (
                           <Loader2
@@ -512,6 +564,13 @@ export function LoginPage() {
                             {errors.password.message}
                           </p>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setForgotMode(true)}
+                          className="mt-2 rounded-md text-xs font-semibold text-wa-primary-strong outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/50 dark:text-wa-primary"
+                        >
+                          ¿Olvidaste tu contraseña?
+                        </button>
                       </div>
 
                       <label
@@ -540,7 +599,7 @@ export function LoginPage() {
                       <Button
                         type="submit"
                         disabled={isPending}
-                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_rgba(0,168,132,0.8)]"
+                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--color-wa-primary)]"
                       >
                         {isPending && (
                           <Loader2
@@ -548,7 +607,7 @@ export function LoginPage() {
                             aria-hidden="true"
                           />
                         )}
-                        {isPending ? "Ingresando…" : "Ingresar a DermicaPro"}
+                        {isPending ? "Ingresando…" : `Ingresar a ${brand.name}`}
                         {!isPending && (
                           <ArrowRight
                             className="ml-1 h-4 w-4"

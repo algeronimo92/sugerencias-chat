@@ -31,6 +31,11 @@ Antes de activar un workflow importado:
    `analista`.
 6. Configurar en la app (Configuracion > Meta Cloud API) `meta_verify_token` y
    `meta_app_secret`; ya no se configuran como variable de entorno de n8n.
+   La URL del Webhook de `rag` y la de `analista`, y el token con el que el
+   backend los llama, se cargan una sola vez en el panel de plataforma
+   (Credenciales globales): los workflows son los mismos para todos los
+   negocios. Lo que cada negocio sabe de si mismo (perfil, precios,
+   conocimiento, adjuntos) llega en el contexto del job, no en el workflow.
 7. Confirmar que el Webhook POST de Meta conserva **Raw Body**. La firma
    `X-Hub-Signature-256` se calcula sobre esos bytes antes de normalizar o
    confirmar el evento.

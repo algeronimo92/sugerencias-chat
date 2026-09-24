@@ -13,6 +13,7 @@ class RealtimeEvent(StrEnum):
     TEMPLATES_UPDATED = "templates_updated"
     MEDIA_LIBRARY_UPDATED = "media_library_updated"
     AUTOMATIONS_UPDATED = "automations_updated"
+    LEAD_STAGES_UPDATED = "lead_stages_updated"
 
 
 class ChatsUpdateReason(StrEnum):

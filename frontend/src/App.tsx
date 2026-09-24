@@ -10,15 +10,18 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import {
-  AlertTriangle,
+  AnimatePresence,
+  domAnimation,
+  LazyMotion,
+  m,
+  MotionConfig,
+} from "motion/react";
+import {
   Bug,
   Loader2,
   LogOut,
   MessageSquareLock,
-  MessagesSquare,
-  RefreshCw,
   Settings as SettingsIcon,
   ShieldCheck,
   Moon,
@@ -26,6 +29,9 @@ import {
   X,
 } from "lucide-react";
 import { EMPTY_CHAT_FILTERS } from "./types";
+import { useBrand } from "./branding";
+import { BrandLogo } from "./components/BrandLogo";
+import { BackendUnavailable } from "./components/BackendUnavailable";
 import { ChatWorkspace } from "./components/ChatWorkspace";
 import { PageLoader } from "./components/layout/PageLoader";
 import {
@@ -35,8 +41,6 @@ import {
 } from "./components/layout/layoutContext";
 import { useChatFiltersState } from "./hooks/useChatFiltersState";
 import { useOpenChat } from "./hooks/useOpenChat";
-import { LoginPage } from "./components/LoginPage";
-import { PlatformApp } from "./platform/PlatformApp";
 import { MobileNavBar } from "./components/MobileNavBar";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
@@ -48,11 +52,27 @@ import { useChatUpdates } from "./hooks/useRealtime";
 import type { InternalMentionAlert } from "./hooks/useRealtime";
 import { useNotifications } from "./hooks/useNotifications";
 import { useTheme } from "./hooks/useTheme";
-import { Button } from "./components/ui/Button";
 import { AppToaster } from "./components/ui/Toaster";
 import { Tooltip } from "./components/ui/Tooltip";
 import { queryClient } from "./queryClient";
 
+// Fuera del bundle del CRM: con sesión activa el login no se usa (y arrastra
+// zod y react-hook-form), y el panel de plataforma solo se abre en /platform.
+const LoginPage = lazy(() =>
+  import("./components/LoginPage").then((module) => ({
+    default: module.LoginPage,
+  })),
+);
+const PlatformApp = lazy(() =>
+  import("./platform/PlatformApp").then((module) => ({
+    default: module.PlatformApp,
+  })),
+);
+const AccountActionPage = lazy(() =>
+  import("./components/AccountActionPage").then((module) => ({
+    default: module.AccountActionPage,
+  })),
+);
 const KanbanBoard = lazy(() =>
   import("./components/KanbanBoard").then((module) => ({
     default: module.KanbanBoard,
@@ -93,6 +113,11 @@ const CatalogsPage = lazy(() =>
     default: module.CatalogsPage,
   })),
 );
+const AiAssistantPage = lazy(() =>
+  import("./components/AiAssistantPage").then((module) => ({
+    default: module.AiAssistantPage,
+  })),
+);
 const NewAppointmentPage = lazy(() =>
   import("./components/NewAppointmentPage").then((module) => ({
     default: module.NewAppointmentPage,
@@ -119,6 +144,7 @@ const IssueReportsPage = lazy(() =>
   })),
 );
 function MainLayout() {
+  const brand = useBrand();
   const { data: me } = useMe();
   const { mutate: logout } = useLogout();
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
@@ -204,11 +230,9 @@ function MainLayout() {
       {/* min-h-12 y no h-12: con pt-safe la barra crece lo que mida el notch
           para que su verde llegue hasta el borde de la pantalla. */}
       <div className="flex min-h-14 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-border bg-white px-3 pt-safe shadow-[0_1px_0_rgba(17,27,33,0.03)] sm:px-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-wa-primary text-white shadow-[0_6px_18px_rgba(0,168,132,0.2)]">
-          <MessagesSquare className="h-4 w-4" strokeWidth={2.2} />
-        </div>
-        <span className="text-sm font-bold tracking-[-0.02em] text-wa-text dark:text-white">
-          CliniVentas
+        <BrandLogo sizeClass="h-8 w-8" iconClass="h-4 w-4" />
+        <span className="min-w-0 truncate text-sm font-bold tracking-[-0.02em] text-wa-text dark:text-white">
+          {brand.name}
         </span>
         <span className="ml-1 hidden rounded-full bg-wa-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-wa-primary-strong sm:inline dark:bg-wa-primary/15 dark:text-wa-primary">
           CRM
@@ -333,7 +357,7 @@ function MainLayout() {
 
       <AnimatePresence>
         {internalMention && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -367,7 +391,7 @@ function MainLayout() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -443,52 +467,30 @@ function AuthGate() {
         : "No se pudo establecer conexión con el servidor.";
 
     return (
-      <div className="flex h-full items-center justify-center bg-wa-app p-4 dark:bg-wa-app-dark">
-        <div
-          role="alert"
-          className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-900 dark:bg-wa-panel-dark"
-        >
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
-            <AlertTriangle className="h-6 w-6" />
-          </span>
-          <h1 className="mt-4 text-lg font-semibold text-wa-text dark:text-wa-text-dark">
-            Backend no disponible
-          </h1>
-          <p className="mt-2 text-sm text-wa-muted dark:text-wa-muted-dark">
-            El frontend está funcionando, pero no pudo consultar tu sesión en el
-            servidor.
-          </p>
-          <p className="mt-3 rounded-lg bg-wa-field px-3 py-2 text-xs text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
-            {detail}
-          </p>
-          <Button
-            disabled={isFetching}
-            onClick={() => {
-              void refetch();
-            }}
-            className="mt-5"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
-              aria-hidden="true"
-            />
-            {isFetching ? "Reconectando…" : "Reintentar conexión"}
-          </Button>
-        </div>
-      </div>
+      <BackendUnavailable
+        detail={detail}
+        isRetrying={isFetching}
+        onRetry={refetch}
+      />
     );
   }
 
+  const fullScreenLoader = (
+    <div className="flex items-center justify-center h-full bg-wa-app dark:bg-wa-app-dark">
+      <Loader2 className="w-6 h-6 animate-spin text-wa-muted dark:text-wa-muted-dark" />
+    </div>
+  );
+
   if (isLoading || me === undefined) {
-    return (
-      <div className="flex items-center justify-center h-full bg-wa-app dark:bg-wa-app-dark">
-        <Loader2 className="w-6 h-6 animate-spin text-wa-muted dark:text-wa-muted-dark" />
-      </div>
-    );
+    return fullScreenLoader;
   }
 
   if (!me) {
-    return <LoginPage />;
+    return (
+      <Suspense fallback={fullScreenLoader}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   return (
@@ -510,6 +512,7 @@ function AuthGate() {
             <Route path="dashboard" element={<DashboardRoute />} />
             <Route path="automations" element={<AutomationsPage />} />
             <Route path="catalogs" element={<CatalogsPage />} />
+            <Route path="ai-assistant" element={<AiAssistantPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -526,7 +529,20 @@ export default function App() {
   if (window.location.pathname.startsWith("/platform")) {
     return (
       <QueryClientProvider client={queryClient}>
-        <PlatformApp />
+        <Suspense fallback={null}>
+          <PlatformApp />
+        </Suspense>
+      </QueryClientProvider>
+    );
+  }
+
+  if (["/accept-invitation", "/reset-password"].includes(window.location.pathname)) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={null}>
+          <AccountActionPage />
+        </Suspense>
+        <AppToaster />
       </QueryClientProvider>
     );
   }
@@ -534,11 +550,16 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <MotionConfig reducedMotion="user">
-        <AuthGate />
-        <AppToaster />
-        {/* Fuera del AuthGate: el service worker se registra aunque la sesión
-            todavía no esté resuelta o el backend esté caído. */}
-        <PwaUpdatePrompt />
+        {/* LazyMotion + m.* en vez de motion.*: solo se usan animaciones de
+            entrada/salida, así que domAnimation alcanza y el motor completo
+            queda fuera del bundle. strict falla si alguien usa motion.* */}
+        <LazyMotion features={domAnimation} strict>
+          <AuthGate />
+          <AppToaster />
+          {/* Fuera del AuthGate: el service worker se registra aunque la sesión
+              todavía no esté resuelta o el backend esté caído. */}
+          <PwaUpdatePrompt />
+        </LazyMotion>
       </MotionConfig>
     </QueryClientProvider>
   );

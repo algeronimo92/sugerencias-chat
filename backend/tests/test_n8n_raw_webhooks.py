@@ -121,3 +121,22 @@ async def test_save_inbound_message_tolerates_missing_optional_fields(monkeypatc
     args, kwargs = insert.await_args
     assert kwargs["sent_at"] is None
     assert kwargs["message_secret"] is None
+
+
+@pytest.mark.asyncio
+async def test_save_inbound_message_keeps_button_type(monkeypatch):
+    insert = AsyncMock(return_value={"id": 101})
+    patch_webhooks(monkeypatch, "insert_message", insert)
+
+    body = SaveInboundMessageWebhookBody(
+        chat_id=LEAD_ID,
+        sender="cliente",
+        content="OpcionA",
+        message_type="button",
+        payload={"message": {"type": "button", "button": {"text": "OpcionA"}}},
+    )
+
+    await webhooks.save_inbound_message_webhook(body)
+
+    _, kwargs = insert.await_args
+    assert kwargs["message_type"] == "button"

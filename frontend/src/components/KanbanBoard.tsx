@@ -2,8 +2,7 @@ import { useEffect, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { AlertCircle, ArrowRight, BotOff, Check, GripVertical, Inbox, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
-import type { Chat, LeadStage } from '../types'
-import { isLeadStage, LEAD_STAGES } from '../types'
+import type { Chat, LeadStage, LeadStageDefinition } from '../types'
 import {
   useBulkAssignTag,
   useBulkMoveStage,
@@ -13,9 +12,18 @@ import {
   type KanbanPage,
 } from '../hooks/useKanban'
 import { useTags } from '../hooks/useLeadMeta'
-import { LEAD_STAGE_META } from '../domain/leadStageMeta'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
+import {
+  STAGE_DOT_CLASS,
+  STAGE_HEADER_CLASS,
+  kanbanColumns,
+  stageColorStyle,
+  stageOptions,
+  type LeadStageCatalog,
+} from '../domain/leadStageMeta'
 import { avatarInitial, displayName, isBotAttended } from '../utils/chat'
 import { parseContent } from '../utils/message'
+import { extractErrorMessage } from '../utils/errors'
 import { LostReasonDialog } from './LostReasonDialog'
 import { Button } from './ui/Button'
 import { Input, Select } from './ui/Input'
@@ -29,6 +37,7 @@ function describeBulkFailure(action: string, failed: string[]) {
 
 interface KanbanCardProps {
   chat: Chat
+  catalog: LeadStageCatalog
   isMoving: boolean
   isSelected: boolean
   onToggleSelect: (chatId: string) => void
@@ -38,7 +47,7 @@ interface KanbanCardProps {
   onMove: (chat: Chat, stage: LeadStage) => void
 }
 
-function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDragStart, onDragEnd, onMove }: KanbanCardProps) {
+function KanbanCard({ chat, catalog, isMoving, isSelected, onToggleSelect, onOpen, onDragStart, onDragEnd, onMove }: KanbanCardProps) {
   const preview = parseContent({ content: chat.last_message, message_type: chat.last_message_type })
   const PreviewIcon = preview.icon
   const previewText = preview.kind === 'location' ? preview.label : preview.text || preview.label || 'Sin mensajes'
@@ -150,15 +159,12 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
           id={`stage-${chat.chat_id}`}
           value={chat.stage}
           disabled={isMoving}
-          onChange={(event) => {
-            const stage = event.target.value
-            if (isLeadStage(stage)) onMove(chat, stage)
-          }}
+          onChange={(event) => onMove(chat, event.target.value)}
           className="w-full border-0 bg-transparent px-2 py-1 text-xs font-medium text-wa-text outline-none hover:bg-wa-hover focus:ring-2 focus:ring-wa-primary-strong disabled:cursor-wait dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
         >
-          {LEAD_STAGES.map((stage) => (
-            <option key={stage} value={stage}>
-              Mover a {LEAD_STAGE_META[stage].label}
+          {stageOptions(catalog, chat.stage).map((stage) => (
+            <option key={stage.key} value={stage.key} disabled={!stage.is_active}>
+              {stage.is_active ? `Mover a ${stage.name}` : `${stage.name} (inactiva)`}
             </option>
           ))}
         </Select>
@@ -168,7 +174,8 @@ function KanbanCard({ chat, isMoving, isSelected, onToggleSelect, onOpen, onDrag
 }
 
 interface KanbanColumnProps {
-  stage: LeadStage
+  stage: LeadStageDefinition
+  catalog: LeadStageCatalog
   search: string
   total: number
   initialPage: KanbanPage | undefined
@@ -184,6 +191,7 @@ interface KanbanColumnProps {
 
 function KanbanColumn({
   stage,
+  catalog,
   search,
   total,
   initialPage,
@@ -206,11 +214,10 @@ function KanbanColumn({
   const chats = [...(initialPage?.items ?? []), ...extraPages.flatMap((page) => page.items)]
   const lastPage = extraPages.at(-1) ?? initialPage
   const hasNextPage = lastPage?.has_more ?? false
-  const meta = LEAD_STAGE_META[stage]
 
   function fetchNextPage() {
     loadPage(
-      { stage, search, offset: chats.length },
+      { stage: stage.key, search, offset: chats.length },
       { onSuccess: (page) => setExtraPages((current) => [...current, page]) }
     )
   }
@@ -218,7 +225,8 @@ function KanbanColumn({
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
     setIsDragOver(false)
-    if (draggedChat && draggedChat.stage !== stage) onMove(draggedChat, stage)
+    // Una etapa desactivada sigue mostrando sus leads, pero no recibe nuevos.
+    if (draggedChat && draggedChat.stage !== stage.key && stage.is_active) onMove(draggedChat, stage.key)
   }
 
   return (
@@ -234,14 +242,17 @@ function KanbanColumn({
       onDrop={handleDrop}
       /* En móvil la columna ocupa casi todo el ancho y engancha al hacer
          scroll, para que se lea una etapa por vez en vez de tres cortadas. */
-      aria-label={`${meta.label}, ${total} ${total === 1 ? 'lead' : 'leads'}`}
+      aria-label={`${stage.name}${stage.is_active ? '' : ' (inactiva)'}, ${total} ${total === 1 ? 'lead' : 'leads'}`}
       className={`flex h-full w-[85vw] max-w-76 shrink-0 snap-start flex-col overflow-hidden rounded-xl border bg-wa-field sm:w-76 dark:bg-wa-panel-dark ${
         isDragOver ? 'border-wa-primary-strong ring-2 ring-wa-primary-strong/30' : 'border-wa-border dark:border-wa-border-dark'
       }`}
     >
-      <header className={`flex min-h-14 items-center gap-2 border-t-4 border-b border-b-wa-border ${meta.header} px-3 py-2.5 dark:border-b-wa-border-dark`}>
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
-        <h2 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-wa-text dark:text-wa-text-dark">{meta.label}</h2>
+      <header style={stageColorStyle(stage.color)} className={`flex min-h-14 items-center gap-2 border-t-4 border-b border-b-wa-border ${STAGE_HEADER_CLASS} px-3 py-2.5 dark:border-b-wa-border-dark`}>
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STAGE_DOT_CLASS}`} aria-hidden="true" />
+        <h2 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-wa-text dark:text-wa-text-dark">
+          {stage.name}
+          {!stage.is_active && <span className="ml-1.5 text-xs font-normal text-wa-muted dark:text-wa-muted-dark">(inactiva)</span>}
+        </h2>
         <span className="rounded-md bg-wa-panel px-2 py-0.5 text-xs font-semibold text-wa-text dark:bg-wa-head-dark dark:text-wa-text-dark">
           {total}
         </span>
@@ -250,13 +261,14 @@ function KanbanColumn({
       <div className="flex-1 space-y-2 overflow-y-auto p-2.5">
         {chats.length === 0 && (
           <div className={`rounded-lg border border-dashed px-3 py-5 text-center text-sm leading-5 ${isDragOver ? 'border-wa-primary-strong text-wa-primary-strong dark:text-wa-primary' : 'border-wa-border bg-wa-panel/60 text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark/50 dark:text-wa-muted-dark'}`}>
-            {isDragOver ? 'Suelta el lead aquí' : search ? 'Sin coincidencias en esta etapa' : 'Mueve un lead a esta etapa'}
+            {isDragOver ? (stage.is_active ? 'Suelta el lead aquí' : 'Esta etapa está desactivada') : search ? 'Sin coincidencias en esta etapa' : 'Mueve un lead a esta etapa'}
           </div>
         )}
         {chats.map((chat) => (
           <KanbanCard
             key={chat.chat_id}
             chat={chat}
+            catalog={catalog}
             isMoving={movingIds.has(chat.chat_id)}
             isSelected={selectedIds.has(chat.chat_id)}
             onToggleSelect={onToggleSelect}
@@ -293,10 +305,12 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkError, setBulkError] = useState<string | null>(null)
-  // Movimiento a `perdido` esperando que el asesor escriba (o saltee) la razón.
+  // Movimiento a una etapa de tipo `lost` esperando que el asesor escriba (o
+  // saltee) la razón.
   const [pendingLost, setPendingLost] = useState<
-    { kind: 'single'; chat: Chat } | { kind: 'bulk'; count: number } | null
+    { kind: 'single'; chat: Chat; stage: LeadStage } | { kind: 'bulk'; count: number; stage: LeadStage } | null
   >(null)
+  const catalog = useLeadStageCatalog()
   const { data: snapshot, isLoading: snapshotLoading, isError: snapshotError, refetch } = useKanbanSnapshot(debouncedSearch)
   const { data: tags = [] } = useTags()
   const { mutate: moveLead } = useMoveLeadStage()
@@ -312,9 +326,9 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     if (chat.stage === stage || movingIds.has(chat.chat_id)) return
     // Antes de dar un lead por perdido se pide la razón (una sola vez: la
     // segunda pasada llega desde el diálogo con razonPerdido ya definido).
-    if (stage === 'perdido' && razonPerdido === undefined) {
+    if (catalog.isLost(stage) && razonPerdido === undefined) {
       setDraggedChat(null)
-      setPendingLost({ kind: 'single', chat })
+      setPendingLost({ kind: 'single', chat, stage })
       return
     }
     setMovingIds((current) => new Set(current).add(chat.chat_id))
@@ -322,7 +336,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     moveLead(
       { chatId: chat.chat_id, stage, razonPerdido },
       {
-        onError: () => toast.error('No se pudo cambiar la etapa. Inténtalo de nuevo.'),
+        onError: (error) => toast.error(`No se pudo cambiar la etapa. ${extractErrorMessage(error)}`),
         onSettled: () => {
           setMovingIds((current) => {
             const next = new Set(current)
@@ -345,8 +359,8 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
 
 
   function handleBulkMove(stage: LeadStage, razonPerdido?: string | null) {
-    if (stage === 'perdido' && razonPerdido === undefined) {
-      setPendingLost({ kind: 'bulk', count: selectedIds.size })
+    if (catalog.isLost(stage) && razonPerdido === undefined) {
+      setPendingLost({ kind: 'bulk', count: selectedIds.size, stage })
       return
     }
     setBulkError(null)
@@ -377,7 +391,8 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   }
 
   const isBulkBusy = isBulkMoving || isBulkTagging
-  const totalLeads = snapshot ? LEAD_STAGES.reduce((count, stage) => count + snapshot.counts[stage], 0) : 0
+  const totalLeads = snapshot ? Object.values(snapshot.counts).reduce((count, total) => count + total, 0) : 0
+  const columns = kanbanColumns(catalog, snapshot?.counts ?? {})
   const boardDescription = snapshotLoading || snapshotError
     ? 'Consulta el avance de tus leads por etapa.'
     : totalLeads === 0
@@ -423,14 +438,14 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             aria-label={`Mover ${selectedIds.size} ${selectedIds.size === 1 ? 'lead' : 'leads'} a otra etapa`}
             onChange={(event) => {
               const stage = event.target.value
-              if (isLeadStage(stage)) handleBulkMove(stage)
+              if (stage) handleBulkMove(stage)
             }}
             className="h-10 w-auto min-w-40 border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
           >
             <option value="">Mover a...</option>
-            {LEAD_STAGES.map((stage) => (
-              <option key={stage} value={stage}>
-                {LEAD_STAGE_META[stage].label}
+            {catalog.active.map((stage) => (
+              <option key={stage.key} value={stage.key}>
+                {stage.name}
               </option>
             ))}
           </Select>
@@ -502,15 +517,16 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
         </div>
       ) : (
         <>
-          <p className="shrink-0 px-4 pt-2 text-xs text-wa-muted sm:px-6 dark:text-wa-muted-dark">Desplázate horizontalmente para ver las {LEAD_STAGES.length} etapas.</p>
+          <p className="shrink-0 px-4 pt-2 text-xs text-wa-muted sm:px-6 dark:text-wa-muted-dark">Desplázate horizontalmente para ver las {columns.length} etapas.</p>
           <div role="region" aria-label="Etapas del embudo comercial" tabIndex={0} className="flex min-h-0 min-w-0 w-full max-w-full flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong sm:snap-none sm:p-4">
-            {LEAD_STAGES.map((stage) => (
+            {columns.map((stage) => (
               <KanbanColumn
-                key={stage}
+                key={stage.key}
                 stage={stage}
+                catalog={catalog}
                 search={debouncedSearch}
-                total={snapshot?.counts[stage] ?? 0}
-                initialPage={snapshot?.stages[stage]}
+                total={snapshot?.counts[stage.key] ?? 0}
+                initialPage={snapshot?.stages[stage.key]}
                 draggedChat={draggedChat}
                 movingIds={movingIds}
                 selectedIds={selectedIds}
@@ -528,12 +544,13 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
       {pendingLost && (
         <LostReasonDialog
           count={pendingLost.kind === 'bulk' ? pendingLost.count : 1}
+          stageName={catalog.label(pendingLost.stage)}
           onCancel={() => setPendingLost(null)}
           onConfirm={(razon) => {
             const pending = pendingLost
             setPendingLost(null)
-            if (pending.kind === 'single') handleMove(pending.chat, 'perdido', razon)
-            else handleBulkMove('perdido', razon)
+            if (pending.kind === 'single') handleMove(pending.chat, pending.stage, razon)
+            else handleBulkMove(pending.stage, razon)
           }}
         />
       )}

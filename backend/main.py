@@ -22,7 +22,7 @@ configure_logging()
 
 from config import settings
 from db.session import close_engine, get_engine
-from routers import appointments, auth, automations, chats, dashboard, internal_notes, issue_reports, lead_services, media, media_library, notifications, platform, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
+from routers import ai_assistant, appointments, auth, branding, automations, chats, custom_fields, dashboard, internal_notes, issue_reports, lead_services, lead_stages, media, media_library, notifications, platform, push, scheduled_messages, settings as settings_router, suggestions, tags, tasks, template_categories, templates, tts, users, webhooks, whatsapp
 from services.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, hash_password, require_admin, verify_webhook_token, websocket_origin_allowed
 from services.chat_watcher import watch_chats
 from services.db_service import seed_admin_if_needed, set_unaccent_enabled
@@ -39,7 +39,7 @@ from services.scheduled_message_service import watch_scheduled_messages
 from request_metrics import begin_request_metrics, finish_request_metrics
 from request_context import reset_request_id, set_request_id
 from services.media_storage import MediaStorageError, check_media_storage, storage_backend
-from services.platform_settings import platform_setting
+from services.platform_settings import migrate_legacy_platform_settings, platform_setting
 from services.settings_service import migrate_settings_encryption
 from tenancy.middleware import TenantResolutionMiddleware
 from tenancy.dependencies import bind_integration_tenant
@@ -237,9 +237,9 @@ async def _require_inbound_webhook_token() -> None:
     los protege ese token. Con el valor vacío que traía backend/.env.example,
     `verify_webhook_token` dejaba pasar cualquier petición.
 
-    La comprobación es aquí y no en `config.py` porque en single-tenant el token
-    también puede venir de `app_settings` (es editable desde Configuración), así
-    que hace falta la base de datos para saber si está configurado de verdad.
+    La comprobación es aquí y no en `config.py` porque el token también puede
+    vivir cifrado en `public.platform_settings`, así que hace falta la base de
+    datos para saber si está configurado de verdad.
 
     Falla el arranque a propósito: en blue-green eso deja el color viejo
     sirviendo y el despliegue no promociona, que es preferible a promocionar
@@ -251,7 +251,7 @@ async def _require_inbound_webhook_token() -> None:
     raise RuntimeError(
         "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
         "subida de media quedarían abiertos a Internet. Generá uno con "
-        "`openssl rand -hex 32`, ponelo en backend/.env (o en Configuración) y "
+        "`openssl rand -hex 32`, ponelo en backend/.env o en Plataforma y "
         "configurá el mismo valor en n8n y en Evolution API."
     )
 
@@ -322,9 +322,15 @@ async def lifespan(app: FastAPI):
                 encrypted_settings,
                 decrypted_settings,
             )
+        migrated_platform_settings = await migrate_legacy_platform_settings()
+        if migrated_platform_settings:
+            logger.info(
+                "Configuración global legacy migrada a plataforma: claves=%s",
+                migrated_platform_settings,
+            )
 
-    # Después de normalizar app_settings: el token puede vivir ahí y no en el
-    # entorno, así que antes de este punto la lectura daría un falso negativo.
+    # Después de migrar el esquema: el token puede vivir cifrado en el plano de
+    # plataforma y no en el entorno.
     await _require_inbound_webhook_token()
     await _check_media_persistence()
 
@@ -409,6 +415,7 @@ async def add_performance_headers(request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -422,6 +429,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+# Pública: la pantalla de acceso y el manifest de la PWA la leen sin sesión.
+app.include_router(branding.router)
 # El panel de plataforma trae su propia identidad y su propia cookie: el
 # middleware de tenancy solo lo deja responder en TENANT_PLATFORM_HOSTS.
 app.include_router(platform.router)
@@ -430,9 +439,11 @@ app.include_router(chats.router, dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
 app.include_router(tts.router, dependencies=[Depends(get_current_user)])
 app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
+app.include_router(ai_assistant.router, dependencies=[Depends(require_admin)])
 app.include_router(whatsapp.router, dependencies=[Depends(require_admin)])
 app.include_router(tags.router)
 app.include_router(lead_services.router)
+app.include_router(lead_stages.router)
 app.include_router(template_categories.router)
 app.include_router(tasks.router)
 app.include_router(scheduled_messages.router)
@@ -441,6 +452,7 @@ app.include_router(media_library.router)
 app.include_router(internal_notes.router)
 app.include_router(issue_reports.router)
 app.include_router(appointments.router)
+app.include_router(custom_fields.router)
 app.include_router(notifications.router)
 app.include_router(push.router)
 app.include_router(dashboard.router)
@@ -484,7 +496,8 @@ async def readiness():
 @app.websocket("/ws/chats")
 async def chats_websocket(websocket: WebSocket):
     if not websocket_origin_allowed(
-        websocket.headers.get("origin"), websocket.headers.get("host"), settings.cors_origins,
+        websocket.headers.get("origin"), websocket.headers.get("host"),
+        settings.cors_origins, settings.cors_origin_regex,
     ):
         await websocket.close(code=4403)
         return

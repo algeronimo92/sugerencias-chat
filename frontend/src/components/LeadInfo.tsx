@@ -1,12 +1,16 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AtSign, CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, MessageCircle, MessageCircleOff, Phone, Repeat, Tag, User, UserRound, MapPin, FileText, Pencil, XCircle, type LucideIcon } from 'lucide-react'
 import type { Chat, LeadUpdateInput } from '../types'
-import { LEAD_STAGE_META } from '../domain/leadStageMeta'
+import { STAGE_ACCENT_CLASS, STAGE_BADGE_CLASS, stageColorStyle } from '../domain/leadStageMeta'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { useMarkNoShow, useUpdateLead } from '../hooks/useChats'
 import { displayPhone, displayUsername } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { LeadFormDialog } from './LeadFormDialog'
+import { useCustomFields, useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hooks/useCustomFields'
+import { CustomFieldInput } from './CustomFieldInput'
+import { Button } from './ui/Button'
 
 interface Props {
   chat: Chat
@@ -18,6 +22,8 @@ interface LeadInfoField {
   icon: LucideIcon
   iconClassName?: string
   valueClassName?: string
+  /** Variables CSS de la fila (el color de la etapa, ver stageColorStyle). */
+  style?: CSSProperties
 }
 
 /** fecha_recontacto es un DATE puro: `new Date('2026-08-01')` lo interpreta
@@ -46,10 +52,15 @@ export function LeadInfo({ chat }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [noShowError, setNoShowError] = useState<string | null>(null)
+  const [editingCustomFields, setEditingCustomFields] = useState(false)
+  const [customDraft, setCustomDraft] = useState<Record<string, unknown>>({})
   const navigate = useNavigate()
   const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
   const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
-  const stageMeta = LEAD_STAGE_META[chat.stage]
+  const stage = useLeadStageCatalog().get(chat.stage)
+  const { data: customDefinitions = [] } = useCustomFields('lead')
+  const { data: customValues = {} } = useLeadCustomFieldValues(chat.chat_id)
+  const updateCustomValues = useUpdateLeadCustomFieldValues(chat.chat_id)
 
   function handleMarkNoShow() {
     if (isMarkingNoShow) return
@@ -65,7 +76,7 @@ export function LeadInfo({ chat }: Props) {
     { label: 'Nombre', value: chat.name, icon: Contact },
     { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
     { label: 'Teléfono secundario', value: chat.secondary_phone, icon: Phone },
-    { label: 'Estado', value: stageMeta.label, icon: CircleDot, iconClassName: stageMeta.accent, valueClassName: stageMeta.badge },
+    { label: 'Estado', value: stage.name, icon: CircleDot, iconClassName: STAGE_ACCENT_CLASS, valueClassName: STAGE_BADGE_CLASS, style: stageColorStyle(stage.color) },
     {
       label: 'Conversación',
       value: chat.conversacion_abierta ? 'Abierta' : 'Cerrada',
@@ -126,8 +137,8 @@ export function LeadInfo({ chat }: Props) {
 
       {fields.length > 0 && (
         <dl className="space-y-2.5">
-          {fields.map(({ label, value, icon: Icon, iconClassName, valueClassName }) => (
-            <div key={label} className="flex items-start gap-2.5 text-sm">
+          {fields.map(({ label, value, icon: Icon, iconClassName, valueClassName, style }) => (
+            <div key={label} style={style} className="flex items-start gap-2.5 text-sm">
               <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClassName ?? 'text-wa-muted dark:text-wa-muted-dark'}`} />
               <div className="min-w-0">
                 <dt className="text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark leading-none mb-0.5">{label}</dt>
@@ -138,6 +149,13 @@ export function LeadInfo({ chat }: Props) {
             </div>
           ))}
         </dl>
+      )}
+
+      {customDefinitions.length > 0 && (
+        <div className="mt-4 border-t border-wa-border pt-3 dark:border-wa-border-dark">
+          <div className="mb-2 flex items-center justify-between"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted">Campos del negocio</h4><button type="button" className="text-xs font-semibold text-wa-primary-strong" onClick={() => { if (!editingCustomFields) setCustomDraft(customValues); setEditingCustomFields(value => !value) }}>{editingCustomFields ? 'Cancelar' : 'Editar'}</button></div>
+          {editingCustomFields ? <div className="space-y-3">{customDefinitions.map(field => <label key={field.id} className="block text-xs font-medium text-wa-muted">{field.label}{field.required ? ' *' : ''}<CustomFieldInput field={field} value={customDraft[field.key]} onChange={value => setCustomDraft(current => ({ ...current, [field.key]: value }))} className="mt-1" /></label>)}<Button size="sm" disabled={updateCustomValues.isPending} onClick={() => updateCustomValues.mutate(customDraft, { onSuccess: () => setEditingCustomFields(false), onError: err => setEditError(extractErrorMessage(err)) })}>Guardar campos</Button></div> : <dl className="space-y-2">{customDefinitions.map(field => customValues[field.key] == null || customValues[field.key] === '' ? null : <div key={field.id}><dt className="text-[11px] text-wa-muted">{field.label}</dt><dd className="text-sm text-gray-700 dark:text-gray-300">{typeof customValues[field.key] === 'boolean' ? customValues[field.key] ? 'Sí' : 'No' : String(customValues[field.key])}</dd></div>)}</dl>}
+        </div>
       )}
 
       {chat.proxima_cita && (

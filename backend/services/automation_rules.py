@@ -14,8 +14,13 @@ from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from domain_types import FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
-from db.models import LeadStage
+from domain_types import (
+    LEAD_STAGE_KEY_PATTERN,
+    FlowHandle,
+    FlowNodeType,
+    QuestionHandle,
+    WaitAnyConditionKind,
+)
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
 BUSINESS_START_HOUR = 8
@@ -124,9 +129,19 @@ def normalize_conditions(raw_conditions: object) -> dict:
             else None
         ),
     }
-    if normalized["stage"] and normalized["stage"] not in {stage.value for stage in LeadStage}:
+    # Solo la forma: las etapas son de cada negocio y su existencia se valida
+    # contra la base en rule_validation, que sí tiene I/O.
+    if normalized["stage"] and not is_stage_key(normalized["stage"]):
         raise ValueError("Etapa de condición inválida")
     return normalized
+
+
+_STAGE_KEY = re.compile(LEAD_STAGE_KEY_PATTERN)
+
+
+def is_stage_key(value: object) -> bool:
+    """¿Tiene forma de clave de etapa? (no dice si el negocio la tiene)."""
+    return isinstance(value, str) and _STAGE_KEY.fullmatch(value) is not None
 
 
 def matches_static_conditions(conditions: dict, chat: dict) -> tuple[bool, str | None]:

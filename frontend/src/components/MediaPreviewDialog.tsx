@@ -181,7 +181,7 @@ export function MediaPreviewDialog({
                 onClick={submit}
                 disabled={isSending}
                 aria-label="Enviar"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white shadow-lg transition-colors hover:bg-[#06cf9c] disabled:cursor-wait disabled:opacity-60 sm:h-14 sm:w-14"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white shadow-lg transition-colors hover:bg-wa-primary-strong disabled:cursor-wait disabled:opacity-60 sm:h-14 sm:w-14"
               >
                 {isSending ? <Loader2 className="h-6 w-6 animate-spin" /> : <Send className="h-6 w-6 fill-current" />}
               </button>

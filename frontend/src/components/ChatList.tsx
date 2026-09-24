@@ -1,19 +1,22 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { AlertCircle, Loader2, MessagesSquare, RefreshCw, Search, SlidersHorizontal, Smartphone, UserPlus, X } from 'lucide-react'
-import { LEAD_STAGES, type Chat, type ChatFilters, type LeadStage, type LeadUpdateInput } from '../types'
+import type { Chat, ChatFilters, LeadStage, LeadUpdateInput } from '../types'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { useCreateLead } from '../hooks/useChats'
 import { useChatSocketConnected } from '../hooks/useRealtime'
 import { useTags } from '../hooks/useLeadMeta'
 import { useSellers } from '../hooks/useUsers'
 import { extractErrorMessage } from '../utils/errors'
 import { ChatItem } from './ChatItem'
-import { LeadFormDialog } from './LeadFormDialog'
 import { Button } from './ui/Button'
 import { Checkbox } from './ui/Checkbox'
 import { EmptyState } from './ui/EmptyState'
 import { Select } from './ui/Input'
 import { Skeleton } from './ui/Skeleton'
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const LeadFormDialog = lazy(() => import('./LeadFormDialog').then(m => ({ default: m.LeadFormDialog })))
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -123,8 +126,18 @@ export function ChatList({
   const scrollRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead()
-  const { data: tags = [] } = useTags()
-  const { data: sellers = [] } = useSellers()
+  // Solo los usa el panel de filtros: no se piden al cargar la lista.
+  const { data: tags = [] } = useTags(false, { enabled: showFilters })
+  const stageCatalog = useLeadStageCatalog()
+  // Todas las etapas, también las desactivadas (sus leads siguen ahí), y las
+  // de un filtro ya aplicado aunque el negocio las haya borrado.
+  const filterStages = [
+    ...stageCatalog.stages,
+    ...advancedFilters.stages
+      .filter((key) => !stageCatalog.stages.some((stage) => stage.key === key))
+      .map((key) => stageCatalog.get(key)),
+  ]
+  const { data: sellers = [] } = useSellers({ enabled: showFilters })
 
   const activeAdvancedFilterCount =
     advancedFilters.stages.length +
@@ -365,7 +378,7 @@ export function ChatList({
               setIsCreating(true)
             }}
             aria-label="Nuevo lead"
-            className="h-9 shrink-0 rounded-xl px-3 shadow-[0_8px_18px_-10px_rgba(0,168,132,0.8)]"
+            className="h-9 shrink-0 rounded-xl px-3 shadow-[0_8px_18px_-10px_var(--color-wa-primary)]"
           >
             <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
             Nuevo
@@ -460,18 +473,20 @@ export function ChatList({
               )}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {LEAD_STAGES.map((stage) => (
+              {filterStages.map((stage) => (
                 <button
-                  key={stage}
+                  key={stage.key}
                   type="button"
-                  onClick={() => toggleStage(stage)}
-                  className={`rounded-full border px-2 py-1 text-[11px] capitalize transition-colors ${
-                    advancedFilters.stages.includes(stage)
+                  onClick={() => toggleStage(stage.key)}
+                  aria-pressed={advancedFilters.stages.includes(stage.key)}
+                  title={stage.is_active ? undefined : 'Etapa desactivada'}
+                  className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${stage.is_active ? '' : 'border-dashed'} ${
+                    advancedFilters.stages.includes(stage.key)
                       ? 'border-wa-primary bg-wa-primary/15 text-wa-primary-strong dark:bg-wa-primary/20 dark:text-wa-primary'
                       : 'border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark'
                   }`}
                 >
-                  {stage.replace('_', ' ')}
+                  {stage.name}
                 </button>
               ))}
             </div>
@@ -685,21 +700,23 @@ export function ChatList({
         )}
       </div>
 
-      {isCreating && (
-        <LeadFormDialog
-          title="Agregar lead"
-          submitLabel="Agregar"
-          requirePhoneAndName
-          isSubmitting={isSavingNewLead}
-          error={createError}
-          onSubmit={handleCreateLead}
-          onCancel={() => setIsCreating(false)}
-          onOpenExisting={(chat) => {
-            setIsCreating(false)
-            onSelect(chat)
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {isCreating && (
+          <LeadFormDialog
+            title="Agregar lead"
+            submitLabel="Agregar"
+            requirePhoneAndName
+            isSubmitting={isSavingNewLead}
+            error={createError}
+            onSubmit={handleCreateLead}
+            onCancel={() => setIsCreating(false)}
+            onOpenExisting={(chat) => {
+              setIsCreating(false)
+              onSelect(chat)
+            }}
+          />
+        )}
+      </Suspense>
     </div>
   )
 }

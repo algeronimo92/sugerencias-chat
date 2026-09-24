@@ -1,7 +1,9 @@
-"""Cifrado autenticado para secretos persistidos en ``app_settings``.
+"""Cifrado autenticado para secretos persistidos de tenant y plataforma.
 
 El prefijo permite distinguir ciphertext de valores históricos en texto plano.
-La clave nunca se guarda en PostgreSQL: proviene de SETTINGS_ENCRYPTION_KEY o,
+El namespace forma parte del AAD, así que un ciphertext global no se puede
+reutilizar como ajuste de un tenant. La clave nunca se guarda en PostgreSQL:
+proviene de SETTINGS_ENCRYPTION_KEY o,
 para compatibilidad inicial, se deriva de SECRET_KEY con separación de dominio.
 """
 
@@ -52,33 +54,40 @@ def _primary_key() -> bytes:
     return _fallback_key()
 
 
-def _aad(setting_key: str) -> bytes:
+def _aad(setting_key: str, namespace: str) -> bytes:
     # Vincula cada ciphertext a su fila: copiarlo a otra key no lo descifra.
-    return f"app_settings:{setting_key}:v1".encode("utf-8")
+    return f"{namespace}:{setting_key}:v1".encode("utf-8")
 
 
 def is_encrypted(value: str | None) -> bool:
     return bool(value and value.startswith(ENCRYPTED_PREFIX))
 
 
-def encrypt_secret(setting_key: str, plaintext: str) -> str:
+def encrypt_secret(
+    setting_key: str,
+    plaintext: str,
+    *,
+    namespace: str = "app_settings",
+) -> str:
     nonce = os.urandom(12)
     ciphertext = AESGCM(_primary_key()).encrypt(
         nonce,
         plaintext.encode("utf-8"),
-        _aad(setting_key),
+        _aad(setting_key, namespace),
     )
     token = base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
     return ENCRYPTED_PREFIX + token
 
 
-def _decrypt_with(key: bytes, setting_key: str, value: str) -> str:
+def _decrypt_with(key: bytes, setting_key: str, value: str, namespace: str) -> str:
     try:
         token = value[len(ENCRYPTED_PREFIX):]
         raw = base64.urlsafe_b64decode(token.encode("ascii"))
         if len(raw) < 12 + 16:
             raise ValueError("ciphertext incompleto")
-        plaintext = AESGCM(key).decrypt(raw[:12], raw[12:], _aad(setting_key))
+        plaintext = AESGCM(key).decrypt(
+            raw[:12], raw[12:], _aad(setting_key, namespace),
+        )
         return plaintext.decode("utf-8")
     except (InvalidTag, ValueError, UnicodeDecodeError, binascii.Error) as exc:
         raise SecretCipherError(
@@ -86,20 +95,25 @@ def _decrypt_with(key: bytes, setting_key: str, value: str) -> str:
         ) from exc
 
 
-def decrypt_secret(setting_key: str, value: str) -> str:
+def decrypt_secret(
+    setting_key: str,
+    value: str,
+    *,
+    namespace: str = "app_settings",
+) -> str:
     if not is_encrypted(value):
         # Compatibilidad exclusiva para la migración automática de filas viejas.
         return value
 
     primary = _primary_key()
     try:
-        return _decrypt_with(primary, setting_key, value)
+        return _decrypt_with(primary, setting_key, value, namespace)
     except SecretCipherError as primary_error:
         fallback = _fallback_key()
         if fallback == primary:
             raise
         try:
-            return _decrypt_with(fallback, setting_key, value)
+            return _decrypt_with(fallback, setting_key, value, namespace)
         except SecretCipherError:
             raise primary_error
 
@@ -109,9 +123,9 @@ def needs_reencryption(setting_key: str, value: str) -> bool:
     if not is_encrypted(value):
         return True
     try:
-        _decrypt_with(_primary_key(), setting_key, value)
+        _decrypt_with(_primary_key(), setting_key, value, "app_settings")
         return False
     except SecretCipherError:
         # Valida que al menos sea legible con la clave anterior antes de rotar.
-        _decrypt_with(_fallback_key(), setting_key, value)
+        _decrypt_with(_fallback_key(), setting_key, value, "app_settings")
         return True

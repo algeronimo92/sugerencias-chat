@@ -132,6 +132,7 @@ from services.store.catalogs import (  # noqa: F401
     assign_tag,
     create_lead_service,
     create_tag,
+    get_lead_service_by_name,
     list_lead_services,
     list_tags,
     remove_tag,

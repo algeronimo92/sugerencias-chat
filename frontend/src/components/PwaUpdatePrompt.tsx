@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { toast } from 'sonner'
+import { currentBrandName } from '../branding'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -36,7 +37,7 @@ export function PwaUpdatePrompt() {
 
   useEffect(() => {
     if (!needRefresh) return
-    toast('Hay una versión nueva de DermicaPro', {
+    toast(`Hay una versión nueva de ${currentBrandName()}`, {
       id: UPDATE_TOAST_ID,
       description: 'Actualizá para aplicar los cambios.',
       duration: Infinity,

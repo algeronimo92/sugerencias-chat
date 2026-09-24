@@ -133,3 +133,37 @@ export function useLogoutAll() {
     },
   })
 }
+
+export interface ActionTokenInfo {
+  purpose: 'invitation' | 'password_reset'
+  email: string
+  name: string
+}
+
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      await client.post('/api/auth/forgot-password', { email })
+    },
+  })
+}
+
+export function useActionToken(token: string) {
+  return useQuery({
+    queryKey: ['auth', 'action-token', token],
+    queryFn: async () => (
+      await client.get<ActionTokenInfo>(`/api/auth/action-token/${encodeURIComponent(token)}`)
+    ).data,
+    enabled: token.length > 0,
+    retry: false,
+  })
+}
+
+export function useCompleteAccountAction(purpose: ActionTokenInfo['purpose'] | undefined) {
+  return useMutation({
+    mutationFn: async ({ token, password }: { token: string; password: string }) => {
+      const path = purpose === 'invitation' ? 'accept-invitation' : 'reset-password'
+      await client.post(`/api/auth/${path}`, { token, password })
+    },
+  })
+}

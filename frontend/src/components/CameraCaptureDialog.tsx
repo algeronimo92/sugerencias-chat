@@ -237,7 +237,7 @@ export function CameraCaptureDialog({
               onClick={handleCapture}
               disabled={status !== 'ready' || isCapturing}
               aria-label="Tomar foto"
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-wa-primary text-white shadow-lg ring-4 ring-white/15 transition-colors hover:bg-[#06cf9c] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-wa-primary text-white shadow-lg ring-4 ring-white/15 transition-colors hover:bg-wa-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCapturing ? <Loader2 className="h-7 w-7 animate-spin" /> : <Camera className="h-7 w-7" />}
             </button>

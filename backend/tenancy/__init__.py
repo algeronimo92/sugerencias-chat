@@ -15,6 +15,7 @@ _RESOLVER_EXPORTS = {
     "resolve_tenant_by_hostname",
     "resolve_tenant_by_organization_id",
     "resolve_tenant_by_phone_number_id",
+    "resolve_tenant_by_waba_id",
 }
 _PROVISIONING_EXPORTS = {
     "TenantProvisioningError",
@@ -48,6 +49,7 @@ __all__ = [
     "resolve_tenant_by_hostname",
     "resolve_tenant_by_organization_id",
     "resolve_tenant_by_phone_number_id",
+    "resolve_tenant_by_waba_id",
     "TenantProvisioningError",
     "provision_tenant",
     "tenant_migration_head",

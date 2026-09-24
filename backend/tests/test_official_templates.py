@@ -126,66 +126,88 @@ async def test_official_template_create_surfaces_meta_rejection(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sync_endpoint_updates_local_status_from_meta(monkeypatch):
+async def test_sync_endpoint_replaces_full_meta_managed_state(monkeypatch):
+    list_calls = 0
+
     async def fake_list_templates(_user_id, _include_inactive):
+        nonlocal list_calls
+        list_calls += 1
         return [{
             "id": 9, "template_type": "official", "meta_template_id": "meta-123",
-            "official_status": "PENDING", "attachments": [],
+            "official_status": "APPROVED" if list_calls > 1 else "PENDING", "attachments": [],
         }]
 
-    async def fake_list_whatsapp_templates():
-        return [{"id": "meta-123", "status": "APPROVED", "rejected_reason": "NONE"}]
+    remote = {
+        "id": "meta-123", "name": "recordatorio_actualizado", "language": "es_PE",
+        "category": "MARKETING", "status": "APPROVED", "rejected_reason": "NONE",
+        "components": [{"type": "BODY", "text": "Contenido actualizado"}],
+    }
+
+    async def fake_get_whatsapp_template(meta_template_id):
+        assert meta_template_id == "meta-123"
+        return remote
 
     received = None
 
-    async def fake_update_template(template_id, values):
+    async def fake_replace(meta_template_id, representation):
         nonlocal received
-        received = (template_id, values)
-        return {"id": template_id, "official_status": values["official_status"]}
+        received = (meta_template_id, representation)
+        return [9]
 
     async def fake_broadcast(_payload):
         return None
 
     monkeypatch.setattr(templates, "list_templates", fake_list_templates)
-    monkeypatch.setattr(templates, "list_whatsapp_templates", fake_list_whatsapp_templates)
-    monkeypatch.setattr(templates, "update_template", fake_update_template)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+    monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
     monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
 
     result = await templates.post_sync_template(9, SimpleNamespace(id=11))
 
-    assert received == (9, {"official_status": "APPROVED", "official_rejected_reason": None})
+    assert received == ("meta-123", remote)
     assert result["official_status"] == "APPROVED"
 
 
 @pytest.mark.asyncio
 async def test_sync_endpoint_saves_rejection_reason_from_meta(monkeypatch):
+    list_calls = 0
+
     async def fake_list_templates(_user_id, _include_inactive):
+        nonlocal list_calls
+        list_calls += 1
         return [{
             "id": 9, "template_type": "official", "meta_template_id": "meta-123",
-            "official_status": "PENDING", "attachments": [],
+            "official_status": "REJECTED" if list_calls > 1 else "PENDING",
+            "official_rejected_reason": "TAG_CONTENT_MISMATCH" if list_calls > 1 else None,
+            "attachments": [],
         }]
 
-    async def fake_list_whatsapp_templates():
-        return [{"id": "meta-123", "status": "REJECTED", "rejected_reason": "TAG_CONTENT_MISMATCH"}]
+    remote = {
+        "id": "meta-123", "status": "REJECTED", "rejected_reason": "TAG_CONTENT_MISMATCH",
+        "components": [],
+    }
+
+    async def fake_get_whatsapp_template(_meta_template_id):
+        return remote
 
     received = None
 
-    async def fake_update_template(template_id, values):
+    async def fake_replace(meta_template_id, representation):
         nonlocal received
-        received = (template_id, values)
-        return {"id": template_id, **values}
+        received = (meta_template_id, representation)
+        return [9]
 
     async def fake_broadcast(_payload):
         return None
 
     monkeypatch.setattr(templates, "list_templates", fake_list_templates)
-    monkeypatch.setattr(templates, "list_whatsapp_templates", fake_list_whatsapp_templates)
-    monkeypatch.setattr(templates, "update_template", fake_update_template)
+    monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
+    monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
     monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
 
     result = await templates.post_sync_template(9, SimpleNamespace(id=11))
 
-    assert received == (9, {"official_status": "REJECTED", "official_rejected_reason": "TAG_CONTENT_MISMATCH"})
+    assert received == ("meta-123", remote)
     assert result["official_rejected_reason"] == "TAG_CONTENT_MISMATCH"
 
 

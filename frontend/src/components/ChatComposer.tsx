@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import type { Chat, MessageTemplate } from '../types'
 import { useSendAudio, useSendLocation, useSendMedia, useSendSticker, type ReplyTarget } from '../hooks/useMessages'
@@ -9,15 +9,17 @@ import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
-import { CameraCaptureDialog } from './CameraCaptureDialog'
-import { ContactSendDialog } from './ContactSendDialog'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { FlowPicker } from './FlowPicker'
-import { LocationConfirmDialog } from './LocationConfirmDialog'
-import { MediaPreviewDialog } from './MediaPreviewDialog'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplatePicker } from './TemplatePicker'
 import { VoiceRecorder } from './VoiceRecorder'
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const CameraCaptureDialog = lazy(() => import('./CameraCaptureDialog').then(m => ({ default: m.CameraCaptureDialog })))
+const ContactSendDialog = lazy(() => import('./ContactSendDialog').then(m => ({ default: m.ContactSendDialog })))
+const LocationConfirmDialog = lazy(() => import('./LocationConfirmDialog').then(m => ({ default: m.LocationConfirmDialog })))
+const MediaPreviewDialog = lazy(() => import('./MediaPreviewDialog').then(m => ({ default: m.MediaPreviewDialog })))
 
 const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
 const MEDIA_ACCEPT = 'image/*,video/*'
@@ -612,49 +614,51 @@ export function ChatComposer({
         </div>
       </form>
 
-      {pendingLocation && (
-        <LocationConfirmDialog
-          latitude={pendingLocation.latitude}
-          longitude={pendingLocation.longitude}
-          isSending={false}
-          onConfirm={handleConfirmLocation}
-          onCancel={() => setPendingLocation(null)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {pendingLocation && (
+          <LocationConfirmDialog
+            latitude={pendingLocation.latitude}
+            longitude={pendingLocation.longitude}
+            isSending={false}
+            onConfirm={handleConfirmLocation}
+            onCancel={() => setPendingLocation(null)}
+          />
+        )}
 
-      {isCameraOpen && (
-        <CameraCaptureDialog onCapture={handleCameraCaptured} onClose={() => setIsCameraOpen(false)} />
-      )}
+        {isCameraOpen && (
+          <CameraCaptureDialog onCapture={handleCameraCaptured} onClose={() => setIsCameraOpen(false)} />
+        )}
 
-      {isContactDialogOpen && (
-        <ContactSendDialog
-          chatId={chat.chat_id}
-          targetName={displayName(chat)}
-          replyTo={replyTo}
-          onSent={() => onReplyChange(null)}
-          onClose={() => setIsContactDialogOpen(false)}
-        />
-      )}
+        {isContactDialogOpen && (
+          <ContactSendDialog
+            chatId={chat.chat_id}
+            targetName={displayName(chat)}
+            replyTo={replyTo}
+            onSent={() => onReplyChange(null)}
+            onClose={() => setIsContactDialogOpen(false)}
+          />
+        )}
 
-      {pendingMedia && (
-        <MediaPreviewDialog
-          previewUrl={pendingMedia.items[pendingMedia.activeIndex].previewUrl}
-          kind={pendingMedia.items[pendingMedia.activeIndex].kind}
-          filename={pendingMedia.items[pendingMedia.activeIndex].file.name}
-          contentType={pendingMedia.items[pendingMedia.activeIndex].file.type}
-          fileSize={pendingMedia.items[pendingMedia.activeIndex].file.size}
-          thumbnails={pendingMedia.items.length > 1
-            ? pendingMedia.items.map((item) => ({ previewUrl: item.previewUrl, kind: item.kind }))
-            : undefined}
-          activeIndex={pendingMedia.activeIndex}
-          onSelectThumbnail={(index) => setPendingMedia((current) => current && { ...current, activeIndex: index })}
-          onRemoveThumbnail={removePendingItem}
-          isSending={isSendingMedia}
-          onSend={confirmPendingMedia}
-          onCropped={applyCroppedMedia}
-          onClose={closeMediaPreview}
-        />
-      )}
+        {pendingMedia && (
+          <MediaPreviewDialog
+            previewUrl={pendingMedia.items[pendingMedia.activeIndex].previewUrl}
+            kind={pendingMedia.items[pendingMedia.activeIndex].kind}
+            filename={pendingMedia.items[pendingMedia.activeIndex].file.name}
+            contentType={pendingMedia.items[pendingMedia.activeIndex].file.type}
+            fileSize={pendingMedia.items[pendingMedia.activeIndex].file.size}
+            thumbnails={pendingMedia.items.length > 1
+              ? pendingMedia.items.map((item) => ({ previewUrl: item.previewUrl, kind: item.kind }))
+              : undefined}
+            activeIndex={pendingMedia.activeIndex}
+            onSelectThumbnail={(index) => setPendingMedia((current) => current && { ...current, activeIndex: index })}
+            onRemoveThumbnail={removePendingItem}
+            isSending={isSendingMedia}
+            onSend={confirmPendingMedia}
+            onCropped={applyCroppedMedia}
+            onClose={closeMediaPreview}
+          />
+        )}
+      </Suspense>
     </>
   )
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ArrowRight, GitCommitHorizontal } from 'lucide-react'
-import type { LeadActivity, LeadStage } from '../types'
-import { LEAD_STAGE_META } from '../domain/leadStageMeta'
+import type { LeadActivity } from '../types'
+import { STAGE_BADGE_CLASS, STAGE_DOT_CLASS, stageColorStyle } from '../domain/leadStageMeta'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { formatMessageTime, parseContent } from '../utils/message'
 import { Button } from './ui/Button'
 // Metadata que guarda el backend junto al cambio de estado (ver
@@ -14,11 +15,14 @@ interface TriggerMessage {
 }
 
 function StageBadge({ stage }: { stage: string }) {
-  const meta = LEAD_STAGE_META[stage as LeadStage]
+  // Se rotula con el nombre actual de la etapa: el historial guarda la clave,
+  // que no cambia aunque el negocio la renombre. Una etapa borrada se muestra
+  // con su clave legible y en gris.
+  const definition = useLeadStageCatalog().get(stage)
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta?.badge ?? 'bg-wa-field text-gray-700 dark:bg-wa-active-dark dark:text-gray-300'}`}>
-      {meta && <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />}
-      {meta?.label ?? stage.replaceAll('_', ' ')}
+    <span style={stageColorStyle(definition.color)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STAGE_BADGE_CLASS}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${STAGE_DOT_CLASS}`} />
+      {definition.name}
     </span>
   )
 }

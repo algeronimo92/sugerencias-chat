@@ -18,7 +18,7 @@ const RECONNECT_DELAY_MS = 3_000
 const PING_INTERVAL_MS = 25_000
 const WATCHDOG_INTERVAL_MS = 10_000
 const ACTIVITY_TIMEOUT_MS = 40_000
-const RESYNC_QUERY_KEYS = [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat'], ['issue-reports']]
+const RESYNC_QUERY_KEYS = [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat'], ['issue-reports'], ['templates']]
 const socketListeners = new Set<() => void>()
 let socketConnected = false
 

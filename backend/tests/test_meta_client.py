@@ -83,6 +83,37 @@ def _mock_config(monkeypatch, token="token-123", phone_number_id="PHONE1", waba_
 
 
 @pytest.mark.asyncio
+async def test_embedded_signup_combines_platform_app_with_tenant_connection(monkeypatch):
+    platform_values = AsyncMock(return_value={
+        "meta_app_id": "CLINIVENTAS_APP",
+        "meta_app_secret": "platform-secret",
+    })
+    tenant_update = AsyncMock()
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({"access_token": "tenant-access-token"}),
+        _FakeGraphResponse({"success": True}),
+    ])
+    monkeypatch.setattr(meta_service, "platform_settings_many", platform_values)
+    monkeypatch.setattr(meta_service, "update_settings", tenant_update)
+    monkeypatch.setattr(meta_service, "get_current_tenant", lambda: None)
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    await meta_service.complete_embedded_signup("one-time-code", "DERMICA_WABA", "DERMICA_PHONE")
+
+    assert fake_client.calls[0]["params"] == {
+        "client_id": "CLINIVENTAS_APP",
+        "client_secret": "platform-secret",
+        "code": "one-time-code",
+    }
+    assert fake_client.calls[1]["url"].endswith("/DERMICA_WABA/subscribed_apps")
+    tenant_update.assert_awaited_once_with({
+        "meta_access_token": "tenant-access-token",
+        "meta_waba_id": "DERMICA_WABA",
+        "meta_phone_number_id": "DERMICA_PHONE",
+    })
+
+
+@pytest.mark.asyncio
 async def test_send_text_strips_jid_suffix_and_carries_reply_context(monkeypatch):
     _mock_config(monkeypatch)
     monkeypatch.setattr(
@@ -477,7 +508,7 @@ async def test_download_media_fails_when_meta_omits_the_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_upload_header_media_two_step_flow(monkeypatch):
     monkeypatch.setattr(
-        meta_service, "get_effective_many", AsyncMock(return_value={"meta_app_id": "APP123"}),
+        meta_service, "platform_setting", AsyncMock(return_value="APP123"),
     )
     _mock_config(monkeypatch)
     fake_client = _FakeGraphClient([
@@ -500,7 +531,7 @@ async def test_upload_header_media_two_step_flow(monkeypatch):
 @pytest.mark.asyncio
 async def test_upload_header_media_requires_app_id_setting(monkeypatch):
     monkeypatch.setattr(
-        meta_service, "get_effective_many", AsyncMock(return_value={"meta_app_id": ""}),
+        meta_service, "platform_setting", AsyncMock(return_value=""),
     )
 
     with pytest.raises(meta_service.MetaApiError):

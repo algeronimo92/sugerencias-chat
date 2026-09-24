@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 import { toast } from "sonner";
 import {
   CircleCheckBig,
@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import type { Chat } from "../types";
 import { ChatList } from "./ChatList";
-import { ChatPeekDialog } from "./ChatPeekDialog";
 import { ChatThread } from "./ChatThread";
 import { Button } from "./ui/Button";
 import { Spinner } from "./ui/Spinner";
@@ -27,12 +26,16 @@ import {
 } from "../hooks/useChats";
 import { useOpenChat } from "../hooks/useOpenChat";
 import {
+  SuggestionError,
   useSuggestionStatus,
   useGenerateSuggestions,
 } from "../hooks/useSuggestions";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
 import { hasOpenOverlay } from "../utils/overlay";
 import { extractErrorMessage } from "../utils/errors";
+
+// Diálogos que solo se abren a pedido: fuera del bundle inicial.
+const ChatPeekDialog = lazy(() => import("./ChatPeekDialog").then(m => ({ default: m.ChatPeekDialog })));
 
 const SuggestionPanel = lazy(() =>
   import("./SuggestionPanel").then((module) => ({
@@ -185,11 +188,14 @@ export function ChatWorkspace() {
   const isGeneratingForSelected =
     generateSuggestionsMutation.isPending &&
     generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id;
-  const suggestionsErrorMessage =
-    generateSuggestionsMutation.error instanceof Error &&
+  const suggestionsError =
+    generateSuggestionsMutation.error &&
     generateSuggestionsMutation.variables?.chat_id === selectedChat?.chat_id
-      ? generateSuggestionsMutation.error.message
+      ? generateSuggestionsMutation.error
       : null;
+  const suggestionsErrorMessage = suggestionsError?.message ?? null;
+  const suggestionsErrorRetryable =
+    !(suggestionsError instanceof SuggestionError) || suggestionsError.retryable;
 
   const { mutate: markChatRead } = useMarkChatRead();
   const markChatUnread = useMarkChatUnread();
@@ -254,6 +260,7 @@ export function ChatWorkspace() {
         isLoading={isSuggestionsLoading}
         isGenerating={isGeneratingForSelected}
         error={suggestionsErrorMessage}
+        errorRetryable={suggestionsErrorRetryable}
         onGenerate={(force = false, instruction) =>
           generateSuggestionsMutation.mutate({
             chat_id: chat.chat_id,
@@ -376,7 +383,11 @@ export function ChatWorkspace() {
         {isDesktop && (
           <div className="h-full w-[380px] shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[400px]">
             {selectedChat ? (
-              renderSuggestionPanel(selectedChat)
+              // Suspense propio: sin él, la primera carga del chunk suspende
+              // hasta el boundary de MainLayout y tapa lista y conversación.
+              <Suspense fallback={<PageLoader />}>
+                {renderSuggestionPanel(selectedChat)}
+              </Suspense>
             ) : (
               <SuggestionsEmptyState />
             )}
@@ -384,23 +395,25 @@ export function ChatWorkspace() {
         )}
       </div>
 
-      {previewChat && (
-        <ChatPeekDialog
-          chat={previewChat}
-          onClose={() => setPreviewChat(null)}
-          onOpen={() => {
-            const chat = previewChat;
-            setPreviewChat(null);
-            handleSelectChat(chat);
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {previewChat && (
+          <ChatPeekDialog
+            chat={previewChat}
+            onClose={() => setPreviewChat(null)}
+            onOpen={() => {
+              const chat = previewChat;
+              setPreviewChat(null);
+              handleSelectChat(chat);
+            }}
+          />
+        )}
+      </Suspense>
 
       {/* Sugerencias como panel deslizable en móvil y tablet. */}
       <AnimatePresence>
         {!isDesktop && isSuggestionsOpen && selectedChat && (
           <>
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -412,7 +425,7 @@ export function ChatWorkspace() {
               aria-hidden="true"
               className="fixed inset-0 z-75 bg-black/40"
             />
-            <motion.aside
+            <m.aside
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
@@ -438,7 +451,7 @@ export function ChatWorkspace() {
                   {renderSuggestionPanel(selectedChat)}
                 </Suspense>
               </div>
-            </motion.aside>
+            </m.aside>
           </>
         )}
       </AnimatePresence>

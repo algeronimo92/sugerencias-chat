@@ -42,9 +42,10 @@ class Settings(BaseSettings):
     n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
     inbound_webhook_token: str = ""
     # Credenciales de la app de Meta (Tech Provider): son únicas para toda la
-    # instalación, no de un negocio. Las leen rutas que corren antes de resolver
-    # el tenant (challenge del webhook y firma HMAC), así que en multitenant no
-    # pueden salir de `app_settings` — ver services/platform_settings.py.
+    # instalación, no de un negocio. Se resuelven desde
+    # `public.platform_settings` con respaldo del entorno.
+    meta_app_id: str = ""
+    meta_config_id: str = ""
     meta_verify_token: str = ""
     meta_app_secret: str = ""
     # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
@@ -130,6 +131,27 @@ class Settings(BaseSettings):
     # arrancando; las sesiones opacas ya no usan JWT ni este valor.
     access_token_expire_hours: int = 24
     auth_user_cache_ttl_seconds: float = 15.0
+
+    # Correo transaccional. Si SMTP_HOST o EMAIL_FROM_ADDRESS faltan, el
+    # proveedor queda deshabilitado: las invitaciones responden 503 sin crear
+    # usuarios y los avisos operativos se omiten sin afectar la operación.
+    email_provider: str = "smtp"
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    email_from_address: str = ""
+    email_from_name: str = ""
+    # URL canónica de una instalación single-tenant. En multitenancy se usa
+    # el hostname ya validado del TenantContext, nunca el Host enviado por el
+    # cliente, para evitar enlaces envenenados por Host header injection.
+    app_public_url: str = ""
+    app_public_scheme: str = "https"
+    invitation_expire_hours: int = Field(default=72, ge=1, le=720)
+    password_reset_expire_minutes: int = Field(default=60, ge=5, le=1440)
     # Solo se usan para crear el primer admin cuando la tabla users está
     # vacía (ver services/db_service.py:seed_admin_if_needed). Una vez que
     # existe algún usuario, estas dos variables ya no se leen más.

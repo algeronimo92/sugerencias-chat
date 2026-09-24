@@ -19,11 +19,11 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from domain_types import (
-    LeadStage,
+    INITIAL_LEAD_STAGE,
     AutomationBuilderMode,
     AutomationExecutionStatus,
     IssueReportPriority,
@@ -51,6 +51,10 @@ class Organization(Base):
             "schema_name ~ '^tenant_[0-9a-f]{32}$'",
             name="organizations_schema_name_check",
         ),
+        CheckConstraint(
+            "ai_monthly_quota IS NULL OR ai_monthly_quota >= 0",
+            name="organizations_ai_monthly_quota_check",
+        ),
         {"schema": "public"},
     )
 
@@ -71,6 +75,46 @@ class Organization(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Asistente IA (sugerencias y analista): lo habilita la plataforma según el
+    # plan del negocio. La cuota cuenta generaciones por mes calendario UTC;
+    # NULL significa sin tope.
+    ai_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    ai_monthly_quota: Mapped[int | None] = mapped_column(Integer)
+
+
+class OrganizationBranding(Base):
+    """Marca con la que cada negocio ve su CRM: nombre, color y logo.
+
+    Vive en el plano de control porque se necesita antes del login (pantalla
+    de acceso, manifest de la PWA), cuando todavía no hay sesión del negocio.
+    Los PNG ya vienen normalizados por services/branding.py: cuadrados, sin
+    metadatos y en los dos tamaños que pide una PWA. Tabla aparte para no
+    cargar los binarios cada vez que se lista ``organizations``.
+    """
+
+    __tablename__ = "organization_branding"
+    __table_args__ = (
+        CheckConstraint(
+            "primary_color IS NULL OR primary_color ~ '^#[0-9a-f]{6}$'",
+            name="organization_branding_color_check",
+        ),
+        {"schema": "public"},
+    )
+
+    organization_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False),
+        ForeignKey("public.organizations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    display_name: Mapped[str | None] = mapped_column(Text)
+    primary_color: Mapped[str | None] = mapped_column(Text)
+    logo_png: Mapped[bytes | None] = mapped_column(LargeBinary)
+    icon_png: Mapped[bytes | None] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class OrganizationDomain(Base):
@@ -180,9 +224,9 @@ class PlatformSetting(Base):
 
     El valor siempre viaja cifrado (a diferencia de `app_settings.value`, que
     solo cifra las keys marcadas `secret=True`): acá no hay configuración en
-    claro, por eso la columna se llama `encrypted_value` y no `value`. Todavía
-    no tiene lector/escritor propio -sigue sin consumidores- porque nada migró
-    a este plano aún; ver docs/multi-tenant-saas-plan.md sección 3.
+    claro, por eso la columna se llama `encrypted_value` y no `value`. La
+    administra exclusivamente el panel de plataforma; los tenants solo reciben
+    los valores públicos necesarios para iniciar Embedded Signup.
     """
 
     __tablename__ = "platform_settings"
@@ -351,12 +395,41 @@ class KnowledgeDocument(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str | None] = mapped_column(Text)
     document_type: Mapped[str | None] = mapped_column(Text)
+    # Texto completo tal como lo cargó el negocio. Los chunks se derivan de acá
+    # y se regeneran al editarlo; nunca se editan sueltos.
+    content: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AIProfile(Base):
+    """Perfil del negocio que el asistente IA recibe en cada job.
+
+    Una sola fila por schema tenant (``id = 1``). Son datos del negocio, no
+    instrucciones de sistema: el prompt base del copiloto lo mantiene la
+    plataforma y estos campos entran como contexto acotado.
+    """
+
+    __tablename__ = "ai_profile"
+    __table_args__ = (CheckConstraint("id = 1", name="ai_profile_singleton_check"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    business_name: Mapped[str | None] = mapped_column(Text)
+    business_description: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    opening_hours: Mapped[str | None] = mapped_column(Text)
+    currency: Mapped[str | None] = mapped_column(Text)
+    tone: Mapped[str | None] = mapped_column(Text)
+    always_rules: Mapped[str | None] = mapped_column(Text)
+    never_rules: Mapped[str | None] = mapped_column(Text)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
@@ -425,12 +498,14 @@ class Lead(Base):
     vendedor: Mapped[str | None] = mapped_column(Text)
     origen: Mapped[str | None] = mapped_column(Text)
     notas: Mapped[str | None] = mapped_column(Text)
-    # El enum lead_estado ya existe en la base compartida. create_type=False
-    # evita que SQLAlchemy intente recrearlo al iniciar la aplicación.
-    estado: Mapped[LeadStage] = mapped_column(
-        ENUM(LeadStage, name="lead_estado", create_type=False),
-        default=LeadStage.nuevo,
-        server_default=LeadStage.nuevo.value,
+    # Clave de una etapa del negocio (lead_stages.key). Era el enum
+    # lead_estado, igual para todos; ver d9e2a4c7f1b5. La FK garantiza que la
+    # clave exista; que esté activa lo valida services/lead_stages.py.
+    estado: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("lead_stages.key", onupdate="CASCADE", ondelete="RESTRICT"),
+        default=INITIAL_LEAD_STAGE,
+        server_default=INITIAL_LEAD_STAGE,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -484,6 +559,12 @@ class Lead(Base):
     proxima_cita: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     toques_seguimiento: Mapped[int | None] = mapped_column(SmallInteger)
     fecha_ultimo_toque: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Datos definidos por cada negocio. Las definiciones viven en
+    # custom_field_definitions y este JSONB conserva los valores por clave
+    # estable, sin agregar una columna nueva por cliente.
+    custom_fields: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
 
     __table_args__ = (Index("idx_leads_vendedor_id", vendedor_id),)
 
@@ -779,6 +860,55 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AuthActionToken(Base):
+    """Token de invitación o recuperación, aislado dentro del tenant.
+
+    El valor que viaja por correo nunca se persiste: solo guardamos SHA-256.
+    ``used_at`` hace el consumo de un solo uso auditable y atómico.
+    """
+
+    __tablename__ = "auth_action_tokens"
+
+    id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('invitation', 'password_reset')",
+            name="auth_action_tokens_purpose_check",
+        ),
+        Index("idx_auth_action_tokens_user", user_id, purpose, used_at),
+        Index("idx_auth_action_tokens_expires", expires_at),
+    )
+
+
+class EmailNotificationLog(Base):
+    """Deduplicación tenant-scoped de avisos operativos por correo."""
+
+    __tablename__ = "email_notification_log"
+
+    event_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('sending', 'sent')",
+            name="email_notification_log_status_check",
+        ),
+        Index("idx_email_notification_log_type", event_type, sent_at),
+    )
+
+
 class TrustedDevice(Base):
     """Dispositivo que puede volver a autenticarse con un PIN local.
 
@@ -837,6 +967,39 @@ class AuthSession(Base):
     )
 
 
+class LeadStage(Base):
+    """Etapa del embudo, administrable por cada negocio.
+
+    ``key`` es la clave estable que guardan ``leads.estado``, las
+    automatizaciones, las plantillas y el historial: renombrar la etapa solo
+    cambia ``name``. ``kind`` es la semántica que usa el código (ver
+    domain_types.LeadStageKind), nunca el nombre. Una etapa en uso no se
+    borra: se desactiva, y deja de ofrecerse como destino.
+    """
+
+    __tablename__ = "lead_stages"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    color: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(Text, default="open", server_default="open")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Criterio del negocio para usar la etapa. Lo recibe el analista IA, que
+    # no conoce las etapas propias de cada negocio.
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("key ~ '^[a-z][a-z0-9_]{0,39}$'", name="lead_stages_key_check"),
+        CheckConstraint("color ~ '^#[0-9a-f]{6}$'", name="lead_stages_color_check"),
+        CheckConstraint("kind IN ('open', 'won', 'lost')", name="lead_stages_kind_check"),
+        CheckConstraint("key <> 'nuevo' OR is_active", name="lead_stages_initial_active_check"),
+        Index("uq_lead_stages_name_lower", func.lower(name), unique=True),
+    )
+
+
 class LeadTag(Base):
     """Catálogo administrable de etiquetas comerciales."""
 
@@ -868,10 +1031,16 @@ class LeadService(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Lo que el asistente IA consulta como catálogo: qué es el servicio y
+    # cuánto cuesta. La moneda es la del perfil del negocio (AIProfile).
+    description: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    price_notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        CheckConstraint("price IS NULL OR price >= 0", name="lead_services_price_check"),
         Index("uq_lead_services_name_lower", func.lower(name), unique=True),
         Index("idx_lead_services_created_by", created_by),
     )
@@ -1081,6 +1250,34 @@ class IssueReportEvent(Base):
     __table_args__ = (Index("idx_issue_report_events_report_created", report_id, created_at),)
 
 
+class CustomFieldDefinition(Base):
+    """Campo que un negocio decide mostrar en leads o citas."""
+
+    __tablename__ = "custom_field_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(Text)
+    key: Mapped[str] = mapped_column(Text)
+    label: Mapped[str] = mapped_column(Text)
+    field_type: Mapped[str] = mapped_column(Text)
+    required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    options: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("entity_type IN ('lead', 'appointment')", name="custom_fields_entity_check"),
+        CheckConstraint(
+            "field_type IN ('text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'select')",
+            name="custom_fields_type_check",
+        ),
+        Index("uq_custom_fields_entity_key", entity_type, key, unique=True),
+        Index("idx_custom_fields_entity_position", entity_type, position, id),
+    )
+
+
 class Appointment(Base):
     """Registro de cada envío del formulario "Nueva Cita" del CRM (el que
     reemplazó al Form Trigger de n8n), con el resultado real que devolvió
@@ -1106,6 +1303,13 @@ class Appointment(Base):
     n8n_status: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str | None] = mapped_column(Text)
     event_link: Mapped[str | None] = mapped_column(Text)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    custom_fields: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    calendar_event_id: Mapped[str | None] = mapped_column(Text)
+    calendar_sync_status: Mapped[str] = mapped_column(Text, default="not_configured", server_default="not_configured")
+    calendar_sync_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -1113,7 +1317,13 @@ class Appointment(Base):
             "status IN ('created', 'duplicate', 'created_with_errors', 'error')",
             name="ck_appointments_status",
         ),
+        CheckConstraint("duration_minutes BETWEEN 5 AND 1440", name="ck_appointments_duration"),
+        CheckConstraint(
+            "calendar_sync_status IN ('not_configured', 'pending', 'synced', 'error', 'skipped')",
+            name="ck_appointments_calendar_sync",
+        ),
         Index("idx_appointments_created", created_at.desc()),
+        Index("idx_appointments_date_time", fecha, hora),
     )
 
 
@@ -1158,10 +1368,17 @@ class MessageTemplate(Base):
     name: Mapped[str] = mapped_column(Text)
     content: Mapped[str] = mapped_column(Text)
     shortcut: Mapped[str | None] = mapped_column(Text)
-    category: Mapped[str] = mapped_column(Text, default="general")
+    category: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("template_categories.name", onupdate="CASCADE", ondelete="RESTRICT"),
+        default="General",
+    )
     stage: Mapped[str | None] = mapped_column(Text)
     task_type: Mapped[str | None] = mapped_column(Text)
-    service: Mapped[str | None] = mapped_column(Text)
+    service: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("lead_services.name", onupdate="CASCADE", ondelete="RESTRICT"),
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     visibility: Mapped[str] = mapped_column(Text, default="global", server_default="global")
     template_type: Mapped[str] = mapped_column(Text, default="internal", server_default="internal")
@@ -1229,6 +1446,9 @@ class MediaAsset(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Con descripción, el asistente IA puede proponer este archivo como
+    # adjunto de una sugerencia; sin ella no lo ve.
+    ai_description: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index("idx_media_assets_created_at", created_at.desc()),

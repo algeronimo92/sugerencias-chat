@@ -10,6 +10,7 @@ from domain_types import (
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
+    FlowConditionType,
     FlowHandle,
     FlowNodeType,
     QuestionHandle,
@@ -130,6 +131,7 @@ class FlowValidationFacts:
     invoke_flow_nodes: list[tuple[int, int]] = dataclasses.field(default_factory=list)
     condition_users: set[int] = dataclasses.field(default_factory=set)
     condition_tags: set[int] = dataclasses.field(default_factory=set)
+    condition_stages: set[str] = dataclasses.field(default_factory=set)
     end_count: int = 0
 
 
@@ -243,6 +245,12 @@ class ConditionNode(FlowNodeHandler):
         normalized, user_ids, tag_ids = _normalize_flow_condition_node(data, ref.position)
         facts.condition_users.update(user_ids)
         facts.condition_tags.update(tag_ids)
+        facts.condition_stages.update(
+            condition["value"]
+            for group in normalized["condition_groups"]
+            for condition in group["conditions"]
+            if condition["condition_type"] == FlowConditionType.STAGE_EQUALS
+        )
         return normalized
 
     async def execute(self, node: dict, run: FlowRun) -> NodeOutcome:

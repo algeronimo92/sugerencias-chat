@@ -286,7 +286,7 @@ export function IssueReportDialog({
 
               <div className="flex items-start gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[11px] leading-relaxed text-blue-800 sm:py-2.5 dark:bg-blue-950/30 dark:text-blue-200">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>La captura solo incluye DermicaPro. Revísala para evitar información innecesaria.</span>
+                <span>La captura solo incluye esta aplicación. Revísala para evitar información innecesaria.</span>
               </div>
 
               {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}

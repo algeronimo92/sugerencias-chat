@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 from time import perf_counter
 from typing import Any
@@ -6,6 +7,8 @@ from typing import Any
 import httpx
 
 from request_metrics import record_external_duration
+from services.account_actions import try_send_operational_alert
+from services.platform_settings import platform_setting, platform_settings_many
 from services.settings_service import get_effective_many, update_settings
 from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError
 from services.whatsapp_identity_service import learn_send_aliases, resolve_whatsapp_destination
@@ -123,6 +126,17 @@ async def _config() -> tuple[str, str, str]:
     phone_number_id = values["meta_phone_number_id"]
     waba_id = values["meta_waba_id"]
     if not (access_token and phone_number_id and waba_id):
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        await try_send_operational_alert(
+            event_key=f"whatsapp-disconnected:{day}",
+            event_type="whatsapp_disconnected",
+            subject="WhatsApp necesita reconectarse",
+            title="WhatsApp no está conectado",
+            message=(
+                "Falta una credencial necesaria de Meta Cloud API. Un administrador debe "
+                "conectar WhatsApp desde Configuración para reanudar los envíos."
+            ),
+        )
         raise MetaApiError(
             "Meta Cloud API no está configurada (token / phone number id / WABA id)"
         )
@@ -171,12 +185,11 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
     de WhatsApp Business el evento es `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`
     y su payload omite `phone_number_id` a propósito -- se resuelve acá con
     `_resolve_phone_number_id`."""
-    values = await get_effective_many(("meta_app_id", "meta_app_secret"))
+    values = await platform_settings_many(("meta_app_id", "meta_app_secret"))
     app_id, app_secret = values["meta_app_id"], values["meta_app_secret"]
     if not (app_id and app_secret):
         raise MetaApiError(
-            "Faltan el Facebook App ID y App Secret (Tech Provider) en Configuración → "
-            "Meta Cloud API para completar el signup"
+            "Faltan el Facebook App ID y App Secret de la plataforma para completar el signup"
         )
 
     started_at = perf_counter()
@@ -241,7 +254,24 @@ async def _request(
     finally:
         record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
     if response.is_error:
-        _raise_meta_error(response)
+        try:
+            _raise_meta_error(response)
+        except MetaInvalidTokenException:
+            # Una credencial de Meta inválida equivale a WhatsApp desconectado
+            # para los envíos. Se avisa una vez por día hasta reconectar; el
+            # fallo del correo nunca oculta el error original de Meta.
+            day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            await try_send_operational_alert(
+                event_key=f"whatsapp-disconnected:{day}",
+                event_type="whatsapp_disconnected",
+                subject="WhatsApp necesita reconectarse",
+                title="La conexión de WhatsApp se interrumpió",
+                message=(
+                    "Meta rechazó la credencial del negocio. Un administrador debe "
+                    "volver a conectar WhatsApp desde Configuración para reanudar los envíos."
+                ),
+            )
+            raise
     return response.json()
 
 
@@ -385,11 +415,11 @@ async def upload_header_media(content: bytes, content_type: str, filename: str) 
     1. `POST /{app_id}/uploads` con el tamaño/tipo del archivo -> sesión.
     2. `POST /{sesión}` con el archivo en el body -> `{h: <header_handle>}`.
     """
-    app_id = (await get_effective_many(("meta_app_id",)))["meta_app_id"]
+    app_id = await platform_setting("meta_app_id")
     if not app_id:
         raise MetaApiError(
-            "Falta configurar el Facebook App ID (Tech Provider) en Configuración → "
-            "Meta Cloud API para poder subir encabezados con imagen"
+            "Falta configurar el Facebook App ID (Tech Provider) en la plataforma "
+            "para poder subir encabezados con imagen"
         )
     token, _phone_number_id, _waba_id = await _config()
     client = _client()

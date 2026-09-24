@@ -5,7 +5,13 @@ from pydantic import BaseModel
 
 from services import meta_service
 from services.meta_service import MetaApiError
-from services.settings_service import list_settings, update_settings
+from services.platform_settings import platform_settings_many
+from services.settings_service import (
+    PLATFORM_MANAGED_TENANT_KEYS,
+    list_business_timezones,
+    list_settings,
+    update_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +42,50 @@ class MetaEmbeddedSignupRequest(BaseModel):
     phone_number_id: str | None = None
 
 
+class MetaPublicConfig(BaseModel):
+    app_id: str | None = None
+    config_id: str | None = None
+
+
+class BusinessTimezoneItem(BaseModel):
+    id: str
+    label: str
+    offset_minutes: int
+
+
 @router.get("", response_model=list[SettingItem])
 async def get_settings():
     return await list_settings()
 
 
+@router.get("/timezones", response_model=list[BusinessTimezoneItem])
+async def get_timezones():
+    return list_business_timezones()
+
+
 @router.put("", response_model=list[SettingItem])
 async def put_settings(body: UpdateSettingsRequest):
+    managed = sorted(set(body.values) & set(PLATFORM_MANAGED_TENANT_KEYS))
+    if managed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Estos ajustes los administra la plataforma: {', '.join(managed)}",
+        )
     try:
         await update_settings(body.values)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return await list_settings()
+
+
+@router.get("/meta/public-config", response_model=MetaPublicConfig)
+async def get_meta_public_config():
+    values = await platform_settings_many(("meta_app_id", "meta_config_id"))
+    return {
+        "app_id": values["meta_app_id"] or None,
+        "config_id": values["meta_config_id"] or None,
+    }
 
 
 @router.post("/meta/embedded-signup", response_model=list[SettingItem])

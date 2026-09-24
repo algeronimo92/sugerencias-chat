@@ -30,6 +30,9 @@ export function useTemplates(includeInactive = false) {
   return useQuery({
     queryKey: ['templates', includeInactive],
     queryFn: async () => (await client.get<MessageTemplate[]>('/api/templates', { params: { include_inactive: includeInactive } })).data,
+    // El composer de cada chat la monta: sin esto se repedía al cambiar de
+    // chat. Las ediciones llegan por templates_updated y por las mutaciones.
+    staleTime: 5 * 60_000,
   })
 }
 

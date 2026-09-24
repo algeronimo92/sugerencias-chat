@@ -6,7 +6,7 @@ from fastapi import Header, HTTPException, Request
 
 from config import settings
 from tenancy.context import reset_current_tenant, set_current_tenant
-from tenancy.resolver import resolve_tenant_by_phone_number_id
+from tenancy.resolver import resolve_tenant_by_phone_number_id, resolve_tenant_by_waba_id
 
 _SELF_SCOPED_PATHS = frozenset(
     {
@@ -32,6 +32,7 @@ def integration_path_is_self_scoped(path: str) -> bool:
 async def bind_integration_tenant(
     request: Request,
     x_meta_phone_number_id: str | None = Header(default=None, alias="X-Meta-Phone-Number-Id"),
+    x_meta_waba_id: str | None = Header(default=None, alias="X-Meta-Waba-Id"),
 ) -> AsyncIterator[None]:
     """Resuelve callbacks Meta antes de que un repositorio abra una sesión.
 
@@ -42,11 +43,17 @@ async def bind_integration_tenant(
         yield
         return
 
-    phone_number_id = (x_meta_phone_number_id or "").strip()
-    if not phone_number_id:
-        raise HTTPException(status_code=400, detail="Falta X-Meta-Phone-Number-Id para resolver el negocio")
-
-    context = await resolve_tenant_by_phone_number_id(phone_number_id)
+    phone_number_id = x_meta_phone_number_id.strip() if isinstance(x_meta_phone_number_id, str) else ""
+    waba_id = x_meta_waba_id.strip() if isinstance(x_meta_waba_id, str) else ""
+    if phone_number_id:
+        context = await resolve_tenant_by_phone_number_id(phone_number_id)
+    elif waba_id:
+        context = await resolve_tenant_by_waba_id(waba_id)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Falta X-Meta-Phone-Number-Id o X-Meta-Waba-Id para resolver el negocio",
+        )
     if context is None:
         raise HTTPException(status_code=404, detail="Conexión WhatsApp no registrada")
 

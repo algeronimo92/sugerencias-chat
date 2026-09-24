@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Send, Workflow } from 'lucide-react'
+import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Send, Sparkles, Workflow } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export type NavItem = {
@@ -26,6 +26,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
   { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false },
   { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false },
+  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, primary: false },
 ]
 
 /** Los chats tienen su propia ruta de detalle, así que no basta con comparar. */

@@ -98,8 +98,11 @@ export const SOCKET_EVENT_HANDLERS: { [K in RealtimeEventType]: SocketHandler<K>
   templates_updated: (_event, { queryClient }) => invalidate(queryClient, ['templates']),
   media_library_updated: (_event, { queryClient }) => invalidate(queryClient, ['media-library']),
   notifications_updated: (_event, { queryClient }) => invalidate(queryClient, ['notifications']),
-  automations_updated: (_event, { queryClient }) => invalidate(queryClient, ['automations'], ['automation-executions']),
+  automations_updated: (_event, { queryClient }) => invalidate(queryClient, ['automations'], ['automation-executions'], ['automation-manual-flows']),
   issue_reports_updated: (_event, { queryClient }) => invalidate(queryClient, ['issue-reports']),
+  // Renombres, colores u orden del embudo: el kanban y el dashboard también
+  // rotulan y ordenan con ellas.
+  lead_stages_updated: (_event, { queryClient }) => invalidate(queryClient, ['lead-stages'], ['kanban'], ['dashboard']),
   scheduled_messages_updated: (event, { queryClient }) => invalidate(
     queryClient,
     event.chat_id ? ['scheduled-messages', event.chat_id] : ['scheduled-messages'],

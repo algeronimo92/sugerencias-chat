@@ -7,7 +7,6 @@ from sqlalchemy import select
 from db.models import (
     AutomationExecution,
     AutomationRule,
-    LeadStage,
     MediaAsset,
     MessageTemplate,
     TemplateAttachment,
@@ -160,7 +159,7 @@ async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
 async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
     actor_type, actor_user_id = _execution_actor(execution)
     updated = await deps.update_lead_stage(
-        chat["chat_id"], LeadStage(action["stage"]), actor_type, actor_user_id,
+        chat["chat_id"], action["stage"], actor_type, actor_user_id,
         {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
         schedule_automations=False,
     )

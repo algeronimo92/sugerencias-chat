@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../hooks/useLeadServices', () => ({
   useLeadServices: () => ({
     data: [
-      { id: 1, name: 'Botox', is_active: true, created_by_name: 'Lucía Ramos', created_at: '2026-08-10T12:00:00Z' },
+      { id: 1, name: 'Botox', is_active: true, price: '150.00', created_by_name: 'Lucía Ramos', created_at: '2026-08-10T12:00:00Z' },
       { id: 2, name: 'Tratamiento anterior', is_active: false },
     ],
     isLoading: false,
@@ -72,6 +72,23 @@ describe('ServicesManagementPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Activar Tratamiento anterior' }))
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 2, is_active: true },
+      expect.any(Object),
+    )
+  })
+
+  it('guarda solo el precio y la descripción que cambiaron para el asistente IA', async () => {
+    const user = userEvent.setup()
+    render(<ServicesManagementPanel />)
+
+    const price = screen.getByLabelText('Precio de Botox')
+    expect(price).toHaveValue(150)
+    await user.clear(price)
+    await user.type(price, '180')
+    await user.type(screen.getByLabelText('Descripción de Botox'), 'Toxina botulínica para líneas de expresión')
+    await user.click(screen.getByRole('button', { name: 'Guardar Botox' }))
+
+    expect(mocks.update).toHaveBeenCalledWith(
+      { id: 1, price: '180', description: 'Toxina botulínica para líneas de expresión' },
       expect.any(Object),
     )
   })

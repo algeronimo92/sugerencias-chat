@@ -651,6 +651,7 @@ const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
   contact: ContactBody,
   poll: PollBody,
   interactive: InteractiveBody,
+  button: TextualBody,
   template: TemplateBody,
   order: OrderBody,
   product: ProductBody,

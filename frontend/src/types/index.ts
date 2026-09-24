@@ -8,37 +8,21 @@ import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from '../dom
 import type { components } from '../api/schema'
 
 type ApiSchemas = components['schemas']
-type ApiLeadStage = ApiSchemas['LeadStageUpdate']['stage']
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
 export interface JsonObject { [key: string]: JsonValue }
 
-export const LEAD_STAGES = [
-  // Flujo principal
-  'nuevo',
-  'en_diagnostico',
-  'calificado',
-  'oferta_presentada',
-  'en_objecion',
-  'agendado',
-  'cliente_activo',
-  'postventa',
-  // Columnas secundarias
-  'en_seguimiento',
-  'en_nutricion',
-  'perdido',
-  'descalificado',
-  'baja',
-] as const satisfies readonly ApiLeadStage[]
+/** Clave estable de una etapa del embudo (`lead_stages.key`). Cada negocio
+ * define las suyas, así que ya no es una unión cerrada: la lista, el orden,
+ * los nombres y los colores vienen de `useLeadStages` (ver
+ * domain/leadStageMeta.ts para el respaldo mientras cargan). */
+export type LeadStage = string
 
-export type LeadStage = (typeof LEAD_STAGES)[number]
-export type LeadStagesCoverApi = [Exclude<ApiLeadStage, LeadStage>] extends [never] ? true : never
-export const LEAD_STAGES_COVER_API: LeadStagesCoverApi = true
-
-export function isLeadStage(value: string): value is LeadStage {
-  return LEAD_STAGES.some(stage => stage === value)
-}
+/** Semántica de la etapa: `lost` pide la razón de pérdida al entrar. */
+export type LeadStageKind = ApiSchemas['LeadStageItem']['kind']
+export type LeadStageDefinition = ApiSchemas['LeadStageItem']
+export type LeadStageAdminDefinition = ApiSchemas['LeadStageAdminItem']
 
 export interface Tag {
   id: number
@@ -54,6 +38,11 @@ export interface LeadService {
   id: number
   name: string
   is_active?: boolean
+  /** Catálogo que consulta el asistente IA; la moneda es la del perfil del negocio. */
+  description?: string | null
+  /** Decimal serializado como texto ("150.00"). */
+  price?: string | null
+  price_notes?: string | null
   created_by_user_id?: number | null
   created_by_name?: string | null
   created_at?: string | null
@@ -307,6 +296,7 @@ export type MessageType =
   | 'reaction'
   | 'pin'
   | 'interactive'
+  | 'button'
   | 'template'
   | 'order'
   | 'product'
@@ -928,6 +918,43 @@ export interface MediaAsset {
   uploaded_by_name: string | null
   created_at: string
   use_count: number
+  /** Con descripción, el asistente IA puede proponerlo como adjunto. */
+  ai_description?: string | null
+}
+
+/** Perfil del negocio que el asistente IA recibe en cada sugerencia. */
+export interface AIProfile {
+  business_name: string | null
+  business_description: string | null
+  location: string | null
+  opening_hours: string | null
+  currency: string | null
+  tone: string | null
+  always_rules: string | null
+  never_rules: string | null
+  updated_at?: string | null
+}
+
+export interface KnowledgeDocumentSummary {
+  id: string
+  title: string
+  document_type: string | null
+  characters: number
+  chunk_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface KnowledgeDocument extends KnowledgeDocumentSummary {
+  content: string
+}
+
+/** Habilitación y cuota del asistente: las decide la plataforma, no el negocio. */
+export interface AIUsage {
+  enabled: boolean
+  monthly_quota: number | null
+  used_this_month: number
+  remaining: number | null
 }
 
 export interface DashboardMetricItem {

@@ -9,7 +9,6 @@ from db.models import (
     LeadService,
     LeadTag,
     LeadTagAssignment,
-    MessageTemplate,
     User,
 )
 from db.session import get_sessionmaker
@@ -41,11 +40,16 @@ async def list_tags(include_inactive: bool = False) -> list[dict]:
     return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
 
 
+# Lo que el asistente IA usa para cotizar; el resto del CRM solo mira el nombre.
+_SERVICE_AI_COLUMNS = (LeadService.description, LeadService.price, LeadService.price_notes)
+
+
 async def list_lead_services(include_inactive: bool = False) -> list[dict]:
     stmt = select(
         LeadService.id,
         LeadService.name,
         LeadService.is_active,
+        *_SERVICE_AI_COLUMNS,
         LeadService.created_by.label("created_by_user_id"),
         User.name.label("created_by_name"),
         LeadService.created_at,
@@ -57,6 +61,19 @@ async def list_lead_services(include_inactive: bool = False) -> list[dict]:
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
+
+
+async def get_lead_service_by_name(name: str, active_only: bool = True) -> dict | None:
+    stmt = select(
+        LeadService.id,
+        LeadService.name,
+        LeadService.is_active,
+    ).where(func.lower(LeadService.name) == name.strip().casefold())
+    if active_only:
+        stmt = stmt.where(LeadService.is_active == true())
+    async with get_sessionmaker()() as session:
+        row = (await session.execute(stmt)).mappings().first()
+    return dict(row) if row else None
 
 
 async def create_lead_service(name: str, user_id: int) -> dict:
@@ -73,6 +90,7 @@ async def create_lead_service(name: str, user_id: int) -> dict:
             LeadService.id,
             LeadService.name,
             LeadService.is_active,
+            *_SERVICE_AI_COLUMNS,
             LeadService.created_by.label("created_by_user_id"),
             LeadService.created_at,
         )
@@ -143,6 +161,7 @@ async def update_lead_service(
                     LeadService.id,
                     LeadService.name,
                     LeadService.is_active,
+                    *_SERVICE_AI_COLUMNS,
                     LeadService.created_by.label("created_by_user_id"),
                     User.name.label("created_by_name"),
                     LeadService.created_at,
@@ -160,7 +179,12 @@ async def update_lead_service(
                     update(LeadService)
                     .where(LeadService.id == service_id)
                     .values(**values)
-                    .returning(LeadService.id, LeadService.name, LeadService.is_active)
+                    .returning(
+                        LeadService.id,
+                        LeadService.name,
+                        LeadService.is_active,
+                        *_SERVICE_AI_COLUMNS,
+                    )
                 )
             ).mappings().one()
 
@@ -191,12 +215,6 @@ async def update_lead_service(
                         new_value={"servicio_interes": new_name},
                         metadata={"source": "service_catalog", "service_id": service_id},
                     )
-                await session.execute(
-                    update(MessageTemplate)
-                    .where(func.lower(func.btrim(MessageTemplate.service)) == old_match)
-                    .values(service=new_name)
-                )
-
                 rules = (
                     await session.execute(
                         select(

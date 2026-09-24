@@ -13,7 +13,22 @@ cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 
 `DATABASE_URL` y `CORS_ORIGINS` solo se configuran acá (son necesarios para que la app arranque). El resto de las claves de servicios externos (n8n, Evolution API, ElevenLabs) se pueden completar en este archivo como semilla inicial, pero también se pueden cargar y editar después desde la propia app: ícono de engranaje ⚙️ en la barra superior → "Configuración" (solo visible para usuarios admin). Lo que se guarde ahí desde la UI tiene prioridad sobre el `.env`.
 
-**Primer login:** la app requiere iniciar sesión. Para crear la primera cuenta (admin), completá `SECRET_KEY` (generarla con `openssl rand -hex 32`), `ADMIN_EMAIL` y `ADMIN_PASSWORD` en `backend/.env` antes de levantar el backend por primera vez — se crea automáticamente al arrancar si la tabla `users` está vacía. Después de loguearte podés borrar `ADMIN_PASSWORD` del archivo (no se vuelve a leer una vez que existe algún usuario). Desde "Configuración → Usuarios" el admin da de alta al resto del equipo (vendedores).
+**Primer login:** la app requiere iniciar sesión. Para crear la primera cuenta (admin), completá `SECRET_KEY` (generarla con `openssl rand -hex 32`), `ADMIN_EMAIL` y `ADMIN_PASSWORD` en `backend/.env` antes de levantar el backend por primera vez — se crea automáticamente al arrancar si la tabla `users` está vacía. Después de loguearte podés borrar `ADMIN_PASSWORD` del archivo (no se vuelve a leer una vez que existe algún usuario). Desde "Configuración → Usuarios" el admin invita al resto del equipo por correo; cada persona crea su propia contraseña desde un enlace de un solo uso.
+
+**Correo transaccional:** configurá `SMTP_HOST`, `EMAIL_FROM_ADDRESS` y las
+credenciales correspondientes en `backend/.env`. En una instalación
+single-tenant también es obligatorio `APP_PUBLIC_URL`; en multitenancy los
+enlaces usan el dominio registrado de cada negocio. Sin SMTP, la app rechaza
+la creación de invitaciones y omite de forma segura recuperaciones y avisos
+operativos. Los enlaces de invitación y recuperación expiran y solo pueden
+usarse una vez.
+
+**Citas y Google Calendar:** las citas se guardan primero en PostgreSQL y no
+dependen de n8n. La sincronización con Google es opcional y se activa desde
+"Configuración → Google Calendar" con Calendar ID, OAuth Client ID, Client
+Secret y Refresh Token; los secretos se almacenan cifrados. Si Google o n8n
+fallan, la cita local se conserva y el historial muestra el estado de la
+integración.
 
 El login ofrece **Recordar este dispositivo**. La sesión se renueva por actividad
 durante 30 días, tiene un máximo absoluto de 90 días y puede revocarse por
@@ -399,6 +414,26 @@ backend/migrations/001_lead_tags_activity.sql
 
 Las tablas `lead_tags`, `lead_tag_assignments` y `lead_activity` tienen RLS
 habilitado y se consumen exclusivamente a través del backend autenticado.
+
+### Etapas del embudo por negocio
+
+Cada negocio administra sus etapas en **Catálogos › Etapas** (solo admin):
+nombre visible, orden, color, tipo y el criterio que usa el analista IA, además
+de crear etapas propias. Todo negocio nace con las 13 etapas de siempre
+(`nuevo`, `en_diagnostico`, ... `baja`).
+
+- La **clave** (`lead_stages.key`) nace del nombre y no cambia al renombrar: es
+  lo que guardan `leads.estado`, las automatizaciones, las plantillas y el
+  historial. Por eso renombrar no mueve leads ni rompe reglas guardadas.
+- El **tipo** es la semántica que usa el código: `open` (en curso), `won`
+  (ganada) o `lost` (perdida). Al mover un lead a una etapa `lost` se pide la
+  razón de pérdida, sea `perdido` o una etapa propia.
+- Una etapa **en uso** (leads, automatizaciones o plantillas) no se elimina: se
+  desactiva. Deja de ofrecerse como destino, pero sus leads siguen visibles en
+  el embudo. `nuevo` es la etapa inicial y no se puede borrar ni desactivar.
+- El workflow `analista` recibe las etapas activas del negocio en
+  `GET /api/webhooks/analysis-context` (`stages`) y el backend rechaza una clave
+  que el negocio no tenga activa.
 
 ### Seguimientos, tareas y plantillas
 

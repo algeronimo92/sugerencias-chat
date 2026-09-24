@@ -1,6 +1,7 @@
-import { CalendarClock, ExternalLink, FlaskConical, Loader2, Search } from 'lucide-react'
+import { CalendarClock, ExternalLink, FlaskConical, Loader2, RefreshCw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useAppointments, type AppointmentListItem } from '../hooks/useAppointments'
+import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../hooks/useAppointments'
+import { extractErrorMessage } from '../utils/errors'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../domain/appointments'
 import { formatFlowAmount } from '../utils/message'
 import { Button } from './ui/Button'
@@ -20,7 +21,7 @@ function formatFecha(value: string) {
 }
 
 function matches(item: AppointmentListItem, query: string): boolean {
-  const haystack = `${item.nombre_completo} ${item.dni} ${item.telefono} ${item.tratamiento} ${item.vendedor}`.toLocaleLowerCase('es')
+  const haystack = `${item.nombre_completo} ${item.telefono} ${item.tratamiento} ${item.vendedor} ${Object.values(item.custom_fields).join(' ')}`.toLocaleLowerCase('es')
   return haystack.includes(query)
 }
 
@@ -29,6 +30,7 @@ export function AppointmentHistoryList() {
   const [search, setSearch] = useState('')
   const [activeStatuses, setActiveStatuses] = useState<Set<AppointmentStatus>>(new Set(ALL_STATUSES))
   const [hideTestMode, setHideTestMode] = useState(false)
+  const syncCalendar = useSyncAppointmentCalendar()
 
   const hidingFailed = FAILED_STATUSES.every(status => !activeStatuses.has(status))
 
@@ -64,7 +66,7 @@ export function AppointmentHistoryList() {
     <div className="mx-auto max-w-3xl">
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" />
-        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre, DNI, teléfono o tratamiento" className="pl-9" />
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por contacto, servicio o campos personalizados" className="pl-9" />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
@@ -161,10 +163,40 @@ export function AppointmentHistoryList() {
                 <p className="mt-2 rounded-lg bg-wa-field px-3 py-1.5 text-xs text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">{item.message}</p>
               )}
 
+              {item.calendar_sync_error && (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                  {item.calendar_sync_error}
+                </p>
+              )}
+              {syncCalendar.isError && syncCalendar.variables === item.id && (
+                <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">
+                  {extractErrorMessage(syncCalendar.error)}
+                </p>
+              )}
+
+              {Object.keys(item.custom_fields).length > 0 && (
+                <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-wa-muted">
+                  {Object.entries(item.custom_fields).map(([key, value]) => <div key={key}><dt className="inline font-medium">{key}: </dt><dd className="inline">{typeof value === 'boolean' ? value ? 'Sí' : 'No' : String(value)}</dd></div>)}
+                </dl>
+              )}
+
               <footer className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-wa-border pt-3 text-[11px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
                 <span className="font-medium text-wa-text dark:text-wa-text-dark">{item.vendedor}</span>
-                <span>Adelanto: {formatFlowAmount(item.adelanto, 'PEN')}</span>
+                <span>{item.duration_minutes} min</span>
+                {item.adelanto > 0 && <span>Pago: {formatFlowAmount(item.adelanto, 'PEN')}</span>}
+                {item.calendar_sync_status === 'error' && <span className="text-amber-700 dark:text-amber-300">Google Calendar pendiente</span>}
                 <span>Registrado por {item.created_by_name} · {formatDateTime(item.created_at)}</span>
+                {!item.test_mode && item.calendar_sync_status !== 'synced' && (
+                  <button
+                    type="button"
+                    onClick={() => syncCalendar.mutate(item.id)}
+                    disabled={syncCalendar.isPending}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-wa-primary-strong hover:bg-green-50 disabled:opacity-50 dark:text-wa-primary dark:hover:bg-green-950/30"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncCalendar.isPending && syncCalendar.variables === item.id ? 'animate-spin' : ''}`} />
+                    Sincronizar Calendar
+                  </button>
+                )}
                 {item.event_link && (
                   <a href={item.event_link} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30">
                     <ExternalLink className="h-3.5 w-3.5" /> Ver en Calendar

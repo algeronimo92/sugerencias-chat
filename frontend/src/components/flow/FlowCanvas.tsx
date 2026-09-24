@@ -7,6 +7,7 @@ import {
   type EdgeProps, type EdgeTypes, type OnConnect, type OnNodesChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useLeadStageCatalog } from '../../hooks/useLeadStages'
 import {
   Bell, ChevronRight, CirclePlay, FileText,
   Image as ImageIcon, MessageSquareText, Paperclip,
@@ -203,6 +204,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
 }
 
 function ActionPreview({ data }: { data: CanvasNodeData }) {
+  const stageCatalog = useLeadStageCatalog()
   const action = data.action
   if (!action) return null
 
@@ -274,7 +276,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
     </div>
   }
 
-  const detail = action.type === AutomationActionType.ChangeStage ? action.stage
+  const detail = action.type === AutomationActionType.ChangeStage ? stageCatalog.label(action.stage)
     : action.type === AutomationActionType.ChangeService ? (action.service || 'Quitar servicio')
     : action.type === AutomationActionType.AssignSeller ? (action.user_id ? `Usuario #${action.user_id}` : 'Vendedor del lead')
     : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Sin etiqueta')

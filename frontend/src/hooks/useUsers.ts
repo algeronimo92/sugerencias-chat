@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import type { AppUser, SellerOption, UserRole } from '../types'
 
-export function useSellers() {
+export function useSellers({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['sellers'],
     queryFn: async () => (await client.get<SellerOption[]>('/api/chats/sellers')).data,
+    enabled,
     staleTime: 60_000,
   })
 }
@@ -26,7 +27,6 @@ export function useUsers(enabled: boolean) {
 interface CreateUserPayload {
   email: string
   name: string
-  password: string
   role: UserRole
 }
 
@@ -62,17 +62,20 @@ export function useUpdateUser() {
   })
 }
 
-interface ResetPasswordPayload {
-  id: number
-  newPassword: string
-}
-
-async function resetPassword({ id, newPassword }: ResetPasswordPayload): Promise<void> {
-  await client.post(`/api/users/${id}/reset-password`, { new_password: newPassword })
-}
-
-export function useResetPassword() {
+export function useSendPasswordReset() {
   return useMutation({
-    mutationFn: resetPassword,
+    mutationFn: async (id: number) => {
+      await client.post(`/api/users/${id}/send-password-reset`)
+    },
+  })
+}
+
+export function useResendInvitation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => (
+      await client.post<AppUser>(`/api/users/${id}/resend-invitation`)
+    ).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 }

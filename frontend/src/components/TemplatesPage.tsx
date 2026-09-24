@@ -2,7 +2,8 @@ import { useEffect, useReducer, useRef, useState, type SetStateAction } from 're
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { MediaAsset, MessageTemplate, OfficialTemplateButton } from '../types'
-import { LEAD_STAGES, isLeadStage } from '../types'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
+import { stageOptions } from '../domain/leadStageMeta'
 import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
 import { useMediaLibrary } from '../hooks/useMediaLibrary'
@@ -107,6 +108,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export function TemplatesPage() {
+  const stageCatalog = useLeadStageCatalog()
   const { data = [], isLoading } = useTemplates(true)
   const { data: templateCategories = [], isLoading: categoriesLoading } = useTemplateCategories()
   const createCategory = useCreateTemplateCategory()
@@ -643,11 +645,11 @@ export function TemplatesPage() {
               </div>
               <label className="templates-field">Etapa del lead<Select
                 value={form.stage}
-                onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value === '' || isLeadStage(value) ? value : f.stage })) }}
+                onChange={(event) => { const value = event.target.value; setForm((f) => ({ ...f, stage: value })) }}
                 className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
               >
                 <option value="">Cualquier etapa</option>
-                {LEAD_STAGES.map((x) => <option key={x} value={x}>{x}</option>)}
+                {stageOptions(stageCatalog, form.stage || null).map((stage) => <option key={stage.key} value={stage.key}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}
               </Select></label>
               <label className="templates-field">Tipo de tarea<Select
                 value={form.taskType}

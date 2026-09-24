@@ -1,115 +1,43 @@
 import {
-  CalendarClock,
-  CalendarPlus,
-  Camera,
-  CheckCircle2,
-  CreditCard,
-  FileText,
-  FileUp,
-  FlaskConical,
-  History,
-  Info,
-  Loader2,
-  MessageCircle,
-  Save,
-  Stethoscope,
-  UserRound,
-  X,
+  CalendarClock, CalendarDays, CalendarPlus, Camera, CheckCircle2, FileText,
+  FileUp, FlaskConical, History, Info, Loader2, MessageCircle, Save,
+  SlidersHorizontal, UserRound, X,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useMe } from '../hooks/useAuth'
+import { useCustomFields } from '../hooks/useCustomFields'
 import { useSellers } from '../hooks/useUsers'
 import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../hooks/useAppointments'
 import { extractErrorMessage } from '../utils/errors'
+import { AppointmentCalendar } from './AppointmentCalendar'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
 import { CameraCaptureDialog } from './CameraCaptureDialog'
+import { CustomFieldInput } from './CustomFieldInput'
 import { Button } from './ui/Button'
 import { Input, Select, Textarea } from './ui/Input'
 
 const tabClass = (active: boolean) =>
-  `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong focus-visible:ring-offset-2 ${
-    active
-      ? 'bg-wa-panel text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary'
-      : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark'
-  }`
-
-const appointmentFieldClass = 'h-11 border-wa-border bg-wa-field px-3 focus:ring-wa-primary-strong dark:border-wa-border-dark dark:bg-wa-field-dark'
-const appointmentLabelClass = 'mb-1.5 block text-sm font-medium text-wa-text dark:text-wa-text-dark'
-const comprobanteButtonClass =
-  'flex min-h-24 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-wa-border bg-wa-field/40 px-3 py-4 text-center text-sm font-medium text-wa-text hover:border-wa-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-field-dark/40 dark:text-wa-text-dark'
-
-const TRATAMIENTOS = [
-  'Hollywood Peel x1',
-  'Hollywood Peel x3',
-  'Hifu12D',
-  'Limpieza Facial',
-  'AC Tranexamico',
-  'Botox',
-  'Bioestimuladores',
-  'ADN de Salmon',
-  'ADN con Exosomas',
-  'AC Hialuronico',
-  'Hilos Tensores',
-  'Tatuaje',
-  'Enzimas',
-  'Plasma Rico en Plaquetas',
-  'Depilacion',
-  'Retiro de Lunares',
-  'Consulta',
-]
-
-const HORAS = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
-  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-]
-
+  `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong ${active ? 'bg-wa-panel text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted hover:bg-wa-hover dark:hover:bg-wa-hover-dark'}`
+const fieldClass = 'h-11 border-wa-border bg-wa-field px-3 focus:ring-wa-primary-strong dark:border-wa-border-dark dark:bg-wa-field-dark'
+const labelClass = 'mb-1.5 block text-sm font-medium text-wa-text dark:text-wa-text-dark'
+const attachmentButtonClass = 'flex min-h-20 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-wa-border bg-wa-field/40 px-3 py-3 text-sm font-medium disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-field-dark/40'
+const HOURS = Array.from({ length: 24 }, (_, hour) => [`${String(hour).padStart(2, '0')}:00`, `${String(hour).padStart(2, '0')}:30`]).flat()
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_BYTES = 10 * 1024 * 1024
 
-const EMPTY_FORM = {
-  nombreCompleto: '',
-  dni: '',
-  telefono: '',
-  tratamiento: '',
-  detalle: '',
-  fecha: '',
-  hora: '',
-  vendedor: '',
-  adelanto: '0',
-}
-
+const EMPTY_FORM = { nombreCompleto: '', telefono: '', servicio: '', detalle: '', fecha: '', hora: '', vendedor: '', durationMinutes: '60' }
 type AppointmentForm = typeof EMPTY_FORM
+type Tab = 'form' | 'calendar' | 'history'
+const DRAFT_KEY = 'nueva-cita-draft-v2'
 
-// El comprobante (File) no se guarda: no se puede serializar a JSON, así que
-// el borrador solo recuerda los campos de texto y hay que volver a adjuntarlo.
-const DRAFT_KEY = 'nueva-cita-draft'
-
-function loadDraft(): AppointmentForm | null {
+function loadDraft(): { form: AppointmentForm; customFields: Record<string, unknown> } | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
-    return { ...EMPTY_FORM, ...JSON.parse(raw) }
-  } catch {
-    return null
-  }
-}
-
-function saveDraft(form: AppointmentForm): boolean {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(form))
-    return true
-  } catch {
-    return false
-  }
-}
-
-function clearDraft() {
-  try {
-    localStorage.removeItem(DRAFT_KEY)
-  } catch {
-    // Idem: si falla, no hay nada más que hacer.
-  }
+    const parsed = JSON.parse(raw)
+    return { form: { ...EMPTY_FORM, ...(parsed.form ?? parsed) }, customFields: parsed.customFields ?? {} }
+  } catch { return null }
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -121,397 +49,158 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
-function resultMessage(result: AppointmentResult): { text: string; tone: 'success' | 'error' | 'info' } {
-  if (result.citaDuplicada) {
-    return { text: 'Esta cita ya estaba registrada, no se creó de nuevo.', tone: 'info' }
-  }
-  if (result.message) {
-    return { text: result.message, tone: result.success === false ? 'error' : 'success' }
-  }
-  if (result.success === false) {
-    return { text: 'La cita se registró con errores. Revisa el historial antes de intentarlo de nuevo.', tone: 'error' }
-  }
-  return { text: 'Cita enviada correctamente.', tone: 'success' }
+function resultMessage(result: AppointmentResult): { text: string; tone: 'success' | 'info' } {
+  if (result.integrationErrors?.length) return { text: result.message ?? 'La cita se guardó, pero una integración necesita atención.', tone: 'info' }
+  return { text: result.message ?? 'Cita guardada correctamente.', tone: 'success' }
 }
 
 export function NewAppointmentPage() {
   const { data: me } = useMe()
   const { data: sellers = [] } = useSellers()
+  const { data: customFieldDefinitions = [] } = useCustomFields('appointment')
   const isAdmin = me?.role === 'admin'
   const [form, setForm] = useState(EMPTY_FORM)
-  const [comprobante, setComprobante] = useState<File | null>(null)
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+  const [attachment, setAttachment] = useState<File | null>(null)
   const [testMode, setTestMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [result, setResult] = useState<AppointmentResult | null>(null)
   const [draftRestored, setDraftRestored] = useState(false)
-  const [tab, setTab] = useState<'form' | 'history'>('form')
+  const [tab, setTab] = useState<Tab>('form')
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraFallbackRef = useRef<HTMLInputElement>(null)
-  const errorRef = useRef<HTMLDivElement>(null)
-  const resultRef = useRef<HTMLDivElement>(null)
   const createAppointment = useCreateAppointment()
 
   useEffect(() => {
     const draft = loadDraft()
-    if (draft) {
-      setForm(draft)
-      setDraftRestored(true)
-    }
+    if (draft) { setForm(draft.form); setCustomFields(draft.customFields); setDraftRestored(true) }
   }, [])
 
-  useEffect(() => {
-    if (error) errorRef.current?.focus()
-  }, [error])
-
-  useEffect(() => {
-    if (result) resultRef.current?.focus()
-  }, [result])
-
-  function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
+  function update<K extends keyof AppointmentForm>(key: K, value: AppointmentForm[K]) {
     setForm(current => ({ ...current, [key]: value }))
     setResult(null)
   }
 
-  // Misma validación venga del disco o de la cámara: la foto tomada acá es un
-  // JPEG, así que pasa por el mismo filtro de tipo y tamaño.
   function acceptFile(file: File) {
     setFileError(null)
-    if (!ACCEPTED_TYPES.has(file.type)) {
-      setFileError('Selecciona una imagen JPG o PNG, o un PDF.')
-      return
-    }
-    if (file.size > MAX_BYTES) {
-      setFileError('El archivo supera los 10 MB. Elige uno más pequeño.')
-      return
-    }
-    setComprobante(file)
+    if (!ACCEPTED_TYPES.has(file.type)) return setFileError('Selecciona una imagen JPG o PNG, o un PDF.')
+    if (file.size > MAX_BYTES) return setFileError('El archivo supera los 10 MB.')
+    setAttachment(file)
   }
 
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null
+    const file = event.target.files?.[0]
     event.target.value = ''
-    setFileError(null)
-    if (!file) return
-    acceptFile(file)
-  }
-
-  function handleOpenCamera() {
-    setFileError(null)
-    // `mediaDevices` no existe fuera de un contexto seguro, aunque los tipos
-    // del DOM lo den siempre por presente. Sin él queda el input con
-    // `capture`, que en el celular abre la cámara nativa.
-    const mediaDevices = typeof navigator === 'undefined' ? undefined : navigator.mediaDevices
-    if (mediaDevices && typeof mediaDevices.getUserMedia === 'function') {
-      setIsCameraOpen(true)
-      return
-    }
-    cameraFallbackRef.current?.click()
-  }
-
-  function handleCameraCaptured(file: File) {
-    setIsCameraOpen(false)
-    acceptFile(file)
+    if (file) acceptFile(file)
   }
 
   function resetForm() {
-    setForm(EMPTY_FORM)
-    setComprobante(null)
-    setDraftRestored(false)
-    setFileError(null)
-    setResult(null)
-    clearDraft()
+    setForm(EMPTY_FORM); setCustomFields({}); setAttachment(null); setFileError(null); setDraftRestored(false)
+    localStorage.removeItem(DRAFT_KEY)
   }
 
-  function handleSaveDraft() {
-    if (!saveDraft(form)) {
-      toast.error('No se pudo guardar el borrador. Inténtalo de nuevo.')
-      return
-    }
-    setDraftRestored(true)
-    toast.success('Borrador guardado')
-  }
-
-  function discardDraft() {
-    resetForm()
-    toast.info('Borrador descartado')
+  function saveDraft() {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, customFields }))
+      setDraftRestored(true); toast.success('Borrador guardado')
+    } catch { toast.error('No se pudo guardar el borrador.') }
   }
 
   async function submit(event: FormEvent) {
-    event.preventDefault()
-    setError(null)
-    setResult(null)
-
-    if (!form.nombreCompleto.trim() || !form.telefono.trim() || !form.tratamiento || !form.fecha || !form.hora || !form.vendedor) {
-      setError('Completa los campos obligatorios.')
-      return
+    event.preventDefault(); setError(null); setResult(null)
+    if (!form.nombreCompleto.trim() || !form.telefono.trim() || !form.servicio.trim() || !form.fecha || !form.hora || !form.vendedor) {
+      setError('Completa los campos obligatorios.'); return
     }
-    const adelanto = Number(form.adelanto)
-    if (!Number.isFinite(adelanto) || adelanto < 0) {
-      setError('El adelanto debe ser un número mayor o igual a 0.')
-      return
+    const durationMinutes = Number(form.durationMinutes)
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440) {
+      setError('La duración debe estar entre 5 minutos y 24 horas.'); return
     }
-
-    let attachment: AppointmentAttachmentInput | null = null
-    if (comprobante) {
-      try {
-        attachment = {
-          contentType: comprobante.type,
-          dataBase64: await fileToBase64(comprobante),
-          filename: comprobante.name,
-        }
-      } catch {
-        setError('No se pudo preparar el comprobante para el envío.')
-        return
-      }
+    let prepared: AppointmentAttachmentInput | null = null
+    if (attachment) {
+      try { prepared = { contentType: attachment.type, dataBase64: await fileToBase64(attachment), filename: attachment.name } }
+      catch { setError('No se pudo preparar el adjunto.'); return }
     }
-
     createAppointment.mutate({
-      nombreCompleto: form.nombreCompleto.trim(),
-      dni: form.dni.trim(),
-      telefono: form.telefono.trim(),
-      tratamiento: form.tratamiento,
-      detalle: form.detalle.trim(),
-      fecha: form.fecha,
-      hora: form.hora,
-      vendedor: form.vendedor,
-      adelanto,
-      comprobante: attachment,
-      testMode: isAdmin && testMode,
+      nombreCompleto: form.nombreCompleto.trim(), dni: '', telefono: form.telefono.trim(),
+      tratamiento: form.servicio.trim(), detalle: form.detalle.trim(), fecha: form.fecha,
+      hora: form.hora, vendedor: form.vendedor, adelanto: 0, durationMinutes,
+      customFields, comprobante: prepared, testMode: isAdmin && testMode,
     }, {
-      onSuccess: result => {
-        const { text, tone } = resultMessage(result)
-        toast[tone](text)
-        if (tone === 'success') resetForm()
-        setResult(result)
-      },
+      onSuccess: value => { const feedback = resultMessage(value); toast[feedback.tone](feedback.text); resetForm(); setResult(value) },
       onError: mutationError => setError(extractErrorMessage(mutationError)),
     })
   }
 
   const busy = createAppointment.isPending
-  const resultFeedback = result ? resultMessage(result) : null
+  const feedback = result ? resultMessage(result) : null
+  const title = tab === 'form' ? 'Nueva cita' : tab === 'calendar' ? 'Calendario' : 'Historial de citas'
 
   return (
     <main className="h-full overflow-x-hidden overflow-y-auto bg-wa-app text-wa-text dark:bg-wa-app-dark dark:text-wa-text-dark">
       <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <header>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
-                <CalendarPlus className="h-4 w-4" aria-hidden="true" />
-                Agenda comercial
-              </div>
-              <h1 className="text-2xl font-semibold text-wa-text dark:text-wa-text-dark sm:text-3xl">{tab === 'form' ? 'Nueva cita' : 'Historial de citas'}</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-                {tab === 'form' ? 'Completa los datos para solicitar la cita y enviar la confirmación por WhatsApp.' : 'Consulta las citas registradas y revisa el resultado de cada envío.'}
-              </p>
-            </div>
-            {isAdmin && tab === 'form' && (
-              <label className={`flex min-h-11 shrink-0 cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm font-medium ${testMode ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300' : 'border-wa-border bg-wa-panel text-wa-text dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark'}`}>
-                <FlaskConical className="h-4 w-4" aria-hidden="true" />
-                Modo prueba
-                <input type="checkbox" checked={testMode} onChange={e => setTestMode(e.target.checked)} className="peer sr-only" />
-                <span aria-hidden="true" className={`relative h-5 w-9 rounded-full peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-wa-primary-strong ${testMode ? 'bg-amber-600' : 'bg-wa-muted dark:bg-wa-muted-dark'}`}>
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white motion-safe:transition-transform ${testMode ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                </span>
-              </label>
-            )}
+            <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-wa-primary-strong"><CalendarPlus className="h-4 w-4" />Agenda del negocio</div><h1 className="text-2xl font-semibold sm:text-3xl">{title}</h1><p className="mt-2 text-sm text-wa-muted">Las reservas quedan guardadas en la app; Google Calendar y otros conectores son opcionales.</p></div>
+            {isAdmin && tab === 'form' && <label className="flex min-h-11 items-center gap-3 rounded-lg border border-wa-border bg-wa-panel px-3 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark"><FlaskConical className="h-4 w-4" />Modo prueba<input type="checkbox" checked={testMode} onChange={event => setTestMode(event.target.checked)} /></label>}
           </div>
-
-          <div className="mt-6 border-b border-wa-border pb-3 dark:border-wa-border-dark">
-            <nav className="flex items-center gap-1 rounded-xl bg-wa-field p-1 dark:bg-wa-field-dark" aria-label="Secciones de citas">
-              <button type="button" onClick={() => setTab('form')} aria-pressed={tab === 'form'} className={tabClass(tab === 'form')}>
-                <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" /> Nueva cita
-              </button>
-              <button type="button" onClick={() => setTab('history')} aria-pressed={tab === 'history'} className={tabClass(tab === 'history')}>
-                <History className="h-3.5 w-3.5" aria-hidden="true" /> Historial
-              </button>
-            </nav>
-          </div>
+          <nav className="mt-6 flex items-center gap-1 overflow-x-auto rounded-xl bg-wa-field p-1 dark:bg-wa-field-dark" aria-label="Secciones de citas">
+            <button type="button" onClick={() => setTab('form')} className={tabClass(tab === 'form')}><CalendarPlus className="h-3.5 w-3.5" />Nueva cita</button>
+            <button type="button" onClick={() => setTab('calendar')} className={tabClass(tab === 'calendar')}><CalendarDays className="h-3.5 w-3.5" />Calendario</button>
+            <button type="button" onClick={() => setTab('history')} className={tabClass(tab === 'history')}><History className="h-3.5 w-3.5" />Historial</button>
+          </nav>
         </header>
 
-        {isAdmin && testMode && tab === 'form' && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300" role="status">
-            <FlaskConical className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span><strong>Modo prueba activo.</strong> La cita se enviará al entorno de prueba. Revisa el resultado antes de considerarla confirmada.</span>
-          </div>
-        )}
-
         <div className="mt-6">
-          {tab === 'history' ? (
-            <div className="rounded-xl border border-wa-border bg-wa-panel p-4 sm:p-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-              <AppointmentHistoryList />
-            </div>
-          ) : (
+          {tab === 'calendar' ? <AppointmentCalendar /> : tab === 'history' ? <div className="rounded-xl border border-wa-border bg-wa-panel p-4 sm:p-6 dark:border-wa-border-dark dark:bg-wa-panel-dark"><AppointmentHistoryList /></div> : (
             <form onSubmit={submit} className="space-y-5">
-              {draftRestored && (
-                <div className="flex flex-col gap-3 rounded-lg border border-wa-accent/30 bg-wa-accent/10 px-4 py-3 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between dark:text-wa-accent" role="status">
-                  <span className="flex items-start gap-2"><FileText className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span><strong>Borrador disponible.</strong> El comprobante no se guarda con los datos; tendrás que volver a adjuntarlo si sales de esta página.</span></span>
-                  <button type="button" onClick={discardDraft} disabled={busy} className="min-h-9 shrink-0 self-start rounded px-2 font-semibold underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong disabled:opacity-40 sm:self-auto">Descartar y limpiar</button>
-                </div>
-              )}
+              {draftRestored && <div className="flex items-center justify-between rounded-lg border border-wa-accent/30 bg-wa-accent/10 px-4 py-3 text-sm"><span className="flex gap-2"><FileText className="h-4 w-4" />Borrador restaurado</span><button type="button" className="font-semibold underline" onClick={resetForm}>Descartar</button></div>}
+              {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.tone === 'info' ? 'border-amber-400/40 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300' : 'border-green-500/30 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300'}`}><CheckCircle2 className="mr-2 inline h-4 w-4" />{feedback.text}</div>}
+              {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700"><Info className="mr-2 inline h-4 w-4" />{error}</div>}
 
-              {resultFeedback && (
-                <div ref={resultRef} tabIndex={-1} role={resultFeedback.tone === 'error' ? 'alert' : 'status'} className={`flex flex-col gap-2 rounded-lg border px-4 py-3 text-sm outline-none focus-visible:ring-2 sm:flex-row sm:items-center sm:justify-between ${resultFeedback.tone === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-700 focus-visible:ring-red-600 dark:text-red-300' : resultFeedback.tone === 'info' ? 'border-wa-accent/30 bg-wa-accent/10 text-blue-800 focus-visible:ring-wa-accent dark:text-wa-accent' : 'border-green-600/30 bg-green-500/10 text-green-800 focus-visible:ring-green-700 dark:text-green-300'}`}>
-                  <span className="flex items-start gap-2">{resultFeedback.tone === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}<span>{resultFeedback.text}{resultFeedback.tone === 'error' && ' Conservamos los datos del formulario.'}</span></span>
-                  <button type="button" onClick={() => setTab('history')} className="min-h-9 shrink-0 self-start rounded px-2 font-semibold underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong">Ver historial</button>
-                </div>
-              )}
-
-              {error && (
-                <div ref={errorRef} tabIndex={-1} role="alert" className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-700 outline-none focus-visible:ring-2 focus-visible:ring-red-600 dark:text-red-300">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{error}
-                </div>
-              )}
-
-              <div className="grid items-start gap-5 lg:grid-cols-[1.08fr_0.92fr]">
+              <div className="grid items-start gap-5 lg:grid-cols-2">
                 <div className="space-y-5">
-                  <FormSection icon={UserRound} title="Datos del cliente" description="Información para identificar y contactar al paciente">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="sm:col-span-2">
-                        <label htmlFor="nc-nombre" className={appointmentLabelClass}>Nombre completo *</label>
-                        <Input id="nc-nombre" value={form.nombreCompleto} onChange={e => update('nombreCompleto', e.target.value)} placeholder="Nombre y apellidos del cliente" disabled={busy} required className={appointmentFieldClass} />
-                      </div>
-                      <div>
-                        <label htmlFor="nc-dni" className={appointmentLabelClass}>DNI <span className="font-normal text-wa-muted dark:text-wa-muted-dark">· Opcional</span></label>
-                        <Input id="nc-dni" inputMode="numeric" autoComplete="off" value={form.dni} onChange={e => update('dni', e.target.value)} placeholder="8 dígitos" disabled={busy} className={appointmentFieldClass} />
-                      </div>
-                      <div>
-                        <label htmlFor="nc-telefono" className={appointmentLabelClass}>Teléfono *</label>
-                        <Input id="nc-telefono" type="tel" inputMode="tel" autoComplete="off" value={form.telefono} onChange={e => update('telefono', e.target.value)} placeholder="999 999 999" disabled={busy} required className={appointmentFieldClass} />
-                      </div>
-                    </div>
+                  <FormSection icon={UserRound} title="Contacto" description="Datos mínimos para identificar la reserva">
+                    <Field label="Nombre completo" required><Input value={form.nombreCompleto} onChange={event => update('nombreCompleto', event.target.value)} disabled={busy} className={fieldClass} /></Field>
+                    <div className="mt-4"><Field label="Teléfono" required><Input type="tel" value={form.telefono} onChange={event => update('telefono', event.target.value)} disabled={busy} className={fieldClass} /></Field></div>
                   </FormSection>
-
-                  <FormSection icon={Stethoscope} title="Servicio y atención" description="Tratamiento solicitado y responsable comercial">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="nc-tratamiento" className={appointmentLabelClass}>Tratamiento *</label>
-                        <Select id="nc-tratamiento" value={form.tratamiento} onValueChange={value => update('tratamiento', value)} disabled={busy} required className={appointmentFieldClass}>
-                          <option value="" disabled>Selecciona un tratamiento</option>
-                          {TRATAMIENTOS.map(item => <option key={item} value={item}>{item}</option>)}
-                        </Select>
-                      </div>
-                      <div>
-                        <label htmlFor="nc-vendedor" className={appointmentLabelClass}>Vendedor *</label>
-                        <Select id="nc-vendedor" value={form.vendedor} onValueChange={value => update('vendedor', value)} disabled={busy} required className={appointmentFieldClass}>
-                          <option value="" disabled>Selecciona un vendedor</option>
-                          {sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}</option>)}
-                        </Select>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label htmlFor="nc-detalle" className={appointmentLabelClass}>Detalle <span className="font-normal text-wa-muted dark:text-wa-muted-dark">· Opcional</span></label>
-                        <Textarea id="nc-detalle" value={form.detalle} onChange={e => update('detalle', e.target.value)} rows={3} placeholder="Zona, precio, sesión o paquete acordado" disabled={busy} className={`${appointmentFieldClass} h-auto min-h-24 resize-none py-3`} />
-                      </div>
-                    </div>
+                  <FormSection icon={SlidersHorizontal} title="Datos del negocio" description="Campos que un administrador configuró para sus reservas">
+                    {customFieldDefinitions.length === 0 ? <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p> : <div className="grid gap-4 sm:grid-cols-2">{customFieldDefinitions.map(field => <Field key={field.id} label={field.label} required={field.required}><CustomFieldInput field={field} value={customFields[field.key]} onChange={value => setCustomFields(current => ({ ...current, [field.key]: value }))} disabled={busy} className={fieldClass} /></Field>)}</div>}
                   </FormSection>
                 </div>
 
                 <div className="space-y-5">
-                  <FormSection icon={CalendarClock} title="Fecha y hora" description="Momento reservado para la atención">
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                      <div>
-                        <label htmlFor="nc-fecha" className={appointmentLabelClass}>Fecha *</label>
-                        <Input id="nc-fecha" type="date" value={form.fecha} onChange={e => update('fecha', e.target.value)} disabled={busy} required className={appointmentFieldClass} />
-                      </div>
-                      <div>
-                        <label htmlFor="nc-hora" className={appointmentLabelClass}>Hora *</label>
-                        <Select id="nc-hora" value={form.hora} onValueChange={value => update('hora', value)} disabled={busy} required className={appointmentFieldClass}>
-                          <option value="" disabled>Selecciona una hora</option>
-                          {HORAS.map(item => <option key={item} value={item}>{item}</option>)}
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex items-start gap-2 rounded-lg bg-wa-field px-3 py-2.5 text-sm leading-5 text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
-                      <MessageCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-wa-primary" aria-hidden="true" />
-                      Al registrar, se intentará crear el evento y enviar la confirmación por WhatsApp. Revisa el resultado.
-                    </div>
+                  <FormSection icon={CalendarClock} title="Reserva" description="Servicio, responsable y horario">
+                    <Field label="Servicio o motivo" required><Input value={form.servicio} onChange={event => update('servicio', event.target.value)} placeholder="Ej. Consulta, demo, mantenimiento" disabled={busy} className={fieldClass} /></Field>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Responsable" required><Select value={form.vendedor} onValueChange={value => update('vendedor', value)} disabled={busy} className={fieldClass}><option value="">Selecciona</option>{sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}</option>)}</Select></Field><Field label="Duración (minutos)" required><Input type="number" min={5} max={1440} step={5} value={form.durationMinutes} onChange={event => update('durationMinutes', event.target.value)} disabled={busy} className={fieldClass} /></Field></div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Fecha" required><Input type="date" value={form.fecha} onChange={event => update('fecha', event.target.value)} disabled={busy} className={fieldClass} /></Field><Field label="Hora" required><Select value={form.hora} onValueChange={value => update('hora', value)} disabled={busy} className={fieldClass}><option value="">Selecciona</option>{HOURS.map(hour => <option key={hour} value={hour}>{hour}</option>)}</Select></Field></div>
+                    <div className="mt-4"><Field label="Notas"><Textarea value={form.detalle} onChange={event => update('detalle', event.target.value)} rows={3} disabled={busy} className={`${fieldClass} h-auto`} /></Field></div>
+                    <p className="mt-4 flex gap-2 rounded-lg bg-wa-field px-3 py-2 text-sm text-wa-muted dark:bg-wa-field-dark"><MessageCircle className="mt-0.5 h-4 w-4 shrink-0" />La reserva se guarda aquí aunque una integración externa no esté configurada.</p>
                   </FormSection>
 
-                  <FormSection icon={CreditCard} title="Pago y comprobante" description="Adelanto recibido y respaldo de la operación">
-                    <div>
-                      <label htmlFor="nc-adelanto" className={appointmentLabelClass}>Adelanto</label>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-sm font-semibold text-wa-muted dark:text-wa-muted-dark">S/</span>
-                        <Input id="nc-adelanto" type="number" min={0} step="0.01" value={form.adelanto} onChange={e => update('adelanto', e.target.value)} placeholder="0.00" disabled={busy} className={`${appointmentFieldClass} pl-10`} />
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className={appointmentLabelClass}>Comprobante <span className="font-normal text-wa-muted dark:text-wa-muted-dark">· Opcional</span></p>
-                      {comprobante ? (
-                        <div className="flex items-center justify-between gap-3 rounded-lg border border-wa-border bg-wa-field px-3 py-2 text-sm text-wa-text dark:border-wa-border-dark dark:bg-wa-field-dark dark:text-wa-text-dark">
-                          <span className="flex min-w-0 items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-wa-primary" aria-hidden="true" /><span className="truncate">{comprobante.name}</span></span>
-                          <button type="button" onClick={() => { setComprobante(null); setFileError(null) }} disabled={busy} aria-label={`Quitar comprobante ${comprobante.name}`} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong disabled:opacity-40 dark:hover:bg-wa-hover-dark"><X className="h-4 w-4" aria-hidden="true" /></button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} aria-invalid={Boolean(fileError)} aria-describedby={fileError ? 'nc-comprobante-help nc-comprobante-error' : 'nc-comprobante-help'} className={comprobanteButtonClass}>
-                            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark dark:text-wa-primary"><FileUp className="h-4 w-4" aria-hidden="true" /></span>
-                            <span>Subir archivo</span>
-                          </button>
-                          <button type="button" onClick={handleOpenCamera} disabled={busy} aria-describedby="nc-comprobante-help" className={comprobanteButtonClass}>
-                            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark dark:text-wa-primary"><Camera className="h-4 w-4" aria-hidden="true" /></span>
-                            <span>Tomar foto</span>
-                          </button>
-                        </div>
-                      )}
-                      <p id="nc-comprobante-help" className="mt-1.5 text-xs text-wa-muted dark:text-wa-muted-dark">JPG, PNG o PDF · máximo 10 MB</p>
-                      {fileError && <p id="nc-comprobante-error" role="alert" className="mt-1.5 text-sm text-red-700 dark:text-red-300">{fileError}</p>}
-                      <input ref={fileRef} type="file" tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,application/pdf" onChange={handleFile} className="hidden" />
-                      {/* Solo para navegadores sin getUserMedia: `capture` le pide
-                          al sistema la cámara en vez del explorador de archivos. */}
-                      <input ref={cameraFallbackRef} type="file" tabIndex={-1} aria-hidden="true" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
-                    </div>
+                  <FormSection icon={FileUp} title="Adjunto" description="Archivo de referencia opcional">
+                    {attachment ? <div className="flex items-center justify-between rounded-lg bg-wa-field px-3 py-2 text-sm dark:bg-wa-field-dark"><span>{attachment.name}</span><button type="button" aria-label={`Quitar adjunto ${attachment.name}`} onClick={() => setAttachment(null)}><X className="h-4 w-4" /></button></div> : <div className="grid grid-cols-2 gap-2"><button type="button" className={attachmentButtonClass} onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" />Subir archivo</button><button type="button" className={attachmentButtonClass} onClick={() => typeof navigator.mediaDevices?.getUserMedia === 'function' ? setIsCameraOpen(true) : cameraFallbackRef.current?.click()}><Camera className="h-4 w-4" />Tomar foto</button></div>}
+                    {fileError && <p role="alert" className="mt-2 text-sm text-red-600">{fileError}</p>}
+                    <input ref={fileRef} type="file" className="hidden" accept="image/jpeg,image/png,application/pdf" onChange={handleFile} /><input ref={cameraFallbackRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleFile} />
                   </FormSection>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-xl border border-wa-border bg-wa-panel p-4 sm:flex-row sm:items-center sm:justify-between dark:border-wa-border-dark dark:bg-wa-panel-dark">
-                <div className="flex items-start gap-2 text-sm leading-5 text-wa-muted dark:text-wa-muted-dark">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>Revisa los datos antes de registrar. Los campos con * son obligatorios.</span>
-                </div>
-                <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
-                  <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={busy} className="h-11 px-4">
-                    <Save className="h-4 w-4" aria-hidden="true" /> Guardar borrador
-                  </Button>
-                  <Button type="submit" disabled={busy} className="h-11 bg-wa-primary-strong px-5 hover:bg-wa-primary-deep">
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CalendarPlus className="h-4 w-4" aria-hidden="true" />}
-                    {busy ? 'Registrando…' : 'Registrar cita'}
-                  </Button>
-                </div>
-              </div>
+              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={saveDraft} disabled={busy}><Save className="h-4 w-4" />Guardar borrador</Button><Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : 'Guardar cita'}</Button></div>
             </form>
           )}
         </div>
       </div>
-
-      {isCameraOpen && (
-        <CameraCaptureDialog
-          title="Foto del comprobante"
-          filenamePrefix="comprobante"
-          cover="viewport"
-          onCapture={handleCameraCaptured}
-          onClose={() => setIsCameraOpen(false)}
-        />
-      )}
+      {isCameraOpen && <CameraCaptureDialog title="Foto del adjunto" filenamePrefix="cita" cover="viewport" onCapture={file => { setIsCameraOpen(false); acceptFile(file) }} onClose={() => setIsCameraOpen(false)} />}
     </main>
   )
 }
 
 function FormSection({ icon: Icon, title, description, children }: { icon: typeof CalendarPlus; title: string; description: string; children: ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-wa-border bg-wa-panel dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      <div className="border-b border-wa-border px-4 py-4 dark:border-wa-border-dark sm:px-5">
-        <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark dark:text-wa-primary"><Icon className="h-4 w-4" aria-hidden="true" /></span>
-          <div><h2 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">{title}</h2><p className="mt-1 text-sm leading-5 text-wa-muted dark:text-wa-muted-dark">{description}</p></div>
-        </div>
-      </div>
-      <div className="p-4 sm:p-5">{children}</div>
-    </section>
-  )
+  return <section className="overflow-hidden rounded-xl border border-wa-border bg-wa-panel dark:border-wa-border-dark dark:bg-wa-panel-dark"><div className="border-b border-wa-border px-4 py-4 dark:border-wa-border-dark"><div className="flex gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><Icon className="h-4 w-4" /></span><div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-wa-muted">{description}</p></div></div></div><div className="p-4">{children}</div></section>
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+  return <label className={labelClass}>{label}{required ? ' *' : ''}<span className="mt-1.5 block">{children}</span></label>
 }

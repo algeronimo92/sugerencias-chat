@@ -39,6 +39,9 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
     queryKey: ['whatsapp', 'status'],
     queryFn: fetchStatus,
     enabled: options.enabled ?? true,
+    // Refleja una conexión externa sin evento de WebSocket: siempre se
+    // reconsulta al montar, a diferencia del staleTime global.
+    staleTime: 0,
     refetchInterval: options.pollUntilConnected
       ? (query) => {
           const state = query.state.data?.state

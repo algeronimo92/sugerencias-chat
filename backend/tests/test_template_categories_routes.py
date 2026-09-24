@@ -133,3 +133,74 @@ async def test_template_uses_canonical_category_name(monkeypatch):
 
     assert received[0]["category"] == "Seguimiento"
     assert received[1] == 11
+
+
+@pytest.mark.asyncio
+async def test_template_rejects_service_outside_active_catalog(monkeypatch):
+    async def category_found(_name):
+        return {"id": 1, "name": "General", "is_active": True}
+
+    async def service_not_found(_name):
+        return None
+
+    monkeypatch.setattr(templates, "get_template_category_by_name", category_found)
+    monkeypatch.setattr(templates, "get_lead_service_by_name", service_not_found)
+
+    with pytest.raises(HTTPException) as error:
+        await templates.post_template(
+            TemplateCreate(
+                name="Saludo",
+                content="Hola",
+                category="General",
+                service="Servicio inexistente",
+            ),
+            SimpleNamespace(id=11),
+        )
+
+    assert error.value.status_code == 400
+    assert "servicio activo" in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_template_uses_canonical_service_name(monkeypatch):
+    received = None
+
+    async def category_found(_name):
+        return {"id": 1, "name": "General", "is_active": True}
+
+    async def service_found(_name):
+        return {"id": 2, "name": "Limpieza facial", "is_active": True}
+
+    async def fake_create(values, user_id):
+        nonlocal received
+        received = (values, user_id)
+        return {
+            "id": 5,
+            **values,
+            "is_active": True,
+            "visibility": "global",
+            "is_favorite": False,
+            "last_used_at": None,
+            "use_count": 0,
+            "attachments": [],
+        }
+
+    async def fake_broadcast(_payload):
+        return None
+
+    monkeypatch.setattr(templates, "get_template_category_by_name", category_found)
+    monkeypatch.setattr(templates, "get_lead_service_by_name", service_found)
+    monkeypatch.setattr(templates, "create_template", fake_create)
+    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+
+    await templates.post_template(
+        TemplateCreate(
+            name="Saludo",
+            content="Hola",
+            category="General",
+            service="limpieza facial",
+        ),
+        SimpleNamespace(id=11),
+    )
+
+    assert received[0]["service"] == "Limpieza facial"

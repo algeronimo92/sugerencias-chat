@@ -10,6 +10,7 @@ from domain_types import (
 )
 from services.automation_rules import normalize_edges, validate_graph_topology
 from services.automation_scheduling import TRIGGER_TYPES
+from services.lead_stages import InvalidLeadStageError, verify_stage_keys
 from services.automations.common import (
     FLOW_NODE_TYPES,
     MAX_FLOW_EDGES,
@@ -190,6 +191,7 @@ async def validate_visual_flow(
     invoke_flow_nodes = facts.invoke_flow_nodes
     condition_users = facts.condition_users
     condition_tags = facts.condition_tags
+    condition_stages = facts.condition_stages
 
     if len(trigger_nodes) != 1:
         raise ValueError("El flujo debe tener exactamente un disparador")
@@ -230,6 +232,10 @@ async def validate_visual_flow(
             ))).scalars().all())
             if found != condition_tags:
                 raise ValueError("Alguna etiqueta usada en una condición no existe o está inactiva")
+        try:
+            await verify_stage_keys(session, condition_stages, active_only=False)
+        except InvalidLeadStageError as exc:
+            raise ValueError(f"Etapa usada en una condición: {exc}") from exc
         await _validate_invoked_flows(
             session,
             {flow_rule_id for _, flow_rule_id in invoke_flow_nodes},

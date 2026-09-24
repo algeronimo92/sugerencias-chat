@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 from urllib.parse import urlsplit
 
@@ -110,10 +111,17 @@ def clear_device_cookie(response, request) -> None:
     )
 
 
-def websocket_origin_allowed(origin: str | None, host: str | None, allowed_origins: list[str]) -> bool:
+def websocket_origin_allowed(
+    origin: str | None,
+    host: str | None,
+    allowed_origins: list[str],
+    allowed_origin_regex: str | None = None,
+) -> bool:
     if origin is None:
         return True
     if origin in allowed_origins:
+        return True
+    if allowed_origin_regex and re.fullmatch(allowed_origin_regex, origin):
         return True
     origin_host = urlsplit(origin).netloc.lower()
     return bool(host) and origin_host == host.lower()
@@ -151,14 +159,22 @@ async def verify_webhook_token(
         # 503 y no 401 a propósito: el que llama mandó lo correcto, es el
         # servidor el que está mal configurado. El arranque ya lo impide (ver
         # _require_inbound_webhook_token en main.py); esto cubre el caso de que
-        # alguien borre el valor desde Configuración con la app en marcha.
+        # alguien borre el valor desde plataforma con la app en marcha.
         logger.error(
             "INBOUND_WEBHOOK_TOKEN no está configurado: se rechazan los webhooks "
-            "entrantes. Definirlo en el entorno o en Configuración."
+            "entrantes. Definirlo en el entorno o en el panel de plataforma."
         )
         raise HTTPException(status_code=503, detail="Webhook entrante no configurado")
     provided = _extract_bearer(authorization) or x_webhook_token
     # compare_digest en vez de != para no filtrar el token por el tiempo de
     # comparación: estos endpoints son públicos y admiten reintentos ilimitados.
     if not provided or not secrets.compare_digest(provided, expected):
+        # Solo el motivo, nunca el valor: sirve para saber qué credencial de
+        # n8n revisar sin filtrar el token en los logs.
+        logger.warning(
+            "Webhook rechazado: %s",
+            "no trae token (ni Authorization Bearer ni X-Webhook-Token)"
+            if not provided
+            else "el token no coincide con INBOUND_WEBHOOK_TOKEN",
+        )
         raise HTTPException(status_code=401, detail="Token inválido")

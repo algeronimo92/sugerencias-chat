@@ -101,11 +101,12 @@ como `^tenant_[0-9a-f]{32}$`. Solo se aceptan nombres recuperados desde
 `public.organizations`; nunca se usa directamente el `Host`, un header del cliente
 ni un valor de n8n como identificador SQL.
 
-Las credenciales comunes de la app Meta, cifrado, infraestructura y servicios de
-plataforma viven en `public.platform_settings`. La configuración de cada negocio
-sigue en su propia `app_settings`, dentro de su schema. El token y número de
-WhatsApp tienen una sola fuente de verdad en `public.whatsapp_connections` porque
-se necesitan para enrutar webhooks antes de conocer el schema.
+Las credenciales comunes de la app Meta (`meta_app_id`, `meta_config_id`,
+`meta_app_secret`, `meta_verify_token`) y el token entrante compartido de n8n
+viven cifrados en `public.platform_settings`. La configuración de cada negocio,
+incluidos su `meta_access_token`, WABA y Phone Number ID, sigue en su propia
+`app_settings`; `public.whatsapp_connections` conserva además los identificadores
+necesarios para enrutar webhooks antes de conocer el schema.
 
 No crear FK PostgreSQL desde `public` hacia tablas tenant ni entre dos schemas
 tenant. El backend mantiene esa frontera. La eliminación de una organización será
@@ -486,6 +487,30 @@ Meta, envíos, plantillas y caches de credenciales usan esa conexión, no
 `current_channel()` global. Citas y otros callbacks usan el tenant del job que
 los originó. Eventos de número desconocido o suspendido nunca caen en el primer
 negocio como fallback.
+
+### 7.8 Asistente IA: lo opera la plataforma, lo alimenta el negocio
+
+**Decisión (2026-09-23):** los workflows `rag` y `analista` son uno solo para
+todos los negocios. El negocio no configura URLs, tokens ni modelos: solo usa el
+asistente y carga lo que el asistente debe saber de él.
+
+| Quién | Qué configura | Dónde vive |
+|---|---|---|
+| Plataforma (una vez) | URL de `rag`, URL de `analista`, token backend → n8n, credenciales de modelos (en n8n), prompt base del copiloto | `public.platform_settings` (`n8n_webhook_url`, `n8n_analyst_webhook_url`, `n8n_webhook_token`) y el workflow |
+| Plataforma (por negocio) | Asistente habilitado y cuota mensual; workflows propios del negocio (hoy, citas) | `public.organizations.ai_enabled` / `ai_monthly_quota`; `app_settings` del negocio con claves ocultas que solo escribe el panel |
+| Negocio | Perfil (nombre, qué ofrece, ubicación, horarios, moneda, tono, reglas "siempre"/"nunca"), precios y descripción de servicios, documentos de conocimiento, adjuntos autorizados | `ai_profile`, `lead_services`, `knowledge_documents`/`knowledge_chunks`, `media_assets.ai_description` del schema del negocio |
+
+- El backend revisa habilitación y cuota **antes** de crear el job
+  (`services/ai_access.py`): 403 si el plan no incluye IA, 429 si se agotó la
+  cuota del mes calendario UTC. Solo descuentan los jobs que no fallaron ni
+  vencieron. Sin tenant no hay job firmado y la llamada se rechaza.
+- `/api/webhooks/rag-context` entrega `tenant_config` (perfil) y `resources`
+  (adjuntos); `/api/webhooks/catalog` entrega precio, notas y moneda. El prompt
+  del copiloto usa esos datos: nada propio de un negocio vive en el workflow.
+- Las reglas del negocio son campos acotados, no un system prompt libre: el
+  bloque de aislamiento y el formato de salida siguen siendo de la plataforma.
+- Las claves de n8n que un negocio tenía en su `app_settings` se suben con
+  `python -m scripts.promote_ai_settings_to_platform --hostname <dominio> --apply`.
 
 ## 8. Workers, eventos y tiempo real
 

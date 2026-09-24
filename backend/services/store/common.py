@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select, true
 
-from db.models import LeadStage, LeadTag, LeadTagAssignment
+from db.models import LeadTag, LeadTagAssignment
 from services.time_format import iso_utc_micros, parse_iso_utc_micros
 
 CHATS_PAGE_SIZE = 30
@@ -67,7 +67,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "vendedor": row["vendedor"],
         "origen": row["origen"],
         "notas": row["notas"],
-        "stage": stage.value if isinstance(stage, LeadStage) else stage,
+        "stage": stage,
         "con_especialista": row["con_especialista"],
         "automatizacion_pausada": row["automatizacion_pausada"],
         "conversacion_abierta": row["conversacion_abierta"],

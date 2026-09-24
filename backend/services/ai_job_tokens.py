@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
+import logging
 from typing import AsyncIterator
 from uuid import UUID
 
@@ -16,6 +17,9 @@ from fastapi import Header, HTTPException
 from config import settings
 from tenancy.context import reset_current_tenant, set_current_tenant
 from tenancy.resolver import resolve_tenant_by_organization_id
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +48,15 @@ def _signing_key() -> bytes:
     if not secret:
         raise RuntimeError("no signing key is configured for AI jobs")
     return secret.encode("utf-8")
+
+
+def signing_key_configured() -> bool:
+    """Permite rechazar el pedido antes de crear un job que no se podrá firmar."""
+    try:
+        _signing_key()
+    except RuntimeError:
+        return False
+    return True
 
 
 def issue_ai_job_token(
@@ -87,8 +100,11 @@ def decode_ai_job_token(token: str) -> AIJobClaims:
             expires_at=expires_at,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        # Firma que no coincide o valor truncado/alterado por el workflow.
+        logger.warning("X-Tenant-Context rechazado: %s (largo %d)", exc, len(token or ""))
         raise HTTPException(status_code=401, detail="Contexto de job IA invalido") from exc
     if claims.expires_at <= datetime.now(timezone.utc):
+        logger.warning("X-Tenant-Context vencido para el job %s", claims.job_id)
         raise HTTPException(status_code=401, detail="Contexto de job IA vencido")
     return claims
 
@@ -101,6 +117,10 @@ async def require_ai_job_context(
     claims = decode_ai_job_token(x_tenant_context)
     context = await resolve_tenant_by_organization_id(claims.organization_id)
     if context is None:
+        logger.warning(
+            "X-Tenant-Context de un negocio inactivo o sin dominio principal: %s",
+            claims.organization_id,
+        )
         raise HTTPException(status_code=401, detail="Contexto de job IA invalido")
     token = set_current_tenant(context)
     try:

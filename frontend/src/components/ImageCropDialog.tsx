@@ -106,7 +106,7 @@ export function ImageCropDialog({
                 step={0.01}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[#374248] accent-[#00a884]"
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[#374248] accent-wa-primary"
               />
             </div>
 
@@ -120,7 +120,7 @@ export function ImageCropDialog({
                     disabled={isProcessing}
                     className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                       aspect === option.value
-                        ? 'border-[#00a884] bg-[#00a884] text-white'
+                        ? 'border-wa-primary bg-wa-primary text-white'
                         : 'border-white/10 bg-[#202c33] text-[#d1d7db] hover:bg-[#2a3942]'
                     }`}
                   >
@@ -133,7 +133,7 @@ export function ImageCropDialog({
                 onClick={handleConfirm}
                 disabled={isProcessing || !croppedAreaPixels}
                 aria-label="Confirmar recorte"
-                className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#00a884] px-5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-[#06cf9c] disabled:cursor-wait disabled:opacity-60"
+                className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-wa-primary px-5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-wa-primary-strong disabled:cursor-wait disabled:opacity-60"
               >
                 {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
                 <span className="hidden sm:inline">Listo</span>

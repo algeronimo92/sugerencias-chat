@@ -1,7 +1,9 @@
 import asyncio
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from time import monotonic
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -35,17 +37,10 @@ class SettingDef:
 # Fuente de verdad de qué keys son editables desde la app. Agregar una nueva
 # integración (ej. otro proveedor de TTS, otra API) es sumar una entrada acá
 # — el resto (endpoint, UI) las recorre genéricamente.
+#
+# Los workflows de IA (sugerencias y analista) no están acá: son uno solo para
+# todos los negocios y se configuran en services/platform_settings.py.
 SETTING_DEFS: list[SettingDef] = [
-    SettingDef("n8n_webhook_url", "URL del webhook", "n8n", "n8n (sugerencias IA)", secret=False),
-    SettingDef("n8n_analyst_webhook_url", "URL del analista", "n8n", "n8n (sugerencias IA)", secret=False),
-    SettingDef("n8n_webhook_token", "Token de autenticación", "n8n", "n8n (sugerencias IA)", secret=True),
-    SettingDef(
-        "inbound_webhook_token",
-        "Token entrante (n8n → app)",
-        "n8n",
-        "n8n (sugerencias IA)",
-        secret=True,
-    ),
     SettingDef(
         "whatsapp_active_connection",
         "Conexión activa (vacío = se detecta sola: Meta)",
@@ -53,27 +48,6 @@ SETTING_DEFS: list[SettingDef] = [
         "WhatsApp (conexión de los leads)",
         secret=False,
         hidden=True,
-    ),
-    SettingDef(
-        "meta_app_id",
-        "Facebook App ID (Tech Provider, para encabezados con imagen)",
-        "meta",
-        "Meta Cloud API (WhatsApp)",
-        secret=False,
-    ),
-    SettingDef(
-        "meta_app_secret",
-        "App Secret (Tech Provider, para Embedded Signup)",
-        "meta",
-        "Meta Cloud API (WhatsApp)",
-        secret=True,
-    ),
-    SettingDef(
-        "meta_verify_token",
-        "Verify Token (challenge de verificación del webhook)",
-        "meta",
-        "Meta Cloud API (WhatsApp)",
-        secret=True,
     ),
     SettingDef(
         "meta_access_token",
@@ -132,19 +106,108 @@ SETTING_DEFS: list[SettingDef] = [
         "Leads (CRM)",
         secret=False,
     ),
-    SettingDef("n8n_citas_webhook_url", "URL del webhook", "citas", "Citas (n8n)", secret=False),
+    # El workflow de citas sí es propio de cada negocio (agenda en su
+    # calendario, con sus campos), pero la URL la carga el operador desde el
+    # panel de plataforma: el negocio usa la función, no la configura.
+    SettingDef(
+        "n8n_citas_webhook_url",
+        "URL del webhook",
+        "citas",
+        "Citas (n8n)",
+        secret=False,
+        hidden=True,
+    ),
     SettingDef(
         "n8n_citas_webhook_test_url",
         "URL del webhook de prueba (modo test, solo admins)",
         "citas",
         "Citas (n8n)",
         secret=False,
+        hidden=True,
     ),
+    SettingDef(
+        "google_calendar_enabled",
+        "Sincronizar citas con Google Calendar",
+        "calendar",
+        "Google Calendar (opcional)",
+        secret=False,
+        boolean=True,
+    ),
+    SettingDef("google_calendar_id", "ID del calendario", "calendar", "Google Calendar (opcional)", secret=False),
+    SettingDef("google_calendar_client_id", "OAuth Client ID", "calendar", "Google Calendar (opcional)", secret=True),
+    SettingDef("google_calendar_client_secret", "OAuth Client Secret", "calendar", "Google Calendar (opcional)", secret=True),
+    SettingDef("google_calendar_refresh_token", "OAuth Refresh Token", "calendar", "Google Calendar (opcional)", secret=True),
+    SettingDef("business_timezone", "Zona horaria (IANA)", "calendar", "Google Calendar (opcional)", secret=False),
 ]
+# Ajustes por negocio que administra el operador de la plataforma y no el
+# propio negocio (ver routers/platform.py).
+PLATFORM_MANAGED_TENANT_KEYS = ("n8n_citas_webhook_url", "n8n_citas_webhook_test_url")
 _DEFS_BY_KEY = {d.key: d for d in SETTING_DEFS}
 SETTINGS_CACHE_TTL_SECONDS = 30.0
 _effective_cache: dict[str | None, tuple[float, dict[str, str]]] = {}
 _effective_cache_lock = asyncio.Lock()
+
+_BUSINESS_TIMEZONE_PREFIXES = (
+    "Africa/",
+    "America/",
+    "Antarctica/",
+    "Arctic/",
+    "Asia/",
+    "Atlantic/",
+    "Australia/",
+    "Europe/",
+    "Indian/",
+    "Pacific/",
+)
+
+
+def _gmt_label(offset_seconds: int) -> str:
+    sign = "+" if offset_seconds >= 0 else "-"
+    total_minutes = abs(offset_seconds) // 60
+    hours, minutes = divmod(total_minutes, 60)
+    return f"GMT{sign}{hours:02d}:{minutes:02d}"
+
+
+def list_business_timezones(now: datetime | None = None) -> list[dict]:
+    """Zonas geográficas IANA que el backend realmente puede interpretar.
+
+    Se excluyen aliases técnicos como ``Etc/GMT+5`` (su signo es invertido)
+    y archivos internos de tzdata. El offset es el vigente en este momento;
+    por eso refleja automáticamente horario de verano donde corresponda.
+    """
+
+    reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    names = {
+        name
+        for name in available_timezones()
+        if name == "UTC" or name.startswith(_BUSINESS_TIMEZONE_PREFIXES)
+    }
+    items = []
+    for name in names:
+        local = reference.astimezone(ZoneInfo(name))
+        offset = local.utcoffset()
+        offset_seconds = int(offset.total_seconds()) if offset else 0
+        items.append(
+            {
+                "id": name,
+                "offset_minutes": offset_seconds // 60,
+                "label": f"{name} ({_gmt_label(offset_seconds)})",
+            }
+        )
+    return sorted(items, key=lambda item: (item["offset_minutes"], item["id"]))
+
+
+def validate_business_timezone(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    try:
+        ZoneInfo(normalized)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("Zona horaria IANA inválida") from exc
+    if normalized != "UTC" and not normalized.startswith(_BUSINESS_TIMEZONE_PREFIXES):
+        raise ValueError("Selecciona una zona horaria geográfica")
+    return normalized
 
 
 async def _raw_db_values() -> dict[str, str | None]:
@@ -251,6 +314,17 @@ async def update_settings(values: dict[str, str]) -> None:
     unknown = set(values) - set(_DEFS_BY_KEY)
     if unknown:
         raise ValueError(f"Configuración desconocida: {', '.join(sorted(unknown))}")
+
+    values = dict(values)
+    if "business_timezone" in values:
+        values["business_timezone"] = validate_business_timezone(
+            values["business_timezone"]
+        )
+    if "google_calendar_enabled" in values:
+        enabled = values["google_calendar_enabled"].strip().lower()
+        if enabled not in {"", "true", "false"}:
+            raise ValueError("El estado de Google Calendar debe ser true o false")
+        values["google_calendar_enabled"] = enabled
 
     async with get_sessionmaker()() as session:
         for key, value in values.items():

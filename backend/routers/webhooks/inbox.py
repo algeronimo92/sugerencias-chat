@@ -10,7 +10,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from routers.webhooks.common import webhooks_router
 from services.meta_inbox import (
@@ -26,10 +26,17 @@ router = webhooks_router()
 class MetaInboxEvent(BaseModel):
     event_key: str = Field(min_length=1, max_length=255)
     event_type: str = Field(min_length=1, max_length=80)
-    phone_number_id: str = Field(min_length=1, max_length=128)
+    phone_number_id: str | None = Field(default=None, min_length=1, max_length=128)
+    waba_id: str | None = Field(default=None, min_length=1, max_length=128)
     payload: dict[str, Any]
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def require_routing_identity(self):
+        if not self.phone_number_id and not self.waba_id:
+            raise ValueError("phone_number_id o waba_id es obligatorio")
+        return self
 
 
 class MetaInboxBatch(BaseModel):

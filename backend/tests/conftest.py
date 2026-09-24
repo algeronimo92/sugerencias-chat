@@ -168,11 +168,9 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
     async def update_lead_stage(
         chat_id, stage, actor_type="system", actor_user_id=None, metadata=None, schedule_automations=True,
     ):
-        # .value y no str(): LeadStage es (str, Enum) y no StrEnum, así que
-        # str() devolvería "LeadStage.en_objecion" en vez de "en_objecion".
-        value = getattr(stage, "value", stage)
-        recorder.stage_changes.append((chat_id, value))
-        return {"stage": value}
+        # La etapa es la clave de texto del negocio (lead_stages.key).
+        recorder.stage_changes.append((chat_id, stage))
+        return {"stage": stage}
 
     async def record_template_use(template_id, user_id):
         recorder.template_uses.append(template_id)

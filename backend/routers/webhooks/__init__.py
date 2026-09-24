@@ -9,6 +9,7 @@ from routers.webhooks import (
     outgoing,
     raw,
     media,
+    templates,
 )
 from routers.webhooks.common import _parse_iso_datetime  # noqa: F401
 from routers.webhooks.identity import (  # noqa: F401
@@ -60,3 +61,4 @@ router.include_router(meta_auth.router)
 router.include_router(outgoing.router)
 router.include_router(raw.router)
 router.include_router(media.router)
+router.include_router(templates.router)

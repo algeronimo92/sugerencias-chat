@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import { FolderTree, Tags, Sparkles } from 'lucide-react'
+import { Columns3, FolderTree, Tags, Sparkles, ListPlus } from 'lucide-react'
+import { LeadStagesManagementPanel } from './LeadStagesManagementPanel'
 import { ServicesManagementPanel } from './ServicesManagementPanel'
 import { TagsManagementPanel } from './TagsManagementPanel'
 import { TemplateCategoriesManagementPanel } from './TemplateCategoriesManagementPanel'
+import { CustomFieldsManagementPanel } from './CustomFieldsManagementPanel'
 
-type CatalogTab = 'services' | 'tags' | 'template-categories'
+type CatalogTab = 'services' | 'tags' | 'template-categories' | 'stages' | 'custom-fields'
 
 const TABS: readonly { key: CatalogTab; label: string; icon: typeof Sparkles }[] = [
   { key: 'services', label: 'Servicios', icon: Sparkles },
   { key: 'tags', label: 'Etiquetas', icon: Tags },
   { key: 'template-categories', label: 'Categorías de plantillas', icon: FolderTree },
+  { key: 'stages', label: 'Etapas', icon: Columns3 },
+  { key: 'custom-fields', label: 'Campos', icon: ListPlus },
 ]
 
 const tabClass = (active: boolean) =>
@@ -28,7 +32,7 @@ export function CatalogsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Catálogos</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Organiza los servicios, etiquetas y categorías que usa tu equipo.
+            Organiza los servicios, etiquetas, categorías y etapas del embudo que usa tu equipo.
           </p>
 
           <div
@@ -56,7 +60,11 @@ export function CatalogsPage() {
             ? <ServicesManagementPanel />
             : tab === 'tags'
               ? <TagsManagementPanel />
-              : <TemplateCategoriesManagementPanel />}
+              : tab === 'stages'
+                ? <LeadStagesManagementPanel />
+                : tab === 'custom-fields'
+                  ? <CustomFieldsManagementPanel />
+                  : <TemplateCategoriesManagementPanel />}
         </section>
       </main>
     </div>

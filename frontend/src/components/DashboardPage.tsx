@@ -25,27 +25,11 @@ import {
   YAxis,
 } from 'recharts'
 import type { ChatFilters, DashboardMetricItem, DashboardPoint } from '../types'
-import { isLeadStage } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
+import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 import { Select } from './ui/Input'
-
-const STAGE_LABELS: Record<string, string> = {
-  nuevo: 'Nuevo',
-  en_diagnostico: 'En diagnóstico',
-  calificado: 'Calificado',
-  oferta_presentada: 'Oferta presentada',
-  en_objecion: 'En objeción',
-  agendado: 'Agendado',
-  cliente_activo: 'Cliente activo',
-  postventa: 'Postventa',
-  en_seguimiento: 'En seguimiento',
-  en_nutricion: 'En nutrición',
-  perdido: 'Perdido',
-  descalificado: 'Descalificado',
-  baja: 'Baja',
-}
 
 const PLACEHOLDER_NAMES = new Set(['Sin origen', 'Sin servicio', 'Sin asignar'])
 
@@ -102,11 +86,13 @@ function MetricCard({ label, value, hint, icon: Icon, danger = false, onClick }:
 interface BarListProps {
   items: DashboardMetricItem[]
   labels?: Record<string, string>
+  /** Color propio de cada barra (las etapas traen el suyo). */
+  colors?: Record<string, string>
   onSelect?: (name: string) => void
   accent?: 'brand' | 'cyan' | 'violet'
 }
 
-function BarList({ items, labels, onSelect, accent = 'brand' }: BarListProps) {
+function BarList({ items, labels, colors, onSelect, accent = 'brand' }: BarListProps) {
   if (items.length === 0) {
     return <p className="rounded-xl border border-dashed border-wa-border px-4 py-8 text-center text-xs text-wa-muted dark:border-wa-border-dark">Sin datos todavía</p>
   }
@@ -126,7 +112,10 @@ function BarList({ items, labels, onSelect, accent = 'brand' }: BarListProps) {
               <span className="rounded-md bg-wa-field px-1.5 py-0.5 font-bold tabular-nums text-wa-text dark:bg-wa-head-dark dark:text-white">{item.value}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-wa-field dark:bg-wa-head-dark">
-              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${(item.value / max) * 100}%` }} />
+              <div
+                className={`h-full rounded-full ${colors?.[item.name] ? '' : barColor}`}
+                style={{ width: `${(item.value / max) * 100}%`, ...(colors?.[item.name] ? { backgroundColor: colors[item.name] } : {}) }}
+              />
             </div>
           </>
         )
@@ -204,6 +193,9 @@ interface Props {
 export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
   const [days, setDays] = useState(30)
   const { data, isLoading, isFetching, error, refetch } = useDashboard(days)
+  const stageCatalog = useLeadStageCatalog()
+  const stageLabels = Object.fromEntries((data?.stages ?? []).map(item => [item.name, stageCatalog.label(item.name)]))
+  const stageColors = Object.fromEntries((data?.stages ?? []).map(item => [item.name, stageCatalog.get(item.name).color]))
 
   return (
     <div className="relative h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
@@ -269,7 +261,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
             <div className="grid items-start gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 430px), 1fr))' }}>
               <div className="space-y-5">
                 <Panel title="Leads por etapa" description="Distribución actual dentro del proceso comercial." icon={BarChart3}>
-                  <BarList items={data.stages} labels={STAGE_LABELS} onSelect={stage => { if (isLeadStage(stage)) onFilterChats({ stages: [stage] }) }} />
+                  <BarList items={data.stages} labels={stageLabels} colors={stageColors} onSelect={stage => onFilterChats({ stages: [stage] })} />
                 </Panel>
               </div>
               <div className="space-y-5">

@@ -17,7 +17,9 @@ interface Props {
 export function FlowPicker({ chatId }: Props) {
   const [open, setOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
-  const { data: flows = [], isLoading } = useManualFlows(chatId)
+  // Solo con el popover abierto: el picker vive montado en el composer de
+  // cada chat y la lista no hace falta hasta que el vendedor la pide.
+  const { data: flows = [], isPending: isLoading } = useManualFlows(chatId, { enabled: open })
   // Mismo hook que usa LeadAutomationPanel: react-query cachea por chatId, así
   // que esto no duplica el pedido de red mientras el panel esté montado. La
   // lista trae también las ejecuciones de sistema del lead, por eso el filtro

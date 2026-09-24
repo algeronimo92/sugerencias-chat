@@ -7,14 +7,18 @@ import { Textarea, labelClass } from './ui/Input'
 interface Props {
   /** Cuántos leads se están moviendo: 1 en el drag, N en la selección múltiple. */
   count: number
+  /** Nombre visible de la etapa destino (de tipo `lost`: Perdido, Baja o una
+   *  propia del negocio). */
+  stageName: string
   onConfirm: (razon: string | null) => void
   onCancel: () => void
 }
 
-/** Se pide la razón al mandar un lead a Perdido, pero no se exige: dejarla en
+/** Se pide la razón al mandar un lead a una etapa de tipo `lost` (Perdido o
+ * cualquier otra que el negocio marque así), pero no se exige: dejarla en
  * blanco mueve el lead igual. La razón queda en el lead y, sobre todo, en el
  * historial del chat (metadata.reason de la tarjeta de cambio de estado). */
-export function LostReasonDialog({ count, onConfirm, onCancel }: Props) {
+export function LostReasonDialog({ count, stageName, onConfirm, onCancel }: Props) {
   const [razon, setRazon] = useState('')
   const trimmed = razon.trim()
 
@@ -32,7 +36,7 @@ export function LostReasonDialog({ count, onConfirm, onCancel }: Props) {
           >
             <div className="flex items-center justify-between border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
               <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                {count > 1 ? `Mover ${count} leads a Perdido` : 'Mover a Perdido'}
+                {count > 1 ? `Mover ${count} leads a ${stageName}` : `Mover a ${stageName}`}
               </Dialog.Title>
               <button
                 type="button"
@@ -45,7 +49,7 @@ export function LostReasonDialog({ count, onConfirm, onCancel }: Props) {
             </div>
 
             <div className="px-4 py-3">
-              <label className={labelClass}>¿Por qué se perdió?</label>
+              <label className={labelClass}>¿Por qué sale del embudo?</label>
               <Textarea
                 value={razon}
                 onChange={(e) => setRazon(e.target.value)}
@@ -69,7 +73,7 @@ export function LostReasonDialog({ count, onConfirm, onCancel }: Props) {
                 variant="primary"
                 className="h-11 flex-1 rounded-none border-l border-wa-border dark:border-wa-border-dark"
               >
-                Mover a Perdido
+                Mover a {stageName}
               </Button>
             </div>
           </form>
