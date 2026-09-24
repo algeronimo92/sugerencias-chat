@@ -1,0 +1,321 @@
+{
+  "_comment": "Objetos messages[] con la forma documentada por Meta (Postman: messages object). Cada caso se envuelve en un webhook completo con tests/meta_fixtures.py.",
+  "text": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.TEXT0001",
+      "timestamp": "1790000001",
+      "type": "text",
+      "text": {"body": "Hola, quiero información"}
+    }
+  },
+  "text_with_referral": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.TEXTREF1",
+      "timestamp": "1790000002",
+      "type": "text",
+      "text": {"body": "Me interesa la promoción"},
+      "referral": {
+        "source_url": "https://fb.me/ad",
+        "source_id": "120211111111111",
+        "source_type": "ad",
+        "headline": "Limpieza facial",
+        "body": "Agenda tu cita",
+        "media_type": "image",
+        "image_url": "https://scontent.example/ad.jpg",
+        "thumbnail_url": "https://scontent.example/thumb.jpg",
+        "ctwa_clid": "ARAkLkA8rmlFeiCktEJQ"
+      }
+    }
+  },
+  "text_with_referred_product": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.TEXTPROD",
+      "timestamp": "1790000003",
+      "type": "text",
+      "text": {"body": "¿Tienen este producto?"},
+      "context": {
+        "from": "51999000111",
+        "id": "wamid.CATALOG1",
+        "referred_product": {"catalog_id": "1234567890", "product_retailer_id": "SKU-001"}
+      }
+    }
+  },
+  "image": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.IMAGE001",
+      "timestamp": "1790000004",
+      "type": "image",
+      "image": {
+        "caption": "Así está mi piel",
+        "mime_type": "image/jpeg",
+        "sha256": "IMAGE_HASH",
+        "id": "1003383421387256"
+      }
+    }
+  },
+  "video": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.VIDEO001",
+      "timestamp": "1790000005",
+      "type": "video",
+      "video": {
+        "caption": "Mira el video",
+        "mime_type": "video/mp4",
+        "sha256": "VIDEO_HASH",
+        "id": "1003383421387257"
+      }
+    }
+  },
+  "audio": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.AUDIO001",
+      "timestamp": "1790000006",
+      "type": "audio",
+      "audio": {
+        "mime_type": "audio/ogg; codecs=opus",
+        "sha256": "AUDIO_HASH",
+        "id": "1003383421387258",
+        "voice": true
+      }
+    }
+  },
+  "document": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.DOCUMENT1",
+      "timestamp": "1790000007",
+      "type": "document",
+      "document": {
+        "caption": "Mi receta",
+        "filename": "receta.pdf",
+        "mime_type": "application/pdf",
+        "sha256": "DOCUMENT_HASH",
+        "id": "1003383421387259"
+      }
+    }
+  },
+  "sticker": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.STICKER1",
+      "timestamp": "1790000008",
+      "type": "sticker",
+      "sticker": {
+        "mime_type": "image/webp",
+        "sha256": "STICKER_HASH",
+        "id": "1003383421387260",
+        "animated": false
+      }
+    }
+  },
+  "location": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.LOCATION1",
+      "timestamp": "1790000009",
+      "type": "location",
+      "location": {
+        "latitude": -12.0464,
+        "longitude": -77.0428,
+        "name": "Plaza Mayor",
+        "address": "Jirón de la Unión, Lima",
+        "url": "https://maps.example/plaza"
+      }
+    }
+  },
+  "contacts": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.CONTACTS1",
+      "timestamp": "1790000010",
+      "type": "contacts",
+      "contacts": [
+        {
+          "name": {"formatted_name": "Ana Pérez", "first_name": "Ana", "last_name": "Pérez"},
+          "phones": [{"phone": "+51 912 345 678", "type": "CELL", "wa_id": "51912345678"}],
+          "emails": [{"email": "ana@example.com", "type": "WORK"}],
+          "org": {"company": "Clínica Sur", "title": "Recepción"},
+          "birthday": "1990-05-04"
+        },
+        {
+          "name": {"formatted_name": "Luis Díaz", "first_name": "Luis"},
+          "phones": [{"phone": "+51 923 456 789", "type": "HOME"}]
+        }
+      ]
+    }
+  },
+  "reaction": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.REACTION1",
+      "timestamp": "1790000011",
+      "type": "reaction",
+      "reaction": {"message_id": "wamid.OUTBOUND1", "emoji": "👍"}
+    }
+  },
+  "reaction_removed": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.REACTION2",
+      "timestamp": "1790000012",
+      "type": "reaction",
+      "reaction": {"message_id": "wamid.OUTBOUND1"}
+    }
+  },
+  "interactive_button_reply": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.BTNREPLY1",
+      "timestamp": "1790000013",
+      "type": "interactive",
+      "context": {"from": "51999000111", "id": "wamid.OUTBOUND2"},
+      "interactive": {
+        "type": "button_reply",
+        "button_reply": {"id": "agendar", "title": "Agendar cita"}
+      }
+    }
+  },
+  "interactive_list_reply": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.LISTREPLY1",
+      "timestamp": "1790000014",
+      "type": "interactive",
+      "context": {"from": "51999000111", "id": "wamid.OUTBOUND3"},
+      "interactive": {
+        "type": "list_reply",
+        "list_reply": {"id": "facial", "title": "Limpieza facial", "description": "60 minutos"}
+      }
+    }
+  },
+  "interactive_nfm_reply": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.NFMREPLY1",
+      "timestamp": "1790000015",
+      "type": "interactive",
+      "context": {"from": "51999000111", "id": "wamid.OUTBOUND4"},
+      "interactive": {
+        "type": "nfm_reply",
+        "nfm_reply": {
+          "name": "flow",
+          "body": "Sent",
+          "response_json": "{\"flow_token\": \"reserva-42\", \"servicio\": \"facial\", \"fecha\": \"2026-10-02\"}"
+        }
+      }
+    }
+  },
+  "button": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.QUICKREPLY1",
+      "timestamp": "1790000016",
+      "type": "button",
+      "context": {"from": "51999000111", "id": "wamid.TEMPLATE1"},
+      "button": {"text": "OpcionA", "payload": "OpcionA"}
+    }
+  },
+  "order": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.ORDER0001",
+      "timestamp": "1790000017",
+      "type": "order",
+      "order": {
+        "catalog_id": "1234567890",
+        "text": "Quiero estos productos",
+        "product_items": [
+          {"product_retailer_id": "SKU-001", "quantity": 2, "item_price": 45.5, "currency": "PEN"},
+          {"product_retailer_id": "SKU-002", "quantity": 1, "item_price": 120, "currency": "PEN"}
+        ]
+      }
+    }
+  },
+  "system": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.SYSTEM001",
+      "timestamp": "1790000018",
+      "type": "system",
+      "system": {
+        "body": "Ana cambió su número de 51987654321 a 51900011122",
+        "new_wa_id": "51900011122",
+        "type": "user_changed_number"
+      }
+    }
+  },
+  "unknown": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.UNKNOWN01",
+      "timestamp": "1790000019",
+      "type": "unknown",
+      "errors": [
+        {
+          "code": 131051,
+          "title": "Unsupported message type",
+          "details": "Message type is not currently supported"
+        }
+      ]
+    }
+  },
+  "unsupported": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.UNSUPP001",
+      "timestamp": "1790000020",
+      "type": "unsupported",
+      "errors": [
+        {
+          "code": 131051,
+          "title": "Message type unknown",
+          "message": "Message type unknown",
+          "error_data": {"details": "Message type is currently not supported."}
+        }
+      ]
+    }
+  },
+  "future_type": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.FUTURE001",
+      "timestamp": "1790000021",
+      "type": "poll_v9",
+      "poll_v9": {"question": "¿Qué horario prefieres?", "options": ["Mañana", "Tarde"]}
+    }
+  },
+  "text_with_user_id": {
+    "contact": {
+      "profile": {"name": "Rosa", "username": "rosa.p"},
+      "wa_id": "51955544433",
+      "user_id": "PE.1084026510784249"
+    },
+    "message": {
+      "from": "51955544433",
+      "from_user_id": "PE.1084026510784249",
+      "id": "wamid.USERID001",
+      "timestamp": "1790000022",
+      "type": "text",
+      "text": {"body": "Hola desde mi usuario"}
+    }
+  },
+  "text_user_id_only": {
+    "contact": {
+      "profile": {"name": "Rosa", "username": "rosa.p"},
+      "user_id": "PE.1084026510784249"
+    },
+    "message": {
+      "from_user_id": "PE.1084026510784249",
+      "id": "wamid.USERID002",
+      "timestamp": "1790000023",
+      "type": "text",
+      "text": {"body": "Ahora sin teléfono"}
+    }
+  }
+}

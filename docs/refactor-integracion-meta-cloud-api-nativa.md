@@ -395,3 +395,45 @@ La refactorización queda completa cuando:
 - [Envío oficial de reply buttons](https://www.postman.com/meta/whatsapp-business-platform/request/x0kd1at/send-reply-button)
 - [Referencia de webhooks y estados](https://www.postman.com/meta/whatsapp-business-platform/folder/tduohwq/webhook-payload-reference)
 - [Herramientas oficiales de WhatsApp Flows](https://github.com/WhatsApp/WhatsApp-Flows-Tools)
+
+## 10. Registro de implementación
+
+Rama: `refactor/meta-cloud-api-nativa`. Se implementa en el orden de la Fase 9
+y cada fase cierra con un commit y la suite en verde.
+
+### 10.1 Decisiones
+
+- **Contrato único.** `backend/contracts/meta_messages.json` es la fuente.
+  El backend lo lee en `services/meta_contract.py`; el frontend usa
+  `frontend/src/domain/metaContract.ts`, generado con
+  `python -m scripts.export_meta_contract` y verificado por un test.
+- **Webhook directo.** Meta apunta a `GET/POST /api/webhooks/meta/whatsapp`.
+  El POST verifica la firma HMAC sobre el cuerpo crudo, guarda cada `change`
+  sin tocar en `public.webhook_inbox`, responde 200 y un worker global lo
+  procesa. n8n deja la ruta de mensajes; si se lo mantiene delante, el
+  workflow queda como relay que reenvía cuerpo y firma sin modificarlos.
+- **Mensajes.** `wsp_messages` suma `message_subtype`, `provider_payload`
+  (mensaje recibido o cuerpo exacto enviado), `webhook_event_id`,
+  `direction` (columna generada desde `sender`), `outbox_status`,
+  `meta_status` y `status_payload`. Se elimina el `CHECK` sobre
+  `message_type`. `payload` queda solo como proyección para la UI (anuncio
+  rehospedado, datos de plantilla que el cuerpo enviado no trae).
+- **Eventos.** `whatsapp_message_events` guarda cada estado y cada reacción
+  tal como llegan. `meta_status` y el badge `reactions` se derivan de ahí.
+- **Identidad.** `whatsapp_identities` pasa a `(phone_number_id, identifier,
+  kind)` con `kind` en `wa_id`/`user_id`. Los alias con sufijo se convierten
+  solo con evidencia; lo demás se archiva en `archived_whatsapp_identities`.
+- **Salida.** El outbox guarda el cuerpo Meta (sin `to` ni ids de medios) y
+  el worker lo completa, lo revalida contra la allowlist y registra en
+  `provider_payload` exactamente lo que envió.
+
+### 10.2 Avance
+
+- [x] 1. Contrato y esquema aditivo
+- [ ] 2. Webhook crudo, parser Meta e identidad sin JID
+- [ ] 3. Renderers completos de entrada
+- [ ] 4. Builders y UI de salida
+- [ ] 5. Estados Meta separados del outbox
+- [ ] 6. Backfill auditado
+- [ ] 7. IA y automatizaciones sobre el contrato
+- [ ] 8. Cambio definitivo del webhook y retiro de Evolution

@@ -7,9 +7,11 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -726,6 +728,27 @@ class WspMessage(Base):
     # chat, igual que el límite real de WhatsApp (se aplica en db_service).
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Subtipo literal de Meta (``interactive.type``, ``system.type``). NULL en
+    # las raíces que no tienen subtipos.
+    message_subtype: Mapped[str | None] = mapped_column(Text)
+    # El objeto ``messages[]`` tal como lo mandó Meta, o el cuerpo exacto que
+    # el CRM le envió. Es la fuente canónica: content, media_url y payload son
+    # proyecciones derivadas de esto para la UI y la búsqueda.
+    provider_payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    # Fila de public.webhook_inbox de la que salió el mensaje. Sin FK: el
+    # inbox vive en el plano de control y se purga tras su retención.
+    webhook_event_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False))
+    # Generada por la base desde ``sender``: nunca se contradicen.
+    direction: Mapped[str] = mapped_column(
+        Text,
+        Computed("CASE WHEN sender = 'cliente' THEN 'inbound' ELSE 'outbound' END", persisted=True),
+    )
+    # Estado interno del envío (outbox) y estado literal que informa Meta, por
+    # separado: uno describe nuestra cola, el otro lo que pasó en WhatsApp.
+    outbox_status: Mapped[str | None] = mapped_column(Text)
+    meta_status: Mapped[str | None] = mapped_column(Text)
+    # Último evento de estado completo (errores, pricing, conversation).
+    status_payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
 
     __table_args__ = (
         Index(
@@ -756,6 +779,56 @@ class WspMessage(Base):
             wa_message_id,
             unique=True,
             postgresql_where=text("wa_message_id IS NOT NULL"),
+        ),
+    )
+
+
+class WhatsAppMessageEvent(Base):
+    """Estado o reacción de Meta sobre un mensaje, tal como llegó.
+
+    Es la fuente de ``wsp_messages.meta_status`` y del badge ``reactions``:
+    las proyecciones se recalculan desde acá, así una entrega repetida o fuera
+    de orden no deja la fila en un estado que Meta nunca informó.
+    """
+
+    __tablename__ = "whatsapp_message_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    wa_message_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE")
+    )
+    value: Mapped[str | None] = mapped_column(Text)
+    actor: Mapped[str | None] = mapped_column(Text)
+    event_wa_id: Mapped[str | None] = mapped_column(Text)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    webhook_event_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('status', 'reaction')", name="whatsapp_message_events_kind_check"),
+        CheckConstraint(
+            "actor IS NULL OR actor IN ('customer', 'business')",
+            name="whatsapp_message_events_actor_check",
+        ),
+        Index("idx_whatsapp_message_events_target", wa_message_id, kind, occurred_at),
+        Index(
+            "uq_whatsapp_message_events_status",
+            wa_message_id,
+            value,
+            occurred_at,
+            unique=True,
+            postgresql_where=text("kind = 'status'"),
+        ),
+        Index(
+            "uq_whatsapp_message_events_event_wa_id",
+            event_wa_id,
+            unique=True,
+            postgresql_where=text("event_wa_id IS NOT NULL"),
         ),
     )
 
