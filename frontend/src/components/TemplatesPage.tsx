@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
+import { fromInteractiveConfig, toInteractiveConfig } from '../domain/interactiveConfig'
 import { toast } from 'sonner'
 import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
 import type { MediaAsset, MessageTemplate, OfficialTemplateButton } from '../types'
@@ -107,6 +108,17 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+function editableFromConfig(config: MessageTemplate['interactive_config']) {
+  const editable = fromInteractiveConfig(config)
+  return {
+    interactiveTitle: editable.title,
+    interactiveFooter: editable.footer,
+    interactiveButtonText: editable.buttonText,
+    interactiveButtons: editable.buttons,
+    interactiveSections: editable.sections,
+  }
+}
+
 export function TemplatesPage() {
   const stageCatalog = useLeadStageCatalog()
   const { data = [], isLoading } = useTemplates(true)
@@ -185,11 +197,7 @@ export function TemplatesPage() {
       officialFooter: template.official_footer ?? '',
       officialButtons: template.official_buttons,
       interactiveType: template.interactive_type,
-      interactiveTitle: template.interactive_config.title ?? '',
-      interactiveFooter: template.interactive_config.footer?.trim() || template.interactive_config.footerText?.trim() || '',
-      interactiveButtonText: template.interactive_config.buttonText ?? 'Ver opciones',
-      interactiveButtons: template.interactive_config.buttons ?? [{ type: 'reply', displayText: '', id: 'reply_1' }],
-      interactiveSections: template.interactive_config.sections ?? [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
+      ...editableFromConfig(template.interactive_config),
     })
     setError(null)
     setPendingAttachments([])
@@ -318,16 +326,13 @@ export function TemplatesPage() {
       official_footer: form.templateType === 'official' ? (form.officialFooter.trim() || null) : null,
       official_buttons: form.templateType === 'official' ? form.officialButtons : [],
       interactive_type: form.templateType === 'internal' ? form.interactiveType : 'none',
-      interactive_config: form.templateType !== 'internal' || form.interactiveType === 'none' ? {} : form.interactiveType === 'buttons' ? {
+      interactive_config: form.templateType !== 'internal' ? {} : toInteractiveConfig(form.interactiveType, {
         title: form.interactiveTitle,
-        footer: form.interactiveFooter.trim(),
-        buttons: form.interactiveButtons,
-      } : {
-        title: form.interactiveTitle,
-        footerText: form.interactiveFooter.trim(),
+        footer: form.interactiveFooter,
         buttonText: form.interactiveButtonText,
+        buttons: form.interactiveButtons,
         sections: form.interactiveSections,
-      },
+      }),
     }
     if (editingId != null) {
       const { template_type: _templateType, ...updatePayload } = payload
@@ -440,7 +445,7 @@ export function TemplatesPage() {
         {capabilities && (
           <div className={`templates-capability mb-4 flex gap-2 rounded-2xl border px-4 py-3 text-xs ${capabilities.official_sending_supported ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
             {capabilities.official_sending_supported ? <BadgeCheck className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
-            <div><p className="font-semibold">Evolution: {capabilities.integration ?? 'integración no detectada'}</p><p className="mt-0.5">{capabilities.official_sending_supported ? 'La conexión admite el envío de plantillas oficiales de Meta.' : capabilities.reason}</p></div>
+            <div><p className="font-semibold">{capabilities.official_sending_supported ? 'WhatsApp Cloud API conectada' : 'WhatsApp sin conectar'}</p><p className="mt-0.5">{capabilities.official_sending_supported ? 'La conexión admite el envío de plantillas oficiales de Meta.' : capabilities.reason}</p></div>
           </div>
         )}
 
@@ -478,7 +483,7 @@ export function TemplatesPage() {
               <div className="grid grid-cols-3 gap-2 rounded-xl bg-wa-hover p-1.5 dark:bg-wa-panel-dark/50" aria-label="Formato del mensaje interno">
                 {([
                   ['none', MessageSquareText, 'Texto'],
-                  ['buttons', MousePointerClick, 'Botones'],
+                  ['button', MousePointerClick, 'Botones'],
                   ['list', ListIcon, 'Lista'],
                 ] as const).map(([value, Icon, label]) => (
                   <button key={value} type="button" onClick={() => { setForm(f => ({ ...f, interactiveType: value })); if (value !== 'none') setPendingAttachments([]) }} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold ${form.interactiveType === value ? 'bg-white text-wa-primary-strong shadow-sm dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'}`}><Icon className="h-3.5 w-3.5" />{label}</button>
@@ -506,7 +511,7 @@ export function TemplatesPage() {
                 {form.officialHeaderType === 'image' && (
                   <div className="md:col-span-2">
                     <MediaAssetField mediaAssetId={form.officialHeaderMediaAssetId} mediaAssets={mediaAssets} kind="image" onChange={id => setForm(f => ({ ...f, officialHeaderMediaAssetId: id }))} />
-                    <p className="mt-1 text-[11px] text-wa-muted">Se sube a Meta como ejemplo del encabezado al guardar. Requiere tener configurado el Facebook App ID en Configuración → Evolution API.</p>
+                    <p className="mt-1 text-[11px] text-wa-muted">Se sube a Meta como ejemplo del encabezado al guardar.</p>
                   </div>
                 )}
                 <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 md:col-span-2">Pie de página (opcional)
@@ -676,20 +681,20 @@ export function TemplatesPage() {
               <div className="grid gap-3 rounded-xl border border-green-200 bg-green-50/50 p-3 dark:border-green-900 dark:bg-green-950/20">
                 <div><h3 className="text-sm font-bold text-wa-primary-strong dark:text-wa-primary">Opciones interactivas</h3><p className="mt-1 text-xs text-wa-muted">Configura las respuestas que podrá elegir el cliente.</p></div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Título interactivo
-                    <input required maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
+                  <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Encabezado (opcional)
+                    <input maxLength={60} value={form.interactiveTitle} onChange={event => setForm(f => ({ ...f, interactiveTitle: event.target.value }))} placeholder="Elige una opción" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                   <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Pie de mensaje
                     <input maxLength={capabilities?.interactive_limits.footer} value={form.interactiveFooter} onChange={event => setForm(f => ({ ...f, interactiveFooter: event.target.value }))} placeholder={capabilities?.interactive_default_footer} className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                   </label>
                 </div>
-                {form.interactiveType === 'buttons' && (
+                {form.interactiveType === 'button' && (
                   <div className="grid gap-2">
-                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Botones (máximo 3 respuestas)</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { type: 'reply', displayText: '', id: `reply_${f.interactiveButtons.length + 1}` }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar</button></div>
+                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Botones (máximo 3 respuestas)</p><button type="button" disabled={form.interactiveButtons.length >= maxInteractiveButtons} onClick={() => setForm(f => ({ ...f, interactiveButtons: [...f.interactiveButtons, { id: `reply_${f.interactiveButtons.length + 1}`, title: '' }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar</button></div>
                     {form.interactiveButtons.map((button, index) => (
                       <div key={index} className="grid gap-2 rounded-lg border border-green-200 bg-white p-2 dark:border-green-900 dark:bg-wa-panel-dark md:grid-cols-[1fr_1fr_auto]">
-                        <input required maxLength={20} value={button.displayText} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, displayText: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
-                        <input required maxLength={256} value={button.id ?? ''} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item) }))} placeholder="ID de respuesta" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                        <input required maxLength={20} value={button.title} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item) }))} placeholder="Texto visible" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
+                        <input required maxLength={256} value={button.id} onChange={event => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item) }))} placeholder="ID de respuesta" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />
                         <button type="button" disabled={form.interactiveButtons.length === 1} onClick={() => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     ))}
@@ -701,15 +706,15 @@ export function TemplatesPage() {
                     <label className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">Texto del botón que abre la lista
                       <input required maxLength={20} value={form.interactiveButtonText} onChange={event => setForm(f => ({ ...f, interactiveButtonText: event.target.value }))} placeholder="Ver opciones" className="rounded-md border border-green-200 bg-white px-3 py-2 text-sm dark:border-green-900 dark:bg-wa-panel-dark" />
                     </label>
-                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Secciones y opciones ({totalInteractiveRows}/10)</p><button type="button" disabled={form.interactiveSections.length >= 10 || totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: [...f.interactiveSections, { title: `Sección ${f.interactiveSections.length + 1}`, rows: [{ title: '', description: '', rowId: `option_${f.interactiveSections.length + 1}_1` }] }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Sección</button></div>
+                    <div className="flex items-center justify-between"><p className="text-xs font-semibold text-gray-700 dark:text-wa-text-dark">Secciones y opciones ({totalInteractiveRows}/10)</p><button type="button" disabled={form.interactiveSections.length >= 10 || totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: [...f.interactiveSections, { title: `Sección ${f.interactiveSections.length + 1}`, rows: [{ id: `option_${f.interactiveSections.length + 1}_1`, title: '', description: '' }] }] }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Sección</button></div>
                     {form.interactiveSections.map((section, sectionIndex) => (
                       <div key={sectionIndex} className="grid gap-2 rounded-lg border border-green-200 bg-white p-3 dark:border-green-900 dark:bg-wa-panel-dark">
                         <div className="flex gap-2"><input required maxLength={24} value={section.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, title: event.target.value } : item) }))} placeholder="Título de sección" className="min-w-0 flex-1 rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><button type="button" disabled={form.interactiveSections.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.filter((_, index) => index !== sectionIndex) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>
-                        {section.rows.map((row, rowIndex) => <div key={rowIndex} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input required maxLength={24} value={row.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, title: event.target.value } : option) } : item) }))} placeholder="Opción" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input required value={row.description} maxLength={72} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, description: event.target.value } : option) } : item) }))} placeholder="Descripción obligatoria" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input required maxLength={200} value={row.rowId} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, rowId: event.target.value } : option) } : item) }))} placeholder="ID único" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><button type="button" disabled={section.rows.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.filter((_, optionIndex) => optionIndex !== rowIndex) } : item) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>)}
-                        <button type="button" disabled={totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: [...item.rows, { title: '', description: '', rowId: `option_${sectionIndex + 1}_${item.rows.length + 1}` }] } : item) }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar opción</button>
+                        {section.rows.map((row, rowIndex) => <div key={rowIndex} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input required maxLength={24} value={row.title} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, title: event.target.value } : option) } : item) }))} placeholder="Opción" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input value={row.description} maxLength={72} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, description: event.target.value } : option) } : item) }))} placeholder="Descripción (opcional)" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><input required maxLength={200} value={row.id} onChange={event => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.map((option, optionIndex) => optionIndex === rowIndex ? { ...option, id: event.target.value } : option) } : item) }))} placeholder="ID único" className="rounded border border-wa-border px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /><button type="button" disabled={section.rows.length === 1} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: item.rows.filter((_, optionIndex) => optionIndex !== rowIndex) } : item) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>)}
+                        <button type="button" disabled={totalInteractiveRows >= 10} onClick={() => setForm(f => ({ ...f, interactiveSections: f.interactiveSections.map((item, index) => index === sectionIndex ? { ...item, rows: [...item.rows, { id: `option_${sectionIndex + 1}_${item.rows.length + 1}`, title: '', description: '' }] } : item) }))} className="flex items-center gap-1 text-xs font-medium text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3 w-3" />Agregar opción</button>
                       </div>
                     ))}
-                    <p className="text-[11px] text-wa-muted">Máximo 10 opciones en total. Los IDs no son visibles para el cliente.</p>
+                    <p className="text-[11px] text-wa-muted">Máximo 10 opciones en total. Los IDs no son visibles para el cliente: vuelven en la respuesta y las automatizaciones los usan para ramificar.</p>
                   </div>
                 )}
               </div>
@@ -747,7 +752,7 @@ export function TemplatesPage() {
                 </button>
               </div>
               <p className="mt-2 text-center text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark">
-                Con imagen, video o documento, el contenido de hasta 1024 caracteres se enviará como caption mediante Evolution. Con audio o textos más largos se enviará por separado.
+                Con imagen, video o documento, el contenido de hasta 1024 caracteres se enviará como caption. Con audio o textos más largos se enviará por separado.
               </p>
               {((editingTemplate?.attachments.length ?? 0) > 0 || pendingAttachments.length > 0) && (
                 <div className="mt-3 space-y-1">
@@ -849,7 +854,7 @@ export function TemplatesPage() {
                       {template.is_favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-yellow-400 text-yellow-400" />}
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${template.template_type === 'official' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-wa-field text-gray-600 dark:bg-wa-active-dark dark:text-gray-300'}`}>{template.template_type === 'official' ? 'Oficial' : 'Interna'}</span>
                       {template.imported_from_meta && <span title="Importada desde Meta: borrarla acá no la borra de la WABA" className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-purple-700 dark:bg-purple-950 dark:text-purple-300">Importada</span>}
-                      {template.interactive_type !== 'none' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-wa-primary-strong dark:bg-green-950 dark:text-green-300">{template.interactive_type === 'buttons' ? 'Botones' : 'Lista'}</span>}
+                      {template.interactive_type !== 'none' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-wa-primary-strong dark:bg-green-950 dark:text-green-300">{template.interactive_type === 'button' ? 'Botones' : 'Lista'}</span>}
                     </div>
                     <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
                       {template.category}

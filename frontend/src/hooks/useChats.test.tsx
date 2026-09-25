@@ -1,8 +1,8 @@
 /**
  * Un acuse de entrega de WhatsApp no debe provocar ni un GET.
  *
- * Cada mensaje enviado genera varios acuses seguidos (SERVER_ACK,
- * DELIVERY_ACK, READ). El handler ya parchea el estado en la caché, así que
+ * Cada mensaje enviado genera varios estados seguidos de Meta (sent,
+ * delivered, read). El handler ya parchea el estado en la caché, así que
  * invalidar además la lista, el detalle y el historial completo eran nueve
  * peticiones por mensaje enviado, sin que cambiara nada visible.
  *
@@ -58,7 +58,7 @@ function wrapper({ children }: PropsWithChildren) {
   // Se siembra un historial para poder comprobar que el estado se parchea
   // sobre la caché existente en vez de refetchearla.
   client.setQueryData(['messages', CHAT_ID], {
-    pages: [{ items: [{ id: 1, status: 'PENDING' }, { id: 2, status: 'PENDING' }], has_more: false }],
+    pages: [{ items: [{ id: 1, outbox_status: 'sending', meta_status: null }, { id: 2, outbox_status: 'sent', meta_status: 'sent' }], has_more: false }],
     pageParams: [null],
   })
   currentClient = client
@@ -87,8 +87,8 @@ function statusEvent() {
     chat_id: CHAT_ID,
     reason: 'message_status',
     message_statuses: [
-      { id: 1, status: 'DELIVERY_ACK' },
-      { id: 2, status: 'READ' },
+      { id: 1, outbox_status: 'sent' },
+      { id: 2, meta_status: 'read' },
     ],
   }
 }
@@ -102,11 +102,12 @@ describe('useChatUpdates con un evento message_status', () => {
     })
 
     const cached = currentClient.getQueryData(['messages', CHAT_ID]) as {
-      pages: { items: { id: number; status: string }[] }[]
+      pages: { items: { id: number; outbox_status: string; meta_status: string | null }[] }[]
     }
+    // Un campo ausente en el evento no pisa el que ya estaba en caché.
     expect(cached.pages[0].items).toEqual([
-      { id: 1, status: 'DELIVERY_ACK' },
-      { id: 2, status: 'READ' },
+      { id: 1, outbox_status: 'sent', meta_status: null },
+      { id: 2, outbox_status: 'sent', meta_status: 'read' },
     ])
   })
 

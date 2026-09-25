@@ -100,15 +100,15 @@ describe('validateTemplateForm · plantilla oficial', () => {
 describe('validateTemplateForm · interactivas', () => {
   function buttons(overrides: Partial<TemplateFormState> = {}) {
     return errorsOf({
-      interactiveType: 'buttons', interactiveTitle: 'Turnos',
-      interactiveButtons: [{ type: 'reply', displayText: 'Sí', id: 'reply_1' }], ...overrides,
+      interactiveType: 'button', interactiveTitle: 'Turnos',
+      interactiveButtons: [{ id: 'reply_1', title: 'Sí' }], ...overrides,
     })
   }
 
   function list(overrides: Partial<TemplateFormState> = {}) {
     return errorsOf({
       interactiveType: 'list', interactiveTitle: 'Tratamientos', interactiveButtonText: 'Ver opciones',
-      interactiveSections: [{ title: 'Faciales', rows: [{ title: 'Limpieza', description: '60 min', rowId: 'l1' }] }],
+      interactiveSections: [{ title: 'Faciales', rows: [{ id: 'l1', title: 'Limpieza', description: '60 min' }] }],
       ...overrides,
     })
   }
@@ -118,41 +118,40 @@ describe('validateTemplateForm · interactivas', () => {
     expect(list()).toEqual([])
   })
 
-  it('exige título y respeta los límites del backend', () => {
-    expect(buttons({ interactiveTitle: '' })).toContain('El título interactivo es obligatorio.')
+  it('el encabezado es opcional pero respeta los límites del backend', () => {
+    expect(buttons({ interactiveTitle: '' })).toEqual([])
     expect(buttons({ interactiveTitle: 'x'.repeat(61) })).toContain('El título interactivo admite máximo 60 caracteres.')
     expect(buttons({ interactiveFooter: 'x'.repeat(61) })).toContain('El pie de mensaje admite máximo 60 caracteres.')
   })
 
   it('valida la cantidad, el texto y el id de los botones', () => {
     expect(buttons({ interactiveButtons: [] })).toContain('Configura entre 1 y 3 botones.')
-    expect(buttons({ interactiveButtons: [{ type: 'reply', displayText: '', id: 'r1' }] })).toContain('El botón 1 necesita texto visible.')
-    expect(buttons({ interactiveButtons: [{ type: 'reply', displayText: 'x'.repeat(21), id: 'r1' }] }))
+    expect(buttons({ interactiveButtons: [{ id: 'r1', title: '' }] })).toContain('El botón 1 necesita texto visible.')
+    expect(buttons({ interactiveButtons: [{ id: 'r1', title: 'x'.repeat(21) }] }))
       .toContain('El texto del botón 1 admite máximo 20 caracteres.')
     expect(buttons({ interactiveButtons: [
-      { type: 'reply', displayText: 'Sí', id: 'r1' }, { type: 'reply', displayText: 'sí', id: 'r2' },
+      { id: 'r1', title: 'Sí' }, { id: 'r2', title: 'sí' },
     ] })).toContain('El texto del botón 2 está repetido.')
     expect(buttons({ interactiveButtons: [
-      { type: 'reply', displayText: 'Sí', id: 'r1' }, { type: 'reply', displayText: 'No', id: 'r1' },
+      { id: 'r1', title: 'Sí' }, { id: 'r1', title: 'No' },
     ] })).toContain('El ID del botón 2 está repetido.')
   })
 
   it('valida secciones y opciones de una lista', () => {
     expect(list({ interactiveButtonText: '' })).toContain('El texto que abre la lista es obligatorio.')
     expect(list({ interactiveSections: [] })).toContain('Configura entre 1 y 10 secciones.')
-    expect(list({ interactiveSections: [{ title: '', rows: [{ title: 'a', description: 'b', rowId: 'c' }] }] }))
+    expect(list({ interactiveSections: [{ title: '', rows: [{ id: 'c', title: 'a', description: 'b' }] }] }))
       .toContain('La sección 1 necesita título.')
     expect(list({ interactiveSections: [{ title: 'Faciales', rows: [] }] })).toContain('La sección 1 necesita al menos una opción.')
-    expect(list({ interactiveSections: [{ title: 'Faciales', rows: [{ title: '', description: '', rowId: '' }] }] }))
+    expect(list({ interactiveSections: [{ title: 'Faciales', rows: [{ id: '', title: '', description: '' }] }] }))
       .toEqual(expect.arrayContaining([
         'Opción 1 de la sección 1: el título es obligatorio.',
-        'Opción 1 de la sección 1: la descripción es obligatoria.',
         'Opción 1 de la sección 1: el ID es obligatorio.',
       ]))
   })
 
   it('limita el total de opciones de una lista', () => {
-    const rows = Array.from({ length: 11 }, (_, index) => ({ title: `t${index}`, description: 'd', rowId: `id${index}` }))
+    const rows = Array.from({ length: 11 }, (_, index) => ({ id: `id${index}`, title: `t${index}`, description: 'd' }))
 
     expect(list({ interactiveSections: [{ title: 'Faciales', rows }] }))
       .toContain('Una lista admite máximo 10 opciones en total.')

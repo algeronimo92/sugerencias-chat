@@ -39,16 +39,22 @@ function preview(text: string) {
 
 function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates: MessageStatusUpdate[]) {
   if (!updates.length) return
-  const byId = new Map(updates.map(update => [update.id, update.status]))
+  const byId = new Map(updates.map(update => [update.id, update]))
   queryClient.setQueryData<InfiniteData<CachedMessagePage>>(['messages', chatId], current => {
     if (!current) return current
     return {
       ...current,
       pages: current.pages.map(page => ({
         ...page,
-        items: page.items.map(message => byId.has(message.id)
-          ? { ...message, status: byId.get(message.id) ?? message.status }
-          : message),
+        items: page.items.map(message => {
+          const update = byId.get(message.id)
+          if (!update) return message
+          return {
+            ...message,
+            outbox_status: update.outbox_status ?? message.outbox_status,
+            meta_status: update.meta_status ?? message.meta_status,
+          }
+        }),
       })),
     }
   })
@@ -87,7 +93,7 @@ const handleChatsUpdated: SocketHandler<'chats_updated'> = (event, { queryClient
   invalidate(queryClient, ['suggestions', latest.chat_id])
   if (latest.message_id === lastNotifiedMessageId.current) return
   lastNotifiedMessageId.current = latest.message_id
-  const content = parseContent({ content: latest.content, message_type: latest.message_type })
+  const content = parseContent({ content: latest.content, message_type: latest.message_type, message_subtype: latest.message_subtype })
   notify(latest.name || 'Nuevo mensaje', content.text || content.label || 'Mensaje nuevo', () => {
     navigate(`/chat/${latest.chat_id}`)
   })

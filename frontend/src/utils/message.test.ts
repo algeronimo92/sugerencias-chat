@@ -1,338 +1,322 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  flowOrderGroup, flowStatusLabel, formatDayLabel, formatFlowAmount, groupByDay, messageAdReferral,
-  messageContacts, messageFlowOrder, ORDER_STATUS_LABELS, parseContent, PAYMENT_STATUS_LABELS,
-  resolveMediaUrl, searchSnippet, splitOnMatch,
+  formatDayLabel, formatMoney, groupByDay, isKnownMessageType, messageAdReferral, messageContacts,
+  messageCoords, messageFlowReply, messageOrder, messageProducts, messageReply, messageSystemNotice,
+  metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, splitOnMatch,
+  TEMPLATE_FALLBACK_TEXT,
 } from './message'
 
 describe('parseContent', () => {
   it('trata el texto suelto como texto', () => {
-    expect(parseContent('hola')).toMatchObject({ kind: 'text', text: 'hola', icon: null })
+    expect(parseContent('hola')).toMatchObject({ kind: 'text', text: 'hola', icon: null, known: true })
+    expect(parseContent(null)).toMatchObject({ kind: 'text', text: '' })
   })
 
-  it('clasifica por message_type cuando el backend lo manda', () => {
-    expect(parseContent({ content: 'foto.jpg', message_type: 'image' }).kind).toBe('image')
+  it('clasifica por el tipo literal de Meta', () => {
+    expect(parseContent({ content: 'foto.jpg', message_type: 'image' })).toMatchObject({ kind: 'image', label: 'Imagen' })
     expect(parseContent({ content: null, message_type: 'audio' }).kind).toBe('audio')
-    expect(parseContent({ content: null, message_type: 'document', payload: { filename: 'x.pdf' } }))
-      .toMatchObject({ kind: 'document', label: 'Documento' })
-    expect(parseContent({ content: null, message_type: 'sticker' }).kind).toBe('sticker')
-    expect(parseContent({ content: 'pregunta', message_type: 'poll' })).toMatchObject({ kind: 'poll', text: 'pregunta' })
-    expect(parseContent({ content: 'Pago: Realizado', message_type: 'order' }))
-      .toMatchObject({ kind: 'order', label: 'Pedido', text: 'Pago: Realizado' })
-    expect(parseContent({ content: 'HIFU 12D', message_type: 'product' }))
-      .toMatchObject({ kind: 'product', label: 'Producto' })
-    expect(parseContent({ content: 'Separación', message_type: 'payment' }))
-      .toMatchObject({ kind: 'payment', label: 'Pago' })
-    expect(parseContent({ content: 'Mira esto', message_type: 'view_once', payload: { inner_type: 'image' } }))
-      .toMatchObject({ kind: 'view_once', label: 'Ver una vez', text: 'Mira esto' })
-    expect(parseContent({ content: 'OpcionA', message_type: 'button' }))
-      .toMatchObject({ kind: 'button', label: 'Respuesta', text: 'OpcionA' })
+    expect(parseContent({ content: null, message_type: 'document' })).toMatchObject({ kind: 'document', label: 'Documento' })
+    expect(parseContent({ content: null, message_type: 'contacts' })).toMatchObject({ kind: 'contacts', label: 'Contacto' })
+    expect(parseContent({ content: null, message_type: 'order' })).toMatchObject({ kind: 'order', label: 'Pedido' })
   })
 
-  it('normaliza listas modernas como mensajes interactivos', () => {
+  it('lee el objeto de Meta desde provider_payload antes que la proyección del CRM', () => {
     const parsed = parseContent({
-      content: 'Elige un servicio',
-      message_type: 'interactive',
-      payload: { title: 'Servicios', body: 'Elige un servicio', options: [{ id: 'hifu', text: 'HIFU' }] },
+      content: null,
+      message_type: 'location',
+      payload: { forwarded: true },
+      provider_payload: { location: { latitude: -12.1, longitude: -77.03 } },
     })
-    expect(parsed.template).toMatchObject({ title: 'Servicios', body: 'Elige un servicio' })
-    expect(parsed.template?.buttons).toEqual([{ text: 'HIFU', url: null }])
+    expect(parsed.meta).toEqual({ location: { latitude: -12.1, longitude: -77.03 } })
+    expect(parsed.payload).toEqual({ forwarded: true })
+    expect(messageCoords(parsed.meta)).toEqual([-12.1, -77.03])
   })
 
-  it('arma botones reales para un interactivo propio de botones, sin repetir "Opciones" en el texto', () => {
+  it('un tipo que el contrato no conoce se muestra con su nombre literal', () => {
+    const parsed = parseContent({ content: null, message_type: 'future_thing' })
+    expect(parsed).toMatchObject({ kind: 'future_thing', known: false, label: 'Mensaje future_thing' })
+    const sub = parseContent({ content: null, message_type: 'interactive', message_subtype: 'nuevo_subtipo' })
+    expect(sub).toMatchObject({ known: false, label: 'Mensaje interactive/nuevo_subtipo' })
+  })
+
+  it('unknown y unsupported de Meta son tipos conocidos con su rótulo', () => {
+    expect(parseContent({ content: null, message_type: 'unsupported' }))
+      .toMatchObject({ known: true, label: 'No soportado por WhatsApp' })
+    expect(isKnownMessageType('unknown', null)).toBe(true)
+  })
+
+  it('arma el interactivo de botones desde la estructura de Meta', () => {
     const parsed = parseContent({
-      content: 'Presiona un boton\nHola Gerson lee esto\nOpciones: opcion a · opcion b',
+      content: 'Hola Gerson lee esto',
       message_type: 'interactive',
+      message_subtype: 'button',
+      provider_payload: {
+        interactive: {
+          type: 'button',
+          header: { type: 'text', text: 'Presiona un boton' },
+          body: { text: 'Hola Gerson lee esto' },
+          footer: { text: 'DermicaPro' },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'reply_1', title: 'opcion a' } },
+              { type: 'reply', reply: { id: 'reply_2', title: 'opcion b' } },
+            ],
+          },
+        },
+      },
+    })
+    expect(parsed).toMatchObject({ kind: 'interactive', subtype: 'button', label: 'Botones', text: 'Hola Gerson lee esto' })
+    expect(parsed.template).toEqual({
+      title: 'Presiona un boton',
+      body: 'Hola Gerson lee esto',
+      footer: 'DermicaPro',
+      buttons: [{ text: 'opcion a', url: null }, { text: 'opcion b', url: null }],
+      headerImageUrl: null,
+    })
+  })
+
+  it('una lista muestra solo el botón que la abre', () => {
+    const parsed = parseContent({
+      content: null,
+      message_type: 'interactive',
+      message_subtype: 'list',
+      provider_payload: {
+        interactive: {
+          type: 'list',
+          body: { text: 'Elige un servicio' },
+          action: { button: 'Ver servicios', sections: [{ title: 'S', rows: [{ id: 'hifu', title: 'HIFU' }] }] },
+        },
+      },
+    })
+    expect(parsed.text).toBe('Elige un servicio')
+    expect(parsed.template?.buttons).toEqual([{ text: 'Ver servicios', url: null }])
+  })
+
+  it('la plantilla oficial toma encabezado, pie y botones de la proyección del CRM', () => {
+    const parsed = parseContent({
+      content: 'Tu cita es mañana',
+      message_type: 'template',
       payload: {
-        type: 'interactive',
-        interactive_type: 'buttons',
-        description: 'Hola Gerson lee esto',
-        config: {
-          title: 'Presiona un boton',
+        template: {
+          header_text: 'Recordatorio',
           footer: 'DermicaPro',
           buttons: [
-            { type: 'reply', displayText: 'opcion a', id: 'reply_1' },
-            { type: 'reply', displayText: 'opcion b', id: 'reply_2' },
+            { type: 'url', text: 'Ver cita', url: 'https://example.com/c' },
+            { type: 'url', text: 'Malo', url: 'javascript:alert(1)' },
+            { type: 'quick_reply', text: 'Confirmo' },
           ],
         },
       },
     })
-    expect(parsed.text).toBe('Hola Gerson lee esto')
-    expect(parsed.template).toMatchObject({ title: 'Presiona un boton', body: 'Hola Gerson lee esto', footer: 'DermicaPro' })
-    expect(parsed.template?.buttons).toEqual([
-      { text: 'opcion a', url: null },
-      { text: 'opcion b', url: null },
-    ])
+    expect(parsed.text).toBe('Tu cita es mañana')
+    expect(parsed.template).toMatchObject({
+      title: 'Recordatorio',
+      footer: 'DermicaPro',
+      buttons: [
+        { text: 'Ver cita', url: 'https://example.com/c' },
+        { text: 'Malo', url: null },
+        { text: 'Confirmo', url: null },
+      ],
+    })
   })
 
-  it('arma un único botón de "abrir lista" para un interactivo propio de lista', () => {
-    const parsed = parseContent({
-      content: 'Elige una opción\nHola\nOpciones: A — desc',
+  it('una plantilla sin cuerpo usa el texto de reserva', () => {
+    expect(parseContent({ content: null, message_type: 'template' }).text).toBe(TEMPLATE_FALLBACK_TEXT)
+  })
+
+  it('separa el resumen del análisis IA del texto', () => {
+    const parsed = parseContent({ content: 'foto', message_type: 'image', analysis: { summary: ' Una crema ' } })
+    expect(parsed).toMatchObject({ text: 'foto', analysis: 'Una crema' })
+  })
+})
+
+describe('respuestas del cliente', () => {
+  it('regresión OpcionA: la respuesta a un botón de plantilla se ve con su texto', () => {
+    // Meta manda `button` (no `interactive`) al tocar un botón de plantilla.
+    const message = {
+      content: 'OpcionA',
+      message_type: 'button' as const,
+      provider_payload: { button: { text: 'OpcionA', payload: 'opcion_a' } },
+    }
+    const parsed = parseContent(message)
+    expect(parsed).toMatchObject({ kind: 'button', label: 'Respuesta', text: 'OpcionA', known: true })
+    expect(messageReply(parsed)).toEqual({ title: 'OpcionA', id: 'opcion_a', description: '' })
+    expect(quotePreview(message)).toMatchObject({ label: 'Respuesta', text: 'OpcionA' })
+  })
+
+  it('sin content, toma el texto del botón del objeto de Meta', () => {
+    expect(parseContent({
+      content: null,
+      message_type: 'button',
+      provider_payload: { button: { text: 'OpcionA', payload: 'opcion_a' } },
+    }).text).toBe('OpcionA')
+  })
+
+  it('lee button_reply y list_reply con su id literal', () => {
+    const button = parseContent({
+      content: 'Sí',
       message_type: 'interactive',
-      payload: {
-        type: 'interactive',
-        interactive_type: 'list',
-        description: 'Hola',
-        config: {
-          title: 'Elige una opción',
-          footerText: 'DermicaPro',
-          buttonText: 'Ver opciones',
-          sections: [{ title: 'Sección', rows: [{ title: 'A', description: 'desc', rowId: 'a' }] }],
+      message_subtype: 'button_reply',
+      provider_payload: { interactive: { type: 'button_reply', button_reply: { id: 'si', title: 'Sí' } } },
+    })
+    expect(button.label).toBe('Respuesta')
+    expect(messageReply(button)).toEqual({ title: 'Sí', id: 'si', description: '' })
+
+    const list = parseContent({
+      content: 'HIFU',
+      message_type: 'interactive',
+      message_subtype: 'list_reply',
+      provider_payload: {
+        interactive: { type: 'list_reply', list_reply: { id: 'hifu', title: 'HIFU', description: '12D' } },
+      },
+    })
+    expect(list.label).toBe('Selección')
+    expect(messageReply(list)).toEqual({ title: 'HIFU', id: 'hifu', description: '12D' })
+  })
+
+  it('messageReply no aplica a otros tipos', () => {
+    expect(messageReply(parseContent('hola'))).toBeNull()
+  })
+
+  it('desarma el response_json de un Flow sin listar el flow_token', () => {
+    const reply = messageFlowReply({
+      interactive: {
+        type: 'nfm_reply',
+        nfm_reply: {
+          name: 'flow',
+          body: 'Sent',
+          response_json: '{"flow_token":"t","nombre":"Ana","edad":30}',
         },
       },
     })
-    expect(parsed.text).toBe('Hola')
-    expect(parsed.template?.buttons).toEqual([{ text: 'Ver opciones', url: null }])
-  })
-
-  it('deja un botón de URL clicable cuando el interactivo propio de botones lo trae', () => {
-    const parsed = parseContent({
-      content: 'Presiona un boton\nHola\nOpciones: Abrir enlace',
-      message_type: 'interactive',
-      payload: {
-        type: 'interactive',
-        interactive_type: 'buttons',
-        description: 'Hola',
-        config: {
-          title: 'Presiona un boton',
-          footer: 'DermicaPro',
-          buttons: [{ type: 'url', displayText: 'Abrir enlace', url: 'https://cliniventas.com/' }],
-        },
-      },
+    expect(reply).toEqual({
+      name: 'flow',
+      body: 'Sent',
+      fields: [{ key: 'nombre', value: 'Ana' }, { key: 'edad', value: '30' }],
     })
-    expect(parsed.template?.buttons).toEqual([{ text: 'Abrir enlace', url: 'https://cliniventas.com/' }])
   })
 
-  it('pinta header, pie y botones de una plantilla oficial de Meta enviada desde la app', () => {
-    const parsed = parseContent({
-      content: 'Hola Ana, tu cita es el martes.',
-      message_type: 'template',
-      payload: {
-        type: 'official_template',
-        name: 'recordatorio_cita',
-        language: 'es',
-        header_text: 'DermicaPro',
-        footer: 'Gracias por tu preferencia',
-        buttons: [
-          { type: 'quick_reply', text: 'Confirmar' },
-          { type: 'url', text: 'Ver detalles', url: 'https://dermicapro.com/citas' },
+  it('un response_json que no es JSON se muestra tal cual', () => {
+    const reply = messageFlowReply({ interactive: { nfm_reply: { response_json: 'texto' } } })
+    expect(reply.fields).toEqual([{ key: 'respuesta', value: 'texto' }])
+  })
+})
+
+describe('messageOrder', () => {
+  it('suma por moneda con los valores literales de Meta', () => {
+    const order = messageOrder({
+      order: {
+        catalog_id: 'cat',
+        text: 'Quiero esto',
+        product_items: [
+          { product_retailer_id: 'a', quantity: 2, item_price: 10.5, currency: 'PEN' },
+          { product_retailer_id: 'b', quantity: 1, item_price: 5, currency: 'PEN' },
+          { product_retailer_id: 'c', quantity: 1, item_price: 3, currency: 'USD' },
         ],
       },
     })
-    expect(parsed.text).toBe('Hola Ana, tu cita es el martes.')
-    expect(parsed.template).toMatchObject({ title: 'DermicaPro', footer: 'Gracias por tu preferencia' })
-    expect(parsed.template?.buttons).toEqual([
-      { text: 'Confirmar', url: null },
-      { text: 'Ver detalles', url: 'https://dermicapro.com/citas' },
-    ])
-  })
-
-  it('una plantilla oficial sin header/pie/botones no arma una tarjeta vacía', () => {
-    const parsed = parseContent({
-      content: 'Hola Ana.',
-      message_type: 'template',
-      payload: { type: 'official_template', name: 'saludo', language: 'es', header_text: null, footer: null, buttons: [] },
-    })
-    expect(parsed.text).toBe('Hola Ana.')
-    expect(parsed.template).toBeNull()
-  })
-
-  it('trae la URL del encabezado de imagen de una plantilla oficial, ya guardada en el storage de medios', () => {
-    const parsed = parseContent({
-      content: 'Hola, aprovecha nuestra promo.',
-      message_type: 'template',
-      payload: {
-        type: 'official_template',
-        name: 'promo_verano',
-        language: 'es',
-        header_text: null,
-        header_image_url: '/api/media/images/encabezado.jpg',
-        footer: null,
-        buttons: [],
-      },
-    })
-    expect(parsed.template?.headerImageUrl).toBe('/api/media/images/encabezado.jpg')
-  })
-
-  it('separa el análisis IA del caption y no lo mezcla en el texto', () => {
-    const parsed = parseContent({
-      content: 'Mirá esta promo',
-      message_type: 'image',
-      analysis: { summary: 'La imagen muestra un anuncio de HIFU.' },
-    })
-    expect(parsed.text).toBe('Mirá esta promo')
-    expect(parsed.analysis).toBe('La imagen muestra un anuncio de HIFU.')
-  })
-
-  it('un tipo desconocido cae en "unsupported" en vez de perderse', () => {
-    expect(parseContent({ content: null, message_type: 'jibberish' as never }))
-      .toMatchObject({ kind: 'unsupported', label: 'No soportado' })
-  })
-
-  it('respaldo legado: reconoce los pseudo-tags que escribía n8n', () => {
-    expect(parseContent('<image></image>').kind).toBe('image')
-    expect(parseContent('<audio></audio>').kind).toBe('audio')
-    expect(parseContent('<video></video>').kind).toBe('video')
-    expect(parseContent('<other>archivo.pdf</other>')).toMatchObject({ kind: 'document', text: 'archivo.pdf' })
-    expect(parseContent('<location>-12.04,-77.04</location>')).toMatchObject({
-      kind: 'location',
-      text: '-12.04,-77.04',
-    })
-  })
-
-  it('respaldo legado: extrae el bloque Analisis embebido en el content viejo', () => {
-    const parsed = parseContent('<image>caption real\n\nAnalisis: descripción de la IA</image>')
-    expect(parsed.text).toBe('caption real')
-    expect(parsed.analysis).toBe('descripción de la IA')
-  })
-
-  it('respaldo legado: separa el análisis aunque el adjunto no tenga caption', () => {
-    // El bloque Analisis arranca al principio (imagen sin epígrafe): no debe
-    // quedar como caption.
-    const parsed = parseContent('<image>\n\nAnalisis: comprobante de pago Yape</image>')
-    expect(parsed.text).toBe('')
-    expect(parsed.analysis).toBe('comprobante de pago Yape')
-  })
-
-  it('respaldo legado: el interior de un audio viejo es transcripción, no caption', () => {
-    const parsed = parseContent('<audio>hola qué tal</audio>')
-    expect(parsed.text).toBe('')
-    expect(parsed.analysis).toBe('hola qué tal')
-  })
-
-  it('respaldo legado: una etiqueta desconocida cae en "unsupported"', () => {
-    expect(parseContent('<sticker></sticker>')).toMatchObject({ kind: 'unsupported', label: 'No soportado' })
-  })
-
-  it('no confunde una etiqueta a medias con multimedia', () => {
-    // Un cliente puede escribir esto literalmente; debe salir como texto.
-    expect(parseContent('<image>').kind).toBe('text')
-    expect(parseContent('mira <image></image> esto').kind).toBe('text')
-  })
-
-  it('sobrevive a null y a la cadena vacía', () => {
-    expect(parseContent(null)).toMatchObject({ kind: 'text', text: '' })
-    expect(parseContent('')).toMatchObject({ kind: 'text', text: '' })
+    expect(order.catalogId).toBe('cat')
+    expect(order.items).toHaveLength(3)
+    expect(order.totals).toEqual([{ currency: 'PEN', amount: 26 }, { currency: 'USD', amount: 3 }])
+    expect(formatMoney(26, 'PEN')).toMatch(/^PEN 26[.,]00$/)
   })
 })
 
-// JSON real de un anuncio de TikTok recibido por WhatsApp, recortado.
-const TEMPLATE_JSON = JSON.stringify({
-  header: { title: '' },
-  body: { text: '¡Hola, DermicaPro Trujillo! Tienes 10 mensajes sin leer.' },
-  nativeFlowMessage: {
-    buttons: [
-      {
-        name: 'cta_url',
-        buttonParamsJson: JSON.stringify({
-          display_text: 'Abrir TikTok',
-          url: 'https://www.tiktok.com/?redirect_url=sslocal://notification',
-        }),
-      },
-    ],
-    messageParamsJson: JSON.stringify({
-      tap_target_configuration: {
-        title: 'TikTok - Make Your Day',
-        domain: 'www.tiktok.com',
-        description: 'TikTok - trends start here.',
-      },
-    }),
-  },
-})
-
-describe('plantillas de WhatsApp', () => {
-  it('muestra el cuerpo del anuncio, no el JSON crudo', () => {
-    const parsed = parseContent(`<templateMessage>\n${TEMPLATE_JSON}\n</templateMessage>`)
-    expect(parsed.kind).toBe('template')
-    expect(parsed.text).toBe('¡Hola, DermicaPro Trujillo! Tienes 10 mensajes sin leer.')
-    expect(parsed.text).not.toContain('{')
-  })
-
-  it('desarma el preview del enlace y los botones', () => {
-    const { template } = parseContent(`<templateMessage>${TEMPLATE_JSON}</templateMessage>`)
-    expect(template).toMatchObject({
-      title: 'TikTok - Make Your Day',
-      domain: 'www.tiktok.com',
-      description: 'TikTok - trends start here.',
+describe('messageProducts', () => {
+  it('lee el producto por el que pregunta el cliente desde context.referred_product', () => {
+    const parsed = parseContent({
+      content: '¿Tienen stock?',
+      message_type: 'text',
+      provider_payload: { context: { referred_product: { catalog_id: 'cat', product_retailer_id: 'sku1' } } },
     })
-    expect(template!.buttons).toEqual([
-      { text: 'Abrir TikTok', url: 'https://www.tiktok.com/?redirect_url=sslocal://notification' },
-    ])
+    expect(messageProducts(parsed)).toEqual([{ catalogId: 'cat', sku: 'sku1' }])
   })
 
-  it('descarta las URLs que no son http(s) para no meterlas en un href', () => {
-    const raw = JSON.stringify({
-      body: { text: 'hola' },
-      nativeFlowMessage: {
-        buttons: [{ buttonParamsJson: JSON.stringify({ display_text: 'Tocá acá', url: 'javascript:alert(1)' }) }],
-      },
-    })
-    const { template } = parseContent(`<templateMessage>${raw}</templateMessage>`)
-    expect(template!.buttons).toEqual([{ text: 'Tocá acá', url: null }])
-  })
-
-  it('no revienta ni filtra el JSON cuando la plantilla viene rota', () => {
-    const parsed = parseContent('<templateMessage>{roto</templateMessage>')
-    expect(parsed).toMatchObject({ kind: 'template', template: null, text: 'Mensaje de plantilla' })
-  })
-
-  it('desarma los buttonsMessage, que traen otra forma de JSON', () => {
-    // Mensaje real del vendedor: contentText + buttons[].buttonText.displayText.
-    const raw = JSON.stringify({
-      buttons: [
-        { buttonId: 'c2c5', buttonText: { displayText: 'Si, evalueme' }, type: 1 },
-        { buttonId: 'b746', buttonText: { displayText: 'No, tengo otras duda' }, type: 1 },
-      ],
-      contentText: '📸Eso es todo? 😊',
-      headerType: 1,
-    })
-    const parsed = parseContent(`<buttonsMessage>\n${raw}\n</buttonsMessage>`)
-    expect(parsed).toMatchObject({ kind: 'template', label: 'Botones', text: '📸Eso es todo? 😊' })
-    expect(parsed.template!.buttons).toEqual([
-      { text: 'Si, evalueme', url: null },
-      { text: 'No, tengo otras duda', url: null },
-    ])
-  })
-
-  it('muestra la respuesta del cliente con la pregunta que contestó', () => {
-    // Lo que llega cuando el cliente toca un botón: el texto elegido y, dentro
-    // del contextInfo, el mensaje original.
-    const raw = JSON.stringify({
-      selectedButtonId: 'c2c5',
-      selectedDisplayText: 'Si, evalueme',
-      contextInfo: {
-        stanzaId: 'CE70D087C517F6D4870D',
-        quotedMessage: {
-          buttonsMessage: {
-            buttons: [{ buttonId: 'c2c5', buttonText: { displayText: 'Si, evalueme' }, type: 1 }],
-            contentText: '📸Eso es todo? 😊',
+  it('lee los productos de un product_list enviado', () => {
+    const parsed = parseContent({
+      content: null,
+      message_type: 'interactive',
+      message_subtype: 'product_list',
+      provider_payload: {
+        interactive: {
+          type: 'product_list',
+          action: {
+            catalog_id: 'cat',
+            sections: [{ title: 'S', product_items: [{ product_retailer_id: 'a' }, { product_retailer_id: 'b' }] }],
           },
         },
       },
-      type: 1,
     })
-    const parsed = parseContent(`<buttonsResponseMessage>\n${raw}\n</buttonsResponseMessage>`)
-    expect(parsed).toMatchObject({ kind: 'template', label: 'Respuesta', text: 'Si, evalueme' })
-    expect(parsed.template).toMatchObject({
-      body: 'Si, evalueme',
-      answeredQuestion: '📸Eso es todo? 😊',
-    })
-    // Los botones del mensaje citado no se repiten en la respuesta.
-    expect(parsed.template!.buttons).toEqual([])
+    expect(messageProducts(parsed)).toEqual([{ catalogId: 'cat', sku: 'a' }, { catalogId: 'cat', sku: 'b' }])
+  })
+})
+
+describe('system y errores', () => {
+  it('lee el aviso de sistema y lo usa como texto', () => {
+    const meta = { system: { body: 'El usuario cambió de número', type: 'user_changed_number' } }
+    expect(messageSystemNotice(meta)).toEqual({ body: 'El usuario cambió de número', type: 'user_changed_number' })
+    expect(parseContent({ content: null, message_type: 'system', provider_payload: meta }).text)
+      .toBe('El usuario cambió de número')
   })
 
-  it('toma las respuestas rápidas sin enlace', () => {
-    const raw = JSON.stringify({
-      body: { text: '¿Confirmás tu cita?' },
-      footer: { text: 'DermicaPro' },
-      nativeFlowMessage: {
-        buttons: [{ buttonParamsJson: JSON.stringify({ display_text: 'Sí', id: '1' }) }],
+  it('normaliza los errores de Meta', () => {
+    expect(metaErrors({
+      errors: [{ code: 131026, title: 'Message undeliverable', error_data: { details: 'x' } }],
+    })).toEqual([{ code: '131026', title: 'Message undeliverable', details: 'x' }])
+    expect(metaErrors(null)).toEqual([])
+  })
+})
+
+describe('messageAdReferral', () => {
+  it('lee el referral literal de Meta y prefiere la miniatura rehospedada', () => {
+    const parsed = parseContent({
+      content: 'Hola',
+      message_type: 'text',
+      payload: { referral_thumbnail_url: 'https://cdn.example/t.jpg' },
+      provider_payload: {
+        referral: {
+          headline: 'Promo HIFU',
+          body: 'Solo este mes',
+          source_url: 'https://fb.me/ad',
+          thumbnail_url: 'https://scontent/x.jpg',
+          ctwa_clid: 'clid',
+        },
       },
     })
-    const { template } = parseContent(`<templateMessage>${raw}</templateMessage>`)
-    expect(template).toMatchObject({ body: '¿Confirmás tu cita?', footer: 'DermicaPro' })
-    expect(template!.buttons).toEqual([{ text: 'Sí', url: null }])
+    expect(messageAdReferral(parsed)).toEqual({
+      title: 'Promo HIFU',
+      body: 'Solo este mes',
+      sourceUrl: 'https://fb.me/ad',
+      thumbnailUrl: 'https://cdn.example/t.jpg',
+      ctwaClid: 'clid',
+    })
+  })
+
+  it('devuelve null si el mensaje no vino de un anuncio', () => {
+    expect(messageAdReferral(parseContent('hola'))).toBeNull()
+  })
+})
+
+describe('messageContacts', () => {
+  it('prefiere wa_id sobre el número visible', () => {
+    const contacts = messageContacts({
+      contacts: [
+        {
+          name: { formatted_name: 'Ana Pérez', first_name: 'Ana' },
+          phones: [{ phone: '+51 999 888 777', wa_id: '51999888777', type: 'CELL' }],
+        },
+        { name: { first_name: 'Sin número' }, phones: [] },
+      ],
+    })
+    expect(contacts).toEqual([
+      { name: 'Ana Pérez', phone: ['51999888777'], phoneLabel: '+51 999 888 777' },
+      { name: 'Sin número', phone: null, phoneLabel: '' },
+    ])
+  })
+
+  it('sin contactos devuelve una lista vacía', () => {
+    expect(messageContacts({})).toEqual([])
   })
 })
 
@@ -353,97 +337,6 @@ describe('resolveMediaUrl', () => {
     // es lo que hace que el navegador mande la cookie de sesión a /media/.
     const resolved = resolveMediaUrl('/media/foto.jpg')
     expect(resolved).toMatch(/\/media\/foto\.jpg$/)
-  })
-})
-
-describe('messageAdReferral', () => {
-  it('devuelve null si el mensaje no vino de un anuncio', () => {
-    expect(messageAdReferral(null)).toBeNull()
-    expect(messageAdReferral({ latitude: 1 })).toBeNull()
-    expect(messageAdReferral({ ad_referral: { source_url: 'https://x/y' } })).toBeNull()
-  })
-
-  it('lee título, cuerpo, link y ctwa_clid del anuncio', () => {
-    const ad = messageAdReferral({
-      ad_referral: {
-        title: 'DermicaPro',
-        body: 'HIFU',
-        source_url: 'https://instagram.com/p/abc',
-        ctwa_clid: 'AfiYDh',
-      },
-    })
-    expect(ad).toMatchObject({ title: 'DermicaPro', body: 'HIFU', sourceUrl: 'https://instagram.com/p/abc', ctwaClid: 'AfiYDh' })
-  })
-
-  it('resuelve la miniatura rehospedada en /media y deja pasar las externas', () => {
-    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: '/media/ad-1.jpg' } })?.thumbnailUrl)
-      .toMatch(/\/media\/ad-1\.jpg$/)
-    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: 'https://cdn/x.jpg' } })?.thumbnailUrl)
-      .toBe('https://cdn/x.jpg')
-  })
-
-  it('descarta miniaturas con esquemas que no sean http ni /media', () => {
-    expect(messageAdReferral({ ad_referral: { title: 'x', thumbnail_url: 'javascript:alert(1)' } })?.thumbnailUrl)
-      .toBeNull()
-  })
-})
-
-describe('messageContacts', () => {
-  it('devuelve vacío cuando el mensaje no trae una lista de contactos', () => {
-    expect(messageContacts(null)).toEqual([])
-    expect(messageContacts({ contacts: 'Ana' })).toEqual([])
-    expect(messageContacts({ contacts: [] })).toEqual([])
-  })
-
-  it('lee la forma de Meta Cloud API, prefiriendo el wa_id sobre el número visible', () => {
-    expect(messageContacts({
-      contacts: [{
-        name: { formatted_name: 'Lidia Mimbela', first_name: 'Lidia' },
-        phones: [{ phone: '+51 987 654 321', wa_id: '51987654321' }],
-      }],
-    })).toEqual([{ name: 'Lidia Mimbela', phone: ['51987654321'], phoneLabel: '+51 987 654 321' }])
-  })
-
-  it('conserva los varios números de un contacto', () => {
-    const contacts = messageContacts({
-      contacts: [{ name: { first_name: 'Ana' }, phones: [{ wa_id: '51987654321' }, { phone: '+51 900 000 000' }] }],
-    })
-
-    expect(contacts[0].phone).toEqual(['51987654321', '51900000000'])
-  })
-
-  it('lee la forma que arma el historial de Evolution', () => {
-    expect(messageContacts({ contacts: [{ fullName: 'Ana', phoneNumber: '+51 987 654 321' }] }))
-      .toEqual([{ name: 'Ana', phone: ['51987654321'], phoneLabel: '+51 987 654 321' }])
-  })
-
-  it('saca el número del vCard, prefiriendo el waid sobre el TEL visible', () => {
-    const vcard =
-      'BEGIN:VCARD\nVERSION:3.0\nFN:Lidia Mimbela\n' +
-      'TEL;type=CELL;waid=51987654321:987 654 321\nEND:VCARD'
-
-    expect(messageContacts({ contacts: [{ vcard }] }))
-      .toEqual([{ name: 'Lidia Mimbela', phone: ['51987654321'], phoneLabel: '987 654 321' }])
-  })
-
-  it('lee el TEL agrupado ("item1.TEL") que manda WhatsApp desde Android', () => {
-    const vcard =
-      'BEGIN:VCARD\nVERSION:3.0\nN:;;;;\nFN:Alger Pier\n' +
-      'item1.TEL;waid=51906471403:+51 906 471 403\nitem1.X-ABLabel:Celular\n' +
-      'PHOTO;BASE64:/9j/4AAQSkZJRgABAQAAAQABAAD\nEND:VCARD'
-
-    expect(messageContacts({ contacts: [{ displayName: 'Alger Pier Nuevo 1', vcard }] }))
-      .toEqual([{ name: 'Alger Pier Nuevo 1', phone: ['51906471403'], phoneLabel: '+51 906 471 403' }])
-  })
-
-  it('deja el contacto sin número marcable cuando el vCard no trae uno usable', () => {
-    expect(messageContacts({ contacts: [{ fullName: 'Ana', vcard: 'BEGIN:VCARD\nTEL:123\nEND:VCARD' }] }))
-      .toEqual([{ name: 'Ana', phone: null, phoneLabel: '123' }])
-  })
-
-  it('nombra al contacto aunque no venga nombre', () => {
-    expect(messageContacts({ contacts: [{ phones: [{ wa_id: '51987654321' }] }] })[0].name)
-      .toBe('Contacto compartido')
   })
 })
 
@@ -546,142 +439,5 @@ describe('groupByDay', () => {
 
   it('sin ítems no arma ninguna sección', () => {
     expect(groupByDay([])).toEqual([])
-  })
-})
-
-// Payload real (recortado) de un pedido de "Separación de cita" de WhatsApp
-// Flow: llega como 3 mensajes `interactive` independientes que comparten
-// `reference_id` dentro de `payload.buttons[0]`.
-describe('messageFlowOrder', () => {
-  it('lee el botón de creación del pedido (review_and_pay)', () => {
-    const button = messageFlowOrder({
-      buttons: [{
-        name: 'review_and_pay',
-        amount: 50,
-        subtotal: 50,
-        currency: 'PEN',
-        reference_id: '4W1G98HRIFB',
-        order_status: 'payment_requested',
-        item_name: 'HIFU 12D',
-        quantity: 1,
-      }],
-    })
-    expect(button).toMatchObject({
-      name: 'review_and_pay',
-      amount: 50,
-      currency: 'PEN',
-      reference_id: '4W1G98HRIFB',
-      order_status: 'payment_requested',
-      item_name: 'HIFU 12D',
-      quantity: 1,
-    })
-  })
-
-  it('lee una actualización de estado de pago sin los datos del ítem', () => {
-    const button = messageFlowOrder({
-      buttons: [{ name: 'payment_status', payment_status: 'captured', reference_id: '4W1G98HRIFB' }],
-    })
-    expect(button).toMatchObject({ name: 'payment_status', payment_status: 'captured', amount: null, item_name: null })
-  })
-
-  it('devuelve null si no hay botones (mensaje interactivo sin forma de pedido)', () => {
-    expect(messageFlowOrder({ title: 'Servicios', options: [{ id: 'hifu', text: 'HIFU' }] })).toBeNull()
-    expect(messageFlowOrder(null)).toBeNull()
-    expect(messageFlowOrder({ buttons: [] })).toBeNull()
-  })
-
-  it('devuelve null cuando el botón no es de pedido de WhatsApp Flow ni trae reference_id', () => {
-    expect(messageFlowOrder({ buttons: [{ name: 'quick_reply', text: 'Sí' }] })).toBeNull()
-    expect(messageFlowOrder({ buttons: [{ name: 'review_and_pay' }] })).toBeNull()
-  })
-})
-
-describe('flowOrderGroup', () => {
-  const referenceId = '4W1G98HRIFB'
-  function interactiveMessage(sentAt: string, buttonOverrides: Record<string, unknown>) {
-    return {
-      message_type: 'interactive' as const,
-      sent_at: sentAt,
-      payload: { buttons: [{ reference_id: referenceId, ...buttonOverrides }] },
-    }
-  }
-
-  it('usa el order_status del último mensaje del grupo, no el "payment_requested" original', () => {
-    const messages = [
-      interactiveMessage('2026-08-01T10:00:00.000Z', {
-        name: 'review_and_pay', order_status: 'payment_requested', item_name: 'HIFU 12D', quantity: 1,
-        amount: 50, subtotal: 50, currency: 'PEN',
-      }),
-      interactiveMessage('2026-08-01T10:01:00.000Z', { name: 'payment_status', payment_status: 'captured' }),
-      interactiveMessage('2026-08-01T10:02:00.000Z', { name: 'review_order', order_status: 'completed' }),
-    ]
-
-    const group = flowOrderGroup(messages, referenceId)
-    expect(group).toMatchObject({
-      orderStatus: 'completed',
-      paymentStatus: 'captured',
-      itemName: 'HIFU 12D',
-      quantity: 1,
-      amount: 50,
-      subtotal: 50,
-      currency: 'PEN',
-    })
-  })
-
-  it('no depende del orden de llegada: ordena por sent_at antes de agregar', () => {
-    // Los mismos 3 mensajes, pero llegando desordenados a la función.
-    const messages = [
-      interactiveMessage('2026-08-01T10:02:00.000Z', { name: 'review_order', order_status: 'canceled' }),
-      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
-      interactiveMessage('2026-08-01T10:01:00.000Z', { name: 'payment_status', payment_status: 'declined' }),
-    ]
-
-    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'canceled', paymentStatus: 'declined' })
-  })
-
-  it('si ningún mensaje posterior trae order_status, queda el original', () => {
-    const messages = [
-      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
-    ]
-    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'payment_requested', paymentStatus: null })
-  })
-
-  it('ignora mensajes de otro reference_id y los que no son interactive', () => {
-    const messages = [
-      interactiveMessage('2026-08-01T10:00:00.000Z', { name: 'review_and_pay', order_status: 'payment_requested' }),
-      interactiveMessage('2026-08-01T10:01:00.000Z', { reference_id: 'OTRO-PEDIDO', name: 'review_order', order_status: 'completed' } as never),
-      { message_type: 'text' as const, sent_at: '2026-08-01T10:02:00.000Z', payload: null },
-    ]
-    expect(flowOrderGroup(messages, referenceId)).toMatchObject({ orderStatus: 'payment_requested' })
-  })
-})
-
-describe('flowStatusLabel', () => {
-  it('usa la etiqueta del mapa cuando existe', () => {
-    expect(flowStatusLabel('captured', PAYMENT_STATUS_LABELS)).toBe('Realizado')
-    expect(flowStatusLabel('completed', ORDER_STATUS_LABELS)).toBe('Completado')
-  })
-
-  it('capitaliza y reemplaza guiones bajos como respaldo', () => {
-    expect(flowStatusLabel('some_weird_status', ORDER_STATUS_LABELS)).toBe('Some weird status')
-  })
-
-  it('devuelve vacío sin estado', () => {
-    expect(flowStatusLabel(null, ORDER_STATUS_LABELS)).toBe('')
-  })
-})
-
-describe('formatFlowAmount', () => {
-  it('usa el símbolo pegado al monto para PEN y USD, como el backend', () => {
-    expect(formatFlowAmount(50, 'PEN')).toBe('S/50.00')
-    expect(formatFlowAmount(19.9, 'USD')).toBe('$19.90')
-  })
-
-  it('cae al código de moneda con espacio cuando no es PEN/USD', () => {
-    expect(formatFlowAmount(30, 'EUR')).toBe('EUR 30.00')
-  })
-
-  it('sin monto no arma texto (la fila se oculta, no se inventa un 0)', () => {
-    expect(formatFlowAmount(null, 'PEN')).toBe('')
   })
 })

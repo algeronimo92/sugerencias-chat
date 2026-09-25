@@ -1,29 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { HistoryMessage, InternalNote, LeadActivity, Message } from '../types'
+import { useMemo } from 'react'
+import type { InternalNote, LeadActivity, Message } from '../types'
 import { groupByDay, parseContent, resolveMediaUrl } from '../utils/message'
 import { messageMediaFilename } from '../utils/media'
 import type { MediaLightboxItem } from '../components/MediaLightbox'
 import { useMessages } from './useMessages'
-import { useEvolutionHistory, useEvolutionHistoryAvailability } from './useEvolutionHistory'
 import { useInternalNotes } from './useInternalNotes'
 import { useLeadActivity } from './useLeadMeta'
 
-/** Todo lo que puede aparecer en el hilo, ya sea de la base o traído al vuelo. */
+/** Todo lo que puede aparecer en el hilo. */
 export type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
   | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
-  // Traído de WhatsApp al vuelo, sin registro en la base: siempre anterior a
-  // cualquier mensaje propio, así que el orden por fecha lo deja arriba.
-  | { kind: 'history'; key: string; sentAt: string; history: HistoryMessage }
 
 /** Cuántos mensajes enviados se ofrecen para reenviar o guardar como plantilla. */
 const SENT_HISTORY_LIMIT = 10
 
 /**
- * Arma el hilo que se ve en pantalla a partir de las cuatro fuentes que lo
- * componen: los mensajes registrados, el historial que vive solo en WhatsApp,
- * las notas internas y los cambios de etapa del lead.
+ * Arma el hilo que se ve en pantalla a partir de las tres fuentes que lo
+ * componen: los mensajes registrados, las notas internas y los cambios de
+ * etapa del lead.
  *
  * Todo sale ordenado por fecha y agrupado por día, que es lo que permite fijar
  * el chip de fecha mientras se navega.
@@ -45,43 +41,10 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
     [messagePages],
   )
 
-  // Historial de WhatsApp anterior al registro propio: se pide a mano, recién
-  // cuando el usuario agotó los mensajes de la base y quiere ver más atrás.
-  const [historyRequested, setHistoryRequested] = useState(false)
-  const { data: historyAvailability } = useEvolutionHistoryAvailability()
-  const oldestDbSentAt = messages.find(m => m.sent_at)?.sent_at ?? null
-  const {
-    data: historyPages,
-    error: historyError,
-    fetchNextPage: fetchNextHistoryPage,
-    hasNextPage: hasMoreHistory,
-    isFetching: isFetchingHistory,
-    refetch: refetchHistory,
-  } = useEvolutionHistory(chatId, oldestDbSentAt, historyRequested && !hasNextPage)
-  const historyMessages = useMemo(() => {
-    const registered = new Set(messages.map(m => m.wa_message_id).filter(Boolean))
-    return [...(historyPages?.pages ?? [])]
-      .reverse()
-      .flatMap(page => page.items)
-      .filter(item => !registered.has(item.wa_message_id))
-  }, [historyPages, messages])
-
-  // El historial de WhatsApp se vuelve a pedir a mano en cada chat: es caro
-  // y casi siempre alcanza con lo que está registrado.
-  useEffect(() => {
-    setHistoryRequested(false)
-  }, [chatId])
-
   const { data: notes = [] } = useInternalNotes(chatId)
   const { data: leadActivity = [] } = useLeadActivity(chatId)
 
   const timeline = useMemo<TimelineItem[]>(() => [
-    ...historyMessages.map(history => ({
-      kind: 'history' as const,
-      key: `history-${history.wa_message_id}`,
-      sentAt: history.sent_at,
-      history,
-    })),
     ...messages.map(message => ({
       kind: 'message' as const,
       key: `message-${message.id}`,
@@ -116,7 +79,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
       return a.message.id - b.message.id
     }
     return a.key.localeCompare(b.key)
-  }), [messages, historyMessages, notes, leadActivity])
+  }), [messages, notes, leadActivity])
 
   // Una sección por día: es lo que permite fijar el chip de fecha arriba
   // mientras se navega ese día y que el del día siguiente lo empuje al llegar.
@@ -139,7 +102,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
   // envío y mezcla imágenes y videos, como el visor multimedia de WhatsApp.
   const chatMediaItems = useMemo<MediaLightboxItem[]>(() => messages.flatMap(message => {
     const parsed = parseContent(message)
-    if (parsed.kind !== 'image' && parsed.kind !== 'video' && parsed.kind !== 'ptv') return []
+    if (parsed.kind !== 'image' && parsed.kind !== 'video') return []
     const src = resolveMediaUrl(message.media_url)
     if (!src) return []
     return [{
@@ -152,7 +115,6 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
 
   return {
     messages,
-    historyMessages,
     timeline,
     daySections,
     sentMessageHistory,
@@ -164,15 +126,5 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
     isFetchingNextPage,
     pageCount: messagePages?.pages.length ?? 0,
     lastTimelineKey: timeline.at(-1)?.key ?? null,
-    // Historial de WhatsApp traído al vuelo
-    historyAvailability,
-    historyError,
-    fetchNextHistoryPage,
-    hasMoreHistory,
-    isFetchingHistory,
-    refetchHistory,
-    historyRequested,
-    setHistoryRequested,
-    historyPageCount: historyPages?.pages.length ?? 0,
   }
 }

@@ -1,22 +1,19 @@
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Database, Download, Forward, History, Loader2, MessageCircle, MessageCircleOff, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Chat, Message } from '../types'
 import type { MessageTemplate } from '../types'
 import {
-  useDeleteMessage, useDeleteMessages, usePinMessage, usePinnedMessages, useReactToMessage,
+  usePinMessage, usePinnedMessages, useReactToMessage,
   useSendMessage, useUnpinMessage, type ReplyTarget,
 } from '../hooks/useMessages'
 import { useUpdateLead } from '../hooks/useChats'
-import { useTemplateCapabilities } from '../hooks/useTemplates'
-import { HistoryMessageBubble } from './HistoryMessageBubble'
 import { avatarInitial, displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { formatDayLabel, formatMessageTime, parseContent } from '../utils/message'
 import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
 import { messageMediaFilename, triggerMediaDownload } from '../utils/media'
 import { AlbumBubble } from './AlbumBubble'
-import { ConfirmDialog } from './ui/ConfirmDialog'
 import { ChatComposer } from './ChatComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { InternalNoteComposer } from './InternalNoteComposer'
@@ -36,7 +33,6 @@ const MediaLightbox = lazy(() => import('./MediaLightbox').then(m => ({ default:
 const StickerPreviewDialog = lazy(() => import('./StickerPreviewDialog').then(m => ({ default: m.StickerPreviewDialog })))
 const SaveAsTemplateDialog = lazy(() => import('./SaveAsTemplateDialog').then(m => ({ default: m.SaveAsTemplateDialog })))
 const TemplateSendDialog = lazy(() => import('./TemplateSendDialog').then(m => ({ default: m.TemplateSendDialog })))
-const MessageEditDialog = lazy(() => import('./MessageEditDialog').then(m => ({ default: m.MessageEditDialog })))
 
 interface Props {
   chat: Chat
@@ -68,24 +64,9 @@ function DaySeparator({ sentAt }: { sentAt: string }) {
   )
 }
 
-/** Marca dónde arranca lo que el sistema tiene guardado. Todo lo de arriba se
- * leyó de WhatsApp al vuelo y no está en la base: no se puede buscar, ni
- * citar, ni consultar sin conexión a la instancia. */
-function DbRecordSeparator() {
-  return (
-    <div className="flex justify-center py-3">
-      <span className="flex items-center gap-1.5 rounded-bubble border border-dashed border-wa-primary/50 bg-white px-3 py-1 text-[11px] font-medium text-wa-primary-strong shadow-sm dark:bg-wa-head-dark dark:text-wa-primary">
-        <Database aria-hidden="true" className="h-3 w-3" />
-        Desde acá hay registro en el sistema
-      </span>
-    </div>
-  )
-}
-
 export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSuggestions }: Props) {
   const {
     messages,
-    historyMessages,
     timeline,
     daySections,
     sentMessageHistory,
@@ -97,23 +78,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     isFetchingNextPage,
     pageCount,
     lastTimelineKey,
-    historyAvailability,
-    historyError,
-    fetchNextHistoryPage,
-    hasMoreHistory,
-    isFetchingHistory,
-    refetchHistory,
-    historyRequested,
-    setHistoryRequested,
-    historyPageCount,
   } = useChatTimeline(chat.chat_id, highlightMessageId)
 
   const { data: me } = useMe()
   const { data: customerWindow, isLoading: isLoadingCustomerWindow } = useCustomerServiceWindow(chat.chat_id)
-  // Mismo dato que ya trae el picker de plantillas oficiales: qué tan
-  // limitada es la instancia de Evolution activa. En Meta Cloud API no se
-  // puede editar ni borrar un mensaje saliente ya mandado.
-  const { data: instanceCapabilities } = useTemplateCapabilities()
   const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead(chat.chat_id)
 
   function toggleAutomation() {
@@ -163,17 +131,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     lastTimelineKey,
     timelineLength: timeline.length,
     pageCount,
-    historyPageCount,
     hasNextPage: !!hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    historyError,
   })
 
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null)
   const [previewSticker, setPreviewSticker] = useState<{ src: string; mediaUrl: string } | null>(null)
   const [templateContentToSave, setTemplateContentToSave] = useState<string | null>(null)
-  const [messageToEdit, setMessageToEdit] = useState<Message | null>(null)
   const [multimediaTemplate, setMultimediaTemplate] = useState<MessageTemplate | null>(null)
   const [isNoteMode, setIsNoteMode] = useState(false)
 
@@ -183,12 +148,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
   const { mutate: sendMessage, retryMessage, discardMessage, error: sendError } = useSendMessage(chat.chat_id)
   const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
-  const deleteMessage = useDeleteMessage(chat.chat_id)
-  const deleteMessages = useDeleteMessages(chat.chat_id)
 
   // Selección múltiple estilo WhatsApp: se abre manteniendo apretada una
   // burbuja (o desde el botón del hover) y habilita copiar, reenviar y
-  // eliminar sobre varios mensajes a la vez.
+  // descargar varios mensajes a la vez.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const isSelecting = selectedIds.size > 0
   // Mensajes a reenviar: la selección múltiple, o el mensaje suelto desde el
@@ -223,8 +186,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const albumGroups = useMemo(() => groupAlbumMessages(messages), [messages])
   const albumMembers = useMemo(() => albumMemberIds(albumGroups), [albumGroups])
 
-  // Fijado nativo del CRM: no hay forma de mandarlo hacia WhatsApp (ni
-  // Evolution API ni Baileys lo exponen), así que vive en su propio endpoint
+  // Fijado nativo del CRM: Meta no expone forma de fijar un mensaje del lado
+  // de quien envía, así que vive en su propio endpoint
   // — un fijado puede estar fuera de la página del hilo que está cargada.
   const { data: pinnedMessages = [] } = usePinnedMessages(chat.chat_id)
   const [pinnedIndex, setPinnedIndex] = useState(0)
@@ -244,17 +207,12 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // En el orden del hilo, no en el que se fueron tildando: es el orden en que
   // se copian y se reenvían.
   const selectedMessages = messages.filter(message => selectedIds.has(message.id))
-  // "Eliminar para todos" solo aplica a los mensajes propios ya confirmados en
-  // WhatsApp; el resto de la selección se ignora, como hace WhatsApp.
-  const deletableSelection = selectedMessages.filter(
-    message => message.sender === 'vendedor' && !!message.wa_message_id && !message.deleted_at,
-  )
   const downloadableSelection = selectedMessages.filter(
-    message => !!message.media_url && message.message_type !== 'view_once' && !message.deleted_at,
+    message => !!message.media_url && !message.deleted_at,
   )
 
   function downloadMessageMedia(message: Message) {
-    if (!message.media_url || message.message_type === 'view_once' || message.deleted_at) return
+    if (!message.media_url || message.deleted_at) return
     triggerMediaDownload(message.media_url, messageMediaFilename(message))
     toast.success('Descarga iniciada')
   }
@@ -268,13 +226,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       ? 'Descarga iniciada'
       : `${downloadableSelection.length} descargas iniciadas`)
     clearSelection()
-  }
-
-  function removeMessage(message: Message) {
-    deleteMessage.mutate(message.id, {
-      onSuccess: () => toast.success('Mensaje eliminado para todos'),
-      onError: error => toast.error(extractErrorMessage(error)),
-    })
   }
 
   /** Copia la selección al portapapeles. Un solo mensaje se copia pelado (es
@@ -297,18 +248,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     } catch {
       toast.error('El navegador no dejó copiar al portapapeles')
     }
-  }
-
-  function deleteSelection() {
-    if (!deletableSelection.length) return
-    deleteMessages.mutate(deletableSelection.map(message => message.id), {
-      onSuccess: ({ deleted, failed }) => {
-        if (deleted) toast.success(`${deleted} mensaje(s) eliminados para todos`)
-        if (failed) toast.error(`${failed} mensaje(s) no se pudieron eliminar`)
-        clearSelection()
-      },
-      onError: error => toast.error(extractErrorMessage(error)),
-    })
   }
 
   // Escape cierra el modo selección, como cualquier otra capa de la interfaz.
@@ -336,7 +275,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   useEffect(() => {
     setReplyTo(null)
     setIsNoteMode(false)
-    setMessageToEdit(null)
     setSelectedIds(new Set())
     setMessageIdsToForward(null)
   }, [chat.chat_id])
@@ -394,30 +332,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             >
               <Forward className="h-5 w-5" />
             </button>
-            <ConfirmDialog
-              title="Eliminar mensajes para todos"
-              description={
-                deletableSelection.length === selectedIds.size
-                  ? 'Los mensajes desaparecerán también del WhatsApp del cliente, que verá "Se eliminó este mensaje". No se puede deshacer.'
-                  : `De los ${selectedIds.size} seleccionados solo se pueden eliminar ${deletableSelection.length}: WhatsApp únicamente permite borrar para todos los mensajes propios ya enviados. No se puede deshacer.`
-              }
-              confirmLabel="Eliminar para todos"
-              disabled={!deletableSelection.length || deleteMessages.isPending}
-              onConfirm={deleteSelection}
-            >
-              <button
-                type="button"
-                disabled={!deletableSelection.length || deleteMessages.isPending}
-                aria-busy={deleteMessages.isPending}
-                aria-label="Eliminar mensajes seleccionados para todos"
-                title={deletableSelection.length ? 'Eliminar para todos' : 'Ninguno de los mensajes seleccionados se puede eliminar'}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 sm:h-11 sm:w-11 dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-red-400"
-              >
-                {deleteMessages.isPending
-                  ? <Loader2 className="h-5 w-5 animate-spin" />
-                  : <Trash2 className="h-5 w-5" />}
-              </button>
-            </ConfirmDialog>
           </div>
         </div>
       ) : (
@@ -531,63 +445,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             {isFetchingNextPage ? 'Cargando anteriores...' : 'Cargar mensajes anteriores'}
           </button>
         )}
-        {/* Con la base agotada, lo anterior solo existe en WhatsApp. Se ofrece
-            traerlo a mano: cada pedido cuesta varias llamadas a Evolution y no
-            es lo que se necesita en la mayoría de los chats. */}
-        {!isLoading && !error && !hasNextPage && historyAvailability?.available && (
-          <div className="my-2 flex flex-col items-center gap-1.5">
-            {historyError && (
-              <p className="text-center text-xs text-red-500 dark:text-red-400">
-                No se pudo traer el historial de WhatsApp. {extractErrorMessage(historyError)}
-              </p>
-            )}
-            {isFetchingHistory ? (
-              <span className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm dark:bg-wa-head-dark dark:text-wa-muted-dark">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Buscando historial de WhatsApp...
-              </span>
-            ) : !historyRequested ? (
-              <button type="button"
-                onClick={() => loadOlder(async () => {
-                  setHistoryRequested(true)
-                  return { isError: false }
-                })}
-                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-              >
-                <History className="h-3.5 w-3.5" />
-                Ver historial anterior de WhatsApp
-              </button>
-            ) : historyError ? (
-              <button type="button"
-                onClick={() => loadOlder(refetchHistory)}
-                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Reintentar
-              </button>
-            ) : hasMoreHistory ? (
-              <button type="button"
-                onClick={() => loadOlder(fetchNextHistoryPage)}
-                className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-wa-muted shadow-sm hover:bg-wa-hover dark:bg-wa-head-dark dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-              >
-                <History className="h-3.5 w-3.5" />
-                Cargar más historial de WhatsApp
-              </button>
-            ) : (
-              <span className="text-center text-xs text-wa-muted dark:text-wa-muted-dark">
-                {historyMessages.length > 0
-                  ? 'Inicio del historial de WhatsApp'
-                  : 'No hay historial anterior en WhatsApp'}
-              </span>
-            )}
-          </div>
-        )}
-        {/* Sin historial cargado, el chat empieza donde empieza el registro:
-            la marca va arriba de todo. Con historial cargado la dibuja el
-            propio hilo, en el límite entre lo traído y lo guardado. */}
-        {!isLoading && !error && !hasNextPage && messages.length > 0 && historyMessages.length === 0 && (
-          <DbRecordSeparator />
-        )}
         {daySections.map((section) => (
           // La sección acota el sticky del chip: sin este contenedor todos los
           // chips se apilarían pegados arriba en vez de reemplazarse.
@@ -596,31 +453,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             {section.items.map(({ item, globalIndex }, indexInSection) => {
               const isFirstOfSection = indexInSection === 0
               const prevItem = globalIndex > 0 ? timeline[globalIndex - 1] : null
-              // El primer ítem registrado después del historial de WhatsApp es
-              // justo donde arranca lo que guarda el sistema.
-              const showDbBoundary = item.kind !== 'history' && prevItem?.kind === 'history'
               // Miembro de un álbum que no es el primero: ya lo pinta la
               // grilla de AlbumBubble más arriba, esta burbuja se salta.
               if (item.kind === 'message' && albumMembers.has(item.message.id) && !albumGroups.has(item.message.id)) {
                 return null
               }
-              if (item.kind === 'history') {
-                return (
-                  <HistoryMessageBubble
-                    key={item.key}
-                    message={item.history}
-                    isFirstOfGroup={
-                      isFirstOfSection ||
-                      prevItem?.kind !== 'history' ||
-                      prevItem.history.sender !== item.history.sender
-                    }
-                  />
-                )
-              }
               if (item.kind === 'activity') {
                 return (
                   <Fragment key={item.key}>
-                    {showDbBoundary && <DbRecordSeparator />}
                     <StageChangeCard activity={item.activity} />
                   </Fragment>
                 )
@@ -628,7 +468,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               if (item.kind === 'note') {
                 return (
                   <Fragment key={item.key}>
-                    {showDbBoundary && <DbRecordSeparator />}
                     <div className="my-2">
                       <InternalNoteCard
                         chatId={chat.chat_id}
@@ -644,7 +483,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                 const groupIds = group.map(m => m.id)
                 return (
                   <Fragment key={item.key}>
-                    {showDbBoundary && <DbRecordSeparator />}
                     <AlbumBubble
                       messages={group}
                       isFirstOfGroup={
@@ -669,11 +507,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               }
               return (
                 <Fragment key={item.key}>
-                  {showDbBoundary && <DbRecordSeparator />}
                   <MessageBubble
                     chat={chat}
                     message={item.message}
-                    chatMessages={messages}
                     isFirstOfGroup={
                       isFirstOfSection ||
                       !prevItem ||
@@ -694,18 +530,14 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                       { messageId: item.message.id, emoji },
                       { onError: (err) => toast.error(extractErrorMessage(err)) },
                     )}
-                    onEdit={() => setMessageToEdit(item.message)}
-                    onDelete={() => removeMessage(item.message)}
                     onForward={() => setMessageIdsToForward([item.message.id])}
                     onDownload={() => downloadMessageMedia(item.message)}
-                    isDeleting={deleteMessage.isPending && deleteMessage.variables === item.message.id}
                     onPin={() => handlePin(item.message.id)}
                     onUnpin={() => unpinMessage(item.message.id)}
                     onSaveTemplate={setTemplateContentToSave}
                     selectionMode={isSelecting}
                     isSelected={selectedIds.has(item.message.id)}
                     onToggleSelect={() => toggleSelected(item.message.id)}
-                    editDeleteSupported={instanceCapabilities?.edit_delete_supported}
                   />
                 </Fragment>
               )
@@ -784,14 +616,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
 
         {templateContentToSave && (
           <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />
-        )}
-
-        {messageToEdit && (
-          <MessageEditDialog
-            chatId={chat.chat_id}
-            message={messageToEdit}
-            onClose={() => setMessageToEdit(null)}
-          />
         )}
 
         {multimediaTemplate && (

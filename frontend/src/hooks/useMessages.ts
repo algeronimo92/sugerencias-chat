@@ -70,7 +70,11 @@ export interface OptimisticMessageDraft {
   media_url?: string | null
   reply_to?: ReplyTarget | null
   message_type?: MessageType | null
+  message_subtype?: string | null
   payload?: JsonObject | null
+  /** Cuerpo de Meta que se va a mandar, para pintar la burbuja igual que
+   * cuando el backend la confirme. */
+  provider_payload?: JsonObject | null
 }
 
 interface OptimisticContext {
@@ -101,10 +105,13 @@ function optimisticMessage(draft: OptimisticMessageDraft): Message {
     sent_at: new Date(timestamp).toISOString(),
     media_url: draft.media_url ?? null,
     wa_message_id: null,
-    status: 'PENDING',
+    outbox_status: 'queued',
     message_type: draft.message_type ?? null,
+    message_subtype: draft.message_subtype ?? null,
+    direction: 'outbound',
     analysis: null,
     payload: draft.payload ?? null,
+    provider_payload: draft.provider_payload ?? null,
     quoted_message_id: draft.reply_to?.id ?? null,
     quoted_sender: draft.reply_to?.sender ?? null,
     quoted_content: draft.reply_to?.content ?? null,
@@ -221,7 +228,7 @@ export function useSendMessage(chatId: string) {
     onMutate: async message => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
-        ? { ...current, status: 'PENDING', wa_message_id: null }
+        ? { ...current, outbox_status: 'queued', meta_status: null, wa_message_id: null }
         : current)
     },
     onSuccess: message => {
@@ -229,7 +236,7 @@ export function useSendMessage(chatId: string) {
     },
     onError: (_error, message) => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
-        ? { ...current, status: 'FAILED' }
+        ? { ...current, outbox_status: 'failed' }
         : current)
     },
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
@@ -244,23 +251,23 @@ export function useSendMessage(chatId: string) {
     onMutate: async message => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
-        ? { ...current, status: 'DISCARDED' }
+        ? { ...current, outbox_status: 'discarded' }
         : current)
     },
     onError: (_error, message) => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
-        ? { ...current, status: 'FAILED' }
+        ? { ...current, outbox_status: 'failed' }
         : current)
     },
   })
 
   function retryMessage(message: Message) {
-    if (message.status !== 'FAILED' || message.id < 1) return
+    if (message.outbox_status !== 'failed' || message.id < 1) return
     retry.mutate(message)
   }
 
   function discardMessage(message: Message) {
-    if (message.status !== 'FAILED' || message.id < 1) return
+    if (message.outbox_status !== 'failed' || message.id < 1) return
     discard.mutate(message)
   }
 
@@ -316,8 +323,8 @@ interface MediaPayload {
   replyTo?: ReplyTarget | null
   /** Comparten este id las fotos/videos elegidos juntos en el mismo picker
    * (ver ChatComposer): agrupa el hilo en grilla sin depender de adivinar por
-   * tiempo — WhatsApp no tiene noción de álbum saliente que Evolution API
-   * pueda usar, así que esto es puramente para la vista del propio CRM. */
+   * tiempo — la Cloud API de WhatsApp no tiene álbum saliente, así que esto
+   * es puramente para la vista del propio CRM. */
   albumId?: string
 }
 
@@ -432,89 +439,8 @@ export function useReactToMessage(chatId: string) {
   })
 }
 
-interface EditPayload {
-  messageId: number
-  text: string
-}
-
-/** Reescribe el texto de un mensaje ya enviado (el "Editar" de WhatsApp).
- *
- * Sin update optimista a propósito: el backend rechaza la edición fuera de los
- * 15 minutos, sobre adjuntos y sobre mensajes ajenos, y pintar el texto nuevo
- * antes de esa respuesta mostraría una corrección que el cliente nunca vio. */
-export function useEditMessage(chatId: string) {
-  const queryClient = useQueryClient()
-  return useMutation<Message, Error, EditPayload>({
-    mutationFn: async ({ messageId, text }) =>
-      (await client.patch<Message>(
-        `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
-        { text },
-      )).data,
-    onSuccess: message => {
-      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
-      // El preview de la lista muestra el último mensaje: si era este, cambió.
-      void queryClient.invalidateQueries({ queryKey: ['chats'] })
-    },
-  })
-}
-
-async function deleteMessage(chatId: string, messageId: number): Promise<Message> {
-  const { data } = await client.delete<Message>(
-    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}`,
-  )
-  return data
-}
-
-/** Elimina para todos un mensaje ya enviado. La burbuja no desaparece: queda
- * la lápida ("Se eliminó este mensaje"), igual que en WhatsApp. */
-export function useDeleteMessage(chatId: string) {
-  const queryClient = useQueryClient()
-  return useMutation<Message, Error, number>({
-    mutationFn: messageId => deleteMessage(chatId, messageId),
-    onSuccess: message => {
-      mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
-      void queryClient.invalidateQueries({ queryKey: ['chats'] })
-    },
-  })
-}
-
-export interface BulkDeleteResult {
-  deleted: number
-  failed: number
-}
-
-/** Elimina para todos una selección de mensajes.
- *
- * Van de a uno y en serie a propósito: cada borrado es una llamada a WhatsApp,
- * y mandarlas todas juntas hace que Evolution empiece a rechazarlas. Un fallo
- * no corta el resto — se informa cuántos quedaron sin borrar. */
-export function useDeleteMessages(chatId: string) {
-  const queryClient = useQueryClient()
-  return useMutation<BulkDeleteResult, Error, number[]>({
-    mutationFn: async messageIds => {
-      let deleted = 0
-      let failed = 0
-      for (const messageId of messageIds) {
-        try {
-          const message = await deleteMessage(chatId, messageId)
-          mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
-          deleted += 1
-        } catch {
-          failed += 1
-        }
-      }
-      return { deleted, failed }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['chats'] })
-      void queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
-    },
-  })
-}
-
-/** Hasta 3 mensajes fijados del chat — WhatsApp no tiene forma de mandar un
- * fijado hacia el otro lado (ni Evolution API ni Baileys lo exponen), así que
- * esto es un fijado nativo del CRM y vive en su propio endpoint: un mensaje
+/** Hasta 3 mensajes fijados del chat — Meta no tiene forma de mandar un
+ * fijado hacia el otro lado, así que esto es un fijado nativo del CRM y vive en su propio endpoint: un mensaje
  * fijado puede estar fuera de la página del hilo que está cargada. */
 export function usePinnedMessages(chatId: string | null) {
   return useQuery({
@@ -643,7 +569,8 @@ export function useSendLocation(chatId: string) {
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
         message_type: 'location',
-        payload: { latitude: payload.latitude, longitude: payload.longitude },
+        // Misma forma que el cuerpo de Meta que devolverá el backend.
+        provider_payload: { location: { latitude: payload.latitude, longitude: payload.longitude } },
         reply_to: payload.replyTo,
       }])
     },
@@ -684,14 +611,50 @@ export function useSendContacts(chatId: string) {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
-        message_type: 'contact',
-        payload: {
+        message_type: 'contacts',
+        provider_payload: {
           contacts: payload.contacts.map(contact => ({
-            fullName: contact.fullName,
-            phoneNumber: contact.phoneNumber,
+            name: { formatted_name: contact.fullName },
+            phones: [{ phone: contact.phoneNumber }],
           })),
         },
         reply_to: payload.replyTo,
+      }])
+    },
+    onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),
+    onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
+    onSettled: () => refetchAfterLastSend(queryClient, chatId),
+  })
+}
+
+interface InteractivePayload {
+  interactive: JsonObject
+  replyTo?: ReplyTarget | null
+}
+
+/** Manda un objeto `interactive` de Meta tal cual (producto, catálogo, Flow,
+ * permiso de llamada). El backend lo valida contra el contrato y contra lo
+ * que la cuenta tiene habilitado antes de encolarlo. */
+export function useSendInteractive(chatId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<Message, Error, InteractivePayload, OptimisticContext>({
+    mutationKey: ['send-message', chatId],
+    mutationFn: ({ interactive, replyTo }) => orderedRequest(chatId, async () => (
+      await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/interactive`, {
+        interactive,
+        reply_to_message_id: replyTo?.id ?? null,
+      })
+    ).data),
+    onMutate: async ({ interactive, replyTo }) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      const body = interactive.body
+      const text = body && typeof body === 'object' && !Array.isArray(body) && typeof body.text === 'string' ? body.text : null
+      return appendOptimisticMessages(queryClient, chatId, [{
+        content: text,
+        message_type: 'interactive',
+        message_subtype: typeof interactive.type === 'string' ? interactive.type : null,
+        provider_payload: { interactive },
+        reply_to: replyTo,
       }])
     },
     onSuccess: (message, _payload, context) => reconcileOptimisticMessages(queryClient, chatId, context, [message]),

@@ -1,4 +1,4 @@
-import type { JsonValue, MessageStatus, MessageType } from '../types'
+import type { JsonValue, MessageType, MetaStatus, OutboxStatus } from '../types'
 import { isJsonObject } from '../utils/message'
 
 export const REALTIME_EVENT_TYPES = [
@@ -23,12 +23,9 @@ export const CHATS_UPDATE_REASONS = [
   'outbound_queued',
   'outbound_message',
   'message_status',
-  'message_edited',
-  'message_deleted',
   'message_pinned',
   'reaction',
-  'poll_results',
-  'analysis',
+  'media_ready',
   'read',
   'unread',
   'lead_created',
@@ -44,19 +41,16 @@ export type ChatsUpdateReason = typeof CHATS_UPDATE_REASONS[number]
 const REALTIME_EVENT_TYPE_SET: ReadonlySet<string> = new Set(REALTIME_EVENT_TYPES)
 const CHATS_UPDATE_REASON_SET: ReadonlySet<string> = new Set(CHATS_UPDATE_REASONS)
 
-const MESSAGE_STATUS_VALUES: ReadonlySet<string> = new Set([
-  'PENDING', 'FAILED', 'DISCARDED', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED',
+const OUTBOX_STATUS_VALUES: ReadonlySet<string> = new Set([
+  'queued', 'sending', 'sent', 'retryable_failed', 'failed', 'discarded',
 ])
 
-const MESSAGE_TYPE_VALUES: ReadonlySet<string> = new Set([
-  'text', 'image', 'video', 'ptv', 'audio', 'document', 'location', 'sticker',
-  'contact', 'poll', 'reaction', 'pin', 'interactive', 'button', 'template', 'order', 'product',
-  'payment', 'view_once', 'unsupported',
-])
-
+/** Cambio de estado de un mensaje: el de la cola propia, el literal de Meta
+ * o los dos. Un campo ausente no se toca. */
 export interface MessageStatusUpdate {
   id: number
-  status: Exclude<MessageStatus, null>
+  outbox_status?: OutboxStatus
+  meta_status?: MetaStatus
 }
 
 export interface LatestMessage {
@@ -65,6 +59,7 @@ export interface LatestMessage {
   sender: string
   content: string | null
   message_type?: MessageType | null
+  message_subtype?: string | null
   name: string | null
 }
 
@@ -103,12 +98,8 @@ function isChatsUpdateReason(value: JsonValue | undefined): value is ChatsUpdate
   return typeof value === 'string' && CHATS_UPDATE_REASON_SET.has(value)
 }
 
-function isMessageStatus(value: string): value is Exclude<MessageStatus, null> {
-  return MESSAGE_STATUS_VALUES.has(value)
-}
-
-function isMessageType(value: string): value is MessageType {
-  return MESSAGE_TYPE_VALUES.has(value)
+function isOutboxStatus(value: JsonValue | undefined): value is OutboxStatus {
+  return typeof value === 'string' && OUTBOX_STATUS_VALUES.has(value)
 }
 
 function isNullableString(value: JsonValue | undefined): value is string | null {
@@ -176,21 +167,22 @@ function parseLatestMessage(rawLatest: JsonValue | undefined): LatestMessage | u
     chat_id: rawLatest.chat_id,
     sender: rawLatest.sender,
     content: rawLatest.content,
-    message_type: typeof rawLatest.message_type === 'string' && isMessageType(rawLatest.message_type)
-      ? rawLatest.message_type
-      : null,
+    // Tipo literal de Meta: uno que el contrato todavía no conoce llega igual.
+    message_type: typeof rawLatest.message_type === 'string' ? rawLatest.message_type : null,
+    message_subtype: typeof rawLatest.message_subtype === 'string' ? rawLatest.message_subtype : null,
     name: rawLatest.name,
   }
 }
 
 function parseChatsUpdated(parsed: JsonObject): ChatSocketEvent {
   const messageStatuses = Array.isArray(parsed.message_statuses)
-    ? parsed.message_statuses.flatMap(item => isJsonObject(item)
-      && typeof item.id === 'number'
-      && typeof item.status === 'string'
-      && isMessageStatus(item.status)
-      ? [{ id: item.id, status: item.status }]
-      : [])
+    ? parsed.message_statuses.flatMap((item): MessageStatusUpdate[] => {
+      if (!isJsonObject(item) || typeof item.id !== 'number') return []
+      const update: MessageStatusUpdate = { id: item.id }
+      if (isOutboxStatus(item.outbox_status)) update.outbox_status = item.outbox_status
+      if (typeof item.meta_status === 'string') update.meta_status = item.meta_status
+      return update.outbox_status || update.meta_status ? [update] : []
+    })
     : []
   return {
     type: 'chats_updated',

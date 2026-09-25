@@ -35,9 +35,13 @@ def _last_message_subquery():
             WspMessage.sent_at,
             WspMessage.sender,
             WspMessage.message_type,
+            WspMessage.message_subtype,
             WspMessage.deleted_at,
         )
         .where(WspMessage.chat_id == Lead.id)
+        # Mismo criterio que el hilo: una reacción es un badge, no el
+        # último mensaje de la conversación.
+        .where(WspMessage.message_type.is_distinct_from("reaction"))
         .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
         .lateral()
@@ -299,6 +303,7 @@ def _chat_columns(last_message):
         last_message.c.content.label("last_message"),
         last_message.c.sender.label("last_message_sender"),
         last_message.c.message_type.label("last_message_type"),
+        last_message.c.message_subtype.label("last_message_subtype"),
         last_message.c.deleted_at.label("last_message_deleted_at"),
         last_message.c.sent_at.label("timestamp"),
         _last_customer_message_at_subquery().label("last_customer_message_at"),

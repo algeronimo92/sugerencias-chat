@@ -79,6 +79,7 @@ def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
         "last_message": None if row["last_message_deleted_at"] else row["last_message"],
         "last_message_sender": row["last_message_sender"],
         "last_message_type": row["last_message_type"] if "last_message_type" in row else None,
+        "last_message_subtype": row["last_message_subtype"] if "last_message_subtype" in row else None,
         "last_message_deleted": row["last_message_deleted_at"] is not None,
         "timestamp": _fmt_ts(row["timestamp"]),
         "last_customer_message_at": _fmt_ts(row["last_customer_message_at"]),

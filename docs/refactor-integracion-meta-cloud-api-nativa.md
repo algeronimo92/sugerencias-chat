@@ -430,10 +430,21 @@ y cada fase cierra con un commit y la suite en verde.
 ### 10.2 Avance
 
 - [x] 1. Contrato y esquema aditivo
-- [ ] 2. Webhook crudo, parser Meta e identidad sin JID
-- [ ] 3. Renderers completos de entrada
-- [ ] 4. Builders y UI de salida
-- [ ] 5. Estados Meta separados del outbox
-- [ ] 6. Backfill auditado
-- [ ] 7. IA y automatizaciones sobre el contrato
-- [ ] 8. Cambio definitivo del webhook y retiro de Evolution
+- [x] 2. Webhook crudo, parser Meta e identidad sin JID
+- [x] 3. Renderers completos de entrada (un renderer por raíz y por subtipo
+  interactivo; un tipo nuevo se muestra con su nombre literal)
+- [x] 4. Builders y UI de salida (allowlist única en `meta_outbound.py`;
+  producto, lista de productos, catálogo, Flow y permiso de llamada desde el
+  menú de adjuntos, solo si la cuenta los tiene habilitados)
+- [x] 5. Estados Meta separados del outbox (`outbox_status` y `meta_status`)
+- [x] 6. Backfill auditado (migración c7e2f9a4d1b8, con `archived_wsp_messages`)
+- [x] 7. IA y automatizaciones sobre el contrato (condiciones
+  `reply_id_equals` y `message_type_equals` en el constructor de flujos)
+- [x] 8. Cambio definitivo del webhook y retiro de Evolution
+
+### 10.3 Pendiente fuera de esta rama
+
+- El stack de RabbitMQ (`compose.mq.yml`, `mq/`, el bloque de despliegue en
+  CI y su monitoreo) existía para la ingesta de Evolution y ya no recibe
+  mensajes. Se retira en un cambio aparte para no mezclarlo con el refactor.
+- Los documentos fechados de `docs/analisis` quedan como registro histórico.

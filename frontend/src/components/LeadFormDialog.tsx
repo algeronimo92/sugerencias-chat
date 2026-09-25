@@ -22,7 +22,8 @@ interface Props {
   /** false cuando el lead ya tiene conversación Y teléfono resuelto: el
    * número es la identidad del chat en WhatsApp y cambiarlo lo redirigiría.
    * Sigue en true con conversación activa si el teléfono está en null (un
-   * @lid sin resolver) — no hay nada resuelto que se pueda pisar. */
+   * contacto identificado solo por user_id de Meta) — no hay nada resuelto
+   * que se pueda pisar. */
   canEditPhone?: boolean
   /** true solo en ese segundo caso: hay conversación activa pero nunca se
    * resolvió el teléfono. Muestra la advertencia de que un número mal

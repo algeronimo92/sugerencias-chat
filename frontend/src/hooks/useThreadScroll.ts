@@ -21,11 +21,9 @@ interface Params {
   lastTimelineKey: string | null
   timelineLength: number
   pageCount: number
-  historyPageCount: number
   hasNextPage: boolean
   isFetchingNextPage: boolean
   fetchNextPage: () => Promise<{ isError: boolean }>
-  historyError: Error | null
 }
 
 /**
@@ -52,11 +50,9 @@ export function useThreadScroll({
   lastTimelineKey,
   timelineLength,
   pageCount,
-  historyPageCount,
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
-  historyError,
 }: Params) {
   const threadRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -232,16 +228,7 @@ export function useThreadScroll({
         setHasNewWhileAway(true)
       }
     }
-    // historyPageCount entra acá para que una página de historial vacía —el
-    // tramo que todavía se solapa con lo registrado— también consuma el
-    // snapshot, en vez de dejarlo colgado para el próximo render.
-  }, [chatId, isLoading, lastTimelineKey, timelineLength, pageCount, historyPageCount])
-
-  // Un pedido de historial fallido no agrega nada arriba: el snapshot que se
-  // tomó antes de pedirlo tiene que descartarse o la vista salta después.
-  useEffect(() => {
-    if (historyError) prependSnapshotRef.current = null
-  }, [historyError])
+  }, [chatId, isLoading, lastTimelineKey, timelineLength, pageCount])
 
   // Si el chat ya estaba cacheado sin el mensaje buscado (la primera página
   // agrandada solo aplica con cache vacía), se pagina hacia atrás hasta

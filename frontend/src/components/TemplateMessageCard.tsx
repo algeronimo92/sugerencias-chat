@@ -2,84 +2,28 @@ import { CornerUpLeft, ExternalLink } from 'lucide-react'
 
 import { resolveMediaUrl, type TemplateMessage } from '../utils/message'
 
-/**
- * Lo que va arriba del cuerpo, como en WhatsApp: el preview del enlace en los
- * anuncios de plantilla, o la pregunta original cuando el mensaje es la
- * respuesta del cliente a un botón.
- */
-export function TemplateMessagePreview({
-  template,
-  hasQuote = false,
-}: {
-  template: TemplateMessage
-  /** Si el mensaje ya trae la cita nativa de la app, no repetimos la pregunta. */
-  hasQuote?: boolean
-}) {
-  if (template.answeredQuestion) {
-    if (hasQuote) return null
-    return (
-      <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border-l-[3px] border-wa-primary/70 bg-black/5 px-2.5 py-1.5 dark:bg-white/10">
-        <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-wa-muted dark:text-wa-text-dark/60" />
-        <p className="line-clamp-2 text-[12px] leading-snug text-wa-muted dark:text-wa-text-dark/70">
-          {template.answeredQuestion}
-        </p>
-      </div>
-    )
-  }
-
-  // El encabezado de imagen de una plantilla oficial ya está en el storage de
-  // medios de la app (MinIO/local) desde que la plantilla se creó o importó
-  // -ver `_import_header_media_asset` en routers/templates.py- así que se
-  // resuelve como cualquier otra imagen, sin volver a subirla por mensaje.
+/** Encabezado de una plantilla oficial enviada: imagen o texto. */
+export function TemplateMessagePreview({ template }: { template: TemplateMessage }) {
+  // El encabezado de imagen ya está en el almacenamiento de la app desde que
+  // la plantilla se creó o importó: se resuelve como cualquier otra imagen.
   const headerImageSrc = template.headerImageUrl ? resolveMediaUrl(template.headerImageUrl) : null
-
-  if (!template.title && !template.description && !template.domain && !headerImageSrc) return null
-  const href = template.buttons.find((button) => button.url)?.url ?? null
-  const hasCard = !!(template.title || template.domain || template.description)
-
-  const card = (
-    <>
-      {template.title && (
-        <p className="line-clamp-2 text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">
-          {template.title}
-        </p>
-      )}
-      {template.domain && (
-        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-wa-muted dark:text-wa-text-dark/60">
-          <ExternalLink className="h-3 w-3 shrink-0" />
-          <span className="truncate">{template.domain}</span>
-        </p>
-      )}
-      {template.description && (
-        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-wa-muted dark:text-wa-text-dark/60">
-          {template.description}
-        </p>
-      )}
-    </>
-  )
-
-  const className = 'mb-1.5 block rounded-lg bg-black/5 px-2.5 py-2 dark:bg-white/10'
   return (
     <>
       {headerImageSrc && (
         <img src={headerImageSrc} alt="" loading="lazy" className="mb-1.5 max-h-48 w-full rounded-lg object-cover" />
       )}
-      {hasCard && (href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" className={`${className} transition-colors hover:bg-black/10 dark:hover:bg-white/15`}>
-          {card}
-        </a>
-      ) : (
-        <div className={className}>{card}</div>
-      ))}
+      {template.title && (
+        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template.title}</p>
+      )}
     </>
   )
 }
 
 /**
- * Botones de la plantilla: tarjetas propias debajo de la burbuja, con el mismo
- * color y separadas por un hilo de aire, como las dibuja WhatsApp. Los que
- * abren un enlace son clicables; los de respuesta rápida se muestran igual
- * pero inertes, porque son acciones del cliente, no del vendedor.
+ * Botones de la plantilla o del interactivo: tarjetas propias debajo de la
+ * burbuja, con el mismo color y separadas por un hilo de aire, como las dibuja
+ * WhatsApp. Los que abren un enlace son clicables; los de respuesta se
+ * muestran igual pero inertes, porque son acciones del cliente, no del vendedor.
  */
 export function TemplateMessageButtons({
   template,

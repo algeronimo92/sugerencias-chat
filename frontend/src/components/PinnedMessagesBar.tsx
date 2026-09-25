@@ -4,7 +4,7 @@ import { quotePreview } from '../utils/message'
 
 /** Barra de mensajes fijados arriba del hilo, como en WhatsApp nativo — salvo
  * que esto es puramente del CRM: no hay forma de mandar un fijado hacia
- * WhatsApp (ni Evolution API ni Baileys lo exponen), así que el cliente nunca
+ * WhatsApp (la Cloud API no lo expone), así que el cliente nunca
  * ve esta barra ni sabe que existe. Hasta 3 por chat; con más de uno, un mini
  * carrusel deja navegarlos con las flechas. */
 export function PinnedMessagesBar({
@@ -23,7 +23,7 @@ export function PinnedMessagesBar({
   if (pinned.length === 0) return null
   const index = Math.min(activeIndex, pinned.length - 1)
   const message = pinned[index]
-  const { icon: Icon, label, text } = quotePreview({ content: message.content, message_type: message.message_type })
+  const { icon: Icon, label, text } = quotePreview({ content: message.content, message_type: message.message_type, message_subtype: message.message_subtype })
 
   return (
     <div className="flex items-center gap-2 border-b border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-head-dark">

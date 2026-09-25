@@ -1,22 +1,17 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { AlertCircle, Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pencil, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react'
-import type { Chat, Message, MessageStatus } from '../types'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { AlertCircle, Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pin, PinOff, RefreshCw } from 'lucide-react'
+import type { Chat, JsonObject, Message, MetaStatus, OutboxStatus } from '../types'
 import { displayName } from '../utils/chat'
-import { formatMessageTime, messageAdReferral, parseContent, resolveMediaUrl } from '../utils/message'
+import { formatMessageTime, messageAdReferral, metaErrors, parseContent, resolveMediaUrl } from '../utils/message'
 import { AdReferralCard } from './AdReferralCard'
 import { MessageActionsMenu, type MessageMenuAction } from './MessageActionsMenu'
 import { MessageAnalysis, MessageBody } from './MessageBody'
 import { QuotedMessage } from './QuotedMessage'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
 import { TemplateMessageButtons } from './TemplateMessageCard'
-import { ConfirmDialog } from './ui/ConfirmDialog'
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320;
-// WhatsApp solo deja reescribir un mensaje propio de texto dentro de este
-// margen. Se replica acá para no ofrecer un botón que el backend va a
-// rechazar; el límite real lo sigue poniendo WhatsApp.
-const EDIT_WINDOW_MS = 15 * 60 * 1000;
 // Padding horizontal (px-3.5 x2) de la burbuja (sin bordes, como WhatsApp):
 // lo que se descuenta del ancho máximo de la burbuja (75% del hilo) para el
 // contenido.
@@ -29,39 +24,40 @@ export interface OpenMedia {
   filename?: string;
 }
 
-/** Tique simple = enviado, doble gris = entregado, doble azul = visto por el
- * cliente. En audios, PLAYED agrega además una confirmación visible de que
- * el destinatario reprodujo la nota de voz. */
+/** Estado de un mensaje saliente. Mientras está en la cola propia manda
+ * `outbox_status`; una vez que salió, el literal que informó Meta:
+ * `sent` tique simple, `delivered` doble gris, `read` doble azul y `failed`
+ * rojo con el motivo que dio Meta. */
 export function MessageStatusTicks({
-  status,
-  isAudio = false,
+  outboxStatus,
+  metaStatus,
+  statusPayload,
   errorDetail,
   onRetry,
   onDiscard,
 }: {
-  status: MessageStatus;
-  isAudio?: boolean;
+  outboxStatus?: OutboxStatus | null;
+  metaStatus?: MetaStatus | null;
+  statusPayload?: JsonObject | null;
   errorDetail?: string | null;
   onRetry?: () => void;
   onDiscard?: () => void;
 }) {
-  if (status === "PENDING") {
+  if (outboxStatus === "queued" || outboxStatus === "sending" || outboxStatus === "retryable_failed") {
+    const label = outboxStatus === "retryable_failed" ? "Reintentando" : "Enviando";
     return (
       <span
         className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60"
-        aria-label="Enviando"
-        title="Enviando"
+        aria-label={label}
+        title={outboxStatus === "retryable_failed" && errorDetail ? errorDetail : label}
       >
-        <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> Enviando
+        <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> {label}
       </span>
     );
   }
-  if (status === "FAILED") {
-    // Sin motivo real (mensajes viejos, o un fallo que no llegó a dejar
-    // last_error), se conserva el genérico de siempre. Con motivo, ahora
-    // errorDetail ya es una oración corta y amigable de punta a punta (el
-    // backend nunca guarda ahí la excepción cruda), así que se usa tal cual
-    // en vez de prefijarla con otra frase genérica redundante.
+  if (outboxStatus === "failed") {
+    // errorDetail ya es una oración corta y amigable (el backend nunca guarda
+    // ahí la excepción cruda), así que se usa tal cual.
     const ariaLabel = errorDetail
       ? `${errorDetail} Reintentar`
       : "No se pudo confirmar el envío. Reintentar";
@@ -95,25 +91,8 @@ export function MessageStatusTicks({
       </span>
     );
   }
-  // Distinto de FAILED: acá el mensaje sí se despachó (hay wa_message_id) y
-  // Meta avisó después, de forma asíncrona, que no pudo entregarlo (fuera de
-  // ventana de 24h, plantilla no aprobada, número inválido...). No hay un
-  // job de outbox en 'failed' al que volver, así que no hay botón de
-  // reintento acá — "reintentar" significaría mandar un mensaje nuevo.
-  if (status === "REJECTED") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-red-500"
-        aria-label="Meta no pudo entregar este mensaje"
-        title="Meta no pudo entregar este mensaje (ventana de 24h o plantilla no aprobada)"
-      >
-        <AlertCircle aria-hidden="true" className="h-3 w-3" /> No entregado
-      </span>
-    );
-  }
-  // El mensaje nunca llegó, pero alguien ya decidió que no se reenvía: se
-  // dice, sin el rojo de lo que reclama acción ni el botón de reintento.
-  if (status === "DISCARDED") {
+  // El mensaje nunca llegó, pero alguien ya decidió que no se reenvía.
+  if (outboxStatus === "discarded") {
     return (
       <span
         className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60"
@@ -124,18 +103,22 @@ export function MessageStatusTicks({
       </span>
     );
   }
-  if (status === "PLAYED") {
-    const label = isAudio ? "Audio escuchado" : "Leído";
+  // Salió del outbox (hay wa_message_id) y Meta avisó después que no pudo
+  // entregarlo. No hay reintento: sería mandar un mensaje nuevo.
+  if (metaStatus === "failed") {
+    const [error] = metaErrors(statusPayload);
+    const reason = error ? [error.title, error.details].filter(Boolean).join(": ") : "";
     return (
-      <span aria-label={label} title={label}>
-        <CheckCheck
-          aria-hidden="true"
-          className="w-3.5 h-3.5 text-wa-accent shrink-0"
-        />
+      <span
+        className="inline-flex items-center gap-1 text-red-500"
+        aria-label={`Meta no pudo entregar este mensaje${reason ? `: ${reason}` : ""}`}
+        title={reason ? `${reason}${error?.code ? ` (${error.code})` : ""}` : "Meta no pudo entregar este mensaje"}
+      >
+        <AlertCircle aria-hidden="true" className="h-3 w-3" /> No entregado
       </span>
     );
   }
-  if (status === "READ") {
+  if (metaStatus === "read") {
     return (
       <span aria-label="Leído" title="Leído">
         <CheckCheck
@@ -145,7 +128,7 @@ export function MessageStatusTicks({
       </span>
     );
   }
-  if (status === "DELIVERY_ACK") {
+  if (metaStatus === "delivered") {
     return (
       <span aria-label="Entregado" title="Entregado">
         <CheckCheck
@@ -168,11 +151,6 @@ export function MessageStatusTicks({
 interface Props {
   chat: Chat;
   message: Message;
-  /** Mensajes ya cargados del chat, para correlacionar los pedidos de
-   * WhatsApp Flow que llegan repartidos en 3 mensajes con el mismo
-   * `reference_id` (ver `flowOrderGroup` en utils/message). Opcional: sin
-   * esto la tarjeta de pedido solo ve su propio mensaje. */
-  chatMessages?: Message[];
   /** Primero de una tanda del mismo autor: lleva la "colita" y más margen. */
   isFirstOfGroup: boolean;
   /** Resaltado temporal tras saltar a este mensaje desde una búsqueda o cita. */
@@ -190,13 +168,9 @@ interface Props {
   onDiscard: () => void;
   onStartReply: () => void;
   onReact: (emoji: string) => void;
-  onEdit: () => void;
-  onDelete: () => void;
   onForward: () => void;
   /** Guarda el adjunto de este mensaje. Solo se ofrece cuando hay media. */
   onDownload: () => void;
-  /** El borrado en WhatsApp está en curso: el botón queda en espera. */
-  isDeleting: boolean;
   /** Fijado nativo del CRM: no hay forma de mandarlo hacia WhatsApp (ver
    * MessageActionsMenu más abajo), así que solo pega contra la base propia. */
   onPin: () => void;
@@ -207,12 +181,6 @@ interface Props {
   selectionMode: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
-  /** Meta Cloud API no soporta editar ni "eliminar para todos" un mensaje
-   * saliente — solo Baileys. `undefined` mientras se resuelve la capacidad de
-   * la instancia se trata como soportado (el default histórico, y el caso
-   * real hoy: casi todo el tráfico sigue siendo Baileys) para no hacer
-   * parpadear los botones al cargar. */
-  editDeleteSupported?: boolean;
 }
 
 // Cuánto hay que mantener apretada una burbuja para entrar en modo selección,
@@ -240,7 +208,6 @@ function DeletedBody({ isVendedor }: { isVendedor: boolean }) {
 export function MessageBubble({
   chat,
   message: m,
-  chatMessages,
   isFirstOfGroup,
   isFlashing,
   threadWidth,
@@ -253,18 +220,14 @@ export function MessageBubble({
   onDiscard,
   onStartReply,
   onReact,
-  onEdit,
-  onDelete,
   onForward,
   onDownload,
-  isDeleting,
   onPin,
   onUnpin,
   onSaveTemplate,
   selectionMode,
   isSelected,
   onToggleSelect,
-  editDeleteSupported = true,
 }: Props) {
   const isVendedor = m.sender === "vendedor";
   const isDeleted = !!m.deleted_at;
@@ -272,7 +235,7 @@ export function MessageBubble({
   const { kind, text, analysis, template } = parsed;
   // Un eliminado no conserva reacciones, igual que en WhatsApp.
   const reactions = isDeleted ? [] : (m.reactions ?? []);
-  const adReferral = messageAdReferral(parsed.payload);
+  const adReferral = messageAdReferral(parsed);
   // Si el archivo falló al cargar (ej. no existe en este entorno),
   // lo tratamos como si no hubiera media: el navegador muestra su
   // propio ícono roto + el alt completo pegado, duplicando el texto
@@ -366,25 +329,13 @@ export function MessageBubble({
   // Reenviar y seleccionar solo necesitan que el mensaje exista en la base con
   // su contenido: se manda una copia nueva, no se toca el original en WhatsApp.
   const canForward = m.id > 0 && !isDeleted;
-  // Defensa adicional: aunque una integración futura mande media_url por
-  // error, un view-once nunca ofrece una copia descargable.
-  const canDownload = mediaSrc != null && kind !== "view_once" && !isDeleted;
-  // WhatsApp solo deja tocar los mensajes propios ya confirmados: editar,
-  // además, solo texto y dentro de los 15 minutos. editDeleteSupported tapa
-  // los dos de raíz en una instancia Meta Cloud API, que no admite ninguna
-  // de las dos operaciones.
-  const canDelete = canReply && isVendedor && editDeleteSupported;
-  const sentAgo = m.sent_at
-    ? Date.now() - new Date(m.sent_at).getTime()
-    : Infinity;
-  const canEdit = canDelete && kind === "text" && sentAgo < EDIT_WINDOW_MS;
+  const canDownload = mediaSrc != null && !isDeleted;
   // Fijar es nativo del CRM (ver MessageActionsMenu): no depende de WhatsApp,
   // así que alcanza con que el mensaje exista y no esté eliminado — a
   // diferencia de responder/reenviar, no hace falta wa_message_id.
   const canPin = m.id > 0 && !isDeleted;
   const isPinned = !!m.pinned_at;
   const isForwarded = m.payload?.forwarded === true && !isDeleted;
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const actionButtonClass =
     "rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark";
 
@@ -413,23 +364,6 @@ export function MessageBubble({
       label: isPinned ? "Desfijar mensaje" : "Fijar mensaje",
       onClick: isPinned ? onUnpin : onPin,
     });
-  if (canEdit)
-    menuActions.push({
-      key: "edit",
-      icon: Pencil,
-      label: "Editar",
-      onClick: onEdit,
-    });
-  if (canDelete)
-    menuActions.push({
-      key: "delete",
-      icon: Trash2,
-      label: isDeleting ? "Eliminando…" : "Eliminar para todos",
-      danger: true,
-      disabled: isDeleting,
-      onClick: () => setShowDeleteConfirm(true),
-    });
-
   const messageActions = (canReply || canForward) && !selectionMode && (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
       {canReply && (
@@ -561,7 +495,6 @@ export function MessageBubble({
                 <MessageBody
                   message={m}
                   parsed={parsed}
-                  chatMessages={chatMessages}
                   mediaSrc={mediaSrc}
                   isVendedor={isVendedor}
                   mediaBox={mediaBoxDimensions()}
@@ -574,7 +507,9 @@ export function MessageBubble({
                       <span>{formatMessageTime(m.sent_at)}</span>
                       {isVendedor && (
                         <MessageStatusTicks
-                          status={m.status}
+                          outboxStatus={m.outbox_status}
+                          metaStatus={m.meta_status}
+                          statusPayload={m.status_payload}
                           errorDetail={m.error_detail}
                           onRetry={onRetry}
                           onDiscard={onDiscard}
@@ -601,31 +536,6 @@ export function MessageBubble({
                     <BookmarkPlus className="h-3 w-3" />
                   </button>
                 )}
-                {!isDeleted &&
-                  isVendedor &&
-                  kind === "audio" &&
-                  m.status !== "PENDING" &&
-                  m.status !== "FAILED" &&
-                  m.status !== "DISCARDED" && (
-                    <span
-                      className={`mr-0.5 inline-flex items-center gap-1 font-medium ${
-                        m.status === "PLAYED"
-                          ? "text-wa-accent"
-                          : "text-wa-muted dark:text-wa-text-dark/60"
-                      }`}
-                      title={
-                        m.status === "PLAYED"
-                          ? "WhatsApp confirmó que el cliente reprodujo este audio"
-                          : "WhatsApp todavía no confirmó la reproducción de este audio"
-                      }
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`h-1.5 w-1.5 rounded-full ${m.status === "PLAYED" ? "bg-wa-accent" : "bg-current opacity-60"}`}
-                      />
-                      {m.status === "PLAYED" ? "Escuchado" : "No escuchado"}
-                    </span>
-                  )}
                 {!isDeleted && m.edited_at && (
                   <span title={`Editado ${formatMessageTime(m.edited_at)}`}>
                     Editado
@@ -634,8 +544,9 @@ export function MessageBubble({
                 <span>{formatMessageTime(m.sent_at)}</span>
                 {isVendedor && (
                   <MessageStatusTicks
-                    status={m.status}
-                    isAudio={kind === "audio"}
+                    outboxStatus={m.outbox_status}
+                    metaStatus={m.meta_status}
+                    statusPayload={m.status_payload}
                     errorDetail={m.error_detail}
                     onRetry={onRetry}
                     onDiscard={onDiscard}
@@ -659,17 +570,6 @@ export function MessageBubble({
         </div>
         {!isVendedor && messageActions}
       </div>
-      {canDelete && (
-        <ConfirmDialog
-          title="Eliminar mensaje para todos"
-          description="El mensaje desaparecerá también del WhatsApp del cliente, que verá 'Se eliminó este mensaje'. No se puede deshacer."
-          confirmLabel="Eliminar para todos"
-          disabled={isDeleting}
-          onConfirm={onDelete}
-          open={showDeleteConfirm}
-          onOpenChange={setShowDeleteConfirm}
-        />
-      )}
     </>
   );
 }

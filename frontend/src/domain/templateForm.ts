@@ -1,9 +1,12 @@
 import type {
   InteractiveLimits, LeadStage, MessageTemplate, OfficialTemplateButton, TaskType,
-  TemplateInteractiveButton, TemplateInteractiveSection,
 } from '../types'
 import { z } from 'zod'
-import { exceedsLimit } from './interactiveRules'
+import type { EditableListSection, EditableReplyButton } from './interactiveConfig'
+
+export function exceedsLimit(value: string, limit: number | undefined): limit is number {
+  return limit !== undefined && value.length > limit
+}
 
 export const ALLOWED_INTERNAL_VARIABLES = new Set(['nombre', 'telefono', 'servicio', 'vendedor', 'fecha_actual'])
 
@@ -28,8 +31,8 @@ export interface TemplateFormState {
   interactiveTitle: string
   interactiveFooter: string
   interactiveButtonText: string
-  interactiveButtons: TemplateInteractiveButton[]
-  interactiveSections: TemplateInteractiveSection[]
+  interactiveButtons: EditableReplyButton[]
+  interactiveSections: EditableListSection[]
 }
 
 export const EMPTY_TEMPLATE_FORM: TemplateFormState = {
@@ -53,8 +56,8 @@ export const EMPTY_TEMPLATE_FORM: TemplateFormState = {
   interactiveTitle: '',
   interactiveFooter: '',
   interactiveButtonText: 'Ver opciones',
-  interactiveButtons: [{ type: 'reply', displayText: '', id: 'reply_1' }],
-  interactiveSections: [{ title: 'Opciones', rows: [{ title: '', description: '', rowId: 'option_1' }] }],
+  interactiveButtons: [{ id: 'reply_1', title: '' }],
+  interactiveSections: [{ title: 'Opciones', rows: [{ id: 'option_1', title: '', description: '' }] }],
 }
 
 export function templateVariables(...values: string[]) {
@@ -72,10 +75,10 @@ function withinLimit(ctx: Issues, value: string, limit: number | undefined, mess
   if (exceedsLimit(value, limit)) report(ctx, message(limit as number))
 }
 
-function templateKind(form: TemplateFormState): 'official' | 'buttons' | 'list' | 'text' {
+function templateKind(form: TemplateFormState): 'official' | 'button' | 'list' | 'text' {
   if (form.templateType === 'official') return 'official'
   if (form.interactiveType === 'none') return 'text'
-  return form.interactiveType === 'buttons' ? 'buttons' : 'list'
+  return form.interactiveType
 }
 
 function contentLimit(form: TemplateFormState, limits?: InteractiveLimits): number | undefined {
@@ -192,9 +195,8 @@ function internalVariableRules(form: TemplateFormState, ctx: Issues) {
 }
 
 function interactiveHeaderRules(form: TemplateFormState, limits: InteractiveLimits | undefined, ctx: Issues) {
-  const title = form.interactiveTitle.trim()
-  if (!title) report(ctx, 'El título interactivo es obligatorio.')
-  else withinLimit(ctx, title, limits?.title, limit => `El título interactivo admite máximo ${limit} caracteres.`)
+  // El encabezado es opcional en Meta: si está, tiene su límite.
+  withinLimit(ctx, form.interactiveTitle.trim(), limits?.title, limit => `El título interactivo admite máximo ${limit} caracteres.`)
   withinLimit(ctx, form.interactiveFooter.trim(), limits?.footer, limit => `El pie de mensaje admite máximo ${limit} caracteres.`)
 }
 
@@ -210,12 +212,13 @@ function buttonsRules(form: TemplateFormState, limits: InteractiveLimits | undef
   const texts = new Set<string>()
   const ids = new Set<string>()
   buttons.forEach((button, index) => {
-    const label = button.displayText.trim()
+    const label = button.title.trim()
     if (!label) report(ctx, `El botón ${index + 1} necesita texto visible.`)
     else if (exceedsLimit(label, limits?.button_text)) report(ctx, `El texto del botón ${index + 1} admite máximo ${limits?.button_text} caracteres.`)
     else if (texts.has(label.toLowerCase())) report(ctx, `El texto del botón ${index + 1} está repetido.`)
     texts.add(label.toLowerCase())
-    const value = (button.id ?? '').trim()
+    const value = button.id.trim()
+    if (!value) report(ctx, `El botón ${index + 1} necesita un ID.`)
     withinLimit(ctx, value, limits?.button_id, limit => `El ID del botón ${index + 1} admite máximo ${limit} caracteres.`)
     if (value && ids.has(value)) report(ctx, `El ID del botón ${index + 1} está repetido.`)
     ids.add(value)
@@ -247,9 +250,9 @@ function listRules(form: TemplateFormState, limits: InteractiveLimits | undefine
       const prefix = `Opción ${rowIndex + 1} de la sección ${sectionIndex + 1}`
       if (!row.title.trim()) report(ctx, `${prefix}: el título es obligatorio.`)
       else withinLimit(ctx, row.title.trim(), limits?.row_title, limit => `${prefix}: el título admite máximo ${limit} caracteres.`)
-      if (!row.description.trim()) report(ctx, `${prefix}: la descripción es obligatoria.`)
-      else withinLimit(ctx, row.description.trim(), limits?.row_description, limit => `${prefix}: la descripción admite máximo ${limit} caracteres.`)
-      const rowId = row.rowId.trim()
+      // La descripción es opcional en Meta.
+      withinLimit(ctx, row.description.trim(), limits?.row_description, limit => `${prefix}: la descripción admite máximo ${limit} caracteres.`)
+      const rowId = row.id.trim()
       if (!rowId) report(ctx, `${prefix}: el ID es obligatorio.`)
       else if (exceedsLimit(rowId, limits?.row_id)) report(ctx, `${prefix}: el ID admite máximo ${limits?.row_id} caracteres.`)
       else if (rowIds.has(rowId)) report(ctx, `${prefix}: el ID está repetido.`)
@@ -265,7 +268,7 @@ type TemplateKindRules = (form: TemplateFormState, limits: InteractiveLimits | u
  * regla acá, sin tocar el resto de la validación. */
 export const TEMPLATE_KIND_RULES: Record<ReturnType<typeof templateKind>, TemplateKindRules> = {
   official: officialRules,
-  buttons: buttonsRules,
+  button: buttonsRules,
   list: listRules,
   text: (form, _limits, ctx) => internalVariableRules(form, ctx),
 }

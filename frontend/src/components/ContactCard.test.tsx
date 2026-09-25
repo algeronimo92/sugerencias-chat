@@ -41,13 +41,13 @@ describe('ContactCard', () => {
 
   it('con un solo número, abre directo la conversación del lead que ya lo tiene', async () => {
     const user = userEvent.setup()
-    mocks.findLeadByPhone.mockResolvedValue({ chat_id: '51987654321@s.whatsapp.net' })
+    mocks.findLeadByPhone.mockResolvedValue({ chat_id: '5f0c2a8e-1b7d-4c3e-9a61-2d4f8b0e7c11' })
     render(<ContactCard contacts={[ANA]} />)
 
     await user.click(screen.getByRole('button', { name: /Enviar mensaje/ }))
 
     expect(mocks.findLeadByPhone).toHaveBeenCalledWith('51987654321')
-    expect(mocks.navigate).toHaveBeenCalledWith('/chat/51987654321@s.whatsapp.net')
+    expect(mocks.navigate).toHaveBeenCalledWith('/chat/5f0c2a8e-1b7d-4c3e-9a61-2d4f8b0e7c11')
   })
 
   it('con un solo número, ofrece el alta prellenada cuando el lead no existe', async () => {
@@ -88,7 +88,7 @@ describe('ContactCard', () => {
 
   it('elegir un número del selector abre el chat de ese número puntual', async () => {
     const user = userEvent.setup()
-    mocks.findLeadByPhone.mockResolvedValue({ chat_id: '51911223344@s.whatsapp.net' })
+    mocks.findLeadByPhone.mockResolvedValue({ chat_id: '9a3e6b1c-7d2f-4e58-b0c4-6f1a2e9d8b37' })
     render(<ContactCard contacts={[CON_DOS_NUMEROS]} />)
 
     await user.click(screen.getByRole('button', { name: /Enviar mensaje/ }))
@@ -96,7 +96,7 @@ describe('ContactCard', () => {
 
     expect(mocks.findLeadByPhone).toHaveBeenCalledWith('51911223344')
     expect(mocks.findLeadByPhone).not.toHaveBeenCalledWith('51987654321')
-    expect(mocks.navigate).toHaveBeenCalledWith('/chat/51911223344@s.whatsapp.net')
+    expect(mocks.navigate).toHaveBeenCalledWith('/chat/9a3e6b1c-7d2f-4e58-b0c4-6f1a2e9d8b37')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

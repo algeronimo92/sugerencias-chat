@@ -204,3 +204,33 @@ def test_sent_body_matches_the_stored_one_apart_from_envelope_and_ids():
         },
     }
     assert message_outbox._payload_matches(stored_template, sent_template)
+
+
+async def test_capabilities_expose_catalog_and_published_flows(monkeypatch):
+    from services import whatsapp_capabilities
+
+    async def get_effective_many(keys):
+        return {
+            "meta_catalog_id": " cat-1 ",
+            "meta_published_flow_ids": "123, agenda ,",
+            "meta_call_permission_enabled": "false",
+        }
+
+    async def availability():
+        return type("A", (), {"integration": "WHATSAPP-BUSINESS", "configured": True, "reason": None})()
+
+    async def default_footer():
+        return ""
+
+    status = type("S", (), {"availability": staticmethod(availability)})()
+    monkeypatch.setattr(whatsapp_capabilities, "get_effective_many", get_effective_many)
+    monkeypatch.setattr(whatsapp_capabilities, "current_channel", lambda: type("C", (), {"status": status})())
+    monkeypatch.setattr(whatsapp_capabilities, "default_interactive_footer", default_footer)
+
+    capabilities = await whatsapp_capabilities.get_whatsapp_capabilities()
+
+    assert capabilities["catalog_enabled"] is True
+    assert capabilities["catalog_id"] == "cat-1"
+    assert capabilities["flows_enabled"] is True
+    assert capabilities["published_flows"] == ["123", "agenda"]
+    assert capabilities["call_permission_enabled"] is False

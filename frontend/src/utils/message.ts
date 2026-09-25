@@ -1,62 +1,99 @@
 import {
-  BarChart3,
+  AlertTriangle,
   CornerUpLeft,
+  FileText,
   Image,
+  Info,
+  LayoutGrid,
   List,
   MapPin,
   Megaphone,
   Mic,
   MousePointerClick,
-  CreditCard,
   Paperclip,
-  Pin,
+  PhoneCall,
   ReceiptText,
   ShoppingBag,
   SmilePlus,
   Sticker,
   User,
   Video,
-  FileText,
-  EyeOff,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
-import type {
-  JsonObject,
-  JsonValue,
-  Message,
-  MessageType,
-  MessageAnalysis,
-} from "../types";
+import { META_CONTRACT } from "../domain/metaContract";
+import type { JsonObject, JsonValue, MessageAnalysis, MessageType } from "../types";
 
-/** Clase de render de un mensaje: coincide con la taxonomía del backend
- * (MessageType). El frontend elige ícono/burbuja por acá. */
+/** Tipo literal de Meta (`messages[].type`). Un tipo que el contrato todavía
+ * no conoce llega igual, con su nombre, y se muestra con un renderer genérico. */
 export type MessageKind = MessageType;
 
-const KIND_META: Record<
-  MessageKind,
-  { icon: LucideIcon | null; label: string }
-> = {
+interface KindMeta {
+  icon: LucideIcon | null;
+  label: string;
+}
+
+/** Ícono y rótulo de cada raíz de Meta. Las que no están acá caen a
+ * `unknownKindMeta`, que nombra el tipo literal en vez de ocultarlo. */
+const KIND_META: Record<string, KindMeta> = {
   text: { icon: null, label: "" },
   image: { icon: Image, label: "Imagen" },
   video: { icon: Video, label: "Video" },
-  ptv: { icon: Video, label: "Video" },
   audio: { icon: Mic, label: "Audio" },
   document: { icon: FileText, label: "Documento" },
-  location: { icon: MapPin, label: "Ubicación" },
   sticker: { icon: Sticker, label: "Sticker" },
-  contact: { icon: User, label: "Contacto" },
-  poll: { icon: BarChart3, label: "Encuesta" },
+  location: { icon: MapPin, label: "Ubicación" },
+  contacts: { icon: User, label: "Contacto" },
   reaction: { icon: SmilePlus, label: "Reacción" },
-  pin: { icon: Pin, label: "Mensaje fijado" },
   interactive: { icon: List, label: "Interactivo" },
   button: { icon: CornerUpLeft, label: "Respuesta" },
-  template: { icon: Megaphone, label: "Plantilla" },
   order: { icon: ReceiptText, label: "Pedido" },
-  product: { icon: ShoppingBag, label: "Producto" },
-  payment: { icon: CreditCard, label: "Pago" },
-  view_once: { icon: EyeOff, label: "Ver una vez" },
-  unsupported: { icon: Paperclip, label: "No soportado" },
+  system: { icon: Info, label: "Aviso de WhatsApp" },
+  template: { icon: Megaphone, label: "Plantilla" },
+  unknown: { icon: AlertTriangle, label: "No soportado por WhatsApp" },
+  unsupported: { icon: AlertTriangle, label: "No soportado por WhatsApp" },
 };
+
+/** Rótulo de cada subtipo interactivo, de entrada y de salida. */
+const INTERACTIVE_META: Record<string, KindMeta> = {
+  button_reply: { icon: CornerUpLeft, label: "Respuesta" },
+  list_reply: { icon: CornerUpLeft, label: "Selección" },
+  nfm_reply: { icon: Workflow, label: "Formulario" },
+  button: { icon: MousePointerClick, label: "Botones" },
+  list: { icon: List, label: "Lista" },
+  product: { icon: ShoppingBag, label: "Producto" },
+  product_list: { icon: ShoppingBag, label: "Productos" },
+  catalog_message: { icon: LayoutGrid, label: "Catálogo" },
+  flow: { icon: Workflow, label: "Formulario" },
+  call_permission_request: { icon: PhoneCall, label: "Permiso de llamada" },
+};
+
+function unknownKindMeta(kind: string, subtype: string | null): KindMeta {
+  const literal = subtype ? `${kind}/${subtype}` : kind;
+  return { icon: Paperclip, label: `Mensaje ${literal}` };
+}
+
+const KNOWN_ROOTS = new Set<string>([
+  ...META_CONTRACT.inbound.root_types,
+  ...META_CONTRACT.outbound.root_types,
+]);
+const KNOWN_INTERACTIVE = new Set<string>([
+  ...META_CONTRACT.inbound.subtypes.interactive,
+  ...META_CONTRACT.outbound.subtypes.interactive,
+]);
+
+/** Si la UI tiene un renderer propio para esta combinación. */
+export function isKnownMessageType(kind: string, subtype: string | null): boolean {
+  if (!KNOWN_ROOTS.has(kind)) return false;
+  if (kind === "interactive") return subtype == null || KNOWN_INTERACTIVE.has(subtype);
+  return true;
+}
+
+function kindMeta(kind: string, subtype: string | null): KindMeta {
+  if (!isKnownMessageType(kind, subtype)) return unknownKindMeta(kind, subtype);
+  if (kind === "interactive" && subtype) return INTERACTIVE_META[subtype];
+  return KIND_META[kind];
+}
 
 export interface TemplateButton {
   text: string;
@@ -64,77 +101,51 @@ export interface TemplateButton {
   url: string | null;
 }
 
-/** Etiquetas legadas que n8n usaba para los mensajes con botones. Comparten el
- * kind 'template' porque se pintan igual, pero cada una tiene su forma de JSON
- * y su propio ícono en los previews. */
-const TEMPLATE_TAGS: Record<string, { icon: LucideIcon; label: string }> = {
-  // Anuncios y plantillas de empresa (TikTok, Meta): traen preview de enlace.
-  templateMessage: { icon: Megaphone, label: "Plantilla" },
-  // Mensajes con botones de respuesta rápida, los que manda el propio negocio.
-  buttonsMessage: { icon: MousePointerClick, label: "Botones" },
-  // El cliente tocó uno de esos botones.
-  buttonsResponseMessage: { icon: CornerUpLeft, label: "Respuesta" },
-  templateButtonReplyMessage: { icon: CornerUpLeft, label: "Respuesta" },
-};
-
-/** Un mensaje con botones de WhatsApp (un anuncio de plantilla o un mensaje
- * con respuestas rápidas) ya desarmado para pintarlo. */
+/** Mensaje con encabezado, cuerpo, pie y botones ya desarmado para pintarlo:
+ * una plantilla oficial enviada o un interactivo de botones o lista. */
 export interface TemplateMessage {
-  /** Título del preview del enlace ("TikTok - Make Your Day"). */
   title: string;
-  description: string;
-  domain: string;
   body: string;
   footer: string;
   buttons: TemplateButton[];
-  /** Encabezado de imagen de una plantilla oficial de Meta (ver
-   * parseOutboundOfficialTemplate). null en el resto de los mensajes con
-   * botones, que no tienen este concepto. */
+  /** Encabezado de imagen de una plantilla oficial. */
   headerImageUrl: string | null;
-  /** Cuando el mensaje es la respuesta del cliente, el texto del mensaje al
-   * que le tocó el botón. Vacío en el resto. */
-  answeredQuestion: string;
 }
 
-/** Pseudo-tags simples que escribía n8n en `content` antes de la normalización.
- * Solo respaldo para filas legadas sin backfillear; los tags de plantilla van
- * aparte (TEMPLATE_TAGS) porque llevan JSON adentro. */
-const LEGACY_TAG_KIND: Record<string, MessageKind> = {
-  text: "text",
-  image: "image",
-  video: "video",
-  audio: "audio",
-  location: "location",
-  other: "document",
-};
-
-/** Entrada de `parseContent`: el objeto mensaje (camino nuevo, por
- * `message_type`) o solo su `content` string (previews que aún no llevan el
- * tipo, y respaldo legado). */
+/** Entrada de `parseContent`: el objeto mensaje o solo su `content` (previews
+ * que no traen más que el texto). */
 export interface ParsableMessage {
   content: string | null;
   message_type?: MessageType | null;
+  message_subtype?: string | null;
   analysis?: MessageAnalysis | null;
   payload?: JsonObject | null;
+  provider_payload?: JsonObject | null;
 }
 type ParseInput = string | null | ParsableMessage;
 
 export interface ParsedContent {
   kind: MessageKind;
+  subtype: string | null;
+  /** Si hay un renderer propio: un tipo nuevo de Meta se muestra genérico. */
+  known: boolean;
   icon: LucideIcon | null;
   label: string;
   /** Texto humano del mensaje (caption/cuerpo), sin el análisis IA ni JSON. */
   text: string;
-  /** Resumen del análisis generado con IA, para mostrar bajo demanda. null si
-   * el mensaje no tiene análisis. */
+  /** Resumen del análisis generado con IA, para mostrar bajo demanda. */
   analysis: string | null;
-  /** Datos estructurados del tipo (lat/lon, filename, opciones…). */
+  /** Objeto de Meta del mensaje (`provider_payload`), o la proyección que
+   * guardó el CRM para filas anteriores al contrato. Se lee por raíz:
+   * `meta.location`, `meta.contacts`, `meta.interactive`... */
+  meta: JsonObject;
+  /** Proyección del CRM: datos de plantilla, reenviado, anuncio, álbum. */
   payload: JsonObject | null;
-  /** Solo en template/interactive; null si el JSON vino roto o no aplica. */
+  /** Plantilla enviada o interactivo de botones/lista, ya desarmado. */
   template: TemplateMessage | null;
 }
 
-/** Texto que se muestra cuando la plantilla no trae cuerpo (o no se pudo leer). */
+/** Texto que se muestra cuando la plantilla no trae cuerpo. */
 export const TEMPLATE_FALLBACK_TEXT = "Mensaje de plantilla";
 
 function safeUrl(value: JsonValue | undefined): string | null {
@@ -157,319 +168,339 @@ function asObject(value: JsonValue | undefined): JsonObject {
   return isJsonObject(value) ? value : {};
 }
 
-/** Los campos anidados de WhatsApp vienen como JSON dentro de un string. */
-function parseJson(value: JsonValue | undefined): JsonObject | null {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const parsed: JsonValue = JSON.parse(value);
-    return isJsonObject(parsed) ? parsed : null;
-  } catch {
+function asArray(value: JsonValue | undefined): JsonValue[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asNumber(value: JsonValue | undefined): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !value.trim()))
     return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Botones y lista de un `interactive` de Meta (el que manda el negocio). */
+function interactiveTemplate(interactive: JsonObject): TemplateMessage | null {
+  const subtype = asString(interactive.type);
+  const action = asObject(interactive.action);
+  let buttons: TemplateButton[] = [];
+  if (subtype === "button") {
+    buttons = asArray(action.buttons).flatMap((button) => {
+      const title = asString(asObject(asObject(button).reply).title);
+      return title ? [{ text: title, url: null }] : [];
+    });
+  } else if (subtype === "list") {
+    // WhatsApp solo muestra, en el mensaje, el botón que abre la lista.
+    buttons = [{ text: asString(action.button) || "Ver opciones", url: null }];
+  } else if (subtype === "flow") {
+    const cta = asString(asObject(action.parameters).flow_cta);
+    buttons = cta ? [{ text: cta, url: null }] : [];
+  } else if (subtype === "catalog_message") {
+    buttons = [{ text: "Ver catálogo", url: null }];
+  } else if (subtype === "call_permission_request") {
+    buttons = [{ text: "Permitir llamadas", url: null }];
   }
+  const header = asObject(interactive.header);
+  const title = asString(header.type) === "text" ? asString(header.text) : "";
+  const body = asString(asObject(interactive.body).text);
+  const footer = asString(asObject(interactive.footer).text);
+  if (!title && !body && !footer && !buttons.length) return null;
+  return { title, body, footer, buttons, headerImageUrl: null };
 }
 
-/**
- * Desarma el objeto de un mensaje con botones. Son formas distintas del mismo
- * mensaje:
- *
- * - plantilla: `interactiveMessageTemplate`, con el preview del enlace y los
- *   botones en JSON serializado adentro de otro JSON;
- * - botones: `contentText` suelto y los botones con su `displayText`;
- * - respuesta: `selectedDisplayText`, con el mensaje original adentro del
- *   `contextInfo`.
- *
- * Recibe el objeto ya parseado: sirve tanto para el JSON crudo embebido en los
- * tags legados como para la columna `payload` del modelo normalizado.
- */
-/** El propio outbox arma este payload al encolar un mensaje interactivo
- * (ver `enqueue_messages`/`chats.py`): `{type: "interactive", interactive_type,
- * description, config}`, muy distinto de la forma cruda que manda WhatsApp
- * para un mensaje entrante. Se resuelve aparte porque no comparte ningún
- * campo con esa otra forma (headers, nativeFlowMessage, contextInfo...). */
-function parseOutboundInteractive(root: JsonObject): TemplateMessage | null {
-  if (root.type !== "interactive" || !isJsonObject(root.config)) return null;
-  const config = root.config;
-  const interactiveType = asString(root.interactive_type);
-  const buttons: TemplateButton[] =
-    interactiveType === "list"
-      ? // WhatsApp solo muestra, en el mensaje mismo, el botón que abre la lista
-        // -las secciones/opciones aparecen recién cuando el cliente lo toca-, así
-        // que acá se pinta igual: un único botón con ese texto.
-        [{ text: asString(config.buttonText) || "Ver opciones", url: null }]
-      : (Array.isArray(config.buttons) ? config.buttons : []).flatMap(
-          (button) => {
-            const buttonData = asObject(button);
-            const text = asString(buttonData.displayText);
-            if (!text) return [];
-            return [
-              {
-                text,
-                url: buttonData.type === "url" ? safeUrl(buttonData.url) : null,
-              },
-            ];
-          },
-        );
-  const title = asString(config.title);
-  const body = asString(root.description);
-  if (!title && !body && !buttons.length) return null;
+/** Lo que el CRM guardó para pintar una plantilla oficial enviada: Meta la
+ * conoce por nombre y el cuerpo enviado no trae encabezado, pie ni botones. */
+function officialTemplate(payload: JsonObject | null): TemplateMessage | null {
+  const display = asObject(payload?.template);
+  if (!Object.keys(display).length) return null;
+  const buttons = asArray(display.buttons).flatMap((button) => {
+    const data = asObject(button);
+    const text = asString(data.text);
+    if (!text) return [];
+    return [{ text, url: asString(data.type) === "url" ? safeUrl(data.url) : null }];
+  });
+  // Puede ser una ruta propia (`/api/media/...`): la resuelve quien la pinta.
+  const headerImageUrl = asString(display.header_image_url) || null;
   return {
-    title,
-    description: "",
-    domain: "",
-    body,
-    footer: asString(config.footer) || asString(config.footerText),
-    buttons,
-    headerImageUrl: null,
-    answeredQuestion: "",
-  };
-}
-
-/** El propio outbox arma este payload al encolar una plantilla oficial de
- * Meta (ver `send_template`/`chats.py` y `_outbound_message_fields`/
- * `message_outbox.py`): `{type: "official_template", header_text, footer,
- * buttons}`. Aparte de `parseOutboundInteractive` porque los botones traen su
- * propio shape (`official_buttons`, con `type: "quick_reply"|"url"|"phone_number"`),
- * no el de un mensaje interactivo. Sin esto la burbuja solo mostraba el body
- * (ya resuelto en `content`) y perdía encabezado, pie y botones -lo que el
- * cliente sí ve en WhatsApp, aunque la app no los necesite para enviar. */
-function parseOutboundOfficialTemplate(root: JsonObject): TemplateMessage | null {
-  if (root.type !== "official_template") return null;
-  const buttons: TemplateButton[] = (Array.isArray(root.buttons) ? root.buttons : []).flatMap(
-    (button) => {
-      const buttonData = asObject(button);
-      const text = asString(buttonData.text);
-      if (!text) return [];
-      return [{ text, url: buttonData.type === "url" ? safeUrl(buttonData.url) : null }];
-    },
-  );
-  const title = asString(root.header_text);
-  const footer = asString(root.footer);
-  // No es un `safeUrl` (http/https): puede ser una ruta relativa propia de la
-  // app (`/api/media/...`) -- `resolveMediaUrl`, ya en el componente que la
-  // pinta, es quien sabe convertirla en una URL absoluta.
-  const headerImageUrl = asString(root.header_image_url) || null;
-  if (!title && !footer && !buttons.length && !headerImageUrl) return null;
-  return {
-    title,
-    description: "",
-    domain: "",
+    title: asString(display.header_text),
     body: "",
-    footer,
+    footer: asString(display.footer),
     buttons,
     headerImageUrl,
-    answeredQuestion: "",
   };
 }
 
-export function parseTemplateData(
-  root: JsonObject | null,
-): TemplateMessage | null {
-  if (!root) return null;
-  const outbound = parseOutboundInteractive(root) ?? parseOutboundOfficialTemplate(root);
-  if (outbound) return outbound;
-  // Según de dónde salga el payload el contenido viene en la raíz o anidado.
-  const data = root.interactiveMessageTemplate
-    ? asObject(root.interactiveMessageTemplate)
-    : root.hydratedTemplate
-      ? asObject(root.hydratedTemplate)
-      : root;
-
-  const header = asObject(data.header);
-  const body = asObject(data.body);
-  const footer = asObject(data.footer);
-  const nativeFlow = asObject(data.nativeFlowMessage);
-
-  const target = asObject(
-    parseJson(nativeFlow.messageParamsJson)?.tap_target_configuration,
-  );
-
-  const buttons: TemplateButton[] = [];
-  for (const button of Array.isArray(nativeFlow.buttons)
-    ? nativeFlow.buttons
-    : []) {
-    const params = parseJson(asObject(button).buttonParamsJson);
-    if (!params) continue;
-    const text = asString(params.display_text);
-    if (!text) continue;
-    buttons.push({ text, url: safeUrl(params.url) });
-  }
-  // Botones de respuesta rápida: no abren nada, los toca el cliente.
-  for (const button of Array.isArray(data.buttons) ? data.buttons : []) {
-    const buttonData = asObject(button);
-    const text =
-      asString(asObject(buttonData.buttonText).displayText) ||
-      asString(buttonData.text);
-    if (!text) continue;
-    buttons.push({ text, url: safeUrl(buttonData.url) });
-  }
-  for (const option of Array.isArray(data.options) ? data.options : []) {
-    const optionData = asObject(option);
-    const text = asString(optionData.text) || asString(optionData.title);
-    if (text) buttons.push({ text, url: null });
-  }
-
-  // Respuesta a un botón: el texto elegido es el mensaje, y el original viene
-  // citado adentro del contextInfo (WhatsApp lo muestra arriba de la respuesta).
-  const quoted = asObject(asObject(data.contextInfo).quotedMessage);
-  const answeredQuestion =
-    asString(asObject(quoted.buttonsMessage).contentText) ||
-    asString(quoted.conversation) ||
-    asString(asObject(quoted.extendedTextMessage).text);
-
-  const parsed: TemplateMessage = {
-    title:
-      asString(header.title) || asString(target.title) || asString(data.title),
-    description: asString(target.description),
-    domain: asString(target.domain) || asString(target.canonical_url),
-    body:
-      asString(body.text) ||
-      asString(data.body) ||
-      asString(data.contentText) ||
-      asString(data.selectedDisplayText) ||
-      asString(data.selected_text) ||
-      asString(data.description),
-    footer:
-      asString(footer.text) ||
-      asString(data.footer) ||
-      asString(data.footerText),
-    buttons,
-    headerImageUrl: null,
-    answeredQuestion,
-  };
-
-  // Si no se reconoció nada útil es que el JSON no era una plantilla.
-  if (!parsed.title && !parsed.body && !parsed.buttons.length) return null;
-  return parsed;
-}
-
-/** Variante para el JSON crudo que n8n guardaba dentro de los tags legados. */
-export function parseTemplateMessage(raw: string): TemplateMessage | null {
-  return parseTemplateData(parseJson(raw));
+function metaObject(input: ParsableMessage): JsonObject {
+  return input.provider_payload ?? input.payload ?? {};
 }
 
 export function parseContent(input: ParseInput): ParsedContent {
-  const obj: ParsableMessage | null =
-    typeof input === "string" || input == null ? null : input;
-  // Cuando `obj` es null el input ya es string | null (por la condición de
-  // arriba); el cast solo se lo confirma a TypeScript.
-  const content: string | null = obj ? obj.content : (input as string | null);
+  const message: ParsableMessage =
+    typeof input === "string" || input == null ? { content: input ?? null } : input;
+  const kind: MessageKind = message.message_type || "text";
+  const subtype = message.message_subtype ?? null;
+  const meta = metaObject(message);
+  const payload = message.payload ?? null;
+  const known = isKnownMessageType(kind, subtype);
+  const rawText = (message.content ?? "").trim();
 
-  // Camino nuevo: el backend ya clasificó el mensaje y separó el análisis.
-  if (obj && obj.message_type) {
-    const kind: MessageKind =
-      obj.message_type in KIND_META ? obj.message_type : "unsupported";
-    const payload = obj.payload ?? null;
-    const template =
-      kind === "template" || kind === "interactive"
-        ? parseTemplateData(payload)
-        : null;
-    const rawText = (content ?? "").trim();
-    // Un `interactive` propio guarda en `content` un resumen plano ("Título\n
-    // cuerpo\nOpciones: A · B") pensado para cuando no había botones reales;
-    // ahora que el payload sí se pudo desarmar, el cuerpo real evita repetir
-    // esas opciones como texto suelto además de los botones ya renderizados.
-    const text =
-      kind === "interactive" && template
-        ? template.body || template.title || rawText
-        : rawText ||
-          (template ? template.body || template.title : "") ||
-          (kind === "template" ? TEMPLATE_FALLBACK_TEXT : "");
-    return {
-      kind,
-      ...KIND_META[kind],
-      text,
-      analysis: obj.analysis?.summary?.trim() || null,
-      payload,
-      template,
-    };
+  let template: TemplateMessage | null = null;
+  let text = rawText;
+  if (kind === "template") {
+    template = officialTemplate(payload);
+    text = rawText || TEMPLATE_FALLBACK_TEXT;
+  } else if (kind === "interactive") {
+    const interactive = asObject(meta.interactive);
+    template = interactiveTemplate(interactive);
+    text = rawText || template?.body || template?.title || "";
+  } else if (kind === "button") {
+    text = rawText || asString(asObject(meta.button).text);
+  } else if (kind === "system") {
+    text = rawText || asString(asObject(meta.system).body);
   }
 
-  // Camino legado: clasificar por los pseudo-tags embebidos en `content`.
-  return parseLegacyContent(
-    content,
-    obj?.analysis?.summary ?? null,
-    obj?.payload ?? null,
-  );
-}
-
-function parseLegacyContent(
-  content: string | null,
-  analysisFromColumn: string | null,
-  payload: JsonObject | null,
-): ParsedContent {
-  if (!content) {
-    return {
-      kind: "text",
-      ...KIND_META.text,
-      text: "",
-      analysis: analysisFromColumn,
-      payload,
-      template: null,
-    };
-  }
-
-  const match = content.match(/^<(\w+)>([\s\S]*)<\/\1>$/);
-  if (!match) {
-    return {
-      kind: "text",
-      ...KIND_META.text,
-      text: content.trim(),
-      analysis: analysisFromColumn,
-      payload,
-      template: null,
-    };
-  }
-
-  const [, tag, inner] = match;
-  const templateMeta = TEMPLATE_TAGS[tag];
-  if (templateMeta) {
-    const template = parseTemplateMessage(inner);
-    return {
-      kind: "template",
-      ...templateMeta,
-      // Nunca el JSON crudo: este texto es el que sale en la lista de chats,
-      // en las citas y en el Kanban.
-      text: template?.body || template?.title || TEMPLATE_FALLBACK_TEXT,
-      analysis: analysisFromColumn,
-      payload,
-      template,
-    };
-  }
-
-  const kind: MessageKind = LEGACY_TAG_KIND[tag] ?? "unsupported";
-  const { text, analysis } = splitLegacyInner(kind, inner);
   return {
     kind,
-    ...KIND_META[kind],
+    subtype,
+    known,
+    ...kindMeta(kind, subtype),
     text,
-    analysis: analysisFromColumn ?? analysis,
+    analysis: message.analysis?.summary?.trim() || null,
+    meta,
     payload,
-    template: null,
+    template,
   };
 }
 
-/** Separa el caption del bloque `Analisis:` que n8n embebía dentro de los tags
- * de imagen/video, y trata el interior de `<audio>` como transcripción. Así el
- * análisis no se muestra dentro de la burbuja ni siquiera en filas legadas. */
-function splitLegacyInner(
-  kind: MessageKind,
-  inner: string,
-): { text: string; analysis: string | null } {
-  const trimmed = inner.trim();
-  if (kind === "audio") return { text: "", analysis: trimmed || null };
-  if (kind === "image" || kind === "video") {
-    // El bloque va tras el caption o directamente al principio si no hay caption.
-    const match = trimmed.match(/(^|\n)\s*Analisis:\s*/i);
-    if (match) {
-      const marker = match.index ?? 0;
-      const rest = trimmed.slice(marker + match[0].length);
-      return {
-        text: trimmed.slice(0, marker).trim(),
-        analysis: rest.trim() || null,
-      };
-    }
+/** Anuncio del que vino el lead (Click-to-WhatsApp): el `referral` literal
+ * de Meta, con la imagen rehospedada por el backend si la hay. */
+export interface AdReferral {
+  title: string;
+  body: string;
+  sourceUrl: string | null;
+  thumbnailUrl: string | null;
+  ctwaClid: string | null;
+}
+
+export function messageAdReferral(parsed: Pick<ParsedContent, "meta" | "payload">): AdReferral | null {
+  const referral = asObject(parsed.meta.referral);
+  const title = asString(referral.headline);
+  const body = asString(referral.body);
+  if (!title && !body && !asString(referral.source_url)) return null;
+  const rehosted = asString(parsed.payload?.referral_thumbnail_url);
+  const thumbnail = rehosted || asString(referral.thumbnail_url) || asString(referral.image_url);
+  return {
+    title,
+    body,
+    sourceUrl: safeUrl(referral.source_url),
+    thumbnailUrl:
+      thumbnail.startsWith("/media/") || safeUrl(thumbnail)
+        ? resolveMediaUrl(thumbnail)
+        : null,
+    ctwaClid: asString(referral.ctwa_clid) || null,
+  };
+}
+
+/** Un contacto compartido, ya desarmado para pintarlo y para poder abrirle
+ * (o crearle) su lead. */
+export interface SharedContact {
+  name: string;
+  /** Solo dígitos: con esto se busca o se crea el lead. null si no trae
+   * ningún número usable. */
+  phone: string[] | null;
+  /** El número tal como lo mandó el remitente, para mostrarlo tal cual. */
+  phoneLabel: string;
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+/** Contactos de un mensaje `contacts` de Meta (`name`/`phones`). `wa_id` gana
+ * sobre el número visible: es el que WhatsApp puede abrir. */
+export function messageContacts(meta: JsonObject): SharedContact[] {
+  return asArray(meta.contacts).filter(isJsonObject).map((contact) => {
+    const name = asObject(contact.name);
+    const phones = asArray(contact.phones)
+      .filter(isJsonObject)
+      .map((phone) => ({
+        digits: onlyDigits(asString(phone.wa_id) || asString(phone.phone)),
+        label: asString(phone.phone),
+      }))
+      .filter((phone) => phone.digits);
+    return {
+      name: asString(name.formatted_name) || asString(name.first_name) || "Contacto compartido",
+      phone: phones.length ? phones.map((phone) => phone.digits) : null,
+      phoneLabel: phones[0]?.label ?? "",
+    };
+  });
+}
+
+/** Nombre original del adjunto: el `filename` del objeto de Meta
+ * (`document.filename`), o el que guardó el CRM al enviarlo. */
+export function messageFilename(parsed: Pick<ParsedContent, "kind" | "meta" | "payload">): string {
+  return asString(asObject(parsed.meta[parsed.kind]).filename) || asString(parsed.payload?.filename);
+}
+
+/** Coordenadas de un mensaje `location` de Meta. */
+export function messageCoords(meta: JsonObject): [number, number] | null {
+  const location = asObject(meta.location);
+  const lat = asNumber(location.latitude);
+  const lon = asNumber(location.longitude);
+  return lat != null && lon != null ? [lat, lon] : null;
+}
+
+export interface MetaOrderItem {
+  sku: string;
+  quantity: number | null;
+  price: number | null;
+  currency: string;
+}
+
+/** Pedido de un catálogo (`order`), con los valores literales de Meta. */
+export interface MetaOrder {
+  catalogId: string;
+  text: string;
+  items: MetaOrderItem[];
+  /** Total por moneda: un pedido puede mezclar monedas y no se convierten. */
+  totals: { currency: string; amount: number }[];
+}
+
+export function messageOrder(meta: JsonObject): MetaOrder {
+  const order = asObject(meta.order);
+  const items = asArray(order.product_items).filter(isJsonObject).map((item) => ({
+    sku: asString(item.product_retailer_id),
+    quantity: asNumber(item.quantity),
+    price: asNumber(item.item_price),
+    currency: asString(item.currency),
+  }));
+  const totals = new Map<string, number>();
+  for (const item of items) {
+    if (item.price == null || item.quantity == null) continue;
+    totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.price * item.quantity);
   }
-  return { text: trimmed, analysis: null };
+  return {
+    catalogId: asString(order.catalog_id),
+    text: asString(order.text),
+    items,
+    totals: [...totals].map(([currency, amount]) => ({ currency, amount })),
+  };
+}
+
+export function formatMoney(amount: number, currency: string): string {
+  const value = amount.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency ? `${currency} ${value}` : value;
+}
+
+/** Respuesta a un botón o a una lista (`interactive.button_reply`/`list_reply`)
+ * o a un botón de plantilla (`button`): lo que tocó y el id o payload literal. */
+export interface ReplySelection {
+  title: string;
+  id: string;
+  description: string;
+}
+
+export function messageReply(parsed: Pick<ParsedContent, "kind" | "subtype" | "meta">): ReplySelection | null {
+  if (parsed.kind === "button") {
+    const button = asObject(parsed.meta.button);
+    return { title: asString(button.text), id: asString(button.payload), description: "" };
+  }
+  if (parsed.kind !== "interactive" || (parsed.subtype !== "button_reply" && parsed.subtype !== "list_reply")) {
+    return null;
+  }
+  const reply = asObject(asObject(parsed.meta.interactive)[parsed.subtype]);
+  return {
+    title: asString(reply.title),
+    id: asString(reply.id),
+    description: asString(reply.description),
+  };
+}
+
+/** Respuesta a un WhatsApp Flow (`interactive.nfm_reply`): el `response_json`
+ * se muestra campo por campo; `flow_token` es interno y no se lista. */
+export interface FlowReply {
+  name: string;
+  body: string;
+  fields: { key: string; value: string }[];
+}
+
+export function messageFlowReply(meta: JsonObject): FlowReply {
+  const reply = asObject(asObject(meta.interactive).nfm_reply);
+  let data: JsonValue = null;
+  const raw = reply.response_json;
+  if (typeof raw === "string") {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = raw;
+    }
+  } else if (raw !== undefined) {
+    data = raw;
+  }
+  const fields = isJsonObject(data)
+    ? Object.entries(data)
+        .filter(([key]) => key !== "flow_token")
+        .map(([key, value]) => ({
+          key,
+          value: typeof value === "string" ? value : JSON.stringify(value),
+        }))
+    : data != null
+      ? [{ key: "respuesta", value: typeof data === "string" ? data : JSON.stringify(data) }]
+      : [];
+  return { name: asString(reply.name), body: asString(reply.body), fields };
+}
+
+/** Producto del catálogo que se mandó o por el que preguntó el cliente. */
+export interface ProductReference {
+  catalogId: string;
+  sku: string;
+}
+
+export function messageProducts(parsed: Pick<ParsedContent, "kind" | "subtype" | "meta">): ProductReference[] {
+  const referred = asObject(asObject(parsed.meta.context).referred_product);
+  if (Object.keys(referred).length) {
+    return [{ catalogId: asString(referred.catalog_id), sku: asString(referred.product_retailer_id) }];
+  }
+  if (parsed.kind !== "interactive") return [];
+  const action = asObject(asObject(parsed.meta.interactive).action);
+  const catalogId = asString(action.catalog_id);
+  if (parsed.subtype === "product") {
+    return [{ catalogId, sku: asString(action.product_retailer_id) }];
+  }
+  if (parsed.subtype === "product_list") {
+    return asArray(action.sections).flatMap((section) =>
+      asArray(asObject(section).product_items).map((item) => ({
+        catalogId,
+        sku: asString(asObject(item).product_retailer_id),
+      })),
+    );
+  }
+  if (parsed.subtype === "catalog_message") {
+    const thumbnail = asString(asObject(action.parameters).thumbnail_product_retailer_id);
+    return thumbnail ? [{ catalogId, sku: thumbnail }] : [];
+  }
+  return [];
+}
+
+/** Aviso de sistema de Meta (`system`), por ejemplo un cambio de número. */
+export function messageSystemNotice(meta: JsonObject): { body: string; type: string } {
+  const system = asObject(meta.system);
+  return { body: asString(system.body), type: asString(system.type) };
+}
+
+/** Errores que Meta informó para el mensaje o para su entrega. */
+export interface MetaError {
+  code: string;
+  title: string;
+  details: string;
+}
+
+export function metaErrors(source: JsonObject | null | undefined): MetaError[] {
+  return asArray(source?.errors).filter(isJsonObject).map((error) => ({
+    code: error.code == null ? "" : String(error.code),
+    title: asString(error.title) || asString(error.message),
+    details: asString(asObject(error.error_data).details) || asString(error.details),
+  }));
 }
 
 export interface QuotePreview {
@@ -586,325 +617,6 @@ export function groupByDay<T extends { key: string; sentAt: string | null }>(
   return sections;
 }
 
-/** Anuncio del que vino el lead (Click-to-WhatsApp de Meta): el primer mensaje
- * trae este contexto en `payload.ad_referral`. */
-export interface AdReferral {
-  title: string;
-  body: string;
-  sourceUrl: string | null;
-  thumbnailUrl: string | null;
-  ctwaClid: string | null;
-}
-
-/** Lee el anuncio (Click-to-WhatsApp) del payload de un mensaje, o null si el
- * mensaje no vino de un anuncio. */
-export function messageAdReferral(
-  payload: JsonObject | null,
-): AdReferral | null {
-  const ad = payload?.ad_referral;
-  if (!isJsonObject(ad)) return null;
-  const title = asString(ad.title);
-  const body = asString(ad.body);
-  if (!title && !body) return null;
-  const thumb = asString(ad.thumbnail_url);
-  return {
-    title,
-    body,
-    sourceUrl: safeUrl(ad.source_url),
-    thumbnailUrl:
-      thumb.startsWith("/media/") || safeUrl(thumb)
-        ? resolveMediaUrl(thumb)
-        : null,
-    ctwaClid: asString(ad.ctwa_clid) || null,
-  };
-}
-
-function asNumber(value: JsonValue | undefined): number | null {
-  if (typeof value !== "number" && (typeof value !== "string" || !value.trim()))
-    return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/** Los 3 nombres de botón que manda un pedido de "Separación de cita" de
- * WhatsApp Flow, en el orden cronológico en que llegan. Cualquier otro
- * `interactive` (listas, botones de respuesta rápida) no calza acá. */
-const FLOW_ORDER_BUTTON_NAMES = new Set([
-  "review_and_pay",
-  "payment_status",
-  "review_order",
-]);
-
-/** Un botón de pedido de WhatsApp Flow, ya leído del payload. Los 3 eventos
- * del mismo pedido (creación, estado de pago, estado del pedido) comparten
- * `reference_id`; cada uno trae solo el subconjunto de campos de su momento. */
-export interface FlowOrderButton {
-  name: "review_and_pay" | "payment_status" | "review_order";
-  amount: number | null;
-  subtotal: number | null;
-  currency: string | null;
-  reference_id: string;
-  order_status: string | null;
-  payment_status: string | null;
-  item_name: string | null;
-  quantity: number | null;
-}
-
-/** Lee el botón de pedido de WhatsApp Flow del payload de un mensaje
- * `interactive`, o null si no calza esa forma (mensaje interactivo común:
- * lista, botones de respuesta rápida, etc. — sigue su camino a TemplateBody). */
-export function messageFlowOrder(
-  payload: JsonObject | null,
-): FlowOrderButton | null {
-  const buttons = payload?.buttons;
-  if (!Array.isArray(buttons) || buttons.length === 0) return null;
-  const button = buttons[0];
-  if (!isJsonObject(button)) return null;
-  const name = asString(button.name);
-  const referenceId = asString(button.reference_id);
-  if (!referenceId || !FLOW_ORDER_BUTTON_NAMES.has(name)) return null;
-  return {
-    name: name as FlowOrderButton["name"],
-    amount: asNumber(button.amount),
-    subtotal: asNumber(button.subtotal),
-    currency: asString(button.currency) || null,
-    reference_id: referenceId,
-    order_status: asString(button.order_status) || null,
-    payment_status: asString(button.payment_status) || null,
-    item_name: asString(button.item_name) || null,
-    quantity: asNumber(button.quantity),
-  };
-}
-
-/** Debe coincidir exacto con `_PAYMENT_STATUS_LABELS` en
- * backend/services/whatsapp_history.py para no divergir entre lo que arma el
- * backend en `content` y lo que pinta esta tarjeta. */
-export const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  captured: "Realizado",
-  pending: "Pendiente",
-  failed: "Fallido",
-  canceled: "Cancelado",
-  cancelled: "Cancelado",
-  declined: "Rechazado",
-  refunded: "Reembolsado",
-};
-
-/** Debe coincidir exacto con `_ORDER_STATUS_LABELS` en
- * backend/services/whatsapp_history.py. */
-export const ORDER_STATUS_LABELS: Record<string, string> = {
-  completed: "Completado",
-  payment_requested: "Pendiente de pago",
-  canceled: "Cancelado",
-  cancelled: "Cancelado",
-  declined: "Rechazado",
-  processing: "En proceso",
-};
-
-function humanizeStatus(status: string): string {
-  const text = status.replaceAll("_", " ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** Etiqueta legible de un estado de pedido/pago; cae a "Palabra suelta" si el
- * valor no está en el mapa (mismo respaldo que `_humanize` en el backend). */
-export function flowStatusLabel(
-  status: string | null,
-  map: Record<string, string>,
-): string {
-  if (!status) return "";
-  return map[status] ?? humanizeStatus(status);
-}
-
-/** Debe coincidir exacto con `_CURRENCY_SYMBOLS` en
- * backend/services/whatsapp_history.py. */
-const FLOW_CURRENCY_SYMBOLS: Record<string, string> = { PEN: "S/", USD: "$" };
-
-/** Mismo formato que arma el backend para el texto de "Solicitud de pago":
- * símbolo pegado al monto para PEN/USD, o el código de moneda con un espacio
- * como respaldo (`_format_payment_text`). */
-export function formatFlowAmount(
-  amount: number | null,
-  currency: string | null,
-): string {
-  if (amount == null) return "";
-  const code = currency?.toUpperCase() ?? "";
-  const prefix = code ? (FLOW_CURRENCY_SYMBOLS[code] ?? `${code} `) : "";
-  return `${prefix}${amount.toFixed(2)}`;
-}
-
-/** Estado agregado de un pedido de WhatsApp Flow, correlacionado entre los 3
- * mensajes `interactive` que comparten `reference_id` en el mismo chat. */
-export interface FlowOrderGroup {
-  referenceId: string;
-  orderStatus: string | null;
-  paymentStatus: string | null;
-  itemName: string | null;
-  quantity: number | null;
-  amount: number | null;
-  subtotal: number | null;
-  currency: string | null;
-}
-
-/**
- * Correlaciona los 3 mensajes de un pedido de WhatsApp Flow (creación, estado
- * de pago, estado del pedido) para calcular su estado más reciente.
- *
- * El mensaje `review_and_pay` siempre trae `order_status: "payment_requested"`
- * aunque el pedido ya haya avanzado — ese campo nunca se actualiza en ese
- * mensaje. El estado real hay que leerlo del último mensaje del grupo
- * (ordenado por fecha de envío) que sí traiga `order_status`/`payment_status`
- * definidos; si ninguno más allá del original lo trae, queda el original.
- */
-export function flowOrderGroup(
-  messages: Pick<Message, "message_type" | "payload" | "sent_at">[],
-  referenceId: string,
-): FlowOrderGroup {
-  const entries = messages
-    .filter((message) => message.message_type === "interactive")
-    .map((message) => ({
-      button: messageFlowOrder(message.payload ?? null),
-      sentAt: message.sent_at,
-    }))
-    .filter(
-      (entry): entry is { button: FlowOrderButton; sentAt: string | null } =>
-        entry.button != null && entry.button.reference_id === referenceId,
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.sentAt ?? 0).getTime() - new Date(b.sentAt ?? 0).getTime(),
-    );
-
-  const group: FlowOrderGroup = {
-    referenceId,
-    orderStatus: null,
-    paymentStatus: null,
-    itemName: null,
-    quantity: null,
-    amount: null,
-    subtotal: null,
-    currency: null,
-  };
-  for (const { button } of entries) {
-    if (button.order_status != null) group.orderStatus = button.order_status;
-    if (button.payment_status != null)
-      group.paymentStatus = button.payment_status;
-    if (button.item_name != null) group.itemName = button.item_name;
-    if (button.quantity != null) group.quantity = button.quantity;
-    if (button.amount != null) group.amount = button.amount;
-    if (button.subtotal != null) group.subtotal = button.subtotal;
-    if (button.currency != null) group.currency = button.currency;
-  }
-  return group;
-}
-
-/** Un contacto compartido en un mensaje, ya desarmado para pintarlo y para
- * poder abrirle (o crearle) su lead. */
-export interface SharedContact {
-  name: string;
-  /** Solo dígitos, en formato internacional: con esto se busca o se crea el
-   * lead. null cuando el contacto vino sin número usable. */
-  phone: string[] | null;
-  /** El número tal como lo mandó el remitente, para mostrarlo tal cual. */
-  phoneLabel: string;
-}
-
-interface ContactName {
-  first_name?: string;
-  formatted_name?: string;
-}
-
-interface ContactPhone {
-  phone?: string;
-  type?: string;
-  wa_id?: string;
-}
-
-/** Un contacto compartido puede llegar con la forma de Meta Cloud API
- * (`name`/`phones`), con la que arma el historial de Evolution
- * (`fullName`/`phoneNumber`) o solo como vCard crudo. */
-interface ContactEntry {
-  name?: ContactName;
-  phones?: ContactPhone[];
-  fullName?: string;
-  displayName?: string;
-  phoneNumber?: string | null;
-  vcard?: string;
-}
-
-interface PayloadMessageContacts {
-  contacts?: unknown;
-}
-
-const VCARD_NAME = /^FN:(.+)$/m;
-const VCARD_TEL = /^(?:item\d+\.)?TEL[^:\n]*:(.+)$/m;
-const VCARD_WAID = /waid=(\d+)/;
-
-function onlyDigits(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
-function contactName(entry: ContactEntry): string {
-  const fromVcard = entry.vcard ? VCARD_NAME.exec(entry.vcard)?.[1]?.trim() : undefined;
-  return (
-    entry.displayName?.trim()
-    || entry.fullName?.trim()
-    || entry.name?.formatted_name?.trim()
-    || entry.name?.first_name?.trim()
-    || fromVcard
-    || "Contacto compartido"
-  );
-}
-
-/** Números marcables (solo dígitos) y el texto tal como lo mandó el remitente.
- * `wa_id` gana sobre el número visible: es el que WhatsApp puede abrir. */
-function contactPhones(entry: ContactEntry): { phones: string[]; label: string } {
-  const listed = (entry.phones ?? [])
-    .map(phone => ({ digits: onlyDigits(phone.wa_id ?? phone.phone ?? ""), label: phone.phone?.trim() ?? "" }))
-    .filter(phone => phone.digits);
-  if (listed.length) return { phones: listed.map(phone => phone.digits), label: listed[0].label }
-
-  if (entry.phoneNumber) {
-    const digits = onlyDigits(entry.phoneNumber);
-    return { phones: digits ? [digits] : [], label: entry.phoneNumber.trim() };
-  }
-
-  const visible = entry.vcard ? VCARD_TEL.exec(entry.vcard)?.[1]?.trim() ?? "" : "";
-  const waid = entry.vcard ? VCARD_WAID.exec(entry.vcard)?.[1] : undefined;
-  const digits = waid ?? onlyDigits(visible);
-  // Un TEL local sin waid no es marcable: se muestra, pero no abre un chat.
-  const dialable = waid || digits.length >= 10 ? digits : "";
-  return { phones: dialable ? [dialable] : [], label: visible };
-}
-
-/**
- * Contactos compartidos en un mensaje `contact`.
- */
-export function messageContacts(payload: PayloadMessageContacts | null): SharedContact[] {
-  const entries = payload?.contacts;
-  if (!Array.isArray(entries)) return [];
-
-  return entries.filter(isJsonObject).map((entry) => {
-    const contact = entry as ContactEntry;
-    const { phones, label } = contactPhones(contact);
-    return { name: contactName(contact), phone: phones.length ? phones : null, phoneLabel: label };
-  });
-}
-
-
-/** Coordenadas de un mensaje de ubicación: de `payload` (modelo nuevo) o del
- * "lat,lon" que vivía en content (respaldo legado). null si no hay. */
-export function messageCoords(
-  payload: JsonObject | null,
-  legacyText: string,
-): [number, number] | null {
-  const lat = Number(payload?.latitude);
-  const lon = Number(payload?.longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon];
-  const [legacyLat, legacyLon] = legacyText.split(",").map(Number);
-  if (Number.isFinite(legacyLat) && Number.isFinite(legacyLon))
-    return [legacyLat, legacyLon];
-  return null;
-}
 
 export function resolveMediaUrl(mediaUrl: string | null): string | null {
   if (!mediaUrl) return null;

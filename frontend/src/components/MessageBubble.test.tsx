@@ -1,10 +1,9 @@
 /**
- * Acciones de la burbuja: editar, eliminar, reenviar y seleccionar.
+ * Burbuja de un mensaje: cómo se pinta cada tipo de Meta y qué acciones ofrece.
  *
- * Lo que se cubre acá es la disponibilidad de cada acción —qué mensajes deja
- * tocar WhatsApp— y cómo queda un mensaje ya eliminado, ya editado o
- * reenviado. El envío en sí vive en los hooks; esto es la puerta que decide
- * si se ofrece.
+ * WhatsApp Cloud API no permite editar ni eliminar mensajes, así que la burbuja
+ * solo ofrece responder, reaccionar, reenviar, fijar, descargar y seleccionar.
+ * Las filas viejas editadas o eliminadas siguen pintándose como tales.
  */
 
 import { render, screen, within } from '@testing-library/react'
@@ -21,18 +20,17 @@ function message(overrides: Partial<Message> = {}): Message {
     id: 1,
     sender: 'vendedor',
     content: 'Te dejo el precio',
-    // Recién enviado: dentro de la ventana de edición de WhatsApp.
     sent_at: new Date().toISOString(),
     media_url: null,
-    wa_message_id: 'wa-1',
-    status: 'READ',
+    wa_message_id: 'wamid.1',
+    outbox_status: 'sent',
+    meta_status: 'read',
     message_type: 'text',
     ...overrides,
   } as Message
 }
 
 interface Options {
-  onEdit?: () => void
   onForward?: () => void
   onToggleSelect?: () => void
   onRetry?: () => void
@@ -43,14 +41,9 @@ interface Options {
   onUnpin?: () => void
   selectionMode?: boolean
   isSelected?: boolean
-  /** Otros mensajes del chat, para correlacionar pedidos de WhatsApp Flow
-   * repartidos en varios mensajes. Por defecto, solo el propio mensaje. */
-  chatMessages?: Message[]
-  editDeleteSupported?: boolean
 }
 
 function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
-  const onEdit = options.onEdit ?? vi.fn()
   const onForward = options.onForward ?? vi.fn()
   const onToggleSelect = options.onToggleSelect ?? vi.fn()
   const onRetry = options.onRetry ?? vi.fn()
@@ -59,12 +52,10 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
   const onDownload = options.onDownload ?? vi.fn()
   const onPin = options.onPin ?? vi.fn()
   const onUnpin = options.onUnpin ?? vi.fn()
-  const m = message(overrides)
   render(
     <MessageBubble
       chat={CHAT}
-      message={m}
-      chatMessages={options.chatMessages ?? [m]}
+      message={message(overrides)}
       isFirstOfGroup
       isFlashing={false}
       threadWidth={600}
@@ -77,151 +68,61 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
       onDiscard={onDiscard}
       onStartReply={vi.fn()}
       onReact={onReact}
-      onEdit={onEdit}
-      onDelete={vi.fn()}
       onForward={onForward}
       onDownload={onDownload}
-      isDeleting={false}
       onPin={onPin}
       onUnpin={onUnpin}
       onSaveTemplate={vi.fn()}
       selectionMode={options.selectionMode ?? false}
       isSelected={options.isSelected ?? false}
       onToggleSelect={onToggleSelect}
-      editDeleteSupported={options.editDeleteSupported}
     />,
   )
-  return { onEdit, onForward, onToggleSelect, onRetry, onDiscard, onReact, onDownload, onPin, onUnpin }
+  return { onForward, onToggleSelect, onRetry, onDiscard, onReact, onDownload, onPin, onUnpin }
 }
 
 describe('MessageBubble', () => {
-  it('muestra un pedido de WhatsApp con su estado, cantidad y total', () => {
+  it('muestra un pedido de catálogo con sus productos y el total por moneda', () => {
     renderBubble({
-      content: 'Pago: Realizado',
+      sender: 'cliente',
+      content: 'Quiero esto',
       message_type: 'order',
-      payload: {
-        order_id: '4VX5SPITUZD',
-        title: 'Separación de cita',
-        message: 'Pago: Realizado',
-        item_count: 1,
-        total_amount_1000: 50000,
-        currency: 'PEN',
-      },
-    })
-
-    expect(screen.getByText('Pedido N.º 4VX5SPITUZD')).toBeInTheDocument()
-    expect(screen.getByText('Separación de cita')).toBeInTheDocument()
-    expect(screen.getByText('Pago: Realizado')).toBeInTheDocument()
-    expect(screen.getByText('Cantidad 1')).toBeInTheDocument()
-    expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
-  })
-
-  it('muestra un pedido de WhatsApp Flow como tarjeta, con el estado agregado del grupo', async () => {
-    const user = userEvent.setup()
-    const referenceId = '4W1G98HRIFB'
-    const created = message({
-      id: 1,
-      content: 'Solicitud de pago: HIFU 12D - S/50.00',
-      message_type: 'interactive',
-      sent_at: '2026-08-01T10:00:00.000Z',
-      payload: {
-        buttons: [{
-          name: 'review_and_pay', amount: 50, subtotal: 50, currency: 'PEN',
-          reference_id: referenceId, order_status: 'payment_requested',
-          item_name: 'HIFU 12D', quantity: 1,
-        }],
-      },
-    })
-    const paymentUpdate = message({
-      id: 2,
-      content: 'Pago: Realizado',
-      message_type: 'interactive',
-      sent_at: '2026-08-01T10:01:00.000Z',
-      payload: { buttons: [{ name: 'payment_status', payment_status: 'captured', reference_id: referenceId }] },
-    })
-    const orderUpdate = message({
-      id: 3,
-      content: 'Estado: Completado',
-      message_type: 'interactive',
-      sent_at: '2026-08-01T10:02:00.000Z',
-      payload: { buttons: [{ name: 'review_order', order_status: 'completed', reference_id: referenceId }] },
-    })
-
-    renderBubble(created, { chatMessages: [created, paymentUpdate, orderUpdate] })
-
-    // No debe caer al chip "INTERACTIVO" + texto en cursiva del fallback genérico.
-    expect(screen.queryByText('Interactivo')).not.toBeInTheDocument()
-    expect(screen.getByText(`Pedido N.° ${referenceId}`)).toBeInTheDocument()
-    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
-    expect(screen.getByText('Cantidad: 1')).toBeInTheDocument()
-    expect(screen.getByText('S/50.00')).toBeInTheDocument()
-    // El badge usa el estado más reciente del grupo ("Completado"), no el
-    // "Pendiente de pago" que trae su propio mensaje.
-    expect(screen.getByText('Completado')).toBeInTheDocument()
-    expect(screen.queryByText('Pendiente de pago')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Ver detalles' }))
-    const dialog = screen.getByRole('dialog', { name: 'Detalles del pedido' })
-    expect(within(dialog).getByText('Subtotal')).toBeInTheDocument()
-    expect(within(dialog).getByText('Total')).toBeInTheDocument()
-  })
-
-  it('muestra una actualización de pago del pedido como tarjeta compacta, sin "Ver detalles"', () => {
-    const referenceId = '4W1G98HRIFB'
-    const created = message({
-      id: 1,
-      message_type: 'interactive',
-      sent_at: '2026-08-01T10:00:00.000Z',
-      payload: {
-        buttons: [{
-          name: 'review_and_pay', amount: 50, currency: 'PEN', reference_id: referenceId,
-          order_status: 'payment_requested', item_name: 'HIFU 12D', quantity: 1,
-        }],
-      },
-    })
-    const paymentUpdate = message({
-      id: 2,
-      content: 'Pago: Fallido',
-      message_type: 'interactive',
-      sent_at: '2026-08-01T10:01:00.000Z',
-      payload: { buttons: [{ name: 'payment_status', payment_status: 'failed', reference_id: referenceId }] },
-    })
-
-    renderBubble(paymentUpdate, { chatMessages: [created, paymentUpdate] })
-
-    // El propio mensaje no trae item_name/cantidad: se completan con el grupo.
-    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
-    expect(screen.getByText(/Cantidad 1/)).toBeInTheDocument()
-    expect(screen.getByText('Pago: Fallido')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Ver detalles' })).not.toBeInTheDocument()
-  })
-
-  it('un mensaje interactivo que no calza con un pedido de WhatsApp Flow sigue el fallback de plantilla', () => {
-    renderBubble({
-      content: 'Elige un servicio',
-      message_type: 'interactive',
-      payload: { title: 'Servicios', body: 'Elige un servicio', options: [{ id: 'hifu', text: 'HIFU' }] },
-    })
-
-    expect(screen.getByText('Elige un servicio')).toBeInTheDocument()
-    expect(screen.queryByText(/^Pedido N/)).not.toBeInTheDocument()
-  })
-
-  it('un interactivo propio de botones se pinta con el título en negrita y botones reales, sin repetir "Opciones"', () => {
-    renderBubble({
-      content: 'Presiona un boton\nHola Gerson lee esto\nOpciones: opcion a · opcion b',
-      message_type: 'interactive',
-      payload: {
-        type: 'interactive',
-        interactive_type: 'buttons',
-        description: 'Hola Gerson lee esto',
-        config: {
-          title: 'Presiona un boton',
-          footer: 'DermicaPro',
-          buttons: [
-            { type: 'reply', displayText: 'opcion a', id: 'reply_1' },
-            { type: 'reply', displayText: 'opcion b', id: 'reply_2' },
+      provider_payload: {
+        order: {
+          catalog_id: 'cat-1',
+          text: 'Quiero esto',
+          product_items: [
+            { product_retailer_id: 'hifu-12d', quantity: 2, item_price: 25, currency: 'PEN' },
           ],
+        },
+      },
+    })
+
+    expect(screen.getByText('Pedido')).toBeInTheDocument()
+    expect(screen.getByText('1 producto')).toBeInTheDocument()
+    expect(screen.getByText('hifu-12d')).toBeInTheDocument()
+    expect(screen.getByText('Quiero esto')).toBeInTheDocument()
+    expect(screen.getByText('Total')).toBeInTheDocument()
+    expect(screen.getAllByText(/^PEN 50[.,]00$/).length).toBeGreaterThan(0)
+  })
+
+  it('un interactivo de botones se pinta con encabezado, cuerpo y botones reales', () => {
+    renderBubble({
+      content: 'Hola Gerson lee esto',
+      message_type: 'interactive',
+      message_subtype: 'button',
+      provider_payload: {
+        interactive: {
+          type: 'button',
+          header: { type: 'text', text: 'Presiona un boton' },
+          body: { text: 'Hola Gerson lee esto' },
+          footer: { text: 'DermicaPro' },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: 'reply_1', title: 'opcion a' } },
+              { type: 'reply', reply: { id: 'reply_2', title: 'opcion b' } },
+            ],
+          },
         },
       },
     })
@@ -230,78 +131,42 @@ describe('MessageBubble', () => {
     expect(screen.getByText('Hola Gerson lee esto')).toBeInTheDocument()
     expect(screen.getByText('opcion a')).toBeInTheDocument()
     expect(screen.getByText('opcion b')).toBeInTheDocument()
-    expect(screen.queryByText(/Opciones:/)).not.toBeInTheDocument()
   })
 
-  it('muestra un producto con precio normal y precio de oferta', () => {
-    renderBubble({
-      content: 'HIFU 12D',
-      message_type: 'product',
-      payload: {
-        title: 'HIFU 12D', description: 'Tratamiento facial',
-        price_amount_1000: 150000, sale_price_amount_1000: 120000, currency: 'PEN',
-      },
-    })
-    expect(screen.getByText('HIFU 12D')).toBeInTheDocument()
-    expect(screen.getByText('Tratamiento facial')).toBeInTheDocument()
-    expect(screen.getByText('PEN 120.00')).toBeInTheDocument()
-    expect(screen.getByText('PEN 150.00')).toHaveClass('line-through')
-  })
-
-  it('muestra una solicitud de pago con monto e identificador', () => {
-    renderBubble({
-      content: 'Separación de cita',
-      message_type: 'payment',
-      payload: {
-        payment_kind: 'requestPayment', amount_1000: 50000, currency: 'PEN',
-        note: 'Separación de cita', transaction_id: 'pay-1',
-      },
-    })
-    expect(screen.getByText('Solicitud de pago')).toBeInTheDocument()
-    expect(screen.getByText('PEN 50.00')).toBeInTheDocument()
-    expect(screen.getByText('ID: pay-1')).toBeInTheDocument()
-  })
-
-  it('muestra view-once como aviso y nunca permite descargarlo', () => {
+  it('regresión OpcionA: la respuesta a un botón de plantilla muestra el texto elegido', () => {
     renderBubble({
       sender: 'cliente',
-      content: 'Solo para ti',
-      message_type: 'view_once',
-      payload: { original_type: 'viewOnceMessageV2', inner_type: 'image' },
-      // Defensa ante una integración defectuosa: ni con URL debe descargarse.
-      media_url: '/media/no-debe-descargarse.jpg',
+      content: 'OpcionA',
+      message_type: 'button',
+      provider_payload: { button: { text: 'OpcionA', payload: 'opcion_a' } },
     })
 
-    expect(screen.getByText('Imagen de visualización única')).toBeInTheDocument()
-    expect(screen.getByText(/Solo puede abrirse en WhatsApp/)).toBeInTheDocument()
-    expect(screen.getByText('Solo para ti')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/Descargar/)).not.toBeInTheDocument()
+    expect(screen.getByText('OpcionA')).toBeInTheDocument()
   })
 
-  it('muestra resultados agregados de una encuesta', () => {
+  it('la selección de una lista muestra el título elegido', () => {
     renderBubble({
-      sender: 'cliente', content: '¿Horario?', message_type: 'poll',
-      payload: { values: ['AM', 'PM'], results: [{ option: 'AM', count: 2 }, { option: 'PM', count: 1 }] },
+      sender: 'cliente',
+      content: 'HIFU',
+      message_type: 'interactive',
+      message_subtype: 'list_reply',
+      provider_payload: {
+        interactive: { type: 'list_reply', list_reply: { id: 'hifu', title: 'HIFU', description: 'Facial' } },
+      },
     })
-    expect(screen.getByText('3 votos')).toBeInTheDocument()
-    expect(screen.getByText('AM')).toBeInTheDocument()
-    expect(screen.getByText('PM')).toBeInTheDocument()
+
+    expect(screen.getByText('HIFU')).toBeInTheDocument()
   })
 
-  it('ofrece editar y eliminar un mensaje propio de texto recién enviado', async () => {
-    const user = userEvent.setup()
-    const { onEdit } = renderBubble()
+  it('un tipo nuevo de Meta se muestra con su nombre literal en vez de ocultarse', () => {
+    renderBubble({ sender: 'cliente', content: null, message_type: 'future_thing' })
 
-    await user.click(screen.getByLabelText('Más acciones'))
-    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
-    await user.click(screen.getByRole('menuitem', { name: 'Editar' }))
-
-    expect(onEdit).toHaveBeenCalledOnce()
+    expect(screen.getByText(/future_thing/)).toBeInTheDocument()
   })
 
   it('un envío fallido ofrece reintentar y descartar', async () => {
     const user = userEvent.setup()
-    const { onRetry, onDiscard } = renderBubble({ status: 'FAILED', wa_message_id: null })
+    const { onRetry, onDiscard } = renderBubble({ outbox_status: 'failed', meta_status: null, wa_message_id: null })
 
     await user.click(screen.getByLabelText('No se pudo confirmar el envío. Reintentar'))
     await user.click(screen.getByLabelText('Descartar el envío fallido'))
@@ -312,46 +177,47 @@ describe('MessageBubble', () => {
 
   it('un envío fallido con motivo real lo muestra en el tooltip, no el genérico', () => {
     const reason = 'La ventana de 24 h para responder libremente a este contacto está cerrada. Mandale una plantilla aprobada para reabrir la conversación.'
-    renderBubble({ status: 'FAILED', wa_message_id: null, error_detail: reason })
+    renderBubble({ outbox_status: 'failed', meta_status: null, wa_message_id: null, error_detail: reason })
 
     const retryButton = screen.getByLabelText(`${reason} Reintentar`)
     expect(retryButton).toHaveAttribute('title', reason)
   })
 
   it('un envío descartado deja de ofrecer reintento', () => {
-    renderBubble({ status: 'DISCARDED', wa_message_id: null })
+    renderBubble({ outbox_status: 'discarded', meta_status: null, wa_message_id: null })
 
     expect(screen.getByLabelText('No enviado, descartado')).toBeInTheDocument()
     expect(screen.queryByLabelText('No se pudo confirmar el envío. Reintentar')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Descartar el envío fallido')).not.toBeInTheDocument()
   })
 
-  it('no ofrece editar pasados los 15 minutos, pero sí eliminar', async () => {
-    const user = userEvent.setup()
-    const sixteenMinutesAgo = new Date(Date.now() - 16 * 60 * 1000).toISOString()
-    renderBubble({ sent_at: sixteenMinutesAgo })
-
-    await user.click(screen.getByLabelText('Más acciones'))
-    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
+  it.each([
+    ['sent', 'Enviado'],
+    ['delivered', 'Entregado'],
+    ['read', 'Leído'],
+  ] as const)('muestra el estado literal de Meta %s', (metaStatus, label) => {
+    renderBubble({ meta_status: metaStatus })
+    expect(screen.getByLabelText(label)).toBeInTheDocument()
   })
 
-  it('no ofrece editar un adjunto propio: WhatsApp solo edita texto', async () => {
-    const user = userEvent.setup()
-    renderBubble({ message_type: 'image', media_url: '/media/foto.jpg', content: 'Mirá' })
+  it('un fallo de entrega informado por Meta muestra el motivo y no ofrece reintento', () => {
+    renderBubble({
+      meta_status: 'failed',
+      status_payload: { errors: [{ code: 131026, title: 'Message undeliverable' }] },
+    })
 
-    await user.click(screen.getByLabelText('Más acciones'))
-    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Eliminar para todos' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Meta no pudo entregar este mensaje: Message undeliverable')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Reintentar/)).not.toBeInTheDocument()
   })
 
-  it('en una instancia Meta Cloud API no ofrece editar ni eliminar: la API no lo soporta', async () => {
+  it('no ofrece editar ni eliminar: WhatsApp Cloud API no lo permite', async () => {
     const user = userEvent.setup()
-    renderBubble({}, { editDeleteSupported: false })
+    renderBubble()
 
     await user.click(screen.getByLabelText('Más acciones'))
     expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Fijar mensaje' })).toBeInTheDocument()
   })
 
   it('ofrece fijar un mensaje sin fijar', async () => {
@@ -430,27 +296,6 @@ describe('MessageBubble', () => {
     expect(onDownload).toHaveBeenCalledOnce()
   })
 
-  it('no ofrece ni editar ni eliminar un mensaje del cliente', async () => {
-    const user = userEvent.setup()
-    renderBubble({ sender: 'cliente', content: 'Hola' })
-
-    await user.click(screen.getByLabelText('Más acciones'))
-    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
-    // Fijar sí (no depende de quién mandó el mensaje).
-    expect(screen.getByRole('menuitem', { name: 'Fijar mensaje' })).toBeInTheDocument()
-    // Responder y reaccionar sí siguen disponibles, sueltas.
-    expect(screen.getByLabelText('Responder a este mensaje')).toBeInTheDocument()
-  })
-
-  it('no ofrece editar ni eliminar sobre un mensaje todavía sin confirmar en WhatsApp', async () => {
-    const user = userEvent.setup()
-    renderBubble({ wa_message_id: null, status: 'PENDING' })
-
-    await user.click(screen.getByLabelText('Más acciones'))
-    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: 'Eliminar para todos' })).not.toBeInTheDocument()
-  })
 
   it('muestra la lápida de un mensaje eliminado, sin su contenido ni acciones', () => {
     // El backend ya no manda el texto de un eliminado; se replica acá.
@@ -485,7 +330,7 @@ describe('MessageBubble', () => {
   })
 
   it('deja reenviar un mensaje propio todavía sin confirmar: el contenido ya está guardado', () => {
-    renderBubble({ wa_message_id: null, status: 'PENDING' })
+    renderBubble({ wa_message_id: null, outbox_status: 'queued', meta_status: null })
 
     expect(screen.getByLabelText('Reenviar este mensaje')).toBeInTheDocument()
     // Responder sí necesita el id de WhatsApp del original.

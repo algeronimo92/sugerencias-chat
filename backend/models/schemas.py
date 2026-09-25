@@ -63,7 +63,10 @@ class Chat(BaseModel):
     fecha_ultimo_toque: str | None = None
     last_message: str | None = None
     last_message_sender: str | None = None
+    # Tipo y subtipo literales de Meta: la lista usa el mismo contrato que la
+    # burbuja para resumir el mensaje.
     last_message_type: str | None = None
+    last_message_subtype: str | None = None
     # El último mensaje se eliminó: `last_message` viene vacío y la lista
     # muestra "Se eliminó este mensaje" en vez del texto original.
     last_message_deleted: bool = False
@@ -920,6 +923,10 @@ class TemplateCapabilities(BaseModel):
     catalog_enabled: bool = False
     flows_enabled: bool = False
     call_permission_enabled: bool = False
+    # Con qué completar esas salidas: el catálogo de la cuenta y los Flows
+    # publicados (id o nombre, tal como se configuraron).
+    catalog_id: str | None = None
+    published_flows: list[str] = Field(default_factory=list)
 
 
 class TemplateFavoriteUpdate(BaseModel):

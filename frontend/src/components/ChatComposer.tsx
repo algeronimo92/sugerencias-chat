@@ -2,13 +2,15 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import type { Chat, MessageTemplate } from '../types'
 import { useSendAudio, useSendLocation, useSendMedia, useSendSticker, type ReplyTarget } from '../hooks/useMessages'
-import { useRecordTemplateUse, useTemplates } from '../hooks/useTemplates'
+import { useRecordTemplateUse, useTemplateCapabilities, useTemplates } from '../hooks/useTemplates'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { displayName } from '../utils/chat'
 import { extractErrorMessage } from '../utils/errors'
 import { renderTemplate } from '../utils/templates'
 import { compressImage } from '../utils/media'
 import { AttachMenu } from './AttachMenu'
+import { NativeInteractiveDialog } from './NativeInteractiveDialog'
+import { availableNativeInteractives } from '../domain/nativeInteractive'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { FlowPicker } from './FlowPicker'
 import { QuotedMessage } from './QuotedMessage'
@@ -104,8 +106,7 @@ export function ChatComposer({
   // Imagen/video/documento elegido o pegado, a la espera de confirmar el envío
   // con epígrafe (la pantalla de preview de WhatsApp). Puede traer varios ítems
   // cuando se eligieron varias fotos/videos juntos: se mandan como mensajes
-  // separados (Evolution API no tiene forma de mandar un álbum nativo agrupado
-  // del lado del cliente, ver docs/n8n-normalizacion-wsp-messages.md), pero el
+  // separados (la Cloud API de WhatsApp no tiene álbum saliente), pero el
   // propio hilo del CRM los agrupa en grilla igual que a los que llegan así.
   interface PendingMediaItem { file: File; previewUrl: string; kind: 'image' | 'video' | 'document' }
   const [pendingMedia, setPendingMedia] = useState<{ items: PendingMediaItem[]; activeIndex: number } | null>(null)
@@ -113,6 +114,9 @@ export function ChatComposer({
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
+  const [isInteractiveDialogOpen, setIsInteractiveDialogOpen] = useState(false)
+  const { data: capabilities } = useTemplateCapabilities()
+  const canSendNativeInteractive = availableNativeInteractives(capabilities).length > 0
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Última posición del cursor en el textarea: la fija el propio textarea (onSelect)
@@ -343,10 +347,9 @@ export function ChatComposer({
     if (!pendingMedia) return
     setIsSendingMedia(true)
     const { items } = pendingMedia
-    // Con 2+ archivos, todos comparten un id de álbum: como WhatsApp no deja
-    // mandar un álbum nativo agrupado del lado del cliente (no lo expone
-    // Evolution API), esto es lo que deja agrupar el lote en grilla dentro
-    // del propio hilo del CRM sin depender de adivinar por tiempo.
+    // Con 2+ archivos, todos comparten un id de álbum: la Cloud API de
+    // WhatsApp no tiene álbum saliente, así que esto es lo que deja agrupar el
+    // lote en grilla dentro del propio hilo del CRM sin adivinar por tiempo.
     const albumId = items.length > 1 ? crypto.randomUUID() : undefined
     // El epígrafe va solo en el último de la tanda, como en WhatsApp: ahí es
     // donde se ve al agruparse en el hilo.
@@ -539,6 +542,7 @@ export function ChatComposer({
               onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
               onSelectContact={() => setIsContactDialogOpen(true)}
               onSelectLocation={handleSendLocation}
+              onSelectInteractive={canSendNativeInteractive ? () => setIsInteractiveDialogOpen(true) : undefined}
             />
           )}
 
@@ -627,6 +631,16 @@ export function ChatComposer({
 
         {isCameraOpen && (
           <CameraCaptureDialog onCapture={handleCameraCaptured} onClose={() => setIsCameraOpen(false)} />
+        )}
+
+        {isInteractiveDialogOpen && capabilities && (
+          <NativeInteractiveDialog
+            chatId={chat.chat_id}
+            capabilities={capabilities}
+            replyTo={replyTo}
+            onSent={() => onReplyChange(null)}
+            onClose={() => setIsInteractiveDialogOpen(false)}
+          />
         )}
 
         {isContactDialogOpen && (

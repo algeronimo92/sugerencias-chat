@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, ContactRound, FileText, Headphones, Image, Loader2, MapPin, Paperclip } from 'lucide-react'
+import { Camera, ContactRound, FileText, Headphones, Image, LayoutGrid, Loader2, MapPin, Paperclip } from 'lucide-react'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 
 interface Props {
@@ -11,6 +11,8 @@ interface Props {
   onSelectAudio: () => void
   onSelectContact: () => void
   onSelectLocation: () => void
+  /** Solo si la cuenta tiene catálogo, Flows o llamadas habilitados. */
+  onSelectInteractive?: () => void
 }
 
 const ITEMS = [
@@ -20,6 +22,7 @@ const ITEMS = [
   { key: 'audio', label: 'Audio', icon: Headphones, color: 'bg-pink-500' },
   { key: 'contact', label: 'Contacto', icon: ContactRound, color: 'bg-cyan-600' },
   { key: 'location', label: 'Ubicación', icon: MapPin, color: 'bg-red-500' },
+  { key: 'interactive', label: 'Catálogo, Flow o llamada', icon: LayoutGrid, color: 'bg-emerald-600' },
 ] as const
 
 export function AttachMenu({
@@ -31,6 +34,7 @@ export function AttachMenu({
   onSelectAudio,
   onSelectContact,
   onSelectLocation,
+  onSelectInteractive,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(isOpen, () => setIsOpen(false))
@@ -42,6 +46,7 @@ export function AttachMenu({
     else if (key === 'media') onSelectMedia()
     else if (key === 'audio') onSelectAudio()
     else if (key === 'contact') onSelectContact()
+    else if (key === 'interactive') onSelectInteractive?.()
     else onSelectLocation()
   }
 
@@ -59,7 +64,7 @@ export function AttachMenu({
 
       {isOpen && (
         <div className="absolute bottom-full left-0 mb-2 w-52 bg-white dark:bg-wa-head-dark rounded-xl shadow-lg border border-wa-border dark:border-wa-border-dark py-1.5 z-10">
-          {ITEMS.map(({ key, label, icon: Icon, color }) => (
+          {ITEMS.filter(({ key }) => key !== 'interactive' || onSelectInteractive).map(({ key, label, icon: Icon, color }) => (
             <button
               key={key}
               type="button"

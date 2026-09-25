@@ -1,4 +1,9 @@
 import type {
+  MetaInboundRootType,
+  MetaOutboundRootType,
+  MetaStatus as MetaStatusLiteral,
+} from '../domain/metaContract'
+import type {
   AutomationActionTypeValue, AutomationBuilderModeValue, AutomationExecutionStatusValue,
   AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue,
   FlowHandleValue, FlowNodeTypeValue, NotificationTypeValue, QuestionHandleValue,
@@ -223,9 +228,10 @@ export interface Chat {
   fecha_ultimo_toque: string | null
   last_message: string | null
   last_message_sender: string | null
-  /** Tipo del último mensaje: deja mostrar "📷 Imagen" en el preview de la
-   * lista aunque `last_message` venga vacío (adjuntos sin caption). */
+  /** Tipo y subtipo literales de Meta del último mensaje: la lista lo resume
+   * con el mismo contrato que la burbuja, aunque `last_message` venga vacío. */
   last_message_type?: MessageType | null
+  last_message_subtype?: string | null
   /** El último mensaje se eliminó: `last_message` viene vacío y el preview
    * muestra "Se eliminó este mensaje". */
   last_message_deleted?: boolean
@@ -274,35 +280,18 @@ export interface LeadUpdateInput {
   proxima_cita?: string | null
 }
 
-/** DISCARDED es un FAILED que alguien revisó y decidió no reenviar: sigue sin
- * haber llegado al cliente, pero ya no ofrece reintento ni cuenta como fallo
- * vivo en las métricas del backend. */
-export type MessageStatus = 'PENDING' | 'FAILED' | 'DISCARDED' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED' | 'REJECTED' | null
+/** Estado interno de un envío en la cola propia (outbox). `discarded` es un
+ * fallo que alguien revisó y decidió no reenviar: sigue sin haber llegado al
+ * cliente, pero ya no ofrece reintento. */
+export type OutboxStatus = 'queued' | 'sending' | 'sent' | 'retryable_failed' | 'failed' | 'discarded'
 
-/** Taxonomía de tipos de mensaje, en concordancia con el backend
- * (models/schemas.py:MessageType) y con las estructuras de WhatsApp/Evolution
- * documentadas en docs/evolution-api-2.3-mensajes/. */
-export type MessageType =
-  | 'text'
-  | 'image'
-  | 'video'
-  | 'ptv'
-  | 'audio'
-  | 'document'
-  | 'location'
-  | 'sticker'
-  | 'contact'
-  | 'poll'
-  | 'reaction'
-  | 'pin'
-  | 'interactive'
-  | 'button'
-  | 'template'
-  | 'order'
-  | 'product'
-  | 'payment'
-  | 'view_once'
-  | 'unsupported'
+/** Estado literal que informa Meta. Un valor nuevo llega con su nombre. */
+export type MetaStatus = MetaStatusLiteral | (string & {})
+
+/** `messages[].type` literal de Meta (ver backend/contracts/meta_messages.json).
+ * Un tipo que el contrato todavía no conoce llega igual, con su nombre, y se
+ * muestra con un renderer genérico en vez de perderse. */
+export type MessageType = MetaInboundRootType | MetaOutboundRootType | (string & {})
 
 /** Enriquecimiento generado con IA para un adjunto: descripción de imagen/video,
  * transcripción de audio, OCR de documento. Se muestra bajo demanda, no dentro
@@ -324,26 +313,33 @@ export interface MessageReaction {
 export interface Message {
   id: number
   sender: string
+  /** Generado por el backend desde `sender`: `inbound` o `outbound`. */
+  direction?: 'inbound' | 'outbound' | null
   content: string | null
   sent_at: string | null
   media_url: string | null
   wa_message_id: string | null
-  status: MessageStatus
-  /** Tipo del mensaje. null solo en filas legadas sin backfillear: en ese caso
-   * el frontend cae al parseo de pseudo-tags de `content`. */
+  /** Estado de la cola propia (solo salientes enviados desde el CRM). */
+  outbox_status?: OutboxStatus | null
+  /** Estado literal que informó Meta, y el evento completo con sus errores. */
+  meta_status?: MetaStatus | null
+  status_payload?: JsonObject | null
   message_type?: MessageType | null
+  /** Subtipo literal (`interactive.type`, `system.type`). */
+  message_subtype?: string | null
+  /** El objeto de Meta del mensaje, o el cuerpo exacto que se le envió. */
+  provider_payload?: JsonObject | null
   /** Enriquecimiento IA del adjunto, servido aparte de `content`. */
   analysis?: MessageAnalysis | null
-  /** Datos estructurados propios del tipo (lat/lon, filename, opciones…). */
+  /** Proyección del CRM: lo que el cuerpo de Meta no trae (datos de plantilla,
+   * reenviado, álbum, imagen del anuncio). */
   payload?: JsonObject | null
   /** Reacciones sobre este mensaje (badge estilo WhatsApp, no una burbuja
    * aparte): a lo sumo una por lado en un chat 1:1. null si nadie reaccionó. */
   reactions?: MessageReaction[] | null
-  /** Última edición del texto. null = nunca se editó; con valor, la burbuja
-   * muestra "Editado" al lado de la hora, como en WhatsApp. */
   edited_at?: string | null
-  /** Eliminado para todos. Con valor, el backend ya no sirve el contenido ni
-   * el adjunto y la burbuja se pinta como lápida. */
+  /** Eliminado para todos (histórico). Con valor, el backend ya no sirve el
+   * contenido ni el adjunto y la burbuja se pinta como lápida. */
   deleted_at?: string | null
   /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
    * antes de que cargue, para que la conversación no se mueva. */
@@ -354,36 +350,12 @@ export interface Message {
   quoted_message_id?: number | null
   quoted_sender?: string | null
   quoted_content?: string | null
-  /** Tipo del citado: deja mostrar "📷 Imagen" en la cita aunque su content
-   * venga vacío (los adjuntos ya no llevan el tipo embebido en content). */
   quoted_message_type?: MessageType | null
   /** Fijado nativo del CRM (no existe forma de fijar un mensaje del lado de
-   * quien envía en WhatsApp, así que esto no se refleja allá). null = no
-   * está fijado. */
+   * quien envía en WhatsApp, así que esto no se refleja allá). */
   pinned_at?: string | null
-  /** Motivo real de un status 'FAILED' (el last_error del job del outbox).
-   * null para cualquier otro estado, o si el mensaje no pasó por el outbox. */
+  /** Motivo real de un envío que el outbox dio por fallido. */
   error_detail?: string | null
-}
-
-/** Mensaje leído de WhatsApp que no está registrado en la base: es anterior
- * a que el sistema empezara a guardar el chat. Solo lectura — no tiene id
- * local, ni estado de entrega, y de los adjuntos solo llega el tipo y el
- * epígrafe (el archivo nunca se descarga). */
-export interface HistoryMessage {
-  wa_message_id: string
-  sender: 'cliente' | 'vendedor'
-  content: string | null
-  sent_at: string
-  message_type?: MessageType | null
-  payload?: JsonObject | null
-}
-
-export interface HistoryPage {
-  items: HistoryMessage[]
-  has_more: boolean
-  /** Cursor opaco de Evolution: se devuelve tal cual en el pedido siguiente. */
-  next_page: number | null
 }
 
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
@@ -535,7 +507,7 @@ export interface MessageTemplate {
   official_header_media_filename: string | null
   official_footer: string | null
   official_buttons: OfficialTemplateButton[]
-  interactive_type: 'none' | 'buttons' | 'list'
+  interactive_type: TemplateInteractiveType
   interactive_config: TemplateInteractiveConfig
   imported_from_meta: boolean
   is_favorite: boolean
@@ -571,33 +543,35 @@ export interface MetaTemplateRaw {
   }[]
 }
 
-export interface TemplateInteractiveButton {
-  type: 'reply' | 'url' | 'call' | 'copy'
-  displayText: string
-  id?: string
-  url?: string
-  phoneNumber?: string
-  copyCode?: string
+/** Subtipo interactivo de una plantilla del CRM: el literal de Meta. */
+export type TemplateInteractiveType = 'none' | 'button' | 'list'
+
+export interface InteractiveReplyButton {
+  type: 'reply'
+  reply: { id: string; title: string }
 }
 
-export interface TemplateInteractiveRow {
+export interface InteractiveListRow {
+  id: string
   title: string
-  description: string
-  rowId: string
+  description?: string
 }
 
-export interface TemplateInteractiveSection {
-  title: string
-  rows: TemplateInteractiveRow[]
-}
-
-export interface TemplateInteractiveConfig {
+export interface InteractiveListSection {
   title?: string
-  footer?: string
-  buttons?: TemplateInteractiveButton[]
-  footerText?: string
-  buttonText?: string
-  sections?: TemplateInteractiveSection[]
+  rows: InteractiveListRow[]
+}
+
+/** Objeto `interactive` de Meta sin `type` ni `body`: así se guarda en la
+ * plantilla (el cuerpo sale del texto y el subtipo de `interactive_type`). */
+export interface TemplateInteractiveConfig {
+  header?: { type: 'text'; text: string }
+  footer?: { text: string }
+  action?: {
+    buttons?: InteractiveReplyButton[]
+    button?: string
+    sections?: InteractiveListSection[]
+  }
 }
 
 export type TemplateCapabilities = ApiSchemas['TemplateCapabilities']

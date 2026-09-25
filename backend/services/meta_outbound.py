@@ -295,6 +295,11 @@ CAPABILITY_SETTINGS = {
 }
 
 
+def published_flows(setting: str) -> list[str]:
+    """Flows publicados de la cuenta: ids o nombres separados por coma."""
+    return [item.strip() for item in setting.split(",") if item.strip()]
+
+
 async def require_capabilities(message: dict) -> None:
     """Rechaza salidas que la cuenta conectada no tiene habilitadas.
 
@@ -315,7 +320,7 @@ async def require_capabilities(message: dict) -> None:
             raise OutboundRejected("El catálogo no es el configurado para la cuenta", reason="capability")
     elif capability == "flow":
         parameters = _object(action.get("parameters"))
-        published = {item.strip() for item in values["meta_published_flow_ids"].split(",") if item.strip()}
+        published = set(published_flows(values["meta_published_flow_ids"]))
         flow = _text(parameters.get("flow_id")) or _text(parameters.get("flow_name"))
         if flow not in published:
             raise OutboundRejected("El Flow no está publicado ni configurado en la cuenta", reason="capability")

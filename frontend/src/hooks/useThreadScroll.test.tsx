@@ -25,11 +25,9 @@ const BASE_PARAMS: Params = {
   lastTimelineKey: 'message-3',
   timelineLength: 3,
   pageCount: 1,
-  historyPageCount: 0,
   hasNextPage: false,
   isFetchingNextPage: false,
   fetchNextPage: async () => ({ isError: false }),
-  historyError: null,
 }
 
 /** jsdom no hace layout: scrollHeight y clientHeight son siempre 0. Se

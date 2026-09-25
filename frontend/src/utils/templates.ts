@@ -47,35 +47,25 @@ export function renderOfficialTemplate(template: MessageTemplate, chat: Chat, pa
   return template.content.replace(/\{\{\s*[^{}]+?\s*\}\}/g, match => values[index++] ?? match)
 }
 
-export function renderInteractiveConfig(template: MessageTemplate, chat: Chat): TemplateInteractiveConfig {
-  const render = (value: string | undefined) => value === undefined
-    ? undefined
-    : renderTemplateText(value, chat)
-  const config = template.interactive_config
-  const rendered: TemplateInteractiveConfig = {
-    title: render(config.title),
-    footer: render(config.footer),
-    footerText: render(config.footerText),
-    buttonText: render(config.buttonText),
-    buttons: config.buttons?.map(button => ({
-      ...button,
-      displayText: renderTemplateText(button.displayText, chat),
-      id: render(button.id),
-      url: render(button.url),
-      phoneNumber: render(button.phoneNumber),
-      copyCode: render(button.copyCode),
-    })),
-    sections: config.sections?.map(section => ({
-      title: renderTemplateText(section.title, chat),
-      rows: section.rows.map(row => ({
-        title: renderTemplateText(row.title, chat),
-        description: renderTemplateText(row.description, chat),
-        rowId: renderTemplateText(row.rowId, chat),
-      })),
-    })),
+/** Resuelve las variables del CRM en cada texto de la configuración
+ * interactiva (encabezado, pie, botones, secciones y opciones), sin tocar
+ * la estructura de Meta. */
+function renderConfigValue<T>(value: T, chat: Chat): T {
+  if (typeof value === 'string') return renderTemplateText(value, chat) as T
+  if (Array.isArray(value)) return value.map(item => renderConfigValue(item, chat)) as T
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, renderConfigValue(item, chat)]),
+    ) as T
   }
+  return value
+}
+
+export function renderInteractiveConfig(template: MessageTemplate, chat: Chat): TemplateInteractiveConfig {
+  const rendered = renderConfigValue(template.interactive_config, chat)
   // Mismo pie por defecto que aplica el backend: el nombre del negocio.
-  if (template.interactive_type === 'buttons') rendered.footer = rendered.footer?.trim() || currentBrandName()
-  if (template.interactive_type === 'list') rendered.footerText = rendered.footerText?.trim() || currentBrandName()
+  if (template.interactive_type !== 'none' && !rendered.footer?.text?.trim()) {
+    return { ...rendered, footer: { text: currentBrandName() } }
+  }
   return rendered
 }

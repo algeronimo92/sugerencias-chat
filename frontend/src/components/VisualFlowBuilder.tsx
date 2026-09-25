@@ -31,6 +31,8 @@ import { useTags } from '../hooks/useLeadMeta'
 import { useLeadServices } from '../hooks/useLeadServices'
 import { useTemplates } from '../hooks/useTemplates'
 import { extractErrorMessage } from '../utils/errors'
+import { parseContent } from '../utils/message'
+import { META_CONTRACT } from '../domain/metaContract'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import {
@@ -76,9 +78,26 @@ const MESSAGE_CONDITION_TYPES = new Set<AutomationFlowConditionType>([
   ConditionType.MediaAnalysisContains,
 ])
 
+/** Tipos literales que Meta manda en un mensaje entrante. Un interactivo se
+ *  distingue por subtipo (`interactive/button_reply`): es lo que separa tocar
+ *  un botón de completar un formulario. */
+const INBOUND_MESSAGE_TYPE_OPTIONS: { value: string; label: string }[] = [
+  ...META_CONTRACT.inbound.root_types
+    .filter(root => root !== 'interactive')
+    .map(root => ({ root, subtype: null as string | null })),
+  ...META_CONTRACT.inbound.subtypes.interactive.map(subtype => ({ root: 'interactive', subtype })),
+].map(({ root, subtype }) => {
+  const value = subtype ? `${root}/${subtype}` : root
+  const label = root === 'text' ? 'Texto' : parseContent({ content: null, message_type: root, message_subtype: subtype }).label
+  return { value, label: `${label} (${value})` }
+})
+
+const REPLY_ID_MAX_LENGTH = META_CONTRACT.limits.button_id
+
 function defaultConditionValue(type: AutomationFlowConditionType): string | null {
   if (type === ConditionType.StageEquals) return 'nuevo'
-  if (MESSAGE_CONDITION_TYPES.has(type)) return ''
+  if (type === ConditionType.MessageTypeEquals) return INBOUND_MESSAGE_TYPE_OPTIONS[0].value
+  if (MESSAGE_CONDITION_TYPES.has(type) || type === ConditionType.ReplyIdEquals) return ''
   return null
 }
 
@@ -878,6 +897,8 @@ function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroup
               {condition.condition_type === ConditionType.OriginContains && <label className="grid gap-1 text-[10px] text-wa-muted">Origen a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} /></label>}
               {condition.condition_type === ConditionType.ServiceContains && <label className="grid gap-1 text-[10px] text-wa-muted">Servicio a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} /></label>}
               {MESSAGE_CONDITION_TYPES.has(condition.condition_type) && <label className="grid gap-1 text-[10px] text-wa-muted">{condition.condition_type === ConditionType.MediaAnalysisContains ? 'Texto en la descripción del archivo' : 'Contenido del mensaje'}<input maxLength={500} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder={condition.condition_type === ConditionType.MediaAnalysisContains ? 'Ej. comprobante de pago' : 'Ej. Hollywood Peel'} className={fieldClass} /></label>}
+              {condition.condition_type === ConditionType.ReplyIdEquals && <label className="grid gap-1 text-[10px] text-wa-muted">ID del botón u opción<input maxLength={REPLY_ID_MAX_LENGTH} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. reply_1" className={`${fieldClass} font-mono`} /><span className="text-[10px] leading-snug">El ID que configuraste en la plantilla de botones o lista, o el payload del botón de una plantilla oficial. No depende del texto visible.</span></label>}
+              {condition.condition_type === ConditionType.MessageTypeEquals && <Select value={String(condition.value ?? INBOUND_MESSAGE_TYPE_OPTIONS[0].value)} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{INBOUND_MESSAGE_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>}
               {condition.condition_type === ConditionType.SellerEquals && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
               {condition.condition_type === ConditionType.TagPresent && <Select value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
             </div>

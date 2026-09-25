@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../hooks/useAppointments'
 import { extractErrorMessage } from '../utils/errors'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../domain/appointments'
-import { formatFlowAmount } from '../utils/message'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
@@ -183,7 +182,7 @@ export function AppointmentHistoryList() {
               <footer className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-wa-border pt-3 text-[11px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
                 <span className="font-medium text-wa-text dark:text-wa-text-dark">{item.vendedor}</span>
                 <span>{item.duration_minutes} min</span>
-                {item.adelanto > 0 && <span>Pago: {formatFlowAmount(item.adelanto, 'PEN')}</span>}
+                {item.adelanto > 0 && <span>Pago: S/{item.adelanto.toFixed(2)}</span>}
                 {item.calendar_sync_status === 'error' && <span className="text-amber-700 dark:text-amber-300">Google Calendar pendiente</span>}
                 <span>Registrado por {item.created_by_name} · {formatDateTime(item.created_at)}</span>
                 {!item.test_mode && item.calendar_sync_status !== 'synced' && (

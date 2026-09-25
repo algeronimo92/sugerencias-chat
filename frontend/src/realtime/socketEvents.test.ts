@@ -17,9 +17,19 @@ describe('parseChatSocketEvent', () => {
   it('filtra estados de mensaje inválidos', () => {
     const event = parseChatSocketEvent(JSON.stringify({
       type: 'chats_updated',
-      message_statuses: [{ id: 1, status: 'READ' }, { id: 2, status: 'NOPE' }],
+      message_statuses: [
+        { id: 1, meta_status: 'read' },
+        { id: 2, outbox_status: 'NOPE' },
+        { id: 3, outbox_status: 'failed', meta_status: 'future_status' },
+      ],
     }))
 
-    expect(event).toMatchObject({ message_statuses: [{ id: 1, status: 'READ' }] })
+    // El estado de la cola se valida; el de Meta pasa literal aunque sea nuevo.
+    expect(event).toMatchObject({
+      message_statuses: [
+        { id: 1, meta_status: 'read' },
+        { id: 3, outbox_status: 'failed', meta_status: 'future_status' },
+      ],
+    })
   })
 })

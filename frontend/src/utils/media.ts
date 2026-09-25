@@ -1,10 +1,9 @@
 import type { Message } from '../types'
-import { parseContent, resolveMediaUrl } from './message'
+import { messageFilename, parseContent, resolveMediaUrl } from './message'
 
 const DEFAULT_MEDIA_EXTENSIONS: Record<string, string> = {
   image: 'jpg',
   video: 'mp4',
-  ptv: 'mp4',
   audio: 'ogg',
   sticker: 'webp',
   document: 'bin',
@@ -29,8 +28,8 @@ function extensionFromUrl(mediaUrl: string | null): string | null {
  * cuando existe; para notas de voz/fotos entrantes usa fecha y extensión. */
 export function messageMediaFilename(message: Message): string {
   const parsed = parseContent(message)
-  const original = typeof parsed.payload?.filename === 'string' ? parsed.payload.filename.trim() : ''
-  const kind = parsed.kind === 'ptv' ? 'video' : parsed.kind
+  const original = messageFilename(parsed)
+  const kind = parsed.kind
   const extension = extensionFromUrl(message.media_url) ?? DEFAULT_MEDIA_EXTENSIONS[kind] ?? 'bin'
   if (original) {
     const safeOriginal = safeDownloadName(original)

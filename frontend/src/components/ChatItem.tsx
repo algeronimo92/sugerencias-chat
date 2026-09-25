@@ -166,7 +166,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   const preview = parseContent(
     isMessageMatch
       ? chat.matched_message!
-      : { content: chat.last_message, message_type: chat.last_message_type },
+      : { content: chat.last_message, message_type: chat.last_message_type, message_subtype: chat.last_message_subtype },
   )
   // De un mensaje eliminado el backend no manda el texto: el preview lo dice
   // en vez de quedar en "—", igual que la lista de chats de WhatsApp.

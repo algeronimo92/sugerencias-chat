@@ -58,7 +58,7 @@ export function AlbumBubble({
   function tileFor(message: Message): { src: string | null; isVideo: boolean } {
     const failed = failedMediaIds.has(message.id)
     const src = failed ? null : resolveMediaUrl(message.media_url)
-    return { src, isVideo: message.message_type === 'video' || message.message_type === 'ptv' }
+    return { src, isVideo: message.message_type === 'video' }
   }
 
   const actions = !selectionMode && (
@@ -150,7 +150,7 @@ export function AlbumBubble({
           {caption && <p className="whitespace-pre-wrap break-words px-1 pt-1.5">{caption}</p>}
           <div className="flex items-center justify-end gap-1 px-1 pt-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60">
             <span>{formatMessageTime(last.sent_at)}</span>
-            {isVendedor && <MessageStatusTicks status={last.status} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
+            {isVendedor && <MessageStatusTicks outboxStatus={last.outbox_status} metaStatus={last.meta_status} statusPayload={last.status_payload} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
           </div>
         </div>
       </div>

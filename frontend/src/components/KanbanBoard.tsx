@@ -48,7 +48,7 @@ interface KanbanCardProps {
 }
 
 function KanbanCard({ chat, catalog, isMoving, isSelected, onToggleSelect, onOpen, onDragStart, onDragEnd, onMove }: KanbanCardProps) {
-  const preview = parseContent({ content: chat.last_message, message_type: chat.last_message_type })
+  const preview = parseContent({ content: chat.last_message, message_type: chat.last_message_type, message_subtype: chat.last_message_subtype })
   const PreviewIcon = preview.icon
   const previewText = preview.kind === 'location' ? preview.label : preview.text || preview.label || 'Sin mensajes'
   const accessibleSummary = `Abrir chat de ${displayName(chat)}. ${chat.phone || chat.chat_id}. ${previewText}.${chat.unread_count > 0 ? ` ${chat.unread_count} ${chat.unread_count === 1 ? 'mensaje sin leer' : 'mensajes sin leer'}.` : ''}`

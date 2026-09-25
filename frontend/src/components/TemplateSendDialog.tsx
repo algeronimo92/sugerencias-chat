@@ -3,7 +3,6 @@ import { AlertTriangle, BadgeCheck, CheckCircle2, FileAudio, FileText, Image, Lo
 import type { Chat, MessageTemplate, MessageType, TemplateAttachment } from '../types'
 import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
-import { INTERACTIVE_REPLY_PROMPT, buttonFallbackLine } from '../domain/interactiveRules'
 import { extractErrorMessage } from '../utils/errors'
 import { parseRichText, resolveMediaUrl } from '../utils/message'
 import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate, templateParameterIdentifiers } from '../utils/templates'
@@ -180,21 +179,6 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
   const send = useSendTemplate(chat.chat_id);
   const { data: capabilities, isLoading: isLoadingCapabilities } =
     useTemplateCapabilities();
-  // La Graph API de Meta solo acepta botones tipo "reply" en un mensaje
-  // interactivo suelto (fuera de una plantilla oficial) -- un botón de URL,
-  // llamada o copiar código siempre rechaza con "interactive.action.buttons.N.reply
-  // is required", sin importar la ventana de 24h. No es un bug de Evolution
-  // como el de Baileys/desconocida (razón original de este fallback): pasa
-  // igual en WHATSAPP-BUSINESS, así que estos botones también necesitan el
-  // texto numerado de respaldo ahí.
-  const hasNonReplyButtons =
-    template.interactive_type === "buttons" &&
-    (template.interactive_config.buttons ?? []).some(
-      (button) => button.type !== "reply",
-    );
-  const usesSafeInteractiveFallback =
-    isInteractive &&
-    (capabilities?.integration !== "WHATSAPP-BUSINESS" || hasNonReplyButtons);
   const text = isOfficial
     ? renderOfficialTemplate(template, chat, parameters)
     : internalText;
@@ -206,30 +190,10 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     () => renderInteractiveConfig(template, chat),
     [template, chat],
   );
-  const safeInteractivePreview = useMemo(() => {
-    if (!isInteractive) return ''
-    const lines = [`*${interactiveConfig.title ?? ''}*`, text, '']
-    if (template.interactive_type === 'buttons') {
-      const buttons = interactiveConfig.buttons ?? []
-      const replyOnly = buttons.every(button => button.type === 'reply')
-      buttons.forEach((button, index) => lines.push(buttonFallbackLine(button, index)))
-      if (replyOnly) lines.push('', INTERACTIVE_REPLY_PROMPT)
-      if (interactiveConfig.footer) lines.push('', interactiveConfig.footer)
-    } else {
-      let optionNumber = 1;
-      for (const section of interactiveConfig.sections ?? []) {
-        lines.push(`*${section.title}*`);
-        for (const row of section.rows) {
-          lines.push(`${optionNumber}. ${row.title} — ${row.description}`);
-          optionNumber += 1;
-        }
-        lines.push("");
-      }
-      lines.push(INTERACTIVE_REPLY_PROMPT)
-      if (interactiveConfig.footerText) lines.push('', interactiveConfig.footerText)
-    }
-    return lines.join("\n");
-  }, [interactiveConfig, isInteractive, template.interactive_type, text]);
+  const interactiveTitle = interactiveConfig.header?.text ?? "";
+  const interactiveFooter = interactiveConfig.footer?.text ?? "";
+  const interactiveButtons = interactiveConfig.action?.buttons ?? [];
+  const interactiveSections = interactiveConfig.action?.sections ?? [];
   const attachments = useMemo(
     () =>
       [...template.attachments].sort(
@@ -299,15 +263,26 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
 
   function confirmSend() {
     if (!canSend) return;
-    const interactiveContent = usesSafeInteractiveFallback
-      ? safeInteractivePreview
-      : `${interactiveConfig.title ?? ""}\n${text}`.trim();
     const optimisticMessages: OptimisticMessageDraft[] =
       isOfficial || isInteractive
         ? [
             {
-              content: isInteractive ? interactiveContent : text,
+              content: text,
               message_type: isInteractive ? "interactive" : "template",
+              // La burbuja optimista se pinta con la misma estructura de Meta
+              // que devolverá el backend.
+              ...(isInteractive
+                ? {
+                    message_subtype: template.interactive_type,
+                    provider_payload: {
+                      interactive: JSON.parse(JSON.stringify({
+                        type: template.interactive_type,
+                        ...interactiveConfig,
+                        body: { text },
+                      })),
+                    },
+                  }
+                : {}),
             },
           ]
         : [
@@ -387,7 +362,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                 {isOfficial
                   ? "Plantilla oficial Meta"
                   : isInteractive
-                    ? template.interactive_type === "buttons"
+                    ? template.interactive_type === "button"
                       ? "Mensaje con botones"
                       : "Mensaje con lista"
                     : "Plantilla interna"}{" "}
@@ -498,44 +473,15 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
 
               {isInteractive && (
                 <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 text-xs text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
-                  <p className="font-semibold">{interactiveConfig.title}</p>
+                  {interactiveTitle && <p className="font-semibold">{interactiveTitle}</p>}
                   <p className="mt-1">
-                    {template.interactive_type === "buttons"
-                      ? `${interactiveConfig.buttons?.length ?? 0} botones configurados`
-                      : `${interactiveConfig.sections?.reduce((total, section) => total + section.rows.length, 0) ?? 0} opciones en ${interactiveConfig.sections?.length ?? 0} secciones`}
+                    {template.interactive_type === "button"
+                      ? `${interactiveButtons.length} botones configurados`
+                      : `${interactiveSections.reduce((total, section) => total + section.rows.length, 0)} opciones en ${interactiveSections.length} secciones`}
                     .
                   </p>
                 </div>
               )}
-
-              {usesSafeInteractiveFallback && (
-                <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <p className="font-semibold">Envío como texto numerado</p>
-                    <p className="mt-0.5">
-                      {hasNonReplyButtons
-                        ? 'Meta solo permite botones de "respuesta rápida" en un mensaje interactivo suelto; un botón de URL, llamada o copiar código lo rechaza siempre. Las opciones se enviarán como un único texto numerado.'
-                        : "Esta instancia puede aceptar botones o listas sin entregarlos a WhatsApp. Para garantizar que el cliente vea el mensaje, las opciones se enviarán como un único texto numerado."}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {!usesSafeInteractiveFallback &&
-                template.interactive_type === "list" && (
-                  <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-semibold">Compatibilidad de lista</p>
-                      <p className="mt-0.5">
-                        Si Evolution reporta el error conocido de serialización,
-                        todas las opciones se enviarán como un único mensaje
-                        numerado.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
               {unresolvedVariables.length > 0 && (
                 <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -571,14 +517,12 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                       <MessageSquareText className="h-4 w-4 shrink-0 text-wa-primary-strong" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-xs font-medium text-gray-800 dark:text-wa-text-dark">
-                          {usesSafeInteractiveFallback
-                            ? "Mensaje compatible con opciones numeradas"
-                            : template.interactive_type === "buttons"
-                              ? "Mensaje con botones"
-                              : "Mensaje con lista"}
+                          {template.interactive_type === "button"
+                            ? "Mensaje con botones"
+                            : "Mensaje con lista"}
                         </span>
                         <span className="block truncate text-[10px] text-wa-muted">
-                          {interactiveConfig.title}
+                          {interactiveTitle || text}
                         </span>
                       </span>
                     </li>
@@ -666,45 +610,34 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                 </div>
               </div>
               <div className="flex-1 space-y-2 overflow-y-auto p-4">
-                {isInteractive && usesSafeInteractiveFallback ? (
-                  <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out px-3 py-2 text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
-                    <p className="whitespace-pre-wrap wrap-break-word">
-                      <RichMessage text={safeInteractivePreview} />
-                    </p>
-                    <p className="mt-1 text-right text-[9px] text-wa-muted dark:text-wa-muted-dark">
-                      Vista del mensaje compatible
-                    </p>
-                  </div>
-                ) : isInteractive ? (
+                {isInteractive ? (
                   <>
                     <div className="ml-auto w-full max-w-[88%] overflow-hidden rounded-xl rounded-tr-sm bg-wa-out text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
                       <div className="px-3 py-2">
-                        <p className="font-semibold">
-                          {interactiveConfig.title}
-                        </p>
+                        {interactiveTitle && (
+                          <p className="font-semibold">{interactiveTitle}</p>
+                        )}
                         <p className="mt-1 whitespace-pre-wrap wrap-break-word">
                           <RichMessage text={text} />
                         </p>
-                        {(interactiveConfig.footer ||
-                          interactiveConfig.footerText) && (
+                        {interactiveFooter && (
                           <p className="mt-2 text-[10px] text-wa-muted dark:text-wa-muted-dark">
-                            {interactiveConfig.footer ||
-                              interactiveConfig.footerText}
+                            {interactiveFooter}
                           </p>
                         )}
                       </div>
-                      {template.interactive_type === "buttons" ? (
-                        interactiveConfig.buttons?.map((button, index) => (
+                      {template.interactive_type === "button" ? (
+                        interactiveButtons.map((button, index) => (
                           <div
                             key={index}
                             className="border-t border-green-200 px-3 py-2 text-center text-xs font-semibold text-blue-600 dark:border-green-900 dark:text-blue-400"
                           >
-                            {button.displayText}
+                            {button.reply.title}
                           </div>
                         ))
                       ) : (
                         <div className="border-t border-green-200 px-3 py-2 text-center text-xs font-semibold text-blue-600 dark:border-green-900 dark:text-blue-400">
-                          {interactiveConfig.buttonText}
+                          {interactiveConfig.action?.button}
                         </div>
                       )}
                     </div>
@@ -713,7 +646,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                         <p className="mb-2 text-center text-xs font-semibold text-gray-700 dark:text-wa-text-dark">
                           Vista de la lista
                         </p>
-                        {interactiveConfig.sections?.map(
+                        {interactiveSections.map(
                           (section, sectionIndex) => (
                             <div key={sectionIndex} className="mt-2">
                               <p className="text-[10px] font-semibold uppercase text-wa-muted">
@@ -847,13 +780,11 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                   ? `Encolando ${stepCount} elementos...`
                   : isOfficial
                     ? "Enviar plantilla oficial"
-                    : usesSafeInteractiveFallback
-                      ? "Enviar opciones"
-                      : isInteractive
-                        ? template.interactive_type === "buttons"
-                          ? "Enviar botones"
-                          : "Enviar lista"
-                        : `Enviar ${stepCount} elemento${stepCount === 1 ? "" : "s"}`}
+                    : isInteractive
+                      ? template.interactive_type === "button"
+                        ? "Enviar botones"
+                        : "Enviar lista"
+                      : `Enviar ${stepCount} elemento${stepCount === 1 ? "" : "s"}`}
               </button>
             </div>
           </footer>

@@ -73,18 +73,6 @@ vi.mock('../hooks/useMessages', async () => {
   }
 })
 
-vi.mock('../hooks/useEvolutionHistory', () => ({
-  useEvolutionHistory: () => ({
-    data: undefined,
-    error: null,
-    fetchNextPage: vi.fn(),
-    hasNextPage: false,
-    isFetching: false,
-    refetch: vi.fn(),
-  }),
-  useEvolutionHistoryAvailability: () => ({ data: { available: false } }),
-}))
-
 vi.mock('../hooks/useInternalNotes', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useInternalNotes')>()),
   useInternalNotes: () => ({ data: [] }),

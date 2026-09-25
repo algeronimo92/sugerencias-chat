@@ -180,7 +180,7 @@ export function LeadInfo({ chat }: Props) {
           submitLabel="Guardar"
           // El teléfono se bloquea solo cuando ya hay algo resuelto que
           // cambiarlo podría redirigir sin querer. Con telefono en null (un
-          // @lid del que WhatsApp nunca reveló el número) no hay nada que
+          // user_id de Meta que nunca reveló el número) no hay nada que
           // proteger, aunque ya haya conversación — se deja completar a mano.
           canEditPhone={chat.last_message == null || chat.phone == null}
           phoneEditIsRisky={chat.last_message != null && chat.phone == null}

@@ -18,7 +18,8 @@ const MESSAGES = [
     sent_at: '2026-08-19T14:00:00Z',
     media_url: null,
     wa_message_id: 'wa-1',
-    status: 'DELIVERY_ACK',
+    outbox_status: 'sent',
+    meta_status: 'delivered',
     message_type: 'text',
   },
   {
@@ -28,7 +29,8 @@ const MESSAGES = [
     sent_at: '2026-08-19T14:01:00Z',
     media_url: null,
     wa_message_id: 'wa-2',
-    status: 'READ',
+    outbox_status: 'sent',
+    meta_status: 'read',
     message_type: 'text',
   },
 ] as Message[]

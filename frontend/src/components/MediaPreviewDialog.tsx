@@ -58,8 +58,8 @@ export function MediaPreviewDialog({
   /** Varias fotos/videos elegidos juntos: se pintan como tira de miniaturas
    * en vez de una sola, y el título pasa a "N archivos". undefined o un solo
    * ítem deja el preview de siempre (una miniatura, sin tira). Cada uno se
-   * manda como su propio mensaje al confirmar — no hay álbum nativo de
-   * WhatsApp del lado de Evolution API. */
+   * manda como su propio mensaje al confirmar — la Cloud API de WhatsApp no
+   * tiene álbum saliente. */
   thumbnails?: MediaPreviewThumbnail[]
   activeIndex?: number
   onSelectThumbnail?: (index: number) => void

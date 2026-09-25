@@ -1,17 +1,19 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, CreditCard, Download, ExternalLink, EyeOff, FileText, ReceiptText, ShoppingBag, Sparkles } from 'lucide-react'
+import {
+  AlertTriangle, ChevronDown, CornerUpLeft, Download, FileText, Info, LayoutGrid, PhoneCall,
+  ReceiptText, ShoppingBag, Sparkles, Workflow,
+} from 'lucide-react'
 
 import type { Message } from '../types'
 import {
-  flowOrderGroup, flowStatusLabel, formatFlowAmount, isJsonObject, messageContacts, messageCoords,
-  messageFlowOrder, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS,
-  type FlowOrderButton, type FlowOrderGroup, type MessageKind, type ParsedContent,
+  formatMoney, messageContacts, messageCoords, messageFlowReply, messageOrder, messageProducts,
+  messageFilename, messageReply, messageSystemNotice, metaErrors,
+  type MessageKind, type ParsedContent,
 } from '../utils/message'
 import { messageMediaFilename } from '../utils/media'
 import { AudioPlayer } from './MediaPlayer'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { ContactCard } from './ContactCard'
-import { FlowOrderDetailDialog } from './FlowOrderDetailDialog'
 import { MapPreview } from './MapPreview'
 import { RichText } from './RichText'
 import { TemplateMessagePreview } from './TemplateMessageCard'
@@ -60,19 +62,14 @@ export interface MessageBodyContext {
   onPreviewSticker: (item: { src: string; mediaUrl: string }) => void
   /** Pie del video (hora + estado), que va embebido dentro del reproductor. */
   videoFooter: ReactNode
-  /** El mensaje lleva un recuadro de cita arriba (ajusta el preview de plantilla). */
+  /** El mensaje lleva un recuadro de cita arriba. */
   hasQuote: boolean
-  /** Mensajes ya cargados del mismo chat, para correlacionar los pedidos de
-   * WhatsApp Flow que llegan repartidos en 3 mensajes `interactive` con el
-   * mismo `reference_id` (ver `flowOrderGroup`). Si falta, la correlación
-   * cae a usar solo este mensaje. */
-  chatMessages?: Pick<Message, 'message_type' | 'payload' | 'sent_at'>[]
 }
 
 type BodyRenderer = (ctx: MessageBodyContext) => ReactNode
 
-/** Chip de "tipo de adjunto" (ícono + etiqueta) para cuando el archivo no está
- * disponible: el receptor ve al menos qué era. */
+/** Chip de "tipo de mensaje" (ícono + etiqueta) para cuando no hay contenido
+ * que mostrar: el receptor ve al menos qué era. */
 function AttachmentChip({ parsed }: { parsed: ParsedContent }) {
   const { icon: Icon, label } = parsed
   if (!Icon) return null
@@ -85,12 +82,10 @@ function AttachmentChip({ parsed }: { parsed: ParsedContent }) {
 }
 
 /** Párrafo de caption/cuerpo. En cursiva para los que no son texto plano
- * (epígrafes de adjuntos, texto renderizado de interactivos). */
+ * (epígrafes de adjuntos). */
 function Caption({ parsed }: { parsed: ParsedContent }) {
   const { kind, text, template } = parsed
   if (!text) return null
-  // El cuerpo de una plantilla es texto real del anuncio, no un marcador de
-  // adjunto: se pinta como un mensaje normal.
   const plain = kind === 'text' || template != null
   return (
     <p className={`whitespace-pre-wrap break-words ${plain ? '' : 'italic text-wa-muted dark:text-wa-text-dark/70'}`}>
@@ -99,8 +94,38 @@ function Caption({ parsed }: { parsed: ParsedContent }) {
   )
 }
 
-function TextBody({ parsed }: MessageBodyContext) {
-  return <Caption parsed={parsed} />
+/** Tarjeta con encabezado de color, compartida por pedidos, productos y
+ * formularios: el mismo lenguaje visual que las tarjetas de WhatsApp. */
+function Card({ icon: Icon, title, badge, children }: {
+  icon: typeof ReceiptText
+  title: string
+  badge?: string
+  children?: ReactNode
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
+      <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
+        <Icon className="h-4 w-4 shrink-0 text-wa-primary" aria-hidden="true" />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">{title}</p>
+        {badge && (
+          <span className="max-w-32 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold text-wa-primary-strong dark:text-wa-primary">
+            {badge}
+          </span>
+        )}
+      </div>
+      {children && <div className="space-y-2 px-3 py-2.5">{children}</div>}
+    </div>
+  )
+}
+
+function TextBody(ctx: MessageBodyContext) {
+  const products = messageProducts(ctx.parsed)
+  return (
+    <>
+      {products.length > 0 && <ProductReferences parsed={ctx.parsed} title="Consulta sobre un producto" />}
+      <Caption parsed={ctx.parsed} />
+    </>
+  )
 }
 
 function MediaDownloadButton({ onClick, label }: { onClick: () => void; label: string }) {
@@ -202,433 +227,161 @@ function StickerBody(ctx: MessageBodyContext) {
   )
 }
 
+function documentName(parsed: ParsedContent): string {
+  return messageFilename(parsed) || parsed.text || 'Documento'
+}
+
 function DocumentBody(ctx: MessageBodyContext) {
   const { parsed, mediaSrc, onDownloadMedia } = ctx
-  const name = String((parsed.payload?.filename as string | undefined) || parsed.text || 'Documento')
-  if (!mediaSrc) return <AttachmentChip parsed={parsed} />
+  const name = documentName(parsed)
+  if (!mediaSrc) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
+  const caption = parsed.text && parsed.text !== name ? parsed : null
   return (
-    <div className="flex items-center gap-1 rounded-lg bg-black/5 p-1 transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15">
-      <a
-        href={mediaSrc}
-        {...(isPdfFilename(name)
-          ? { target: '_blank', rel: 'noopener noreferrer' }
-          : { download: name || true })}
-        className="flex min-w-0 flex-1 items-center gap-3 px-2 py-1.5"
-      >
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${documentColor(name)}`}>
-          <FileText className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium not-italic text-wa-text dark:text-wa-text-dark">{name}</p>
-          <p className="text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{documentExtension(name)}</p>
-        </div>
-      </a>
-      <MediaDownloadButton onClick={onDownloadMedia} label={`Descargar ${name}`} />
-    </div>
+    <>
+      <div className="flex items-center gap-1 rounded-lg bg-black/5 p-1 transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15">
+        <a
+          href={mediaSrc}
+          {...(isPdfFilename(name)
+            ? { target: '_blank', rel: 'noopener noreferrer' }
+            : { download: name || true })}
+          className="flex min-w-0 flex-1 items-center gap-3 px-2 py-1.5"
+        >
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${documentColor(name)}`}>
+            <FileText className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium not-italic text-wa-text dark:text-wa-text-dark">{name}</p>
+            <p className="text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{documentExtension(name)}</p>
+          </div>
+        </a>
+        <MediaDownloadButton onClick={onDownloadMedia} label={`Descargar ${name}`} />
+      </div>
+      {caption && <Caption parsed={caption} />}
+    </>
   )
 }
 
 function LocationBody({ parsed }: MessageBodyContext) {
-  const coords = messageCoords(parsed.payload, parsed.text)
-  if (!coords) return <AttachmentChip parsed={parsed} />
+  const coords = messageCoords(parsed.meta)
+  if (!coords) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   const [lat, lon] = coords
-  const isLive = parsed.payload?.live === true
   return (
-    <a
-      href={`https://www.google.com/maps?q=${lat},${lon}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="relative block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
-    >
-      {isLive && (
-        <span className="absolute left-1.5 top-1.5 z-10 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-          En vivo
-        </span>
-      )}
-      <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
-    </a>
+    <>
+      <a
+        href={`https://www.google.com/maps?q=${lat},${lon}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative block w-56 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
+      >
+        <MapPreview latitude={lat} longitude={lon} className="rounded-lg" />
+      </a>
+      {parsed.text && <p className="mt-1 text-sm font-medium not-italic">{parsed.text}</p>}
+    </>
   )
 }
 
-function ContactBody({ parsed }: MessageBodyContext) {
-  const contacts = messageContacts(parsed.payload)
+function ContactsBody({ parsed }: MessageBodyContext) {
+  const contacts = messageContacts(parsed.meta)
   if (contacts.length === 0) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   return <ContactCard contacts={contacts} />
 }
 
-function PollBody({ parsed }: MessageBodyContext) {
-  const values = Array.isArray(parsed.payload?.values)
-    ? parsed.payload.values.map(String)
-    : []
-  const results = Array.isArray(parsed.payload?.results)
-    ? parsed.payload.results.filter(isJsonObject)
-    : []
-  const counts = new Map(results.map(result => [String(result.option || ''), Number(result.count) || 0]))
-  const options = values.length ? values : results.map(result => String(result.option || '')).filter(Boolean)
-  const totalVotes = Array.from(counts.values()).reduce((total, count) => total + count, 0)
+/** Lo que tocó el cliente: un botón de respuesta rápida de una plantilla
+ * (`button`), un botón de un interactivo (`button_reply`) o una opción de
+ * una lista (`list_reply`). El id o payload literal queda a la vista porque
+ * es lo que usan las automatizaciones para ramificar. */
+function ReplyBody({ parsed }: MessageBodyContext) {
+  const reply = messageReply(parsed)
+  if (!reply || !reply.title) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
   return (
-    <div className="flex flex-col gap-1.5">
-      {parsed.text && <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark">{parsed.text}</p>}
-      {options.map((value, index) => {
-        const count = counts.get(value) || 0
-        const percent = totalVotes ? Math.round((count / totalVotes) * 100) : 0
-        return (
-        <div
-          key={index}
-          className="relative overflow-hidden rounded-lg border border-black/10 px-3 py-1.5 text-sm text-wa-text dark:border-white/15 dark:text-wa-text-dark"
-        >
-          {totalVotes > 0 && <span className="absolute inset-y-0 left-0 bg-wa-primary/10" style={{ width: `${percent}%` }} />}
-          <span className="relative flex items-center justify-between gap-3">
-            <span>{value}</span>
-            {totalVotes > 0 && <span className="text-xs tabular-nums text-wa-muted">{count}</span>}
-          </span>
-        </div>
-      )})}
-      {totalVotes > 0 && <p className="text-right text-[11px] text-wa-muted">{totalVotes} {totalVotes === 1 ? 'voto' : 'votos'}</p>}
-    </div>
-  )
-}
-
-function orderText(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function orderNumber(value: unknown): number | null {
-  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function OrderBody({ parsed }: MessageBodyContext) {
-  const payload = parsed.payload
-  const orderId = orderText(payload?.order_id)
-  const title = orderText(payload?.title) || 'Pedido de WhatsApp'
-  const detail = orderText(payload?.message) || parsed.text
-  const itemCount = orderNumber(payload?.item_count)
-  const amount1000 = orderNumber(payload?.total_amount_1000)
-  const currency = orderText(payload?.currency)
-  const status = orderText(payload?.status).replaceAll('_', ' ')
-  const total = amount1000 != null
-    ? `${currency || 'PEN'} ${(amount1000 / 1000).toLocaleString('es-PE', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`
-    : ''
-
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
-      <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
-        <ReceiptText className="h-4 w-4 shrink-0 text-wa-primary" />
-        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
-          {orderId ? `Pedido N.º ${orderId}` : 'Pedido de WhatsApp'}
-        </p>
-        {status && !/^\d+$/.test(status) && (
-          <span className="max-w-28 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-wa-primary-strong dark:text-wa-primary">
-            {status.toLocaleLowerCase('es-PE')}
-          </span>
+    <div className="flex min-w-0 items-start gap-2">
+      <CornerUpLeft className="mt-0.5 h-3.5 w-3.5 shrink-0 text-wa-primary" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="whitespace-pre-wrap break-words">{reply.title}</p>
+        {reply.description && (
+          <p className="text-xs text-wa-muted dark:text-wa-text-dark/70">{reply.description}</p>
         )}
-      </div>
-      <div className="space-y-2 px-3 py-2.5">
-        <p className="font-medium not-italic">{title}</p>
-        {detail && detail !== title && (
-          <p className="whitespace-pre-wrap text-sm not-italic text-wa-muted dark:text-wa-text-dark/75">
-            <RichText text={detail} />
+        {reply.id && reply.id !== reply.title && (
+          <p className="truncate text-[10px] text-wa-faint dark:text-wa-text-dark/50" title="Id que recibe la automatización">
+            {parsed.kind === 'button' ? 'Payload' : 'Id'}: {reply.id}
           </p>
         )}
-        {(itemCount != null || total) && (
-          <div className="flex items-end justify-between gap-4 border-t border-black/5 pt-2 text-sm dark:border-white/10">
-            <span className="text-wa-muted dark:text-wa-text-dark/65">
-              {itemCount != null ? `Cantidad ${itemCount}` : 'Total'}
-            </span>
-            {total && <span className="font-semibold tabular-nums">{total}</span>}
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
-function PtvBody(ctx: MessageBodyContext) {
-  const { parsed, mediaSrc, onMediaError, onOpenMedia, onDownloadMedia, videoFooter } = ctx
-  const alt = parsed.text || 'Video circular'
-  if (!mediaSrc) return <><AttachmentChip parsed={parsed} /><Caption parsed={parsed} /></>
+function FlowReplyBody({ parsed }: MessageBodyContext) {
+  const reply = messageFlowReply(parsed.meta)
   return (
-    <>
-      <div className="relative h-56 w-56 max-w-full">
-        <ChatVideoMessage
-          src={mediaSrc}
-          alt={alt}
-          onError={onMediaError}
-          className="h-56 w-56 max-w-full !rounded-full border-4 border-white/20"
-          onOpenGallery={() => onOpenMedia({ src: mediaSrc, kind: 'video', alt, filename: messageMediaFilename(ctx.message) })}
-          footer={videoFooter}
-        />
-        <span className="absolute right-2 top-4 z-10 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-          <MediaDownloadButton onClick={onDownloadMedia} label="Descargar video circular" />
-        </span>
-      </div>
-      <Caption parsed={parsed} />
-    </>
-  )
-}
-
-function money(amount1000: number | null, currency: string): string {
-  if (amount1000 == null) return ''
-  return `${currency || 'PEN'} ${(amount1000 / 1000).toLocaleString('es-PE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
-function ProductBody({ parsed }: MessageBodyContext) {
-  const payload = parsed.payload
-  const title = orderText(payload?.title) || parsed.text || 'Producto de WhatsApp'
-  const description = orderText(payload?.description) || orderText(payload?.body)
-  const currency = orderText(payload?.currency)
-  const regularPrice = money(orderNumber(payload?.price_amount_1000), currency)
-  const salePrice = money(orderNumber(payload?.sale_price_amount_1000), currency)
-  const rawImageUrl = orderText(payload?.image_url)
-  const imageUrl = /^(?:https?:\/\/|\/media\/)/i.test(rawImageUrl) ? rawImageUrl : ''
-  const productUrl = orderText(payload?.url)
-
-  const content = (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
-      {imageUrl && <img src={imageUrl} alt={title} className="max-h-44 w-full object-cover" />}
-      <div className="space-y-1.5 px-3 py-2.5">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-wa-primary-strong dark:text-wa-primary">
-          <ShoppingBag className="h-4 w-4" /> Producto
-        </div>
-        <p className="font-medium not-italic">{title}</p>
-        {description && description !== title && (
-          <p className="line-clamp-3 text-sm not-italic text-wa-muted dark:text-wa-text-dark/70">{description}</p>
-        )}
-        {(salePrice || regularPrice) && (
-          <div className="flex items-baseline gap-2 pt-1">
-            <span className="font-semibold tabular-nums">{salePrice || regularPrice}</span>
-            {salePrice && regularPrice && salePrice !== regularPrice && (
-              <span className="text-xs tabular-nums text-wa-muted line-through">{regularPrice}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-
-  if (!/^https?:\/\//i.test(productUrl)) return content
-  return <a href={productUrl} target="_blank" rel="noopener noreferrer" className="relative block hover:opacity-90">{content}<ExternalLink className="absolute bottom-3 right-3 h-3.5 w-3.5 text-wa-muted" /></a>
-}
-
-const PAYMENT_LABELS: Record<string, string> = {
-  invoice: 'Factura',
-  requestPayment: 'Solicitud de pago',
-  sendPayment: 'Pago enviado',
-  paymentInvite: 'Invitación de pago',
-  cancelPaymentRequest: 'Solicitud cancelada',
-  declinePaymentRequest: 'Solicitud rechazada',
-}
-
-function PaymentBody({ parsed }: MessageBodyContext) {
-  const payload = parsed.payload
-  const kind = orderText(payload?.payment_kind)
-  const label = PAYMENT_LABELS[kind] || 'Pago de WhatsApp'
-  const amount = money(orderNumber(payload?.amount_1000), orderText(payload?.currency))
-  const note = orderText(payload?.note) || parsed.text
-  const status = orderText(payload?.status).replaceAll('_', ' ')
-  const transactionId = orderText(payload?.transaction_id)
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
-      <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
-        <CreditCard className="h-4 w-4 shrink-0 text-wa-primary" />
-        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">{label}</p>
-        {status && <span className="max-w-28 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-wa-primary-strong dark:text-wa-primary">{status.toLocaleLowerCase('es-PE')}</span>}
-      </div>
-      <div className="space-y-1.5 px-3 py-2.5">
-        {amount && <p className="text-lg font-semibold tabular-nums not-italic">{amount}</p>}
-        {note && note !== label && <p className="whitespace-pre-wrap text-sm not-italic"><RichText text={note} /></p>}
-        {transactionId && <p className="truncate text-[10px] text-wa-muted dark:text-wa-text-dark/60">ID: {transactionId}</p>}
-      </div>
-    </div>
-  )
-}
-
-const VIEW_ONCE_LABELS: Record<string, string> = {
-  image: 'Imagen de visualización única',
-  video: 'Video de visualización única',
-  ptv: 'Video circular de visualización única',
-  audio: 'Audio de visualización única',
-  document: 'Documento de visualización única',
-}
-
-/** WhatsApp no permite conservar ni volver a abrir este adjunto desde el CRM.
- * La tarjeta informa qué llegó, pero deliberadamente no recibe mediaSrc. */
-function ViewOnceBody({ parsed }: MessageBodyContext) {
-  const innerType = orderText(parsed.payload?.inner_type)
-  const label = VIEW_ONCE_LABELS[innerType] || 'Multimedia de visualización única'
-  return (
-    <div className="min-w-0 max-w-full rounded-lg border border-black/5 bg-black/5 px-3 py-2.5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary">
-          <EyeOff className="h-4 w-4" aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium not-italic">{label}</p>
-          <p className="mt-0.5 text-xs not-italic text-wa-muted dark:text-wa-text-dark/65">
-            Solo puede abrirse en WhatsApp. No se guarda ni se puede descargar desde el CRM.
-          </p>
-        </div>
-      </div>
-      {parsed.text && (
-        <p className="mt-2 whitespace-pre-wrap border-t border-black/5 pt-2 text-sm not-italic dark:border-white/10">
-          <RichText text={parsed.text} />
-        </p>
-      )}
-    </div>
-  )
-}
-
-/** Fallback para tipos que se muestran como texto renderizado + chip del tipo:
- * reacciones y lo no soportado. */
-function TextualBody(ctx: MessageBodyContext) {
-  return (
-    <>
-      <AttachmentChip parsed={ctx.parsed} />
-      <Caption parsed={ctx.parsed} />
-    </>
-  )
-}
-
-/** Verde para lo confirmado (pago realizado, pedido completado), rojo para lo
- * que no va a seguir (cancelado/fallido/rechazado), gris neutro para lo que
- * sigue en curso (pendiente, procesando). No hay un tono de alerta propio en
- * la paleta del proyecto, así que se usa el rojo que ya usan otras acciones
- * destructivas de la burbuja (ej. "Eliminar para todos"). */
-function flowStatusColor(positive: boolean, negative: boolean): string {
-  if (positive) return 'text-wa-primary-strong dark:text-wa-primary'
-  if (negative) return 'text-red-600 dark:text-red-400'
-  return 'text-wa-muted dark:text-wa-text-dark/70'
-}
-
-/** Tarjeta del pedido en sí (evento `review_and_pay`): título, ítem, cantidad
- * y total, con acceso al detalle completo. El badge de estado usa el agregado
- * del grupo, no el `order_status` propio del mensaje (que siempre dice
- * "Pendiente de pago", ver `flowOrderGroup`). */
-function FlowOrderCard({ button, group }: { button: FlowOrderButton; group: FlowOrderGroup }) {
-  const [detailOpen, setDetailOpen] = useState(false)
-  const statusLabel = flowStatusLabel(group.orderStatus, ORDER_STATUS_LABELS)
-  const amountText = formatFlowAmount(button.amount, button.currency)
-
-  return (
-    <>
-      <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-64">
-        <div className="flex items-center gap-2 border-b border-black/5 px-3 py-2 dark:border-white/10">
-          <ReceiptText className="h-4 w-4 shrink-0 text-wa-primary" />
-          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
-            Pedido N.° {button.reference_id}
-          </p>
-          {statusLabel && (
-            <span className="max-w-28 shrink-0 truncate rounded-full bg-wa-primary/15 px-2 py-0.5 text-[10px] font-semibold text-wa-primary-strong dark:text-wa-primary">
-              {statusLabel}
-            </span>
-          )}
-        </div>
-        <div className="space-y-2 px-3 py-2.5">
-          {button.item_name && <p className="font-medium not-italic">{button.item_name}</p>}
-          {button.quantity != null && (
-            <p className="text-sm not-italic text-wa-muted dark:text-wa-text-dark/70">Cantidad: {button.quantity}</p>
-          )}
-          {amountText && (
-            <div className="flex items-end justify-between gap-4 border-t border-black/5 pt-2 text-sm dark:border-white/10">
-              <span className="text-wa-muted dark:text-wa-text-dark/65">Total</span>
-              <span className="font-semibold tabular-nums">{amountText}</span>
+    <Card icon={Workflow} title={reply.name && reply.name !== 'flow' ? `Formulario ${reply.name}` : 'Formulario completado'}>
+      {reply.body && <p className="text-sm not-italic">{reply.body}</p>}
+      {reply.fields.length > 0 ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+          {reply.fields.map((field) => (
+            <div key={field.key} className="contents">
+              <dt className="text-wa-muted dark:text-wa-text-dark/65">{field.key}</dt>
+              <dd className="min-w-0 break-words font-medium">{field.value}</dd>
             </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setDetailOpen(true)}
-            className="text-sm font-medium not-italic text-wa-primary-strong hover:underline dark:text-wa-primary"
-          >
-            Ver detalles
-          </button>
-        </div>
-      </div>
-      {detailOpen && (
-        <FlowOrderDetailDialog button={button} group={group} onClose={() => setDetailOpen(false)} />
+          ))}
+        </dl>
+      ) : (
+        <p className="text-sm text-wa-muted dark:text-wa-text-dark/65">Sin datos en la respuesta.</p>
       )}
-    </>
+    </Card>
   )
 }
 
-/** Tarjeta compacta de una actualización del pedido (`payment_status` o
- * `review_order`): el propio mensaje solo trae el nuevo estado, así que el
- * ítem/cantidad/monto se completan con lo que sí trajo el resto del grupo. */
-function FlowOrderUpdateCard({ button, group }: { button: FlowOrderButton; group: FlowOrderGroup }) {
-  const isPayment = button.name === 'payment_status'
-  const status = isPayment ? group.paymentStatus : group.orderStatus
-  const label = isPayment
-    ? `Pago: ${flowStatusLabel(status, PAYMENT_STATUS_LABELS)}`
-    : `Estado: ${flowStatusLabel(status, ORDER_STATUS_LABELS)}`
-  const positive = isPayment ? status === 'captured' : status === 'completed'
-  const negative = status === 'canceled' || status === 'cancelled' || status === 'declined' || status === 'failed'
-  const amountText = formatFlowAmount(group.amount, group.currency)
-  const detailLine = [group.quantity != null ? `Cantidad ${group.quantity}` : null, amountText || null]
-    .filter(Boolean)
-    .join(' · ')
-  const Icon = isPayment ? CreditCard : ReceiptText
-
+function ProductReferences({ parsed, title }: { parsed: ParsedContent; title: string }) {
+  const products = messageProducts(parsed)
+  if (!products.length) return null
   return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-black/5 bg-black/5 px-3 py-2.5 text-wa-text dark:border-white/10 dark:bg-white/10 dark:text-wa-text-dark sm:min-w-56">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary">
-          <Icon className="h-4 w-4" aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1 space-y-0.5">
-          {group.itemName && <p className="truncate font-medium not-italic">{group.itemName}</p>}
-          {detailLine && (
-            <p className="truncate text-xs not-italic text-wa-muted dark:text-wa-text-dark/65">{detailLine}</p>
-          )}
-          <p className={`text-sm font-medium not-italic ${flowStatusColor(positive, negative)}`}>{label}</p>
-        </div>
-      </div>
+    <div className="mb-1.5">
+      <Card icon={ShoppingBag} title={title} badge={products.length > 1 ? `${products.length} productos` : undefined}>
+        <ul className="space-y-0.5 text-sm">
+          {products.map((product, index) => (
+            <li key={`${product.sku}-${index}`} className="truncate">
+              <span className="font-medium">{product.sku || 'Producto sin código'}</span>
+            </li>
+          ))}
+        </ul>
+        {products[0].catalogId && (
+          <p className="text-[10px] text-wa-faint dark:text-wa-text-dark/50">Catálogo {products[0].catalogId}</p>
+        )}
+      </Card>
     </div>
   )
 }
 
-/** Pedido de "Separación de cita" de WhatsApp Flow: llega como 3 mensajes
- * `interactive` independientes (creación, estado de pago, estado del pedido)
- * que comparten `reference_id`. Se intercepta ANTES del fallback genérico de
- * `TemplateBody` cuando el payload calza esa forma; el resto de mensajes
- * `interactive` (listas, botones de respuesta rápida) sigue su camino normal. */
-function InteractiveBody(ctx: MessageBodyContext) {
-  const flowOrder = messageFlowOrder(ctx.parsed.payload)
-  if (!flowOrder) return TemplateBody(ctx)
-
-  const group = flowOrderGroup(
-    ctx.chatMessages?.length ? ctx.chatMessages : [ctx.message],
-    flowOrder.reference_id,
-  )
-  if (flowOrder.name === 'review_and_pay') return <FlowOrderCard button={flowOrder} group={group} />
-  return <FlowOrderUpdateCard button={flowOrder} group={group} />
+/** Interactivos que manda el negocio: botones y lista se pintan como la
+ * tarjeta de WhatsApp (los botones van debajo de la burbuja); productos,
+ * catálogo, Flow y permiso de llamada muestran qué se ofreció. */
+function OutboundInteractiveBody(ctx: MessageBodyContext) {
+  const { parsed } = ctx
+  const template = parsed.template
+  const subtype = parsed.subtype
+  if (subtype === 'product' || subtype === 'product_list') {
+    return <><ProductReferences parsed={parsed} title={subtype === 'product' ? 'Producto' : 'Productos'} /><InteractiveText parsed={parsed} /></>
+  }
+  if (subtype === 'catalog_message') {
+    return <><Card icon={LayoutGrid} title="Catálogo" /><InteractiveText parsed={parsed} /></>
+  }
+  if (subtype === 'call_permission_request') {
+    return <><Card icon={PhoneCall} title="Permiso para llamar" /><InteractiveText parsed={parsed} /></>
+  }
+  if (subtype === 'flow') {
+    return <><Card icon={Workflow} title="Formulario" /><InteractiveText parsed={parsed} /></>
+  }
+  return <InteractiveText parsed={parsed} withTitle={!!template?.title} />
 }
 
-/** Plantillas y mensajes con botones: preview del enlace (si el JSON trajo
- * uno), el cuerpo como texto normal y el pie. Los botones en sí van FUERA de
- * la burbuja (los pinta MessageBubble debajo), como en WhatsApp.
- *
- * Un `interactive` armado por esta misma app (botones/lista propios, sin
- * preview de enlace: sin `domain` ni `description`) no es un anuncio de
- * plantilla -- el título va como texto en negrita arriba del cuerpo, no
- * dentro de la tarjeta con fondo que usan los anuncios reales. */
-function TemplateBody(ctx: MessageBodyContext) {
-  const { parsed, hasQuote } = ctx
+function InteractiveText({ parsed, withTitle = true }: { parsed: ParsedContent; withTitle?: boolean }) {
   const template = parsed.template
-  const isOwnInteractive = parsed.kind === 'interactive' && !!template && !template.domain && !template.description && !template.answeredQuestion
   return (
     <>
-      {isOwnInteractive && template!.title && (
-        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template!.title}</p>
+      {withTitle && template?.title && (
+        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template.title}</p>
       )}
-      {!isOwnInteractive && template && <TemplateMessagePreview template={template} hasQuote={hasQuote} />}
-      {!template && <AttachmentChip parsed={parsed} />}
       <Caption parsed={parsed} />
       {template?.footer && (
         <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
@@ -637,33 +390,127 @@ function TemplateBody(ctx: MessageBodyContext) {
   )
 }
 
-/** Registro de estrategias de render por tipo. Agregar un tipo = sumar una
- * entrada, sin tocar condicionales repartidos por la burbuja. */
-const BODY_RENDERERS: Record<MessageKind, BodyRenderer> = {
+const INTERACTIVE_RENDERERS: Record<string, BodyRenderer> = {
+  button_reply: ReplyBody,
+  list_reply: ReplyBody,
+  nfm_reply: FlowReplyBody,
+  button: OutboundInteractiveBody,
+  list: OutboundInteractiveBody,
+  product: OutboundInteractiveBody,
+  product_list: OutboundInteractiveBody,
+  catalog_message: OutboundInteractiveBody,
+  flow: OutboundInteractiveBody,
+  call_permission_request: OutboundInteractiveBody,
+}
+
+function InteractiveBody(ctx: MessageBodyContext) {
+  const Renderer = (ctx.parsed.subtype && INTERACTIVE_RENDERERS[ctx.parsed.subtype]) || UnrenderedBody
+  return <Renderer {...ctx} />
+}
+
+function OrderBody({ parsed }: MessageBodyContext) {
+  const order = messageOrder(parsed.meta)
+  return (
+    <Card icon={ReceiptText} title="Pedido" badge={order.items.length ? `${order.items.length} ${order.items.length === 1 ? 'producto' : 'productos'}` : undefined}>
+      {order.text && <p className="whitespace-pre-wrap text-sm not-italic"><RichText text={order.text} /></p>}
+      {order.items.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {order.items.map((item, index) => (
+            <li key={`${item.sku}-${index}`} className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 truncate">
+                {item.quantity != null && <span className="tabular-nums">{item.quantity} × </span>}
+                <span className="font-medium">{item.sku}</span>
+              </span>
+              {item.price != null && (
+                <span className="shrink-0 tabular-nums text-wa-muted dark:text-wa-text-dark/70">
+                  {formatMoney(item.price, item.currency)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {order.totals.map((total) => (
+        <div key={total.currency} className="flex items-end justify-between gap-4 border-t border-black/5 pt-2 text-sm dark:border-white/10">
+          <span className="text-wa-muted dark:text-wa-text-dark/65">Total</span>
+          <span className="font-semibold tabular-nums">{formatMoney(total.amount, total.currency)}</span>
+        </div>
+      ))}
+    </Card>
+  )
+}
+
+/** Plantilla oficial enviada: encabezado de imagen o texto, cuerpo y pie. Los
+ * botones van FUERA de la burbuja (los pinta MessageBubble), como WhatsApp. */
+function TemplateBody({ parsed }: MessageBodyContext) {
+  const template = parsed.template
+  return (
+    <>
+      {template && <TemplateMessagePreview template={template} />}
+      <Caption parsed={parsed} />
+      {template?.footer && (
+        <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-text-dark/60">{template.footer}</p>
+      )}
+    </>
+  )
+}
+
+/** Aviso de WhatsApp (cambio de número, etc.): informativo, no un mensaje
+ * que el cliente escribió. */
+function SystemBody({ parsed }: MessageBodyContext) {
+  const notice = messageSystemNotice(parsed.meta)
+  return (
+    <p className="flex items-start gap-1.5 text-sm italic text-wa-muted dark:text-wa-text-dark/70">
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{notice.body || parsed.text || 'Aviso de WhatsApp'}</span>
+    </p>
+  )
+}
+
+/** `unknown`/`unsupported` (Meta no pudo leer el mensaje) y tipos que el
+ * contrato todavía no conoce: se nombra el tipo literal y se muestran los
+ * errores y el texto disponibles, nunca se descarta el mensaje. */
+function UnrenderedBody({ parsed }: MessageBodyContext) {
+  const errors = metaErrors(parsed.meta)
+  return (
+    <div className="space-y-1">
+      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-wa-muted dark:text-wa-text-dark/70">
+        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+        {parsed.label}
+      </p>
+      {errors.map((error, index) => (
+        <p key={index} className="text-xs text-wa-muted dark:text-wa-text-dark/70">
+          {[error.title, error.details].filter(Boolean).join(': ')}{error.code ? ` (${error.code})` : ''}
+        </p>
+      ))}
+      <Caption parsed={parsed} />
+    </div>
+  )
+}
+
+/** Un renderer por raíz de Meta. Agregar un tipo = sumar una entrada; lo que
+ * no está acá (un tipo nuevo) cae a `UnrenderedBody`. */
+const BODY_RENDERERS: Record<string, BodyRenderer> = {
   text: TextBody,
   image: ImageBody,
   video: VideoBody,
-  ptv: PtvBody,
   audio: AudioBody,
   sticker: StickerBody,
   document: DocumentBody,
   location: LocationBody,
-  contact: ContactBody,
-  poll: PollBody,
+  contacts: ContactsBody,
   interactive: InteractiveBody,
-  button: TextualBody,
-  template: TemplateBody,
+  button: ReplyBody,
   order: OrderBody,
-  product: ProductBody,
-  payment: PaymentBody,
-  view_once: ViewOnceBody,
-  reaction: TextualBody,
-  pin: TextualBody,
-  unsupported: TextualBody,
+  template: TemplateBody,
+  system: SystemBody,
+  unknown: UnrenderedBody,
+  unsupported: UnrenderedBody,
 }
 
 export function MessageBody(ctx: MessageBodyContext) {
-  const Renderer = BODY_RENDERERS[ctx.parsed.kind]
+  const kind: MessageKind = ctx.parsed.kind
+  const Renderer = (ctx.parsed.known && BODY_RENDERERS[kind]) || UnrenderedBody
   return <Renderer {...ctx} />
 }
 

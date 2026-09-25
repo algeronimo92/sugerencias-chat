@@ -94,6 +94,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/{appointment_id}/sync-calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Appointment Calendar */
+        post: operations["sync_appointment_calendar_api_appointments__appointment_id__sync_calendar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/accept-invitation": {
         parameters: {
             query?: never;
@@ -703,23 +720,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/chats/history/availability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get History Availability */
-        get: operations["get_history_availability_api_chats_history_availability_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/chats/kanban/counts": {
         parameters: {
             query?: never;
@@ -881,7 +881,7 @@ export interface paths {
         put?: never;
         /**
          * Send Audio
-         * @description Guarda y encola una nota de voz (PTT) sin esperar a Evolution.
+         * @description Guarda y encola una nota de voz sin esperar a Meta.
          */
         post: operations["send_audio_api_chats__chat_id__audio_post"];
         delete?: never;
@@ -910,20 +910,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/chats/{chat_id}/history": {
+    "/api/chats/{chat_id}/interactive": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Whatsapp History
-         * @description Historial anterior al registro propio, leído de WhatsApp y sin guardar.
-         */
-        get: operations["get_whatsapp_history_api_chats__chat_id__history_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Send Interactive
+         * @description Envía un objeto ``interactive`` de Meta tal cual (botones, lista,
+         *     productos, catálogo, Flow o pedido de permiso de llamada).
+         *
+         *     El subtipo tiene que estar en la allowlist de salida y, si depende de la
+         *     cuenta (catálogo, Flow publicado, llamadas), la cuenta tiene que tenerlo.
+         */
+        post: operations["send_interactive_api_chats__chat_id__interactive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -958,7 +962,7 @@ export interface paths {
         put?: never;
         /**
          * Send Media
-         * @description Guarda y encola un adjunto sin esperar a Evolution.
+         * @description Guarda y encola un adjunto sin esperar a Meta.
          */
         post: operations["send_media_api_chats__chat_id__media_post"];
         delete?: never;
@@ -1029,38 +1033,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/chats/{chat_id}/messages/{message_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Message
-         * @description Elimina para todos un mensaje ya enviado.
-         *
-         *     No borra la fila: la marca como eliminada y deja de servir su contenido
-         *     (ver mark_message_deleted). El CRM conserva que hubo un mensaje ahí —el
-         *     hilo muestra la lápida, como WhatsApp— sin exponer lo que decía.
-         */
-        delete: operations["delete_message_api_chats__chat_id__messages__message_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Edit Message
-         * @description Reescribe el texto de un mensaje ya enviado, como el "Editar" de WhatsApp.
-         *
-         *     Igual que las reacciones: primero WhatsApp y recién después la base. Un
-         *     texto corregido solo de nuestro lado sería peor que no corregirlo — el
-         *     vendedor daría por hecho que el cliente ve la versión nueva.
-         */
-        patch: operations["edit_message_api_chats__chat_id__messages__message_id__patch"];
-        trace?: never;
-    };
     "/api/chats/{chat_id}/messages/{message_id}/discard": {
         parameters: {
             query?: never;
@@ -1090,8 +1062,8 @@ export interface paths {
         /**
          * Pin Chat Message
          * @description Fija un mensaje, como el "Fijar" de WhatsApp — pero solo dentro del CRM:
-         *     ni Evolution API ni Baileys exponen forma de fijar un mensaje del lado de
-         *     quien envía, así que esto no se refleja en el WhatsApp del cliente.
+         *     Meta no expone forma de fijar un mensaje del lado de quien envía, así que
+         *     esto no se refleja en el WhatsApp del cliente.
          */
         post: operations["pin_chat_message_api_chats__chat_id__messages__message_id__pin_post"];
         delete?: never;
@@ -1113,9 +1085,9 @@ export interface paths {
          * React To Message
          * @description Reacciona (o quita la reacción) del vendedor sobre un mensaje del chat.
          *
-         *     Manda primero a WhatsApp y recién si eso funciona persiste el badge: una
-         *     reacción que solo se viera de nuestro lado engañaría al vendedor haciéndole
-         *     creer que el cliente la vio.
+         *     Manda primero a WhatsApp y recién si eso funciona guarda el evento y el
+         *     badge: una reacción que solo se viera de nuestro lado engañaría al
+         *     vendedor haciéndole creer que el cliente la vio.
          */
         post: operations["react_to_message_api_chats__chat_id__messages__message_id__reaction_post"];
         delete?: never;
@@ -1647,7 +1619,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Media
-         * @description Llamado por n8n con el base64 del archivo (imagen/video/audio) justo después de descargarlo de Evolution API.
+         * @description Llamado por n8n con el base64 de un archivo (imagen/video/audio) para guardarlo en el almacenamiento propio.
          */
         post: operations["upload_media_api_media_upload_post"];
         delete?: never;
@@ -2103,6 +2075,23 @@ export interface paths {
         };
         /** Get Meta Public Config */
         get: operations["get_meta_public_config_api_settings_meta_public_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/timezones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Timezones */
+        get: operations["get_timezones_api_settings_timezones_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2677,31 +2666,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/analysis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Outgoing Analysis Webhook
-         * @description Llamado por n8n con el análisis IA de una media SALIENTE del vendedor.
-         *
-         *     La app guarda la media que el vendedor manda pero no la analiza; n8n corre
-         *     el análisis sobre el eco y lo manda acá para fusionarlo en esa misma fila
-         *     (en vez de duplicar el mensaje). Si no encuentra la fila —media mandada
-         *     desde el teléfono— la inserta.
-         */
-        post: operations["outgoing_analysis_webhook_api_webhooks_analysis_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/webhooks/analysis-context": {
         parameters: {
             query?: never;
@@ -2756,27 +2720,6 @@ export interface paths {
         get: operations["ai_catalog_webhook_api_webhooks_catalog_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/ensure-lead": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ensure Lead Webhook
-         * @description Reemplaza al nodo Postgres `create lead`: alta idempotente de un lead
-         *     mínimo cuando llega un mensaje de un chat todavía no registrado.
-         */
-        post: operations["ensure_lead_webhook_api_webhooks_ensure_lead_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2949,304 +2892,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/message-by-wa-id-raw": {
+    "/api/webhooks/meta/whatsapp": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Message By Wa Id Raw Webhook
-         * @description Reemplaza al nodo Postgres `buscar mensaje existente1` (chequeo de
-         *     duplicado antes de insertar un mensaje entrante). `{}` si no existe.
-         */
-        get: operations["message_by_wa_id_raw_webhook_api_webhooks_message_by_wa_id_raw_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/message-deleted": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        /** Verify Subscription */
+        get: operations["verify_subscription_api_webhooks_meta_whatsapp_get"];
         put?: never;
         /**
-         * Message Deleted Webhook
-         * @description Llamado por n8n cuando WhatsApp avisa que un mensaje se eliminó para
-         *     todos. Mismo borrado lógico que hace la app al eliminar desde el CRM: la
-         *     fila queda, el contenido deja de servirse y el hilo muestra la lápida.
-         */
-        post: operations["message_deleted_webhook_api_webhooks_message_deleted_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/message-edited": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Message Edited Webhook
-         * @description Llamado por n8n cuando WhatsApp avisa que un mensaje se editó.
+         * Receive Webhook
+         * @description Guarda cada ``change`` crudo y responde; el procesamiento es asíncrono.
          *
-         *     Cubre lo que la app no originó: el cliente corrigiendo lo que escribió, o
-         *     el vendedor editando desde el teléfono. La edición hecha desde el CRM ya
-         *     guardó el texto nuevo al llamar a Evolution, así que este webhook la
-         *     reescribe con el mismo valor y no cambia nada.
+         *     Meta reintenta si no recibe 200 a tiempo, así que acá solo se verifica,
+         *     se persiste y se despierta al worker. Un reintento de algo ya guardado se
+         *     cuenta como duplicado y no se vuelve a procesar.
          */
-        post: operations["message_edited_webhook_api_webhooks_message_edited_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/message-edited-secret": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Message Edited Secret Webhook
-         * @description Llamado por n8n cuando WhatsApp avisa una edición nativa como
-         *     `secretEncryptedMessage` (protocolo cifrado desde ~mayo 2026, ver
-         *     services/message_edit_crypto.py). Intenta descifrarla reusando el
-         *     `message_secret` guardado del mensaje original.
-         *
-         *     Un fallo de descifrado (secreto no guardado, ningún candidato de sender
-         *     válido) es un resultado esperado, no un error de servidor: nunca 500,
-         *     igual que el webhook hermano de texto plano.
-         */
-        post: operations["message_edited_secret_webhook_api_webhooks_message_edited_secret_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/message-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Message Status Webhook
-         * @description Recibe un cambio de estado desde n8n o directamente desde Evolution.
-         *
-         *     Acepta tanto ``{wa_message_id, status, from_me}`` como el evento nativo
-         *     ``MESSAGES_UPDATE`` (incluidos lotes y estados numéricos 2–5). Cuando un
-         *     mensaje del cliente llega como READ/PLAYED con ``from_me=false``, también
-         *     sincroniza el contador interno de no leídos con WhatsApp Web.
-         */
-        post: operations["message_status_webhook_api_webhooks_message_status_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * New Message Webhook
-         * @description Llamado por n8n justo después de guardar un mensaje nuevo en la DB.
-         */
-        post: operations["new_message_webhook_api_webhooks_messages_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta-events/inbox": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Receive Meta Events
-         * @description Persiste eventos antes del ACK y reclama los nuevos para esta ejecución.
-         */
-        post: operations["receive_meta_events_api_webhooks_meta_events_inbox_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta-events/inbox/claim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Claim Meta Events
-         * @description Reclama fallos y ejecuciones abandonadas para replay desde n8n.
-         */
-        post: operations["claim_meta_events_api_webhooks_meta_events_inbox_claim_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta-events/inbox/{inbox_id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Complete Meta Event */
-        post: operations["complete_meta_event_api_webhooks_meta_events_inbox__inbox_id__complete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta-media": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Meta Media Import Webhook
-         * @description Trae un adjunto entrante desde Meta y lo guarda en el almacenamiento
-         *     propio, devolviendo la `media_url` estable que espera el resto de la app.
-         *
-         *     Reemplaza al par de nodos `get X` + `upload X media` de rag.json (que
-         *     bajaba el archivo de Evolution y lo resubía en base64). Vive acá y no en
-         *     n8n porque la descarga necesita el token de Meta, que solo está en las
-         *     settings del backend -así n8n nunca necesita una copia.
-         */
-        post: operations["meta_media_import_webhook_api_webhooks_meta_media_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta/verify-challenge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Check Meta Challenge */
-        post: operations["check_meta_challenge_api_webhooks_meta_verify_challenge_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/meta/verify-signature": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Meta Signature
-         * @description Falla cerrado: firma ausente o inválida corta el workflow de n8n (401).
-         */
-        post: operations["check_meta_signature_api_webhooks_meta_verify_signature_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/outgoing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Outgoing Webhook
-         * @description Llamado por n8n con un mensaje SALIENTE (fromMe) que no lleva análisis.
-         *
-         *     Reconcilia: descarta el eco de nuestros propios envíos (ya guardados por la
-         *     app) pero conserva los salientes externos —auto-reply de Kommo, mensajes
-         *     escritos desde el teléfono— que solo llegan por acá.
-         */
-        post: operations["outgoing_webhook_api_webhooks_outgoing_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/poll-results": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Poll Results Webhook
-         * @description Actualiza la encuesta original sin crear una burbuja para cada voto.
-         */
-        post: operations["poll_results_webhook_api_webhooks_poll_results_post"];
+        post: operations["receive_webhook_api_webhooks_meta_whatsapp_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3297,134 +2961,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/reaction": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reaction Webhook
-         * @description Llamado por n8n cuando entra una reacción. En vez de guardarla como un
-         *     mensaje, la mergea sobre el mensaje objetivo (badge estilo WhatsApp) y avisa
-         *     a los paneles para que repinten el hilo.
-         */
-        post: operations["reaction_webhook_api_webhooks_reaction_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/resolve-whatsapp-identity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve Whatsapp Identity Webhook
-         * @description Devuelve el ``chat_id`` canónico antes de que n8n escriba el mensaje.
-         *
-         *     Acepta tanto ``$json.body`` como el item
-         *     completo de n8n. Si solo llega un LID, intenta enriquecerlo mediante los
-         *     contactos sincronizados; si no puede, crea/reutiliza un lead provisional
-         *     con teléfono NULL y conserva el LID como alias estable.
-         */
-        post: operations["resolve_whatsapp_identity_webhook_api_webhooks_resolve_whatsapp_identity_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/save-inbound-message": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Save Inbound Message Webhook
-         * @description Reemplaza al nodo Postgres `guardar mensajes en posgress`: alta de un
-         *     mensaje entrante. Un `wa_message_id` repetido (Evolution reenvía el mismo
-         *     webhook sin confirmación) devuelve la fila ya existente en vez de romper,
-         *     vía la misma lógica de `insert_message` que usa el resto de la app.
-         */
-        post: operations["save_inbound_message_webhook_api_webhooks_save_inbound_message_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/templates/{meta_template_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Replace Template From Meta Webhook
-         * @description Obtiene la fuente completa en Meta y sustituye sus campos locales.
-         *
-         *     El PUT es idempotente: no confia en que cada tipo de webhook traiga todos
-         *     los campos ni en el orden de entrega de eventos de estado, categoria o
-         *     componentes.
-         */
-        put: operations["replace_template_from_meta_webhook_api_webhooks_templates__meta_template_id__put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/whatsapp/connect": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Whatsapp Connect */
-        post: operations["whatsapp_connect_api_whatsapp_connect_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/whatsapp/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Whatsapp Logout */
-        post: operations["whatsapp_logout_api_whatsapp_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/whatsapp/status": {
         parameters: {
             query?: never;
@@ -3432,7 +2968,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whatsapp Status */
+        /**
+         * Whatsapp Status
+         * @description Si el número de Meta Cloud API está conectado. No hay ciclo de QR ni
+         *     desconexión: el número queda vinculado por el Embedded Signup.
+         */
         get: operations["whatsapp_status_api_whatsapp_status_get"];
         put?: never;
         post?: never;
@@ -3967,6 +3507,15 @@ export interface components {
             /** Data Base64 */
             data_base64: string;
         };
+        /** BusinessTimezoneItem */
+        BusinessTimezoneItem: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Offset Minutes */
+            offset_minutes: number;
+        };
         /** Chat */
         Chat: {
             /**
@@ -4014,6 +3563,8 @@ export interface components {
             last_message_deleted: boolean;
             /** Last Message Sender */
             last_message_sender?: string | null;
+            /** Last Message Subtype */
+            last_message_subtype?: string | null;
             /** Last Message Type */
             last_message_type?: string | null;
             /** Last Read At */
@@ -4200,20 +3751,6 @@ export interface components {
              */
             is_primary: boolean;
         };
-        /** EditMessageRequest */
-        EditMessageRequest: {
-            /** Text */
-            text: string;
-        };
-        /** EnsureLeadWebhookBody */
-        EnsureLeadWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Origen */
-            origen?: string | null;
-            /** Ultimo Mensaje At */
-            ultimo_mensaje_at?: string | null;
-        };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /** Email */
@@ -4240,56 +3777,10 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /**
-         * HistoryMessage
-         * @description Mensaje leído de WhatsApp que no está registrado en la base.
-         *
-         *     No tiene `id` local ni estado de entrega, y de los adjuntos solo se
-         *     conserva el tipo y el epígrafe: el archivo nunca se descarga.
-         */
-        HistoryMessage: {
-            /** Content */
-            content?: string | null;
-            /** Message Type */
-            message_type?: ("text" | "image" | "video" | "ptv" | "audio" | "document" | "location" | "sticker" | "contact" | "poll" | "reaction" | "pin" | "interactive" | "button" | "template" | "order" | "product" | "payment" | "view_once" | "unsupported") | null;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Sender
-             * @enum {string}
-             */
-            sender: "cliente" | "vendedor";
-            /** Sent At */
-            sent_at: string;
-            /** Wa Message Id */
-            wa_message_id: string;
-        };
-        /** HistoryPage */
-        HistoryPage: {
-            /** Has More */
-            has_more: boolean;
-            /** Items */
-            items: components["schemas"]["HistoryMessage"][];
-            /** Next Page */
-            next_page?: number | null;
-        };
         /** ImportStickerBody */
         ImportStickerBody: {
             /** Media Url */
             media_url: string;
-        };
-        /** InboxCompletion */
-        InboxCompletion: {
-            /** Error */
-            error?: string | null;
-            /**
-             * Status
-             * @default processed
-             * @enum {string}
-             */
-            status: "processed" | "failed";
         };
         /** InteractiveLimits */
         InteractiveLimits: {
@@ -4888,8 +4379,8 @@ export interface components {
         };
         /** LeadTouchWebhookBody */
         LeadTouchWebhookBody: {
-            /** Jid */
-            jid: string;
+            /** Identifier */
+            identifier: string;
         };
         /** LeadUpdate */
         LeadUpdate: {
@@ -4991,7 +4482,16 @@ export interface components {
             /** Data Base64 */
             data_base64: string;
         };
-        /** Message */
+        /**
+         * Message
+         * @description Un mensaje del hilo con el contrato de Meta.
+         *
+         *     ``message_type``/``message_subtype`` son los literales de Meta y
+         *     ``provider_payload`` el objeto que Meta mandó o el cuerpo exacto que se le
+         *     envió: el frontend renderiza desde ahí. Un tipo que el contrato no conoce
+         *     llega igual, con su nombre, para que la UI muestre lo disponible.
+         *     ``content``, ``media_url`` y ``payload`` son proyecciones del CRM.
+         */
         Message: {
             /** Analysis */
             analysis?: {
@@ -5001,6 +4501,8 @@ export interface components {
             content?: string | null;
             /** Deleted At */
             deleted_at?: string | null;
+            /** Direction */
+            direction?: string | null;
             /** Edited At */
             edited_at?: string | null;
             /** Error Detail */
@@ -5013,18 +4515,30 @@ export interface components {
             media_url?: string | null;
             /** Media Width */
             media_width?: number | null;
+            /** Message Subtype */
+            message_subtype?: string | null;
             /** Message Type */
-            message_type?: ("text" | "image" | "video" | "ptv" | "audio" | "document" | "location" | "sticker" | "contact" | "poll" | "reaction" | "pin" | "interactive" | "button" | "template" | "order" | "product" | "payment" | "view_once" | "unsupported") | null;
+            message_type?: string | null;
+            /** Meta Status */
+            meta_status?: string | null;
+            /** Outbox Status */
+            outbox_status?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;
             } | null;
             /** Pinned At */
             pinned_at?: string | null;
+            /** Provider Payload */
+            provider_payload?: {
+                [key: string]: unknown;
+            } | null;
             /** Quoted Content */
             quoted_content?: string | null;
             /** Quoted Message Id */
             quoted_message_id?: number | null;
+            /** Quoted Message Type */
+            quoted_message_type?: string | null;
             /** Quoted Sender */
             quoted_sender?: string | null;
             /** Reactions */
@@ -5035,39 +4549,12 @@ export interface components {
             sender: string;
             /** Sent At */
             sent_at?: string | null;
-            /** Status */
-            status?: string | null;
+            /** Status Payload */
+            status_payload?: {
+                [key: string]: unknown;
+            } | null;
             /** Wa Message Id */
             wa_message_id?: string | null;
-        };
-        /** MessageDeletedWebhookBody */
-        MessageDeletedWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Wa Message Id */
-            wa_message_id: string;
-        };
-        /** MessageEditedSecretWebhookBody */
-        MessageEditedSecretWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Enc Iv */
-            enc_iv: string;
-            /** Enc Payload */
-            enc_payload: string;
-            /** Sender Candidates */
-            sender_candidates: string[];
-            /** Wa Message Id */
-            wa_message_id: string;
-        };
-        /** MessageEditedWebhookBody */
-        MessageEditedWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Text */
-            text: string;
-            /** Wa Message Id */
-            wa_message_id: string;
         };
         /** MessagePage */
         MessagePage: {
@@ -5075,15 +4562,6 @@ export interface components {
             has_more: boolean;
             /** Items */
             items: components["schemas"]["Message"][];
-        };
-        /** MetaChallengeCheck */
-        MetaChallengeCheck: {
-            /** Challenge */
-            challenge?: string | null;
-            /** Mode */
-            mode?: string | null;
-            /** Verify Token */
-            verify_token?: string | null;
         };
         /** MetaEmbeddedSignupRequest */
         MetaEmbeddedSignupRequest: {
@@ -5094,44 +4572,12 @@ export interface components {
             /** Waba Id */
             waba_id: string;
         };
-        /** MetaInboxBatch */
-        MetaInboxBatch: {
-            /** Events */
-            events: components["schemas"]["MetaInboxEvent"][];
-        };
-        /** MetaInboxEvent */
-        MetaInboxEvent: {
-            /** Event Key */
-            event_key: string;
-            /** Event Type */
-            event_type: string;
-            /** Payload */
-            payload: {
-                [key: string]: unknown;
-            };
-            /** Phone Number Id */
-            phone_number_id?: string | null;
-            /** Waba Id */
-            waba_id?: string | null;
-        };
-        /** MetaMediaImportBody */
-        MetaMediaImportBody: {
-            /** Filename */
-            filename?: string | null;
-            /** Media Id */
-            media_id: string;
-        };
         /** MetaPublicConfig */
         MetaPublicConfig: {
             /** App Id */
             app_id?: string | null;
             /** Config Id */
             config_id?: string | null;
-        };
-        /** NewMessageWebhookBody */
-        NewMessageWebhookBody: {
-            /** Wa Message Id */
-            wa_message_id: string;
         };
         /** NewOrganizationBody */
         NewOrganizationBody: {
@@ -5214,47 +4660,6 @@ export interface components {
             /** Value */
             value?: string | null;
         };
-        /** OutgoingAnalysisWebhookBody */
-        OutgoingAnalysisWebhookBody: {
-            /** Analysis */
-            analysis: {
-                [key: string]: unknown;
-            };
-            /** Chat Id */
-            chat_id: string;
-            /** Content */
-            content?: string | null;
-            /** Media Url */
-            media_url?: string | null;
-            /** Message Type */
-            message_type: string;
-            /** Wa Message Id */
-            wa_message_id?: string | null;
-        };
-        /** OutgoingWebhookBody */
-        OutgoingWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Content */
-            content?: string | null;
-            /** Media Url */
-            media_url?: string | null;
-            /** Message Secret */
-            message_secret?: string | null;
-            /**
-             * Message Type
-             * @default text
-             */
-            message_type: string;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            } | null;
-            /** Source */
-            source?: string | null;
-            /** Wa Message Id */
-            wa_message_id?: string | null;
-        };
         /** PersonalTemplateCreate */
         PersonalTemplateCreate: {
             /** Content */
@@ -5312,29 +4717,6 @@ export interface components {
             /** Value */
             value?: string | null;
         };
-        /** PollResultsWebhookBody */
-        PollResultsWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /**
-             * Decrypted
-             * @default true
-             */
-            decrypted: boolean;
-            /**
-             * Mode
-             * @default snapshot
-             */
-            mode: string;
-            /** Results */
-            results: {
-                [key: string]: unknown;
-            }[];
-            /** Target Wa Message Id */
-            target_wa_message_id: string;
-            /** Voter Id */
-            voter_id?: string | null;
-        };
         /** PushSubscribeRequest */
         PushSubscribeRequest: {
             /** Endpoint */
@@ -5372,58 +4754,6 @@ export interface components {
              * @default
              */
             emoji: string;
-        };
-        /** ReactionWebhookBody */
-        ReactionWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /**
-             * Emoji
-             * @default
-             */
-            emoji: string;
-            /**
-             * From Me
-             * @default false
-             */
-            from_me: boolean;
-            /** Target Wa Message Id */
-            target_wa_message_id: string;
-        };
-        /** SaveInboundMessageWebhookBody */
-        SaveInboundMessageWebhookBody: {
-            /** Analysis */
-            analysis?: {
-                [key: string]: unknown;
-            } | null;
-            /** Chat Id */
-            chat_id: string;
-            /** Content */
-            content?: string | null;
-            /** Media Height */
-            media_height?: number | null;
-            /** Media Url */
-            media_url?: string | null;
-            /** Media Width */
-            media_width?: number | null;
-            /** Message Secret */
-            message_secret?: string | null;
-            /** Message Type */
-            message_type?: string | null;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            } | null;
-            /** Quoted Wa Message Id */
-            quoted_wa_message_id?: string | null;
-            /** Sender */
-            sender: string;
-            /** Sent At */
-            sent_at?: string | null;
-            /** Status */
-            status?: string | null;
-            /** Wa Message Id */
-            wa_message_id?: string | null;
         };
         /** ScheduledMessageCreate */
         ScheduledMessageCreate: {
@@ -5474,6 +4804,15 @@ export interface components {
         SendContactsRequest: {
             /** Contacts */
             contacts: components["schemas"]["ContactShareItem"][];
+            /** Reply To Message Id */
+            reply_to_message_id?: number | null;
+        };
+        /** SendInteractiveRequest */
+        SendInteractiveRequest: {
+            /** Interactive */
+            interactive: {
+                [key: string]: unknown;
+            };
             /** Reply To Message Id */
             reply_to_message_id?: number | null;
         };
@@ -5786,15 +5125,22 @@ export interface components {
         /** TemplateCapabilities */
         TemplateCapabilities: {
             /**
-             * Edit Delete Supported
+             * Call Permission Enabled
              * @default false
              */
-            edit_delete_supported: boolean;
+            call_permission_enabled: boolean;
             /**
-             * History Available
+             * Catalog Enabled
              * @default false
              */
-            history_available: boolean;
+            catalog_enabled: boolean;
+            /** Catalog Id */
+            catalog_id?: string | null;
+            /**
+             * Flows Enabled
+             * @default false
+             */
+            flows_enabled: boolean;
             /** Integration */
             integration?: string | null;
             /**
@@ -5808,6 +5154,8 @@ export interface components {
              * @default false
              */
             official_sending_supported: boolean;
+            /** Published Flows */
+            published_flows?: string[];
             /** Reason */
             reason?: string | null;
         };
@@ -5859,7 +5207,7 @@ export interface components {
              * @default none
              * @enum {string}
              */
-            interactive_type: "none" | "buttons" | "list";
+            interactive_type: "none" | "button" | "list";
             /** Name */
             name: string;
             /** Official Buttons */
@@ -5937,7 +5285,7 @@ export interface components {
              * @default none
              * @enum {string}
              */
-            interactive_type: "none" | "buttons" | "list";
+            interactive_type: "none" | "button" | "list";
             /** Is Active */
             is_active: boolean;
             /**
@@ -6037,7 +5385,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /** Interactive Type */
-            interactive_type?: ("none" | "buttons" | "list") | null;
+            interactive_type?: ("none" | "button" | "list") | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */
@@ -6430,6 +5778,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_appointment_calendar_api_appointments__appointment_id__sync_calendar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
                 };
             };
             /** @description Validation Error */
@@ -7582,26 +6961,6 @@ export interface operations {
             };
         };
     };
-    get_history_availability_api_chats_history_availability_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     get_kanban_counts_api_chats_kanban_counts_get: {
         parameters: {
             query?: {
@@ -7959,19 +7318,20 @@ export interface operations {
             };
         };
     };
-    get_whatsapp_history_api_chats__chat_id__history_get: {
+    send_interactive_api_chats__chat_id__interactive_post: {
         parameters: {
-            query?: {
-                page?: number | null;
-                before_ts?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 chat_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendInteractiveRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7979,7 +7339,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HistoryPage"];
+                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */
@@ -8191,74 +7551,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForwardMessagesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_message_api_chats__chat_id__messages__message_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: string;
-                message_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    edit_message_api_chats__chat_id__messages__message_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: string;
-                message_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EditMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */
@@ -10732,6 +10024,26 @@ export interface operations {
             };
         };
     };
+    get_timezones_api_settings_timezones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessTimezoneItem"][];
+                };
+            };
+        };
+    };
     get_suggestions_api_suggestions_post: {
         parameters: {
             query?: never;
@@ -11849,44 +11161,6 @@ export interface operations {
             };
         };
     };
-    outgoing_analysis_webhook_api_webhooks_analysis_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OutgoingAnalysisWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     analysis_context_webhook_api_webhooks_analysis_context_get: {
         parameters: {
             query: {
@@ -11983,44 +11257,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ensure_lead_webhook_api_webhooks_ensure_lead_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EnsureLeadWebhookBody"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -12303,287 +11539,43 @@ export interface operations {
             };
         };
     };
-    message_by_wa_id_raw_webhook_api_webhooks_message_by_wa_id_raw_get: {
-        parameters: {
-            query: {
-                wa_message_id: string;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    message_deleted_webhook_api_webhooks_message_deleted_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageDeletedWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    message_edited_webhook_api_webhooks_message_edited_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageEditedWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    message_edited_secret_webhook_api_webhooks_message_edited_secret_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageEditedSecretWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    message_status_webhook_api_webhooks_message_status_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                } | {
-                    [key: string]: unknown;
-                }[];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    new_message_webhook_api_webhooks_messages_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NewMessageWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    receive_meta_events_api_webhooks_meta_events_inbox_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MetaInboxBatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    claim_meta_events_api_webhooks_meta_events_inbox_claim_post: {
+    verify_subscription_api_webhooks_meta_whatsapp_get: {
         parameters: {
             query?: {
-                limit?: number;
+                "hub.mode"?: string | null;
+                "hub.verify_token"?: string | null;
+                "hub.challenge"?: string | null;
             };
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_webhook_api_webhooks_meta_whatsapp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12598,247 +11590,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    complete_meta_event_api_webhooks_meta_events_inbox__inbox_id__complete_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path: {
-                inbox_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InboxCompletion"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    meta_media_import_webhook_api_webhooks_meta_media_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MetaMediaImportBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_meta_challenge_api_webhooks_meta_verify_challenge_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MetaChallengeCheck"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_meta_signature_api_webhooks_meta_verify_signature_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    outgoing_webhook_api_webhooks_outgoing_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OutgoingWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    poll_results_webhook_api_webhooks_poll_results_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PollResultsWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12918,198 +11669,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reaction_webhook_api_webhooks_reaction_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReactionWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resolve_whatsapp_identity_webhook_api_webhooks_resolve_whatsapp_identity_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_inbound_message_webhook_api_webhooks_save_inbound_message_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveInboundMessageWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    replace_template_from_meta_webhook_api_webhooks_templates__meta_template_id__put: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path: {
-                meta_template_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    whatsapp_connect_api_whatsapp_connect_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    whatsapp_logout_api_whatsapp_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };

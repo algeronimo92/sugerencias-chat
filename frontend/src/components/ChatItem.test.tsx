@@ -183,3 +183,38 @@ describe('ChatItem menú contextual — copiar, no-show, eliminar y fusionar', (
     expect(screen.getByRole('menuitem', { name: 'Fusionar con...' })).toBeInTheDocument()
   })
 })
+
+describe('ChatItem preview del último mensaje', () => {
+  it('regresión OpcionA: la respuesta a un botón de plantilla se ve en la lista', () => {
+    renderItem(vi.fn(), vi.fn(), vi.fn(), {
+      ...CHAT,
+      last_message: 'OpcionA',
+      last_message_type: 'button',
+      last_message_subtype: null,
+    } as Chat)
+
+    expect(screen.getByText('OpcionA')).toBeInTheDocument()
+  })
+
+  it('una selección de lista muestra el título elegido', () => {
+    renderItem(vi.fn(), vi.fn(), vi.fn(), {
+      ...CHAT,
+      last_message: 'HIFU',
+      last_message_type: 'interactive',
+      last_message_subtype: 'list_reply',
+    } as Chat)
+
+    expect(screen.getByText('HIFU')).toBeInTheDocument()
+  })
+
+  it('un adjunto sin texto muestra el rótulo de su tipo', () => {
+    renderItem(vi.fn(), vi.fn(), vi.fn(), {
+      ...CHAT,
+      last_message: null,
+      last_message_type: 'interactive',
+      last_message_subtype: 'nfm_reply',
+    } as unknown as Chat)
+
+    expect(screen.getByText('Formulario')).toBeInTheDocument()
+  })
+})
