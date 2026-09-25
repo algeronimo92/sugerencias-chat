@@ -96,6 +96,8 @@ function ContactEntry({ contact }: { contact: SharedContact }) {
         vendedor_id: values.vendedor_id,
         origen: values.origen,
         notas: values.notas,
+        secondary_phone: values.secondary_phone,
+        custom_fields: values.custom_fields,
       },
       {
         onSuccess: (chat) => {

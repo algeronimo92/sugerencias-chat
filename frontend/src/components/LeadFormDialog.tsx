@@ -5,11 +5,12 @@ import { useMe } from '../hooks/useAuth'
 import { useSellers } from '../hooks/useUsers'
 import { useDuplicateLead, usePhoneConfig } from '../hooks/useChats'
 import { useCreateLeadService, useLeadServices } from '../hooks/useLeadServices'
+import { useCustomFields } from '../hooks/useCustomFields'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../utils/phone'
 import { toLocalInput } from '../utils/datetime'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
-import { Checkbox } from './ui/Checkbox'
+import { CustomFieldInput } from './CustomFieldInput'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
 import { Select, fieldClass, labelClass } from './ui/Input'
 
@@ -70,7 +71,7 @@ export function LeadFormDialog({
   const [vendedorId, setVendedorId] = useState<number | null>(initial?.vendedor_id ?? null)
   const [origen, setOrigen] = useState(initial?.origen ?? '')
   const [notas, setNotas] = useState(initial?.notas ?? '')
-  const [conEspecialista, setConEspecialista] = useState(initial?.con_especialista ?? false)
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
   const [razonPerdido, setRazonPerdido] = useState(initial?.razon_perdido ?? '')
   // El backend manda fecha_recontacto como ISO date (YYYY-MM-DD), que es
   // exactamente lo que espera un <input type="date">.
@@ -83,6 +84,7 @@ export function LeadFormDialog({
   const { data: sellers = [] } = useSellers()
   const { data: phoneConfig } = usePhoneConfig()
   const { data: leadServices = [], isLoading: areServicesLoading } = useLeadServices()
+  const { data: customDefinitions = [], isLoading: areCustomFieldsLoading, isError: customFieldsError, refetch: refetchCustomFields } = useCustomFields('lead')
   const createService = useCreateLeadService()
   const countryCode = phoneConfig?.default_country_code ?? FALLBACK_COUNTRY_CODE
   // requirePhoneAndName solo lo manda el alta de leads: en ese modo el
@@ -127,7 +129,9 @@ export function LeadFormDialog({
 
   const phoneInvalid = phoneCheck.status === 'invalid'
   const submitDisabled =
-    isSubmitting || (canEditPhone && (phoneInvalid || duplicateBlocks || (!!requirePhoneAndName && phoneCheck.status !== 'valid')))
+    isSubmitting ||
+    (isCreating && (areCustomFieldsLoading || customFieldsError)) ||
+    (canEditPhone && (phoneInvalid || duplicateBlocks || (!!requirePhoneAndName && phoneCheck.status !== 'valid')))
 
   function handlePhoneChange(value: string) {
     // Tope de tipeo para el país configurado (Perú: 9 dígitos el celular, +1
@@ -162,11 +166,16 @@ export function LeadFormDialog({
       ...(canEditSeller && (requirePhoneAndName || sellerChanged) ? { vendedor_id: vendedorId } : {}),
       origen: emptyToNull(origen),
       notas: emptyToNull(notas),
+      ...(isCreating
+        ? { custom_fields: Object.fromEntries(customDefinitions.map(field => [
+            field.key,
+            customFields[field.key] ?? (field.field_type === 'boolean' ? false : null),
+          ])) }
+        : {}),
       // Solo al editar: el alta va contra POST /api/chats, que no los acepta.
       ...(isCreating
         ? {}
         : {
-            con_especialista: conEspecialista,
             razon_perdido: emptyToNull(razonPerdido),
             fecha_recontacto: emptyToNull(fechaRecontacto),
             // La hora local tipeada se manda en UTC (la columna es timestamptz).
@@ -420,6 +429,30 @@ export function LeadFormDialog({
             />
           </div>
 
+          {isCreating && (areCustomFieldsLoading || customFieldsError || customDefinitions.length > 0) && (
+            <div className="space-y-3 border-t border-wa-border pt-3 dark:border-wa-border-dark">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">Campos del negocio</h3>
+              {areCustomFieldsLoading && <p className="text-xs text-wa-muted">Cargando campos…</p>}
+              {customFieldsError && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  No se pudieron cargar los campos del negocio.{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => refetchCustomFields()}>Reintentar</button>
+                </p>
+              )}
+              {customDefinitions.map(field => (
+                <label key={field.id} className={LABEL_CLASS}>
+                  {field.label}{field.required ? ' *' : ''}
+                  <CustomFieldInput
+                    field={field}
+                    value={customFields[field.key]}
+                    onChange={value => setCustomFields(current => ({ ...current, [field.key]: value }))}
+                    className="mt-1"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+
           {!isCreating && (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -455,10 +488,6 @@ export function LeadFormDialog({
                 />
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2 pt-1">
-                <Checkbox checked={conEspecialista} onCheckedChange={setConEspecialista} />
-                <span className="text-sm text-wa-text dark:text-wa-text-dark">Derivado a un especialista</span>
-              </label>
             </>
           )}
         </div>

@@ -920,6 +920,39 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AuthLoginThrottle(Base):
+    """Contador compartido por todas las instancias del backend de un tenant."""
+
+    __tablename__ = "auth_login_throttles"
+
+    key_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("idx_auth_login_throttles_window", window_started_at),)
+
+
+class AdminTotp(Base):
+    """Segundo factor opcional del admin; secretos siempre cifrados en reposo."""
+
+    __tablename__ = "admin_totp"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    secret_ciphertext: Mapped[str | None] = mapped_column(Text)
+    pending_ciphertext: Mapped[str | None] = mapped_column(Text)
+    pending_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_step: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class AdminTotpRecoveryCode(Base):
+    __tablename__ = "admin_totp_recovery_codes"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    code_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
 class AuthActionToken(Base):
     """Token de invitación o recuperación, aislado dentro del tenant.
 

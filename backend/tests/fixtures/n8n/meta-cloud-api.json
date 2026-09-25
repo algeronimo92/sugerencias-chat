@@ -201,7 +201,7 @@
             "response": {
               "fullResponse": true,
               "neverError": true,
-              "responseFormat": "text"
+              "responseFormat": "autodetect"
             }
           }
         }
@@ -220,7 +220,7 @@
     {
       "parameters": {
         "respondWith": "text",
-        "responseBody": "={{ $json.body }}",
+        "responseBody": "={{ typeof $json.body === 'string' ? $json.body : JSON.stringify($json.body) }}",
         "options": {
           "responseCode": "={{ $json.statusCode }}"
         }

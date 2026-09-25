@@ -57,7 +57,7 @@ function resultMessage(result: AppointmentResult): { text: string; tone: 'succes
 export function NewAppointmentPage() {
   const { data: me } = useMe()
   const { data: sellers = [] } = useSellers()
-  const { data: customFieldDefinitions = [] } = useCustomFields('appointment')
+  const { data: customFieldDefinitions = [], isLoading: areCustomFieldsLoading, isError: customFieldsError, refetch: refetchCustomFields } = useCustomFields('appointment')
   const isAdmin = me?.role === 'admin'
   const [form, setForm] = useState(EMPTY_FORM)
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
@@ -110,6 +110,9 @@ export function NewAppointmentPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setError(null); setResult(null)
+    if (areCustomFieldsLoading || customFieldsError) {
+      setError('Espera a que se carguen los campos del negocio.'); return
+    }
     if (!form.nombreCompleto.trim() || !form.telefono.trim() || !form.servicio.trim() || !form.fecha || !form.hora || !form.vendedor) {
       setError('Completa los campos obligatorios.'); return
     }
@@ -126,7 +129,10 @@ export function NewAppointmentPage() {
       nombreCompleto: form.nombreCompleto.trim(), dni: '', telefono: form.telefono.trim(),
       tratamiento: form.servicio.trim(), detalle: form.detalle.trim(), fecha: form.fecha,
       hora: form.hora, vendedor: form.vendedor, adelanto: 0, durationMinutes,
-      customFields, comprobante: prepared, testMode: isAdmin && testMode,
+      customFields: Object.fromEntries(customFieldDefinitions.map(field => [
+        field.key,
+        customFields[field.key] ?? (field.field_type === 'boolean' ? false : null),
+      ])), comprobante: prepared, testMode: isAdmin && testMode,
     }, {
       onSuccess: value => { const feedback = resultMessage(value); toast[feedback.tone](feedback.text); resetForm(); setResult(value) },
       onError: mutationError => setError(extractErrorMessage(mutationError)),
@@ -166,7 +172,7 @@ export function NewAppointmentPage() {
                     <div className="mt-4"><Field label="Teléfono" required><Input type="tel" value={form.telefono} onChange={event => update('telefono', event.target.value)} disabled={busy} className={fieldClass} /></Field></div>
                   </FormSection>
                   <FormSection icon={SlidersHorizontal} title="Datos del negocio" description="Campos que un administrador configuró para sus reservas">
-                    {customFieldDefinitions.length === 0 ? <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p> : <div className="grid gap-4 sm:grid-cols-2">{customFieldDefinitions.map(field => <Field key={field.id} label={field.label} required={field.required}><CustomFieldInput field={field} value={customFields[field.key]} onChange={value => setCustomFields(current => ({ ...current, [field.key]: value }))} disabled={busy} className={fieldClass} /></Field>)}</div>}
+                    {areCustomFieldsLoading ? <p className="text-sm text-wa-muted">Cargando campos…</p> : customFieldsError ? <p className="text-sm text-red-600 dark:text-red-400">No se pudieron cargar los campos. <button type="button" className="font-semibold underline" onClick={() => refetchCustomFields()}>Reintentar</button></p> : customFieldDefinitions.length === 0 ? <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p> : <div className="grid gap-4 sm:grid-cols-2">{customFieldDefinitions.map(field => <Field key={field.id} label={field.label} required={field.required}><CustomFieldInput field={field} value={customFields[field.key]} onChange={value => setCustomFields(current => ({ ...current, [field.key]: value }))} disabled={busy} className={fieldClass} /></Field>)}</div>}
                   </FormSection>
                 </div>
 
@@ -187,7 +193,7 @@ export function NewAppointmentPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={saveDraft} disabled={busy}><Save className="h-4 w-4" />Guardar borrador</Button><Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : 'Guardar cita'}</Button></div>
+              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={saveDraft} disabled={busy}><Save className="h-4 w-4" />Guardar borrador</Button><Button type="submit" disabled={busy || areCustomFieldsLoading || customFieldsError}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : 'Guardar cita'}</Button></div>
             </form>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Laptop, Loader2, LogOut, ShieldCheck, Trash2, X } from 'lucide-react'
-import { PIN_LENGTH, useLogoutAll, usePinStatus, useRemovePin, useRevokeSession, useSessions, useSetupPin } from '../hooks/useAuth'
+import { PIN_LENGTH, useConfirmMfa, useDisableMfa, useLogoutAll, useMe, useMfaStatus, usePinStatus, useRemovePin, useRevokeSession, useSessions, useSetupPin, useStartMfa } from '../hooks/useAuth'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from './ui/Dialog'
@@ -18,7 +19,13 @@ function formatDate(value: string) {
 }
 
 export function AccountSecurityDialog({ onClose }: Props) {
+  const queryClient = useQueryClient()
+  const { data: me } = useMe()
   const { data: pinStatus, isLoading: isLoadingPin } = usePinStatus()
+  const { data: mfaStatus } = useMfaStatus(me?.role === 'admin')
+  const startMfa = useStartMfa()
+  const confirmMfa = useConfirmMfa()
+  const disableMfa = useDisableMfa()
   const { data: sessions, isLoading: isLoadingSessions } = useSessions()
   const setupPin = useSetupPin()
   const removePin = useRemovePin()
@@ -29,6 +36,16 @@ export function AccountSecurityDialog({ onClose }: Props) {
   const [password, setPassword] = useState('')
   const [saved, setSaved] = useState(false)
   const [invalid, setInvalid] = useState<string | null>(null)
+  const [mfaPassword, setMfaPassword] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null)
+
+  function finishMfaSetup() {
+    setRecoveryCodes(null)
+    queryClient.clear()
+    queryClient.setQueryData(['auth', 'me'], null)
+    onClose()
+  }
 
   /** Por qué no se puede enviar todavía, en palabras. Antes esto solo apagaba
    *  el botón: con el gestor de contraseñas del navegador rellenando el campo
@@ -66,20 +83,20 @@ export function AccountSecurityDialog({ onClose }: Props) {
   }
 
   return (
-    <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
+    <Dialog.Root open onOpenChange={open => { if (!open && !recoveryCodes) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlayClass} />
-        <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
+        <Dialog.Content onEscapeKeyDown={event => { if (recoveryCodes) event.preventDefault() }} onPointerDownOutside={event => { if (recoveryCodes) event.preventDefault() }} className={`${dialogContentPositionClass} flex max-h-[85vh] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
           <div className="flex shrink-0 items-center justify-between border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-wa-primary" />
               <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Acceso y seguridad</Dialog.Title>
             </div>
-            <button type="button" onClick={onClose} aria-label="Cerrar" className="text-wa-muted hover:text-gray-600 dark:hover:text-gray-300"><X className="h-4 w-4" /></button>
+            <button type="button" onClick={onClose} disabled={!!recoveryCodes} aria-label="Cerrar" className="text-wa-muted hover:text-gray-600 disabled:opacity-40 dark:hover:text-gray-300"><X className="h-4 w-4" /></button>
           </div>
 
           <div className="flex-1 space-y-6 overflow-y-auto p-4">
-            <section>
+            {me && (me.role !== 'admin' || (mfaStatus && !mfaStatus.enabled)) && <section>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="flex items-center gap-1.5 text-sm font-semibold text-wa-text dark:text-wa-text-dark"><KeyRound className="h-4 w-4" /> PIN rápido</h2>
@@ -109,7 +126,52 @@ export function AccountSecurityDialog({ onClose }: Props) {
                   </div>
                 </form>
               )}
-            </section>
+            </section>}
+
+            {me?.role === 'admin' && (
+              <section className="space-y-3 border-t border-wa-border pt-5 dark:border-wa-border-dark">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="flex items-center gap-1.5 text-sm font-semibold text-wa-text dark:text-wa-text-dark"><ShieldCheck className="h-4 w-4" /> Verificación en dos pasos</h2>
+                    <p className="mt-1 text-xs text-wa-muted">Usa una app de autenticación con códigos de 6 dígitos. El PIN no reemplaza este paso.</p>
+                  </div>
+                  {mfaStatus?.enabled && <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">Activo</span>}
+                </div>
+
+                {recoveryCodes ? (
+                  <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
+                    <p className="text-sm font-semibold">Guarda estos códigos de recuperación ahora</p>
+                    <p className="text-xs text-wa-muted">Cada código sirve una sola vez. No se volverán a mostrar. Se cerraron las sesiones anteriores; al terminar, ingresa con tu contraseña y código.</p>
+                    <ul className="grid grid-cols-2 gap-1 font-mono text-xs">{recoveryCodes.map(code => <li key={code}>{code}</li>)}</ul>
+                    <Button type="button" onClick={finishMfaSetup}>Ya guardé los códigos</Button>
+                  </div>
+                ) : mfaStatus?.enabled ? (
+                  <div className="space-y-3 rounded-lg bg-wa-hover p-3 dark:bg-wa-head-dark/60">
+                    <p className="text-xs text-wa-muted">Códigos de recuperación disponibles: {mfaStatus.recovery_codes_remaining}</p>
+                    <p className="text-xs text-wa-muted">Para desactivar 2FA, confirma tu contraseña y un código de tu app o de recuperación.</p>
+                    <Input aria-label="Contraseña para desactivar 2FA" type="password" autoComplete="current-password" value={mfaPassword} onChange={event => setMfaPassword(event.target.value)} placeholder="Contraseña actual" />
+                    <Input aria-label="Código para desactivar 2FA" autoComplete="one-time-code" value={mfaCode} onChange={event => setMfaCode(event.target.value.trim())} placeholder="Código de verificación" />
+                    {disableMfa.error && <p className="text-xs text-red-500">{extractErrorMessage(disableMfa.error)}</p>}
+                    <Button type="button" variant="secondary" disabled={disableMfa.isPending || !mfaPassword || !mfaCode} onClick={() => disableMfa.mutate({ currentPassword: mfaPassword, code: mfaCode }, { onSuccess: () => { setMfaPassword(''); setMfaCode('') } })}>Desactivar 2FA</Button>
+                  </div>
+                ) : startMfa.data ? (
+                  <div className="space-y-3 rounded-lg bg-wa-hover p-3 dark:bg-wa-head-dark/60">
+                    <p className="text-xs text-wa-muted">Agrega una cuenta manualmente en tu app de autenticación con esta clave (TOTP, SHA-1, 30 segundos):</p>
+                    <code className="block break-all rounded bg-white p-2 text-sm select-all dark:bg-wa-panel-dark">{startMfa.data.secret}</code>
+                    <Input aria-label="Código para activar 2FA" autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={mfaCode} onChange={event => setMfaCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Código de 6 dígitos" />
+                    {confirmMfa.error && <p className="text-xs text-red-500">{extractErrorMessage(confirmMfa.error)}</p>}
+                    <Button type="button" disabled={confirmMfa.isPending || mfaCode.length !== 6} onClick={() => confirmMfa.mutate(mfaCode, { onSuccess: data => { setMfaCode(''); setMfaPassword(''); setRecoveryCodes(data.recovery_codes) } })}>Activar 2FA</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3 rounded-lg bg-wa-hover p-3 dark:bg-wa-head-dark/60">
+                    <p className="text-xs text-wa-muted">Confirma tu contraseña para comenzar. Activar 2FA cerrará las sesiones y PIN existentes.</p>
+                    <Input aria-label="Contraseña para activar 2FA" type="password" autoComplete="current-password" value={mfaPassword} onChange={event => setMfaPassword(event.target.value)} placeholder="Contraseña actual" />
+                    {startMfa.error && <p className="text-xs text-red-500">{extractErrorMessage(startMfa.error)}</p>}
+                    <Button type="button" disabled={startMfa.isPending || !mfaPassword} onClick={() => startMfa.mutate(mfaPassword, { onSuccess: () => setMfaPassword('') })}>Configurar 2FA</Button>
+                  </div>
+                )}
+              </section>
+            )}
 
             <section>
               <h2 className="flex items-center gap-1.5 text-sm font-semibold text-wa-text dark:text-wa-text-dark"><Laptop className="h-4 w-4" /> Sesiones abiertas</h2>

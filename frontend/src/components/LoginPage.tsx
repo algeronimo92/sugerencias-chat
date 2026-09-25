@@ -42,6 +42,7 @@ const loginSchema = z.object({
     .email("Ingresa un email válido."),
   password: z.string().min(1, "Ingresa tu contraseña."),
   remember_device: z.boolean(),
+  mfa_code: z.string().optional(),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -182,7 +183,7 @@ export function LoginPage() {
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", remember_device: true },
+    defaultValues: { email: "", password: "", remember_device: true, mfa_code: "" },
   });
 
   const showPin = Boolean(pinStatus?.available) && !usePassword;
@@ -573,6 +574,20 @@ export function LoginPage() {
                         </button>
                       </div>
 
+                      <div>
+                        <label htmlFor="login-mfa" className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+                          Código de verificación (si activaste 2FA)
+                        </label>
+                        <Input
+                          id="login-mfa"
+                          {...register("mfa_code")}
+                          autoComplete="one-time-code"
+                          inputMode="text"
+                          placeholder="6 dígitos o código de recuperación"
+                          className={authFieldClass}
+                        />
+                      </div>
+
                       <label
                         htmlFor="remember-device"
                         className="flex cursor-pointer items-start gap-3 rounded-xl border border-wa-border bg-[#f8faf9] p-3.5 transition-colors hover:border-wa-primary/30 dark:border-wa-border-dark dark:bg-wa-head-dark/55 dark:hover:border-wa-primary/30"
@@ -590,8 +605,8 @@ export function LoginPage() {
                             Recordar este dispositivo
                           </strong>
                           <span className="mt-0.5 block text-[11px] leading-4 text-wa-muted dark:text-wa-muted-dark">
-                            Mantén la sesión activa y habilita el acceso rápido
-                            con PIN.
+                            Mantén la sesión activa. El PIN solo está disponible
+                            si no activaste 2FA.
                           </span>
                         </span>
                       </label>

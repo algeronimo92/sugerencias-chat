@@ -262,6 +262,8 @@ export interface LeadInput {
   vendedor_id?: number | null
   origen?: string | null
   notas?: string | null
+  secondary_phone?: string | null
+  custom_fields?: Record<string, unknown>
 }
 
 export interface LeadUpdateInput {
@@ -278,6 +280,7 @@ export interface LeadUpdateInput {
   razon_perdido?: string | null
   fecha_recontacto?: string | null
   proxima_cita?: string | null
+  custom_fields?: Record<string, unknown>
 }
 
 /** Estado interno de un envío en la cola propia (outbox). `discarded` es un

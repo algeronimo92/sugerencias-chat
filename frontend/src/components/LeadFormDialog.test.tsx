@@ -24,6 +24,17 @@ vi.mock('../hooks/useLeadServices', () => ({
   }),
   useCreateLeadService: () => ({ mutate: mocks.createService, isPending: false }),
 }))
+vi.mock('../hooks/useCustomFields', () => ({
+  useCustomFields: () => ({
+    data: [
+      { id: 10, entity_type: 'lead', key: 'sede', label: 'Sede', field_type: 'text', required: true, options: [], position: 0, is_active: true },
+      { id: 11, entity_type: 'lead', key: 'autorizado', label: 'Autorizado', field_type: 'boolean', required: false, options: [], position: 1, is_active: true },
+    ],
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
+}))
 
 function renderDialog(onSubmit = vi.fn()) {
   render(
@@ -67,6 +78,55 @@ describe('LeadFormDialog service catalog', () => {
     await user.click(screen.getByRole('button', { name: 'Crear' }))
     expect(mocks.createService).toHaveBeenCalledWith('Hollywood Peel', expect.any(Object))
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+describe('LeadFormDialog alta con campos del negocio', () => {
+  it('envía los valores al crear el lead y no muestra el campo fijo de especialista', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <LeadFormDialog
+        title="Nuevo lead"
+        submitLabel="Crear"
+        requirePhoneAndName
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('906 471 403'), '987654321')
+    await user.type(screen.getByPlaceholderText('Nombre del lead'), 'Ana')
+    await user.type(screen.getByLabelText('Sede *'), 'Centro')
+    await user.click(screen.getByRole('button', { name: 'Crear' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      custom_fields: { sede: 'Centro', autorizado: false },
+    }))
+    expect(screen.queryByText('Derivado a un especialista')).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadFormDialog compatibilidad de datos anteriores', () => {
+  it('conserva el dato histórico de especialista sin ofrecerlo ni sobrescribirlo al editar', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana', con_especialista: true }}
+        canEditPhone={false}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Derivado a un especialista')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('con_especialista')
   })
 })
 

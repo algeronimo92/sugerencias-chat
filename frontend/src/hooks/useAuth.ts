@@ -30,10 +30,14 @@ interface LoginPayload {
   email: string
   password: string
   remember_device: boolean
+  mfa_code?: string
 }
 
 async function login(payload: LoginPayload): Promise<AuthUser> {
-  const { data } = await client.post<AuthUser>('/api/auth/login', payload)
+  const { data } = await client.post<AuthUser>('/api/auth/login', {
+    ...payload,
+    mfa_code: payload.mfa_code?.trim() || null,
+  })
   return data
 }
 
@@ -131,6 +135,45 @@ export function useLogoutAll() {
       queryClient.clear()
       queryClient.setQueryData(['auth', 'me'], null)
     },
+  })
+}
+
+export interface MfaStatus {
+  enabled: boolean
+  recovery_codes_remaining: number
+}
+
+export function useMfaStatus(enabled = true) {
+  return useQuery({
+    queryKey: ['auth', 'mfa-status'],
+    queryFn: async () => (await client.get<MfaStatus>('/api/auth/mfa/status')).data,
+    enabled,
+  })
+}
+
+export function useStartMfa() {
+  return useMutation({
+    mutationFn: async (currentPassword: string) => (
+      await client.post<{ secret: string; otpauth_uri: string }>('/api/auth/mfa/start', { current_password: currentPassword })
+    ).data,
+  })
+}
+
+export function useConfirmMfa() {
+  return useMutation({
+    mutationFn: async (code: string) => (
+      await client.post<{ recovery_codes: string[] }>('/api/auth/mfa/confirm', { code })
+    ).data,
+  })
+}
+
+export function useDisableMfa() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ code, currentPassword }: { code: string; currentPassword: string }) => {
+      await client.post('/api/auth/mfa/disable', { code, current_password: currentPassword })
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'mfa-status'] }),
   })
 }
 

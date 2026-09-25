@@ -215,6 +215,7 @@ async def create_lead(
     origen: str | None = None,
     notas: str | None = None,
     secondary_phone: str | None = None,
+    custom_fields: dict | None = None,
     actor_user_id: int | None = None,
 ) -> dict:
     # phone llega ya normalizado (solo dígitos E.164): es el wa_id con el que
@@ -237,6 +238,7 @@ async def create_lead(
         vendedor=seller_name,
         origen=origen,
         notas=notas,
+        custom_fields=custom_fields or {},
     ).returning(Lead.id)
     async with get_sessionmaker()() as session:
         try:

@@ -448,6 +448,7 @@ class LeadCreate(BaseModel):
     origen: str | None = None
     notas: str | None = None
     secondary_phone: str | None = None
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
 
 
 class LeadUpdate(BaseModel):

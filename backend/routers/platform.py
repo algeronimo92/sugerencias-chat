@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from db.models import PlatformUser
 from services.auth_service import cookie_is_secure, hash_password
+from services.login_throttle import LoginThrottledError, clear_account_attempts, reserve_login_attempt
 from services import branding as branding_service
 from services.ai_access import AIEntitlement
 from services.platform_organizations import (
@@ -136,9 +137,19 @@ def _organization_not_found() -> HTTPException:
 
 @router.post("/auth/login")
 async def login(body: LoginBody, request: Request, response: Response) -> dict:
+    email = body.email.strip().lower()
+    try:
+        await reserve_login_attempt(email, request.client.host if request.client else "unknown", scope="platform")
+    except LoginThrottledError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Espera antes de volver a probar.",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     token = await authenticate(body.email, body.password)
     if token is None:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    await clear_account_attempts(email, scope="platform")
     response.set_cookie(
         PLATFORM_COOKIE_NAME,
         token,

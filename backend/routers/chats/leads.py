@@ -40,6 +40,7 @@ from services.db_service import (
 from services.auth_service import get_current_user, require_admin
 from services.lead_merge import LeadMergeError, merge_leads
 from services.lead_stages import InvalidLeadStageError
+from services.custom_fields import CustomFieldError, normalize_values
 from services.phone_utils import (
     PhoneValidationError,
     effective_country_code,
@@ -169,6 +170,11 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     if user.role != "admin" and body.vendedor_id not in (None, user.id):
         raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
 
+    try:
+        custom_fields = await normalize_values("lead", body.custom_fields, require_required=True)
+    except CustomFieldError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     # Meta no ofrece consultar si un número tiene WhatsApp: el wa_id tipeado
     # se usa tal cual y, si Meta lo normaliza al enviar, el outbox suma el
     # que informe como alias del lead.
@@ -181,6 +187,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
             origen=body.origen,
             notas=body.notas,
             secondary_phone=body.secondary_phone,
+            custom_fields=custom_fields,
             actor_user_id=user.id,
         )
     except LeadAlreadyExistsError:

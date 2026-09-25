@@ -271,7 +271,7 @@ export function DashboardPage({ onOpenTasks, onFilterChats }: Props) {
                 <Panel title="Principales orígenes" description="Canales que están generando nuevos contactos." icon={Sparkles}>
                   <BarList items={data.origins} onSelect={origin => onFilterChats({ origin })} accent="cyan" />
                 </Panel>
-                <Panel title="Servicios de interés" description="Tratamientos o servicios más consultados." icon={Sparkles}>
+                <Panel title="Servicios de interés" description="Servicios más consultados." icon={Sparkles}>
                   <BarList items={data.services} onSelect={service => onFilterChats({ service })} />
                 </Panel>
               </div>
