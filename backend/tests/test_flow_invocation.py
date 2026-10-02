@@ -4,11 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 from domain_types import AutomationBuilderMode, AutomationTrigger, FlowNodeType
-from services.automation_service import (
-    _invoked_flow_ids,
-    _start_invoked_flow,
-    _validate_invoked_flows,
-)
+from app.modules.automations.flow_validation import _invoked_flow_ids, _validate_invoked_flows
+from app.modules.automations.flow_nodes import _start_invoked_flow
 
 
 def definition(*target_ids: int) -> dict:

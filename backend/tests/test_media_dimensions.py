@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import media_storage
-from services.store import message_history
-from services.media_storage import _mp4_dimensions
+from app.integrations.storage import media_storage
+from app.modules.conversations import message_history
+from app.integrations.storage.media_storage import _mp4_dimensions
 
 IDENTITY_MATRIX = struct.pack(
     ">9i", 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000

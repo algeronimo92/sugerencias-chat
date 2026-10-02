@@ -7,12 +7,13 @@ from uuid import UUID
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers import auth, users
-from services import email_service
-from services.account_actions import INVITATION, InvalidActionTokenError
-from services.auth_service import require_admin
-from services.email_service import EmailNotConfiguredError
-from tenancy.context import TenantContext
+from app.modules.auth import api as auth
+from app.modules.auth import users_api as users
+from app.integrations import email_service
+from app.modules.auth.account_actions import INVITATION, InvalidActionTokenError
+from app.modules.auth.auth_service import require_admin
+from app.integrations.email_service import EmailNotConfiguredError
+from app.tenancy.context import TenantContext
 
 
 def _auth_client() -> TestClient:

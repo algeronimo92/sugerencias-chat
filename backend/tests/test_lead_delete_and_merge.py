@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from routers import chats
-from services.lead_merge import LeadMergeError
+from app.modules.leads import api as chats
+from app.modules.leads.merge import LeadMergeError
 from tests.conftest import patch_chats
-from models.schemas import LeadMergeRequest
+from app.modules.leads.schemas import LeadMergeRequest
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 OTHER_ID = "a1b2c3d4-855f-4718-b95f-9c021da52f77"

@@ -9,8 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers import meta_webhook
-from services import meta_webhook_auth
+from app.integrations.meta_webhook import api as meta_webhook
+from app.integrations.meta_webhook import auth as meta_webhook_auth
 from tests.meta_fixtures import inbound_webhook
 
 SECRET = "app-secret"

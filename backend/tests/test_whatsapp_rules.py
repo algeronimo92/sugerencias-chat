@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import whatsapp_rules
-from services.whatsapp_rules import (
+from app.integrations.whatsapp import rules as whatsapp_rules
+from app.integrations.whatsapp.rules import (
     InteractiveRuleError,
     build_interactive,
     interactive_choices,
@@ -86,7 +86,7 @@ async def test_default_footer_is_the_business_brand_not_another_business(monkeyp
     from types import SimpleNamespace
     from uuid import UUID
 
-    from services.branding import Branding
+    from app.modules.platform.branding import Branding
 
     org = UUID("68b010ae-8f9b-4f47-ab57-c74048923081")
     monkeypatch.setattr(whatsapp_rules, "get_effective", AsyncMock(return_value=""))

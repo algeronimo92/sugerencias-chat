@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import ReactionRequest
-from routers import chats
-from services import reactions
-from services.whatsapp_channel import ChannelError
+from app.modules.conversations.schemas import ReactionRequest
+from app.modules.conversations import api as chats
+from app.modules.conversations import reactions
+from app.integrations.whatsapp.channel import ChannelError
 from tests.conftest import FakeSender, install_channel, patch_chats
 
 CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"

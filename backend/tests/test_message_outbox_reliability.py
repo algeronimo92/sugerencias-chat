@@ -6,13 +6,15 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from db.models import WspMessage
-from services import message_outbox, meta_service, whatsapp_channel
-from services.media_storage import MediaNotFoundError
-from services.message_outbox import SendOutcome, classify_send_failure, is_final_failure
-from services.meta_service import MetaApiError, WhatsAppWindowClosedError
-from services.whatsapp_channel import ChannelError, DeliveryUnconfirmedError, SendReceipt
-from services.whatsapp_identity_service import Destination
+from app.db.models.conversations import WspMessage
+from app.modules.conversations import message_outbox
+from app.integrations.meta import client as meta_service
+from app.integrations.whatsapp import channel as whatsapp_channel
+from app.integrations.storage.media_storage import MediaNotFoundError
+from app.modules.conversations.message_outbox import SendOutcome, classify_send_failure, is_final_failure
+from app.integrations.meta.client import MetaApiError, WhatsAppWindowClosedError
+from app.integrations.whatsapp.channel import ChannelError, DeliveryUnconfirmedError, SendReceipt
+from app.integrations.whatsapp.identity import Destination
 from tests.conftest import FakeSender, install_channel
 
 

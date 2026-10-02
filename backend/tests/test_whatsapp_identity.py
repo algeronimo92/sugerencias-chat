@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from services import whatsapp_identity_service
-from services.whatsapp_identity_service import (
+from app.integrations.whatsapp import identity as whatsapp_identity_service
+from app.integrations.whatsapp.identity import (
     ContactIdentity,
     InvalidWhatsAppIdentityError,
     identity_from_echo,

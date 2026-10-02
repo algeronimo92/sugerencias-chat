@@ -1,0 +1,190 @@
+from fastapi import Depends, Header, HTTPException, Query
+
+from app.modules.leads.ports.repository import (fetch_lead_raw, fetch_messages_raw)
+from app.modules.conversations.ports.messages import (fetch_last_wa_message_id)
+from app.integrations.n8n.webhook_schemas import RagSearchWebhookBody
+from app.integrations.n8n.common import webhooks_router
+from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config, list_ai_catalog, list_ai_resources)
+from app.modules.ai.ports.ai_context import (fetch_analysis_context, fetch_context_revision)
+from app.modules.ai.ports.ai_job_tokens import (AIJobClaims, require_ai_job_context)
+from app.modules.ai.ports.ai_jobs import (AIJobConflict, AIJobExpired, AIJobNotFound, finish_ai_job, record_ai_job_step, start_ai_job)
+from app.modules.ai.ports.knowledge_search import (search_knowledge_chunks)
+from app.modules.leads.ports.stages import (list_stages_for_ai)
+
+
+router = webhooks_router()
+
+
+def _raise_job_http_error(exc: Exception) -> None:
+    if isinstance(exc, AIJobNotFound):
+        raise HTTPException(status_code=404, detail="Job IA no encontrado") from exc
+    if isinstance(exc, AIJobExpired):
+        raise HTTPException(status_code=410, detail="Job IA vencido") from exc
+    reason = str(exc)
+    if reason.startswith("job status is"):
+        # Reintentar una ejecución vieja de n8n reutiliza un job que el
+        # backend ya cerró: hay que pedir un análisis nuevo desde el CRM.
+        status = reason.removeprefix("job status is ").strip()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job IA ya finalizado (estado {status}); pide uno nuevo desde el CRM",
+        ) from exc
+    raise HTTPException(status_code=409, detail="Job IA no coincide con la operacion") from exc
+
+
+@router.get("/lead-raw")
+async def lead_raw_webhook(chat_id: str):
+    """Reemplaza los nodos Postgres `get lead1` / `try to get lead`: fila
+    cruda de `leads`. `{}` si no existe -el mismo shape que devolvía el nodo
+    Postgres con `alwaysOutputData`- para que el chequeo `{{ $json }}` vacío
+    de los IF de n8n siga funcionando sin tocarlos."""
+    lead = await fetch_lead_raw(chat_id)
+    return lead or {}
+
+
+@router.get("/lead-messages-raw")
+async def lead_messages_raw_webhook(chat_id: str, limit: int = 500):
+    """Reemplaza al nodo Postgres `get messages` (contexto del copiloto de
+    ventas, workflow `sugerencia`): últimos `limit` mensajes de un chat,
+    crudos y más recientes primero."""
+    return {"messages": await fetch_messages_raw(chat_id, limit=limit)}
+
+
+@router.get("/last-message-raw")
+async def last_message_raw_webhook(chat_id: str):
+    """Reemplaza al nodo Postgres `ultimo mensaje1`: el wa_message_id del
+    último mensaje del chat. `{}` si el chat todavía no tiene ninguno."""
+    wa_message_id = await fetch_last_wa_message_id(chat_id)
+    return {"wa_message_id": wa_message_id} if wa_message_id else {}
+
+
+@router.get("/analysis-context")
+async def analysis_context_webhook(
+    chat_id: str,
+    limit: int = Query(default=500, ge=1, le=500),
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Contexto allowlist para un job analyst creado por el backend."""
+
+    if claims.job_id != x_job_id or claims.operation != "analyst":
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+    try:
+        job = await start_ai_job(
+            x_job_id, operation="analyst", resource_id=chat_id
+        )
+    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
+        _raise_job_http_error(exc)
+
+    context = await fetch_analysis_context(chat_id, limit=limit)
+    if context is None:
+        await finish_ai_job(x_job_id, status="failed", error="lead_not_found")
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if context["context_revision"] != job.context_revision:
+        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_ai_context",
+                "current_revision": context["context_revision"],
+            },
+        )
+    await record_ai_job_step(x_job_id, "context_loaded")
+    # Las etapas son de cada negocio: el workflow analista es uno solo y solo
+    # conoce las válidas (clave, nombre, tipo y criterio) por lo que recibe acá.
+    # El perfil del negocio lo usa el prompt igual que en las sugerencias.
+    return {
+        "operation": "analyst",
+        "job_id": x_job_id,
+        **context,
+        "stages": await list_stages_for_ai(),
+        "tenant_config": await fetch_tenant_config(),
+    }
+
+
+@router.get("/rag-context")
+async def rag_context_webhook(
+    chat_id: str,
+    limit: int = Query(default=500, ge=1, le=500),
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Lead, mensajes y perfil del negocio para un job RAG firmado.
+
+    ``tenant_config`` y ``resources`` son lo que el negocio cargó en su
+    pantalla del asistente: el workflow es el mismo para todos y solo conoce
+    al negocio por lo que recibe acá.
+    """
+
+    if claims.job_id != x_job_id or claims.operation != "rag":
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+    try:
+        job = await start_ai_job(x_job_id, operation="rag", resource_id=chat_id)
+    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
+        _raise_job_http_error(exc)
+
+    context = await fetch_analysis_context(chat_id, limit=limit)
+    if context is None:
+        await finish_ai_job(x_job_id, status="failed", error="lead_not_found")
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    if context["context_revision"] != job.context_revision:
+        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_ai_context",
+                "current_revision": context["context_revision"],
+            },
+        )
+    await record_ai_job_step(x_job_id, "context_loaded")
+    return {
+        "operation": "rag",
+        "job_id": x_job_id,
+        **context,
+        "tenant_config": await fetch_tenant_config(),
+        "resources": await list_ai_resources(),
+    }
+
+
+@router.post("/rag-search")
+async def rag_search_webhook(
+    body: RagSearchWebhookBody,
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Retrieval lexical dentro del schema ligado al job RAG."""
+
+    if claims.job_id != x_job_id or claims.operation != "rag":
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+    try:
+        job = await start_ai_job(
+            x_job_id, operation="rag", context_revision=body.context_revision
+        )
+    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
+        _raise_job_http_error(exc)
+    current_revision = await fetch_context_revision(job.chat_id or job.resource_id)
+    if current_revision != body.context_revision:
+        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
+        raise HTTPException(status_code=409, detail={"code": "stale_ai_context"})
+    matches = await search_knowledge_chunks(body.query, body.top_k)
+    await record_ai_job_step(x_job_id, "knowledge_searched")
+    return {"matches": matches, "count": len(matches)}
+
+
+@router.get("/catalog")
+async def ai_catalog_webhook(
+    x_job_id: str = Header(alias="X-Job-Id"),
+    claims: AIJobClaims = Depends(require_ai_job_context),
+):
+    """Catalog from the job schema; tenant/schema are never accepted in input."""
+
+    if claims.job_id != x_job_id or claims.operation not in {"rag", "analyst"}:
+        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
+    try:
+        await start_ai_job(x_job_id, operation=claims.operation)
+    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
+        _raise_job_http_error(exc)
+    # La moneda viaja con los precios: la herramienta la lee sola, sin
+    # depender de que el agente cruce el dato con el perfil del negocio.
+    currency = (await fetch_tenant_config()).get("moneda")
+    return {"currency": currency, "services": await list_ai_catalog()}

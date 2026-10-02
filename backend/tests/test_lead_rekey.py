@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from db.models import Base, Lead
-from models.schemas import LeadUpdate
-from routers import chats
-from services.db_service import LeadAlreadyExistsError
+from app.db.models import Base
+from app.db.models.leads import Lead
+from app.modules.leads.schemas import LeadUpdate
+from app.modules.leads import api as chats
+from app.db.store_common import LeadAlreadyExistsError
 from tests.conftest import patch_chats
 
 

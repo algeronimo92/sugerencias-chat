@@ -9,17 +9,14 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models.schemas import LeadServiceUpdate
-from routers import lead_services, platform
-from routers import settings as settings_router
-from services import platform_organizations
-from services.ai_access import AIEntitlement
-from services.ai_assistant_service import (
-    build_tenant_config,
-    normalize_profile_values,
-    split_rules,
-)
-from services.knowledge_service import chunk_text
+from app.modules.catalogs.schemas import LeadServiceUpdate
+from app.modules.catalogs import services_api as lead_services
+from app.modules.platform import api as platform
+from app.modules.platform import settings_api as settings_router
+from app.modules.platform import platform_organizations
+from app.modules.ai.ai_access import AIEntitlement
+from app.modules.ai.ai_assistant_service import build_tenant_config, normalize_profile_values, split_rules
+from app.modules.ai.knowledge_service import chunk_text
 
 ORG_ID = UUID("68b010ae-8f9b-4f47-ab57-c74048923081")
 

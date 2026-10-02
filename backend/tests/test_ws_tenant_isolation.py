@@ -2,8 +2,8 @@ from uuid import uuid4
 
 import pytest
 
-from services.ws_manager import ConnectionManager
-from tenancy.context import TenantContext, tenant_context
+from app.realtime.ws_manager import ConnectionManager
+from app.tenancy.context import TenantContext, tenant_context
 
 
 class FakeWebSocket:
@@ -75,7 +75,7 @@ async def test_direct_message_scopes_repeated_user_ids_by_tenant() -> None:
 async def test_disconnect_organization_closes_only_that_tenants_sockets() -> None:
     """Al suspender un negocio hay que cortar lo que ya estaba conectado, no
     solo dejar de aceptar conexiones nuevas -- ver
-    `tenancy/provisioning.suspend_organization`."""
+    `app/tenancy/provisioning.suspend_organization`."""
     manager = ConnectionManager()
     tenant_a = _tenant("a")
     tenant_b = _tenant("b")

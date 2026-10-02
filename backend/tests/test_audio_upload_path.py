@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from models.schemas import SendMediaRequest
-from routers import chats
+from app.modules.conversations.schemas import SendMediaRequest
+from app.modules.conversations import api as chats
 from tests.conftest import open_service_window, patch_chats
 import base64
 from fastapi import HTTPException
-from services.media_storage import AudioTranscodeError
+from app.integrations.storage.media_storage import AudioTranscodeError
 
 CHAT_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
 SELLER = SimpleNamespace(id=7, role="vendedor")

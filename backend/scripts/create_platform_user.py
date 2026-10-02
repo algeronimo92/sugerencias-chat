@@ -18,9 +18,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from db.models import PlatformUser
-from db.session import close_engine, control_session
-from services.auth_service import hash_password
+from app.db.models.control import PlatformUser
+from app.db.session import close_engine, control_session
+from app.modules.auth.auth_service import hash_password
 
 
 async def _main() -> int:

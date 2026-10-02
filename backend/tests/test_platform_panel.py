@@ -17,9 +17,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import tenancy.middleware as middleware_module
-from tenancy.context import TenantContext
-from tenancy.middleware import TenantResolutionMiddleware
+import app.tenancy.middleware as middleware_module
+from app.tenancy.context import TenantContext
+from app.tenancy.middleware import TenantResolutionMiddleware
 
 
 ORG = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -43,7 +43,7 @@ def _app() -> FastAPI:
 
     @app.get("/api/branding/manifest.webmanifest")
     async def manifest():
-        from tenancy.context import get_current_tenant
+        from app.tenancy.context import get_current_tenant
 
         context = get_current_tenant()
         return {"tenant": context.hostname if context else None}
@@ -123,15 +123,16 @@ def test_la_marca_publica_responde_en_ambos_hosts_sin_mezclar_negocios(client):
 
 def test_la_cookie_del_panel_es_distinta_a_la_del_crm():
     """Con el mismo nombre, un navegador mandaría la sesión del CRM al panel."""
-    from services.auth_service import COOKIE_NAME
-    from services.platform_auth import PLATFORM_COOKIE_NAME
+    from app.modules.auth.auth_service import COOKIE_NAME
+    from app.modules.platform.platform_auth import PLATFORM_COOKIE_NAME
 
     assert PLATFORM_COOKIE_NAME != COOKIE_NAME
 
 
 def test_el_operador_no_es_un_usuario_de_negocio():
     """`platform_users` vive en public; `users` dentro de cada schema tenant."""
-    from db.models import PlatformSession, PlatformUser, User
+    from app.db.models.control import PlatformSession, PlatformUser
+    from app.db.models.auth import User
 
     assert PlatformUser.__table__.schema == "public"
     assert PlatformSession.__table__.schema == "public"

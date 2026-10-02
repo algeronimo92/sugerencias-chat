@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-import tenancy.provisioning as provisioning
+import app.tenancy.provisioning as provisioning
 
 
 ORGANIZATION_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

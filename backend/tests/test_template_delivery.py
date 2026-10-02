@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from services.template_delivery import build_internal_template_items
+from app.modules.catalogs.template_delivery import build_internal_template_items
 
 
 def attachment(content_type: str, filename: str = "archivo", media_url: str = "/media/archivo"):

@@ -1,6 +1,6 @@
 import pytest
 
-from services.phone_utils import (
+from app.core.phone_utils import (
     PhoneValidationError,
     normalize_phone,
 )

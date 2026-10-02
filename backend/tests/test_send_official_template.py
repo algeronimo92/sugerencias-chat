@@ -1,10 +1,10 @@
 """Envío de plantillas oficiales: armado de `components` según el formato de
 variable de la plantilla (posicional vs con nombre) -- ver 132012 en
-services/template_validation.template_parameter_identifiers."""
+app/modules/catalogs/template_validation.template_parameter_identifiers."""
 
 import pytest
 
-from services import chat_messaging
+from app.modules.conversations import chat_messaging
 
 
 def _official_template(content, official_parameter_values, **overrides):
@@ -98,7 +98,7 @@ async def test_send_image_header_template_carries_header_media_reference(monkeyp
     deja la referencia al medio local en el ítem. Subirlo recién al despachar
     (``message_outbox.build_final_message``) evita dejar un media id de Meta
     que puede invalidarse antes del envío real (ver 132012 en
-    services/meta_service.py)."""
+    app/integrations/meta/client.py)."""
     template = _official_template(
         "Hola {{1}}", ["Ana"],
         official_header_type="image",

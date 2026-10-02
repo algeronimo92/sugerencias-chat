@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationTrigger
-from services import automation_service, db_service
+import app.modules.automations.flow_validation as _domain_app_modules_automations_flow_validation
+import app.modules.automations.scheduler as _domain_app_modules_automations_scheduler
+import app.modules.leads.repository as _domain_app_modules_leads_repository
 from tests.conftest import patch_automations, patch_store
 
 
@@ -29,7 +31,7 @@ class _MappingResult:
 
 
 def test_visual_draft_accepts_conversation_started_trigger():
-    normalized = automation_service.normalize_visual_draft("Bienvenida", {
+    normalized = _domain_app_modules_automations_flow_validation.normalize_visual_draft("Bienvenida", {
         "conditions": {},
         "nodes": [
             {
@@ -70,7 +72,7 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
     patch_automations(monkeypatch, "schedule_automation_event", schedule)
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    await automation_service.trigger_inbound_message({
+    await _domain_app_modules_automations_scheduler.trigger_inbound_message({
         "chat_id": "lead-1",
         "message_id": "wamid-7",
         "sender": "cliente",
@@ -111,7 +113,7 @@ async def test_inbound_message_does_not_repeat_trigger_while_open(monkeypatch):
     session.scalar = AsyncMock(side_effect=[4, 9])
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    await automation_service.trigger_inbound_message({
+    await _domain_app_modules_automations_scheduler.trigger_inbound_message({
         "chat_id": "lead-1",
         "message_id": "wamid-8",
         "sender": "cliente",
@@ -132,7 +134,7 @@ async def test_open_conversation_transition_returns_version_and_audits(monkeypat
     ])
     patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    result = await db_service.open_conversation_from_inbound(
+    result = await _domain_app_modules_leads_repository.open_conversation_from_inbound(
         "lead-1", "wamid-9", "Necesito otra cita",
     )
 
@@ -150,7 +152,7 @@ async def test_open_conversation_transition_is_noop_when_already_open(monkeypatc
     session.execute = AsyncMock(return_value=_MappingResult(None))
     patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    result = await db_service.open_conversation_from_inbound("lead-1", "wamid-10")
+    result = await _domain_app_modules_leads_repository.open_conversation_from_inbound("lead-1", "wamid-10")
 
     assert result is None
     session.rollback.assert_awaited_once()

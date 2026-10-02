@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from domain_types import FlowHandle, FlowNodeType
-from services.automation_rules import (
+from app.modules.automations.automation_rules import (
     FLOW_COORDINATE_LIMIT,
     classify_customer_reply,
     is_business_hours,

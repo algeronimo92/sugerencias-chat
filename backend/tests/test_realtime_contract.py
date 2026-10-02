@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from services.realtime_events import ChatsUpdateReason, RealtimeEvent
+from app.realtime.events import ChatsUpdateReason, RealtimeEvent
 
 BACKEND = Path(__file__).resolve().parent.parent
 FRONTEND_REALTIME = BACKEND.parent / "frontend" / "src" / "realtime"
@@ -26,7 +26,12 @@ def _constant_values(node: ast.AST, assignments: dict[str, list[ast.AST]]) -> se
 
 
 def _emitted_events():
-    for path in [*sorted((BACKEND / "routers").glob("*.py")), *sorted((BACKEND / "services").rglob("*.py")), BACKEND / "main.py"]:
+    for path in [
+        *sorted((BACKEND / "routers").rglob("*.py")),
+        *sorted((BACKEND / "services").rglob("*.py")),
+        *sorted((BACKEND / "app" / "modules").rglob("*.py")),
+        BACKEND / "app/bootstrap.py",
+    ]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):

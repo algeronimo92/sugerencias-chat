@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from routers import tasks
-from services import message_outbox, task_service
-from services.whatsapp_channel import SendReceipt
+from app.modules.tasks import api as tasks
+from app.modules.conversations import message_outbox
+from app.modules.tasks import repository as task_service
+from app.integrations.whatsapp.channel import SendReceipt
 
 
 class _SessionContext:

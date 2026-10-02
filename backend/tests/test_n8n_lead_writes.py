@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import webhooks
-from models.webhook_schemas import LeadAnalysisWebhookBody, LeadInboundActivityWebhookBody
+from app.integrations.n8n import api as webhooks
+from app.integrations.n8n.webhook_schemas import LeadAnalysisWebhookBody, LeadInboundActivityWebhookBody
 from tests.conftest import patch_webhooks
 
 

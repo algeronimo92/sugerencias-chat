@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import meta_service
-from services.message_media import mediatype_from_content_type
-from services.whatsapp_identity_service import Destination
-from services.whatsapp_channel import describe_send_failure
+from app.integrations.meta import client as meta_service
+from app.modules.conversations.message_media import mediatype_from_content_type
+from app.integrations.whatsapp.identity import Destination
+from app.integrations.whatsapp.channel import describe_send_failure
 
 
 @pytest.mark.asyncio

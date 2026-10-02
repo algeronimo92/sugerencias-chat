@@ -3,9 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from services import tenant_workers
-from services.tenant_workers import WorkerSpec
-from tenancy.context import TenantContext, get_current_tenant
+from app.workers import tenant_supervisor as tenant_workers
+from app.workers.tenant_supervisor import WorkerSpec
+from app.tenancy.context import TenantContext, get_current_tenant
 
 
 def _tenant(name: str) -> TenantContext:

@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from tenancy import dependencies
-from tenancy.context import TenantContext, get_current_tenant
+from app.tenancy import dependencies
+from app.tenancy.context import TenantContext, get_current_tenant
 
 from uuid import uuid4
 

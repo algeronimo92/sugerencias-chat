@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from services.lead_merge import LeadMergeError, _fill_empty_fields, merge_leads
+from app.modules.leads.merge import LeadMergeError, _fill_empty_fields, merge_leads
 
 
 def _lead(**campos) -> SimpleNamespace:

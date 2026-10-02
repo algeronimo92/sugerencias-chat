@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from db.models import Lead
-from models.schemas import Chat, LeadStageUpdate, LeadUpdate
-from routers import chats
-from services.db_service import _activity_safe
-from services.lead_updates import LEAD_FIELD_TO_COLUMN
+from app.db.models.leads import Lead
+from app.modules.leads.schemas import Chat, LeadStageUpdate, LeadUpdate
+from app.modules.leads import api as chats
+from app.db.store_common import _activity_safe
+from app.modules.leads.updates import LEAD_FIELD_TO_COLUMN
 from tests.conftest import patch_chats
 
 

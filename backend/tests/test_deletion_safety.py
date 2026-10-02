@@ -6,8 +6,10 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
-from routers import automations, templates
-from services import automation_service, template_service
+from app.modules.automations import api as automations
+from app.modules.catalogs import templates_api as templates
+from app.modules.catalogs import template_service
+import app.modules.automations.rules as _domain_app_modules_automations_rules
 from tests.conftest import patch_automations
 
 
@@ -47,7 +49,7 @@ async def test_rule_listing_excludes_soft_deleted_automations(monkeypatch):
             return FakeResult()
 
     patch_automations(monkeypatch, "get_sessionmaker", lambda: FakeSession)
-    assert await automation_service.list_automation_rules() == []
+    assert await _domain_app_modules_automations_rules.list_automation_rules() == []
     sql = str(statements[0].compile(
         dialect=postgresql.dialect(),
         compile_kwargs={"literal_binds": True},

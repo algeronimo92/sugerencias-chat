@@ -3,11 +3,11 @@
 import pytest
 
 from domain_types import FlowConditionType
-from services.automations.conditions import _matches_flow_condition
-from services.automations.rule_validation import _normalize_flow_condition
-from services.meta_contract import message_subtype
-from services.meta_text import message_text
-from services.meta_webhook.projection import reply_identifier
+from app.modules.automations.conditions import _matches_flow_condition
+from app.modules.automations.rule_validation import _normalize_flow_condition
+from app.integrations.meta.contract import message_subtype
+from app.integrations.meta.text import message_text
+from app.integrations.meta_webhook.projection import reply_identifier
 from tests.conftest import make_chat
 from tests.meta_fixtures import inbound_cases, inbound_message
 

@@ -5,8 +5,8 @@ import pytest
 from fastapi import HTTPException
 
 from domain_types import IssueReportPriority, IssueReportStatus
-from models.schemas import IssueReportCommentCreate, IssueReportCreate, IssueReportUpdate
-from routers import issue_reports
+from app.modules.issue_reports import api as issue_reports
+from app.modules.issue_reports.schemas import IssueReportCommentCreate, IssueReportCreate, IssueReportUpdate
 
 
 def report_item(**overrides):
@@ -30,6 +30,26 @@ def report_item(**overrides):
         "updated_at": "2026-08-20T10:00:00Z",
     }
     return {**defaults, **overrides}
+
+
+def test_router_preserves_http_contract():
+    routes = {
+        (route.path, tuple(sorted(route.methods)), route.status_code, route.name)
+        for route in issue_reports.router.routes
+    }
+
+    assert routes == {
+        ("/api/issue-reports", ("GET",), None, "get_reports"),
+        ("/api/issue-reports", ("POST",), 201, "post_report"),
+        ("/api/issue-reports/{report_id}", ("GET",), None, "get_report"),
+        ("/api/issue-reports/{report_id}", ("PATCH",), None, "patch_report"),
+        (
+            "/api/issue-reports/{report_id}/comments",
+            ("POST",),
+            201,
+            "post_report_comment",
+        ),
+    }
 
 
 @pytest.mark.asyncio

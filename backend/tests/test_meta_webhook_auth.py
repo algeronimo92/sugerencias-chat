@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import meta_webhook_auth
+from app.integrations.meta_webhook import auth as meta_webhook_auth
 
 
 @pytest.mark.asyncio

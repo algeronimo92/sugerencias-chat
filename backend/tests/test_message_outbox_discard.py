@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import message_outbox
+from app.modules.conversations import message_outbox
 
 
 def _failed_message():

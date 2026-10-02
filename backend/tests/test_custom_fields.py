@@ -1,7 +1,7 @@
 import pytest
 
-from services import custom_fields
-from services.custom_fields import CustomFieldError
+from app.modules.catalogs import custom_fields
+from app.modules.catalogs.custom_fields import CustomFieldError
 
 
 @pytest.fixture

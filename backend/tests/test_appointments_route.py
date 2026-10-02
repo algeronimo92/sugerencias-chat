@@ -2,10 +2,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import httpx
 from fastapi import HTTPException
 
-from models.schemas import AppointmentCreate
-from routers import appointments
+from app.modules.appointments.schemas import AppointmentCreate
+from app.modules.appointments import api as appointments
+from app.modules.appointments import service as appointment_service
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
 
@@ -40,21 +42,21 @@ def dependencies(monkeypatch):
         {"id": 1, "name": "Antonella", "role": "vendedor"},
     ]))
     monkeypatch.setattr(appointments, "effective_country_code", AsyncMock(return_value="51"))
-    monkeypatch.setattr(appointments, "get_effective", AsyncMock(return_value=""))
+    monkeypatch.setattr(appointment_service, "get_effective", AsyncMock(return_value=""))
     monkeypatch.setattr(appointments, "normalize_values", AsyncMock(side_effect=lambda _e, values, **_k: values))
-    monkeypatch.setattr(appointments, "list_definitions", AsyncMock(return_value=[]))
-    monkeypatch.setattr(appointments, "create_google_event", AsyncMock(return_value={
+    monkeypatch.setattr(appointment_service, "list_definitions", AsyncMock(return_value=[]))
+    monkeypatch.setattr(appointment_service, "create_google_event", AsyncMock(return_value={
         "status": "not_configured", "event_id": None, "event_link": None, "error": None,
     }))
-    monkeypatch.setattr(appointments, "_notify_new_appointment", AsyncMock())
+    monkeypatch.setattr(appointment_service, "_notify_new_appointment", AsyncMock())
 
 
 async def test_local_appointment_is_saved_without_n8n(monkeypatch):
     body = _body()
     create = AsyncMock(return_value=_stored(body))
     update = AsyncMock(side_effect=lambda _id, **values: _stored(body, **values))
-    monkeypatch.setattr(appointments, "create_appointment_record", create)
-    monkeypatch.setattr(appointments, "update_appointment_integrations", update)
+    monkeypatch.setattr(appointment_service, "create_appointment_record", create)
+    monkeypatch.setattr(appointment_service, "update_appointment_integrations", update)
 
     result = await appointments.post_appointment(body, SELLER)
 
@@ -76,9 +78,9 @@ async def test_calendar_error_does_not_lose_local_appointment(monkeypatch):
         order.append("calendar")
         return {"status": "error", "event_id": None, "event_link": None, "error": "Google no disponible"}
 
-    monkeypatch.setattr(appointments, "create_appointment_record", create)
-    monkeypatch.setattr(appointments, "create_google_event", calendar)
-    monkeypatch.setattr(appointments, "update_appointment_integrations", AsyncMock(side_effect=lambda _id, **values: _stored(body, **values)))
+    monkeypatch.setattr(appointment_service, "create_appointment_record", create)
+    monkeypatch.setattr(appointment_service, "create_google_event", calendar)
+    monkeypatch.setattr(appointment_service, "update_appointment_integrations", AsyncMock(side_effect=lambda _id, **values: _stored(body, **values)))
 
     result = await appointments.post_appointment(body, SELLER)
 
@@ -86,6 +88,35 @@ async def test_calendar_error_does_not_lose_local_appointment(monkeypatch):
     assert result["success"] is True
     assert result["appointment"]["status"] == "created_with_errors"
     assert result["integrationErrors"] == ["Google no disponible"]
+
+
+async def test_n8n_failure_is_reported_after_local_commit(monkeypatch):
+    body = _body()
+    order = []
+
+    async def create(**_kwargs):
+        order.append("saved")
+        return _stored(body)
+
+    async def send(_url, _data, _files, _timeout):
+        order.append("n8n")
+        raise httpx.ConnectError("sin conexión")
+
+    monkeypatch.setattr(appointment_service, "create_appointment_record", create)
+    monkeypatch.setattr(appointment_service, "get_effective", AsyncMock(return_value="https://example.invalid/webhook"))
+    monkeypatch.setattr(appointment_service, "post_form", send)
+    monkeypatch.setattr(
+        appointment_service,
+        "update_appointment_integrations",
+        AsyncMock(side_effect=lambda _id, **values: _stored(body, **values)),
+    )
+
+    result = await appointments.post_appointment(body, SELLER)
+
+    assert order == ["saved", "n8n"]
+    assert result["success"] is True
+    assert result["appointment"]["status"] == "created_with_errors"
+    assert "n8n" in result["integrationErrors"][0]
 
 
 async def test_unknown_seller_is_rejected():
@@ -101,8 +132,8 @@ async def test_phone_follows_the_configured_country(monkeypatch):
 
     monkeypatch.setattr(appointments, "effective_country_code", AsyncMock(return_value="54"))
     body = _body(telefono="1123456789")
-    monkeypatch.setattr(appointments, "create_appointment_record", AsyncMock(return_value=_stored(body)))
-    monkeypatch.setattr(appointments, "update_appointment_integrations", AsyncMock(side_effect=lambda _id, **values: _stored(body, **values)))
+    monkeypatch.setattr(appointment_service, "create_appointment_record", AsyncMock(return_value=_stored(body)))
+    monkeypatch.setattr(appointment_service, "update_appointment_integrations", AsyncMock(side_effect=lambda _id, **values: _stored(body, **values)))
     assert (await appointments.post_appointment(body, SELLER))["success"] is True
 
 
@@ -115,8 +146,8 @@ async def test_test_mode_is_admin_only():
 async def test_existing_appointment_can_be_synced_after_enabling_calendar(monkeypatch):
     body = _body()
     appointment = _stored(body, calendar_sync_status="not_configured")
-    monkeypatch.setattr(appointments, "get_appointment", AsyncMock(return_value=appointment))
-    monkeypatch.setattr(appointments, "create_google_event", AsyncMock(return_value={
+    monkeypatch.setattr(appointment_service, "get_appointment", AsyncMock(return_value=appointment))
+    monkeypatch.setattr(appointment_service, "create_google_event", AsyncMock(return_value={
         "status": "synced",
         "event_id": "google-event-1",
         "event_link": "https://calendar.google.com/event?eid=1",
@@ -128,7 +159,7 @@ async def test_existing_appointment_can_be_synced_after_enabling_calendar(monkey
         calendar_event_id="google-event-1",
         event_link="https://calendar.google.com/event?eid=1",
     ))
-    monkeypatch.setattr(appointments, "update_appointment_integrations", update)
+    monkeypatch.setattr(appointment_service, "update_appointment_integrations", update)
 
     result = await appointments.sync_appointment_calendar(41, SELLER)
 
@@ -140,15 +171,15 @@ async def test_existing_appointment_can_be_synced_after_enabling_calendar(monkey
 async def test_existing_appointment_explains_when_calendar_is_disabled(monkeypatch):
     body = _body()
     monkeypatch.setattr(
-        appointments,
+        appointment_service,
         "get_appointment",
         AsyncMock(return_value=_stored(body, calendar_sync_status="not_configured")),
     )
-    monkeypatch.setattr(appointments, "create_google_event", AsyncMock(return_value={
+    monkeypatch.setattr(appointment_service, "create_google_event", AsyncMock(return_value={
         "status": "not_configured", "event_id": None, "event_link": None, "error": None,
     }))
     monkeypatch.setattr(
-        appointments,
+        appointment_service,
         "update_appointment_integrations",
         AsyncMock(return_value=_stored(body, calendar_sync_status="not_configured")),
     )

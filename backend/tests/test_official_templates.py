@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import TemplateCreate, TemplateMetaImport, TemplateUpdate
-from routers import templates
-from services import template_validation
-from services.meta_service import MetaApiError
+from app.modules.catalogs.schemas import TemplateCreate, TemplateMetaImport, TemplateUpdate
+from app.modules.catalogs import templates_api as templates
+from app.modules.catalogs import template_validation
+from app.integrations.meta.client import MetaApiError
 
 
 def _official_payload(**overrides):

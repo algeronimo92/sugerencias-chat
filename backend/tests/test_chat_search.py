@@ -6,13 +6,8 @@ PostgreSQL en la suite)."""
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from services import db_service
-from services.db_service import (
-    _chat_search_condition,
-    _escape_like,
-    _matched_message_subquery,
-    _search_rank_expression,
-)
+import app.modules.conversations.chat_queries as _domain_app_modules_conversations_chat_queries
+from app.modules.conversations.chat_queries import _chat_search_condition, _escape_like, _matched_message_subquery, _search_rank_expression
 
 
 def _compile(search: str) -> str:
@@ -28,9 +23,9 @@ def _compile(search: str) -> str:
 
 @pytest.fixture(autouse=True)
 def unaccent_habilitado():
-    db_service.set_unaccent_enabled(True)
+    _domain_app_modules_conversations_chat_queries.set_unaccent_enabled(True)
     yield
-    db_service.set_unaccent_enabled(True)
+    _domain_app_modules_conversations_chat_queries.set_unaccent_enabled(True)
 
 
 class TestEscapeLike:
@@ -75,7 +70,7 @@ class TestCondicionDeBusqueda:
         assert "ESCAPE '\\'" in sql
 
     def test_sin_unaccent_degrada_a_ilike_simple(self):
-        db_service.set_unaccent_enabled(False)
+        _domain_app_modules_conversations_chat_queries.set_unaccent_enabled(False)
         sql = _compile("jose")
         assert "f_unaccent" not in sql
         assert "leads.nombre ILIKE" in sql

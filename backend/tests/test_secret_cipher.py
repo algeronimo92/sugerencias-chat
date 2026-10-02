@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from services import secret_cipher
+from app.core import secret_cipher
 
 
 @pytest.fixture

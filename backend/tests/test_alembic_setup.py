@@ -112,7 +112,7 @@ def test_there_is_exactly_one_head() -> None:
 def test_startup_no_longer_runs_ddl() -> None:
     """El lifespan no debe volver a crear esquema: es lo que impedía que dos
     instancias arrancaran a la vez."""
-    source = (BACKEND / "main.py").read_text(encoding="utf-8")
+    source = (BACKEND / "app/bootstrap.py").read_text(encoding="utf-8")
     lifespan = source.split("async def lifespan", 1)[1]
     # Sin comentarios: el propio bloque explica por qué se quitó el DDL y
     # menciona esas palabras. Lo que importa es que no queden ejecutándose.

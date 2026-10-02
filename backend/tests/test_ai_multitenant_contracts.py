@@ -7,19 +7,21 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from config import settings
-from models.schemas import SuggestionRequest, SuggestionResponse
-from models.webhook_schemas import (
+from app.core.config import settings
+from app.modules.ai.schemas import SuggestionRequest, SuggestionResponse
+from app.integrations.n8n.webhook_schemas import (
     LeadAnalysisPatch,
     LeadAnalysisResultWebhookBody,
     LeadAnalysisWebhookBody,
     RagSearchWebhookBody,
 )
-from routers import suggestions, webhooks
-from services import ai_access, n8n_service
-from services.ai_job_tokens import AIJobClaims, decode_ai_job_token, issue_ai_job_token
-from services.ai_jobs import AIContextStale, AIJobConflict
-from services.knowledge_search import _escape_like
+from app.modules.ai import suggestions_api as suggestions
+from app.integrations.n8n import api as webhooks
+from app.modules.ai import ai_access
+from app.integrations.n8n import client as n8n_service
+from app.modules.ai.ai_job_tokens import AIJobClaims, decode_ai_job_token, issue_ai_job_token
+from app.modules.ai.ai_jobs import AIContextStale, AIJobConflict
+from app.modules.ai.knowledge_search import _escape_like
 from tests.conftest import patch_webhooks
 
 

@@ -2,9 +2,9 @@
 
 import pytest
 
-from services.chat_messaging import FORWARD_RULES, forward_item
-from services.lead_updates import lead_column_values
-from services.meta_outbound import validation_errors
+from app.modules.conversations.chat_messaging import FORWARD_RULES, forward_item
+from app.modules.leads.updates import lead_column_values
+from app.integrations.meta.outbound import validation_errors
 from tests.meta_fixtures import inbound_message
 
 

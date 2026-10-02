@@ -4,19 +4,14 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import (
-    ContactShareItem,
-    SendContactsRequest,
-    SendInteractiveRequest,
-    SendTemplateRequest,
-    StickerRequest,
-)
-from routers import chats
-from services import chat_messaging
-from services.meta_outbound import OutboundRejected
+from app.modules.catalogs.schemas import SendTemplateRequest
+from app.modules.conversations.schemas import ContactShareItem, SendContactsRequest, SendInteractiveRequest, StickerRequest
+from app.modules.conversations import api as chats
+from app.modules.conversations import chat_messaging
+from app.integrations.meta.outbound import OutboundRejected
 from tests.conftest import open_service_window, patch_chats
 from tests.meta_fixtures import outbound_cases
-from routers.chats.outbound import TEMPLATE_ERROR_STATUS
+from app.modules.conversations.outbound_api import TEMPLATE_ERROR_STATUS
 
 SELLER = SimpleNamespace(id=7, role="vendedor")
 CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"

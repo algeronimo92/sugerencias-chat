@@ -15,14 +15,17 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select, text
 
-from config import settings
-from db.models import WebhookInbox, WhatsAppIdentity, WhatsAppMessageEvent, WspMessage
-from db.session import close_engine, control_session, get_engine, get_sessionmaker
-from services.meta_webhook import metrics, processor
-from services.meta_webhook.inbox import claim_events, split_changes, store_changes
-from services.meta_webhook.worker import run_event
-from tenancy.context import tenant_context, validate_schema_name
-from tenancy.provisioning import provision_tenant, sync_whatsapp_connection
+from app.core.config import settings
+from app.db.models.control import WebhookInbox
+from app.db.models.leads import WhatsAppIdentity
+from app.db.models.conversations import WhatsAppMessageEvent, WspMessage
+from app.db.session import close_engine, control_session, get_engine, get_sessionmaker
+from app.integrations.meta_webhook import metrics
+from app.integrations.meta_webhook import processor
+from app.integrations.meta_webhook.inbox import claim_events, split_changes, store_changes
+from app.integrations.meta_webhook.worker import run_event
+from app.tenancy.context import tenant_context, validate_schema_name
+from app.tenancy.provisioning import provision_tenant, sync_whatsapp_connection
 from tests.meta_fixtures import (
     inbound_cases,
     inbound_message,
@@ -326,8 +329,8 @@ async def test_media_is_imported_without_touching_the_meta_object(tenant, fake_m
 
 @pytest.mark.asyncio
 async def test_outbound_records_the_exact_body_sent_and_the_meta_status(tenant, monkeypatch) -> None:
-    from services import message_outbox
-    from services.store.leads import create_lead
+    from app.modules.conversations import message_outbox
+    from app.modules.leads.repository import create_lead
     from tests.conftest import FakeSender, install_channel
 
     context, _phone, _ids = tenant

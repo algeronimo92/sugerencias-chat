@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from routers import chats
-from models.schemas import SendMessageRequest
-from services.service_window import SERVICE_WINDOW_CLOSED_DETAIL, window_is_open
+from app.modules.conversations import api as chats
+from app.modules.conversations.schemas import SendMessageRequest
+from app.modules.conversations.service_window import SERVICE_WINDOW_CLOSED_DETAIL, window_is_open
 from tests.conftest import open_service_window, patch_chats
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -54,13 +54,12 @@ def test_nobody_reimplements_the_window_on_their_own():
     que lo calcula y del módulo de la regla, usarlo significa estar
     reimplementando la decisión."""
     permitidos = {
-        "services/store/common.py",
-        "services/store/chat_queries.py",
-        "services/db_service.py",
-        "services/service_window.py",
+        "app/db/store_common.py",
+        "app/modules/conversations/chat_queries.py",
+        "app/modules/conversations/service_window.py",
     }
     culpables = set()
-    for path in [*(BACKEND / "services").rglob("*.py"), *(BACKEND / "routers").rglob("*.py")]:
+    for path in (BACKEND / "app").rglob("*.py"):
         if path.relative_to(BACKEND).as_posix() in permitidos:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):

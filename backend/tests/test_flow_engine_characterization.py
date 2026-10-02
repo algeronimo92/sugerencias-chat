@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationActionType
-from services import automation_service
+import app.modules.automations.engine as _domain_app_modules_automations_engine
+import app.modules.automations.flow_nodes as _domain_app_modules_automations_flow_nodes
+import app.modules.automations.simulation as _domain_app_modules_automations_simulation
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
@@ -91,7 +93,7 @@ def engine(monkeypatch):
         persisted.clear()
         execution = make_execution(flow_state={"flow_version": 1, **flow_state}, action_results=[])
         rule = make_rule(builder_mode="visual", flow_version=1)
-        await automation_service._run_visual_execution(execution, rule, make_chat(), deps)
+        await _domain_app_modules_automations_engine._run_visual_execution(execution, rule, make_chat(), deps)
         return persisted
 
     return run
@@ -199,7 +201,7 @@ def simulator(monkeypatch):
 
 
 async def test_simulator_walks_every_node_type(simulator):
-    result = await automation_service.simulate_visual_flow(1, "lead-1")
+    result = await _domain_app_modules_automations_simulation.simulate_visual_flow(1, "lead-1")
 
     assert result["flow_version"] == 3
     assert [
@@ -230,7 +232,7 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
     }
     patch_automations(monkeypatch, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": flow}))
 
-    result = await automation_service.simulate_visual_flow(1, "lead-1")
+    result = await _domain_app_modules_automations_simulation.simulate_visual_flow(1, "lead-1")
 
     assert [(step["node_id"], step["type"], step["status"]) for step in result["path"]] == [
         ("t", "trigger", "matched"),
@@ -245,4 +247,4 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
 def test_every_flow_node_type_has_a_handler():
     from domain_types import FlowNodeType
 
-    assert set(automation_service.FLOW_NODE_HANDLERS) == set(FlowNodeType)
+    assert set(_domain_app_modules_automations_flow_nodes.FLOW_NODE_HANDLERS) == set(FlowNodeType)

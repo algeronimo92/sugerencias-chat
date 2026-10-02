@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from domain_types import AutomationBuilderMode, AutomationTrigger
-from services.automation_service import start_manual_flow_execution
+from app.modules.automations.rules import start_manual_flow_execution
 from tests.conftest import automations_patch
 
 RULE_ID = 42

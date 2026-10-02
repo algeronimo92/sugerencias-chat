@@ -12,9 +12,9 @@ import argparse
 import asyncio
 import json
 
-from db.session import close_engine
-from services.auth_service import hash_password
-from tenancy.provisioning import provision_tenant
+from app.db.session import close_engine
+from app.modules.auth.auth_service import hash_password
+from app.tenancy.provisioning import provision_tenant
 
 
 async def _main() -> int:

@@ -8,8 +8,8 @@ from uuid import UUID
 import pytest
 
 import scripts.migrate as migrate_script
-import tenancy.provisioning as provisioning
-from tenancy.context import TenantContext, get_current_tenant
+import app.tenancy.provisioning as provisioning
+from app.tenancy.context import TenantContext, get_current_tenant
 
 
 _D2_PATH = (

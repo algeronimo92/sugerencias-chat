@@ -12,8 +12,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
-from services import automation_service
-from services.automation_service import _execute_action, _resolve_recipient, _run_execution
+import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
+from app.modules.automations.actions import _execute_action, _resolve_recipient
+from app.modules.automations.engine import _run_execution
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
@@ -138,7 +139,7 @@ class TestSendMediaValidation:
             lambda: lambda: _MediaValidationSession(),
         )
 
-        values = await automation_service.validate_automation_rule({
+        values = await _domain_app_modules_automations_rule_validation.validate_automation_rule({
             "name": "Video de bienvenida",
             "trigger_type": AutomationTrigger.MANUAL,
             "actions": [{
@@ -156,7 +157,7 @@ class TestSendMediaValidation:
 
     async def test_rule_rejects_caption_over_limit(self):
         with pytest.raises(ValueError, match="caption admite máximo 1024"):
-            await automation_service.validate_automation_rule({
+            await _domain_app_modules_automations_rule_validation.validate_automation_rule({
                 "name": "Video largo",
                 "trigger_type": AutomationTrigger.MANUAL,
                 "actions": [{
@@ -279,7 +280,7 @@ class TestTagsAndStage:
 
 class TestConversationState:
     async def test_rule_accepts_and_preserves_state(self):
-        values = await automation_service.validate_automation_rule({
+        values = await _domain_app_modules_automations_rule_validation.validate_automation_rule({
             "name": "Cerrar al terminar",
             "trigger_type": AutomationTrigger.MANUAL,
             "actions": [{
@@ -295,7 +296,7 @@ class TestConversationState:
 
     async def test_rule_rejects_unknown_state(self):
         with pytest.raises(ValueError, match="estado de conversación inválido"):
-            await automation_service.validate_automation_rule({
+            await _domain_app_modules_automations_rule_validation.validate_automation_rule({
                 "name": "Estado inválido",
                 "trigger_type": AutomationTrigger.MANUAL,
                 "actions": [{

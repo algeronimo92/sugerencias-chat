@@ -10,11 +10,9 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from domain_types import AutomationExecutionStatus
-from services.automation_service import (
-    RATE_LIMIT_RETRY_MINUTES,
-    _matches_condition_values,
-    _rate_limit_reached,
-)
+from app.modules.automations.common import RATE_LIMIT_RETRY_MINUTES
+from app.modules.automations.conditions import _matches_condition_values
+from app.modules.automations.engine import _rate_limit_reached
 from tests.conftest import make_chat, make_rule
 
 
@@ -113,7 +111,7 @@ class TestRateLimitReschedules:
             async def commit(self):
                 saved["committed"] = True
 
-        from services.automation_service import _run_execution
+        from app.modules.automations.engine import _run_execution
 
         await _run_execution(1, dataclasses.replace(deps, session_factory=lambda: FakeSession))
 

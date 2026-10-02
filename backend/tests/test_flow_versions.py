@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationBuilderMode
-from services.automation_service import list_flow_versions, publish_visual_flow, restore_flow_version
+from app.modules.automations.flow_versions import list_flow_versions, publish_visual_flow, restore_flow_version
 from tests.conftest import automations_patch
 
 RULE_ID = 7

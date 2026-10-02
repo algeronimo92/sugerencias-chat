@@ -10,7 +10,8 @@ que moverlo regenera `schema.d.ts` entero.
 
 import pytest
 
-from routers import chats
+from app.modules.conversations import api as chats
+from app.modules.leads import api as leads
 
 EXPECTED_ROUTES = [
     ("GET", "/api/chats", "get_chats"),
@@ -61,7 +62,7 @@ LITERALS_THAT_LOOK_LIKE_A_CHAT_ID = [
 def _routes():
     return [
         (method, route.path, route.name)
-        for route in chats.router.routes
+        for route in [*leads.router.routes, *chats.router.routes]
         for method in sorted(route.methods)
     ]
 
@@ -79,7 +80,7 @@ def test_literal_paths_are_registered_before_the_chat_id_catch_all(path):
     assert gets.index(path) < gets.index("/api/chats/{chat_id}")
 
 
-def test_the_facade_exposes_every_route_function():
-    missing = [name for _, _, name in EXPECTED_ROUTES if not hasattr(chats, name)]
+def test_each_capability_owns_its_route_functions():
+    missing = [name for _, _, name in EXPECTED_ROUTES if not hasattr(chats, name) and not hasattr(leads, name)]
 
     assert missing == []

@@ -34,10 +34,10 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.models import TenantSchemaVersion
-from db.session import close_engine, control_session, get_engine
-from tenancy.context import TenantContext, validate_schema_name
-from tenancy.provisioning import _mark_active, _mark_failed, _migrate_schema
+from app.db.models.control import TenantSchemaVersion
+from app.db.session import close_engine, control_session, get_engine
+from app.tenancy.context import TenantContext, validate_schema_name
+from app.tenancy.provisioning import _mark_active, _mark_failed, _migrate_schema
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 

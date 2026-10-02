@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.schemas import SendLocationRequest, SendMediaRequest, SendMessageRequest
-from routers import chats
-from services.media_storage import AudioTranscodeError
+from app.modules.conversations.schemas import SendLocationRequest, SendMediaRequest, SendMessageRequest
+from app.modules.conversations import api as chats
+from app.integrations.storage.media_storage import AudioTranscodeError
 from tests.conftest import open_service_window, patch_chats
 
 USER = SimpleNamespace(id=7)

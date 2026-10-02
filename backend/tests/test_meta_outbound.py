@@ -4,8 +4,9 @@ import copy
 
 import pytest
 
-from services import message_outbox, meta_outbound
-from services.meta_outbound import (
+from app.modules.conversations import message_outbox
+from app.integrations.meta import outbound as meta_outbound
+from app.integrations.meta.outbound import (
     OutboundRejected,
     contacts_item,
     interactive_item,
@@ -207,7 +208,7 @@ def test_sent_body_matches_the_stored_one_apart_from_envelope_and_ids():
 
 
 async def test_capabilities_expose_catalog_and_published_flows(monkeypatch):
-    from services import whatsapp_capabilities
+    from app.integrations.whatsapp import capabilities as whatsapp_capabilities
 
     async def get_effective_many(keys):
         return {

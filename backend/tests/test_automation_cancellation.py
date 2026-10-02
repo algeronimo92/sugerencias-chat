@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationExecutionStatus
-from services import automation_service
-from services.automation_service import _run_execution, _run_visual_execution, _save_execution
+import app.modules.automations.rules as _domain_app_modules_automations_rules
+from app.modules.automations.engine import _run_execution, _run_visual_execution, _save_execution
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
@@ -85,7 +85,7 @@ async def test_cancel_returns_none_when_already_in_a_final_state(monkeypatch):
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    result = await automation_service.cancel_automation_execution(5)
+    result = await _domain_app_modules_automations_rules.cancel_automation_execution(5)
 
     assert result is None
     broadcast.assert_not_awaited()
@@ -102,7 +102,7 @@ async def test_cancel_broadcasts_and_returns_execution_when_applied(monkeypatch)
         "get_automation_execution", AsyncMock(return_value={"id": 5}),
     )
 
-    result = await automation_service.cancel_automation_execution(5)
+    result = await _domain_app_modules_automations_rules.cancel_automation_execution(5)
 
     assert result == {"id": 5}
     broadcast.assert_awaited_once()
@@ -122,7 +122,7 @@ async def test_retry_returns_none_when_execution_already_moved_on(monkeypatch):
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    result = await automation_service.retry_automation_execution(5)
+    result = await _domain_app_modules_automations_rules.retry_automation_execution(5)
 
     assert result is None
     broadcast.assert_not_awaited()

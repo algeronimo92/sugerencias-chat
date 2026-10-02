@@ -10,9 +10,9 @@ import pytest
 from fastapi import HTTPException, Response
 from PIL import Image
 
-from routers import branding as branding_router
-from routers import platform
-from services import branding
+from app.modules.platform import branding_api as branding_router
+from app.modules.platform import api as platform
+from app.modules.platform import branding
 
 ORG_ID = UUID("68b010ae-8f9b-4f47-ab57-c74048923081")
 

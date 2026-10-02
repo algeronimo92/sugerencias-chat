@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import TemplateCreate
-from routers import templates
+from app.modules.catalogs.schemas import TemplateCreate
+from app.modules.catalogs import templates_api as templates
 
 
 def _buttons_payload(buttons, **overrides):

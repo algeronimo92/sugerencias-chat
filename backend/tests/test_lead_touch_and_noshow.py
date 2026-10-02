@@ -13,8 +13,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from routers import chats, webhooks
-from models.webhook_schemas import LeadTouchWebhookBody
+from app.modules.leads import api as chats
+from app.integrations.n8n import api as webhooks
+from app.integrations.n8n.webhook_schemas import LeadTouchWebhookBody
 from tests.conftest import patch_chats, patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"

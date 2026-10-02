@@ -9,7 +9,9 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus
-from services import automation_service
+import app.modules.automations.discovery as _domain_app_modules_automations_discovery
+import app.modules.automations.engine as _domain_app_modules_automations_engine
+import app.modules.automations.rules as _domain_app_modules_automations_rules
 from tests.conftest import patch_automations
 
 
@@ -58,7 +60,7 @@ async def test_claiming_due_executions_does_not_increment_attempts(monkeypatch):
     patch_automations(monkeypatch, "_run_execution", AsyncMock())
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    await automation_service.process_due_automation_executions(limit=5)
+    await _domain_app_modules_automations_engine.process_due_automation_executions(limit=5)
 
     claim_sql = _compile(session.execute.await_args_list[2].args[0])
     assert "attempts" not in claim_sql
@@ -80,7 +82,7 @@ async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(monkeyp
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    processed = await automation_service.process_due_automation_executions(limit=5)
+    processed = await _domain_app_modules_automations_engine.process_due_automation_executions(limit=5)
 
     assert processed == 0
     run_execution.assert_not_awaited()
@@ -101,7 +103,7 @@ async def test_reviving_a_stale_execution_increments_attempts(monkeypatch):
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    await automation_service._release_stale_executions()
+    await _domain_app_modules_automations_discovery._release_stale_executions()
 
     revive_sql = _compile(session.execute.await_args_list[1].args[0])
     assert "attempts=(automation_executions.attempts + 1)" in revive_sql
@@ -125,7 +127,7 @@ async def test_retrying_an_execution_resets_attempts(monkeypatch):
         "get_automation_execution", AsyncMock(return_value={"id": 5}),
     )
 
-    result = await automation_service.retry_automation_execution(5)
+    result = await _domain_app_modules_automations_rules.retry_automation_execution(5)
 
     assert result == {"id": 5}
     update_sql = _compile(session.execute.await_args.args[0])

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from routers import webhooks
+from app.integrations.n8n import api as webhooks
 from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"

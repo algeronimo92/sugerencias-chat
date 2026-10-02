@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import main
+from app import bootstrap as main
 
 
 SCHEMA = "tenant_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

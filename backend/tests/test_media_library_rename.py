@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.schemas import MediaAssetUpdate
-from routers import media_library
-from services import media_library_service
+from app.modules.media.schemas import MediaAssetUpdate
+from app.modules.media import library_api as media_library
+from app.modules.media import media_library_service
 
 
 @pytest.mark.parametrize(
@@ -51,8 +51,8 @@ async def test_rename_updates_library_and_linked_template_attachments(monkeypatc
     async def fake_get_asset(asset_id):
         return {"id": asset_id, "filename": "nuevo.jpg"}
 
-    monkeypatch.setattr(media_library_service, "get_sessionmaker", lambda: FakeSession)
-    monkeypatch.setattr(media_library_service, "get_media_asset", fake_get_asset)
+    monkeypatch.setattr(media_library_service.media_library_repository, "get_sessionmaker", lambda: FakeSession)
+    monkeypatch.setattr(media_library_service.media_library_repository, "get_media_asset", fake_get_asset)
 
     result = await media_library_service.rename_media_asset(42, "nuevo.jpg")
 

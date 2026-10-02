@@ -4,15 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from domain_types import AutomationExecutionStatus, FlowConditionType
-from services.automation_service import (
-    _execution_message_context,
-    _matches_flow_condition,
-    _matches_flow_condition_node,
-    _normalize_flow_condition,
-    _normalize_flow_condition_node,
-    _run_visual_execution,
-    normalize_visual_draft,
-)
+from app.modules.automations.conditions import _execution_message_context, _matches_flow_condition, _matches_flow_condition_node
+from app.modules.automations.rule_validation import _normalize_flow_condition, _normalize_flow_condition_node
+from app.modules.automations.engine import _run_visual_execution
+from app.modules.automations.flow_validation import normalize_visual_draft
 from tests.conftest import make_chat, make_execution, make_rule
 
 

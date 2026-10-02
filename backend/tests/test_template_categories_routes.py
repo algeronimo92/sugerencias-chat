@@ -3,9 +3,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import TemplateCategoryCreate, TemplateCategoryUpdate, TemplateCreate
-from routers import template_categories, templates
-from services.template_category_service import TemplateCategoryAlreadyExistsError
+from app.modules.catalogs.schemas import TemplateCategoryCreate, TemplateCategoryUpdate, TemplateCreate
+from app.modules.catalogs import template_categories_api as template_categories
+from app.modules.catalogs import templates_api as templates
+from app.modules.catalogs.template_categories_repository import TemplateCategoryAlreadyExistsError
 
 
 @pytest.mark.asyncio

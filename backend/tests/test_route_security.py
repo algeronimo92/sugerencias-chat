@@ -4,13 +4,9 @@ from starlette.websockets import WebSocketDisconnect
 import pytest
 
 import main
-from services.auth_service import (
-    get_current_user,
-    require_admin,
-    verify_webhook_token,
-    websocket_origin_allowed,
-)
-from services.platform_auth import get_current_platform_user
+from app import bootstrap
+from app.modules.auth.auth_service import get_current_user, require_admin, verify_webhook_token, websocket_origin_allowed
+from app.modules.platform.platform_auth import get_current_platform_user
 
 # El panel de plataforma tiene su propia identidad (public.platform_users), así
 # que su guard es otro: sin incluirlo acá, sus rutas protegidas parecerían
@@ -47,7 +43,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/branding/manifest.webmanifest"),
     # Webhook de Meta: Meta no manda sesión ni el token de las integraciones.
     # La suscripción se valida con el verify token y cada POST con la firma
-    # HMAC del cuerpo crudo (ver routers/meta_webhook.py).
+    # HMAC del cuerpo crudo (ver app/integrations/meta_webhook/api.py).
     ("GET", "/api/webhooks/meta/whatsapp"),
     ("POST", "/api/webhooks/meta/whatsapp"),
     ("GET", "/health"),
@@ -86,7 +82,7 @@ def test_websocket_rejects_foreign_origin_before_reading_the_session(monkeypatch
     async def fail_if_called(_token):
         pytest.fail("no debe resolver la sesión de un origen ajeno")
 
-    monkeypatch.setattr(main, "get_user_from_token", fail_if_called)
+    monkeypatch.setattr(bootstrap, "get_user_from_token", fail_if_called)
     client = TestClient(main.app)
 
     with pytest.raises(WebSocketDisconnect) as closed:

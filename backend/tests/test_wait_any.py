@@ -10,13 +10,10 @@ from types import SimpleNamespace
 import pytest
 
 from domain_types import AutomationExecutionStatus
-from services import automation_service
-from services.automation_service import (
-    _match_question_button,
-    _normalize_question,
-    _normalize_wait_any_conditions,
-    _run_visual_execution,
-)
+import app.modules.automations.discovery as _domain_app_modules_automations_discovery
+from app.modules.automations.discovery import _match_question_button
+from app.modules.automations.rule_validation import _normalize_question, _normalize_wait_any_conditions
+from app.modules.automations.engine import _run_visual_execution
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
@@ -547,7 +544,7 @@ class TestDiscoverWaitAnyReplies:
         ])
         patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
-        await automation_service._discover_wait_any_replies()
+        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "media_received"
@@ -578,7 +575,7 @@ class TestDiscoverWaitAnyReplies:
         ])
         patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
-        await automation_service._discover_wait_any_replies()
+        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "media_received"
@@ -603,7 +600,7 @@ class TestDiscoverWaitAnyReplies:
         ])
         patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
 
-        await automation_service._discover_wait_any_replies()
+        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "message"

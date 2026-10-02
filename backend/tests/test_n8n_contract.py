@@ -15,7 +15,7 @@ from main import app
 WORKFLOWS = sorted((Path(__file__).resolve().parent / "fixtures" / "n8n").glob("*.json"))
 
 # Nodo Postgres -> endpoint que lo reemplaza.
-# Los mensajes ya no pasan por n8n (ver routers/meta_webhook.py): los nodos
+# Los mensajes ya no pasan por n8n (ver app/integrations/meta_webhook/api.py): los nodos
 # que creaban el lead o guardaban el mensaje no tienen reemplazo.
 REPLACEMENTS = {
     "update lead": "/api/webhooks/lead-analysis",

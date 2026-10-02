@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import chat_watcher
+from app.modules.conversations import chat_watcher
 
 
 def _cursor(second: int, message_id: int):

@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import secret_cipher, settings_service
+from app.core import secret_cipher
+from app.modules.platform import settings_service
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +73,7 @@ async def test_updating_secret_setting_never_persists_plaintext(monkeypatch):
         async def commit(self):
             return None
 
-    monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
+    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
     monkeypatch.setattr(
         secret_cipher.settings,
         "settings_encryption_key",
@@ -104,7 +105,7 @@ async def test_updating_public_setting_persists_usable_plaintext(monkeypatch):
         async def commit(self):
             return None
 
-    monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
+    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
 
     public_url = "https://n8n.example.test/citas"
     await settings_service.update_settings({"n8n_citas_webhook_url": public_url})
@@ -132,7 +133,7 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
         async def commit(self):
             return None
 
-    monkeypatch.setattr(settings_service, "get_sessionmaker", lambda: FakeSession)
+    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
     monkeypatch.setattr(
         secret_cipher.settings,
         "settings_encryption_key",
@@ -213,7 +214,7 @@ async def test_platform_managed_integrations_are_hidden_from_the_tenant(monkeypa
 
 
 def test_ai_workflow_settings_belong_to_the_platform():
-    from services.platform_settings import PLATFORM_KEYS
+    from app.modules.platform.platform_settings import PLATFORM_KEYS
 
     ai_keys = {"n8n_webhook_url", "n8n_analyst_webhook_url", "n8n_webhook_token"}
     assert ai_keys <= PLATFORM_KEYS

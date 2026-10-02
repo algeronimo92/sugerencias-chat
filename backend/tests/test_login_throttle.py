@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from services.login_throttle import ACCOUNT_LIMIT, LOCK, WINDOW, _consume, _key
+from app.modules.auth.login_throttle import ACCOUNT_LIMIT, LOCK, WINDOW, _consume, _key
 
 
 def test_account_and_ip_have_separate_keys():

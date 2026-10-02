@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import media
-from services import media_upload
-from routers.media import _requested_range
-from services import media_storage as storage
+from app.modules.media import api as media
+from app.modules.media import media_upload
+from app.modules.media.api import _requested_range
+from app.integrations.storage import media_storage as storage
 
 
 class FakeS3Error(Exception):

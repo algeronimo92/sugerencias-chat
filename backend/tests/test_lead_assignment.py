@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.lead_assignment import pick_next_vendedor_id
+from app.modules.leads.assignment import pick_next_vendedor_id
 
 
 @pytest.mark.asyncio

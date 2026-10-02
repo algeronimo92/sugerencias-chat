@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from services import automation_service
+import app.modules.automations.discovery as _domain_app_modules_automations_discovery
 from tests.conftest import patch_automations
 
 
@@ -50,11 +50,11 @@ def _compile(statement) -> str:
 
 @pytest.mark.parametrize("configured", ["", "0", "-4", "no es un número"])
 def test_only_a_positive_number_of_hours_enables_the_sweep(configured) -> None:
-    assert automation_service._auto_close_hours(configured) == 0
+    assert _domain_app_modules_automations_discovery._auto_close_hours(configured) == 0
 
 
 def test_a_decimal_setting_is_truncated_to_whole_hours() -> None:
-    assert automation_service._auto_close_hours("24.0") == 24
+    assert _domain_app_modules_automations_discovery._auto_close_hours("24.0") == 24
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_sweep_does_nothing_while_the_setting_is_empty(monkeypatch) -> Non
     update = AsyncMock()
     patch_automations(monkeypatch, "update_lead", update)
 
-    closed = await automation_service._auto_close_idle_conversations()
+    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
 
     assert closed == 0
     # Ni siquiera consulta: desactivado no puede costar una query por minuto.
@@ -84,7 +84,7 @@ async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    closed = await automation_service._auto_close_idle_conversations()
+    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
 
     assert closed == 2
     assert update.await_count == 2
@@ -100,7 +100,7 @@ async def test_sweep_skips_paused_leads_and_measures_the_last_message(monkeypatc
     patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
     patch_automations(monkeypatch, "update_lead", AsyncMock())
 
-    await automation_service._auto_close_idle_conversations()
+    await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
 
     sql = _compile(session.execute.await_args.args[0])
     assert "automatizacion_pausada IS false" in sql
@@ -123,6 +123,6 @@ async def test_a_failed_close_does_not_abort_the_rest(monkeypatch) -> None:
     )
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    closed = await automation_service._auto_close_idle_conversations()
+    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
 
     assert closed == 1

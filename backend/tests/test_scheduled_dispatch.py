@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import ScheduledMessageStatus
-from services import scheduled_message_service as sched
+from app.modules.conversations import scheduled_message_service as sched
 
 CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
 
@@ -50,7 +50,7 @@ def entorno(monkeypatch):
     session = AsyncMock()
     session.get = AsyncMock(return_value=row)
     session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(sched, "get_sessionmaker", _sessionmaker(session))
+    monkeypatch.setattr(sched.scheduled_message_repository, "get_sessionmaker", _sessionmaker(session))
     monkeypatch.setattr(sched, "manager", SimpleNamespace(broadcast=AsyncMock()))
     enqueue = AsyncMock(return_value={"id": 77, "status": "PENDING"})
     monkeypatch.setattr(sched, "enqueue_text_message", enqueue)

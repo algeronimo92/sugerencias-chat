@@ -1,4 +1,4 @@
-from db.models import MessageTemplate
+from app.db.models.catalogs import MessageTemplate
 
 
 def _only_foreign_key(column_name: str):

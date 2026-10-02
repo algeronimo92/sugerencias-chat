@@ -7,19 +7,9 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models.schemas import LeadStageCreate, LeadStagePatch, LeadStageUpdate
-from routers import lead_stages as router
-from services.lead_stages import (
-    InvalidLeadStageError,
-    LeadStageInUseError,
-    LeadStageProtectedError,
-    StageRule,
-    _mentions_stage,
-    _unique_key,
-    require_destination,
-    slugify_stage_key,
-    update_lead_stage_definition,
-)
+from app.modules.leads.schemas import LeadStageCreate, LeadStagePatch, LeadStageUpdate
+from app.modules.leads import stages_api as router
+from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, StageRule, _mentions_stage, _unique_key, require_destination, slugify_stage_key, update_lead_stage_definition
 
 ADMIN = SimpleNamespace(id=1, role="admin")
 
@@ -142,7 +132,7 @@ async def test_protected_stage_is_a_bad_request(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_moving_a_lead_to_an_unknown_stage_is_422(monkeypatch):
-    from routers import chats
+    from app.modules.leads import api as chats
     from tests.conftest import patch_chats
 
     patch_chats(
@@ -184,47 +174,47 @@ def _rule_values(**overrides):
 
 @pytest.mark.asyncio
 async def test_automation_accepts_a_custom_active_stage(monkeypatch):
-    from services import automation_service
+    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
     from tests.conftest import patch_automations
 
     rows = [("cita_pagada", "won", True)]
     patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
 
-    values = await automation_service.validate_automation_rule(_rule_values())
+    values = await _domain_app_modules_automations_rule_validation.validate_automation_rule(_rule_values())
 
     assert values["actions"] == [{"type": "change_stage", "stage": "cita_pagada"}]
 
 
 @pytest.mark.asyncio
 async def test_automation_rejects_moving_to_an_inactive_stage(monkeypatch):
-    from services import automation_service
+    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
     from tests.conftest import patch_automations
 
     rows = [("cita_pagada", "won", False)]
     patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
 
     with pytest.raises(ValueError, match="desactivada"):
-        await automation_service.validate_automation_rule(_rule_values())
+        await _domain_app_modules_automations_rule_validation.validate_automation_rule(_rule_values())
 
 
 @pytest.mark.asyncio
 async def test_automation_condition_only_needs_the_stage_to_exist(monkeypatch):
     """Filtrar por una etapa desactivada que todavía tiene leads es válido;
     por una que el negocio no tiene, no."""
-    from services import automation_service
+    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
     from tests.conftest import patch_automations
 
     rows = [("nuevo", "open", True), ("archivado", "lost", False)]
     patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
     actions = [{"type": "change_stage", "stage": "nuevo"}]
 
-    values = await automation_service.validate_automation_rule(
+    values = await _domain_app_modules_automations_rule_validation.validate_automation_rule(
         _rule_values(actions=actions, conditions={"stage": "archivado"})
     )
     assert values["conditions"]["stage"] == "archivado"
 
     with pytest.raises(ValueError, match="no existe"):
-        await automation_service.validate_automation_rule(
+        await _domain_app_modules_automations_rule_validation.validate_automation_rule(
             _rule_values(actions=actions, conditions={"stage": "inventada"})
         )
 
@@ -236,8 +226,8 @@ async def test_analyst_context_carries_the_business_stages(monkeypatch):
     from datetime import datetime, timedelta, timezone
     from uuid import UUID
 
-    from routers import webhooks
-    from services.ai_job_tokens import AIJobClaims
+    from app.integrations.n8n import api as webhooks
+    from app.modules.ai.ai_job_tokens import AIJobClaims
     from tests.conftest import patch_webhooks
 
     job_id = "5e0dd73e-80c7-4a9d-82a9-b4a670c8b90d"

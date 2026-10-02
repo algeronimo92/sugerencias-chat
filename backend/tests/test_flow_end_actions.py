@@ -3,8 +3,8 @@
 import dataclasses
 from types import SimpleNamespace
 
-from services import automation_service
-from services.automation_service import _run_visual_execution
+import app.modules.automations.flow_validation as _domain_app_modules_automations_flow_validation
+from app.modules.automations.engine import _run_visual_execution
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 
 
@@ -17,7 +17,7 @@ class _SuccessfulSession:
 
     async def execute(self, _statement):
         # `all()` responde a la verificación de etapas del negocio que hace la
-        # validación de "cambiar etapa" (services/lead_stages.load_stage_rules).
+        # validación de "cambiar etapa" (app/modules/leads/stages.load_stage_rules).
         return SimpleNamespace(
             rowcount=1,
             all=lambda: [("nuevo", "open", True), ("en_diagnostico", "open", True)],
@@ -111,7 +111,7 @@ async def test_published_flow_preserves_end_close_action(monkeypatch):
         lambda: lambda: _SuccessfulSession(),
     )
 
-    validated = await automation_service.validate_visual_flow(
+    validated = await _domain_app_modules_automations_flow_validation.validate_visual_flow(
         "Cerrar al terminar",
         definition,
     )

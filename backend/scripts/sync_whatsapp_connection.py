@@ -19,12 +19,12 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from db.models import Organization, OrganizationDomain
-from db.session import close_engine, control_session
-from services.settings_service import get_effective_many
-from tenancy.context import TenantContext, tenant_context
-from tenancy.provisioning import sync_whatsapp_connection
-from tenancy.resolver import normalize_hostname
+from app.db.models.control import Organization, OrganizationDomain
+from app.db.session import close_engine, control_session
+from app.modules.platform.settings_service import get_effective_many
+from app.tenancy.context import TenantContext, tenant_context
+from app.tenancy.provisioning import sync_whatsapp_connection
+from app.tenancy.resolver import normalize_hostname
 
 
 async def _context_for(hostname: str) -> TenantContext:

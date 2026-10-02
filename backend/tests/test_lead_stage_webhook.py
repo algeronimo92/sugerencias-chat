@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import webhooks
-from models.webhook_schemas import LeadStageWebhookBody
-from services.lead_stages import InvalidLeadStageError
+from app.integrations.n8n import api as webhooks
+from app.integrations.n8n.webhook_schemas import LeadStageWebhookBody
+from app.modules.leads.stages import InvalidLeadStageError
 from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"

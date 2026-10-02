@@ -14,13 +14,10 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationActionType, AutomationExecutionStatus, NotificationType
-from services import automation_service
-from services.automation_service import (
-    SERVICE_WINDOW_CLOSED_ERROR,
-    SERVICE_WINDOW_ERROR_CODE,
-    _execute_action,
-    _notify_execution_failure,
-)
+import app.modules.automations.rules as _domain_app_modules_automations_rules
+from app.modules.conversations.service_window import SERVICE_WINDOW_CLOSED_ERROR, SERVICE_WINDOW_ERROR_CODE
+from app.modules.automations.actions import _execute_action
+from app.modules.automations.engine import _notify_execution_failure
 from tests.conftest import make_chat, make_execution, make_rule, patch_automations
 from tests.test_automation_actions import deps_with_template, template
 
@@ -113,7 +110,7 @@ class TestRetry:
         session = self._session()
         self._patch(monkeypatch, session)
 
-        await automation_service.retry_automation_execution(
+        await _domain_app_modules_automations_rules.retry_automation_execution(
             5, ignore_service_window=True, actor_user_id=7,
         )
 
@@ -126,7 +123,7 @@ class TestRetry:
         session = self._session()
         self._patch(monkeypatch, session)
 
-        await automation_service.retry_automation_execution(5, actor_user_id=7)
+        await _domain_app_modules_automations_rules.retry_automation_execution(5, actor_user_id=7)
 
         update_sql = _compile(session.execute.await_args.args[0])
         assert "window_override_by_user_id=NULL" in update_sql

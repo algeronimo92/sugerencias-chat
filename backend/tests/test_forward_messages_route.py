@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import ForwardMessagesRequest
-from routers import chats
+from app.modules.conversations.schemas import ForwardMessagesRequest
+from app.modules.conversations import api as chats
 from tests.conftest import patch_chats
 
 CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"

@@ -44,11 +44,21 @@ def _has_id_tiebreaker(call: ast.Call) -> bool:
 EXCEPCIONES = {"last_message.c.sent_at"}
 
 
-@pytest.mark.parametrize("modulo", sorted(
-    str(path.relative_to(BACKEND))
-    for base in ("services", "routers")
+MESSAGE_QUERY_MODULES = sorted(
+    path.relative_to(BACKEND).as_posix()
+    for base in ("app/modules", "app/integrations")
     for path in (BACKEND / base).rglob("*.py")
-))
+    if any(_sorts_by_sent_at_first(call) for call in _order_by_calls(path))
+)
+
+
+def test_message_ordering_guard_scans_actual_query_owners():
+    assert MESSAGE_QUERY_MODULES
+    assert "app/modules/conversations/messages.py" in MESSAGE_QUERY_MODULES
+    assert "app/modules/conversations/message_history.py" in MESSAGE_QUERY_MODULES
+
+
+@pytest.mark.parametrize("modulo", MESSAGE_QUERY_MODULES)
 def test_sorting_messages_by_date_always_breaks_the_tie_by_id(modulo):
     sin_desempate = [
         ast.unparse(call.args[0])

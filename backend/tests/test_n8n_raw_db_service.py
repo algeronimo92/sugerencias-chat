@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import db_service
+import app.modules.leads.repository as _domain_app_modules_leads_repository
 from tests.conftest import patch_store
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
@@ -54,7 +54,7 @@ async def test_fetch_lead_raw_returns_none_when_no_row(monkeypatch):
     session.execute = AsyncMock(return_value=_ExecResult(row=None))
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.fetch_lead_raw(LEAD_ID)
+    result = await _domain_app_modules_leads_repository.fetch_lead_raw(LEAD_ID)
 
     assert result is None
 
@@ -72,7 +72,7 @@ async def test_fetch_lead_raw_json_safes_datetime_and_drops_bytes(monkeypatch):
     session.execute = AsyncMock(return_value=_ExecResult(row=row))
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.fetch_lead_raw(LEAD_ID)
+    result = await _domain_app_modules_leads_repository.fetch_lead_raw(LEAD_ID)
 
     assert result["id"] == LEAD_ID
     assert result["created_at"] == "2026-09-03T10:00:00.000000Z"
@@ -89,7 +89,7 @@ async def test_fetch_messages_raw_keeps_the_order_of_the_query(monkeypatch):
     session.execute = AsyncMock(return_value=_ExecResult(rows=rows))
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.fetch_messages_raw(LEAD_ID, limit=500)
+    result = await _domain_app_modules_leads_repository.fetch_messages_raw(LEAD_ID, limit=500)
 
     assert [r["id"] for r in result] == [2, 1]
 
@@ -105,7 +105,7 @@ async def test_ensure_lead_stub_skips_conflicting_lead(monkeypatch):
     )
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.ensure_lead_stub(
+    result = await _domain_app_modules_leads_repository.ensure_lead_stub(
         LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
     )
 
@@ -125,7 +125,7 @@ async def test_ensure_lead_stub_writes_ultimo_mensaje_at_on_new_lead(monkeypatch
     )
     _patch_sessionmaker(monkeypatch, session)
 
-    result = await db_service.ensure_lead_stub(
+    result = await _domain_app_modules_leads_repository.ensure_lead_stub(
         LEAD_ID, datetime(2026, 9, 3, 10, 0, 0, tzinfo=timezone.utc), "Facebook Ads"
     )
 

@@ -8,9 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers import auth, platform
-from services.session_service import CreatedSession, PinLockedError, TrustedDeviceResult, new_token
-from services.login_throttle import LoginThrottledError
+from app.modules.auth import api as auth
+from app.modules.platform import api as platform
+from app.modules.auth.session_service import CreatedSession, PinLockedError, TrustedDeviceResult, new_token
+from app.modules.auth.login_throttle import LoginThrottledError
 
 
 @pytest.fixture(autouse=True)

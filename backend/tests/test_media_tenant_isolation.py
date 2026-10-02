@@ -4,9 +4,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from routers.media import get_media_file
-from services import media_storage
-from tenancy.context import TenantContext, tenant_context
+from app.modules.media.api import get_media_file
+from app.integrations.storage import media_storage
+from app.tenancy.context import TenantContext, tenant_context
 
 
 def _tenant(host: str) -> TenantContext:

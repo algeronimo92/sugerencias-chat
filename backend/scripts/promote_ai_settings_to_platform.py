@@ -21,16 +21,12 @@ import asyncio
 
 from sqlalchemy import delete, select
 
-from db.models import AppSetting
-from db.session import close_engine, get_sessionmaker
-from services.platform_settings import (
-    _raw_database_values,
-    invalidate_platform_settings_cache,
-    update_platform_settings,
-)
-from services.secret_cipher import decrypt_secret
-from tenancy.context import tenant_context
-from tenancy.resolver import resolve_tenant_by_hostname
+from app.db.models.settings import AppSetting
+from app.db.session import close_engine, get_sessionmaker
+from app.modules.platform.platform_settings import _raw_database_values, invalidate_platform_settings_cache, update_platform_settings
+from app.core.secret_cipher import decrypt_secret
+from app.tenancy.context import tenant_context
+from app.tenancy.resolver import resolve_tenant_by_hostname
 
 KEYS = ("n8n_webhook_url", "n8n_analyst_webhook_url", "n8n_webhook_token")
 SECRET_KEYS = frozenset({"n8n_webhook_token"})

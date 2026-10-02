@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import media_library
-from services.media_storage import MediaStorageError
+from app.modules.media import library_api as media_library
+from app.integrations.storage.media_storage import MediaStorageError
 
 
 @pytest.mark.asyncio

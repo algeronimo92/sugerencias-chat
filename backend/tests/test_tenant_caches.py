@@ -4,8 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from services import dashboard_service, session_service, settings_service
-from tenancy.context import TenantContext, tenant_context
+from app.modules.leads import dashboard_repository as dashboard_service
+from app.modules.auth import session_service
+from app.modules.platform import settings_service
+from app.tenancy.context import TenantContext, tenant_context
 
 
 def _tenant(label: str) -> TenantContext:
@@ -19,7 +21,7 @@ async def test_settings_cache_is_partitioned_by_tenant(monkeypatch) -> None:
     settings_service.invalidate_settings_cache(all_tenants=True)
 
     async def fake_db_values():
-        from tenancy.context import get_current_tenant
+        from app.tenancy.context import get_current_tenant
 
         context = get_current_tenant()
         return {"meta_phone_number_id": str(context.organization_id)}
@@ -39,7 +41,7 @@ async def test_settings_cache_is_partitioned_by_tenant(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_dashboard_cache_does_not_cross_tenants(monkeypatch) -> None:
-    from tenancy.context import get_current_tenant
+    from app.tenancy.context import get_current_tenant
 
     tenant_a = _tenant("a")
     tenant_b = _tenant("b")

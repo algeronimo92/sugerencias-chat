@@ -8,11 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from domain_types import AutomationExecutionStatus
-from services.automation_rules import validate_graph_topology
-from services.automation_service import (
-    _normalize_round_robin,
-    _run_visual_execution,
-)
+from app.modules.automations.automation_rules import validate_graph_topology
+from app.modules.automations.rule_validation import _normalize_round_robin
+from app.modules.automations.engine import _run_visual_execution
 from tests.conftest import make_chat, make_execution, make_rule
 
 

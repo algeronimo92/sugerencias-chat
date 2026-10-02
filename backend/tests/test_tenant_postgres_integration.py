@@ -6,7 +6,7 @@ ejercitó Postgres de verdad, así que nunca pudo detectar una fuga real de
 schema entre tenants ni una colisión de unicidad. Esta prueba sí:
 
 1. Aprovisiona dos tenants reales (dos schemas físicos) con
-   ``tenancy.provisioning.provision_tenant`` -- el mismo camino que usa
+   ``app.tenancy.provisioning.provision_tenant`` -- el mismo camino que usa
    ``scripts/provision_tenant.py`` en producción -- contra el Postgres de
    desarrollo levantado por ``compose.yml`` (servicio ``postgres``,
    ``127.0.0.1:5433``).
@@ -27,20 +27,21 @@ conexión críptico.
 from __future__ import annotations
 
 import secrets
+import os
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import event, select, text, update
 
-from config import settings
-from db.models import User
-from db.session import close_engine, control_session, get_engine, tenant_session
-from tenancy.context import validate_schema_name
-from tenancy.provisioning import provision_tenant
+from app.core.config import settings
+from app.db.models.auth import User
+from app.db.session import close_engine, control_session, get_engine, tenant_session
+from app.tenancy.context import validate_schema_name
+from app.tenancy.provisioning import provision_tenant
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +74,9 @@ def _postgres_host_url() -> str | None:
     Docker, ver backend/.env que usa ese hostname para el contenedor backend).
     """
 
+    configured = os.environ.get("TEST_DATABASE_URL")
+    if configured:
+        return configured.replace("postgresql://", "postgresql+asyncpg://", 1)
     values = _read_db_env()
     user = values.get("POSTGRES_USER")
     password = values.get("POSTGRES_PASSWORD")
@@ -87,7 +91,11 @@ def _postgres_host_url() -> str | None:
 
 def _postgres_reachable() -> bool:
     try:
-        with socket.create_connection((POSTGRES_HOST, POSTGRES_PORT), timeout=1.0):
+        dsn = _postgres_host_url()
+        if not dsn:
+            return False
+        target = urlsplit(dsn)
+        with socket.create_connection((target.hostname, target.port or 5432), timeout=1.0):
             return True
     except OSError:
         return False
@@ -99,6 +107,8 @@ def pg_dsn() -> str:
     if dsn is None:
         pytest.skip(f"no se pudieron leer credenciales de Postgres desde {DB_ENV_PATH}")
     if not _postgres_reachable():
+        if os.environ.get("TEST_DATABASE_URL"):
+            pytest.fail("El PostgreSQL de TEST_DATABASE_URL no está accesible; no se omite la puerta de integración")
         pytest.skip(
             "Postgres real de Docker no está accesible en "
             f"{POSTGRES_HOST}:{POSTGRES_PORT}; levantalo con "
@@ -109,7 +119,7 @@ def pg_dsn() -> str:
 
 @pytest_asyncio.fixture
 async def real_engine(pg_dsn, monkeypatch):
-    """Apunta el engine global de db.session al Postgres real de Docker.
+    """Apunta el engine global de app.db.session al Postgres real de Docker.
 
     ``pool_size=1`` / ``max_overflow=0`` fuerzan que solo exista una conexión
     física en el pool: cualquier secuencia de sesiones abiertas una tras otra

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from services import automation_rules, chat_messaging
+from app.modules.automations import automation_rules
+from app.modules.conversations import chat_messaging
 
 
 class _LateNightInLima(datetime):

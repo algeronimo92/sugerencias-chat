@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import whatsapp_connection
+from app.integrations.whatsapp import connection as whatsapp_connection
 
 
 @pytest.fixture

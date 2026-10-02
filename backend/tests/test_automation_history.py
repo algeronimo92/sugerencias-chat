@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus
-from services import automation_service
+import app.modules.automations.rules as _domain_app_modules_automations_rules
 from tests.conftest import patch_automations
 
 
@@ -32,7 +32,7 @@ async def _history_sql(monkeypatch, **filters) -> str:
             return FakeResult()
 
     patch_automations(monkeypatch, "get_sessionmaker", lambda: FakeSession)
-    await automation_service.list_automation_executions(**filters)
+    await _domain_app_modules_automations_rules.list_automation_executions(**filters)
     return str(statements[0].compile(
         dialect=postgresql.dialect(),
         compile_kwargs={"literal_binds": True},

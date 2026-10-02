@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from services.automation_deps import AutomationDeps
+from app.modules.automations.automation_deps import AutomationDeps
 
 
 @dataclass
@@ -224,7 +224,7 @@ class FakeSender:
         return self.media_id
 
     async def send(self, chat_id: str, message: dict):
-        from services.whatsapp_channel import SendReceipt
+        from app.integrations.whatsapp.channel import SendReceipt
 
         self.calls.append((chat_id, message))
         if self.fail_with:
@@ -257,7 +257,7 @@ class FakeChannelStatus:
     reason: str | None = None
 
     async def availability(self):
-        from services.whatsapp_channel import ChannelAvailability
+        from app.integrations.whatsapp.channel import ChannelAvailability
 
         return ChannelAvailability(
             integration=self.integration if self.configured else None,
@@ -267,8 +267,8 @@ class FakeChannelStatus:
 
 
 def install_channel(monkeypatch, **components):
-    from services import whatsapp_channels
-    from services.whatsapp_channel import WhatsAppChannel
+    from app.integrations.whatsapp import channels as whatsapp_channels
+    from app.integrations.whatsapp.channel import WhatsAppChannel
 
     channel = WhatsAppChannel(
         name="meta",
@@ -299,17 +299,25 @@ def _patch_everywhere(monkeypatch, modules, name, value):
 
 def patch_automations(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del motor de automatizaciones que lo usan."""
-    _patch_everywhere(monkeypatch, _package_modules("services.automation_service", "services.automations"), name, value)
+    _patch_everywhere(monkeypatch, _package_modules("app.modules.automations.public", "app.modules.automations"), name, value)
 
 
 def patch_store(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos de persistencia que lo usan."""
-    _patch_everywhere(monkeypatch, _package_modules("services.db_service", "services.store"), name, value)
+    modules = []
+    for package in ("conversations", "leads", "catalogs", "tasks", "auth", "ai", "appointments", "platform"):
+        facade = f"app.modules.{package}.public" if package in {"auth", "ai", "platform"} else f"app.modules.{package}"
+        modules.extend(_package_modules(facade, f"app.modules.{package}"))
+    from app.db import store_common
+    modules.append(store_common)
+    _patch_everywhere(monkeypatch, modules, name, value)
 
 
 def patch_chats(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del router de chats que lo usan."""
-    _patch_everywhere(monkeypatch, _package_modules("routers.chats", "routers.chats"), name, value)
+    modules = _package_modules("app.modules.conversations.api", "app.modules.conversations")
+    modules.extend(_package_modules("app.modules.leads.api", "app.modules.leads"))
+    _patch_everywhere(monkeypatch, modules, name, value)
 
 
 def open_service_window(monkeypatch, is_open: bool = True):
@@ -325,7 +333,7 @@ def open_service_window(monkeypatch, is_open: bool = True):
 
 def patch_webhooks(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del router de webhooks que lo usan."""
-    _patch_everywhere(monkeypatch, _package_modules("routers.webhooks", "routers.webhooks"), name, value)
+    _patch_everywhere(monkeypatch, _package_modules("app.integrations.n8n.api", "app.integrations.n8n"), name, value)
 
 
 @contextlib.contextmanager

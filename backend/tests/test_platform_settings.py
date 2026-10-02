@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import platform_settings
-from routers import settings as settings_router
+from app.modules.platform import platform_settings
+from app.modules.platform import settings_api as settings_router
 
 
 @pytest.fixture(autouse=True)

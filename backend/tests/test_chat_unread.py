@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import chats
+from app.modules.conversations import api as chats
 from tests.conftest import patch_chats
 
 

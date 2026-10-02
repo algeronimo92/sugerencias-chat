@@ -11,7 +11,7 @@ cliente no hubiera escrito.
 import ast
 from pathlib import Path
 
-from services.automations import discovery
+from app.modules.automations import discovery
 
 FUENTE = Path(discovery.__file__)
 

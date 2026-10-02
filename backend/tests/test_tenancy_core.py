@@ -9,21 +9,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
-import db.session as session_module
-import tenancy.middleware as middleware_module
-from db.models import (
-    AIJob,
-    KnowledgeChunk,
-    KnowledgeDocument,
-    Organization,
-    OrganizationDomain,
-    PlatformSetting,
-    TenantSchemaVersion,
-    WebhookInbox,
-    WhatsAppConnection,
-)
-from db.session import _TenantRoutingSyncSession, control_session, tenant_session
-from tenancy.context import (
+import app.db.session as session_module
+import app.tenancy.middleware as middleware_module
+from app.db.models.ai import AIJob, KnowledgeChunk, KnowledgeDocument
+from app.db.models.control import Organization, OrganizationDomain, PlatformSetting, TenantSchemaVersion, WebhookInbox, WhatsAppConnection
+from app.db.session import _TenantRoutingSyncSession, control_session, tenant_session
+from app.tenancy.context import (
     TenantContext,
     get_current_tenant,
     reset_current_tenant,
@@ -31,8 +22,8 @@ from tenancy.context import (
     tenant_context,
     validate_schema_name,
 )
-from tenancy.middleware import TenantResolutionMiddleware
-from tenancy.resolver import normalize_hostname
+from app.tenancy.middleware import TenantResolutionMiddleware
+from app.tenancy.resolver import normalize_hostname
 
 
 ORG_A = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

@@ -4,8 +4,8 @@ import base64
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from services import admin_totp
-from services.admin_totp import _matching_step, _new_recovery_code, _recovery_hash, _totp
+from app.modules.auth import admin_totp
+from app.modules.auth.admin_totp import _matching_step, _new_recovery_code, _recovery_hash, _totp
 
 
 def test_totp_matches_rfc_6238_sha1_vector_truncated_to_six_digits():

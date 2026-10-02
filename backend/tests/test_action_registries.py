@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from services.automations.actions import ACTION_HANDLERS
-from services.automations.common import ACTION_TYPES
-from services.automations.rule_validation import ACTION_NORMALIZERS
+from app.modules.automations.actions import ACTION_HANDLERS
+from app.modules.automations.common import ACTION_TYPES
+from app.modules.automations.rule_validation import ACTION_NORMALIZERS
 
 FRONTEND_CATALOG = (
-    Path(__file__).resolve().parents[2] / "frontend/src/domain/automationCatalog.ts"
+    Path(__file__).resolve().parents[2] / "frontend/src/features/automations/domain/automationCatalog.ts"
 )
 
 

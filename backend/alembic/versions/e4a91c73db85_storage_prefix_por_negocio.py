@@ -22,7 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _slugify(value: str) -> str:
-    """Copia deliberada de ``tenancy.context._slugify``.
+    """Copia deliberada de ``app.tenancy.context._slugify``.
 
     Una migración no puede importar código de la aplicación: si mañana ese
     slug cambia, esta revisión tiene que seguir produciendo lo que produjo el

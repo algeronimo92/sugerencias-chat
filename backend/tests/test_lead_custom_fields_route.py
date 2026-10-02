@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import LeadCreate
-from routers.chats import leads
-from services.custom_fields import CustomFieldError
+from app.modules.leads.schemas import LeadCreate
+from app.modules.leads import api as leads
+from app.modules.catalogs.custom_fields import CustomFieldError
 
 
 USER = SimpleNamespace(id=7, role="admin")

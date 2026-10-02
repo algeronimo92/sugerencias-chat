@@ -15,7 +15,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from services import auth_service
+from app.modules.auth import auth_service
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def configured_token(monkeypatch):
             assert key == "inbound_webhook_token"
             return value
 
-        monkeypatch.setattr("services.platform_settings.platform_setting", _platform_setting)
+        monkeypatch.setattr("app.modules.platform.platform_settings.platform_setting", _platform_setting)
 
     return _set
 

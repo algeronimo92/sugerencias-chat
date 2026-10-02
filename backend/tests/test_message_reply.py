@@ -4,11 +4,11 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import SendMessageRequest
-from routers import chats
-from services import message_outbox
+from app.modules.conversations.schemas import SendMessageRequest
+from app.modules.conversations import api as chats
+from app.modules.conversations import message_outbox
 from tests.conftest import open_service_window, patch_chats
-from routers.chats.outbound import _resolve_reply_to
+from app.modules.conversations.outbound_api import _resolve_reply_to
 
 CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 USER = SimpleNamespace(id=7)

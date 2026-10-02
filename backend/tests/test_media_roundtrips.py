@@ -19,7 +19,7 @@ import hashlib
 
 import pytest
 
-from services import media_storage as storage
+from app.integrations.storage import media_storage as storage
 from tests.test_media_dimensions import IDENTITY_MATRIX, _box, _tkhd
 from tests.test_media_storage import FakeMinio, configure_minio, media_dir  # noqa: F401
 

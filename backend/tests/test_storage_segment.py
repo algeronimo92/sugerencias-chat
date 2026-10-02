@@ -10,7 +10,7 @@ from uuid import UUID
 
 import pytest
 
-from tenancy.context import (
+from app.tenancy.context import (
     TenantContext,
     build_storage_segment,
     validate_storage_segment,

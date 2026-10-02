@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from models.schemas import ScheduledMessageCreate
-from routers import scheduled_messages
-from services import scheduled_message_service
+from app.modules.conversations.schemas import ScheduledMessageCreate
+from app.modules.conversations import scheduled_messages_api as scheduled_messages
+from app.modules.conversations import scheduled_message_service
 
 
 @pytest.mark.asyncio

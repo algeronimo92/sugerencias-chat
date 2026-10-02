@@ -15,23 +15,13 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
 
-from db.models import Lead
-from db.session import control_session, get_sessionmaker
-from services.lead_stages import (
-    InvalidLeadStageError,
-    LeadStageInUseError,
-    LeadStageProtectedError,
-    create_lead_stage,
-    delete_lead_stage,
-    list_lead_stages,
-    list_stages_for_ai,
-    reorder_lead_stages,
-    update_lead_stage_definition,
-)
-from services.store.chat_queries import fetch_kanban_counts
-from services.store.leads import ensure_lead_stub, update_lead_stage
-from tenancy.context import tenant_context, validate_schema_name
-from tenancy.provisioning import provision_tenant
+from app.db.models.leads import Lead
+from app.db.session import control_session, get_sessionmaker
+from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, create_lead_stage, delete_lead_stage, list_lead_stages, list_stages_for_ai, reorder_lead_stages, update_lead_stage_definition
+from app.modules.conversations.chat_queries import fetch_kanban_counts
+from app.modules.leads.repository import ensure_lead_stub, update_lead_stage
+from app.tenancy.context import tenant_context, validate_schema_name
+from app.tenancy.provisioning import provision_tenant
 from tests.test_tenant_postgres_integration import pg_dsn, real_engine  # noqa: F401
 
 

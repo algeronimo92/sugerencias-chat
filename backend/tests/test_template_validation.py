@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.template_validation import (
+from app.modules.catalogs.template_validation import (
     META_BUTTON_BUILDERS,
     OFFICIAL_BUTTON_RULES,
     TemplateValidationError,

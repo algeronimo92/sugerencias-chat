@@ -2,9 +2,9 @@
 
 import pytest
 
-from services.meta_webhook import processor
-from services.meta_webhook.inbox import InboxEvent, split_changes
-from services.template_service import _meta_managed_template_values
+from app.integrations.meta_webhook import processor
+from app.integrations.meta_webhook.inbox import InboxEvent, split_changes
+from app.modules.catalogs.template_service import _meta_managed_template_values
 from tests.meta_fixtures import WABA_ID, webhook_body
 
 

@@ -23,10 +23,10 @@ import asyncio
 
 from sqlalchemy import select, text
 
-from db.models import Organization, OrganizationDomain
-from db.session import close_engine, control_session, get_engine
-from tenancy.context import validate_schema_name
-from tenancy.resolver import normalize_hostname
+from app.db.models.control import Organization, OrganizationDomain
+from app.db.session import close_engine, control_session, get_engine
+from app.tenancy.context import validate_schema_name
+from app.tenancy.resolver import normalize_hostname
 
 
 # Se quedan en `public`: son del plano de control, comunes a todos los negocios.

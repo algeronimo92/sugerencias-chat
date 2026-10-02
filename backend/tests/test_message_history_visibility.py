@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from services.store import message_history
+from app.modules.conversations import message_history
 
 
 @pytest.mark.asyncio

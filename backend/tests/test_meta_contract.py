@@ -3,7 +3,7 @@
 import pytest
 
 from scripts.export_meta_contract import TARGET, render
-from services.meta_contract import (
+from app.integrations.meta.contract import (
     capability_for,
     contract,
     is_known_inbound,

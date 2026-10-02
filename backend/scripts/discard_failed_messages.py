@@ -28,8 +28,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 
-from db.models import MessageOutbox, WspMessage
-from db.session import close_engine, get_sessionmaker
+from app.db.models.conversations import MessageOutbox, WspMessage
+from app.db.session import close_engine, get_sessionmaker
 
 DEFAULT_OLDER_THAN_HOURS = 24
 # Los last_error pueden ser largos; para el resumen alcanza el principio, que

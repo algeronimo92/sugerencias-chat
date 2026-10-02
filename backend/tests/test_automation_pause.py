@@ -18,7 +18,9 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus, AutomationTrigger
-from services import automation_service
+import app.modules.automations.common as _domain_app_modules_automations_common
+import app.modules.automations.rules as _domain_app_modules_automations_rules
+import app.modules.automations.scheduler as _domain_app_modules_automations_scheduler
 from tests.conftest import patch_automations
 
 
@@ -59,7 +61,7 @@ async def test_schedule_automation_event_skips_system_trigger_when_paused(monkey
     session.get = AsyncMock(return_value=lead)
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    created = await automation_service.schedule_automation_event(
+    created = await _domain_app_modules_automations_scheduler.schedule_automation_event(
         AutomationTrigger.MESSAGE_RECEIVED, "lead-1", "message:1",
     )
 
@@ -76,7 +78,7 @@ async def test_schedule_automation_event_ignores_pause_for_manual_start(monkeypa
     session.execute = AsyncMock(return_value=_EmptyRulesResult())
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    created = await automation_service.schedule_automation_event(
+    created = await _domain_app_modules_automations_scheduler.schedule_automation_event(
         AutomationTrigger.MANUAL, "lead-1", "manual:abc", rule_id=5, start_source="manual",
     )
 
@@ -92,7 +94,7 @@ async def test_schedule_automation_event_runs_normally_when_not_paused(monkeypat
     session.execute = AsyncMock(return_value=_EmptyRulesResult())
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
 
-    created = await automation_service.schedule_automation_event(
+    created = await _domain_app_modules_automations_scheduler.schedule_automation_event(
         AutomationTrigger.MESSAGE_RECEIVED, "lead-1", "message:1",
     )
 
@@ -108,7 +110,7 @@ async def test_pause_lead_executions_broadcasts_when_rows_affected(monkeypatch):
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    frozen = await automation_service.pause_lead_executions("lead-1")
+    frozen = await _domain_app_modules_automations_rules.pause_lead_executions("lead-1")
 
     assert frozen == 2
     broadcast.assert_awaited_once()
@@ -122,7 +124,7 @@ async def test_pause_lead_executions_skips_broadcast_when_nothing_frozen(monkeyp
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    frozen = await automation_service.pause_lead_executions("lead-1")
+    frozen = await _domain_app_modules_automations_rules.pause_lead_executions("lead-1")
 
     assert frozen == 0
     broadcast.assert_not_awaited()
@@ -137,7 +139,7 @@ async def test_pause_lead_executions_freezes_instead_of_cancelling(monkeypatch):
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    await automation_service.pause_lead_executions("lead-1")
+    await _domain_app_modules_automations_rules.pause_lead_executions("lead-1")
 
     statement = str(session.execute.await_args.args[0]).lower()
     assert "paused_at" in statement
@@ -155,7 +157,7 @@ async def test_resume_lead_executions_gives_back_the_remaining_time(monkeypatch)
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    resumed = await automation_service.resume_lead_executions("lead-1")
+    resumed = await _domain_app_modules_automations_rules.resume_lead_executions("lead-1")
 
     assert resumed == 3
     broadcast.assert_awaited_once()
@@ -164,7 +166,7 @@ async def test_resume_lead_executions_gives_back_the_remaining_time(monkeypatch)
     assert "paused_at" in statement
     # El scheduler tiene que enterarse: si no, lo reanudado espera al próximo
     # ciclo del bucle aunque ya venciera durante la pausa.
-    assert automation_service._wake.is_set()
+    assert _domain_app_modules_automations_common._wake.is_set()
 
 
 @pytest.mark.asyncio
@@ -177,7 +179,7 @@ async def test_resume_lead_executions_leaves_execution_scoped_pauses_frozen(monk
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    await automation_service.resume_lead_executions("lead-1")
+    await _domain_app_modules_automations_rules.resume_lead_executions("lead-1")
 
     statement = _compile(session.execute.await_args.args[0])
     assert "pause_scope IS DISTINCT FROM 'execution'" in statement
@@ -196,7 +198,7 @@ async def test_pause_automation_execution_freezes_only_that_row(monkeypatch):
         "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
 
-    item = await automation_service.pause_automation_execution(7)
+    item = await _domain_app_modules_automations_rules.pause_automation_execution(7)
 
     assert item == {"id": 7}
     statement = _compile(session.execute.await_args.args[0])
@@ -215,7 +217,7 @@ async def test_pause_automation_execution_returns_none_when_not_scheduled(monkey
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
-    assert await automation_service.pause_automation_execution(7) is None
+    assert await _domain_app_modules_automations_rules.pause_automation_execution(7) is None
     broadcast.assert_not_awaited()
 
 
@@ -234,15 +236,15 @@ async def test_resume_automation_execution_gives_back_the_remaining_time(monkeyp
     patch_automations(monkeypatch,
         "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
-    automation_service._wake.clear()
+    _domain_app_modules_automations_common._wake.clear()
 
-    item = await automation_service.resume_automation_execution(7)
+    item = await _domain_app_modules_automations_rules.resume_automation_execution(7)
 
     assert item == {"id": 7}
     statement = _compile(session.execute.await_args.args[0])
     assert "scheduled_for" in statement
     assert "pause_scope=NULL" in statement.replace(" = ", "=")
-    assert automation_service._wake.is_set()
+    assert _domain_app_modules_automations_common._wake.is_set()
 
 
 @pytest.mark.asyncio
@@ -260,7 +262,7 @@ async def test_resume_automation_execution_refuses_while_the_lead_is_paused(monk
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     with pytest.raises(ValueError, match="botón del bot"):
-        await automation_service.resume_automation_execution(7)
+        await _domain_app_modules_automations_rules.resume_automation_execution(7)
     session.execute.assert_not_awaited()
 
 
@@ -279,7 +281,7 @@ async def test_resume_automation_execution_ignores_the_lead_pause_for_manual_flo
         "get_automation_execution", AsyncMock(return_value={"id": 7})
     )
 
-    assert await automation_service.resume_automation_execution(7) == {"id": 7}
+    assert await _domain_app_modules_automations_rules.resume_automation_execution(7) == {"id": 7}
     # Una sola consulta: ni miró el lead.
     assert session.get.await_count == 1
 
@@ -293,7 +295,7 @@ async def test_resume_automation_execution_returns_none_when_not_paused(monkeypa
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
-    assert await automation_service.resume_automation_execution(7) is None
+    assert await _domain_app_modules_automations_rules.resume_automation_execution(7) is None
     session.execute.assert_not_awaited()
 
 
@@ -304,10 +306,10 @@ async def test_resume_lead_executions_skips_broadcast_when_nothing_frozen(monkey
     patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
     broadcast = AsyncMock()
     patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
-    automation_service._wake.clear()
+    _domain_app_modules_automations_common._wake.clear()
 
-    resumed = await automation_service.resume_lead_executions("lead-1")
+    resumed = await _domain_app_modules_automations_rules.resume_lead_executions("lead-1")
 
     assert resumed == 0
     broadcast.assert_not_awaited()
-    assert not automation_service._wake.is_set()
+    assert not _domain_app_modules_automations_common._wake.is_set()
