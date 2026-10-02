@@ -1,5 +1,9 @@
 # sugerencias-chat
 
+Para contribuir: [mapa de arquitectura](docs/arquitectura-modular.md),
+[guía para agregar una funcionalidad](docs/guia-nueva-funcionalidad.md) y
+[plan de refactorización](docs/plan-refactor-arquitectura-modular.md).
+
 ## Despliegue en producción (con Traefik)
 
 Requiere Docker y el plugin Docker Compose. El dominio debe apuntar (registro A) a la IP del servidor antes de levantar el proxy, para que el challenge HTTP-01 de Let's Encrypt funcione.
@@ -263,7 +267,7 @@ no deja el mensaje en un estado que Meta nunca informó. Al abrir un chat, el
 frontend llama `POST /api/chats/{chat_id}/read` y el backend marca como leídos
 en Meta los mensajes pendientes del cliente.
 
-**Salida.** Todo envío arma el cuerpo de Meta con `services/meta_outbound.py` y
+**Salida.** Todo envío arma el cuerpo de Meta con `app/integrations/meta/outbound.py` y
 se valida contra la allowlist del contrato al encolar (422 si Meta no lo
 acepta) y otra vez en el worker. Los adjuntos se suben a Meta recién al enviar
 y `provider_payload` guarda el cuerpo exacto que salió. Productos, catálogo,

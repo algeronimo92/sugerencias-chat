@@ -1,6 +1,6 @@
 # Plan de refactorización hacia un monolito modular
 
-Estado: propuesta. Alcance: organización del código de backend y frontend, sin cambiar el comportamiento del producto ni la topología de despliegue.
+Estado: completado en su totalidad y verificado localmente el 2 de octubre de 2026, fases 0 a 7. Se cerraron también los acoplamientos de transición y `test_bluegreen_config.py`. Alcance: organización de backend y frontend, conservando el comportamiento y la topología de despliegue. No se realizó commit, PR ni despliegue; la ejecución remota de CI ocurrirá al publicar el cambio.
 
 ## 1. Objetivo y criterio de éxito
 
@@ -31,6 +31,8 @@ backend/
 │   ├── modules/
 │   │   ├── auth/
 │   │   ├── leads/
+│   │   ├── catalogs/
+│   │   ├── tasks/
 │   │   ├── conversations/
 │   │   ├── automations/
 │   │   ├── appointments/
@@ -56,13 +58,24 @@ frontend/src/
 │   ├── appointments/
 │   ├── ai/
 │   ├── media/
+│   ├── notifications/
 │   ├── issue-reports/
 │   └── platform/
 ├── shared/                          # Cliente HTTP, UI y utilidades reutilizables
 └── realtime/                        # Conexión y distribución de eventos
 ```
 
-Forma mínima de un módulo backend: `api.py` (HTTP), `schemas.py` (contrato), `service.py` (casos de uso) y `repository.py` (SQL). Crear más archivos solo si el tamaño o las responsabilidades lo justifican. Los modelos ORM pueden permanecer temporalmente en `db/models.py`; dividirlos es una fase separada porque Alembic y las relaciones dependen de su registro completo.
+La estructura es un mapa de responsabilidades, no una plantilla de carpetas vacías.
+La infraestructura backend vive en `app/core/`, `app/db/`, `app/tenancy/`,
+`app/integrations/` y `app/realtime/`. Se retiraron los árboles heredados
+`services/`, `routers/`, `db/`, `tenancy/` y `models/` del backend, y
+`components/`, `hooks/`, `domain/`, `utils/`, `types/` y `platform/` globales
+del frontend. `shared/` contiene implementaciones reales, no puentes hacia
+features o carpetas antiguas. No quedan fachadas globales ni excepciones de
+imports internos entre dominios; las dependencias intencionales se expresan
+mediante `public.py`, contratos `schemas.py` y puertos pequeños `ports/`.
+
+Forma mínima de un módulo backend: `api.py` (HTTP), `schemas.py` (contrato), `service.py` (casos de uso) y `repository.py` (SQL). Crear más archivos solo si el tamaño o las responsabilidades lo justifican. Los modelos ORM se agrupan en `backend/app/db/models/` con un registro único para Alembic.
 
 Forma mínima de una feature frontend: `api.ts` (llamadas), `queries.ts` (React Query), `types.ts` y `components/` cuando se necesiten. Los tests de componentes y hooks quedan junto al código que verifican.
 
@@ -71,7 +84,7 @@ Forma mínima de una feature frontend: `api.ts` (llamadas), `queries.ts` (React 
 1. `api → service → repository → db`. Un repositorio no importa endpoints ni WebSocket.
 2. `app/bootstrap.py` puede importar módulos; un módulo no importa el bootstrap.
 3. Una feature frontend puede importar `shared` y su propio código; `shared` nunca importa una feature.
-4. Los módulos hablan entre sí mediante funciones públicas pequeñas. Los eventos internos se usan solo donde la operación ya continúa después de un commit (por ejemplo, outbox y avisos en tiempo real).
+4. Los módulos hablan entre sí mediante funciones públicas pequeñas (`public.py` o `ports/<operación>.py` con exportaciones explícitas); los DTO se consumen desde `schemas.py`. Las features usan contratos concretos en `public/`, `types.ts`, `page.ts` o `index.ts` del dueño. Los eventos internos se usan solo donde la operación ya continúa después de un commit (por ejemplo, outbox y avisos en tiempo real).
 5. Meta, n8n, Google Calendar y MinIO/disco son adaptadores. Las reglas de conversación, cita o IA permanecen en sus módulos.
 6. `tenancy` y la sesión de DB son transversales. Toda entrada HTTP, WebSocket o worker debe establecer el contexto correcto antes de consultar datos del negocio.
 7. `shared` y `core` no se convierten en carpetas de descarte: si algo pertenece a un negocio o pantalla, vive en ese módulo.
@@ -94,6 +107,8 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 
 ### Fase 0 — Línea base y mapa de propiedad
 
+**Estado: completada.**
+
 - Registrar resultado actual de CI y del árbol de trabajo; preservar los cambios locales existentes.
 - Inventariar imports de `db_service`, `automation_service`, `ws_manager`, `models.schemas` y `frontend/src/types/index.ts`.
 - Asignar dueño a cada router, servicio, hook, componente y modelo. Documentar explícitamente lo que comparten dos módulos.
@@ -102,6 +117,8 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 **Salida:** matriz archivo → módulo y lista de contratos observables. Sin mover código todavía.
 
 ### Fase 1 — Estructura y reglas de importación
+
+**Estado: completada.**
 
 - Crear los paquetes `backend/app/`, `backend/app/modules/` y `frontend/src/features/` sin cambiar puntos de entrada.
 - Definir una interfaz pública por módulo (`api`, servicio o funciones exportadas) y reglas de importación.
@@ -112,6 +129,8 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 
 ### Fase 2 — Módulo piloto: reportes de problemas
 
+**Estado: completada.**
+
 - Mover `routers/issue_reports.py` y `services/issue_report_service.py` a `app/modules/issue_reports/`.
 - Mover `IssueReportsPage`, sus diálogos y `useIssueReports` a `features/issue-reports/`.
 - Registrar el router nuevo desde la composición de FastAPI, conservando exactamente `/api/...` y permisos.
@@ -120,6 +139,11 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 **Salida:** un flujo vertical completo usa la estructura nueva sin cambios en OpenAPI ni comportamiento. Es la plantilla para las demás fases.
 
 ### Fase 3 — Frontend por funcionalidades
+
+**Estado: completada.** Las pantallas de ruta están bajo su feature, los tipos
+de dominio se declaran junto a su dueño y `app/` separa composición, providers,
+rutas y layout. La fachada de tipos `types/index.ts` se retiró en la fase 7
+después de migrar los imports de sus consumidores.
 
 - Mover por grupos `auth`, `chats`, `leads`, `appointments`, `automations`, `ai`, `media` y `platform`.
 - Partir `types/index.ts` por dueño; dejar en `shared` solo tipos de transporte o utilidades realmente comunes.
@@ -130,6 +154,16 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 
 ### Fase 4 — Backend CRM y consultas
 
+**Estado: completada.** Catálogos, tareas, leads y citas son dueños de sus
+rutas, casos de uso, reglas y consultas. HTTP llama a servicios del dueño;
+la persistencia atómica se mantiene en sus repositorios. Las consultas Kanban
+pertenecen a leads y las consultas de mensajes a conversaciones. No quedan
+adaptadores en `routers/` o `services/`. Citas conserva persistencia local
+antes de Google Calendar/n8n y los estados de integración visibles.
+
+Verificación: suite backend, contratos de rutas/WebSocket, OpenAPI y tipos
+generados idénticos; migraciones sin DDL adicional.
+
 - Migrar primero catálogos y tareas; después leads y citas.
 - Llevar las funciones de `services/store/` a los repositorios de su dueño. Reducir `db_service.py` a medida que desaparecen consumidores.
 - Separar validación HTTP, reglas de negocio y consultas; conservar los límites de transacción existentes.
@@ -138,6 +172,17 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 **Salida:** los módulos migrados no importan `db_service.py`; rutas y auditoría de leads conservan sus contratos.
 
 ### Fase 5 — Conversaciones y Meta
+
+**Estado: completada.** Conversaciones es dueño de mensajes, historial,
+lectura, edición, outbox, entrega y recuperación. La recepción HTTP de Meta,
+su inbox global y su proyección tenant viven en `app/integrations/meta_webhook/`.
+WhatsApp se consume mediante el puerto del canal. Los adaptadores MinIO/disco
+viven en `app/integrations/storage/`. No quedan aliases heredados ni consultas
+de conversaciones a través de una fachada global.
+
+Verificación: webhook y tenancy sobre PostgreSQL físico, orden/desempate de
+mensajes, deduplicación, retry, media, outbox y WebSocket. La prueba AST de
+orden examina los dueños actuales y falla si deja de encontrar consultas.
 
 - Migrar `routers/chats/`, historial, estado de lectura, `message_outbox` y worker de envío como una secuencia de PR controlados.
 - Migrar el webhook Meta, inbox y proyección después de fijar la interfaz del módulo de conversaciones.
@@ -148,21 +193,65 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 
 ### Fase 6 — Automatizaciones, IA, auth y plataforma
 
+**Estado: completada.** Automatizaciones expone motor/scheduler mediante
+contratos explícitos. IA separa perfil, conocimiento y proyecciones de recursos
+y catálogo en repositorios del dueño. Auth separa sesiones/dispositivos de
+las políticas criptográficas; notificaciones, media y configuración separan
+SQL de coordinación y efectos. Los DTO HTTP residen en `schemas.py`, también
+en auth y plataforma. n8n y sus callbacks autenticados viven en
+`app/integrations/n8n/`; los workers conservan contexto y supervisión tenant.
+
+Las dependencias entre dominios y desde integraciones/workers utilizan puertos
+pequeños con exportaciones explícitas, sin lista de excepciones de transición.
+Los tests de arquitectura cubren imports relativos, imports de módulos,
+`__init__.py` y archivos `*_api.py`, `*_service.py` y `*_repository.py`.
+
 - Mover el motor y scheduler de automatizaciones detrás de una API pública pequeña; eliminar consumidores de `automation_service.py` gradualmente.
 - Separar el módulo IA de los adaptadores n8n y de los callbacks autenticados.
 - Migrar auth y plataforma al final: manejan cookies, roles, plano de control y acceso entre negocios.
 - Conservar la supervisión de workers por tenant y el worker global del inbox Meta.
 
-**Salida:** las fachadas `db_service.py` y `automation_service.py` se pueden retirar; no hay imports de módulos internos de otros dominios salvo excepciones registradas.
+**Salida:** fachadas retiradas; no hay imports internos de otros dominios ni excepciones de transición.
 
 ### Fase 7 — Modelos ORM y cierre
+
+**Estado: completada.** El registro ORM carga una metadata de 54 tablas;
+plano de control y dominios tenant conservan sus schemas y FKs. Se retiraron
+fachadas, aliases de compatibilidad y carpetas vacías. Backend y frontend
+tienen contratos explícitos de consumo entre capacidades; `shared/` no alcanza
+features ni `app/`, ni siquiera por dependencias transitivas. Todas las features
+con datos remotos tienen `api.ts`; hooks/queries conservan las claves de caché.
+`main.py`, composición, workers, WebSocket y contratos HTTP permanecen estables.
+
+Verificación final local (2026-10-02):
+
+- Suite backend completa: 1140 tests aprobados, sin omisiones, incluido blue-green.
+- PostgreSQL efímero: migración desde base vacía, downgrade/upgrade de la última
+  revisión, `alembic check` sin operaciones nuevas y 12 tests de registro ORM,
+  aislamiento tenant y webhook Meta. La misma puerta queda conectada a CI
+  mediante `TEST_DATABASE_URL`; una DB explícita inaccesible falla, no se omite.
+- OpenAPI: 169 paths, 209 operaciones y tipos generados byte a byte idénticos
+  a `frontend/src/api/schema.d.ts`.
+- Frontend: lint, 346 tests y build aprobados; 7 tests de arquitectura verifican
+  límites directos y transitivos, además de retiro de árboles heredados.
+- Docker: builds backend y frontend de producción aprobados, `nginx -t` con
+  hostname backend real y smoke backend con paridad OpenAPI, registro ORM,
+  ruta de almacenamiento y head Alembic `a6d2e9b41c73`.
+- Blue-green: contrato `HostRegexp` multitenant, conservación de reglas/TLS
+  durante cambio de color y puertos app/métricas exclusivos de loopback.
+
+El mapa y la guía describen la implementación final. Las pruebas usaron
+contenedores y base efímeros sin volúmenes persistentes, retirados al terminar;
+no se conectó producción ni se hizo un despliegue.
 
 - Dividir `db/models.py` por plano de control y dominios tenant, con un registro único que cargue todos los modelos para Alembic.
 - Cambiar imports y tests de forma incremental; comprobar `public` y schemas tenant.
 - Retirar adaptadores de importación, carpetas vacías y reglas temporales.
 - Actualizar README, mapa de arquitectura y guía para agregar una nueva funcionalidad.
 
-**Salida:** CI, migraciones, tipos API, Docker y recorridos críticos pasan; el árbol final coincide con la estructura destino.
+**Salida:** las puertas locales de arquitectura, contratos, tests, migraciones,
+tipos API y Docker pasan. Las capacidades principales siguen el mapa destino,
+sin puentes heredados ni deuda de imports internos registrada como excepción.
 
 ## 6. Puertas de verificación por PR
 
@@ -172,6 +261,15 @@ Cada fase se entrega en uno o varios PR pequeños. No combinar traslados masivos
 - Al mover tests con `monkeypatch`, revisar que parcheen el símbolo consumido por el módulo nuevo y no un reexport inerte.
 - Antes de mezclar cada fase, comprobar el diff de OpenAPI y que no aparezca una migración Alembic accidental.
 - Para conversaciones, auth y tenancy, ejecutar además las pruebas específicas de aislamiento tenant, webhook, outbox y sesiones.
+
+## Estado de pendientes
+
+No quedan tareas de implementación pendientes dentro de este plan, incluido
+el test blue-green antes diferido. CI remoto se ejecutará al crear/publicar el
+PR; no se presenta una ejecución local como evidencia de CI remoto. El build
+frontend conserva el aviso no bloqueante de tamaño de chunks y el host Python
+3.14 muestra avisos de deprecación de FastAPI/Starlette; no alteran los contratos
+ni las puertas aprobadas, y el runtime Docker continúa en Python 3.12.
 
 ## 7. Riesgos y decisiones de secuencia
 
