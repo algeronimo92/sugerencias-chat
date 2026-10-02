@@ -1,5 +1,6 @@
-import type { JsonValue, MessageType, MetaStatus, OutboxStatus } from '../types'
-import { isJsonObject } from '../utils/message'
+import type { JsonValue } from '../shared/types'
+import type { MessageType, MetaStatus, OutboxStatus } from '../features/chats/types'
+import { isJsonObject } from '../features/chats/utils/message'
 
 export const REALTIME_EVENT_TYPES = [
   'chats_updated',

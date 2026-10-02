@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_BRAND, applyBrand, brandShades, currentBrandName, loadBrand } from './branding'
+import { DEFAULT_BRAND, applyBrand, brandShades, currentBrandName, loadBrand } from './shared/branding'
 
 describe('branding', () => {
   beforeEach(() => {

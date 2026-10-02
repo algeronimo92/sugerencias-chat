@@ -1,9 +1,9 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query'
 import type { NavigateFunction } from 'react-router-dom'
-import type { Message } from '../types'
-import type { NotificationOptions } from '../hooks/useNotifications'
-import { parseContent } from '../utils/message'
-import { NotificationType } from '../domain/automationCatalog'
+import type { Message } from '../features/chats/types'
+import type { NotificationOptions } from '../features/notifications/hooks/useNotifications'
+import { parseContent } from '../features/chats/utils/message'
+import { NotificationType } from '../features/automations/domain/automationCatalog'
 import type { ChatSocketEvent, ChatsUpdateReason, MessageStatusUpdate, RealtimeEventType, SocketEventOf } from './socketEvents'
 
 export type NotifyFn = (title: string, body: string, onClick: () => void, options?: NotificationOptions) => void
