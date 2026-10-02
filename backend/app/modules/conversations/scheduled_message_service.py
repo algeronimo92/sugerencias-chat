@@ -53,15 +53,17 @@ async def _dispatch(scheduled_id: int) -> None:
     prepared = await scheduled_message_repository.prepare_dispatch(scheduled_id, now, service_window_is_open, SERVICE_WINDOW_CLOSED_DETAIL)
     if prepared is None:
         return
-    lead_id, text, window_open = prepared
+    lead_id, text, author_id, window_open = prepared
 
     status = ScheduledMessageStatus.FAILED
     if window_open:
         # Sin actor_user_id: no hay un vendedor mirando la app en este momento,
         # así que cuenta como "atendido por bot" y no como que un humano vio la
         # conversación (enqueue_messages resuelve el touch con ese criterio).
+        # El mensaje sí es obra de quien lo programó: se le acredita a esa
+        # persona como autor.
         message = await enqueue_text_message(
-            lead_id, text, dedupe_key=f"scheduled:{scheduled_id}",
+            lead_id, text, author_user_id=author_id, dedupe_key=f"scheduled:{scheduled_id}",
         )
         await scheduled_message_repository.mark_queued(scheduled_id, message["id"], datetime.now(timezone.utc))
         status = ScheduledMessageStatus.QUEUED

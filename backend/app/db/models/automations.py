@@ -150,6 +150,15 @@ class AutomationExecution(Base):
                 "start_source = 'manual' AND status IN ('scheduled', 'running', 'paused')"
             ),
         ),
+        # Flujos que disparó un vendedor en el período: el eje del dashboard
+        # de vendedores. Parcial porque started_by_user_id solo se llena en los
+        # disparos manuales, una fracción de las ejecuciones.
+        Index(
+            "idx_automation_executions_starter_created",
+            started_by_user_id,
+            created_at.desc(),
+            postgresql_where=text("started_by_user_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "start_source IN ('system', 'manual', 'flow')",
             name="ck_automation_executions_start_source",

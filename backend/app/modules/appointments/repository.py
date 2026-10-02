@@ -1,15 +1,28 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import aliased
 
 from app.db.models.appointments import Appointment
 from app.db.models.auth import User
+from app.db.models.leads import Lead
 from app.db.session import get_sessionmaker
 from app.core.time_format import iso_utc
 
 Creator = aliased(User)
+Owner = aliased(User)
+
+
+async def find_unique_lead_by_phone_tail(tail: str) -> str | None:
+    """El único lead cuyo teléfono termina en ``tail``, o None si no hay
+    ninguno o hay más de uno: con dos candidatos no se puede afirmar cuál es."""
+    lead_tail = func.right(func.regexp_replace(Lead.telefono, r"\D", "", "g"), len(tail))
+    async with get_sessionmaker()() as session:
+        matches = (await session.execute(
+            select(Lead.id).where(Lead.telefono.is_not(None), lead_tail == tail).limit(2)
+        )).scalars().all()
+    return matches[0] if len(matches) == 1 else None
 
 
 def _serialize(row) -> dict:
@@ -17,6 +30,8 @@ def _serialize(row) -> dict:
         "id": row["id"],
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
+        "lead_id": row["lead_id"],
+        "lead_owner_name": row["lead_owner_name"],
         "nombre_completo": row["nombre_completo"],
         "dni": row["dni"],
         "telefono": row["telefono"],
@@ -47,6 +62,8 @@ def _query():
             Appointment.id,
             Appointment.created_by_user_id,
             Creator.name.label("created_by_name"),
+            Appointment.lead_id,
+            Owner.name.label("lead_owner_name"),
             Appointment.nombre_completo,
             Appointment.dni,
             Appointment.telefono,
@@ -70,6 +87,10 @@ def _query():
             Appointment.created_at,
         )
         .join(Creator, Creator.id == Appointment.created_by_user_id)
+        # Ambos por fuera: la cita puede no estar vinculada a un lead, y un lead
+        # vinculado puede no tener vendedor asignado.
+        .outerjoin(Lead, Lead.id == Appointment.lead_id)
+        .outerjoin(Owner, Owner.id == Lead.vendedor_id)
     )
 
 
@@ -91,6 +112,7 @@ async def get_appointment(appointment_id: int) -> dict | None:
 async def create_appointment_record(
     *,
     created_by_user_id: int,
+    lead_id: str | None,
     nombre_completo: str,
     dni: str,
     telefono: str,
@@ -115,6 +137,7 @@ async def create_appointment_record(
         appointment_id = (await session.execute(
             insert(Appointment).values(
                 created_by_user_id=created_by_user_id,
+                lead_id=lead_id,
                 nombre_completo=nombre_completo,
                 dni=dni,
                 telefono=telefono,

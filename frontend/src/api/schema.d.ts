@@ -3253,6 +3253,10 @@ export interface components {
             created_by_user_id: number;
             /** Created By Name */
             created_by_name: string;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Lead Owner Name */
+            lead_owner_name?: string | null;
             /** Nombre Completo */
             nombre_completo: string;
             /** Dni */
@@ -10733,6 +10737,7 @@ export interface operations {
         parameters: {
             query?: {
                 days?: number;
+                scope?: string | null;
             };
             header?: never;
             path?: never;

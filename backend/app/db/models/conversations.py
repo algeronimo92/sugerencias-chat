@@ -70,6 +70,14 @@ class WspMessage(Base):
     # chat, igual que el límite real de WhatsApp (se aplica en db_service).
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Qué usuario del CRM mandó este mensaje. `sender` solo dice cliente o
+    # vendedor, que no alcanza para medir el trabajo de una persona cuando
+    # varias atienden el mismo chat. NULL en los mensajes del cliente y también
+    # en los ecos que llegan por webhook desde el celular del vendedor: ahí
+    # WhatsApp no dice qué usuario escribió y `human_outbound` es lo único que
+    # se sabe. Lo llenan los envíos que salen de la app — ver
+    # message_outbox.enqueue_messages y scheduled_message_service.
+    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Subtipo literal de Meta (``interactive.type``, ``system.type``). NULL en
     # las raíces que no tienen subtipos.
     message_subtype: Mapped[str | None] = mapped_column(Text)
@@ -121,6 +129,14 @@ class WspMessage(Base):
             wa_message_id,
             unique=True,
             postgresql_where=text("wa_message_id IS NOT NULL"),
+        ),
+        # "Cuántos mensajes mandé esta semana". Parcial porque la enorme mayoría
+        # de las filas son del cliente o ecos sin autor conocido.
+        Index(
+            "idx_wsp_messages_author_sent",
+            sent_by_user_id,
+            sent_at.desc(),
+            postgresql_where=text("sent_by_user_id IS NOT NULL"),
         ),
     )
 

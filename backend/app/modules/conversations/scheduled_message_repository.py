@@ -11,19 +11,19 @@ from collections.abc import Awaitable, Callable
 from app.modules.conversations.scheduled_message_policies import (CLAIM_LIMIT, STALE_PROCESSING_MINUTES, _item)
 
 
-async def prepare_dispatch(scheduled_id: int, now: datetime, check_window: Callable[[str], Awaitable[bool]], closed_detail: str) -> tuple[str, str, bool] | None:
+async def prepare_dispatch(scheduled_id: int, now: datetime, check_window: Callable[[str], Awaitable[bool]], closed_detail: str) -> tuple[str, str, int, bool] | None:
     async with get_sessionmaker()() as session:
         scheduled = await session.get(ScheduledMessage, scheduled_id, with_for_update=True)
         if scheduled is None or scheduled.status != ScheduledMessageStatus.PROCESSING:
             return None
-        lead_id, text = scheduled.lead_id, scheduled.text
+        lead_id, text, author_id = scheduled.lead_id, scheduled.text, scheduled.created_by_user_id
         window_open = await check_window(lead_id)
         if not window_open:
             scheduled.status = ScheduledMessageStatus.FAILED
             scheduled.error = closed_detail
             scheduled.updated_at = now
             await session.commit()
-        return lead_id, text, window_open
+        return lead_id, text, author_id, window_open
 
 
 async def mark_queued(scheduled_id: int, message_id: int, updated_at: datetime) -> None:

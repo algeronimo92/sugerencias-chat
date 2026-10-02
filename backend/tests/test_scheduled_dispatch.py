@@ -36,6 +36,7 @@ def scheduled_row(**overrides):
         "id": 5,
         "lead_id": CHAT_ID,
         "text": "Hola, ¿seguimos?",
+        "created_by_user_id": 9,
         "status": ScheduledMessageStatus.PROCESSING,
         "error": None,
         "queued_message_id": None,

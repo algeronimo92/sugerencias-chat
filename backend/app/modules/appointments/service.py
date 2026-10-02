@@ -6,8 +6,10 @@ import logging
 
 import httpx
 
+from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.appointments.repository import (
     create_appointment_record,
+    find_unique_lead_by_phone_tail,
     get_appointment,
     update_appointment_integrations,
 )
@@ -18,13 +20,20 @@ from domain_types import NotificationType
 from app.modules.appointments.schemas import AppointmentCreate
 from app.integrations.google_calendar import create_google_event
 from app.integrations.n8n.client import post_form
+from app.integrations.whatsapp.identity import lead_id_for_identifier
 from app.modules.notifications.ports.service import (create_system_notification)
 from app.modules.notifications.ports.push_service import (send_push_to_user)
 from app.modules.platform.ports.settings_service import (get_effective)
+from app.modules.platform.public import effective_country_code
 from app.realtime.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT_SECONDS = 60.0
+
+# Cola del número que se compara contra los leads cuando el teléfono no es una
+# identidad de WhatsApp conocida: en Perú son los 9 dígitos del celular, sin el
+# código de país. Alcanza para emparejar un teléfono escrito con o sin +51.
+PHONE_TAIL_DIGITS = 9
 
 
 class AppointmentSyncError(Exception):
@@ -61,6 +70,35 @@ async def sync_calendar(appointment_id: int) -> dict:
     return updated
 
 
+async def resolve_lead_for_phone(telefono: str) -> str | None:
+    """El lead dueño de ese teléfono, o None si no se puede afirmar cuál es.
+
+    Primero por la identidad de WhatsApp (el ``wa_id`` es el E.164 en dígitos),
+    que es la identidad canónica del CRM; si el número nunca chateó, cae a
+    comparar la cola del teléfono contra `leads`, y **solo** acepta el resultado
+    cuando un único lead coincide. Con dos candidatos devuelve None a propósito:
+    una cita colgada del lead equivocado es peor que una cita sin vincular.
+    """
+    try:
+        e164 = normalize_phone(telefono, await effective_country_code())
+    except PhoneValidationError:
+        return None
+    except Exception:
+        # La resolución del lead es un extra sobre el registro de la cita; que
+        # falle no puede impedir que la cita se guarde.
+        logger.exception("No se pudo normalizar el teléfono de la cita")
+        return None
+
+    lead_id = await lead_id_for_identifier(e164)
+    if lead_id is not None:
+        return lead_id
+
+    tail = e164[-PHONE_TAIL_DIGITS:]
+    if len(tail) < PHONE_TAIL_DIGITS:
+        return None
+    return await find_unique_lead_by_phone_tail(tail)
+
+
 async def create_appointment(
     body: AppointmentCreate,
     user: User,
@@ -78,7 +116,8 @@ async def create_appointment(
     }
 
     appointment = await create_appointment_record(
-        created_by_user_id=user.id, nombre_completo=body.nombre_completo,
+        created_by_user_id=user.id, lead_id=await resolve_lead_for_phone(body.telefono),
+        nombre_completo=body.nombre_completo,
         dni=body.dni, telefono=body.telefono, tratamiento=body.tratamiento,
         detalle=body.detalle, fecha=body.fecha, hora=body.hora,
         vendedor=body.vendedor, adelanto=body.adelanto,

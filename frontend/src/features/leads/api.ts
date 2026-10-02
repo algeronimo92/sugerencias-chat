@@ -3,7 +3,7 @@ const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
 import client from "../../shared/http/client";
 import type { Chat,LeadActivity } from "../chats/types";
-import type { BulkAssignTagInput,BulkMoveStageInput,CustomFieldDefinition,CustomFieldEntity,DashboardMetrics,KanbanPage,KanbanSnapshot,LeadService,LeadStage,LeadStageAdminDefinition,LeadStageDefinition,LeadStageInput,LeadTask,MoveLeadStageInput,Tag,TaskInput,TaskStatus } from "./types";
+import type { BulkAssignTagInput,BulkMoveStageInput,CustomFieldDefinition,CustomFieldEntity,DashboardMetrics,DashboardScope,KanbanPage,KanbanSnapshot,LeadService,LeadStage,LeadStageAdminDefinition,LeadStageDefinition,LeadStageInput,LeadTask,MoveLeadStageInput,Tag,TaskInput,TaskStatus } from "./types";
 
 export function requestLeadStages() {
   return async () => (await client.get<LeadStageDefinition[]>('/api/lead-stages')).data
@@ -172,8 +172,15 @@ export function requestBulkAssignTag() {
       runBulk(chatIds, (chatId) => client.post(`/api/chats/${encodeURIComponent(chatId)}/tags/${tagId}`))
 }
 
-export function requestDashboard(days: number) {
-  return async () => (await client.get<DashboardMetrics>('/api/dashboard', { params: { days } })).data
+export function requestDashboard(days: number, scope: DashboardScope | null) {
+  return async () =>
+    (
+      await client.get<DashboardMetrics>('/api/dashboard', {
+        // Sin scope el backend elige por rol: el vendedor ve lo suyo y el
+        // admin el total del equipo.
+        params: { days, ...(scope ? { scope } : {}) },
+      })
+    ).data
 }
 
 export function requestLeadSearch(search: string) {

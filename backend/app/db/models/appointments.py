@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -19,6 +19,12 @@ class Appointment(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    # Lead al que pertenece la cita, resuelto por teléfono al registrarla. NULL
+    # cuando ese número no coincide con ningún lead o coincide con más de uno:
+    # preferimos no vincularla antes que colgarla del lead equivocado.
+    lead_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
+    )
     nombre_completo: Mapped[str] = mapped_column(Text)
     dni: Mapped[str] = mapped_column(Text, default="", server_default="")
     telefono: Mapped[str] = mapped_column(Text)
@@ -55,4 +61,13 @@ class Appointment(Base):
         ),
         Index("idx_appointments_created", created_at.desc()),
         Index("idx_appointments_date_time", fecha, hora),
+        Index(
+            "idx_appointments_lead_created",
+            lead_id,
+            created_at.desc(),
+            postgresql_where=text("lead_id IS NOT NULL"),
+        ),
+        # Citas del período por quien las registró: lo que agrupa el
+        # dashboard del vendedor (leads/dashboard_appointments_repository.py).
+        Index("idx_appointments_creator_created", created_by_user_id, created_at.desc()),
     )

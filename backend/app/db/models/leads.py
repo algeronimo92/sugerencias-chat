@@ -241,6 +241,8 @@ class LeadTagAssignment(Base):
     __table_args__ = (
         Index("idx_lead_tag_assignments_tag_lead", tag_id, lead_id),
         Index("idx_lead_tag_assignments_assigned_by", assigned_by),
+        # Etiquetas puestas en el período, para el panel de cobertura.
+        Index("idx_lead_tag_assignments_assigned_at", assigned_at.desc()),
     )
 
 
@@ -262,6 +264,15 @@ class LeadActivity(Base):
     __table_args__ = (
         Index("idx_lead_activity_lead_created", lead_id, created_at.desc()),
         Index("idx_lead_activity_actor_user", actor_user_id),
+        # "Qué hice esta semana": acciones de una persona ordenadas por
+        # fecha. Parcial porque los eventos de sistema y de n8n no llevan
+        # actor y son la mayoría de las filas.
+        Index(
+            "idx_lead_activity_actor_created",
+            actor_user_id,
+            created_at.desc(),
+            postgresql_where=text("actor_user_id IS NOT NULL"),
+        ),
     )
 
 

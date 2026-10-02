@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.leads import dashboard_repository as dashboard_service
+from app.modules.leads import dashboard_service
 from app.modules.auth import session_service
 from app.modules.platform import settings_service
 from app.tenancy.context import TenantContext, tenant_context
@@ -47,15 +47,15 @@ async def test_dashboard_cache_does_not_cross_tenants(monkeypatch) -> None:
     tenant_b = _tenant("b")
     dashboard_service._cache.clear()
 
-    async def fake_metrics(_days: int):
+    async def fake_metrics(_scope):
         return {"organization_id": str(get_current_tenant().organization_id)}
 
-    monkeypatch.setattr(dashboard_service, "_compute_dashboard_metrics", fake_metrics)
+    monkeypatch.setattr(dashboard_service, "_compute", fake_metrics)
 
     with tenant_context(tenant_a):
-        result_a = await dashboard_service.get_dashboard_metrics(30)
+        result_a = await dashboard_service.get_dashboard_metrics(30, "team", 1)
     with tenant_context(tenant_b):
-        result_b = await dashboard_service.get_dashboard_metrics(30)
+        result_b = await dashboard_service.get_dashboard_metrics(30, "team", 1)
 
     assert result_a != result_b
 

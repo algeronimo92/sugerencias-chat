@@ -106,12 +106,15 @@ function IssueReportsRoute() {
   return <IssueReportsPage onCreate={openIssueReport} />;
 }
 
-function DashboardRoute() {
+function DashboardRoute({ isAdmin }: { isAdmin: boolean }) {
   const navigate = useNavigate();
   const { chatFilters } = useLayoutContext();
   return (
     <DashboardPage
+      isAdmin={isAdmin}
       onOpenTasks={() => navigate("/tasks")}
+      onOpenFlows={() => navigate("/mis-flujos")}
+      onOpenChat={(leadId) => navigate(`/chat/${leadId}`)}
       onFilterChats={(filters) => {
         chatFilters.setChatFilter("all");
         chatFilters.setAdvancedFilters({ ...EMPTY_CHAT_FILTERS, ...filters });
@@ -170,10 +173,10 @@ function AuthGate() {
           <Route path="reports" element={<IssueReportsRoute />} />
           <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
           <Route path="citas/nueva" element={<NewAppointmentPage />} />
+          <Route path="dashboard" element={<DashboardRoute isAdmin={me.role === "admin"} />} />
           <Route element={<RequireAdmin isAdmin={me.role === "admin"} />}>
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="media-library" element={<MediaLibraryPage />} />
-            <Route path="dashboard" element={<DashboardRoute />} />
             <Route path="automations" element={<AutomationsPage />} />
             <Route path="catalogs" element={<CatalogsPage />} />
             <Route path="ai-assistant" element={<AiAssistantPage />} />

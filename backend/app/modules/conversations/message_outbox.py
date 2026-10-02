@@ -113,6 +113,7 @@ async def enqueue_text_message(
     reply_to: dict | None = None,
     *,
     actor_user_id: int | None = None,
+    author_user_id: int | None = None,
     dedupe_key: str | None = None,
 ) -> dict:
     from app.integrations.meta.outbound import text_item
@@ -121,7 +122,7 @@ async def enqueue_text_message(
         **text_item(text),
         "reply_to": reply_to,
         "dedupe_key": dedupe_key,
-    }], actor_user_id=actor_user_id))[0]
+    }], actor_user_id=actor_user_id, author_user_id=author_user_id))[0]
 
 
 def _message_dict(message: WspMessage, reply_to: dict | None = None) -> dict:
@@ -161,6 +162,7 @@ async def enqueue_messages(
     items: list[dict],
     *,
     actor_user_id: int | None = None,
+    author_user_id: int | None = None,
 ) -> list[dict]:
     """Guarda uno o más mensajes y sus trabajos en una sola transacción.
 
@@ -179,7 +181,12 @@ async def enqueue_messages(
     ``dedupe_key`` (opcional) identifica el envío de forma estable: si ya se
     encoló un mensaje con esa clave, se devuelve ese mismo en lugar de crear
     otro.
+
+    ``author_user_id`` (opcional) es a quién se le acredita el mensaje cuando
+    no es quien lo dispara ahora: un programado es obra de quien lo programó,
+    aunque nadie esté mirando la app al salir. Sin él, el autor es el actor.
     """
+    sent_by_user_id = author_user_id if author_user_id is not None else actor_user_id
     if not items:
         return []
     items = await prepare_items(items)
@@ -202,6 +209,9 @@ async def enqueue_messages(
             message = WspMessage(
                 chat_id=chat_id,
                 sender="vendedor",
+                # Quién lo mandó, consultable sin abrir el payload del outbox.
+                # NULL en los envíos de automatización: no son trabajo de nadie.
+                sent_by_user_id=sent_by_user_id,
                 content=item.get("content"),
                 # IDs resuelven empates, pero microsegundos distintos también
                 # mantienen el orden al mezclar mensajes en clientes antiguos.
