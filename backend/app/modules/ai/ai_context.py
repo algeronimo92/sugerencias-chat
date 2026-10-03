@@ -97,8 +97,22 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         ).mappings().all()
 
     messages: list[dict] = []
+    # Los avisos de Meta (cambio de número, de identidad) no son algo que
+    # haya dicho el cliente ni el negocio: van aparte para que el analista no
+    # los lea como parte de la conversación.
+    system_events: list[dict] = []
     for row in message_rows:
         item = _json_safe_row(dict(row))
+        if item.get("message_type") in NON_CONVERSATIONAL_TYPES:
+            system_events.append({
+                "id": item["id"],
+                "sent_at": item["sent_at"],
+                "message_subtype": item.get("message_subtype"),
+                "text": message_text(
+                    row["message_type"], row["message_subtype"], row["content"], row["provider_payload"],
+                ),
+            })
+            continue
         analysis = item.pop("analysis", None)
         summary = analysis.get("summary") if isinstance(analysis, dict) else None
         parts = [str(item.get("content") or "").strip()]
