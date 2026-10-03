@@ -389,3 +389,46 @@ def test_product_code_no_longer_imports_retired_packages():
         if any(module == root or module.startswith(f"{root}.") for root in forbidden)
     }
     assert violations == set()
+
+
+# --- Arquitectura hexagonal ----------------------------------------------
+
+# El dominio no conoce persistencia, HTTP, tiempo real ni proveedores: solo
+# reglas. Lo que necesite de afuera lo recibe por un puerto.
+DOMAIN_FORBIDDEN = ("sqlalchemy", "fastapi", "starlette", "httpx", "app.db", "app.realtime", "app.integrations")
+
+
+def _domain_files() -> list[Path]:
+    return [path for path in MODULES.rglob("*.py") if "domain" in path.relative_to(MODULES).parts]
+
+
+def test_domain_layers_depend_on_nothing_external():
+    violations = {
+        f"{path.relative_to(BACKEND)} -> {module}"
+        for path in _domain_files()
+        for module in _imported_modules(path)
+        if module.startswith(DOMAIN_FORBIDDEN)
+    }
+    assert violations == set()
+
+
+def test_shared_kernel_of_events_and_errors_is_framework_free():
+    for name in ("events.py", "errors.py"):
+        imported = _imported_modules(BACKEND / "app" / "core" / name)
+        assert not {module for module in imported if module.startswith(DOMAIN_FORBIDDEN)}, name
+
+
+def test_code_on_the_unit_of_work_never_opens_sessions_by_hand():
+    """Un archivo que ya participa de la unidad de trabajo no puede volver a
+    abrir una sesión suelta: esa escritura quedaría fuera de la transacción del
+    caso de uso (y con un lock tomado, en otra conexión)."""
+    violations = set()
+    for base in ("app/modules", "app/integrations", "app/workers"):
+        for path in (BACKEND / base).rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            if "app.db.uow" in _imported_modules(path) or any(
+                module.startswith("app.db.uow.") for module in _imported_modules(path)
+            ):
+                if "get_sessionmaker()" in source:
+                    violations.add(str(path.relative_to(BACKEND)))
+    assert violations == set()

@@ -31,57 +31,15 @@ from app.db.models.automations import AutomationExecution, AutomationRule
 from app.db.models.conversations import MessageOutbox, ScheduledMessage, WspMessage
 from app.db.models.leads import Lead, LeadActivity
 from app.db.models.notifications import UserNotification
-from app.core.config import settings
-from app.db.session import close_engine, control_session, get_engine, get_sessionmaker
+from app.db.session import get_sessionmaker
 from app.modules.ai.ai_context import make_context_revision
 from app.modules.ai.ai_job_tokens import AIJobClaims, require_ai_job_context
 from app.modules.auth.auth_service import get_current_user, verify_webhook_token
 from app.modules.automations.engine import process_due_automation_executions
 from app.modules.conversations import scheduled_message_service
 from app.realtime.ws_manager import manager
-from app.tenancy.context import tenant_context, validate_schema_name
-from app.tenancy.provisioning import provision_tenant
-from tests.test_tenant_postgres_integration import pg_dsn  # noqa: F401
-
-
-@pytest_asyncio.fixture
-async def app_engine(pg_dsn, monkeypatch):  # noqa: F811
-    """Engine contra el Postgres real con un pool como el de producción.
-
-    El de ``test_tenant_postgres_integration`` fija una sola conexión para
-    probar el aislamiento; acá eso bloquearía los casos de uso que hoy abren
-    una sesión dentro de otra (p. ej. el despacho de programados).
-    """
-    monkeypatch.setattr(settings, "database_url", pg_dsn)
-    monkeypatch.setattr(settings, "database_ssl", "disable")
-    monkeypatch.setattr(settings, "database_pool_size", 5)
-    monkeypatch.setattr(settings, "database_max_overflow", 5)
-    await close_engine()
-    engine = get_engine()
-    try:
-        yield engine
-    finally:
-        await close_engine()
-
-
-@pytest_asyncio.fixture
-async def tenant(app_engine):
-    suffix = secrets.token_hex(4)
-    context = await provision_tenant(
-        name=f"Caracterizacion {suffix}",
-        hostname=f"caracterizacion-{suffix}.integration.test",
-    )
-    try:
-        yield context
-    finally:
-        async with control_session() as session:
-            await session.execute(
-                text("DELETE FROM public.organizations WHERE id = :id"),
-                {"id": str(context.organization_id)},
-            )
-        async with app_engine.begin() as connection:
-            schema = validate_schema_name(context.schema_name)
-            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+from app.tenancy.context import tenant_context
+from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
 
 
 async def _create_user(role: str, name: str) -> User:

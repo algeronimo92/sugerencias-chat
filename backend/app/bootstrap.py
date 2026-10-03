@@ -7,7 +7,8 @@ import logging
 import uuid
 from time import perf_counter
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
@@ -23,6 +24,8 @@ from app.core.logging_config import configure_logging
 configure_logging()
 
 from app.core.config import settings
+from app.core.errors import DomainError
+from app.composition import register_subscribers
 from app.db.session import close_engine, get_engine
 from app.modules.issue_reports import api as issue_reports
 from app.modules.appointments import api as appointments
@@ -398,7 +401,15 @@ async def lifespan(app: FastAPI):
     await close_engine()
 
 
+register_subscribers()
+
 app = FastAPI(title="WSP Suggestions API", lifespan=lifespan)
+
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(_request: Request, exc: DomainError) -> JSONResponse:
+    """Traducción única de los errores de dominio a HTTP (ver app.core.errors)."""
+    return JSONResponse(exc.to_response(), status_code=exc.status_code)
 
 # Expone /metrics (histogramas por ruta/método) para Prometheus. Solo lo
 # alcanza nginx desde loopback (ver frontend/nginx.conf) — nunca queda

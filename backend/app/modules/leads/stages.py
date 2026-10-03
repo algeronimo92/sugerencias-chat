@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
+from app.core.errors import DomainError
 from app.db.models.automations import AutomationRule
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.catalogs import MessageTemplate
@@ -36,12 +37,21 @@ MAX_STAGES = 40
 _KEY_MAX_LENGTH = 40
 
 
-class LeadStageError(ValueError):
-    """Base de los errores de dominio de etapas (mensaje apto para el usuario)."""
+class LeadStageError(DomainError, ValueError):
+    """Base de los errores de dominio de etapas (mensaje apto para el usuario).
+
+    Sigue siendo ``ValueError`` para los llamadores que todavía lo atrapan así.
+    """
+
+    status_code = 409
+    code = "lead_stage_conflict"
 
 
 class InvalidLeadStageError(LeadStageError):
     """La clave no existe en el negocio o la etapa está desactivada."""
+
+    status_code = 422
+    code = "invalid_lead_stage"
 
     def __init__(self, key: str, *, inactive: bool = False) -> None:
         self.key = key
@@ -51,7 +61,8 @@ class InvalidLeadStageError(LeadStageError):
 
 
 class LeadStageNotFoundError(LeadStageError):
-    pass
+    status_code = 404
+    code = "lead_stage_not_found"
 
 
 class LeadStageConflictError(LeadStageError):
@@ -59,11 +70,12 @@ class LeadStageConflictError(LeadStageError):
 
 
 class LeadStageInUseError(LeadStageError):
-    pass
+    code = "lead_stage_in_use"
 
 
 class LeadStageProtectedError(LeadStageError):
-    pass
+    status_code = 400
+    code = "lead_stage_protected"
 
 
 @dataclass(frozen=True)
