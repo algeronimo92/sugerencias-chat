@@ -6,7 +6,6 @@ el usuario la recibió, y eso decide si el recordatorio se libera para
 reintentarlo. ``app.composition`` lo conecta con el WebSocket.
 """
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -32,14 +31,3 @@ async def deliver_due_reminders() -> None:
             # El usuario estaba desconectado: se reintenta en el próximo
             # ciclo y recibirá el aviso cuando vuelva a abrir la app.
             await release_reminder(reminder["task_id"])
-
-
-async def watch_task_reminders() -> None:
-    while True:
-        try:
-            await deliver_due_reminders()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Error procesando recordatorios de tareas")
-        await asyncio.sleep(30)

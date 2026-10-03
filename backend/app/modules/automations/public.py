@@ -24,7 +24,11 @@ from app.modules.automations.application.management import (
 from app.modules.automations.application.simulation import simulate_visual_flow
 from app.modules.automations.application.triggers import trigger_inbound_message, trigger_lead_created
 from app.modules.automations.application.validation import validate_automation_rule
-from app.modules.automations.infrastructure.worker import backfill_automation_state, watch_automations
+from app.modules.automations.infrastructure.worker import (
+    automations_tick,
+    backfill_automation_state,
+    wait_for_automation_work,
+)
 from app.modules.automations.queries import (
     get_automation_execution,
     get_automation_rule,

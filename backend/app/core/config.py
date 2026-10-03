@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     # default mantiene instalaciones single-tenant existentes sobre public
     # mientras completan el cutover.
     multitenancy_enabled: bool = False
+    # Si la API corre también los workers de fondo. True mantiene la
+    # instalación de un solo proceso; en producción la API va con false y el
+    # servicio worker (`python -m app.worker`) los corre aparte.
+    run_workers: bool = True
+    # Puerto donde el proceso worker sirve sus métricas de Prometheus. 0 lo
+    # desactiva (desarrollo, tests).
+    worker_metrics_port: int = 0
     # Hosts que sirven exclusivamente operaciones de plataforma. CSV evita que
     # una variable de entorno requiera sintaxis JSON; en producción debe ser una
     # lista explícita y mínima.

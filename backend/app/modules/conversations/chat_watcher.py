@@ -1,10 +1,10 @@
-import asyncio
 import logging
 from datetime import datetime
 
 from app.core.events import publish
 from app.modules.conversations.domain.events import ExternalMessageDetected, ExternalMessagesSynced
 from app.modules.conversations.message_queries import fetch_latest_message_cursor, fetch_messages_after_cursor
+from app.tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +42,18 @@ async def process_chat_changes(
     return cursor
 
 
-async def watch_chats() -> None:
-    """Sondea la DB y procesa en orden todos los mensajes insertados por fuera."""
-    cursor = await fetch_latest_message_cursor()
-    while True:
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
-        try:
-            cursor = await process_chat_changes(cursor)
-        except Exception:
-            logger.exception("Error al vigilar cambios en los chats")
+# Hasta dónde se procesó cada negocio. La primera pasada solo toma el último
+# mensaje existente: no vuelve a disparar automatizaciones por el historial.
+_cursors: dict[object, tuple[datetime, int] | None] = {}
+
+
+async def chat_watcher_tick() -> None:
+    """Una pasada para el negocio en curso: procesa en orden los mensajes
+    insertados por fuera desde la anterior. Si falla, el cursor no avanza y la
+    próxima pasada los reintenta."""
+    context = get_current_tenant()
+    key = context.organization_id if context else None
+    if key not in _cursors:
+        _cursors[key] = await fetch_latest_message_cursor()
+        return
+    _cursors[key] = await process_chat_changes(_cursors[key])

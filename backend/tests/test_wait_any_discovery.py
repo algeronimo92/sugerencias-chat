@@ -54,10 +54,10 @@ def test_the_cut_is_deterministic():
 def test_replies_are_discovered_on_every_loop_and_not_once_a_minute():
     """`wakeup` despierta el bucle cuando entra un mensaje; si el descubrimiento
     vive dentro del bloque de housekeeping, ese despertar no sirve de nada."""
-    bucle = _funcion("watch_automations")
+    bucle = _funcion("automations_tick")
     housekeeping = next(
         node for node in ast.walk(bucle)
-        if isinstance(node, ast.If) and "next_housekeeping_at" in ast.unparse(node.test)
+        if isinstance(node, ast.If) and "_next_housekeeping_at" in ast.unparse(node.test)
     )
 
     assert "_discover_wait_any_replies" not in _llamadas(housekeeping)
@@ -67,8 +67,8 @@ def test_replies_are_discovered_on_every_loop_and_not_once_a_minute():
 def test_the_expensive_sweeps_stay_in_the_housekeeping_block():
     """Lo que sí recorre tablas enteras se queda en el minuto."""
     housekeeping = next(
-        node for node in ast.walk(_funcion("watch_automations"))
-        if isinstance(node, ast.If) and "next_housekeeping_at" in ast.unparse(node.test)
+        node for node in ast.walk(_funcion("automations_tick"))
+        if isinstance(node, ast.If) and "_next_housekeeping_at" in ast.unparse(node.test)
     )
     llamadas = _llamadas(housekeeping)
 

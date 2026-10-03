@@ -62,7 +62,7 @@ def register_adapters() -> None:
         channel=current_channel,
     ))
     provide_ai_provider(N8nAiProvider())
-    provide_reminder_delivery(manager.send_to_user)
+    provide_reminder_delivery(manager.send_to_user_here)
     provide_appointment_ports(AppointmentPorts(
         repository=SqlAppointmentRepository(),
         calendar=GoogleCalendar(),

@@ -60,7 +60,7 @@ async def test_direct_message_scopes_repeated_user_ids_by_tenant() -> None:
     await manager.connect(socket_a, user_id=7, organization_id=tenant_a.organization_id)
     await manager.connect(socket_b, user_id=7, organization_id=tenant_b.organization_id)
 
-    delivered = await manager.send_to_user(
+    delivered = await manager.send_to_user_here(
         7,
         {"type": "task_reminder"},
         organization_id=tenant_b.organization_id,

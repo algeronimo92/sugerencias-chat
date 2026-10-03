@@ -15,6 +15,7 @@ from app.core.secret_cipher import (
     needs_reencryption,
 )
 from app.tenancy.context import get_current_tenant
+from app.db.signals import signal, tell_others_soon
 
 
 @dataclass(frozen=True)
@@ -252,17 +253,33 @@ def _cache_scope() -> str | None:
     return str(context.organization_id) if context else None
 
 
+SETTINGS_CACHE_SIGNAL = "cache:settings"
+
+
 def invalidate_settings_cache(*, all_tenants: bool = False) -> None:
-    """Invalida la configuración del tenant activo.
+    """Invalida la configuración del tenant activo, en este proceso y en los
+    demás (otras réplicas de la API y el worker), para que un cambio de token
+    o de URL no tarde el TTL de la caché en verse.
 
     La caché histórica era global: durante su TTL, el segundo negocio recibía
     tokens Meta, URLs n8n y políticas del primero. Sin contexto se conserva el
     comportamiento legacy y ``all_tenants`` queda para rotaciones de plataforma.
     """
+    scope = _cache_scope()
+    _invalidate_here(all_tenants, scope)
+    tell_others_soon(SETTINGS_CACHE_SIGNAL, {"all_tenants": all_tenants, "scope": scope})
+
+
+def _invalidate_here(all_tenants: bool, scope: str | None) -> None:
     if all_tenants:
         _effective_cache.clear()
     else:
-        _effective_cache.pop(_cache_scope(), None)
+        _effective_cache.pop(scope, None)
+
+
+@signal(SETTINGS_CACHE_SIGNAL).on
+async def _invalidated_elsewhere(payload: dict) -> None:
+    _invalidate_here(bool(payload.get("all_tenants")), payload.get("scope"))
 
 
 async def _effective_values() -> dict[str, str]:

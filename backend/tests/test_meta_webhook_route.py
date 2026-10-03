@@ -28,7 +28,10 @@ def client(monkeypatch):
     stored = AsyncMock(return_value=(["evt-1"], 0))
     monkeypatch.setattr(meta_webhook, "store_changes", stored)
     notified = []
-    monkeypatch.setattr(meta_webhook, "notify_new_events", lambda: notified.append(True))
+    async def notify():
+        notified.append(True)
+
+    monkeypatch.setattr(meta_webhook, "notify_new_events", notify)
     app = FastAPI()
     app.include_router(meta_webhook.router)
     test_client = TestClient(app)

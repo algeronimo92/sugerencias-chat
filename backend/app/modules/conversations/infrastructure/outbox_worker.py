@@ -10,6 +10,9 @@ se completan al responder los resuelven los suscriptores de esos eventos.
 from __future__ import annotations
 
 import asyncio
+
+from app.db.signals import ring, signal
+from app.tenancy.context import get_current_tenant
 import contextlib
 import copy
 import logging
@@ -83,23 +86,17 @@ def describe_failure(exc: Exception) -> str:
 
 
 # Despierta al worker en cuanto hay trabajo nuevo, en lugar de esperar el
-# próximo sondeo. Vale dentro del proceso; el sondeo queda como respaldo.
-_wakeup = asyncio.Event()
+# próximo sondeo, aunque el mensaje se haya encolado en otro proceso (la API)
+# que el worker. El sondeo queda como respaldo.
+OUTBOX_SIGNAL = "outbox"
 
 
-def notify_new_work() -> None:
-    _wakeup.set()
+async def notify_new_work() -> None:
+    await ring(OUTBOX_SIGNAL)
 
 
 async def _wait_for_work() -> None:
-    try:
-        await asyncio.wait_for(_wakeup.wait(), timeout=IDLE_POLL_SECONDS)
-    except asyncio.TimeoutError:
-        pass
-    finally:
-        # Se limpia después de esperar: si el aviso llegó mientras se procesaba
-        # la ronda anterior, perderlo devolvería el retardo que esto elimina.
-        _wakeup.clear()
+    await signal(OUTBOX_SIGNAL).wait(IDLE_POLL_SECONDS)
 
 
 async def _upload_stored_media(media: dict) -> str:
@@ -241,19 +238,23 @@ async def _recover_stale_jobs() -> None:
         await _mark_failed(job, DeliveryUnconfirmedError(), SendOutcome.UNCONFIRMED)
 
 
-async def watch_message_outbox() -> None:
-    next_sweep_at = 0.0
-    while True:
-        try:
-            if monotonic() >= next_sweep_at:
-                next_sweep_at = monotonic() + STALE_SWEEP_INTERVAL_SECONDS
-                await _recover_stale_jobs()
-            jobs = await claim_batch(datetime.now(timezone.utc))
-            if jobs:
-                await _process_batch(jobs)
-                continue
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Error al procesar el outbox de mensajes")
-        await _wait_for_work()
+# Cuándo le toca a cada negocio el barrido de trabajos huérfanos.
+_next_sweep_at: dict[object, float] = {}
+
+
+async def outbox_tick() -> bool:
+    """Una pasada para el negocio en curso: un lote de envíos. True si tomó
+    un lote, para que el ciclo vuelva sin esperar."""
+    context = get_current_tenant()
+    key = context.organization_id if context else None
+    if monotonic() >= _next_sweep_at.get(key, 0.0):
+        _next_sweep_at[key] = monotonic() + STALE_SWEEP_INTERVAL_SECONDS
+        await _recover_stale_jobs()
+    jobs = await claim_batch(datetime.now(timezone.utc))
+    if jobs:
+        await _process_batch(jobs)
+    return bool(jobs)
+
+
+async def wait_for_outbox_work() -> None:
+    await _wait_for_work()

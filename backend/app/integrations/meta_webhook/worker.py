@@ -15,6 +15,7 @@ from time import monotonic
 
 from app.integrations.meta_webhook.inbox import InboxEvent, claim_events, complete_event, purge_processed
 from app.integrations.meta_webhook.processor import process_change
+from app.db.signals import ring, signal
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,13 @@ BATCH_SIZE = 20
 IDLE_POLL_SECONDS = 2.0
 PURGE_INTERVAL_SECONDS = 3600.0
 
-_wakeup = asyncio.Event()
+META_INBOX_SIGNAL = "meta-inbox"
 
 
-def notify_new_events() -> None:
-    """Despierta al worker apenas el webhook guardó eventos nuevos."""
-    _wakeup.set()
+async def notify_new_events() -> None:
+    """Despierta al worker apenas el webhook guardó eventos nuevos, aunque el
+    webhook haya entrado por otra réplica."""
+    await ring(META_INBOX_SIGNAL)
 
 
 async def run_event(event: InboxEvent) -> bool:
@@ -56,12 +58,7 @@ async def drain_once(limit: int = BATCH_SIZE) -> int:
 
 
 async def _wait_for_work() -> None:
-    try:
-        await asyncio.wait_for(_wakeup.wait(), timeout=IDLE_POLL_SECONDS)
-    except asyncio.TimeoutError:
-        pass
-    finally:
-        _wakeup.clear()
+    await signal(META_INBOX_SIGNAL).wait(IDLE_POLL_SECONDS)
 
 
 async def watch_meta_webhook_inbox() -> None:

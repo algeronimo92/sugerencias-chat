@@ -7,7 +7,6 @@ ninguna señal hasta que un cliente se queja. Estos gauges quedan expuestos en
 Prometheus/Alertmanager puedan avisar antes de que eso pase.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -148,12 +147,6 @@ async def _update_once() -> None:
     _set(ws_local_connections, await manager.connection_count())
 
 
-async def watch_queue_metrics() -> None:
-    while True:
-        try:
-            await _update_once()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Error actualizando métricas de colas para Prometheus")
-        await asyncio.sleep(POLL_SECONDS)
+async def queue_metrics_tick() -> None:
+    """Una pasada para el negocio en curso."""
+    await _update_once()

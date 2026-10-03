@@ -1,4 +1,10 @@
-"""Conexiones y distribución WebSocket aisladas por tenant."""
+"""Conexiones y distribución WebSocket aisladas por tenant.
+
+Cada proceso conoce solo sus propias conexiones. Lo que se emite acá se
+entrega a las locales y viaja por el bus de señales (``app.db.signals``) a
+las demás réplicas, que lo entregan a las suyas: un aviso emitido por el
+worker llega al navegador conectado a cualquier réplica de la API.
+"""
 
 import asyncio
 import logging
@@ -7,6 +13,7 @@ from uuid import UUID
 
 from fastapi import WebSocket
 
+from app.db import signals
 from app.tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -59,6 +66,12 @@ class ConnectionManager:
     ) -> None:
         if organization_id is None:
             organization_id = _active_organization_id()
+        await self._broadcast_here(message, organization_id)
+        await signals.ring_remote(REALTIME_SIGNAL, {
+            "kind": "broadcast", "organization_id": _wire(organization_id), "message": message,
+        })
+
+    async def _broadcast_here(self, message: dict, organization_id: UUID | None) -> None:
         async with self._lock:
             connections = [
                 websocket
@@ -102,6 +115,12 @@ class ConnectionManager:
         middleware ya niega conexiones nuevas para ese host, pero un socket
         abierto antes de la suspensión no vuelve a pasar por él hasta que se
         corta y el navegador reconecta."""
+        await self._disconnect_here(organization_id)
+        await signals.ring_remote(REALTIME_SIGNAL, {
+            "kind": "disconnect", "organization_id": _wire(organization_id),
+        })
+
+    async def _disconnect_here(self, organization_id: UUID | None) -> None:
         async with self._lock:
             connections = [
                 websocket
@@ -128,7 +147,25 @@ class ConnectionManager:
         message: dict,
         *,
         organization_id: UUID | None = None,
+    ) -> None:
+        """Entrega a todas las pestañas del usuario, en cualquier réplica."""
+        if organization_id is None:
+            organization_id = _active_organization_id()
+        await self.send_to_user_here(user_id, message, organization_id=organization_id)
+        await signals.ring_remote(REALTIME_SIGNAL, {
+            "kind": "user", "organization_id": _wire(organization_id), "user_id": user_id, "message": message,
+        })
+
+    async def send_to_user_here(
+        self,
+        user_id: int,
+        message: dict,
+        *,
+        organization_id: UUID | None = None,
     ) -> bool:
+        """Solo a las conexiones de este proceso; devuelve si alguna lo
+        recibió. Lo usan los recordatorios de tareas, que se liberan para
+        otra réplica cuando el usuario no está conectado a esta."""
         if organization_id is None:
             organization_id = _active_organization_id()
         async with self._lock:
@@ -146,4 +183,28 @@ class ConnectionManager:
         return any(not isinstance(result, BaseException) for result in results)
 
 
+REALTIME_SIGNAL = "realtime"
+
+
+def _wire(organization_id: UUID | None) -> str | None:
+    return str(organization_id) if organization_id is not None else None
+
+
+def _unwire(value: str | None) -> UUID | None:
+    return UUID(value) if value else None
+
+
 manager = ConnectionManager()
+
+
+@signals.signal(REALTIME_SIGNAL).on
+async def _from_other_process(payload: dict) -> None:
+    """Lo que otra réplica emitió, entregado a las conexiones de esta."""
+    organization_id = _unwire(payload.get("organization_id"))
+    kind = payload.get("kind")
+    if kind == "broadcast":
+        await manager._broadcast_here(payload["message"], organization_id)
+    elif kind == "user":
+        await manager.send_to_user_here(payload["user_id"], payload["message"], organization_id=organization_id)
+    elif kind == "disconnect":
+        await manager._disconnect_here(organization_id)

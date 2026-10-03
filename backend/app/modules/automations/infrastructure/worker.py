@@ -7,7 +7,6 @@ respuesta o una ejecución que quedó colgada por un reinicio. Detectan con SQL
 y delegan en la aplicación (``triggers`` y ``engine``).
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from time import monotonic
@@ -49,6 +48,7 @@ from app.modules.automations.domain.replies import (
 )
 from app.modules.automations.infrastructure import wakeup
 from app.modules.leads.public import Actor, update_lead
+from app.tenancy.context import get_current_tenant
 from app.modules.platform.ports.settings_service import get_effective
 
 logger = logging.getLogger(__name__)
@@ -506,28 +506,31 @@ async def backfill_automation_state() -> None:
         await backfill_customer_response_deadlines(rule_id)
 
 
-async def watch_automations() -> None:
-    next_housekeeping_at = 0.0
-    while True:
-        try:
-            now_mono = monotonic()
-            if now_mono >= next_housekeeping_at:
-                await _release_stale_executions()
-                await _discover_recent_inbound_messages()
-                await _discover_timed_events()
-                await _auto_close_idle_conversations()
-                next_housekeeping_at = now_mono + 60.0
-            # Fuera del bloque de housekeeping: un cliente que toca un botón
-            # despierta el bucle por `wakeup`, y esperar hasta un minuto a que
-            # el bot conteste es la diferencia entre parecer un bot y parecer
-            # un cuelgue. Es una sola query, y filtrada.
-            await _discover_wait_any_replies()
-            await process_due_automation_executions()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Error al procesar automatizaciones")
-        # Duerme hasta el próximo ciclo o hasta que un trigger lo despierte —
-        # así los eventos de los routers se procesan al instante sin que la
-        # request HTTP tenga que esperar a las acciones.
-        await wakeup.sleep(AUTOMATION_POLL_SECONDS)
+# Cuándo le toca a cada negocio la limpieza y los barridos de un minuto.
+_next_housekeeping_at: dict[object, float] = {}
+
+
+async def automations_tick() -> None:
+    """Una pasada del motor para el negocio en curso."""
+    context = get_current_tenant()
+    key = context.organization_id if context else None
+    now_mono = monotonic()
+    if now_mono >= _next_housekeeping_at.get(key, 0.0):
+        await _release_stale_executions()
+        await _discover_recent_inbound_messages()
+        await _discover_timed_events()
+        await _auto_close_idle_conversations()
+        _next_housekeeping_at[key] = now_mono + 60.0
+    # Fuera del bloque de housekeeping: un cliente que toca un botón
+    # despierta el ciclo por `wakeup`, y esperar hasta un minuto a que el bot
+    # conteste es la diferencia entre parecer un bot y parecer un cuelgue. Es
+    # una sola query, y filtrada.
+    await _discover_wait_any_replies()
+    await process_due_automation_executions()
+
+
+async def wait_for_automation_work() -> None:
+    """Duerme hasta el próximo ciclo o hasta que un trigger lo despierte —
+    así los eventos de los routers se procesan al instante sin que la request
+    HTTP tenga que esperar a las acciones."""
+    await wakeup.sleep(AUTOMATION_POLL_SECONDS)

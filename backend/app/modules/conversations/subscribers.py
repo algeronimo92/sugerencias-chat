@@ -31,7 +31,7 @@ from app.realtime.ws_manager import manager
 
 @subscribe(OutboundQueued, phase=Phase.AFTER_COMMIT)
 async def wake_the_outbox(_event: OutboundQueued) -> None:
-    notify_new_work()
+    await notify_new_work()
 
 
 @subscribe(OutboundQueued, phase=Phase.AFTER_COMMIT)

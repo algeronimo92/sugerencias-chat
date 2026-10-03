@@ -9,6 +9,7 @@ from time import monotonic
 from app.core.config import settings
 from app.db.models.auth import User
 from app.tenancy.context import get_current_tenant
+from app.db.signals import signal, tell_others_soon
 
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
@@ -77,9 +78,27 @@ def valid_login_pin(pin: str) -> bool:
     bcrypt del PIN guardado."""
     return len(pin) in LEGACY_PIN_LENGTHS and pin.isascii() and pin.isdigit()
 
+SESSION_CACHE_SIGNAL = "cache:sessions"
+
+
 def invalidate_session_cache(*, user_id: int | None = None, session_id: str | None = None) -> None:
+    """Olvida sesiones resueltas en este proceso y en los demás: una sesión
+    revocada o un usuario desactivado no pueden seguir entrando por otra
+    réplica hasta que venza la caché."""
     context = get_current_tenant()
     organization_id = str(context.organization_id) if context else None
+    _invalidate_here(organization_id, user_id, session_id)
+    tell_others_soon(SESSION_CACHE_SIGNAL, {
+        "organization_id": organization_id, "user_id": user_id, "session_id": session_id,
+    })
+
+
+@signal(SESSION_CACHE_SIGNAL).on
+async def _invalidated_elsewhere(payload: dict) -> None:
+    _invalidate_here(payload.get("organization_id"), payload.get("user_id"), payload.get("session_id"))
+
+
+def _invalidate_here(organization_id: str | None, user_id: int | None, session_id: str | None) -> None:
     if user_id is None and session_id is None:
         for key in [key for key in _session_cache if key[0] == organization_id]:
             _session_cache.pop(key, None)

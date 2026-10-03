@@ -57,6 +57,13 @@ def _to_async_url(url: str) -> str:
     return url
 
 
+def asyncpg_connect_kwargs() -> dict:
+    """Argumentos para abrir una conexión asyncpg suelta (el LISTEN del bus de
+    señales, que no puede vivir en el pool)."""
+    url = _to_async_url(settings.database_url).replace("postgresql+asyncpg://", "postgresql://", 1)
+    return {"dsn": url, "ssl": settings.database_ssl, "timeout": 10}
+
+
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:

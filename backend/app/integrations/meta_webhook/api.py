@@ -59,5 +59,5 @@ async def receive_webhook(request: Request) -> dict:
     if duplicates:
         metrics.webhook_duplicate_changes.inc(duplicates)
     if accepted:
-        notify_new_events()
+        await notify_new_events()
     return {"received": len(accepted), "duplicates": duplicates}
