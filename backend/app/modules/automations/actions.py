@@ -88,7 +88,6 @@ async def _action_change_service(action, chat, execution, rule, deps) -> dict:
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "lead_updated"})
     return {"status": AutomationExecutionStatus.COMPLETED, "service": action["service"]}
 
 
@@ -111,11 +110,6 @@ async def _action_set_conversation_state(action, chat, execution, rule, deps) ->
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({
-        "type": "chats_updated",
-        "chat_id": chat["chat_id"],
-        "reason": "conversation_opened" if should_open else "conversation_closed",
-    })
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "conversation_state": state,
@@ -130,7 +124,6 @@ async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "lead_updated"})
     return {"status": AutomationExecutionStatus.COMPLETED, "user_id": action["user_id"]}
 
 
@@ -138,7 +131,6 @@ async def _action_add_tag(action, chat, execution, rule, deps) -> dict:
     _actor_type, actor_user_id = _execution_actor(execution)
     if not await deps.assign_tag(chat["chat_id"], action["tag_id"], actor_user_id):
         raise ValueError("Lead o etiqueta no encontrado")
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "tag_changed"})
     return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
 
 
@@ -155,15 +147,15 @@ async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
 
 async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
     actor_type, actor_user_id = _execution_actor(execution)
-    updated = await deps.update_lead_stage(
+    # El cambio hecho por una automatización no dispara las de cambio de
+    # etapa (ver LeadStageChanged.triggers_automations).
+    updated = await deps.change_stage(
         chat["chat_id"], action["stage"], actor_type, actor_user_id,
         {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
-        schedule_automations=False,
     )
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "stage_changed"})
     return {"status": AutomationExecutionStatus.COMPLETED, "stage": action["stage"]}
 
 

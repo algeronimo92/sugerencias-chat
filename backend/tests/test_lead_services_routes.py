@@ -5,7 +5,8 @@ from fastapi import HTTPException
 
 from app.modules.catalogs.schemas import LeadServiceCreate, LeadServiceUpdate
 from app.modules.catalogs import services_api as lead_services
-from app.modules.catalogs.repository import LeadServiceAlreadyExistsError, _rename_service_references
+from app.db.store_common import LeadServiceAlreadyExistsError
+from app.modules.catalogs.public import rename_service_references as _rename_service_references
 
 
 @pytest.mark.asyncio

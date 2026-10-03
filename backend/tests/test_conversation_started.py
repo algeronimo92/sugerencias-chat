@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,8 +6,7 @@ import pytest
 from domain_types import AutomationTrigger
 import app.modules.automations.flow_validation as _domain_app_modules_automations_flow_validation
 import app.modules.automations.scheduler as _domain_app_modules_automations_scheduler
-import app.modules.leads.repository as _domain_app_modules_leads_repository
-from tests.conftest import patch_automations, patch_store
+from tests.conftest import patch_automations
 
 
 def _sessionmaker(session):
@@ -124,36 +122,5 @@ async def test_inbound_message_does_not_repeat_trigger_while_open(monkeypatch):
     assert schedule.await_args.args[0] == AutomationTrigger.MESSAGE_RECEIVED
 
 
-@pytest.mark.asyncio
-async def test_open_conversation_transition_returns_version_and_audits(monkeypatch):
-    opened_at = datetime(2026, 8, 5, 14, 30, tzinfo=timezone.utc)
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        _MappingResult({"conversacion_version": 2, "conversacion_abierta_at": opened_at}),
-        None,
-    ])
-    patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-
-    result = await _domain_app_modules_leads_repository.open_conversation_from_inbound(
-        "lead-1", "wamid-9", "Necesito otra cita",
-    )
-
-    assert result == {
-        "version": 2,
-        "opened_at": "2026-08-05T14:30:00.000000Z",
-    }
-    session.commit.assert_awaited_once()
-    session.rollback.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_open_conversation_transition_is_noop_when_already_open(monkeypatch):
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=_MappingResult(None))
-    patch_store(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-
-    result = await _domain_app_modules_leads_repository.open_conversation_from_inbound("lead-1", "wamid-10")
-
-    assert result is None
-    session.rollback.assert_awaited_once()
-    session.commit.assert_not_awaited()
+# La transición de apertura (versión nueva, auditoría, una sola vez aunque
+# lleguen dos webhooks) se prueba en test_lead_commands.py, contra el comando.

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, case, exists, false, func, or_, select, true
 
-from app.db.models.leads import Lead, LeadStage, LeadTagAssignment, WhatsAppIdentity
+from app.db.models.leads import Lead, LeadTagAssignment, WhatsAppIdentity
 from app.db.models.catalogs import LeadTag
 from app.db.models.auth import User
 from app.db.models.conversations import WspMessage
@@ -12,7 +12,6 @@ from app.integrations.whatsapp.connection import connection_scope
 from app.db.store_common import (
     CHATS_PAGE_SIZE,
     CUSTOMER_SERVICE_WINDOW,
-    KANBAN_PAGE_SIZE,
     _fmt_ts,
     _parse_ts,
     _row_to_chat,
@@ -483,18 +482,3 @@ async def lead_exists(chat_id: str) -> bool:
     stmt = select(exists().where(Lead.id == chat_id))
     async with get_sessionmaker()() as session:
         return bool(await session.scalar(stmt))
-
-
-async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
-    from app.modules.leads.ports.kanban_repository import (fetch_kanban_counts as fetch)
-    return await fetch(search)
-
-
-async def fetch_kanban_snapshot(search: str | None = None, limit: int = KANBAN_PAGE_SIZE) -> dict:
-    from app.modules.leads.ports.kanban_repository import (fetch_kanban_snapshot as fetch)
-    return await fetch(search, limit)
-
-
-async def fetch_kanban_stage(stage: str, search: str | None = None, offset: int = 0, limit: int = KANBAN_PAGE_SIZE) -> dict:
-    from app.modules.leads.ports.kanban_repository import (fetch_kanban_stage as fetch)
-    return await fetch(stage, search, offset, limit)

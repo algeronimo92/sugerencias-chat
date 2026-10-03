@@ -321,7 +321,7 @@ class TestConversationState:
             "4316bc30-f78c-57a2-8f98-bff9087678d6", {"conversacion_abierta": True},
         )]
         assert chat["conversacion_abierta"] is True
-        assert recorder.broadcasts[-1]["reason"] == "conversation_opened"
+        # El aviso por WebSocket lo emite el suscriptor de leads.
 
     async def test_closes_an_open_conversation(self, deps, recorder):
         chat = make_chat(conversacion_abierta=True)
@@ -339,7 +339,7 @@ class TestConversationState:
             "4316bc30-f78c-57a2-8f98-bff9087678d6", {"conversacion_abierta": False},
         )]
         assert chat["conversacion_abierta"] is False
-        assert recorder.broadcasts[-1]["reason"] == "conversation_closed"
+        # El aviso por WebSocket lo emite el suscriptor de leads.
 
     async def test_same_state_is_idempotent(self, deps, recorder):
         action = {

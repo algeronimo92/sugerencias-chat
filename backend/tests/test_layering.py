@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -431,4 +432,73 @@ def test_code_on_the_unit_of_work_never_opens_sessions_by_hand():
             ):
                 if "get_sessionmaker()" in source:
                     violations.add(str(path.relative_to(BACKEND)))
+    assert violations == set()
+
+
+# La aplicación orquesta: habla con puertos y abre la unidad de trabajo, pero
+# no conoce SQL, HTTP ni proveedores.
+APPLICATION_FORBIDDEN = ("sqlalchemy", "fastapi", "starlette", "httpx", "app.db.session", "app.db.models", "app.realtime", "app.integrations")
+
+
+def _layer_files(layer: str) -> list[Path]:
+    return [path for path in MODULES.rglob("*.py") if layer in path.relative_to(MODULES).parts]
+
+
+def test_application_layers_only_talk_to_ports():
+    violations = {
+        f"{path.relative_to(BACKEND)} -> {module}"
+        for path in _layer_files("application")
+        for module in _imported_modules(path)
+        if module.startswith(APPLICATION_FORBIDDEN)
+    }
+    assert violations == set()
+
+
+def test_application_never_imports_its_adapters():
+    """Las implementaciones se conectan en app.composition, no se importan."""
+    violations = {
+        f"{path.relative_to(BACKEND)} -> {module}"
+        for path in _layer_files("application")
+        for module in _imported_modules(path)
+        if ".infrastructure" in module
+    }
+    assert violations == set()
+
+
+def test_http_never_reaches_infrastructure():
+    violations = {
+        f"{path.relative_to(BACKEND)} -> {module}"
+        for path in _module_python_files()
+        if path.name == "api.py" or path.name.endswith("_api.py")
+        for module in _imported_modules(path)
+        if ".infrastructure" in module
+    }
+    assert violations == set()
+
+
+def test_the_read_side_never_writes():
+    """Un ``*queries.py`` es el lado de lectura: la API lo llama directo
+    porque no cambia nada. Si necesita escribir, es un comando."""
+    writers = {"insert", "update", "delete"}
+    violations = set()
+    for path in _module_python_files():
+        if not (path.name == "queries.py" or path.name.endswith("_queries.py")):
+            continue
+        for module in _imported_modules(path):
+            if module.startswith(("sqlalchemy.", "sqlalchemy.dialects")) and module.rsplit(".", 1)[-1] in writers:
+                violations.add(f"{path.relative_to(BACKEND)} -> {module}")
+    assert violations == set()
+
+
+def test_only_leads_moves_a_lead_between_stages():
+    """La regla de cambio de etapa tiene un solo dueño. Antes el analista de IA
+    tenía su propia copia y las dos divergieron."""
+    pattern = re.compile(r"\bestado\s*=|\.estado\s*=|razon_perdido\s*=")
+    violations = {
+        str(path.relative_to(BACKEND))
+        for base in ("app/modules", "app/integrations", "app/workers")
+        for path in (BACKEND / base).rglob("*.py")
+        if "leads" not in path.relative_to(BACKEND / base).parts[:1]
+        and pattern.search(path.read_text(encoding="utf-8"))
+    }
     assert violations == set()

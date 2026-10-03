@@ -25,7 +25,7 @@ configure_logging()
 
 from app.core.config import settings
 from app.core.errors import DomainError
-from app.composition import register_subscribers
+from app.composition import configure as configure_composition
 from app.db.session import close_engine, get_engine
 from app.modules.issue_reports import api as issue_reports
 from app.modules.appointments import api as appointments
@@ -401,7 +401,7 @@ async def lifespan(app: FastAPI):
     await close_engine()
 
 
-register_subscribers()
+configure_composition()
 
 app = FastAPI(title="WSP Suggestions API", lifespan=lifespan)
 

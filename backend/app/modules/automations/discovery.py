@@ -42,7 +42,7 @@ from app.modules.automations.scheduler import (
     _backfill_customer_response_deadlines,
     schedule_automation_event,
 )
-from app.modules.leads.ports.repository import (update_lead)
+from app.modules.leads.public import Actor, update_lead
 from app.modules.platform.ports.settings_service import (get_effective)
 from app.realtime.ws_manager import manager
 from app.core.time_format import iso_utc
@@ -444,16 +444,11 @@ async def _auto_close_idle_conversations() -> int:
     closed = 0
     for lead_id in lead_ids:
         try:
-            await update_lead(lead_id, {"conversacion_abierta": False}, "system", None)
+            await update_lead(lead_id, {"conversacion_abierta": False}, actor=Actor.system())
         except Exception:
             logger.exception("No se pudo cerrar por inactividad la conversación de %s", lead_id)
             continue
         closed += 1
-        await manager.broadcast({
-            "type": "chats_updated",
-            "chat_id": lead_id,
-            "reason": "conversation_closed",
-        })
     if closed:
         logger.info("Cerradas %s conversaciones tras %s horas sin mensajes", closed, hours)
     return closed

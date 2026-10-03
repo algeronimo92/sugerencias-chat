@@ -17,7 +17,6 @@ from app.modules.leads.schemas import Chat, LeadStageUpdate, LeadUpdate
 from app.modules.leads import api as chats
 from app.db.store_common import _activity_safe
 from app.modules.leads.updates import LEAD_FIELD_TO_COLUMN
-from tests.conftest import patch_chats
 
 
 CHAT_ID = "ade6fb90-6b65-5edd-8d8a-8ff1cf733e69"
@@ -25,15 +24,15 @@ ADMIN = SimpleNamespace(role="admin", id=1)
 
 
 @pytest.fixture
-def update_deps(monkeypatch):
-    updated = AsyncMock(return_value={"chat_id": CHAT_ID})
-    patch_chats(monkeypatch, "update_lead", updated)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    return updated
+def leads_api(in_memory_leads, monkeypatch):
+    """La API real sobre los comandos reales, con el repositorio en memoria."""
+    in_memory_leads.repository.seed(CHAT_ID, stage="calificado")
+    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"chat_id": CHAT_ID}))
+    return in_memory_leads.repository
 
 
 @pytest.mark.asyncio
-async def test_patch_lead_persists_the_four_editable_fields(update_deps):
+async def test_patch_lead_persists_the_four_editable_fields(leads_api):
     body = LeadUpdate(
         con_especialista=True,
         razon_perdido="Se fue con la competencia",
@@ -43,49 +42,39 @@ async def test_patch_lead_persists_the_four_editable_fields(update_deps):
 
     await chats.update_chat(CHAT_ID, body, ADMIN)
 
-    values = update_deps.await_args.args[1]
-    assert values["con_especialista"] is True
-    assert values["razon_perdido"] == "Se fue con la competencia"
+    assert leads_api.column(CHAT_ID, "con_especialista") is True
+    assert leads_api.column(CHAT_ID, "razon_perdido") == "Se fue con la competencia"
     # Pydantic ya los entrega tipados: asyncpg necesita los objetos, no strings.
-    assert values["fecha_recontacto"] == date(2026, 8, 1)
-    assert values["proxima_cita"] == datetime(2026, 8, 1, 15, 0, tzinfo=timezone.utc)
+    assert leads_api.column(CHAT_ID, "fecha_recontacto") == date(2026, 8, 1)
+    assert leads_api.column(CHAT_ID, "proxima_cita") == datetime(2026, 8, 1, 15, 0, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
-async def test_patch_lead_ignores_fields_not_sent(update_deps):
+async def test_patch_lead_ignores_fields_not_sent(leads_api):
     """exclude_unset: tocar el nombre no puede borrar la próxima cita."""
     await chats.update_chat(CHAT_ID, LeadUpdate(name="Ana"), ADMIN)
 
-    values = update_deps.await_args.args[1]
-    assert set(values) == {"nombre"}
-
-
-@pytest.fixture
-def stage_deps(monkeypatch):
-    update_stage = AsyncMock(return_value={"chat_id": CHAT_ID, "stage": "perdido"})
-    patch_chats(monkeypatch, "fetch_chat", AsyncMock(return_value={"stage": "calificado"}))
-    patch_chats(monkeypatch, "update_lead_stage", update_stage)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    patch_chats(monkeypatch, "notify_automations_scheduled", AsyncMock())
-    return update_stage
+    [record] = leads_api.audit(CHAT_ID)
+    assert set(record.new_value) == {"nombre"}
 
 
 @pytest.mark.asyncio
-async def test_move_to_lost_forwards_the_reason(stage_deps):
+async def test_move_to_lost_forwards_the_reason(leads_api):
     body = LeadStageUpdate(stage="perdido", razon_perdido="No contesta hace un mes")
 
     await chats.move_chat_stage(CHAT_ID, body, ADMIN)
 
-    assert stage_deps.await_args.kwargs["razon_perdido"] == "No contesta hace un mes"
+    assert leads_api.column(CHAT_ID, "razon_perdido") == "No contesta hace un mes"
 
 
 @pytest.mark.asyncio
-async def test_move_without_reason_is_allowed(stage_deps):
+async def test_move_without_reason_is_allowed(leads_api):
     """Los webhooks y las automatizaciones mueven a perdido sin razón: exigirla
     en el backend los rompería."""
     await chats.move_chat_stage(CHAT_ID, LeadStageUpdate(stage="perdido"), ADMIN)
 
-    assert stage_deps.await_args.kwargs["razon_perdido"] is None
+    assert leads_api.column(CHAT_ID, "estado") == "perdido"
+    assert leads_api.column(CHAT_ID, "razon_perdido") is None
 
 
 def test_activity_safe_serializes_dates_for_jsonb():

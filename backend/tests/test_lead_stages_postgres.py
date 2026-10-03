@@ -18,8 +18,10 @@ from sqlalchemy import select, text
 from app.db.models.leads import Lead
 from app.db.session import control_session, get_sessionmaker
 from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, create_lead_stage, delete_lead_stage, list_lead_stages, list_stages_for_ai, reorder_lead_stages, update_lead_stage_definition
-from app.modules.conversations.chat_queries import fetch_kanban_counts
-from app.modules.leads.repository import ensure_lead_stub, update_lead_stage
+from app.modules.leads.application.commands import change_stage
+from app.modules.leads.domain.lead import Actor
+from app.modules.leads.infrastructure.repository import ensure_lead_stub
+from app.modules.leads.kanban_queries import fetch_kanban_counts
 from app.tenancy.context import tenant_context, validate_schema_name
 from app.tenancy.provisioning import provision_tenant
 from tests.test_tenant_postgres_integration import pg_dsn, real_engine  # noqa: F401
@@ -90,24 +92,22 @@ async def test_business_stages_lifecycle(tenant) -> None:
         await ensure_lead_stub(lead_id, None, "test")
         assert (await _lead_row(lead_id)).estado == "nuevo"
 
-        moved = await update_lead_stage(lead_id, "cita_pagada", include_chat=False)
-        assert moved["changed"] is True
+        moved = await change_stage(lead_id, "cita_pagada", actor=Actor.system())
+        assert moved.changed is True
         assert (await _lead_row(lead_id)).estado == "cita_pagada"
 
         # La razón de pérdida sigue al tipo `lost`, no al nombre `perdido`.
-        await update_lead_stage(
-            lead_id, "sin_respuesta", razon_perdido="No contesta", include_chat=False
-        )
+        await change_stage(lead_id, "sin_respuesta", lost_reason="No contesta", actor=Actor.system())
         assert tuple(await _lead_row(lead_id)) == ("sin_respuesta", "No contesta")
-        await update_lead_stage(lead_id, "calificado", include_chat=False)
+        await change_stage(lead_id, "calificado", actor=Actor.system())
         assert tuple(await _lead_row(lead_id)) == ("calificado", None)
 
         # Nadie mueve un lead a una etapa desactivada o inexistente.
         await update_lead_stage_definition("sin_respuesta", {"is_active": False})
         with pytest.raises(InvalidLeadStageError):
-            await update_lead_stage(lead_id, "sin_respuesta", include_chat=False)
+            await change_stage(lead_id, "sin_respuesta", actor=Actor.system())
         with pytest.raises(InvalidLeadStageError):
-            await update_lead_stage(lead_id, "inventada", include_chat=False)
+            await change_stage(lead_id, "inventada", actor=Actor.system())
         assert "sin_respuesta" not in {stage["key"] for stage in await list_stages_for_ai()}
 
         # La etapa inicial está protegida; una en uso no se borra.

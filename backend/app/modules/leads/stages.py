@@ -19,13 +19,19 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
-from app.core.errors import DomainError
+from app.modules.leads.domain.errors import (
+    InvalidLeadStageError,
+    LeadStageConflictError,
+    LeadStageInUseError,
+    LeadStageNotFoundError,
+    LeadStageProtectedError,
+)
+from app.modules.leads.domain.stage import StageRule, require_destination
 from app.db.models.automations import AutomationRule
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.catalogs import MessageTemplate
@@ -35,60 +41,6 @@ from domain_types import INITIAL_LEAD_STAGE, LeadStageKind
 
 MAX_STAGES = 40
 _KEY_MAX_LENGTH = 40
-
-
-class LeadStageError(DomainError, ValueError):
-    """Base de los errores de dominio de etapas (mensaje apto para el usuario).
-
-    Sigue siendo ``ValueError`` para los llamadores que todavía lo atrapan así.
-    """
-
-    status_code = 409
-    code = "lead_stage_conflict"
-
-
-class InvalidLeadStageError(LeadStageError):
-    """La clave no existe en el negocio o la etapa está desactivada."""
-
-    status_code = 422
-    code = "invalid_lead_stage"
-
-    def __init__(self, key: str, *, inactive: bool = False) -> None:
-        self.key = key
-        self.inactive = inactive
-        reason = "está desactivada" if inactive else "no existe"
-        super().__init__(f"La etapa {key!r} {reason}")
-
-
-class LeadStageNotFoundError(LeadStageError):
-    status_code = 404
-    code = "lead_stage_not_found"
-
-
-class LeadStageConflictError(LeadStageError):
-    pass
-
-
-class LeadStageInUseError(LeadStageError):
-    code = "lead_stage_in_use"
-
-
-class LeadStageProtectedError(LeadStageError):
-    status_code = 400
-    code = "lead_stage_protected"
-
-
-@dataclass(frozen=True)
-class StageRule:
-    """Lo que el código necesita saber de una etapa al mover un lead."""
-
-    key: str
-    kind: str
-    is_active: bool
-
-    @property
-    def is_lost(self) -> bool:
-        return self.kind == LeadStageKind.LOST
 
 
 _COLUMNS = (
@@ -190,17 +142,6 @@ async def load_stage_rules(session, keys) -> dict[str, StageRule]:
         )
     ).all()
     return {key: StageRule(key, kind, bool(is_active)) for key, kind, is_active in rows}
-
-
-def require_destination(rules: dict[str, StageRule], key: str) -> StageRule:
-    """La etapa a la que se mueve un lead tiene que existir y estar activa."""
-
-    rule = rules.get(key)
-    if rule is None:
-        raise InvalidLeadStageError(key)
-    if not rule.is_active:
-        raise InvalidLeadStageError(key, inactive=True)
-    return rule
 
 
 async def verify_stage_keys(session, keys, *, active_only: bool) -> None:

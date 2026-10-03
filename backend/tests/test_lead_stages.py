@@ -131,17 +131,12 @@ async def test_protected_stage_is_a_bad_request(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_moving_a_lead_to_an_unknown_stage_is_422(monkeypatch):
+async def test_moving_a_lead_to_an_inactive_stage_is_422(in_memory_leads):
     from app.modules.leads import api as chats
-    from tests.conftest import patch_chats
 
-    patch_chats(
-        monkeypatch,
-        "update_lead_stage",
-        AsyncMock(side_effect=InvalidLeadStageError("archivado", inactive=True)),
-    )
-    with pytest.raises(HTTPException) as exc:
-        await chats.move_chat_stage("lead-1", LeadStageUpdate(stage="archivado"), ADMIN)
+    in_memory_leads.repository.seed("lead-1")
+    with pytest.raises(InvalidLeadStageError) as exc:
+        await chats.move_chat_stage("lead-1", LeadStageUpdate(stage="archivada"), ADMIN)
     assert exc.value.status_code == 422
     assert "desactivada" in exc.value.detail
 

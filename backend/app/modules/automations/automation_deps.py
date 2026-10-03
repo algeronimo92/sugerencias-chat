@@ -18,8 +18,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.db.session import get_sessionmaker
-from app.modules.catalogs.ports.repository import (assign_tag, remove_tag)
-from app.modules.leads.ports.repository import (update_lead, update_lead_stage)
+from app.modules.leads.public import Actor, LeadNotFound, TagNotAvailable
+from app.modules.leads import public as leads
 from app.modules.conversations.ports.chat_queries import (fetch_chat, get_customer_service_window)
 from app.modules.conversations.ports.message_history import (fetch_latest_customer_message_target)
 from app.modules.conversations.ports.message_outbox import (enqueue_messages)
@@ -43,6 +43,47 @@ async def _send_to_user(user_id: int, payload: dict) -> None:
     await manager.send_to_user(user_id, payload)
 
 
+# Adaptadores sobre los comandos de leads. El motor trabaja con la tarjeta del
+# chat (un dict) y con "no encontrado" como valor de retorno; los comandos
+# levantan errores de dominio. Los avisos de tiempo real los emiten los
+# suscriptores de leads, no el motor.
+async def update_lead(chat_id: str, values: dict, actor_type: str, actor_user_id: int | None) -> dict | None:
+    try:
+        await leads.update_lead(chat_id, values, actor=Actor(actor_type, actor_user_id))
+    except LeadNotFound:
+        return None
+    return await fetch_chat(chat_id)
+
+
+async def change_stage(
+    chat_id: str, stage: str, actor_type: str, actor_user_id: int | None, metadata: dict | None = None,
+) -> dict | None:
+    try:
+        await leads.change_stage(
+            chat_id, stage, actor=Actor(actor_type, actor_user_id), metadata=metadata,
+            triggers_automations=False,
+        )
+    except LeadNotFound:
+        return None
+    return await fetch_chat(chat_id)
+
+
+async def assign_tag(chat_id: str, tag_id: int, user_id: int | None) -> bool:
+    try:
+        await leads.assign_tag(chat_id, tag_id, actor=Actor.of(user_id))
+    except TagNotAvailable:
+        return False
+    return True
+
+
+async def remove_tag(chat_id: str, tag_id: int, user_id: int | None) -> bool:
+    try:
+        await leads.remove_tag(chat_id, tag_id, actor=Actor.of(user_id))
+    except TagNotAvailable:
+        return False
+    return True
+
+
 @dataclass(frozen=True)
 class AutomationDeps:
     session_factory: Callable[[], Any] = field(default=get_sessionmaker)
@@ -51,7 +92,7 @@ class AutomationDeps:
     fetch_chat: Callable[[str], Awaitable[dict | None]] = fetch_chat
     fetch_latest_customer_message_target: Callable[[str], Awaitable[dict | None]] = fetch_latest_customer_message_target
     update_lead: Callable[..., Awaitable[dict | None]] = update_lead
-    update_lead_stage: Callable[..., Awaitable[dict | None]] = update_lead_stage
+    change_stage: Callable[..., Awaitable[dict | None]] = change_stage
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window

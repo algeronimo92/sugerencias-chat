@@ -81,16 +81,11 @@ async def test_legacy_analysis_forwards_null_and_appointment_fields(monkeypatch)
 
 async def test_analysis_job_applies_one_atomic_patch(monkeypatch):
     apply = AsyncMock(
-        return_value=(
-            {"status": "ok", "job_id": JOB_ID, "applied": True, "changed": True},
-            2,
-        )
+        return_value={"status": "ok", "job_id": JOB_ID, "applied": True, "changed": True}
     )
     patch_webhooks(monkeypatch, "apply_analysis_job_atomic", apply)
     broadcast = AsyncMock()
-    notify = AsyncMock()
     patch_webhooks(monkeypatch, "_broadcast_lead_updated", broadcast)
-    patch_webhooks(monkeypatch, "notify_automations_scheduled", notify)
     body = LeadAnalysisResultWebhookBody(
         chat_id="lead-1",
         context_revision="v1:abc",
@@ -110,7 +105,8 @@ async def test_analysis_job_applies_one_atomic_patch(monkeypatch):
     }
     assert apply.await_args.kwargs["stage"] == "calificado"
     broadcast.assert_awaited_once_with("lead-1")
-    notify.assert_awaited_once_with(2)
+    # Las automatizaciones que agendó el cambio de etapa despiertan al motor
+    # desde su suscriptor, no desde el webhook.
 
 
 async def test_analysis_job_maps_stale_result_to_conflict(monkeypatch):

@@ -5,8 +5,13 @@ primero solo con su ``user_id`` (nombre de usuario activo, sin teléfono) y
 otro creado a mano con su número. La identidad nunca une dos historiales por
 su cuenta: eso se resuelve acá, explícitamente y sobre un par ya verificado.
 
-Todo el movimiento va en una sola transacción: o el lead queda entero en el
-destino, o no se movió nada. Un merge a medias dejaría mensajes sin ficha.
+Todo el movimiento va en la transacción del caso de uso (``merge_leads`` en
+``application.commands``): o el lead queda entero en el destino, o no se movió
+nada. Un merge a medias dejaría mensajes sin ficha.
+
+Es una operación de datos que, por definición, recorre las tablas de otros
+módulos que cuelgan del lead: es la excepción declarada a la propiedad de
+tablas (ver ``tests/test_layering.py``).
 """
 
 from __future__ import annotations
@@ -22,13 +27,9 @@ from app.db.models.leads import Lead, LeadActivity, LeadNote, LeadTagAssignment,
 from app.db.models.tasks import LeadTask
 from app.db.models.conversations import MessageOutbox, ScheduledMessage, WspMessage
 from app.db.models.notifications import UserNotification
-from app.db.session import get_sessionmaker
+from app.modules.leads.domain.errors import LeadMergeError
 
 logger = logging.getLogger(__name__)
-
-
-class LeadMergeError(RuntimeError):
-    pass
 
 
 # Todo lo que cuelga de un lead, con la columna que lo apunta. Si alguna vez se
@@ -79,68 +80,50 @@ class MergeReport:
         )
 
 
-async def merge_leads(source_id: str, target_id: str, apply: bool = False) -> MergeReport:
+async def merge_rows(session, source_id: str, target_id: str) -> MergeReport:
     """Mueve todo lo del lead ``source_id`` al ``target_id`` y borra el origen.
 
-    Con ``apply=False`` (por defecto) cuenta lo que movería y revierte: es la
-    simulación que permite revisar un par antes de tocar datos reales.
-
-    El destino conserva su identidad y su etapa comercial; del origen se adopta
-    únicamente lo que el destino tenga vacío.
+    No confirma: corre dentro de la unidad de trabajo del llamador, que
+    revierte todo si algo falla. El destino conserva su identidad y su etapa
+    comercial; del origen se adopta únicamente lo que el destino tenga vacío.
     """
     if source_id == target_id:
         raise LeadMergeError("El origen y el destino son el mismo lead")
 
     report = MergeReport(source_id=source_id, target_id=target_id)
+    source = await session.get(Lead, source_id, with_for_update=True)
+    if source is None:
+        raise LeadMergeError(f"El lead de origen {source_id} no existe")
+    target = await session.get(Lead, target_id, with_for_update=True)
+    if target is None:
+        raise LeadMergeError(f"El lead de destino {target_id} no existe")
 
-    async with get_sessionmaker()() as session:
-        # Sin session.begin(): la transacción se cierra a mano para poder
-        # revertirla íntegra en modo simulación.
-        source = await session.get(Lead, source_id, with_for_update=True)
-        if source is None:
-            raise LeadMergeError(f"El lead de origen {source_id} no existe")
-        target = await session.get(Lead, target_id, with_for_update=True)
-        if target is None:
-            raise LeadMergeError(f"El lead de destino {target_id} no existe")
+    report.aliases = await _move_aliases(session, source_id, target_id)
+    report.moved = await _move_owned_rows(session, source_id, target_id)
+    report.moved["lead_tag_assignments"] = await _move_tags(session, source_id, target_id)
+    report.filled = _fill_empty_fields(source, target)
 
-        try:
-            report.aliases = await _move_aliases(session, source_id, target_id)
-            report.moved = await _move_owned_rows(session, source_id, target_id)
-            report.moved["lead_tag_assignments"] = await _move_tags(
-                session, source_id, target_id
-            )
-            report.filled = _fill_empty_fields(source, target)
+    await session.execute(
+        insert(LeadActivity).values(
+            lead_id=target_id,
+            event_type="lead_updated",
+            actor_type="system",
+            metadata_={
+                "reason": "merge_lid_duplicate",
+                "merged_from": source_id,
+                "aliases": list(report.aliases),
+                "moved": report.moved,
+            },
+            created_at=datetime.now(timezone.utc),
+        )
+    )
 
-            await session.execute(
-                insert(LeadActivity).values(
-                    lead_id=target_id,
-                    event_type="lead_updated",
-                    actor_type="system",
-                    metadata_={
-                        "reason": "merge_lid_duplicate",
-                        "merged_from": source_id,
-                        "aliases": list(report.aliases),
-                        "moved": report.moved,
-                    },
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-
-            # El origen ya no apunta a nada propio: las FK en CASCADE no tienen
-            # filas que arrastrar.
-            await session.delete(source)
-            await session.flush()
-
-            if apply:
-                await session.commit()
-                report.applied = True
-                logger.info("Leads fusionados: %s", report.summary())
-            else:
-                await session.rollback()
-        except Exception:
-            await session.rollback()
-            raise
-
+    # El origen ya no apunta a nada propio: las FK en CASCADE no tienen
+    # filas que arrastrar.
+    await session.delete(source)
+    await session.flush()
+    report.applied = True
+    logger.info("Leads fusionados: %s", report.summary())
     return report
 
 

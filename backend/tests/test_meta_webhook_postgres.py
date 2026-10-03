@@ -330,7 +330,7 @@ async def test_media_is_imported_without_touching_the_meta_object(tenant, fake_m
 @pytest.mark.asyncio
 async def test_outbound_records_the_exact_body_sent_and_the_meta_status(tenant, monkeypatch) -> None:
     from app.modules.conversations import message_outbox
-    from app.modules.leads.repository import create_lead
+    from app.modules.leads.public import Actor, create_lead
     from tests.conftest import FakeSender, install_channel
 
     context, _phone, _ids = tenant
@@ -339,8 +339,8 @@ async def test_outbound_records_the_exact_body_sent_and_the_meta_status(tenant, 
     monkeypatch.setattr(message_outbox, "manager", type("M", (), {"broadcast": staticmethod(_noop)})())
 
     with tenant_context(context):
-        lead = await create_lead(phone="51987654321", name="Ana")
-        [queued] = await message_outbox.enqueue_messages(lead["chat_id"], [{
+        lead_id = await create_lead("51987654321", "Ana", actor=Actor.system())
+        [queued] = await message_outbox.enqueue_messages(lead_id, [{
             "content": "Hola Ana",
             "message": {"type": "text", "text": {"body": "Hola Ana"}},
         }], actor_user_id=None)

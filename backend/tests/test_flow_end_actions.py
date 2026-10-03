@@ -78,7 +78,7 @@ async def test_end_node_can_close_the_conversation(deps, recorder):
     assert recorder.tags_added == [(chat["chat_id"], 7)]
     assert recorder.lead_updates == [(chat["chat_id"], {"conversacion_abierta": False})]
     assert chat["conversacion_abierta"] is False
-    assert recorder.broadcasts[-1]["reason"] == "conversation_closed"
+    # El aviso por WebSocket lo emite el suscriptor de leads.
 
 
 async def test_end_node_without_action_leaves_conversation_open(deps, recorder):

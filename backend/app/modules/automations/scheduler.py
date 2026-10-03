@@ -13,7 +13,7 @@ from app.modules.automations.common import (
     OVERDUE_LOOKBACK_GRACE_MINUTES,
     _wake,
 )
-from app.modules.leads.ports.repository import (open_conversation_from_inbound)
+from app.modules.leads.public import open_conversation_from_inbound
 from app.realtime.ws_manager import manager
 from app.core.time_format import iso_utc
 

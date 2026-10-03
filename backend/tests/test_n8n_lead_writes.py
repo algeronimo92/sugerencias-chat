@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.integrations.n8n import api as webhooks
 from app.integrations.n8n.webhook_schemas import LeadAnalysisWebhookBody, LeadInboundActivityWebhookBody
+from app.modules.leads.domain.errors import LeadNotFound
 from tests.conftest import patch_webhooks
 
 
@@ -21,54 +22,47 @@ def broadcast(monkeypatch):
     return mock
 
 
-async def test_analysis_updates_only_the_fields_the_agent_resolved(monkeypatch, broadcast):
-    update = AsyncMock(return_value={"chat_id": "lead-1"})
-    patch_webhooks(monkeypatch, "update_lead", update)
+async def test_analysis_updates_only_the_fields_the_agent_resolved(in_memory_leads):
+    repository = in_memory_leads.repository
+    repository.seed("lead-1", nombre="Ana", notas="previa")
 
     result = await webhooks.lead_analysis_webhook(LeadAnalysisWebhookBody(
         chat_id="lead-1", nombre="Ana", servicio_interes="Botox", fecha_recontacto=date(2026, 10, 1),
     ))
 
     assert result == {"status": "ok", "changed": True}
-    update.assert_awaited_once_with(
-        "lead-1",
-        {"nombre": "Ana", "servicio_interes": "Botox", "fecha_recontacto": date(2026, 10, 1)},
-        actor_type="agent",
-    )
-    assert broadcast.await_args.args[0]["reason"] == "lead_updated"
+    [record] = repository.audit("lead-1")
+    assert record.actor.type == "agent"
+    # Solo lo que cambió queda en la auditoría; las notas no se tocaron.
+    assert record.new_value == {"servicio_interes": "Botox", "fecha_recontacto": "2026-10-01"}
+    assert repository.column("lead-1", "notas") == "previa"
 
 
-async def test_analysis_without_fields_does_not_touch_the_lead(monkeypatch):
-    update = AsyncMock()
-    patch_webhooks(monkeypatch, "update_lead", update)
-
+async def test_analysis_without_fields_does_not_touch_the_lead(in_memory_leads):
     assert await webhooks.lead_analysis_webhook(LeadAnalysisWebhookBody(chat_id="lead-1")) == {
         "status": "ok", "changed": False,
     }
-    update.assert_not_awaited()
+    assert in_memory_leads.published == []
 
 
-async def test_analysis_of_a_missing_lead_is_404(monkeypatch):
-    patch_webhooks(monkeypatch, "update_lead", AsyncMock(return_value=None))
-
-    with pytest.raises(HTTPException) as exc:
+async def test_analysis_of_a_missing_lead_is_404(in_memory_leads):
+    with pytest.raises(LeadNotFound) as exc:
         await webhooks.lead_analysis_webhook(LeadAnalysisWebhookBody(chat_id="lead-1", nombre="Ana"))
 
     assert exc.value.status_code == 404
 
 
-async def test_inbound_activity_parses_the_timestamp(monkeypatch):
-    update = AsyncMock(return_value={"chat_id": "lead-1"})
-    patch_webhooks(monkeypatch, "update_lead", update)
+async def test_inbound_activity_parses_the_timestamp(in_memory_leads):
+    in_memory_leads.repository.seed("lead-1")
 
     await webhooks.lead_inbound_activity_webhook(LeadInboundActivityWebhookBody(
         chat_id="lead-1", ultimo_emisor="cliente", ultimo_mensaje_at="2026-09-15T18:00:00Z",
     ))
 
-    assert update.await_args.args[1] == {
-        "ultimo_emisor": "cliente",
-        "ultimo_mensaje_at": datetime(2026, 9, 15, 18, 0, tzinfo=timezone.utc),
-    }
+    assert in_memory_leads.repository.column("lead-1", "ultimo_mensaje_at") == datetime(
+        2026, 9, 15, 18, 0, tzinfo=timezone.utc,
+    )
+    assert in_memory_leads.repository.column("lead-1", "ultimo_emisor") == "cliente"
 
 
 async def test_last_message_returns_an_empty_object_when_there_is_none(monkeypatch):

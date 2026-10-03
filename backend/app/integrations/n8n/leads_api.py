@@ -1,9 +1,8 @@
 from fastapi import Depends, Header, HTTPException
-from app.modules.leads.ports.repository import (update_lead, update_lead_stage)
+from app.modules.leads.public import Actor, InvalidLeadStageError, change_stage, update_lead
 from app.modules.conversations.ports.read_state import (record_lead_touch)
 from app.integrations.whatsapp.identity import lead_id_for_identifier
 from app.realtime.ws_manager import manager
-from app.modules.automations.public import notify_automations_scheduled
 from app.integrations.n8n.webhook_schemas import (
     LeadTouchWebhookBody,
     LeadStageWebhookBody,
@@ -13,7 +12,6 @@ from app.integrations.n8n.webhook_schemas import (
 )
 from app.integrations.n8n.common import _parse_iso_datetime, webhooks_router
 from app.modules.ai.ports.ai_context import (fetch_context_revision)
-from app.modules.leads.ports.stages import (InvalidLeadStageError)
 from app.modules.ai.ports.ai_job_tokens import (AIJobClaims, require_ai_job_context)
 from app.modules.ai.ports.ai_jobs import (AIContextStale, AIJobConflict, AIJobExpired, AIJobNotFound, apply_analysis_job_atomic, finish_ai_job)
 
@@ -72,31 +70,18 @@ async def lead_stage_webhook(
     stage = body.estado
     metadata = {"reason": body.razonamiento} if body.razonamiento else None
     try:
-        result = await update_lead_stage(
-            body.chat_id, stage, actor_type="agent", metadata=metadata, include_chat=False
-        )
+        result = await change_stage(body.chat_id, stage, actor=Actor.agent(), metadata=metadata)
     except InvalidLeadStageError as exc:
         # Las etapas son de cada negocio: la lista válida la da
         # /api/webhooks/analysis-context, no una lista fija.
         raise HTTPException(status_code=422, detail=f"Estado inválido: {exc}") from exc
-    if result is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
 
-    if result["changed"]:
-        await manager.broadcast(
-            {
-                "type": "chats_updated",
-                "chat_id": body.chat_id,
-                "reason": "stage_changed",
-                "lead_stage_updated": {"chat_id": body.chat_id, "stage": stage},
-            }
-        )
-        await notify_automations_scheduled(result.get("automations_scheduled", 0))
-    else:
+    if not result.changed:
         # La etapa no se movió, pero el analista sí tocó el resto del lead.
+        # Si se movió, el aviso lo emite el suscriptor del cambio de etapa.
         await _broadcast_lead_updated(body.chat_id)
 
-    return {"status": "ok", "changed": result["changed"], "stage": stage}
+    return {"status": "ok", "changed": result.changed, "stage": stage}
 
 
 @router.post("/lead-analysis")
@@ -125,10 +110,7 @@ async def lead_analysis_webhook(body: LeadAnalysisWebhookBody):
         raise HTTPException(status_code=422, detail="con_especialista no puede ser null")
     if not values:
         return {"status": "ok", "changed": False}
-    lead = await update_lead(body.chat_id, values, actor_type="agent")
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    await _broadcast_lead_updated(body.chat_id)
+    await update_lead(body.chat_id, values, actor=Actor.agent())
     return {"status": "ok", "changed": True}
 
 
@@ -155,7 +137,7 @@ async def apply_analysis_job_webhook(
     stage = body.estado or None
 
     try:
-        result, automations_scheduled = await apply_analysis_job_atomic(
+        result = await apply_analysis_job_atomic(
             job_id,
             chat_id=body.chat_id,
             context_revision=body.context_revision,
@@ -178,8 +160,6 @@ async def apply_analysis_job_webhook(
         raise HTTPException(status_code=409, detail="Job IA no coincide con el resultado") from exc
 
     await _broadcast_lead_updated(body.chat_id)
-    if automations_scheduled:
-        await notify_automations_scheduled(automations_scheduled)
     return result
 
 
@@ -194,6 +174,5 @@ async def lead_inbound_activity_webhook(body: LeadInboundActivityWebhookBody):
         values["ultimo_mensaje_at"] = timestamp
     if not values:
         return {"status": "ok", "changed": False}
-    if await update_lead(body.chat_id, values, actor_type="system") is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    await update_lead(body.chat_id, values, actor=Actor.system())
     return {"status": "ok", "changed": True}

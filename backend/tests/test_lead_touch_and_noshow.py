@@ -16,7 +16,8 @@ from fastapi import HTTPException
 from app.modules.leads import api as chats
 from app.integrations.n8n import api as webhooks
 from app.integrations.n8n.webhook_schemas import LeadTouchWebhookBody
-from tests.conftest import patch_chats, patch_webhooks
+from app.modules.leads.domain.errors import LeadNotFound
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 WA_ID = "51987654321"
@@ -65,25 +66,18 @@ async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(mon
     assert exc.value.status_code == 404
 
 
-@pytest.mark.asyncio
-async def test_register_no_show_returns_updated_chat(monkeypatch):
-    mark_no_show = AsyncMock(return_value={"chat_id": LEAD_ID, "contador_noshow": 1})
-    patch_chats(monkeypatch, "mark_lead_no_show", mark_no_show)
-    broadcast = AsyncMock()
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
+async def test_register_no_show_returns_updated_chat(in_memory_leads, monkeypatch):
+    in_memory_leads.repository.seed(LEAD_ID, contador_noshow=0)
+    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"chat_id": LEAD_ID, "contador_noshow": 1}))
 
     result = await chats.register_no_show(LEAD_ID, ADMIN)
 
-    mark_no_show.assert_awaited_once_with(LEAD_ID, ADMIN.id)
-    broadcast.assert_awaited_once()
+    assert in_memory_leads.repository.column(LEAD_ID, "contador_noshow") == 1
     assert result == {"chat_id": LEAD_ID, "contador_noshow": 1}
 
 
-@pytest.mark.asyncio
-async def test_register_no_show_missing_lead_returns_404(monkeypatch):
-    patch_chats(monkeypatch, "mark_lead_no_show", AsyncMock(return_value=None))
-
-    with pytest.raises(HTTPException) as exc:
+async def test_register_no_show_missing_lead_returns_404(in_memory_leads):
+    with pytest.raises(LeadNotFound) as exc:
         await chats.register_no_show(LEAD_ID, ADMIN)
 
     assert exc.value.status_code == 404

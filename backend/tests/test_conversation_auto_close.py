@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+
+from app.modules.leads.public import Actor
 from sqlalchemy.dialects import postgresql
 
 import app.modules.automations.discovery as _domain_app_modules_automations_discovery
@@ -81,15 +83,13 @@ async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None
     patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
     update = AsyncMock()
     patch_automations(monkeypatch, "update_lead", update)
-    broadcast = AsyncMock()
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
 
     assert closed == 2
     assert update.await_count == 2
-    update.assert_awaited_with("lead-2", {"conversacion_abierta": False}, "system", None)
-    assert broadcast.await_count == 2
+    update.assert_awaited_with("lead-2", {"conversacion_abierta": False}, actor=Actor.system())
+    # El aviso de conversación cerrada lo emite el suscriptor de leads.
 
 
 @pytest.mark.asyncio

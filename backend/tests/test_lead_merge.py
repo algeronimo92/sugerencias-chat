@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.leads.merge import LeadMergeError, _fill_empty_fields, merge_leads
+from app.modules.leads.domain.errors import LeadMergeError
+from app.modules.leads.infrastructure.merge import _fill_empty_fields, merge_rows
 
 
 def _lead(**campos) -> SimpleNamespace:
@@ -61,5 +62,5 @@ def test_the_phone_of_a_lead_born_from_a_lid_is_adopted():
 @pytest.mark.asyncio
 async def test_a_lead_cannot_be_merged_into_itself():
     with pytest.raises(LeadMergeError, match="mismo lead"):
-        await merge_leads("7b08f4d9-855f-4718-b95f-9c021da52f77",
+        await merge_rows(None, "7b08f4d9-855f-4718-b95f-9c021da52f77",
                           "7b08f4d9-855f-4718-b95f-9c021da52f77")

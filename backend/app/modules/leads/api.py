@@ -1,51 +1,58 @@
+"""Adaptador HTTP de leads.
+
+Valida la entrada, llama a un comando o a una consulta y devuelve la tarjeta
+del chat. No traduce errores (lo hace el handler de ``DomainError``) ni avisa
+por WebSocket (lo hacen los suscriptores de los eventos del lead).
+"""
+
 import logging
 
-
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.db.models.auth import User
-from app.modules.leads.schemas import Chat, ChatPage, KanbanPage, KanbanSnapshot, LeadCreate, LeadMergeRequest, LeadStageKey, LeadStageUpdate, LeadUpdate, LeadActivityItem, SellerItem
-from app.modules.leads.service import (
-    CHATS_PAGE_SIZE,
-    KANBAN_PAGE_SIZE,
-    LeadAlreadyExistsError,
-    create_lead,
-    assign_tag,
-    delete_lead,
-    fetch_chat,
-    fetch_chats,
-    fetch_kanban_counts,
-    fetch_kanban_snapshot,
-    fetch_kanban_stage,
-    list_lead_activity,
-    fetch_total_unread_chat_count,
-    mark_lead_no_show,
-    list_active_sellers,
-    rekey_lead_phone,
-    remove_tag,
-    update_lead,
-    update_lead_stage,
+from app.db.store_common import CHATS_PAGE_SIZE, KANBAN_PAGE_SIZE
+from app.modules.auth.public import get_current_user, list_active_sellers, require_admin
+from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
+from app.modules.conversations.ports.chat_queries import fetch_chat, fetch_chats
+from app.modules.conversations.ports.read_state import fetch_total_unread_chat_count
+from app.modules.leads.application import commands
+from app.modules.leads.domain.lead import Actor
+from app.modules.leads.kanban_queries import fetch_kanban_counts, fetch_kanban_snapshot, fetch_kanban_stage
+from app.modules.leads.queries import list_lead_activity
+from app.modules.leads.schemas import (
+    Chat,
+    ChatPage,
+    KanbanPage,
+    KanbanSnapshot,
+    LeadActivityItem,
+    LeadCreate,
+    LeadMergeRequest,
+    LeadStageKey,
+    LeadStageUpdate,
+    LeadUpdate,
+    SellerItem,
 )
-from app.modules.auth.public import get_current_user, require_admin
-from app.modules.leads.merge import LeadMergeError, merge_leads
-from app.modules.leads.stages import InvalidLeadStageError
-from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
-from app.core.phone_utils import (
-    PhoneValidationError,
-    normalize_phone,
-)
-from app.modules.platform.public import effective_country_code
-from app.realtime.ws_manager import manager
 from app.modules.leads.updates import lead_column_values
-from app.modules.automations.public import (
-    pause_lead_executions,
-    resume_lead_executions,
-    trigger_lead_created,
-    notify_automations_scheduled,
-)
+from app.modules.platform.public import effective_country_code
 
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 logger = logging.getLogger(__name__)
+
+
+async def _chat_or_404(chat_id: str) -> dict:
+    chat = await fetch_chat(chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    return chat
+
+
+async def _normalized_phone(raw: str) -> str:
+    try:
+        return normalize_phone(raw, await effective_country_code())
+    except PhoneValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("", response_model=ChatPage)
@@ -120,28 +127,15 @@ async def get_kanban_stage(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=KANBAN_PAGE_SIZE, ge=1, le=100),
 ):
-    return await fetch_kanban_stage(
-        stage,
-        search.strip() if search else None,
-        offset,
-        limit,
-    )
+    return await fetch_kanban_stage(stage, search.strip() if search else None, offset, limit)
 
 
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
-    try:
-        lead = await update_lead_stage(
-            chat_id, body.stage, "user", user.id, razon_perdido=body.razon_perdido
-        )
-    except InvalidLeadStageError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "stage_changed"})
-    await notify_automations_scheduled(lead.get("automations_scheduled", 0))
-    return lead
+    await commands.change_stage(
+        chat_id, body.stage, actor=Actor.user(user.id), lost_reason=body.razon_perdido,
+    )
+    return await _chat_or_404(chat_id)
 
 
 @router.post("", response_model=Chat, status_code=201)
@@ -149,10 +143,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
-    try:
-        digits = normalize_phone(body.phone, await effective_country_code())
-    except PhoneValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    digits = await _normalized_phone(body.phone)
 
     if user.role != "admin" and body.vendedor_id not in (None, user.id):
         raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
@@ -165,29 +156,18 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
     # Meta no ofrece consultar si un número tiene WhatsApp: el wa_id tipeado
     # se usa tal cual y, si Meta lo normaliza al enviar, el outbox suma el
     # que informe como alias del lead.
-    try:
-        lead = await create_lead(
-            phone=digits,
-            name=name,
-            servicio_interes=body.servicio_interes,
-            vendedor_id=body.vendedor_id,
-            origen=body.origen,
-            notas=body.notas,
-            secondary_phone=body.secondary_phone,
-            custom_fields=custom_fields,
-            actor_user_id=user.id,
-        )
-    except LeadAlreadyExistsError:
-        raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-    await manager.broadcast({"type": "chats_updated", "chat_id": lead["chat_id"], "reason": "lead_created"})
-    try:
-        await trigger_lead_created(lead["chat_id"])
-    except Exception:
-        logger.exception("No se pudo programar la automatización de lead nuevo")
-    return lead
+    lead_id = await commands.create_lead(
+        digits,
+        name,
+        actor=Actor.user(user.id),
+        servicio_interes=body.servicio_interes,
+        vendedor_id=body.vendedor_id,
+        origen=body.origen,
+        notas=body.notas,
+        secondary_phone=body.secondary_phone,
+        custom_fields=custom_fields,
+    )
+    return await _chat_or_404(lead_id)
 
 
 @router.patch("/{chat_id}", response_model=Chat)
@@ -199,41 +179,9 @@ async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_c
     # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
     # su alias externo; el chat_id interno permanece estable.
     new_phone = values.pop("telefono", None)
-    if new_phone:
-        try:
-            digits = normalize_phone(new_phone, await effective_country_code())
-        except PhoneValidationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        try:
-            rekeyed = await rekey_lead_phone(chat_id, digits, user.id)
-        except LeadAlreadyExistsError:
-            raise HTTPException(status_code=409, detail="Ya existe un contacto con ese teléfono")
-        if rekeyed is None:
-            raise HTTPException(status_code=404, detail="Lead no encontrado")
-
-    try:
-        lead = await update_lead(chat_id, values, "user", user.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-
-    # La pausa congela y la reanudación descongela: lo que quedó a medias sigue
-    # después por donde iba, con el tiempo que le faltaba (ver
-    # pause_lead_executions / resume_lead_executions).
-    if values.get("automatizacion_pausada") is True:
-        try:
-            await pause_lead_executions(chat_id)
-        except Exception:
-            logger.exception("No se pudieron congelar las automatizaciones programadas al pausar %s", chat_id)
-    elif values.get("automatizacion_pausada") is False:
-        try:
-            await resume_lead_executions(chat_id)
-        except Exception:
-            logger.exception("No se pudieron reanudar las automatizaciones congeladas de %s", chat_id)
-
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
-    return lead
+    digits = await _normalized_phone(new_phone) if new_phone else None
+    await commands.edit_lead(chat_id, values, actor=Actor.user(user.id), phone=digits)
+    return await _chat_or_404(chat_id)
 
 
 @router.get("/sellers", response_model=list[SellerItem])
@@ -251,60 +199,40 @@ async def get_phone_config():
 
 @router.get("/{chat_id}", response_model=Chat)
 async def get_chat(chat_id: str):
-    chat = await fetch_chat(chat_id)
-    if chat is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    return chat
+    return await _chat_or_404(chat_id)
 
 
 @router.post("/{chat_id}/no-show", response_model=Chat)
 async def register_no_show(chat_id: str, user: User = Depends(get_current_user)):
     """El vendedor confirma que el cliente no llegó a la cita agendada."""
-    lead = await mark_lead_no_show(chat_id, user.id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
-    return lead
+    await commands.register_no_show(chat_id, actor=Actor.user(user.id))
+    return await _chat_or_404(chat_id)
 
 
 @router.delete("/{chat_id}", status_code=204)
-async def delete_chat(chat_id: str, _admin: User = Depends(require_admin)):
+async def delete_chat(chat_id: str, admin: User = Depends(require_admin)):
     """Borra el lead y todo su historial (mensajes, tareas, notas). No se
     puede deshacer: sin soft-delete, es admin-only a propósito."""
-    if not await delete_lead(chat_id):
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_deleted"})
+    await commands.delete_lead(chat_id, actor=Actor.user(admin.id))
 
 
 @router.post("/{chat_id}/merge", response_model=Chat)
-async def merge_chat(chat_id: str, body: LeadMergeRequest, _admin: User = Depends(require_admin)):
+async def merge_chat(chat_id: str, body: LeadMergeRequest, admin: User = Depends(require_admin)):
     """Fusiona `other_id` (se borra) dentro de `chat_id` (se conserva)."""
-    try:
-        await merge_leads(body.other_id, chat_id, apply=True)
-    except LeadMergeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    lead = await fetch_chat(chat_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"})
-    await manager.broadcast({"type": "chats_updated", "chat_id": body.other_id, "reason": "lead_deleted"})
-    return lead
+    await commands.merge_leads(body.other_id, chat_id, actor=Actor.user(admin.id))
+    return await _chat_or_404(chat_id)
 
 
 @router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)
 async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
-    if not await assign_tag(chat_id, tag_id, user.id):
-        raise HTTPException(status_code=404, detail="Lead o etiqueta no encontrados")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "tag_changed"})
-    return await fetch_chat(chat_id)
+    await commands.assign_tag(chat_id, tag_id, actor=Actor.user(user.id))
+    return await _chat_or_404(chat_id)
 
 
 @router.delete("/{chat_id}/tags/{tag_id}", response_model=Chat)
 async def delete_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
-    if not await remove_tag(chat_id, tag_id, user.id):
-        raise HTTPException(status_code=404, detail="La etiqueta no está asignada")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "tag_changed"})
-    return await fetch_chat(chat_id)
+    await commands.remove_tag(chat_id, tag_id, actor=Actor.user(user.id))
+    return await _chat_or_404(chat_id)
 
 
 @router.get("/{chat_id}/activity", response_model=list[LeadActivityItem])

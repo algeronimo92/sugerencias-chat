@@ -11,6 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.composition import configure as configure_composition
+from tests.leads_fakes import in_memory_leads  # noqa: F401  (fixture compartido)
+
 from app.modules.automations.automation_deps import AutomationDeps
 
 
@@ -165,9 +168,7 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         recorder.lead_updates.append((chat_id, values))
         return values
 
-    async def update_lead_stage(
-        chat_id, stage, actor_type="system", actor_user_id=None, metadata=None, schedule_automations=True,
-    ):
+    async def change_stage(chat_id, stage, actor_type="system", actor_user_id=None, metadata=None):
         # La etapa es la clave de texto del negocio (lead_stages.key).
         recorder.stage_changes.append((chat_id, stage))
         return {"stage": stage}
@@ -199,7 +200,7 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         assign_tag=assign_tag,
         remove_tag=remove_tag,
         update_lead=update_lead,
-        update_lead_stage=update_lead_stage,
+        change_stage=change_stage,
         record_template_use=record_template_use,
         broadcast=broadcast,
         send_to_user=send_to_user,
@@ -355,3 +356,7 @@ def automations_patch(name, new=None):
 
 def store_patch(name, new=None):
     return _patching(patch_store, name, new)
+
+
+# Los adaptadores y suscriptores reales, igual que en la API y los workers.
+configure_composition()
