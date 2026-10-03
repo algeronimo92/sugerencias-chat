@@ -1,85 +1,83 @@
 # Módulos de negocio
 
-Cada módulo reúne endpoints, contratos HTTP, casos de uso y acceso a datos de
-una misma capacidad. La composición de FastAPI y los workers vive en
-`app/bootstrap.py`; los modelos ORM se agrupan en `app/db/models/`.
-Los DTO HTTP antes compartidos en `backend/models/schemas.py` están ahora en
-`schemas.py` de cada módulo; `catalogs/public.py` expone la etiqueta que usa
-la tarjeta de lead sin crear una dependencia circular.
+El backend es hexagonal: cada módulo es una capacidad del CRM con su lógica
+adentro y sus dependencias hacia afuera detrás de puertos. Los adaptadores
+de entrada son las rutas HTTP, el WebSocket, el webhook de Meta, los
+callbacks de n8n, los workers y los suscriptores de eventos; los de salida,
+los repositorios SQL, el canal de WhatsApp, el proveedor de IA, el
+calendario, el almacenamiento y el bus de señales.
+
+`app/composition.py` es el único lugar que conoce a la vez los puertos y sus
+implementaciones: los conecta y registra los suscriptores. La API
+(`app/bootstrap.py`) y el worker (`python -m app.worker`) usan el mismo
+cableado y el mismo arranque (`app/runtime.py`).
+
+## Formas de un módulo
+
+Módulos núcleo (hexagonales):
 
 ```text
-issue_reports/
-├── api.py          # HTTP; valida y traduce errores a respuestas
-├── schemas.py      # Contratos propios de la capacidad
-├── service.py      # Casos de uso y coordinación de efectos
-└── repository.py   # Consultas SQL y persistencia
+leads/
+├── domain/          # Agregado, reglas, eventos y errores. Sin SQL ni HTTP.
+├── application/     # Comandos (casos de uso) y puertos (Protocol).
+├── infrastructure/  # Implementaciones SQL de los puertos.
+├── *queries.py      # Lado de lectura: la API lo llama directo, nunca escribe.
+├── api.py           # HTTP: valida, llama comandos o queries.
+├── subscribers.py   # Reacciones a eventos y avisos por WebSocket.
+├── public.py        # Lo que otros módulos pueden usar.
+└── schemas.py       # Contratos HTTP.
 ```
 
-`catalogs/`, `tasks/`, `leads/` y `appointments/` agrupan el CRM.
-Sus rutas viven en `api.py` o en archivos `*_api.py`, las consultas en
-`repository.py` y repositorios especializados, y las reglas puras en
-`policies.py` cuando hay transiciones compartidas. `appointments/` es
-hexagonal: `application/commands.py` confirma la cita local antes de los
-conectores (calendario, n8n) que llegan por `application/ports.py`, y el
-aviso de cita nueva sale del evento `AppointmentCreated`. En `ai/`, los casos
-de uso del asistente (`application/assistant.py`) hablan con el proveedor de
-IA por el puerto `AiProvider`.
+- `leads`, `conversations` y `appointments` siguen esta forma; `ai` tiene
+  `application/` (casos de uso del asistente) e `infrastructure/` (el
+  proveedor de n8n) sin dominio propio.
+- `automations` agrega anillos de arquitectura limpia: `domain/` (reglas,
+  validación, condiciones y grafo del flujo), `application/` (motor,
+  acciones, bloques, simulación, gestión y disparadores, sobre
+  `ExecutionStore`, `RuleStore`, `SchedulingStore` y `ReferenceChecker`) e
+  `infrastructure/` (SQL y el worker con sus barridos).
 
-`conversations/` contiene los archivos `*_api.py` con
-las rutas de mensajes, lectura y acciones; `chat_queries.py`,
-`message_history.py`, `read_state.py` y los repositorios de mensajes
-mantienen las consultas y transacciones. `message_outbox.py` conserva en un
-solo lugar la inserción, deduplicación, retry y recuperación del worker;
-`chat_messaging.py` construye los envíos y `chat_watcher.py` publica cambios.
-`app.integrations.meta_webhook/` recibe el HTTP de Meta, persiste el inbox
-global y proyecta eventos tenant. `app.integrations.whatsapp.channel` es
-el puerto del proveedor. Los antiguos aliases de importación de chats,
-store y webhook fueron retirados.
+Módulos CRUD planos (`catalogs`, `media`, `notifications`,
+`issue_reports`, `tasks`): la API lee de `*_queries.py` y escribe por
+comandos de `service.py`, que abren la unidad de trabajo y registran el
+evento de lo que cambió. Un servicio que solo reenvía al repositorio es una
+capa vacía y la prohíbe `test_layering`.
 
-`automations/` está en anillos de arquitectura limpia: `domain/` (reglas,
-validación, condiciones y grafo del flujo, sin IO), `application/` (motor,
-acciones, bloques, simulación, gestión y disparadores, hablando solo con
-los puertos de `application/ports.py`) e `infrastructure/` (SQL y el
-worker). En la raíz quedan `api.py`, `queries.py` (lectura), `subscribers.py`
-(avisos y agendado por eventos) y `public.py`.
-`ai/` reúne perfiles, contexto, jobs, conocimiento y sugerencias; `auth/`
-agrupa usuarios, sesiones, MFA y throttling; `platform/` gestiona
-organizaciones, sesiones y configuración del plano de control. El cliente n8n y sus
-callbacks autenticados viven en `app.integrations.n8n/`; la supervisión
-de workers tenant vive en `app.workers/`. El inbox Meta conserva su
-supervisión global. Las antiguas fachadas `db_service.py` y
-`automation_service.py` fueron retiradas.
+## Transacciones y eventos
 
-Las dependencias entre capacidades se consumen mediante `public.py`, DTO
-de `schemas.py` o puertos concretos `ports/<operación>.py`. Cada puerto declara
-sus exportaciones en `__all__` y sólo importa operaciones de su dueño; no
-reexporta el dominio completo ni actúa como fachada global. También las
-integraciones y los workers respetan esta frontera. No quedan imports internos
-registrados como excepciones de transición.
+- `app/db/uow.py`: una unidad de trabajo por caso de uso, en un
+  `ContextVar`. `session_scope()` es la puerta de los repositorios: se suma a
+  la unidad de trabajo activa o abre su sesión y confirma al salir. Solo
+  `app/db` abre sesiones.
+- `app/core/events.py`: los comandos registran eventos con `collect`; los
+  handlers `transaction` corren antes del commit (auditoría, agendado) y los
+  `after_commit` solo si el commit ocurrió (WebSocket, push, notificaciones).
+- `app/core/errors.py`: los casos de uso levantan `DomainError`; el handler
+  de bootstrap responde `{"detail", "code"}`. `HTTPException` solo aparece en
+  las rutas.
 
-IA mantiene normalización/composición en servicios y SQL en repositorios:
-perfil/conocimiento propios, catálogo y recursos en repositorios de sus dueños.
-Sesiones, notas internas, plantillas, media, notificaciones y configuración
-separan las transacciones de políticas y coordinación. Una operación atómica
-no se parte: por ejemplo, renombrar media y sus adjuntos usa un único commit.
-MinIO/disco vive en `app/integrations/storage/media_storage.py`.
+## Fronteras entre módulos
 
-Reglas:
+- Un módulo usa a otro por `public.py`, `schemas.py` o `ports/<operación>.py`
+  (cada puerto declara `__all__` y solo reexporta a su dueño). Los enums de
+  cada módulo viven en su `types.py` y se publican en `ports/types.py`.
+- Solo `subscribers.py` habla con el WebSocket (`app.realtime`).
+- Cada archivo de `app/db/models` pertenece a un módulo. Leer o escribir
+  tablas ajenas solo se permite en la lista `FOREIGN_TABLES` de
+  `tests/test_layering.py`, agrupada por motivo, que solo puede achicarse.
 
-- `api.py`/`*_api.py` llama a casos de uso; no ejecuta SQL ni importa repositorios. Los DTO se declaran en `schemas.py`.
-- `service.py`/`*_service.py` no importa HTTP ni SQL; delega persistencia atómica.
-- `repository.py`/`*_repository.py` no importa HTTP, servicios ni tiempo real.
-- Un módulo no importa `app.bootstrap`, `main`, `services.db_service` ni
-  `services.automation_service`.
-- Integraciones con proveedores viven en `app.integrations`; el servicio del
-  módulo conserva la regla de negocio.
+## Runtime
 
-La infraestructura transversal vive en `app/core/`, `app/db/`,
-`app/tenancy/`, `app/realtime/` y `app/integrations/`. El aprovisionamiento en
-`app/tenancy/provisioning.py` compone operaciones acotadas y verificadas por símbolo: invoca auth y
-plataforma para sembrar y suspender un tenant. No se deben crear nuevos aliases
-de importación para módulos de negocio ni reintroducir código en las carpetas
-heredadas `services/` o `routers/`.
+- La API corre HTTP, WebSocket y lo que depende de su proceso (recordatorios
+  de tareas, métricas de colas). Con `RUN_WORKERS=true` (el default) corre
+  además el trabajo de fondo; en producción va con `false` y el servicio
+  `worker` lo corre aparte.
+- Cada worker es una pasada por negocio (`app/workers/tenant_supervisor.py`):
+  un ciclo por tipo que recorre los negocios activos.
+- `app/db/signals.py` lleva por LISTEN/NOTIFY los avisos de tiempo real entre
+  réplicas, los despertadores de las colas y la invalidación de cachés.
 
-Los tests de arquitectura incluyen imports relativos, imports de módulos e
-inicializadores; no se puede eludir la regla usando un nombre especializado.
+`tests/test_layering.py` hace cumplir todo lo anterior: pureza del dominio,
+aplicación sobre puertos, HTTP sin infraestructura, lado de lectura sin
+escrituras, tiempo real solo en suscriptores, sesiones solo en `app/db` y
+propiedad de tablas.
