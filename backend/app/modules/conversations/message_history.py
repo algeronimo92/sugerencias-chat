@@ -1,12 +1,12 @@
-import asyncio
 from datetime import datetime
 
-from sqlalchemy import and_, bindparam, func, or_, select, update
+from sqlalchemy import and_, func, or_, select
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import MessageOutbox, WspMessage
 from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES
-from app.modules.conversations.chat_rows import MEDIA_DIMENSION_CONCURRENCY, MESSAGES_PAGE_SIZE
+from app.modules.conversations.chat_rows import MESSAGES_PAGE_SIZE
+from app.modules.conversations.media_dimensions import complete_media_dimensions
 from app.modules.conversations.message_serialization import serialize_message
 from app.db.uow import session_scope
 
@@ -104,8 +104,11 @@ async def fetch_messages(
 
         has_more = len(rows) > limit
         page = [dict(r) for r in reversed(rows[:limit])]
-        await _fill_media_dimensions(session, page)
         quoted = await _resolve_quoted_messages(session, chat_id, page)
+
+    # Fuera de la sesión de lectura: medir descarga archivos y no debe tener
+    # una conexión tomada mientras tanto; guardar es su propia transacción.
+    await complete_media_dimensions(page)
 
     items = [
         {
@@ -247,57 +250,6 @@ async def fetch_latest_customer_message_target(chat_id: str) -> dict | None:
     async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row is not None else None
-
-
-async def _fill_media_dimensions(session, rows: list[dict]) -> None:
-    """Completa y persiste media_width/height de imágenes y videos que aún no
-    lo tienen, para que el frontend reserve el espacio exacto antes de que
-    carguen. Corre una sola vez por mensaje (backfill perezoso); 0/0 marca
-    los que no se pudieron medir para no reintentarlos en cada apertura."""
-    from app.integrations.storage.media_storage import (image_dimensions, video_dimensions)
-
-    pending = [
-        r for r in rows
-        if r["media_url"] and r["media_width"] is None
-        and r["message_type"] in ("image", "video")
-    ]
-    if not pending:
-        return
-
-    # Medir en serie hacía que cada archivo esperara al anterior: con el
-    # almacenamiento en otra región, una página con varias imágenes sumaba
-    # segundos al GET del historial. El límite evita saturar el pool de hilos
-    # y abrir demasiadas descargas simultáneas.
-    limiter = asyncio.Semaphore(MEDIA_DIMENSION_CONCURRENCY)
-
-    async def measure(row: dict) -> tuple[int, int] | None:
-        fn = image_dimensions if row["message_type"] == "image" else video_dimensions
-        async with limiter:
-            return await asyncio.to_thread(fn, row["media_url"])
-
-    measured = await asyncio.gather(
-        *(measure(row) for row in pending), return_exceptions=True
-    )
-
-    for row, dims in zip(pending, measured):
-        if isinstance(dims, BaseException) or not dims:
-            # 0/0 marca "no medible" para no reintentarlo en cada apertura.
-            dims = (0, 0)
-        row["media_width"], row["media_height"] = dims
-
-    # Usar la tabla (SQL Core) evita que SQLAlchemy interprete la lista de
-    # parámetros como ORM Bulk UPDATE by Primary Key. Ese modo exige que cada
-    # mapping contenga la propiedad ORM `id` y no admite este WHERE parametrizado.
-    await session.execute(
-        update(WspMessage.__table__)
-        .where(WspMessage.__table__.c.id == bindparam("row_id"))
-        .values(media_width=bindparam("width"), media_height=bindparam("height")),
-        [
-            {"row_id": row["id"], "width": row["media_width"], "height": row["media_height"]}
-            for row in pending
-        ],
-    )
-    await session.flush()
 
 
 async def fetch_pinned_messages(chat_id: str) -> list[dict]:

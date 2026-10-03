@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.integrations.storage import media_storage
-from app.modules.conversations import message_history
+from app.modules.conversations import media_dimensions
+from tests.conftest import patch_session_scope
 from app.integrations.storage.media_storage import _mp4_dimensions
 
 IDENTITY_MATRIX = struct.pack(
@@ -67,7 +68,8 @@ class TestMp4Dimensions:
 async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
     """El UPDATE por lotes debe evitar el modo Bulk UPDATE del ORM."""
     monkeypatch.setattr(media_storage, "image_dimensions", lambda _url: (640, 480))
-    session = SimpleNamespace(execute=AsyncMock(), flush=AsyncMock())
+    session = SimpleNamespace(execute=AsyncMock())
+    patch_session_scope(monkeypatch, media_dimensions, lambda: lambda: _Opened(session))
     rows = [{
         "id": 22267,
         "message_type": "image",
@@ -76,7 +78,7 @@ async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
         "media_height": None,
     }]
 
-    await message_history._fill_media_dimensions(session, rows)
+    await media_dimensions.complete_media_dimensions(rows)
 
     assert rows[0]["media_width"] == 640
     assert rows[0]["media_height"] == 480
@@ -87,4 +89,25 @@ async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
         "width": 640,
         "height": 480,
     }]
-    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_save_still_serves_what_was_measured(monkeypatch):
+    monkeypatch.setattr(media_storage, "video_dimensions", lambda _url: (1080, 1920))
+    monkeypatch.setattr(media_dimensions, "save_media_dimensions", AsyncMock(side_effect=RuntimeError("sin base")))
+    rows = [{"id": 1, "message_type": "video", "media_url": "u", "media_width": None, "media_height": None}]
+
+    await media_dimensions.complete_media_dimensions(rows)
+
+    assert (rows[0]["media_width"], rows[0]["media_height"]) == (1080, 1920)
+
+
+class _Opened:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *_exc):
+        return False
