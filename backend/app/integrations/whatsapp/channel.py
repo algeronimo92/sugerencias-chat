@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Protocol
 
+import httpx
+
 UNCONFIRMED_DELIVERY_MESSAGE = (
     "No se pudo confirmar si el mensaje llegó al cliente. Si lo reintentás, "
     "podría recibirlo dos veces."
@@ -19,6 +21,12 @@ class DeliveryUnconfirmedError(ChannelError):
     def __init__(self, message: str = UNCONFIRMED_DELIVERY_MESSAGE, *, status_code: int | None = None):
         super().__init__(message, status_code=status_code)
         self.user_message = message
+
+
+# Lo que puede levantar un envío por el canal: un rechazo del proveedor ya
+# traducido, o un error de transporte que el adaptador deja pasar tal cual
+# porque significa que la petición no llegó a salir.
+SEND_FAILURES: tuple[type[Exception], ...] = (ChannelError, httpx.HTTPError)
 
 
 def describe_send_failure(exc: Exception, action: str) -> str:

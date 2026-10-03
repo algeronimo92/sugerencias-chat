@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.modules.automations import automation_rules
+from app.modules.automations.domain import rules as automation_rules
 from app.modules.conversations import chat_messaging
 
 

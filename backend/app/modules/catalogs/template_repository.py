@@ -215,6 +215,34 @@ async def set_template_favorite(template_id: int, user_id: int, is_favorite: boo
         await session.execute(stmt); await session.commit()
     return True
 
+async def fetch_template_for_delivery(template_id: int) -> dict | None:
+    """La plantilla con sus adjuntos en orden, lista para armar el envío."""
+    async with get_sessionmaker()() as session:
+        template = await session.get(MessageTemplate, template_id)
+        if template is None:
+            return None
+        attachments = (await session.execute(
+            select(TemplateAttachment).where(TemplateAttachment.template_id == template_id)
+            .order_by(TemplateAttachment.position, TemplateAttachment.id)
+        )).scalars().all()
+    return {
+        "id": template.id,
+        "content": template.content,
+        "is_active": template.is_active,
+        "template_type": template.template_type,
+        "interactive_type": template.interactive_type,
+        "attachments": [
+            {
+                "id": attachment.id,
+                "media_url": attachment.media_url,
+                "content_type": attachment.content_type,
+                "filename": attachment.filename,
+            }
+            for attachment in attachments
+        ],
+    }
+
+
 async def record_template_use(template_id: int, user_id: int) -> bool:
     now = datetime.now(timezone.utc)
     async with get_sessionmaker()() as session:

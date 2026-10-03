@@ -1,13 +1,19 @@
+"""El recorrido del motor por cada tipo de bloque, contra los puertos en
+memoria: qué guarda en cada paso, dónde se suspende y cómo termina."""
+
+import dataclasses
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 
 from domain_types import AutomationActionType
-import app.modules.automations.engine as _domain_app_modules_automations_engine
-import app.modules.automations.flow_nodes as _domain_app_modules_automations_flow_nodes
-import app.modules.automations.simulation as _domain_app_modules_automations_simulation
-from tests.conftest import make_chat, make_execution, make_rule, patch_automations
+from app.modules.automations.application import simulation
+from app.modules.automations.application.engine import run_visual_execution
+from app.modules.automations.application.flow_nodes import FLOW_NODE_HANDLERS
+from app.modules.automations.domain.events import ExecutionFailed
+from tests.automation_fakes import rule as stored_rule
+from tests.conftest import make_chat, make_execution, make_rule
 
 
 def _node(node_id, node_type, **data):
@@ -51,50 +57,39 @@ FLOW = {
 
 
 @pytest.fixture
-def engine(monkeypatch):
-    persisted: list[dict] = []
-    started_at = datetime.now(timezone.utc)
+def engine(executions):
+    executions.rules[9] = stored_rule(
+        id=9, name="Hijo", builder_mode="visual", published_flow_definition={"nodes": []},
+    )
 
-    async def persist(execution_id, status, results, current_node_id, path, flow_version, error=None,
-                      scheduled_for=None, wait_any_state=None, deps=None):
-        persisted.append({
-            "status": str(status),
-            "current": current_node_id,
-            "path": list(path),
-            "results": [
-                {key: result.get(key) for key in ("node_id", "type", "status", "branch", "seconds", "detail", "error")
-                 if result.get(key) is not None}
-                for result in results
-            ],
-            "wait_in": round((scheduled_for - started_at).total_seconds()) if scheduled_for else None,
-            "wait_state": sorted((wait_any_state or {}).keys()),
-            "error": error,
-        })
-        return True
+    def persisted_steps(started_at):
+        steps = []
+        for _execution_id, values in executions.saves:
+            state = dict(values["flow_state"])
+            scheduled_for = values.get("scheduled_for")
+            steps.append({
+                "status": str(values["status"]),
+                "current": state.pop("current_node_id"),
+                "path": state.pop("path"),
+                "results": [
+                    {key: result.get(key) for key in ("node_id", "type", "status", "branch", "seconds", "detail", "error")
+                     if result.get(key) is not None}
+                    for result in values["action_results"]
+                ],
+                "wait_in": round((scheduled_for - started_at).total_seconds()) if scheduled_for else None,
+                "wait_state": sorted(key for key in state if key != "flow_version"),
+                "error": values["error"],
+            })
+        return steps
 
-    async def execute_action(action, chat, execution, rule, deps=None, *, position=None):
-        if action.get("fail"):
-            raise ValueError("acción rota")
-        return {"type": action["type"], "status": "completed"}
-
-    patch_automations(monkeypatch, "_persist_visual_execution", persist)
-    patch_automations(monkeypatch, "_resolve_flow_definition", AsyncMock(return_value=FLOW))
-    patch_automations(monkeypatch, "_matches_condition_values", AsyncMock(return_value=(True, "")))
-    patch_automations(monkeypatch, "_matches_flow_condition_node", AsyncMock(return_value=(True, "g1", "coincide")))
-    patch_automations(monkeypatch, "_execute_action", execute_action)
-    patch_automations(monkeypatch, "_start_invoked_flow", AsyncMock(return_value=(55, "Hijo")))
-    patch_automations(monkeypatch, "_next_round_robin_output", AsyncMock(return_value={"id": "out_1", "label": "Uno"}))
-    patch_automations(monkeypatch, "_last_outbound_media_message_id", AsyncMock(return_value=None))
-    patch_automations(monkeypatch, "_require_service_window", AsyncMock())
-    patch_automations(monkeypatch, "_send_buttons_message", AsyncMock(return_value={"id": 77}))
-    patch_automations(monkeypatch, "_notify_execution_failure", AsyncMock())
-
-    async def run(flow_state, deps):
-        persisted.clear()
+    async def run(flow_state, deps, flow=FLOW):
+        executions.saves.clear()
+        executions.flow_versions[(1, 1)] = flow
+        started_at = datetime.now(timezone.utc)
         execution = make_execution(flow_state={"flow_version": 1, **flow_state}, action_results=[])
         rule = make_rule(builder_mode="visual", flow_version=1)
-        await _domain_app_modules_automations_engine._run_visual_execution(execution, rule, make_chat(), deps)
-        return persisted
+        await run_visual_execution(execution, rule, make_chat(conversacion_abierta=True), deps)
+        return persisted_steps(started_at)
 
     return run
 
@@ -108,7 +103,7 @@ async def test_engine_runs_until_the_first_timed_wait(engine, deps):
     assert persisted[-1]["path"] == ["t", "c", "a", "i", "rr", "w"]
     assert persisted[-1]["wait_in"] == 30
     assert persisted[-1]["results"] == [
-        {"node_id": "c", "type": "condition", "status": "completed", "branch": "g1", "detail": "coincide"},
+        {"node_id": "c", "type": "condition", "status": "completed", "branch": "g1", "detail": "Grupo 1 cumple: "},
         {"node_id": "a", "type": "add_tag", "status": "completed"},
         {"node_id": "i", "type": "invoke_flow", "status": "completed", "detail": "Flujo hijo iniciado: Hijo"},
         {"node_id": "rr", "type": "round_robin", "status": "completed", "branch": "out_1", "detail": "Turno: Uno"},
@@ -161,47 +156,55 @@ async def test_engine_times_out_the_question_and_closes_at_the_end(engine, deps)
     ]
 
 
-async def test_engine_records_the_failing_action_type(engine, deps, monkeypatch):
-    broken = {**FLOW, "nodes": [
-        {**node, "data": {"action": {"type": AutomationActionType.ADD_TAG, "fail": True}}} if node["id"] == "a" else node
-        for node in FLOW["nodes"]
-    ]}
-    patch_automations(monkeypatch, "_resolve_flow_definition", AsyncMock(return_value=broken))
+async def test_engine_records_the_failing_action_type(engine, deps, recorder):
+    async def tag_gone(chat_id, tag_id, user_id):
+        return False
 
-    persisted = await engine({"current_node_id": "a", "path": ["t", "c"]}, deps)
+    persisted = await engine({"current_node_id": "a", "path": ["t", "c"]}, dataclasses.replace(deps, assign_tag=tag_gone))
 
     assert persisted[-1]["status"] == "failed"
     assert persisted[-1]["current"] == "a"
-    assert persisted[-1]["results"][-1] == {"node_id": "a", "type": "add_tag", "status": "failed", "error": "acción rota"}
+    assert persisted[-1]["results"][-1] == {
+        "node_id": "a", "type": "add_tag", "status": "failed", "error": "Lead o etiqueta no encontrado",
+    }
+    [failure] = recorder.of(ExecutionFailed)
+    assert failure.error == "Lead o etiqueta no encontrado"
 
 
-async def test_engine_fails_when_an_edge_is_missing(engine, deps, monkeypatch):
-    patch_automations(monkeypatch, "_matches_flow_condition_node", AsyncMock(return_value=(False, "else", "no")))
+async def test_engine_fails_when_an_edge_is_missing(engine, deps):
+    unmatched = {**FLOW, "nodes": [
+        _node("c", "condition", condition_groups=[{
+            "id": "g1", "conditions": [{"condition_type": "stage_equals", "value": "otra"}],
+        }]) if node["id"] == "c" else node
+        for node in FLOW["nodes"]
+    ]}
 
-    persisted = await engine({"current_node_id": "c", "path": ["t"]}, deps)
+    persisted = await engine({"current_node_id": "c", "path": ["t"]}, deps, flow=unmatched)
 
     assert persisted[-1]["status"] == "failed"
     assert persisted[-1]["results"][-1]["type"] == "flow"
 
 
 @pytest.fixture
-def simulator(monkeypatch):
-    async def rule(rule_id):
-        if rule_id == 9:
-            return {"name": "Hijo"}
-        return {"name": "Flujo", "builder_mode": "visual", "flow_definition": FLOW, "flow_version": 3}
+def simulator(in_memory_automations, deps, monkeypatch):
+    in_memory_automations.rules.rules[1] = {
+        "id": 1, "name": "Flujo", "builder_mode": "visual", "flow_definition": FLOW, "flow_version": 3,
+    }
+    deps.executions.rules[9] = stored_rule(id=9, name="Hijo", builder_mode="visual")
+    monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": FLOW}))
 
-    patch_automations(monkeypatch, "get_automation_rule", rule)
-    patch_automations(monkeypatch, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": FLOW}))
-    patch_automations(monkeypatch, "fetch_chat", AsyncMock(return_value=make_chat(last_message="hola", last_message_sender="cliente")))
-    patch_automations(monkeypatch, "_matches_condition_values", AsyncMock(return_value=(True, "")))
-    patch_automations(monkeypatch, "_matches_flow_condition_node", AsyncMock(return_value=(True, "g1", "coincide")))
-    patch_automations(monkeypatch, "get_customer_service_window", AsyncMock(return_value={"is_open": False}))
-    patch_automations(monkeypatch, "_peek_round_robin_output", AsyncMock(return_value={"id": "out_1", "label": "Uno"}))
+    async def closed_window(chat_id):
+        return {"is_open": False}
+
+    return dataclasses.replace(
+        deps,
+        fetch_chat=AsyncMock(return_value=make_chat(last_message="hola", last_message_sender="cliente")),
+        get_customer_service_window=closed_window,
+    )
 
 
 async def test_simulator_walks_every_node_type(simulator):
-    result = await _domain_app_modules_automations_simulation.simulate_visual_flow(1, "lead-1")
+    result = await simulation.simulate_visual_flow(1, "lead-1", simulator)
 
     assert result["flow_version"] == 3
     assert [
@@ -209,7 +212,7 @@ async def test_simulator_walks_every_node_type(simulator):
         for step in result["path"]
     ] == [
         {"node_id": "t", "type": "trigger", "status": "matched"},
-        {"node_id": "c", "type": "condition", "status": "evaluated", "branch": "g1", "detail": "coincide"},
+        {"node_id": "c", "type": "condition", "status": "evaluated", "branch": "g1", "detail": "Grupo 1 cumple: "},
         {"node_id": "a", "type": "add_tag", "status": "would_run"},
         {"node_id": "i", "type": "invoke_flow", "status": "would_run", "detail": "Iniciaría el flujo hijo: Hijo"},
         {"node_id": "rr", "type": "round_robin", "status": "evaluated", "branch": "out_1", "detail": "Le tocaría el turno a: Uno"},
@@ -230,9 +233,9 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
         ],
         "edges": [_edge("t", "a"), _edge("a", "q"), _edge("q", "e", "timeout")],
     }
-    patch_automations(monkeypatch, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": flow}))
+    monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": flow}))
 
-    result = await _domain_app_modules_automations_simulation.simulate_visual_flow(1, "lead-1")
+    result = await simulation.simulate_visual_flow(1, "lead-1", simulator)
 
     assert [(step["node_id"], step["type"], step["status"]) for step in result["path"]] == [
         ("t", "trigger", "matched"),
@@ -247,4 +250,4 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
 def test_every_flow_node_type_has_a_handler():
     from domain_types import FlowNodeType
 
-    assert set(_domain_app_modules_automations_flow_nodes.FLOW_NODE_HANDLERS) == set(FlowNodeType)
+    assert set(FLOW_NODE_HANDLERS) == set(FlowNodeType)

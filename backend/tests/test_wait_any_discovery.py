@@ -11,9 +11,9 @@ cliente no hubiera escrito.
 import ast
 from pathlib import Path
 
-from app.modules.automations import discovery
+from app.modules.automations.infrastructure import worker
 
-FUENTE = Path(discovery.__file__)
+FUENTE = Path(worker.__file__)
 
 
 def _funcion(nombre: str) -> ast.AST:
@@ -52,7 +52,7 @@ def test_the_cut_is_deterministic():
 
 
 def test_replies_are_discovered_on_every_loop_and_not_once_a_minute():
-    """`_wake` despierta el bucle cuando entra un mensaje; si el descubrimiento
+    """`wakeup` despierta el bucle cuando entra un mensaje; si el descubrimiento
     vive dentro del bloque de housekeeping, ese despertar no sirve de nada."""
     bucle = _funcion("watch_automations")
     housekeeping = next(

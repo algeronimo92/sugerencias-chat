@@ -29,7 +29,6 @@ from app.modules.automations.public import (
     update_automation_rule,
     validate_automation_rule,
 )
-from app.realtime.ws_manager import manager
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
 
@@ -46,7 +45,6 @@ async def post_rule(body: AutomationRuleCreate, admin: User = Depends(require_ad
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, str(exc))
     item = await create_automation_rule(values, admin.id)
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -64,7 +62,6 @@ async def post_flow(body: AutomationFlowCreate, admin: User = Depends(require_ad
         item = await create_visual_flow(body.name, body.flow_definition, admin.id)
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, str(exc))
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -83,7 +80,6 @@ async def patch_flow(
         )
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, str(exc))
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -95,7 +91,6 @@ async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
         raise HTTPException(400, str(exc))
     if item is None:
         raise HTTPException(404, "Flujo visual no encontrado")
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -119,7 +114,6 @@ async def post_restore_flow_version(
         raise HTTPException(400, str(exc))
     if item is None:
         raise HTTPException(404, "Versión no encontrada")
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -185,7 +179,6 @@ async def patch_rule(
         item = await update_automation_rule(rule_id, normalized)
     if item is None:
         raise HTTPException(404, "Automatización no encontrada")
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 
@@ -197,7 +190,6 @@ async def delete_rule(rule_id: int, _admin: User = Depends(require_admin)):
         raise HTTPException(409, str(exc))
     if result is None:
         raise HTTPException(404, "Automatización no encontrada")
-    await manager.broadcast({"type": "automations_updated"})
     return {"status": "ok", **result}
 
 
@@ -225,7 +217,6 @@ async def post_start_manual_flow(
         item = await start_manual_flow_execution(rule_id, body.chat_id, user.id, user.role == "admin")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    await manager.broadcast({"type": "automations_updated"})
     return item
 
 

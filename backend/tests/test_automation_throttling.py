@@ -7,121 +7,90 @@ diferencia, porque cada mensaje entrante agenda su propia ejecución.
 
 import dataclasses
 from datetime import timedelta
-from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from domain_types import AutomationExecutionStatus
-from app.modules.automations.common import RATE_LIMIT_RETRY_MINUTES
-from app.modules.automations.conditions import _matches_condition_values
-from app.modules.automations.engine import _rate_limit_reached
+from app.modules.automations.application.conditions import matches_condition_values
+from app.modules.automations.application.engine import _rate_limit_reached, run_execution
+from app.modules.automations.domain.limits import RATE_LIMIT_RETRY_MINUTES
+from tests.automation_fakes import execution
 from tests.conftest import make_chat, make_rule
 
 
-def deps_returning(deps, *, scalar):
-    """Sustituye la sesión por una que devuelve `scalar` en cualquier consulta."""
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def scalar(self, stmt):
-            return scalar
-
-    return dataclasses.replace(deps, session_factory=lambda: FakeSession)
+def completed(executions, frozen_now, *, count=1, minutes_ago=5, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6"):
+    """Ejecuciones de la regla 1 completadas hace ``minutes_ago`` minutos."""
+    for offset in range(count):
+        executions.add(execution(
+            id=500 + len(executions.executions) + offset, rule_id=1, lead_id=lead_id,
+            status=AutomationExecutionStatus.COMPLETED,
+            finished_at=frozen_now - timedelta(minutes=minutes_ago),
+        ))
 
 
 class TestCooldown:
-    async def test_blocks_when_a_recent_completed_execution_exists(self, deps):
-        blocked = deps_returning(deps, scalar=999)  # id de una ejecución reciente
-        matches, reason = await _matches_condition_values(
-            {"cooldown_minutes": 30}, make_chat(), rule_id=1, deps=blocked,
-        )
+    async def test_blocks_when_a_recent_completed_execution_exists(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, minutes_ago=10)
+        matches, reason = await matches_condition_values({"cooldown_minutes": 30}, make_chat(), 1, deps)
         assert matches is False
         assert "menos de 30 minutos" in reason
 
-    async def test_allows_when_no_recent_execution(self, deps):
-        free = deps_returning(deps, scalar=None)
-        matches, reason = await _matches_condition_values(
-            {"cooldown_minutes": 30}, make_chat(), rule_id=1, deps=free,
-        )
+    async def test_allows_when_no_recent_execution(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, minutes_ago=45)
+        matches, reason = await matches_condition_values({"cooldown_minutes": 30}, make_chat(), 1, deps)
         assert matches is True
         assert reason is None
 
-    async def test_is_ignored_when_not_configured(self, deps):
-        # Sin cooldown no debe consultarse la base: la sesión falsa reventaría.
-        matches, _ = await _matches_condition_values({}, make_chat(), rule_id=1, deps=deps)
+    async def test_only_counts_executions_on_the_same_lead(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, minutes_ago=10, lead_id="otro-lead")
+        matches, _ = await matches_condition_values({"cooldown_minutes": 30}, make_chat(), 1, deps)
         assert matches is True
 
-    async def test_is_ignored_without_rule_id(self, deps):
-        matches, _ = await _matches_condition_values(
-            {"cooldown_minutes": 30}, make_chat(), rule_id=None, deps=deps,
-        )
+    async def test_is_ignored_when_not_configured(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, minutes_ago=1)
+        matches, _ = await matches_condition_values({}, make_chat(), 1, deps)
+        assert matches is True
+
+    async def test_is_ignored_without_rule_id(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, minutes_ago=1)
+        matches, _ = await matches_condition_values({"cooldown_minutes": 30}, make_chat(), None, deps)
         assert matches is True
 
 
 class TestRateLimit:
-    async def test_not_reached_when_rule_has_no_limit(self, deps):
+    async def test_not_reached_when_rule_has_no_limit(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, count=50)
         assert await _rate_limit_reached(make_rule(max_executions_per_hour=None), deps) is False
 
-    async def test_reached_when_count_hits_the_cap(self, deps):
-        at_cap = deps_returning(deps, scalar=5)
-        assert await _rate_limit_reached(make_rule(max_executions_per_hour=5), at_cap) is True
+    async def test_reached_when_count_hits_the_cap(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, count=5)
+        assert await _rate_limit_reached(make_rule(max_executions_per_hour=5), deps) is True
 
-    async def test_not_reached_below_the_cap(self, deps):
-        below = deps_returning(deps, scalar=4)
-        assert await _rate_limit_reached(make_rule(max_executions_per_hour=5), below) is False
+    async def test_not_reached_below_the_cap(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, count=4)
+        assert await _rate_limit_reached(make_rule(max_executions_per_hour=5), deps) is False
 
-    async def test_handles_null_count_from_database(self, deps):
-        empty = deps_returning(deps, scalar=None)
-        assert await _rate_limit_reached(make_rule(max_executions_per_hour=1), empty) is False
+    async def test_only_the_last_hour_counts(self, deps, executions, frozen_now):
+        completed(executions, frozen_now, count=5, minutes_ago=61)
+        assert await _rate_limit_reached(make_rule(max_executions_per_hour=1), deps) is False
 
 
 class TestRateLimitReschedules:
-    async def test_execution_is_requeued_not_discarded(self, deps, frozen_now):
+    async def test_execution_is_requeued_not_discarded(self, deps, executions, frozen_now):
         """El tope frena el ritmo; el trabajo pendiente no se pierde."""
-        saved = {}
+        completed(executions, frozen_now, count=5)
+        executions.add(execution(id=1, rule_id=1, status=AutomationExecutionStatus.RUNNING),
+                       make_rule(max_executions_per_hour=1, builder_mode="simple"))
+        deps = dataclasses.replace(deps, fetch_chat=AsyncMock(return_value=make_chat()))
 
-        class FakeSession:
-            async def __aenter__(self):
-                return self
+        await run_execution(1, deps)
 
-            async def __aexit__(self, *exc):
-                return False
-
-            async def get(self, model, pk):
-                name = getattr(model, "__name__", "")
-                if name == "AutomationExecution":
-                    return SimpleNamespace(
-                        id=1, rule_id=1, lead_id="x", action_results=[],
-                        event_payload={}, flow_state={},
-                    )
-                return make_rule(max_executions_per_hour=1, builder_mode="simple")
-
-            async def scalar(self, stmt):
-                return 5  # ya se completaron 5 en la última hora
-
-            async def execute(self, stmt):
-                # Los valores van como parámetros ligados; str(stmt) solo
-                # mostraría los nombres de columna.
-                saved["params"] = stmt.compile().params
-                return SimpleNamespace(rowcount=1)
-
-            async def commit(self):
-                saved["committed"] = True
-
-        from app.modules.automations.engine import _run_execution
-
-        await _run_execution(1, dataclasses.replace(deps, session_factory=lambda: FakeSession))
-
-        assert saved.get("committed") is True
-        params = saved["params"]
+        [(execution_id, values)] = executions.saves
+        assert execution_id == 1
         # Vuelve a la cola en vez de quedar failed, y con una fecha futura.
-        assert params["status"] == AutomationExecutionStatus.SCHEDULED
-        assert params["scheduled_for"] == frozen_now + timedelta(minutes=RATE_LIMIT_RETRY_MINUTES)
-        assert params["started_at"] is None
-        assert "ejecuciones/hora" in params["error"]
+        assert values["status"] == AutomationExecutionStatus.SCHEDULED
+        assert values["scheduled_for"] == frozen_now + timedelta(minutes=RATE_LIMIT_RETRY_MINUTES)
+        assert values["started_at"] is None
+        assert "ejecuciones/hora" in values["error"]
 
     def test_retry_delay_is_a_sane_value(self):
         assert timedelta(minutes=RATE_LIMIT_RETRY_MINUTES) <= timedelta(hours=1)

@@ -5,7 +5,7 @@ interna admite nuestras variables por nombre y opcionalmente botones/listas
 interactivos; la oficial la aprueba Meta, sus variables son posicionales y su
 encabezado, pie y botones siguen el formato de la Graph API.
 
-Contraparte de `app/modules/automations/rule_validation.py` para plantillas: acá
+Contraparte de `app/modules/automations/domain/validation.py` para plantillas: acá
 no se conoce HTTP, se lanzan errores de dominio y el router los traduce.
 
 También vive acá el resuelto de variables de una plantilla oficial

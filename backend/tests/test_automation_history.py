@@ -1,13 +1,13 @@
 """Filtros del historial de automatizaciones sin depender de PostgreSQL."""
 
+from contextlib import asynccontextmanager
 from datetime import date
 
 import pytest
 from sqlalchemy.dialects import postgresql
 
 from domain_types import AutomationExecutionStatus
-import app.modules.automations.rules as _domain_app_modules_automations_rules
-from tests.conftest import patch_automations
+from app.modules.automations import queries
 
 
 async def _history_sql(monkeypatch, **filters) -> str:
@@ -21,18 +21,16 @@ async def _history_sql(monkeypatch, **filters) -> str:
             return []
 
     class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
         async def execute(self, statement):
             statements.append(statement)
             return FakeResult()
 
-    patch_automations(monkeypatch, "get_sessionmaker", lambda: FakeSession)
-    await _domain_app_modules_automations_rules.list_automation_executions(**filters)
+    @asynccontextmanager
+    async def session_scope():
+        yield FakeSession()
+
+    monkeypatch.setattr(queries, "session_scope", session_scope)
+    await queries.list_automation_executions(**filters)
     return str(statements[0].compile(
         dialect=postgresql.dialect(),
         compile_kwargs={"literal_binds": True},

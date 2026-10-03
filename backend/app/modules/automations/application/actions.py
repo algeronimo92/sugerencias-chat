@@ -1,47 +1,34 @@
+"""Las acciones que ejecuta una regla o un bloque Acción de un flujo.
+
+Un handler por tipo: agregar una acción nueva es sumar una entrada en
+``ACTION_HANDLERS`` y su normalizador en ``domain.validation``, sin tocar el
+despachador ni las acciones existentes.
+"""
+
+from __future__ import annotations
+
 import dataclasses
 import itertools
 from datetime import timedelta
 
-from sqlalchemy import select
+from domain_types import AutomationActionType, AutomationExecutionStatus, InteractiveType, NotificationType, TemplateType
 
-from app.db.models.automations import AutomationExecution, AutomationRule
-from app.db.models.media import MediaAsset
-from app.db.models.catalogs import MessageTemplate, TemplateAttachment
-from app.db.models.conversations import WspMessage
-from domain_types import (
-    AutomationActionType,
-    AutomationExecutionStatus,
-    AutomationRecipient,
-    InteractiveType,
-    NotificationType,
-    TemplateType,
+from app.modules.automations.application.deps import AutomationDeps
+from app.modules.automations.domain.events import (
+    AutomationMessagesQueued,
+    AutomationNotificationCreated,
+    AutomationTaskCreated,
 )
-from app.modules.automations.automation_deps import DEFAULT_DEPS, AutomationDeps
-from app.modules.automations.common import (
-    MAX_MEDIA_CAPTION_LENGTH,
-    MAX_WHATSAPP_TEXT_LENGTH,
-    _render,
-)
-from app.modules.conversations.ports.message_media import (mediatype_from_content_type)
-from app.integrations.meta.outbound import interactive_item, media_item, text_item
-from app.modules.catalogs.ports.template_delivery import (build_internal_template_items)
-from app.modules.conversations.ports.service_window import (SERVICE_WINDOW_CLOSED_ERROR)
+from app.modules.automations.domain.execution import execution_actor, resolve_recipient
+from app.modules.automations.domain.limits import MAX_MEDIA_CAPTION_LENGTH, MAX_WHATSAPP_TEXT_LENGTH
+from app.modules.automations.domain.rules import render_variables
+from app.modules.catalogs.ports.template_delivery import build_internal_template_items
+from app.modules.conversations.ports.message_items import interactive_item, media_item, text_item
+from app.modules.conversations.ports.message_media import mediatype_from_content_type
+from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR
 
 
-def _resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
-    if (
-        action.get("recipient") == AutomationRecipient.SPECIFIC
-        and action.get("user_id")
-    ):
-        return int(action["user_id"])
-    if chat.get("vendedor_id"):
-        return int(chat["vendedor_id"])
-    if payload.get("assigned_user_id"):
-        return int(payload["assigned_user_id"])
-    raise ValueError("El lead no tiene vendedor asignado")
-
-
-async def _action_create_task(action, chat, execution, rule, deps) -> dict:
+async def _action_create_task(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     assigned_user_id = (
         action.get("assigned_user_id")
         or chat.get("vendedor_id")
@@ -57,41 +44,32 @@ async def _action_create_task(action, chat, execution, rule, deps) -> dict:
     )
     task = await deps.create_task({
         "lead_id": chat["chat_id"],
-        "title": _render(action["title"], chat),
-        "description": _render(action["description"], chat) if action.get("description") else None,
+        "title": render_variables(action["title"], chat),
+        "description": render_variables(action["description"], chat) if action.get("description") else None,
         "task_type": action["task_type"],
         "priority": action["priority"],
         "due_at": due_at,
         "remind_at": remind_at,
         "assigned_user_id": assigned_user_id,
     }, rule.created_by_user_id)
-    await deps.broadcast({"type": "tasks_updated"})
+    await deps.publish(AutomationTaskCreated(task_id=task["id"]))
     return {"status": AutomationExecutionStatus.COMPLETED, "task_id": task["id"]}
 
 
-def _execution_actor(execution) -> tuple[str, int | None]:
-    """Actor humano que originó una acción del motor.
-
-    Los flujos manuales y sus flujos hijos conservan al vendedor iniciador.
-    Un disparador automático no se atribuye al creador de la regla: el actor
-    real es el sistema.
-    """
-    user_id = getattr(execution, "started_by_user_id", None)
-    return ("user", user_id) if user_id is not None else ("system", None)
-
-
-async def _action_change_service(action, chat, execution, rule, deps) -> dict:
-    actor_type, actor_user_id = _execution_actor(execution)
-    updated = await deps.update_lead(
-        chat["chat_id"], {"servicio_interes": action["service"]}, actor_type, actor_user_id
-    )
+async def _update_lead(chat, execution, deps: AutomationDeps, values: dict) -> None:
+    actor_type, actor_user_id = execution_actor(execution)
+    updated = await deps.update_lead(chat["chat_id"], values, actor_type, actor_user_id)
     if not updated:
         raise ValueError("Lead no encontrado")
     chat.update(updated)
+
+
+async def _action_change_service(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    await _update_lead(chat, execution, deps, {"servicio_interes": action["service"]})
     return {"status": AutomationExecutionStatus.COMPLETED, "service": action["service"]}
 
 
-async def _action_set_conversation_state(action, chat, execution, rule, deps) -> dict:
+async def _action_set_conversation_state(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     state = action["state"]
     should_open = state == "open"
     if bool(chat.get("conversacion_abierta")) == should_open:
@@ -99,43 +77,27 @@ async def _action_set_conversation_state(action, chat, execution, rule, deps) ->
             "status": AutomationExecutionStatus.SKIPPED,
             "conversation_state": state,
         }
-
-    actor_type, actor_user_id = _execution_actor(execution)
-    updated = await deps.update_lead(
-        chat["chat_id"],
-        {"conversacion_abierta": should_open},
-        actor_type,
-        actor_user_id,
-    )
-    if not updated:
-        raise ValueError("Lead no encontrado")
-    chat.update(updated)
+    await _update_lead(chat, execution, deps, {"conversacion_abierta": should_open})
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "conversation_state": state,
     }
 
 
-async def _action_assign_seller(action, chat, execution, rule, deps) -> dict:
-    actor_type, actor_user_id = _execution_actor(execution)
-    updated = await deps.update_lead(
-        chat["chat_id"], {"vendedor_id": action["user_id"]}, actor_type, actor_user_id
-    )
-    if not updated:
-        raise ValueError("Lead no encontrado")
-    chat.update(updated)
+async def _action_assign_seller(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    await _update_lead(chat, execution, deps, {"vendedor_id": action["user_id"]})
     return {"status": AutomationExecutionStatus.COMPLETED, "user_id": action["user_id"]}
 
 
-async def _action_add_tag(action, chat, execution, rule, deps) -> dict:
-    _actor_type, actor_user_id = _execution_actor(execution)
+async def _action_add_tag(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    _actor_type, actor_user_id = execution_actor(execution)
     if not await deps.assign_tag(chat["chat_id"], action["tag_id"], actor_user_id):
         raise ValueError("Lead o etiqueta no encontrado")
     return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
 
 
-async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
-    _actor_type, actor_user_id = _execution_actor(execution)
+async def _action_remove_tag(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    _actor_type, actor_user_id = execution_actor(execution)
     removed = await deps.remove_tag(chat["chat_id"], action["tag_id"], actor_user_id)
     return {
         "status": (
@@ -145,8 +107,8 @@ async def _action_remove_tag(action, chat, execution, rule, deps) -> dict:
     }
 
 
-async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
-    actor_type, actor_user_id = _execution_actor(execution)
+async def _action_change_stage(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    actor_type, actor_user_id = execution_actor(execution)
     # El cambio hecho por una automatización no dispara las de cambio de
     # etapa (ver LeadStageChanged.triggers_automations).
     updated = await deps.change_stage(
@@ -159,18 +121,18 @@ async def _action_change_stage(action, chat, execution, rule, deps) -> dict:
     return {"status": AutomationExecutionStatus.COMPLETED, "stage": action["stage"]}
 
 
-async def _action_notify(action, chat, execution, rule, deps) -> dict:
-    user_id = _resolve_recipient(action, chat, execution.event_payload or {})
+async def _action_notify(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    user_id = resolve_recipient(action, chat, execution.event_payload or {})
     notification = await deps.create_notification(
         user_id,
         NotificationType.AUTOMATION,
-        _render(action["title"], chat),
-        _render(action["body"], chat),
+        render_variables(action["title"], chat),
+        render_variables(action["body"], chat),
         chat["chat_id"],
         str(execution.id),
         {"automation_rule_id": rule.id, "automation_rule_name": rule.name},
     )
-    await deps.send_to_user(user_id, {"type": "notification_created", "notification": notification})
+    await deps.publish(AutomationNotificationCreated(user_id=user_id, notification=notification))
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "notification_id": notification["id"],
@@ -178,9 +140,7 @@ async def _action_notify(action, chat, execution, rule, deps) -> dict:
     }
 
 
-async def _require_service_window(
-    chat: dict, execution: AutomationExecution, deps: AutomationDeps
-) -> None:
+async def require_service_window(chat: dict, execution, deps: AutomationDeps) -> None:
     """Frena el envío si la ventana de atención de 24 h está cerrada.
 
     La excepción es una ejecución que un admin autorizó a mano desde la alerta
@@ -197,22 +157,22 @@ async def _require_service_window(
         raise ValueError(SERVICE_WINDOW_CLOSED_ERROR)
 
 
-async def _action_send_template(action, chat, execution, rule, deps) -> dict:
-    async with deps.session() as session:
-        template = await session.get(MessageTemplate, action["template_id"])
-        attachments = (await session.execute(
-            select(TemplateAttachment).where(TemplateAttachment.template_id == action["template_id"])
-            .order_by(TemplateAttachment.position, TemplateAttachment.id)
-        )).scalars().all()
+async def _queued(chat: dict, deps: AutomationDeps) -> None:
+    await deps.publish(AutomationMessagesQueued(chat_id=chat["chat_id"]))
+
+
+async def _action_send_template(action, chat, execution, rule, deps: AutomationDeps) -> dict:
+    template = await deps.load_template(action["template_id"])
     if (
         not template
-        or not template.is_active
-        or template.template_type != TemplateType.INTERNAL
-        or template.interactive_type != InteractiveType.NONE
+        or not template["is_active"]
+        or template["template_type"] != TemplateType.INTERNAL
+        or template["interactive_type"] != InteractiveType.NONE
     ):
         raise ValueError("La plantilla automática dejó de ser una plantilla interna válida")
-    await _require_service_window(chat, execution, deps)
-    text = _render(template.content, chat).strip()
+    attachments = template["attachments"]
+    await require_service_window(chat, execution, deps)
+    text = render_variables(template["content"], chat).strip()
     if not text and not attachments:
         raise ValueError("La plantilla no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
@@ -223,31 +183,31 @@ async def _action_send_template(action, chat, execution, rule, deps) -> dict:
     # encolados atómicamente en una sola transacción, en vez de una llamada
     # por ítem.
     sent = await deps.enqueue_messages(chat["chat_id"], items)
-    await deps.record_template_use(template.id, rule.created_by_user_id)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    await deps.record_template_use(template["id"], rule.created_by_user_id)
+    await _queued(chat, deps)
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "message_ids": [message["id"] for message in sent],
-        "template_id": template.id,
+        "template_id": template["id"],
     }
 
 
-async def _action_send_message(action, chat, execution, rule, deps) -> dict:
+async def _action_send_message(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     """Envía texto libre sin pasar por una plantilla — para un mensaje de un
     solo uso dentro de un flujo puntual, cuando no vale la pena guardarlo
     como plantilla reutilizable."""
-    await _require_service_window(chat, execution, deps)
-    text = _render(action["text"], chat).strip()
+    await require_service_window(chat, execution, deps)
+    text = render_variables(action["text"], chat).strip()
     if not text:
         raise ValueError("El mensaje no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
         raise ValueError("El contenido renderizado del mensaje no es válido")
     sent = await deps.enqueue_messages(chat["chat_id"], [text_item(text)])
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    await _queued(chat, deps)
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
-async def _action_react_to_last_customer_message(action, chat, execution, rule, deps) -> dict:
+async def _action_react_to_last_customer_message(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     """Reacciona al mensaje entrante más reciente, aunque el vendedor haya
     enviado otros mensajes después. WhatsApp solo admite una reacción propia
     por mensaje; una ejecución posterior reemplaza la anterior.
@@ -259,8 +219,8 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
     emoji = action["emoji"]
     # Igual que la reacción manual: primero WhatsApp y luego el badge local,
     # para no mostrar como enviada una reacción que el cliente nunca recibió.
+    # El aviso a los paneles lo da conversations al registrar la reacción.
     message = await deps.send_reaction(chat["chat_id"], target["wa_message_id"], emoji)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "reaction"})
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "message_id": message["id"] if message else target["id"],
@@ -269,93 +229,75 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
     }
 
 
-async def _fetch_media_asset(action, deps: AutomationDeps) -> MediaAsset:
-    async with deps.session() as session:
-        asset = await session.get(MediaAsset, action["media_asset_id"])
+async def _media_asset(action, deps: AutomationDeps) -> dict:
+    asset = await deps.load_media_asset(action["media_asset_id"])
     if not asset:
         raise ValueError("El archivo elegido ya no existe en la librería de medios")
     return asset
 
 
-async def _last_outbound_media_message_id(chat_id: str, deps: AutomationDeps) -> str | None:
-    """Para la condición `media_played` de una Pausa: el mensaje de imagen/
-    video/audio más reciente que el vendedor le mandó a este lead antes de
-    entrar a la espera — es lo que se vigila para saber cuándo lo reproduce.
-    None si todavía no se le mandó nada de eso (la condición simplemente
-    nunca se cumple, no es un error)."""
-    async with deps.session() as session:
-        return await session.scalar(
-            select(WspMessage.wa_message_id).where(
-                WspMessage.chat_id == chat_id,
-                WspMessage.sender == "vendedor",
-                WspMessage.message_type.in_(["image", "video", "audio"]),
-                WspMessage.wa_message_id.isnot(None),
-            ).order_by(WspMessage.sent_at.desc(), WspMessage.id.desc()).limit(1)
-        )
-
-
-async def _action_send_audio(action, chat, execution, rule, deps) -> dict:
+async def _action_send_audio(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     """Manda una nota de voz (PTT) desde un archivo ya subido a la librería
     de medios — no crea una plantilla para un envío de un solo uso."""
-    asset = await _fetch_media_asset(action, deps)
-    if not asset.content_type.startswith("audio/"):
+    asset = await _media_asset(action, deps)
+    if not asset["content_type"].startswith("audio/"):
         raise ValueError("El archivo elegido ya no es un audio")
-    await _require_service_window(chat, execution, deps)
+    await require_service_window(chat, execution, deps)
     sent = await deps.enqueue_messages(chat["chat_id"], [
-        media_item(asset.media_url, "audio", content_type=asset.content_type),
+        media_item(asset["media_url"], "audio", content_type=asset["content_type"]),
     ])
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    await _queued(chat, deps)
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
-async def _action_send_attachment(action, chat, execution, rule, deps) -> dict:
+async def _action_send_attachment(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     """Manda un adjunto (imagen/video/documento) de la librería de medios sin
     texto ni plantilla — mismo camino que ya usan los adjuntos de
-    `_action_send_template`, apuntando a un `MediaAsset` en vez de un
-    `TemplateAttachment`."""
-    asset = await _fetch_media_asset(action, deps)
-    await _require_service_window(chat, execution, deps)
-    mediatype = mediatype_from_content_type(asset.content_type)
+    `_action_send_template`, apuntando a un recurso de la librería en vez de
+    un adjunto de plantilla."""
+    asset = await _media_asset(action, deps)
+    await require_service_window(chat, execution, deps)
+    mediatype = mediatype_from_content_type(asset["content_type"])
     sent = await deps.enqueue_messages(chat["chat_id"], [
-        media_item(asset.media_url, mediatype, filename=asset.filename, content_type=asset.content_type),
+        media_item(asset["media_url"], mediatype, filename=asset["filename"], content_type=asset["content_type"]),
     ])
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    await _queued(chat, deps)
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
 
 
-async def _action_send_media(action, chat, execution, rule, deps) -> dict:
+async def _action_send_media(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     """Envía un recurso de la librería con texto opcional.
 
     Imagen, video y documento llevan el caption dentro del mismo mensaje.
     WhatsApp no admite caption nativo en audio: en ese caso se conserva el
     envío como nota de voz y el texto se encola justo después.
     """
-    asset = await _fetch_media_asset(action, deps)
-    await _require_service_window(chat, execution, deps)
-    caption = _render(action.get("caption") or "", chat).strip()
+    asset = await _media_asset(action, deps)
+    await require_service_window(chat, execution, deps)
+    caption = render_variables(action.get("caption") or "", chat).strip()
     if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
         raise ValueError("El caption renderizado admite máximo 1024 caracteres")
 
-    mediatype = mediatype_from_content_type(asset.content_type)
+    mediatype = mediatype_from_content_type(asset["content_type"])
     items = [media_item(
-        asset.media_url,
+        asset["media_url"],
         mediatype,
-        filename=asset.filename,
+        filename=asset["filename"],
         caption=caption or None,
-        content_type=asset.content_type,
+        content_type=asset["content_type"],
     )]
     if mediatype == "audio" and caption:
         items.append(text_item(caption))
 
     sent = await deps.enqueue_messages(chat["chat_id"], items)
-    await deps.broadcast({"type": "chats_updated", "chat_id": chat["chat_id"], "reason": "outbound_message"})
+    await _queued(chat, deps)
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "message_ids": [message["id"] for message in sent],
     }
 
 
-async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
+async def send_buttons_message(chat: dict, text: str, buttons: list[dict], deps: AutomationDeps) -> dict:
     """Manda la pregunta de un nodo ``question`` como mensaje interactivo de
     botones de Meta. ``buttons`` son ``{id, title}``; el id vuelve literal en
     ``interactive.button_reply.id`` cuando el cliente toca uno.
@@ -374,11 +316,10 @@ async def _send_buttons_message(chat: dict, text: str, buttons: list[dict], deps
         },
     }
     sent = await deps.enqueue_messages(chat["chat_id"], [interactive_item(interactive, content=text)])
+    await _queued(chat, deps)
     return sent[0]
 
 
-# Un handler por tipo de acción: agregar una acción nueva es sumar una entrada
-# acá y su validación, sin tocar el despachador ni las acciones existentes.
 ACTION_HANDLERS = {
     AutomationActionType.CREATE_TASK: _action_create_task,
     AutomationActionType.ASSIGN_SELLER: _action_assign_seller,
@@ -397,7 +338,9 @@ ACTION_HANDLERS = {
 }
 
 
-def _with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:
+def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:
+    """Claves de deduplicación estables por ejecución y paso: un reintento
+    tras un crash no vuelve a encolar lo que ya quedó en la outbox."""
     calls = itertools.count()
 
     async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
@@ -408,12 +351,12 @@ def _with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) 
     return dataclasses.replace(deps, enqueue_messages=enqueue_messages)
 
 
-async def _execute_action(
+async def execute_action(
     action: dict,
     chat: dict,
-    execution: AutomationExecution,
-    rule: AutomationRule,
-    deps: AutomationDeps = DEFAULT_DEPS,
+    execution,
+    rule,
+    deps: AutomationDeps,
     *,
     position: int | None = None,
 ) -> dict:
@@ -421,6 +364,6 @@ async def _execute_action(
     if handler is None:
         raise ValueError(f"Acción no soportada: {action['type']}")
     if position is not None:
-        deps = _with_outbox_dedupe(deps, execution.id, position)
+        deps = with_outbox_dedupe(deps, execution.id, position)
     result = await handler(action, chat, execution, rule, deps)
     return {"type": action["type"], **result}

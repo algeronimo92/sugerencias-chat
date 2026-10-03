@@ -2,15 +2,12 @@
 que exige conectarlas todas, y el motor repartiendo una ejecución por turno.
 """
 
-import dataclasses
-from types import SimpleNamespace
-
 import pytest
 
 from domain_types import AutomationExecutionStatus
-from app.modules.automations.automation_rules import validate_graph_topology
-from app.modules.automations.rule_validation import _normalize_round_robin
-from app.modules.automations.engine import _run_visual_execution
+from app.modules.automations.application.engine import run_visual_execution
+from app.modules.automations.domain.flow_graph import validate_graph_topology
+from app.modules.automations.domain.validation import normalize_round_robin
 from tests.conftest import make_chat, make_execution, make_rule
 
 
@@ -36,38 +33,9 @@ def round_robin_flow(outputs=3):
     }
 
 
-def counting_session():
-    """FakeSession que emula el contador persistente: `scalar` devuelve el
-    turno ya incrementado, igual que el INSERT ... ON CONFLICT DO UPDATE
-    ... RETURNING de _next_round_robin_output. `calls` acumula lo que se
-    persistió de la ejecución."""
-    calls: list[dict] = []
-    state = {"counter": 0}
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def scalar(self, stmt):
-            state["counter"] += 1
-            return state["counter"]
-
-        async def execute(self, stmt):
-            calls.append(stmt.compile().params)
-            return SimpleNamespace(rowcount=1)
-
-        async def commit(self):
-            pass
-
-    return FakeSession, calls, state
-
-
 class TestNormalizeRoundRobin:
     def test_assigns_positional_ids(self):
-        result = _normalize_round_robin(
+        result = normalize_round_robin(
             {"outputs": [{"id": "cualquiera", "label": "Ana"}, {"id": "otro", "label": "Luis"}]}, 1,
         )
         assert result == {"outputs": [
@@ -76,21 +44,21 @@ class TestNormalizeRoundRobin:
         ]}
 
     def test_fills_in_missing_labels(self):
-        result = _normalize_round_robin({"outputs": [{"label": ""}, {"label": "  "}]}, 1)
+        result = normalize_round_robin({"outputs": [{"label": ""}, {"label": "  "}]}, 1)
         assert [output["label"] for output in result["outputs"]] == ["Salida 1", "Salida 2"]
 
     def test_accepts_the_maximum(self):
-        result = _normalize_round_robin({"outputs": [{"label": str(n)} for n in range(10)]}, 1)
+        result = normalize_round_robin({"outputs": [{"label": str(n)} for n in range(10)]}, 1)
         assert len(result["outputs"]) == 10
 
     @pytest.mark.parametrize("count", [0, 1, 11])
     def test_rejects_output_counts_out_of_range(self, count):
         with pytest.raises(ValueError, match="entre 2 y 10 salidas"):
-            _normalize_round_robin({"outputs": [{"label": str(n)} for n in range(count)]}, 1)
+            normalize_round_robin({"outputs": [{"label": str(n)} for n in range(count)]}, 1)
 
     def test_rejects_missing_outputs(self):
         with pytest.raises(ValueError, match="entre 2 y 10 salidas"):
-            _normalize_round_robin({}, 1)
+            normalize_round_robin({}, 1)
 
 
 class TestRoundRobinTopology:
@@ -118,11 +86,9 @@ class TestRoundRobinTopology:
 
 
 class TestRunVisualExecutionRoundRobin:
-    async def test_rotates_through_every_output_and_starts_over(self, deps):
+    async def test_rotates_through_every_output_and_starts_over(self, deps, executions):
         """Cuatro ejecuciones sobre un bloque de tres salidas: 1, 2, 3 y de
         nuevo la 1."""
-        FakeSession, calls, _ = counting_session()
-        session_deps = dataclasses.replace(deps, session_factory=lambda: FakeSession)
         rule = make_rule(builder_mode="visual", flow_version=0)
         branches = []
 
@@ -131,8 +97,8 @@ class TestRunVisualExecutionRoundRobin:
                 "definition": round_robin_flow(3), "flow_version": 0,
                 "current_node_id": "rr", "path": ["t"],
             })
-            await _run_visual_execution(execution, rule, make_chat(), session_deps)
-            final = calls[-1]
+            await run_visual_execution(execution, rule, make_chat(), deps)
+            _execution_id, final = executions.saves[-1]
             assert final["status"] == AutomationExecutionStatus.COMPLETED
             branches.append(
                 next(r for r in final["action_results"] if r["type"] == "round_robin")["branch"]
@@ -140,20 +106,16 @@ class TestRunVisualExecutionRoundRobin:
 
         assert branches == ["out_1", "out_2", "out_3", "out_1"]
 
-    async def test_follows_the_edge_of_the_output_it_got(self, deps):
-        FakeSession, calls, _ = counting_session()
+    async def test_follows_the_edge_of_the_output_it_got(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": round_robin_flow(2), "flow_version": 0,
             "current_node_id": "rr", "path": ["t"],
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
-            execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
-        )
+        await run_visual_execution(execution, rule, make_chat(), deps)
 
-        final = calls[-1]
+        _execution_id, final = executions.saves[-1]
         assert final["flow_state"]["path"] == ["t", "rr", "e_out_1"]
         assert final["flow_state"]["current_node_id"] is None
         result = next(r for r in final["action_results"] if r["type"] == "round_robin")

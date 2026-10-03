@@ -6,17 +6,16 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from domain_types import FlowHandle, FlowNodeType
-from app.modules.automations.automation_rules import (
+from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
+from app.modules.automations.domain.replies import classify_customer_reply
+from app.modules.automations.domain.rules import (
     FLOW_COORDINATE_LIMIT,
-    classify_customer_reply,
     is_business_hours,
     matches_static_conditions,
     normalize_conditions,
-    normalize_edges,
     normalize_flow_position,
     render_variables,
     unknown_variables,
-    validate_graph_topology,
 )
 
 LIMA = ZoneInfo("America/Lima")
@@ -87,7 +86,7 @@ class TestNormalizeConditions:
 
     def test_accepts_a_custom_stage_key(self):
         """Las etapas son de cada negocio: si la clave existe lo verifica
-        rule_validation contra la base, no esta función pura."""
+        application.validation contra la base, no esta función pura."""
         assert normalize_conditions({"stage": "cita_pagada"})["stage"] == "cita_pagada"
 
     def test_cooldown_is_clamped_to_supported_range(self):

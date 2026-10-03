@@ -12,10 +12,16 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
-import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
-from app.modules.automations.actions import _execute_action, _resolve_recipient
-from app.modules.automations.engine import _run_execution
-from tests.conftest import make_chat, make_execution, make_rule, patch_automations
+from app.modules.automations.application.actions import execute_action
+from app.modules.automations.application.engine import run_execution
+from app.modules.automations.application.validation import validate_automation_rule
+from app.modules.automations.domain.events import (
+    AutomationMessagesQueued,
+    AutomationNotificationCreated,
+    AutomationTaskCreated,
+)
+from app.modules.automations.domain.execution import resolve_recipient
+from tests.conftest import make_chat, make_execution, make_rule
 
 
 def template(**overrides):
@@ -23,15 +29,15 @@ def template(**overrides):
         "id": 5, "content": "Hola {{nombre}}", "is_active": True,
         "template_type": "internal", "interactive_type": "none",
     }
-    return SimpleNamespace(**{**defaults, **overrides})
+    return {**defaults, **overrides}
 
 
 def attachment(**overrides):
     defaults = {
         "id": 1, "media_url": "/media/foto.jpg", "content_type": "image/jpeg",
-        "filename": "foto.jpg", "position": 0,
+        "filename": "foto.jpg",
     }
-    return SimpleNamespace(**{**defaults, **overrides})
+    return {**defaults, **overrides}
 
 
 def media_asset(**overrides):
@@ -39,7 +45,7 @@ def media_asset(**overrides):
         "id": 9, "media_url": "/media/audio.ogg", "content_type": "audio/ogg",
         "filename": "audio.ogg",
     }
-    return SimpleNamespace(**{**defaults, **overrides})
+    return {**defaults, **overrides}
 
 
 def resumable_execution(action_results):
@@ -61,85 +67,24 @@ def two_message_rule():
 
 
 def deps_running(deps, execution, rule):
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def get(self, model, pk):
-            name = getattr(model, "__name__", "")
-            return execution if name == "AutomationExecution" else rule
-
-        async def execute(self, stmt):
-            return SimpleNamespace(rowcount=1)
-
-        async def commit(self):
-            pass
-
-    return dataclasses.replace(
-        deps,
-        session_factory=lambda: FakeSession,
-        fetch_chat=AsyncMock(return_value=make_chat()),
-    )
+    deps.executions.add(execution, rule)
+    return dataclasses.replace(deps, fetch_chat=AsyncMock(return_value=make_chat()))
 
 
 def deps_with_media_asset(deps, asset):
-    """Sustituye la sesión de base por una que devuelve el asset indicado
-    (o None, para simular que ya no existe en la librería de medios)."""
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def get(self, model, pk):
-            return asset
-
-    return dataclasses.replace(deps, session_factory=lambda: FakeSession)
+    """La librería de medios devuelve el recurso indicado (o None, para
+    simular que ya no existe)."""
+    return dataclasses.replace(deps, load_media_asset=AsyncMock(return_value=asset))
 
 
 def deps_with_template(deps, tpl, attachments=()):
-    """Sustituye la sesión de base por una que devuelve la plantilla indicada."""
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def get(self, model, pk):
-            return tpl
-
-        async def execute(self, stmt):
-            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(attachments)))
-
-    return dataclasses.replace(deps, session_factory=lambda: FakeSession)
-
-
-class _MediaValidationSession:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-    async def execute(self, stmt):
-        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [9]))
+    """El catálogo devuelve la plantilla indicada con sus adjuntos."""
+    return dataclasses.replace(deps, load_template=AsyncMock(return_value={**tpl, "attachments": list(attachments)}))
 
 
 class TestSendMediaValidation:
-    async def test_rule_accepts_and_preserves_caption(self, monkeypatch):
-        patch_automations(monkeypatch,
-            "get_sessionmaker",
-            lambda: lambda: _MediaValidationSession(),
-        )
-
-        values = await _domain_app_modules_automations_rule_validation.validate_automation_rule({
+    async def test_rule_accepts_and_preserves_caption(self, in_memory_automations):
+        values = await validate_automation_rule({
             "name": "Video de bienvenida",
             "trigger_type": AutomationTrigger.MANUAL,
             "actions": [{
@@ -155,9 +100,9 @@ class TestSendMediaValidation:
             "caption": "Hola {{nombre}}",
         }]
 
-    async def test_rule_rejects_caption_over_limit(self):
+    async def test_rule_rejects_caption_over_limit(self, in_memory_automations):
         with pytest.raises(ValueError, match="caption admite máximo 1024"):
-            await _domain_app_modules_automations_rule_validation.validate_automation_rule({
+            await validate_automation_rule({
                 "name": "Video largo",
                 "trigger_type": AutomationTrigger.MANUAL,
                 "actions": [{
@@ -177,12 +122,13 @@ class TestCreateTask:
             "due_minutes": 60, "remind_minutes_before": 15,
             "assigned_user_id": None,
         }
-        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
         assert result["status"] == AutomationExecutionStatus.COMPLETED
         assert recorder.tasks[0]["title"] == "Seguir a Ana"
         assert recorder.tasks[0]["due_at"] == frozen_now + timedelta(minutes=60)
         assert recorder.tasks[0]["remind_at"] == frozen_now + timedelta(minutes=45)
+        assert recorder.of(AutomationTaskCreated) == [AutomationTaskCreated(task_id=1)]
 
     async def test_falls_back_to_lead_seller_when_no_assignee(self, deps, recorder):
         action = {
@@ -190,7 +136,7 @@ class TestCreateTask:
             "task_type": "seguimiento", "priority": "normal",
             "due_minutes": 30, "remind_minutes_before": 0, "assigned_user_id": None,
         }
-        await _execute_action(action, make_chat(vendedor_id=7), make_execution(), make_rule(), deps)
+        await execute_action(action, make_chat(vendedor_id=7), make_execution(), make_rule(), deps)
         assert recorder.tasks[0]["assigned_user_id"] == 7
 
     async def test_fails_when_nobody_can_be_assigned(self, deps):
@@ -200,13 +146,13 @@ class TestCreateTask:
             "due_minutes": 30, "remind_minutes_before": 0, "assigned_user_id": None,
         }
         with pytest.raises(ValueError, match="no tiene vendedor"):
-            await _execute_action(action, make_chat(vendedor_id=None), make_execution(), make_rule(), deps)
+            await execute_action(action, make_chat(vendedor_id=None), make_execution(), make_rule(), deps)
 
 
 class TestTagsAndStage:
     async def test_add_tag(self, deps, recorder):
         action = {"type": AutomationActionType.ADD_TAG, "tag_id": 3}
-        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert result["status"] == AutomationExecutionStatus.COMPLETED
         assert recorder.tags_added == [("4316bc30-f78c-57a2-8f98-bff9087678d6", 3)]
 
@@ -219,7 +165,7 @@ class TestTagsAndStage:
             return values
 
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Botox premium"}
-        await _execute_action(
+        await execute_action(
             action,
             make_chat(),
             make_execution(started_by_user_id=7),
@@ -239,7 +185,7 @@ class TestTagsAndStage:
             return False
 
         action = {"type": AutomationActionType.REMOVE_TAG, "tag_id": 3}
-        result = await _execute_action(
+        result = await execute_action(
             action, make_chat(), make_execution(), make_rule(),
             dataclasses.replace(deps, remove_tag=remove_nothing),
         )
@@ -248,7 +194,7 @@ class TestTagsAndStage:
     async def test_change_stage_updates_local_chat_for_later_actions(self, deps, recorder):
         chat = make_chat(stage="nuevo")
         action = {"type": AutomationActionType.CHANGE_STAGE, "stage": "oferta_presentada"}
-        await _execute_action(action, chat, make_execution(), make_rule(), deps)
+        await execute_action(action, chat, make_execution(), make_rule(), deps)
         assert recorder.stage_changes == [("4316bc30-f78c-57a2-8f98-bff9087678d6", "oferta_presentada")]
         # El chat en memoria se actualiza para que una acción posterior de la
         # misma ejecución vea la etapa nueva.
@@ -257,13 +203,13 @@ class TestTagsAndStage:
     async def test_change_service_sets_the_new_value(self, deps, recorder):
         chat = make_chat(servicio_interes="Botox")
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Hollywood Peel"}
-        await _execute_action(action, chat, make_execution(), make_rule(), deps)
+        await execute_action(action, chat, make_execution(), make_rule(), deps)
         assert recorder.lead_updates == [("4316bc30-f78c-57a2-8f98-bff9087678d6", {"servicio_interes": "Hollywood Peel"})]
         assert chat["servicio_interes"] == "Hollywood Peel"
 
     async def test_change_service_with_none_clears_it(self, deps, recorder):
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": None}
-        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert recorder.lead_updates == [("4316bc30-f78c-57a2-8f98-bff9087678d6", {"servicio_interes": None})]
 
     async def test_change_service_fails_when_lead_is_gone(self, deps):
@@ -272,15 +218,15 @@ class TestTagsAndStage:
 
         action = {"type": AutomationActionType.CHANGE_SERVICE, "service": "Botox"}
         with pytest.raises(ValueError, match="Lead no encontrado"):
-            await _execute_action(
+            await execute_action(
                 action, make_chat(), make_execution(), make_rule(),
                 dataclasses.replace(deps, update_lead=not_found),
             )
 
 
 class TestConversationState:
-    async def test_rule_accepts_and_preserves_state(self):
-        values = await _domain_app_modules_automations_rule_validation.validate_automation_rule({
+    async def test_rule_accepts_and_preserves_state(self, in_memory_automations):
+        values = await validate_automation_rule({
             "name": "Cerrar al terminar",
             "trigger_type": AutomationTrigger.MANUAL,
             "actions": [{
@@ -294,9 +240,9 @@ class TestConversationState:
             "state": "closed",
         }]
 
-    async def test_rule_rejects_unknown_state(self):
+    async def test_rule_rejects_unknown_state(self, in_memory_automations):
         with pytest.raises(ValueError, match="estado de conversación inválido"):
-            await _domain_app_modules_automations_rule_validation.validate_automation_rule({
+            await validate_automation_rule({
                 "name": "Estado inválido",
                 "trigger_type": AutomationTrigger.MANUAL,
                 "actions": [{
@@ -312,7 +258,7 @@ class TestConversationState:
             "state": "open",
         }
 
-        result = await _execute_action(
+        result = await execute_action(
             action, chat, make_execution(), make_rule(), deps,
         )
 
@@ -330,7 +276,7 @@ class TestConversationState:
             "state": "closed",
         }
 
-        result = await _execute_action(
+        result = await execute_action(
             action, chat, make_execution(), make_rule(), deps,
         )
 
@@ -347,7 +293,7 @@ class TestConversationState:
             "state": "open",
         }
 
-        result = await _execute_action(
+        result = await execute_action(
             action,
             make_chat(conversacion_abierta=True),
             make_execution(),
@@ -357,7 +303,7 @@ class TestConversationState:
 
         assert result["status"] == AutomationExecutionStatus.SKIPPED
         assert recorder.lead_updates == []
-        assert recorder.broadcasts == []
+        assert recorder.events == []
 
 
 class TestNotify:
@@ -366,27 +312,29 @@ class TestNotify:
             "type": AutomationActionType.NOTIFY, "recipient": AutomationRecipient.SELLER,
             "user_id": None, "title": "Revisa {{nombre}}", "body": "Pendiente",
         }
-        await _execute_action(action, make_chat(vendedor_id=7), make_execution(), make_rule(), deps)
+        await execute_action(action, make_chat(vendedor_id=7), make_execution(), make_rule(), deps)
         assert recorder.notifications[0]["user_id"] == 7
         assert recorder.notifications[0]["title"] == "Revisa Ana"
+        [announced] = recorder.of(AutomationNotificationCreated)
+        assert announced.user_id == 7
 
     def test_specific_recipient_wins_over_lead_seller(self):
         action = {"recipient": AutomationRecipient.SPECIFIC, "user_id": 99}
-        assert _resolve_recipient(action, make_chat(vendedor_id=7), {}) == 99
+        assert resolve_recipient(action, make_chat(vendedor_id=7), {}) == 99
 
     def test_falls_back_to_payload_assignee(self):
         action = {"recipient": AutomationRecipient.SELLER}
-        assert _resolve_recipient(action, make_chat(vendedor_id=None), {"assigned_user_id": 4}) == 4
+        assert resolve_recipient(action, make_chat(vendedor_id=None), {"assigned_user_id": 4}) == 4
 
     def test_raises_when_no_recipient_can_be_resolved(self):
         with pytest.raises(ValueError, match="no tiene vendedor"):
-            _resolve_recipient({"recipient": AutomationRecipient.SELLER}, make_chat(vendedor_id=None), {})
+            resolve_recipient({"recipient": AutomationRecipient.SELLER}, make_chat(vendedor_id=None), {})
 
 
 class TestSendTemplate:
     async def test_sends_rendered_text_and_records_message(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
-        result = await _execute_action(
+        result = await execute_action(
             action, make_chat(), make_execution(), make_rule(), deps_with_template(deps, template()),
         )
         assert outbox.enqueued == [(
@@ -402,7 +350,7 @@ class TestSendTemplate:
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         closed = dataclasses.replace(deps_with_template(deps, template()), get_customer_service_window=closed_window)
         with pytest.raises(ValueError, match="ventana de 24 horas"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), closed)
         assert outbox.enqueued == []
 
     async def test_sends_text_as_caption_of_first_compatible_attachment(self, deps, outbox):
@@ -411,7 +359,7 @@ class TestSendTemplate:
             deps, template(),
             [attachment(filename="foto.jpg"), attachment(id=2, filename="guia.pdf", content_type="application/pdf")],
         )
-        await _execute_action(action, make_chat(), make_execution(), make_rule(), with_media)
+        await execute_action(action, make_chat(), make_execution(), make_rule(), with_media)
 
         # El texto se integra al primer adjunto y todo queda en una única
         # llamada a enqueue_messages.
@@ -427,7 +375,7 @@ class TestSendTemplate:
     async def test_audio_only_template_keeps_text_as_separate_message(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         audio = attachment(content_type="audio/ogg", filename="indicacion.ogg")
-        await _execute_action(
+        await execute_action(
             action, make_chat(), make_execution(), make_rule(),
             deps_with_template(deps, template(), [audio]),
         )
@@ -440,7 +388,7 @@ class TestSendTemplate:
     async def test_attachment_only_template_needs_no_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         only_media = deps_with_template(deps, template(content="  "), [attachment()])
-        await _execute_action(action, make_chat(), make_execution(), make_rule(), only_media)
+        await execute_action(action, make_chat(), make_execution(), make_rule(), only_media)
         _, items = outbox.enqueued[0]
         assert len(items) == 1
         assert items[0]["message"]["type"] == "image"
@@ -454,23 +402,26 @@ class TestSendTemplate:
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         invalid = deps_with_template(deps, template(**bad))
         with pytest.raises(ValueError, match="plantilla interna válida"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), invalid)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), invalid)
         assert outbox.enqueued == []
 
     async def test_rejects_text_over_whatsapp_limit(self, deps):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         huge = deps_with_template(deps, template(content="x" * 5000))
         with pytest.raises(ValueError, match="no es válido"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), huge)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), huge)
 
 
 class TestSendMessage:
     """Enviar texto libre sin plantilla — mismo circuito que SendTemplate
     pero sin buscar plantilla ni adjuntos."""
 
-    async def test_sends_rendered_text_and_records_message(self, deps, outbox):
+    async def test_sends_rendered_text_and_records_message(self, deps, outbox, recorder):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola {{nombre}}, ¿seguimos?"}
-        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        assert recorder.of(AutomationMessagesQueued) == [
+            AutomationMessagesQueued(chat_id="4316bc30-f78c-57a2-8f98-bff9087678d6"),
+        ]
         assert outbox.enqueued == [(
             "4316bc30-f78c-57a2-8f98-bff9087678d6",
             [{"content": "Hola Ana, ¿seguimos?", "message": {"type": "text", "text": {"body": "Hola Ana, ¿seguimos?"}}}],
@@ -484,18 +435,18 @@ class TestSendMessage:
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
         closed = dataclasses.replace(deps, get_customer_service_window=closed_window)
         with pytest.raises(ValueError, match="ventana de 24 horas"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), closed)
         assert outbox.enqueued == []
 
     async def test_rejects_text_that_renders_empty(self, deps):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "   "}
         with pytest.raises(ValueError, match="no tiene contenido"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
     async def test_rejects_text_over_whatsapp_limit(self, deps):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "x" * 5000}
         with pytest.raises(ValueError, match="no es válido"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
 
 class TestReactToLastCustomerMessage:
@@ -505,12 +456,13 @@ class TestReactToLastCustomerMessage:
             "emoji": "❤️",
         }
 
-        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
         assert whatsapp.reactions == [("4316bc30-f78c-57a2-8f98-bff9087678d6", "CLIENT-WA-42", "❤️")]
         assert result["message_id"] == 1
         assert result["emoji"] == "❤️"
-        assert recorder.broadcasts[-1]["reason"] == "reaction"
+        # El aviso a los paneles lo da conversations al registrar la reacción.
+        assert recorder.events == []
 
     async def test_fails_clearly_when_customer_has_no_confirmed_message(self, deps, whatsapp):
         async def no_target(chat_id):
@@ -525,7 +477,7 @@ class TestReactToLastCustomerMessage:
         )
 
         with pytest.raises(ValueError, match="No hay un mensaje confirmado del cliente"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), without_target)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), without_target)
         assert whatsapp.reactions == []
 
     async def test_does_not_persist_if_whatsapp_rejects_reaction(self, deps, recorder, whatsapp):
@@ -536,15 +488,15 @@ class TestReactToLastCustomerMessage:
         }
 
         with pytest.raises(RuntimeError, match="Meta no disponible"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert whatsapp.reactions == []
-        assert recorder.broadcasts == []
+        assert recorder.events == []
 
 
 class TestSendAudio:
     async def test_sends_audio_from_media_library(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
-        result = await _execute_action(
+        result = await execute_action(
             action, make_chat(), make_execution(), make_rule(),
             deps_with_media_asset(deps, media_asset()),
         )
@@ -558,7 +510,7 @@ class TestSendAudio:
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
         not_audio = deps_with_media_asset(deps, media_asset(content_type="image/png"))
         with pytest.raises(ValueError, match="ya no es un audio"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), not_audio)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), not_audio)
 
     async def test_refuses_to_send_when_window_is_closed(self, deps):
         async def closed_window(chat_id):
@@ -567,20 +519,20 @@ class TestSendAudio:
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
         closed = dataclasses.replace(deps_with_media_asset(deps, media_asset()), get_customer_service_window=closed_window)
         with pytest.raises(ValueError, match="ventana de 24 horas"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), closed)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), closed)
 
     async def test_fails_when_asset_no_longer_exists(self, deps):
         action = {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 9}
         gone = deps_with_media_asset(deps, None)
         with pytest.raises(ValueError, match="ya no existe"):
-            await _execute_action(action, make_chat(), make_execution(), make_rule(), gone)
+            await execute_action(action, make_chat(), make_execution(), make_rule(), gone)
 
 
 class TestSendAttachment:
     async def test_sends_image_attachment_without_text(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
         asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
-        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
+        await execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
         _, items = outbox.enqueued[0]
         assert items[0]["content"] is None
         assert items[0]["message"] == {"type": "image", "image": {}}
@@ -589,7 +541,7 @@ class TestSendAttachment:
     async def test_sends_document_with_filename_in_payload(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 9}
         asset = media_asset(content_type="application/pdf", filename="guia.pdf")
-        await _execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
+        await execute_action(action, make_chat(), make_execution(), make_rule(), deps_with_media_asset(deps, asset))
         _, items = outbox.enqueued[0]
         assert items[0]["message"] == {"type": "document", "document": {"filename": "guia.pdf"}}
 
@@ -607,7 +559,7 @@ class TestSendMedia:
             filename="demo.mp4",
         )
 
-        result = await _execute_action(
+        result = await execute_action(
             action, make_chat(name="Ana"), make_execution(), make_rule(),
             deps_with_media_asset(deps, asset),
         )
@@ -627,7 +579,7 @@ class TestSendMedia:
             "caption": "Escucha esta indicación",
         }
 
-        result = await _execute_action(
+        result = await execute_action(
             action, make_chat(), make_execution(), make_rule(),
             deps_with_media_asset(deps, media_asset()),
         )
@@ -647,7 +599,7 @@ class TestSendMedia:
         }
         asset = media_asset(content_type="image/jpeg", filename="foto.jpg")
 
-        await _execute_action(
+        await execute_action(
             action, make_chat(), make_execution(), make_rule(),
             deps_with_media_asset(deps, asset),
         )
@@ -660,11 +612,11 @@ class TestSendMedia:
 class TestDispatch:
     async def test_unknown_action_type_is_rejected(self, deps):
         with pytest.raises(ValueError, match="no soportada"):
-            await _execute_action({"type": "inventada"}, make_chat(), make_execution(), make_rule(), deps)
+            await execute_action({"type": "inventada"}, make_chat(), make_execution(), make_rule(), deps)
 
     async def test_result_always_carries_the_action_type(self, deps):
         action = {"type": AutomationActionType.ADD_TAG, "tag_id": 1}
-        result = await _execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert result["type"] == AutomationActionType.ADD_TAG
 
 
@@ -680,7 +632,7 @@ class TestResumeDoesNotRepeatEnqueuedActions:
             "status": AutomationExecutionStatus.COMPLETED, "message_ids": [1],
         }])
 
-        await _run_execution(1, deps_running(deps, execution, two_message_rule()))
+        await run_execution(1, deps_running(deps, execution, two_message_rule()))
 
         assert len(outbox.enqueued) == 1
         _, items = outbox.enqueued[0]
@@ -701,7 +653,7 @@ class TestResumeDoesNotRepeatEnqueuedActions:
             },
         ])
 
-        await _run_execution(1, deps_running(deps, execution, two_message_rule()))
+        await run_execution(1, deps_running(deps, execution, two_message_rule()))
 
         assert [items[0]["content"] for _, items in outbox.enqueued] == ["Segundo"]
 
@@ -710,7 +662,7 @@ class TestOutboxDedupe:
     async def test_engine_steps_tag_each_enqueued_message_with_a_stable_key(self, deps, outbox):
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
 
-        await _execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
+        await execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
 
         _, items = outbox.enqueued[0]
         assert [item["dedupe_key"] for item in items] == ["automation:77:3:0:0"]
@@ -719,6 +671,6 @@ class TestOutboxDedupe:
         action = {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"}
 
         for _ in range(2):
-            await _execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
+            await execute_action(action, make_chat(), make_execution(id=77), make_rule(), deps, position=3)
 
         assert outbox.enqueued[0][1][0]["dedupe_key"] == outbox.enqueued[1][1][0]["dedupe_key"]

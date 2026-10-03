@@ -1,6 +1,6 @@
 """Consumer contract: only the operations used outside this capability."""
 
-from app.modules.automations.automation_rules import (
+from app.modules.automations.domain.rules import (
     render_variables,
 )
 

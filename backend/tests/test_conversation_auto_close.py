@@ -5,31 +5,22 @@ seguimiento del vendedor mantiene viva la conversación. El ajuste vive en
 `conversation_auto_close_hours` y vacío o 0 lo desactiva por completo.
 """
 
-from types import SimpleNamespace
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
-
-from app.modules.leads.public import Actor
 from sqlalchemy.dialects import postgresql
 
-import app.modules.automations.discovery as _domain_app_modules_automations_discovery
-from tests.conftest import patch_automations
+from app.modules.automations.infrastructure import worker
+from app.modules.leads.public import Actor
 
 
-class _SessionContext:
-    def __init__(self, session):
-        self._session = session
+def _use_session(monkeypatch, session):
+    @asynccontextmanager
+    async def session_scope():
+        yield session
 
-    async def __aenter__(self):
-        return self._session
-
-    async def __aexit__(self, *_args):
-        return False
-
-
-def _sessionmaker(session):
-    return lambda: (lambda: _SessionContext(session))
+    monkeypatch.setattr(worker, "session_scope", session_scope)
 
 
 class _LeadIdsResult:
@@ -52,22 +43,22 @@ def _compile(statement) -> str:
 
 @pytest.mark.parametrize("configured", ["", "0", "-4", "no es un número"])
 def test_only_a_positive_number_of_hours_enables_the_sweep(configured) -> None:
-    assert _domain_app_modules_automations_discovery._auto_close_hours(configured) == 0
+    assert worker._auto_close_hours(configured) == 0
 
 
 def test_a_decimal_setting_is_truncated_to_whole_hours() -> None:
-    assert _domain_app_modules_automations_discovery._auto_close_hours("24.0") == 24
+    assert worker._auto_close_hours("24.0") == 24
 
 
 @pytest.mark.asyncio
 async def test_sweep_does_nothing_while_the_setting_is_empty(monkeypatch) -> None:
     session = AsyncMock()
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value=""))
+    _use_session(monkeypatch, session)
+    monkeypatch.setattr(worker, "get_effective", AsyncMock(return_value=""))
     update = AsyncMock()
-    patch_automations(monkeypatch, "update_lead", update)
+    monkeypatch.setattr(worker, "update_lead", update)
 
-    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
+    closed = await worker._auto_close_idle_conversations()
 
     assert closed == 0
     # Ni siquiera consulta: desactivado no puede costar una query por minuto.
@@ -79,12 +70,12 @@ async def test_sweep_does_nothing_while_the_setting_is_empty(monkeypatch) -> Non
 async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult(["lead-1", "lead-2"]))
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
+    _use_session(monkeypatch, session)
+    monkeypatch.setattr(worker, "get_effective", AsyncMock(return_value="12"))
     update = AsyncMock()
-    patch_automations(monkeypatch, "update_lead", update)
+    monkeypatch.setattr(worker, "update_lead", update)
 
-    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
+    closed = await worker._auto_close_idle_conversations()
 
     assert closed == 2
     assert update.await_count == 2
@@ -96,11 +87,11 @@ async def test_closes_through_update_lead_so_queda_auditado(monkeypatch) -> None
 async def test_sweep_skips_paused_leads_and_measures_the_last_message(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult([]))
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
-    patch_automations(monkeypatch, "update_lead", AsyncMock())
+    _use_session(monkeypatch, session)
+    monkeypatch.setattr(worker, "get_effective", AsyncMock(return_value="12"))
+    monkeypatch.setattr(worker, "update_lead", AsyncMock())
 
-    await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
+    await worker._auto_close_idle_conversations()
 
     sql = _compile(session.execute.await_args.args[0])
     assert "automatizacion_pausada IS false" in sql
@@ -116,13 +107,10 @@ async def test_sweep_skips_paused_leads_and_measures_the_last_message(monkeypatc
 async def test_a_failed_close_does_not_abort_the_rest(monkeypatch) -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_LeadIdsResult(["lead-1", "lead-2"]))
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "get_effective", AsyncMock(return_value="12"))
-    patch_automations(monkeypatch,
-        "update_lead", AsyncMock(side_effect=[RuntimeError("boom"), None]),
-    )
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    _use_session(monkeypatch, session)
+    monkeypatch.setattr(worker, "get_effective", AsyncMock(return_value="12"))
+    monkeypatch.setattr(worker, "update_lead", AsyncMock(side_effect=[RuntimeError("boom"), None]))
 
-    closed = await _domain_app_modules_automations_discovery._auto_close_idle_conversations()
+    closed = await worker._auto_close_idle_conversations()
 
     assert closed == 1

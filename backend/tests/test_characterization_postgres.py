@@ -35,7 +35,7 @@ from app.db.session import get_sessionmaker
 from app.modules.ai.ai_context import make_context_revision
 from app.modules.ai.ai_job_tokens import AIJobClaims, require_ai_job_context
 from app.modules.auth.auth_service import get_current_user, verify_webhook_token
-from app.modules.automations.engine import process_due_automation_executions
+from app.modules.automations.application.engine import process_due_automation_executions
 from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.application.scheduling import dispatch_scheduled_message
 from app.realtime.ws_manager import manager

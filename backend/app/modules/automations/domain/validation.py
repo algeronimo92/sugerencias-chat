@@ -1,12 +1,13 @@
+"""Normalización de reglas y bloques: la forma de lo que se guarda.
+
+Todo acá es puro. Lo que solo la base puede responder (si un vendedor, una
+etiqueta o una plantilla existen y están activos) se junta en
+``ActionReferences`` y lo verifica ``application.validation`` de una sola vez.
+"""
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
-
-from app.db.models.catalogs import LeadTag, MessageTemplate
-from app.db.models.media import MediaAsset
-from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from domain_types import (
     AutomationActionType,
     AutomationRecipient,
@@ -16,12 +17,8 @@ from domain_types import (
     TaskType,
     WaitAnyConditionKind,
 )
-from app.modules.automations.automation_rules import is_stage_key, normalize_conditions, normalize_flow_position
-from app.modules.automations.automation_scheduling import TRIGGER_TYPES
-from app.modules.leads.ports.stages import (InvalidLeadStageError, verify_stage_keys)
 from app.integrations.meta.contract import limit
-from app.modules.automations.common import (
-    ACTION_TYPES,
+from app.modules.automations.domain.limits import (
     AUTOMATION_RECIPIENTS,
     CONVERSATION_STATES,
     FLOW_CONDITION_TYPES,
@@ -35,10 +32,14 @@ from app.modules.automations.common import (
     MAX_WHATSAPP_TEXT_LENGTH,
     TASK_PRIORITIES,
     TASK_TYPES,
-    _unknown_variables,
+    TRIGGER_TYPES,
 )
+from app.modules.automations.domain.rules import is_stage_key, normalize_conditions, unknown_variables
 
-_normalize_automation_conditions = normalize_conditions
+OVERDUE_TRIGGERS = frozenset({
+    AutomationTrigger.SELLER_RESPONSE_OVERDUE,
+    AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+})
 
 
 @dataclass
@@ -52,6 +53,9 @@ class ActionReferences:
     media_assets: set[int] = field(default_factory=set)
     # Etapas destino de "cambiar etapa": tienen que existir y estar activas.
     stages: set[str] = field(default_factory=set)
+    # Etapas por las que se filtra: alcanza con que existan (filtrar por una
+    # etapa desactivada que todavía tiene leads es válido).
+    condition_stages: set[str] = field(default_factory=set)
 
 
 def _normalize_create_task(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
@@ -201,32 +205,23 @@ ACTION_NORMALIZERS: dict[str, Callable[[str, dict, int, ActionReferences], dict]
 }
 
 
-async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> dict:
-    name = str(values.get("name") or "").strip()
-    if not name or len(name) > 120:
-        raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
-    trigger_type = values.get("trigger_type")
+def normalize_trigger(trigger_type: object, trigger_config: object) -> tuple[str, dict]:
     if trigger_type not in TRIGGER_TYPES:
         raise ValueError("Disparador no soportado")
-    trigger_config = values.get("trigger_config") if isinstance(values.get("trigger_config"), dict) else {}
-    if trigger_type in {
-        AutomationTrigger.SELLER_RESPONSE_OVERDUE,
-        AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
-    }:
-        minutes = int(trigger_config.get("minutes") or 0)
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    if trigger_type in OVERDUE_TRIGGERS:
+        minutes = int(config.get("minutes") or 0)
         if not 1 <= minutes <= 43200:
             raise ValueError("La demora debe estar entre 1 minuto y 30 días")
-        trigger_config = {"minutes": minutes}
-    else:
-        trigger_config = {}
+        return trigger_type, {"minutes": minutes}
+    return trigger_type, {}
 
-    normalized_conditions = _normalize_automation_conditions(values.get("conditions"))
 
-    actions = values.get("actions") if isinstance(values.get("actions"), list) else []
+def normalize_actions(actions: object, refs: ActionReferences, *, max_actions: int = MAX_ACTIONS) -> list[dict]:
+    actions = actions if isinstance(actions, list) else []
     if not 1 <= len(actions) <= max_actions:
         raise ValueError(f"Configura entre 1 y {max_actions} acciones")
     normalized_actions: list[dict] = []
-    refs = ActionReferences()
     for position, raw in enumerate(actions, start=1):
         if not isinstance(raw, dict) or raw.get("type") not in ACTION_NORMALIZERS:
             raise ValueError(f"Acción {position}: tipo no soportado")
@@ -237,82 +232,52 @@ async def validate_automation_rule(values: dict, *, max_actions: int = MAX_ACTIO
 
     for position, action in enumerate(normalized_actions, start=1):
         unknown = set().union(*(
-            _unknown_variables(value)
+            unknown_variables(value)
             for value in action.values()
             if isinstance(value, str)
         ))
         if unknown:
             names = ", ".join(f"{{{{{name}}}}}" for name in sorted(unknown))
             raise ValueError(f"Acción {position}: variables no reconocidas: {names}")
+    return normalized_actions
 
-    if normalized_conditions["seller_id"]:
-        refs.users.add(normalized_conditions["seller_id"])
-    if normalized_conditions["tag_id"]:
-        refs.tags.add(normalized_conditions["tag_id"])
-    async with get_sessionmaker()() as session:
-        try:
-            # Etapas del negocio: el destino de "cambiar etapa" debe estar
-            # activo; la condición solo tiene que existir (filtrar por una
-            # etapa desactivada que todavía tiene leads es válido).
-            await verify_stage_keys(session, refs.stages, active_only=True)
-            if normalized_conditions["stage"]:
-                await verify_stage_keys(
-                    session, {normalized_conditions["stage"]}, active_only=False
-                )
-        except InvalidLeadStageError as exc:
-            raise ValueError(f"Etapa inválida: {exc}") from exc
-        if refs.users:
-            found = set((await session.execute(
-                select(User.id).where(User.id.in_(refs.users), User.is_active.is_(True))
-            )).scalars().all())
-            if found != refs.users:
-                raise ValueError("Algún usuario seleccionado no existe o está inactivo")
-        if refs.tags:
-            found = set((await session.execute(
-                select(LeadTag.id).where(LeadTag.id.in_(refs.tags), LeadTag.is_active.is_(True))
-            )).scalars().all())
-            if found != refs.tags:
-                raise ValueError("Alguna etiqueta seleccionada no existe o está inactiva")
-        if refs.templates:
-            templates = (await session.execute(
-                select(MessageTemplate).where(MessageTemplate.id.in_(refs.templates))
-            )).scalars().all()
-            valid_ids = {
-                template.id for template in templates
-                if template.is_active
-                and template.template_type == "internal"
-                and template.interactive_type == "none"
-            }
-            if valid_ids != refs.templates:
-                raise ValueError("El envío automático solo admite plantillas internas activas (sin botones/listas)")
-        if refs.media_assets:
-            found = set((await session.execute(
-                select(MediaAsset.id).where(MediaAsset.id.in_(refs.media_assets))
-            )).scalars().all())
-            if found != refs.media_assets:
-                raise ValueError("Algún archivo de la librería de medios ya no existe")
 
-    max_per_hour = values.get("max_executions_per_hour")
-    if max_per_hour is not None and not 1 <= int(max_per_hour) <= 1000:
-        raise ValueError("El límite por hora debe estar entre 1 y 1000")
-
+def normalize_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> tuple[dict, ActionReferences]:
+    """La regla en su forma guardable y los ids que falta verificar contra la
+    base. El tope por hora se valida después de esa verificación, en
+    ``normalize_rate_limit``, para conservar el orden de los mensajes."""
+    name = str(values.get("name") or "").strip()
+    if not name or len(name) > 120:
+        raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
+    trigger_type, trigger_config = normalize_trigger(values.get("trigger_type"), values.get("trigger_config"))
+    conditions = normalize_conditions(values.get("conditions"))
+    refs = ActionReferences()
+    actions = normalize_actions(values.get("actions"), refs, max_actions=max_actions)
+    if conditions["seller_id"]:
+        refs.users.add(conditions["seller_id"])
+    if conditions["tag_id"]:
+        refs.tags.add(conditions["tag_id"])
+    if conditions["stage"]:
+        refs.condition_stages.add(conditions["stage"])
     return {
         "name": name,
         "trigger_type": trigger_type,
         "trigger_config": trigger_config,
-        "conditions": normalized_conditions,
-        "actions": normalized_actions,
+        "conditions": conditions,
+        "actions": actions,
         "delay_minutes": int(values.get("delay_minutes") or 0),
-        "max_executions_per_hour": int(max_per_hour) if max_per_hour else None,
         "is_active": bool(values.get("is_active", True)),
         "visible_to_sellers": bool(values.get("visible_to_sellers", False)),
-    }
+    }, refs
 
 
-_normalize_flow_position = normalize_flow_position
+def normalize_rate_limit(value: object) -> int | None:
+    if value is not None and not 1 <= int(value) <= 1000:
+        raise ValueError("El límite por hora debe estar entre 1 y 1000")
+    return int(value) if value else None
 
 
-def _normalize_wait_any_conditions(data: dict, position: int) -> dict:
+def normalize_wait_any_conditions(data: dict, position: int) -> dict:
     """Condiciones de un bloque Pausa (`wait_any`): cada una es una salida
     propia del nodo. El `id` de cada condición es directamente su `kind`
     ("timer"/"message"/"media_received"/...) porque el diseño admite a lo sumo
@@ -363,7 +328,7 @@ def _question_button_label(raw_button: object) -> str:
     return ""
 
 
-def _normalize_question(data: dict, position: int) -> dict:
+def normalize_question(data: dict, position: int) -> dict:
     """Bloque Pregunta (`question`): manda un mensaje con hasta 3 botones y
     ramifica según cuál tocó el cliente. `id` de cada botón es `btn_1..btn_n`
     (mismo esquema que ya usaba la acción `send_buttons` que este nodo
@@ -395,7 +360,7 @@ def _normalize_question(data: dict, position: int) -> dict:
 MAX_ROUND_ROBIN_OUTPUTS = 10
 
 
-def _normalize_round_robin(data: dict, position: int) -> dict:
+def normalize_round_robin(data: dict, position: int) -> dict:
     """Bloque Round robin (`round_robin`): reparte las ejecuciones entre sus
     salidas por turnos. Cada salida es un handle del nodo, con id posicional
     `out_1..out_n` — mismo esquema que los botones de Pregunta, así el handle
@@ -418,7 +383,7 @@ def _normalize_round_robin(data: dict, position: int) -> dict:
     }
 
 
-def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
+def normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
     condition_type = str(data.get("condition_type") or "")
     if condition_type not in FLOW_CONDITION_TYPES:
         raise ValueError(f"Condición {position}: tipo no soportado")
@@ -469,7 +434,7 @@ def _normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | No
     return {"condition_type": condition_type, "value": value}, user_id, tag_id
 
 
-def _normalize_flow_condition_node(
+def normalize_flow_condition_node(
     data: dict, position: int,
 ) -> tuple[dict, set[int], set[int]]:
     """Normaliza grupos OR de condiciones AND, aceptando el formato legado.
@@ -480,7 +445,7 @@ def _normalize_flow_condition_node(
     """
     raw_groups = data.get("condition_groups")
     if raw_groups is None:
-        normalized, user_id, tag_id = _normalize_flow_condition(data, position)
+        normalized, user_id, tag_id = normalize_flow_condition(data, position)
         return {
             "condition_groups": [{
                 "id": "group_1",
@@ -525,7 +490,7 @@ def _normalize_flow_condition_node(
                     f"Condición {position}, grupo {group_position}: identificador de regla vacío o duplicado"
                 )
             condition_ids.add(condition_id)
-            normalized, user_id, tag_id = _normalize_flow_condition(raw_condition, position)
+            normalized, user_id, tag_id = normalize_flow_condition(raw_condition, position)
             conditions.append({"id": condition_id, **normalized})
             if user_id:
                 users.add(user_id)

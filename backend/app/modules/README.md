@@ -32,7 +32,12 @@ global y proyecta eventos tenant. `app.integrations.whatsapp.channel` es
 el puerto del proveedor. Los antiguos aliases de importación de chats,
 store y webhook fueron retirados.
 
-`automations/` contiene el motor y scheduler detrás de `public.py`.
+`automations/` está en anillos de arquitectura limpia: `domain/` (reglas,
+validación, condiciones y grafo del flujo, sin IO), `application/` (motor,
+acciones, bloques, simulación, gestión y disparadores, hablando solo con
+los puertos de `application/ports.py`) e `infrastructure/` (SQL y el
+worker). En la raíz quedan `api.py`, `queries.py` (lectura), `subscribers.py`
+(avisos y agendado por eventos) y `public.py`.
 `ai/` reúne perfiles, contexto, jobs, conocimiento y sugerencias; `auth/`
 agrupa usuarios, sesiones, MFA y throttling; `platform/` gestiona
 organizaciones, sesiones y configuración del plano de control. El cliente n8n y sus

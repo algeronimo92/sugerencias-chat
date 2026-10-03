@@ -129,9 +129,9 @@ def test_http_contracts_live_with_their_domain():
 @pytest.mark.parametrize("module", [
     "app/integrations/meta/outbound.py",
     "app/modules/conversations/application/outbound.py",
-    "app/modules/automations/actions.py",
-    "app/modules/automations/engine.py",
-    "app/modules/automations/automation_deps.py",
+    "app/modules/automations/application/actions.py",
+    "app/modules/automations/application/engine.py",
+    "app/modules/automations/application/deps.py",
     "app/modules/conversations/outbound_api.py",
     "app/modules/conversations/message_actions_api.py",
     "app/modules/conversations/read_state_api.py",
@@ -233,8 +233,8 @@ def test_conversation_consumers_do_not_import_queries_through_db_service():
         * (BACKEND / "app/modules/conversations").rglob("*.py"),
         * (BACKEND / "app/integrations/meta_webhook").rglob("*.py"),
         BACKEND / "app/modules/conversations/service_window.py",
-        BACKEND / "app/modules/automations/simulation.py",
-        BACKEND / "app/modules/automations/flow_nodes.py",
+        BACKEND / "app/modules/automations/application/simulation.py",
+        BACKEND / "app/modules/automations/application/flow_nodes.py",
         BACKEND / "app/bootstrap.py",
     ]
     violations = {
@@ -398,6 +398,11 @@ def test_product_code_no_longer_imports_retired_packages():
 # reglas. Lo que necesite de afuera lo recibe por un puerto.
 DOMAIN_FORBIDDEN = ("sqlalchemy", "fastapi", "starlette", "httpx", "app.db", "app.realtime", "app.integrations")
 
+# Excepción explícita: el contrato de mensajes de Meta (topes de botones,
+# largos de texto y epígrafes) es parte del lenguaje del dominio de una app
+# nativa de Meta. Es un JSON leído sin IO de red ni dependencias.
+DOMAIN_SHARED_KERNEL = ("app.integrations.meta.contract",)
+
 
 def _domain_files() -> list[Path]:
     return [path for path in MODULES.rglob("*.py") if "domain" in path.relative_to(MODULES).parts]
@@ -408,7 +413,7 @@ def test_domain_layers_depend_on_nothing_external():
         f"{path.relative_to(BACKEND)} -> {module}"
         for path in _domain_files()
         for module in _imported_modules(path)
-        if module.startswith(DOMAIN_FORBIDDEN)
+        if module.startswith(DOMAIN_FORBIDDEN) and not module.startswith(DOMAIN_SHARED_KERNEL)
     }
     assert violations == set()
 
@@ -518,12 +523,6 @@ REALTIME_TRANSITION = {
     "app/integrations/n8n/leads_api.py",
     "app/modules/ai/assistant_api.py",
     "app/modules/appointments/service.py",
-    "app/modules/automations/api.py",
-    "app/modules/automations/automation_deps.py",
-    "app/modules/automations/discovery.py",
-    "app/modules/automations/engine.py",
-    "app/modules/automations/rules.py",
-    "app/modules/automations/scheduler.py",
     "app/modules/catalogs/templates_api.py",
     "app/modules/issue_reports/api.py",
     "app/modules/leads/stages_api.py",
@@ -554,3 +553,11 @@ def test_only_subscribers_talk_to_the_websocket():
 
 def test_the_realtime_transition_list_has_no_leftovers():
     assert REALTIME_TRANSITION - _realtime_importers() == set()
+
+
+def test_automations_keeps_its_logic_inside_the_rings():
+    """En la raíz del módulo solo quedan los adaptadores de borde: HTTP, el
+    lado de lectura, los suscriptores y el contrato público. El motor vive en
+    domain/application/infrastructure."""
+    root = {path.name for path in (MODULES / "automations").glob("*.py")}
+    assert root == {"__init__.py", "api.py", "public.py", "queries.py", "schemas.py", "subscribers.py"}

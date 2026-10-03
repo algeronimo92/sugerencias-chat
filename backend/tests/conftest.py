@@ -14,8 +14,9 @@ import pytest
 from app.composition import configure as configure_composition
 from tests.leads_fakes import in_memory_leads  # noqa: F401  (fixture compartido)
 from tests.conversation_fakes import in_memory_conversations  # noqa: F401  (fixture compartido)
+from tests.automation_fakes import InMemoryExecutionStore, in_memory_automations  # noqa: F401  (fixture compartido)
 
-from app.modules.automations.automation_deps import AutomationDeps
+from app.modules.automations.application.deps import AutomationDeps
 
 
 @dataclass
@@ -60,14 +61,17 @@ class Recorder:
 
     tasks: list[dict] = field(default_factory=list)
     notifications: list[dict] = field(default_factory=list)
-    broadcasts: list[dict] = field(default_factory=list)
-    user_events: list[tuple[int, dict]] = field(default_factory=list)
+    # Los eventos que publicó el motor (los avisos salen de sus suscriptores).
+    events: list = field(default_factory=list)
     tags_added: list[tuple[str, int]] = field(default_factory=list)
     tags_removed: list[tuple[str, int]] = field(default_factory=list)
     stage_changes: list[tuple[str, str]] = field(default_factory=list)
     lead_updates: list[tuple[str, dict]] = field(default_factory=list)
     template_uses: list[int] = field(default_factory=list)
     reactions: list[tuple[str, str, str, bool]] = field(default_factory=list)
+
+    def of(self, event_type) -> list:
+        return [event for event in self.events if isinstance(event, event_type)]
 
 
 def make_rule(**overrides):
@@ -140,7 +144,15 @@ def frozen_now() -> datetime:
 
 
 @pytest.fixture
-def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_now: datetime) -> AutomationDeps:
+def executions() -> InMemoryExecutionStore:
+    return InMemoryExecutionStore()
+
+
+@pytest.fixture
+def deps(
+    recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_now: datetime,
+    executions: InMemoryExecutionStore,
+) -> AutomationDeps:
     """Deps con la ventana de WhatsApp abierta por defecto; cada test la cierra
     o cambia lo que necesite con dataclasses.replace."""
 
@@ -178,11 +190,11 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         recorder.template_uses.append(template_id)
         return True
 
-    async def broadcast(payload):
-        recorder.broadcasts.append(payload)
+    async def publish(*events):
+        recorder.events.extend(events)
 
-    async def send_to_user(user_id, payload):
-        recorder.user_events.append((user_id, payload))
+    async def nothing(*_args):
+        return None
 
     async def open_window(chat_id):
         return {"is_open": True, "seconds_remaining": 3600}
@@ -195,7 +207,15 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         return {"id": 42, "wa_message_id": wa_message_id}
 
     return AutomationDeps(
+        executions=executions,
         now=lambda: frozen_now,
+        publish=publish,
+        fetch_chat=nothing,
+        fetch_lead=nothing,
+        latest_message=nothing,
+        latest_outbound_media_wa_id=nothing,
+        load_template=nothing,
+        load_media_asset=nothing,
         create_task=create_task,
         create_notification=create_notification,
         assign_tag=assign_tag,
@@ -203,8 +223,6 @@ def deps(recorder: Recorder, whatsapp: FakeWhatsApp, outbox: FakeOutbox, frozen_
         update_lead=update_lead,
         change_stage=change_stage,
         record_template_use=record_template_use,
-        broadcast=broadcast,
-        send_to_user=send_to_user,
         get_customer_service_window=open_window,
         fetch_latest_customer_message_target=latest_customer_message,
         enqueue_messages=outbox.enqueue_messages,
@@ -299,9 +317,20 @@ def _patch_everywhere(monkeypatch, modules, name, value):
         monkeypatch.setattr(module, name, value)
 
 
+def _package_tree(package_name: str):
+    import importlib
+    import pkgutil
+
+    package = importlib.import_module(package_name)
+    return [package] + [
+        importlib.import_module(info.name)
+        for info in pkgutil.walk_packages(package.__path__, prefix=f"{package_name}.")
+    ]
+
+
 def patch_automations(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del motor de automatizaciones que lo usan."""
-    _patch_everywhere(monkeypatch, _package_modules("app.modules.automations.public", "app.modules.automations"), name, value)
+    _patch_everywhere(monkeypatch, _package_tree("app.modules.automations"), name, value)
 
 
 def patch_store(monkeypatch, name, value):

@@ -1,134 +1,45 @@
-"""attempts cuenta recuperaciones de ejecuciones atascadas, no reclamos
-normales del watcher — una ejecución con varias pausas legítimas (wait_any)
-no debe acercarse nunca a MAX_EXECUTION_ATTEMPTS."""
+"""El ciclo del motor sobre lo que reclama: corre lo vencido y avisa.
 
-from types import SimpleNamespace
+Cómo se reclama (qué columnas toca, qué congela, cuándo cuenta un intento)
+es SQL y se prueba contra PostgreSQL en ``test_automation_store_postgres``.
+"""
+
+import dataclasses
 from unittest.mock import AsyncMock
 
-import pytest
-from sqlalchemy.dialects import postgresql
-
-from domain_types import AutomationExecutionStatus
-import app.modules.automations.discovery as _domain_app_modules_automations_discovery
-import app.modules.automations.engine as _domain_app_modules_automations_engine
-import app.modules.automations.rules as _domain_app_modules_automations_rules
-from tests.conftest import patch_automations
+from app.modules.automations.application import engine
+from app.modules.automations.domain.events import AutomationsChanged
 
 
-class _SessionContext:
-    def __init__(self, session):
-        self._session = session
+async def test_claimed_executions_run_and_the_panels_are_told_once(deps, executions, recorder, monkeypatch):
+    executions.due = [777, 778]
+    ran = AsyncMock()
+    monkeypatch.setattr(engine, "run_execution", ran)
 
-    async def __aenter__(self):
-        return self._session
+    processed = await engine.process_due_automation_executions(limit=5, deps=deps)
 
-    async def __aexit__(self, *_args):
-        return False
-
-
-def _sessionmaker(session):
-    return lambda: (lambda: _SessionContext(session))
+    assert processed == 2
+    assert sorted(call.args[0] for call in ran.await_args_list) == [777, 778]
+    assert recorder.of(AutomationsChanged) == [AutomationsChanged()]
 
 
-def _compile(statement) -> str:
-    return str(statement.compile(
-        dialect=postgresql.dialect(),
-        compile_kwargs={"literal_binds": True},
-    ))
-
-
-class _ClaimResult:
-    def __init__(self, ids):
-        self._ids = ids
-
-    def scalars(self):
-        return self
-
-    def all(self):
-        return self._ids
-
-
-@pytest.mark.asyncio
-async def test_claiming_due_executions_does_not_increment_attempts(monkeypatch):
-    session = AsyncMock()
-    # Tres statements por ciclo: congelar lo vencido de leads pausados,
-    # seleccionar lo reclamable y marcarlo running.
-    session.execute = AsyncMock(side_effect=[
-        _ClaimResult([]), _ClaimResult([777]), SimpleNamespace(),
-    ])
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "_run_execution", AsyncMock())
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
-
-    await _domain_app_modules_automations_engine.process_due_automation_executions(limit=5)
-
-    claim_sql = _compile(session.execute.await_args_list[2].args[0])
-    assert "attempts" not in claim_sql
-    assert "'running'" in claim_sql
-
-
-@pytest.mark.asyncio
-async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(monkeypatch):
+async def test_due_executions_of_a_paused_lead_are_frozen_instead_of_run(deps, executions, recorder, monkeypatch):
     """Atrapa a la ejecución que estaba corriendo cuando el vendedor pausó y
     volvió a la cola al llegar a su siguiente espera: sin este congelado
     seguiría recorriendo el flujo entero con el lead pausado."""
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        _ClaimResult([42]), _ClaimResult([]), SimpleNamespace(),
-    ])
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    run_execution = AsyncMock()
-    patch_automations(monkeypatch, "_run_execution", run_execution)
-    broadcast = AsyncMock()
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
+    executions.frozen = [42]
+    ran = AsyncMock()
+    monkeypatch.setattr(engine, "run_execution", ran)
 
-    processed = await _domain_app_modules_automations_engine.process_due_automation_executions(limit=5)
+    processed = await engine.process_due_automation_executions(limit=5, deps=deps)
 
     assert processed == 0
-    run_execution.assert_not_awaited()
-    freeze_sql = _compile(session.execute.await_args_list[0].args[0])
-    assert "'paused'" in freeze_sql
-    assert "automatizacion_pausada" in freeze_sql
-    # Un flujo manual del vendedor nunca lo congela la pausa del lead.
-    assert "start_source != 'manual'" in freeze_sql
-    broadcast.assert_awaited_once()
+    ran.assert_not_awaited()
+    assert recorder.of(AutomationsChanged) == [AutomationsChanged()]
 
 
-@pytest.mark.asyncio
-async def test_reviving_a_stale_execution_increments_attempts(monkeypatch):
-    session = AsyncMock()
+async def test_an_idle_cycle_says_nothing(deps, recorder):
+    processed = await engine.process_due_automation_executions(limit=5, deps=dataclasses.replace(deps))
 
-    session.execute = AsyncMock(side_effect=[_ClaimResult([]), _ClaimResult([7])])
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    broadcast = AsyncMock()
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
-
-    await _domain_app_modules_automations_discovery._release_stale_executions()
-
-    revive_sql = _compile(session.execute.await_args_list[1].args[0])
-    assert "attempts=(automation_executions.attempts + 1)" in revive_sql
-    assert "'scheduled'" in revive_sql
-    # El frontend no sondea con el socket arriba: el cambio se avisa.
-    broadcast.assert_awaited_once_with({"type": "automations_updated"})
-
-
-@pytest.mark.asyncio
-async def test_retrying_an_execution_resets_attempts(monkeypatch):
-    execution = SimpleNamespace(
-        id=5, status=AutomationExecutionStatus.FAILED, rule_id=1, attempts=6,
-    )
-    rule = SimpleNamespace(id=1, deleted_at=None, is_active=True)
-    session = AsyncMock()
-    session.get = AsyncMock(side_effect=[execution, rule])
-    session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-    patch_automations(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    patch_automations(monkeypatch,
-        "get_automation_execution", AsyncMock(return_value={"id": 5}),
-    )
-
-    result = await _domain_app_modules_automations_rules.retry_automation_execution(5)
-
-    assert result == {"id": 5}
-    update_sql = _compile(session.execute.await_args.args[0])
-    assert "attempts=0" in update_sql
+    assert processed == 0
+    assert recorder.events == []

@@ -4,17 +4,19 @@ mensaje del cliente, lo que sea que ocurra primero.
 """
 
 import dataclasses
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from domain_types import AutomationExecutionStatus
-import app.modules.automations.discovery as _domain_app_modules_automations_discovery
-from app.modules.automations.discovery import _match_question_button
-from app.modules.automations.rule_validation import _normalize_question, _normalize_wait_any_conditions
-from app.modules.automations.engine import _run_visual_execution
-from tests.conftest import make_chat, make_execution, make_rule, patch_automations
+from app.modules.automations.application import flow_nodes
+from app.modules.automations.application.engine import run_visual_execution
+from app.modules.automations.domain.replies import match_question_button
+from app.modules.automations.domain.validation import normalize_question, normalize_wait_any_conditions
+from app.modules.automations.infrastructure import worker
+from tests.conftest import make_chat, make_execution, make_rule
 
 
 def wait_any_flow():
@@ -37,31 +39,9 @@ def wait_any_flow():
     }
 
 
-def capturing_session(scalar_result=None):
-    """FakeSession que acumula, en una lista compartida entre instancias, los
-    parámetros de cada UPDATE — _save_execution abre una sesión nueva por
-    cada persistencia, así que la lista tiene que vivir fuera de la clase.
-    `scalar_result` cubre la consulta de `_last_outbound_media_message_id`."""
-    calls: list[dict] = []
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def scalar(self, stmt):
-            return scalar_result
-
-        async def execute(self, stmt):
-            calls.append(stmt.compile().params)
-            return SimpleNamespace(rowcount=1)
-
-        async def commit(self):
-            pass
-
-    return FakeSession, calls
+def saved(executions) -> list[dict]:
+    """Lo que el motor fue guardando de la ejecución, paso a paso."""
+    return [values for _execution_id, values in executions.saves]
 
 
 class _Rows:
@@ -79,31 +59,26 @@ class _Rows:
 
 
 class _DiscoverSession:
-    """FakeSession para `_discover_wait_any_replies`, que no usa `deps`: abre
-    su propia sesión llamando a `get_sessionmaker()()` directo, así que hay
-    que parchear esa función y no `deps.session_factory` como en el resto del
-    archivo. Una sola instancia se reutiliza en las dos consultas por
-    ejecución (la función abre `async with get_sessionmaker()()` más de una
-    vez): `results` se consume en orden a través de toda la llamada — primero
-    las ejecuciones en pausa, luego los mensajes candidatos por cada una, y el
-    UPDATE si encontró con qué reanudar."""
+    """Sesión falsa para el barrido del worker, que es SQL: una sola instancia
+    atiende todas las consultas de la llamada y `results` se consume en orden
+    — primero las ejecuciones en pausa, luego los mensajes candidatos por cada
+    una, y el UPDATE si encontró con qué reanudar."""
 
     def __init__(self, results):
         self._results = iter(results)
         self.executed: list = []
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
     async def execute(self, stmt):
         self.executed.append(stmt)
         return next(self._results)
 
-    async def commit(self):
-        pass
+
+def _use_session(monkeypatch, session):
+    @asynccontextmanager
+    async def session_scope():
+        yield session
+
+    monkeypatch.setattr(worker, "session_scope", session_scope)
 
 
 def question_flow():
@@ -150,11 +125,11 @@ def wait_any_flow_with(*conditions):
 
 class TestNormalizeWaitAnyConditions:
     def test_timer_alone_is_valid(self):
-        result = _normalize_wait_any_conditions({"conditions": [{"kind": "timer", "seconds": 30}]}, 1)
+        result = normalize_wait_any_conditions({"conditions": [{"kind": "timer", "seconds": 30}]}, 1)
         assert result == {"conditions": [{"id": "timer", "kind": "timer", "seconds": 30}]}
 
     def test_timer_and_message_is_valid(self):
-        result = _normalize_wait_any_conditions(
+        result = normalize_wait_any_conditions(
             {"conditions": [{"kind": "timer", "seconds": 30}, {"kind": "message"}]}, 1,
         )
         assert result["conditions"] == [
@@ -164,44 +139,43 @@ class TestNormalizeWaitAnyConditions:
 
     def test_timer_is_mandatory(self):
         with pytest.raises(ValueError, match="agrega un temporizador"):
-            _normalize_wait_any_conditions({"conditions": [{"kind": "message"}]}, 1)
+            normalize_wait_any_conditions({"conditions": [{"kind": "message"}]}, 1)
 
     def test_rejects_empty_conditions(self):
         with pytest.raises(ValueError, match="al menos una condición"):
-            _normalize_wait_any_conditions({"conditions": []}, 1)
+            normalize_wait_any_conditions({"conditions": []}, 1)
 
     def test_rejects_duplicate_kind(self):
         with pytest.raises(ValueError, match="no repitas"):
-            _normalize_wait_any_conditions(
+            normalize_wait_any_conditions(
                 {"conditions": [{"kind": "timer", "seconds": 30}, {"kind": "timer", "seconds": 60}]}, 1,
             )
 
     def test_rejects_unknown_kind(self):
         with pytest.raises(ValueError, match="condición inválida"):
-            _normalize_wait_any_conditions({"conditions": [{"kind": "video_opened"}]}, 1)
+            normalize_wait_any_conditions({"conditions": [{"kind": "video_opened"}]}, 1)
 
     @pytest.mark.parametrize("seconds", [0, -5, 604801])
     def test_rejects_timer_seconds_out_of_range(self, seconds):
         with pytest.raises(ValueError, match="1 segundo y 7 días"):
-            _normalize_wait_any_conditions({"conditions": [{"kind": "timer", "seconds": seconds}]}, 1)
+            normalize_wait_any_conditions({"conditions": [{"kind": "timer", "seconds": seconds}]}, 1)
 
 
 class TestRunVisualExecutionWaitAny:
-    async def test_first_arrival_schedules_the_timer_and_remembers_the_wait(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_first_arrival_schedules_the_timer_and_remembers_the_wait(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": wait_any_flow(), "flow_version": 0,
             "current_node_id": "w", "path": ["t"],
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        assert len(calls) == 1
-        params = calls[0]
+        assert len(saved(executions)) == 1
+        params = saved(executions)[0]
         assert params["status"] == AutomationExecutionStatus.SCHEDULED
         state = params["flow_state"]
         assert state["current_node_id"] == "w"
@@ -211,8 +185,7 @@ class TestRunVisualExecutionWaitAny:
         now = datetime.now(timezone.utc)
         assert now < params["scheduled_for"] <= now + timedelta(seconds=11)
 
-    async def test_resumes_via_message_branch_when_flagged(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_message_branch_when_flagged(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": wait_any_flow(), "flow_version": 0,
             "current_node_id": "w", "path": ["t", "w"],
@@ -221,19 +194,18 @@ class TestRunVisualExecutionWaitAny:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         assert final["status"] == AutomationExecutionStatus.COMPLETED
         assert final["flow_state"]["current_node_id"] is None
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "message"
 
-    async def test_resumes_via_timer_branch_when_no_message_arrived(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_timer_branch_when_no_message_arrived(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": wait_any_flow(), "flow_version": 0,
             "current_node_id": "w", "path": ["t", "w"],
@@ -242,20 +214,19 @@ class TestRunVisualExecutionWaitAny:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "timer"
 
 
 class TestRunVisualExecutionWaitAnyBusinessHours:
-    async def test_overrides_the_natural_branch_when_outside_business_hours(self, deps, monkeypatch):
-        patch_automations(monkeypatch, "is_business_hours", lambda now: False)
-        FakeSession, calls = capturing_session()
+    async def test_overrides_the_natural_branch_when_outside_business_hours(self, deps, executions, monkeypatch):
+        monkeypatch.setattr(flow_nodes, "is_business_hours", lambda now: False)
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "business_hours", "kind": "business_hours"},
@@ -268,18 +239,17 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "business_hours"
 
-    async def test_does_not_override_when_within_business_hours(self, deps, monkeypatch):
-        patch_automations(monkeypatch, "is_business_hours", lambda now: True)
-        FakeSession, calls = capturing_session()
+    async def test_does_not_override_when_within_business_hours(self, deps, executions, monkeypatch):
+        monkeypatch.setattr(flow_nodes, "is_business_hours", lambda now: True)
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "business_hours", "kind": "business_hours"},
@@ -292,19 +262,19 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "timer"
 
 
 class TestRunVisualExecutionWaitAnyMediaPlayed:
-    async def test_first_arrival_looks_up_the_last_outbound_media_message(self, deps):
-        FakeSession, calls = capturing_session(scalar_result="WA123")
+    async def test_first_arrival_looks_up_the_last_outbound_media_message(self, deps, executions):
+        deps = dataclasses.replace(deps, latest_outbound_media_wa_id=AsyncMock(return_value="WA123"))
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "media_played", "kind": "media_played"},
@@ -314,16 +284,15 @@ class TestRunVisualExecutionWaitAnyMediaPlayed:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        state = calls[0]["flow_state"]
+        state = saved(executions)[0]["flow_state"]
         assert state["watching_message_id"] == "WA123"
 
-    async def test_resumes_via_media_played_branch_when_flagged(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_media_played_branch_when_flagged(self, deps, executions):
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "media_played", "kind": "media_played"},
@@ -337,19 +306,19 @@ class TestRunVisualExecutionWaitAnyMediaPlayed:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "media_played"
 
 
 class TestNormalizeQuestion:
     def test_valid_question(self):
-        result = _normalize_question({"text": "Hola", "buttons": ["Si", "No"], "timeout_seconds": 60}, 1)
+        result = normalize_question({"text": "Hola", "buttons": ["Si", "No"], "timeout_seconds": 60}, 1)
         assert result == {
             "text": "Hola",
             "buttons": [{"id": "btn_1", "label": "Si"}, {"id": "btn_2", "label": "No"}],
@@ -358,24 +327,24 @@ class TestNormalizeQuestion:
 
     def test_requires_text(self):
         with pytest.raises(ValueError, match="escribe el mensaje"):
-            _normalize_question({"text": "", "buttons": ["Si"], "timeout_seconds": 60}, 1)
+            normalize_question({"text": "", "buttons": ["Si"], "timeout_seconds": 60}, 1)
 
     def test_requires_at_least_one_button(self):
         with pytest.raises(ValueError, match="entre 1 y 3 botones"):
-            _normalize_question({"text": "Hola", "buttons": [], "timeout_seconds": 60}, 1)
+            normalize_question({"text": "Hola", "buttons": [], "timeout_seconds": 60}, 1)
 
     def test_rejects_more_than_three_buttons(self):
         with pytest.raises(ValueError, match="entre 1 y 3 botones"):
-            _normalize_question({"text": "Hola", "buttons": ["A", "B", "C", "D"], "timeout_seconds": 60}, 1)
+            normalize_question({"text": "Hola", "buttons": ["A", "B", "C", "D"], "timeout_seconds": 60}, 1)
 
     def test_ignores_blank_button_labels(self):
-        result = _normalize_question({"text": "Hola", "buttons": ["Si", "  ", "No"], "timeout_seconds": 60}, 1)
+        result = normalize_question({"text": "Hola", "buttons": ["Si", "  ", "No"], "timeout_seconds": 60}, 1)
         assert [b["label"] for b in result["buttons"]] == ["Si", "No"]
 
     def test_accepts_object_buttons_from_the_visual_editor(self):
         # El editor visual manda {id, label} en vez de strings simples,
         # para poder asignarle un id estable al handle del grafo.
-        result = _normalize_question({
+        result = normalize_question({
             "text": "Hola",
             "buttons": [{"id": "btn_1", "label": "Si"}, {"id": "btn_2", "label": "No"}],
             "timeout_seconds": 60,
@@ -385,57 +354,56 @@ class TestNormalizeQuestion:
     @pytest.mark.parametrize("seconds", [0, -1, 604801])
     def test_rejects_timeout_out_of_range(self, seconds):
         with pytest.raises(ValueError, match="1 segundo y 7 días"):
-            _normalize_question({"text": "Hola", "buttons": ["Si"], "timeout_seconds": seconds}, 1)
+            normalize_question({"text": "Hola", "buttons": ["Si"], "timeout_seconds": seconds}, 1)
 
 
 class TestMatchQuestionButton:
     BUTTONS = [{"id": "btn_1", "label": "Sí"}, {"id": "btn_2", "label": "No"}]
 
     def test_matches_by_the_meta_button_reply_id(self):
-        assert _match_question_button(self.BUTTONS, "btn_2", "Sí") == "btn_2"
+        assert match_question_button(self.BUTTONS, "btn_2", "Sí") == "btn_2"
 
     def test_an_unknown_reply_id_falls_back_to_the_text(self):
-        assert _match_question_button(self.BUTTONS, "otro_boton", "No") == "btn_2"
+        assert match_question_button(self.BUTTONS, "otro_boton", "No") == "btn_2"
 
     def test_matches_by_position_number_when_the_customer_types(self):
-        assert _match_question_button(self.BUTTONS, None, "2") == "btn_2"
+        assert match_question_button(self.BUTTONS, None, "2") == "btn_2"
 
     def test_matches_by_label_case_and_accent_insensitive(self):
-        assert _match_question_button(self.BUTTONS, None, " SI ") == "btn_1"
+        assert match_question_button(self.BUTTONS, None, " SI ") == "btn_1"
 
     def test_falls_back_to_other_when_nothing_matches(self):
-        assert _match_question_button(self.BUTTONS, None, "tal vez") == "other"
+        assert match_question_button(self.BUTTONS, None, "tal vez") == "other"
 
     def test_a_photo_goes_to_its_own_branch_when_connected(self):
         # 9 de cada 10 fotos llegan sin caption: por texto no matchearía
         # ningún botón y caería en "otra respuesta" —la rama del cliente que
         # NO mandó lo pedido— si no se resolviera antes por tipo.
-        assert _match_question_button(
+        assert match_question_button(
             self.BUTTONS, None, None, kind="media_received", has_media_handle=True,
         ) == "media"
 
     def test_a_photo_falls_back_to_other_when_the_flow_did_not_connect_media(self):
         # Un flujo publicado antes de que existiera la salida "media" no debe
         # cambiar de comportamiento: sigue siendo "otra respuesta".
-        assert _match_question_button(
+        assert match_question_button(
             self.BUTTONS, None, None, kind="media_received", has_media_handle=False,
         ) == "other"
 
 
 class TestRunVisualExecutionQuestion:
-    async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox):
+    async def test_first_arrival_sends_buttons_and_pauses(self, deps, outbox, executions):
         # La pregunta sale como interactivo de botones de Meta; el id de cada
         # botón vuelve literal en button_reply.id cuando el cliente toca uno.
-        FakeSession, calls = capturing_session()
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
             "current_node_id": "q", "path": ["t"],
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
         assert len(outbox.enqueued) == 1
@@ -449,14 +417,13 @@ class TestRunVisualExecutionQuestion:
             {"type": "reply", "reply": {"id": "btn_1", "title": "Sí"}},
             {"type": "reply", "reply": {"id": "btn_2", "title": "No"}},
         ]
-        assert len(calls) == 1
-        state = calls[0]["flow_state"]
+        assert len(saved(executions)) == 1
+        state = saved(executions)[0]["flow_state"]
         assert state["waiting_at_node"] == "q"
         assert state["awaiting"] == ["message"]
         assert state["question_buttons"] == [{"id": "btn_1", "label": "Sí"}, {"id": "btn_2", "label": "No"}]
 
-    async def test_resumes_via_the_matched_button_branch(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_the_matched_button_branch(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
             "current_node_id": "q", "path": ["t", "q"],
@@ -465,17 +432,16 @@ class TestRunVisualExecutionQuestion:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         result = next(r for r in final["action_results"] if r["type"] == "question")
         assert result["branch"] == "btn_2"
 
-    async def test_resumes_via_other_when_reply_does_not_match_any_button(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_other_when_reply_does_not_match_any_button(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
             "current_node_id": "q", "path": ["t", "q"],
@@ -484,17 +450,16 @@ class TestRunVisualExecutionQuestion:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         result = next(r for r in final["action_results"] if r["type"] == "question")
         assert result["branch"] == "other"
 
-    async def test_resumes_via_timeout_when_nobody_answered(self, deps):
-        FakeSession, calls = capturing_session()
+    async def test_resumes_via_timeout_when_nobody_answered(self, deps, executions):
         execution = make_execution(flow_state={
             "definition": question_flow(), "flow_version": 0,
             "current_node_id": "q", "path": ["t", "q"],
@@ -503,12 +468,12 @@ class TestRunVisualExecutionQuestion:
         })
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
+        await run_visual_execution(
             execution, rule, make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
+            deps,
         )
 
-        final = calls[-1]
+        final = saved(executions)[-1]
         result = next(r for r in final["action_results"] if r["type"] == "question")
         assert result["branch"] == "timeout"
 
@@ -542,9 +507,9 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
+        _use_session(monkeypatch, session)
 
-        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
+        await worker._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "media_received"
@@ -573,9 +538,9 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
+        _use_session(monkeypatch, session)
 
-        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
+        await worker._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "media_received"
@@ -598,9 +563,9 @@ class TestDiscoverWaitAnyReplies:
             ]),
             None,
         ])
-        patch_automations(monkeypatch, "get_sessionmaker", lambda: (lambda: session))
+        _use_session(monkeypatch, session)
 
-        await _domain_app_modules_automations_discovery._discover_wait_any_replies()
+        await worker._discover_wait_any_replies()
 
         params = session.executed[-1].compile().params
         assert params["flow_state"]["resume_reason"] == "message"

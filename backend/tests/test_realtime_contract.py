@@ -9,7 +9,7 @@ from app.realtime.events import ChatsUpdateReason, RealtimeEvent
 BACKEND = Path(__file__).resolve().parent.parent
 FRONTEND_REALTIME = BACKEND.parent / "frontend" / "src" / "realtime"
 EMITTERS = {"broadcast", "send_to_user"}
-PASSTHROUGH_EMITTERS = {"automation_deps.py", "ws_manager.py"}
+PASSTHROUGH_EMITTERS = {"ws_manager.py"}
 
 
 def _constant_values(node: ast.AST, assignments: dict[str, list[ast.AST]]) -> set[str] | None:

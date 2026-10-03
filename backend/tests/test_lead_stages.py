@@ -147,14 +147,29 @@ class _StageSession:
     def __init__(self, rows):
         self.rows = rows
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_exc):
-        return False
-
     async def execute(self, _statement):
         return SimpleNamespace(all=lambda: self.rows, scalars=lambda: SimpleNamespace(all=lambda: []))
+
+
+def _validate_against_stages(monkeypatch, rows):
+    """La validación real de reglas con el verificador SQL de referencias,
+    sobre una sesión que solo conoce las etapas del negocio."""
+    from contextlib import asynccontextmanager
+
+    from app.modules.automations.application.validation import validate_automation_rule
+    from app.modules.automations.infrastructure import sql_references
+
+    @asynccontextmanager
+    async def session_scope():
+        yield _StageSession(rows)
+
+    monkeypatch.setattr(sql_references, "session_scope", session_scope)
+    checker = sql_references.SqlReferenceChecker()
+
+    async def validate(values):
+        return await validate_automation_rule(values, references=checker)
+
+    return validate
 
 
 def _rule_values(**overrides):
@@ -169,49 +184,33 @@ def _rule_values(**overrides):
 
 @pytest.mark.asyncio
 async def test_automation_accepts_a_custom_active_stage(monkeypatch):
-    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
-    from tests.conftest import patch_automations
+    validate = _validate_against_stages(monkeypatch, [("cita_pagada", "won", True)])
 
-    rows = [("cita_pagada", "won", True)]
-    patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
-
-    values = await _domain_app_modules_automations_rule_validation.validate_automation_rule(_rule_values())
+    values = await validate(_rule_values())
 
     assert values["actions"] == [{"type": "change_stage", "stage": "cita_pagada"}]
 
 
 @pytest.mark.asyncio
 async def test_automation_rejects_moving_to_an_inactive_stage(monkeypatch):
-    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
-    from tests.conftest import patch_automations
-
-    rows = [("cita_pagada", "won", False)]
-    patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
+    validate = _validate_against_stages(monkeypatch, [("cita_pagada", "won", False)])
 
     with pytest.raises(ValueError, match="desactivada"):
-        await _domain_app_modules_automations_rule_validation.validate_automation_rule(_rule_values())
+        await validate(_rule_values())
 
 
 @pytest.mark.asyncio
 async def test_automation_condition_only_needs_the_stage_to_exist(monkeypatch):
     """Filtrar por una etapa desactivada que todavía tiene leads es válido;
     por una que el negocio no tiene, no."""
-    import app.modules.automations.rule_validation as _domain_app_modules_automations_rule_validation
-    from tests.conftest import patch_automations
-
-    rows = [("nuevo", "open", True), ("archivado", "lost", False)]
-    patch_automations(monkeypatch, "get_sessionmaker", lambda: lambda: _StageSession(rows))
+    validate = _validate_against_stages(monkeypatch, [("nuevo", "open", True), ("archivado", "lost", False)])
     actions = [{"type": "change_stage", "stage": "nuevo"}]
 
-    values = await _domain_app_modules_automations_rule_validation.validate_automation_rule(
-        _rule_values(actions=actions, conditions={"stage": "archivado"})
-    )
+    values = await validate(_rule_values(actions=actions, conditions={"stage": "archivado"}))
     assert values["conditions"]["stage"] == "archivado"
 
     with pytest.raises(ValueError, match="no existe"):
-        await _domain_app_modules_automations_rule_validation.validate_automation_rule(
-            _rule_values(actions=actions, conditions={"stage": "inventada"})
-        )
+        await validate(_rule_values(actions=actions, conditions={"stage": "inventada"}))
 
 
 @pytest.mark.asyncio

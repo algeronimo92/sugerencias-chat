@@ -1,35 +1,13 @@
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
-import pytest
-
 from domain_types import AutomationTrigger
-import app.modules.automations.flow_validation as _domain_app_modules_automations_flow_validation
-import app.modules.automations.scheduler as _domain_app_modules_automations_scheduler
-from tests.conftest import patch_automations
-
-
-def _sessionmaker(session):
-    @asynccontextmanager
-    async def session_context():
-        yield session
-
-    return lambda: session_context
-
-
-class _MappingResult:
-    def __init__(self, row):
-        self._row = row
-
-    def mappings(self):
-        return self
-
-    def first(self):
-        return self._row
+from app.modules.automations.application import triggers
+from app.modules.automations.domain.events import AutomationsScheduled
+from app.modules.automations.domain.flow_definition import normalize_visual_draft
 
 
 def test_visual_draft_accepts_conversation_started_trigger():
-    normalized = _domain_app_modules_automations_flow_validation.normalize_visual_draft("Bienvenida", {
+    normalized = normalize_visual_draft("Bienvenida", {
         "conditions": {},
         "nodes": [
             {
@@ -56,21 +34,14 @@ def test_visual_draft_accepts_conversation_started_trigger():
     assert normalized["trigger_type"] == AutomationTrigger.CONVERSATION_STARTED
 
 
-@pytest.mark.asyncio
-async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch):
+async def test_inbound_message_opens_and_emits_new_conversation_once(in_memory_automations, monkeypatch):
     opened = AsyncMock(return_value={
         "version": 3,
         "opened_at": "2026-08-05T14:30:00.000000Z",
     })
-    schedule = AsyncMock(return_value=1)
-    session = AsyncMock()
-    session.scalar = AsyncMock(side_effect=[2, 9])
+    monkeypatch.setattr(triggers, "open_conversation_from_inbound", opened)
 
-    patch_automations(monkeypatch, "open_conversation_from_inbound", opened)
-    patch_automations(monkeypatch, "schedule_automation_event", schedule)
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
-
-    await _domain_app_modules_automations_scheduler.trigger_inbound_message({
+    await triggers.trigger_inbound_message({
         "chat_id": "lead-1",
         "message_id": "wamid-7",
         "sender": "cliente",
@@ -78,7 +49,8 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
     })
 
     opened.assert_awaited_once_with("lead-1", "wamid-7", "Hola de nuevo")
-    assert schedule.await_args_list[0].args == (
+    started, received = in_memory_automations.scheduling.scheduled
+    assert (started["trigger_type"], started["lead_id"], started["event_key"], started["payload"]) == (
         AutomationTrigger.CONVERSATION_STARTED,
         "lead-1",
         "conversation:lead-1:3",
@@ -92,34 +64,50 @@ async def test_inbound_message_opens_and_emits_new_conversation_once(monkeypatch
             "conversation_opened_at": "2026-08-05T14:30:00.000000Z",
         },
     )
-    assert schedule.await_args_list[1].args[0:3] == (
+    assert (received["trigger_type"], received["lead_id"], received["event_key"]) == (
         AutomationTrigger.MESSAGE_RECEIVED,
         "lead-1",
         "message:wamid-7",
     )
+    # Cada alta despierta al worker una vez confirmada.
+    assert len(in_memory_automations.of(AutomationsScheduled)) == 2
+    # El cliente volvió a escribir: cualquier cierre por silencio queda sin efecto.
+    assert in_memory_automations.scheduling.cancelled_deadlines == ["lead-1"]
 
 
-@pytest.mark.asyncio
-async def test_inbound_message_does_not_repeat_trigger_while_open(monkeypatch):
-    patch_automations(monkeypatch,
-        "open_conversation_from_inbound",
-        AsyncMock(return_value=None),
-    )
-    schedule = AsyncMock(return_value=1)
-    patch_automations(monkeypatch, "schedule_automation_event", schedule)
-    session = AsyncMock()
-    session.scalar = AsyncMock(side_effect=[4, 9])
-    patch_automations(monkeypatch, "get_sessionmaker", _sessionmaker(session))
+async def test_inbound_message_does_not_repeat_trigger_while_open(in_memory_automations, monkeypatch):
+    monkeypatch.setattr(triggers, "open_conversation_from_inbound", AsyncMock(return_value=None))
 
-    await _domain_app_modules_automations_scheduler.trigger_inbound_message({
+    await triggers.trigger_inbound_message({
         "chat_id": "lead-1",
         "message_id": "wamid-8",
         "sender": "cliente",
         "content": "Segundo mensaje",
     })
 
-    schedule.assert_awaited_once()
-    assert schedule.await_args.args[0] == AutomationTrigger.MESSAGE_RECEIVED
+    [received] = in_memory_automations.scheduling.scheduled
+    assert received["trigger_type"] == AutomationTrigger.MESSAGE_RECEIVED
+
+
+async def test_the_first_message_of_a_chat_counts_as_its_creation(in_memory_automations, monkeypatch):
+    monkeypatch.setattr(triggers, "open_conversation_from_inbound", AsyncMock(return_value=None))
+    in_memory_automations.scheduling.first_message.add("lead-1")
+
+    await triggers.trigger_inbound_message({"chat_id": "lead-1", "message_id": "wamid-1", "sender": "cliente"})
+
+    created = in_memory_automations.scheduling.scheduled[-1]
+    assert (created["trigger_type"], created["event_key"], created["payload"]) == (
+        AutomationTrigger.LEAD_CREATED, "lead:first-message:wamid-1", {"source": "first_inbound_message"},
+    )
+
+
+async def test_a_seller_message_only_moves_the_silence_deadline(in_memory_automations):
+    message = {"chat_id": "lead-1", "message_id": "wamid-9", "sender": "vendedor"}
+
+    await triggers.trigger_inbound_message(message)
+
+    assert in_memory_automations.scheduling.deadline_messages == [(message, None)]
+    assert in_memory_automations.scheduling.scheduled == []
 
 
 # La transición de apertura (versión nueva, auditoría, una sola vez aunque

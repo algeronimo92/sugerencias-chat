@@ -12,6 +12,11 @@ from __future__ import annotations
 import importlib
 
 from app.integrations.whatsapp.channels import current_channel
+from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
+from app.modules.automations.infrastructure.sql_executions import SqlExecutionStore
+from app.modules.automations.infrastructure.sql_references import SqlReferenceChecker
+from app.modules.automations.infrastructure.sql_rules import SqlRuleStore
+from app.modules.automations.infrastructure.sql_scheduling import SqlSchedulingStore
 from app.modules.conversations.application.ports import ConversationPorts, provide_conversation_ports
 from app.modules.conversations.chat_queries import get_customer_service_window
 from app.modules.conversations.infrastructure.meta_contract import MetaMessageContract
@@ -44,6 +49,12 @@ def register_adapters() -> None:
         contract=MetaMessageContract(),
         service_window=get_customer_service_window,
         channel=current_channel,
+    ))
+    provide_automation_ports(AutomationPorts(
+        executions=SqlExecutionStore(),
+        rules=SqlRuleStore(),
+        scheduling=SqlSchedulingStore(),
+        references=SqlReferenceChecker(),
     ))
 
 

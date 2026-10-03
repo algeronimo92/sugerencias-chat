@@ -1,10 +1,12 @@
 """IA y automatizaciones sobre el contrato Meta (fase 7 del plan)."""
 
+from datetime import datetime, timezone
+
 import pytest
 
 from domain_types import FlowConditionType
-from app.modules.automations.conditions import _matches_flow_condition
-from app.modules.automations.rule_validation import _normalize_flow_condition
+from app.modules.automations.domain.conditions import match_flow_condition
+from app.modules.automations.domain.validation import normalize_flow_condition
 from app.integrations.meta.contract import message_subtype
 from app.integrations.meta.text import message_text
 from app.integrations.meta_webhook.projection import reply_identifier
@@ -68,14 +70,14 @@ def test_reply_identifier_reads_the_id_the_business_defined(name, expected):
     ),
     ({"condition_type": "message_type_equals", "value": "image"}, {"message_type": "text"}, False),
 ])
-async def test_flow_conditions_read_the_meta_structure(deps, condition, context, expected):
-    matches, _detail = await _matches_flow_condition(condition, make_chat(), deps, context)
+def test_flow_conditions_read_the_meta_structure(condition, context, expected):
+    matches, _detail = match_flow_condition(condition, make_chat(), context, now=datetime.now(timezone.utc))
     assert matches is expected
 
 
 @pytest.mark.parametrize("condition_type", [FlowConditionType.REPLY_ID_EQUALS, FlowConditionType.MESSAGE_TYPE_EQUALS])
 def test_structural_conditions_require_a_value(condition_type):
-    normalized, _user, _tag = _normalize_flow_condition({"condition_type": condition_type, "value": " order "}, 1)
+    normalized, _user, _tag = normalize_flow_condition({"condition_type": condition_type, "value": " order "}, 1)
     assert normalized == {"condition_type": condition_type, "value": "order"}
     with pytest.raises(ValueError):
-        _normalize_flow_condition({"condition_type": condition_type, "value": ""}, 1)
+        normalize_flow_condition({"condition_type": condition_type, "value": ""}, 1)

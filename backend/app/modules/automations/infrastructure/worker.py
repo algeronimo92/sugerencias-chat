@@ -1,3 +1,12 @@
+"""El worker de automatizaciones: el bucle que corre lo vencido y los
+barridos que descubren lo que ningún evento avisó.
+
+Los barridos son la red de seguridad del camino por eventos: un mensaje que
+entró por fuera del webhook, una tarea que venció, una espera que ya tiene
+respuesta o una ejecución que quedó colgada por un reinicio. Detectan con SQL
+y delegan en la aplicación (``triggers`` y ``engine``).
+"""
+
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
@@ -6,53 +15,53 @@ from time import monotonic
 from sqlalchemy import DateTime, cast, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.core.events import publish
+from app.core.time_format import iso_utc
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
+from app.db.models.conversations import WspMessage
 from app.db.models.leads import Lead, LeadActivity
 from app.db.models.tasks import LeadTask
-from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
+from app.integrations.meta_webhook.projection import reply_identifier
 from domain_types import (
     AutomationBuilderMode,
     AutomationExecutionStatus,
     AutomationTrigger,
-    QuestionHandle,
     TaskStatus,
     WaitAnyConditionKind,
 )
-from app.modules.automations.automation_rules import NON_REPLY_MESSAGE_TYPES, classify_customer_reply
-from app.integrations.meta_webhook.projection import reply_identifier
-
-# Meta informa que el cliente vio lo enviado con ``read``: no distingue una
-# nota de voz reproducida de un mensaje leído.
-SEEN_META_STATUS = "read"
-from app.modules.automations.common import (
+from app.modules.automations.application.engine import process_due_automation_executions
+from app.modules.automations.application.triggers import (
+    backfill_customer_response_deadlines,
+    schedule_automation_event,
+)
+from app.modules.automations.domain.events import AutomationsChanged, ExecutionFailed
+from app.modules.automations.domain.limits import (
     AUTOMATION_POLL_SECONDS,
     MAX_AUTO_CLOSE_PER_SWEEP,
     MAX_EXECUTION_ATTEMPTS,
     OVERDUE_LOOKBACK_GRACE_MINUTES,
     STALE_EXECUTION_MINUTES,
-    _normalize_reply_text,
-    _wake,
 )
-from app.modules.automations.engine import (
-    _notify_execution_failure,
-    process_due_automation_executions,
+from app.modules.automations.domain.replies import (
+    MAX_REPLIES_SCANNED,
+    NON_REPLY_MESSAGE_TYPES,
+    SEEN_META_STATUS,
+    awaiting_kinds,
+    classify_customer_reply,
+    match_question_button,
+    resume_branch,
 )
-from app.modules.automations.scheduler import (
-    _backfill_customer_response_deadlines,
-    schedule_automation_event,
-)
+from app.modules.automations.infrastructure import wakeup
 from app.modules.leads.public import Actor, update_lead
-from app.modules.platform.ports.settings_service import (get_effective)
-from app.realtime.ws_manager import manager
-from app.core.time_format import iso_utc
+from app.modules.platform.ports.settings_service import get_effective
 
 logger = logging.getLogger(__name__)
 
 
 async def _discover_recent_inbound_messages() -> None:
     since = datetime.now(timezone.utc) - timedelta(minutes=5)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         has_rules = await session.scalar(select(AutomationRule.id).where(
             AutomationRule.is_active.is_(True),
             AutomationRule.trigger_type.in_([
@@ -95,7 +104,7 @@ async def _discover_recent_inbound_messages() -> None:
     # La apertura queda auditada en la misma transacción que cambia el lead.
     # Si el webhook cayó después de ese commit pero antes de programar el
     # flujo, este barrido reconstruye el evento sin volver a abrir ni duplicar.
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         conversation_rows = (await session.execute(
             select(
                 LeadActivity.lead_id,
@@ -126,83 +135,12 @@ async def _discover_recent_inbound_messages() -> None:
         )
 
 
-def _match_question_button(
-    buttons: list[dict],
-    reply_id: str | None,
-    content: str | None,
-    kind: str | None = None,
-    has_media_handle: bool = False,
-) -> str:
-    """Resuelve a qué botón corresponde la respuesta del cliente: por el id
-    que Meta devuelve en ``interactive.button_reply.id`` si tocó un botón; si
-    escribió en vez de tocar, por número de posición o por el texto del botón;
-    si no matchea nada, "otra respuesta".
-
-    Una foto se resuelve antes de mirar texto y sale por su propia salida:
-    9 de cada 10 llegan sin caption, así que por texto no matchea nada y
-    terminaría en "otra respuesta" — que es justamente la rama del cliente
-    que NO mandó lo que se le pidió. Si el flujo no conectó esa salida,
-    conserva el comportamiento anterior.
-    """
-    if kind == WaitAnyConditionKind.MEDIA_RECEIVED and has_media_handle:
-        return QuestionHandle.MEDIA
-    if reply_id and any(button["id"] == reply_id for button in buttons):
-        return reply_id
-    normalized = _normalize_reply_text(content or "")
-    if normalized.isdigit():
-        index = int(normalized) - 1
-        if 0 <= index < len(buttons):
-            return buttons[index]["id"]
-    for button in buttons:
-        if _normalize_reply_text(button["label"]) == normalized:
-            return button["id"]
-    return QuestionHandle.OTHER
-
-
-# Cuántos mensajes del cliente se miran por ejecución al buscar el que reanuda.
-# Sólo se necesita mirar más de uno cuando los primeros no son respuestas (un
-# aviso de sistema) o no satisfacen ninguna rama declarada (un "ahorita te la
-# mando" en un bloque que espera únicamente la foto).
-MAX_REPLIES_SCANNED = 20
-
-
-def _awaiting_kinds(flow_state: dict) -> set[str]:
-    """Qué clases de respuesta reanudan este bloque.
-
-    `awaiting_message: true` es el formato anterior y equivale a "cualquier
-    mensaje": se sigue leyendo para que las ejecuciones que ya estaban
-    esperando cuando se desplegó esto terminen sin quedarse colgadas.
-    """
-    awaiting = flow_state.get("awaiting")
-    if isinstance(awaiting, list):
-        return {kind for kind in awaiting if isinstance(kind, str)}
-    return {WaitAnyConditionKind.MESSAGE} if flow_state.get("awaiting_message") else set()
-
-
-def _resume_branch(kind: str, awaiting: set[str]) -> str | None:
-    """Por qué rama sale una respuesta ya clasificada, o None si el bloque no
-    declaró ninguna que la acepte y hay que seguir esperando.
-
-    `message` sigue siendo el cajón de sastre —una foto también es un mensaje,
-    y un bloque que sólo espera "mensaje" tiene que reanudar con ella igual que
-    antes—, pero pierde contra `media_received` cuando el flujo se tomó el
-    trabajo de dibujar esa rama. Al revés no: un bloque que espera únicamente
-    la foto NO se despierta con un "ahorita te la mando", que es justo el
-    motivo por el que existe.
-    """
-    if kind == WaitAnyConditionKind.MEDIA_RECEIVED and WaitAnyConditionKind.MEDIA_RECEIVED in awaiting:
-        return WaitAnyConditionKind.MEDIA_RECEIVED
-    if WaitAnyConditionKind.MESSAGE in awaiting:
-        return WaitAnyConditionKind.MESSAGE
-    return None
-
-
 async def _discover_wait_any_replies() -> None:
     """Reanuda ejecuciones pausadas en un bloque Pausa (wait_any, condición
     "hasta recibir mensaje" o "hasta que se reproduce lo enviado") o Pregunta
     (question): si el lead escribió después de entrar a la espera, o si el
     mensaje que se vigila ya figura leído en Meta, adelanta `scheduled_for` a
-    ahora y marca `resume_reason` para que `_run_visual_execution` siga por
+    ahora y marca `resume_reason` para que el motor siga por
     esa rama en vez de la del timer. Análoga a
     `_discover_recent_inbound_messages`, pero para ejecuciones que ya están
     corriendo (no dispara ejecuciones nuevas)."""
@@ -229,7 +167,7 @@ async def _discover_wait_any_replies() -> None:
             WspMessage.meta_status == SEEN_META_STATUS,
         )
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         waiting = (await session.execute(
             select(AutomationExecution.id, AutomationExecution.lead_id, AutomationExecution.flow_state)
             .where(
@@ -252,8 +190,8 @@ async def _discover_wait_any_replies() -> None:
         since = datetime.fromisoformat(waiting_since)
         resume_reason = None
         reply_context = None
-        awaiting = _awaiting_kinds(flow_state)
-        async with get_sessionmaker()() as session:
+        awaiting = awaiting_kinds(flow_state)
+        async with session_scope() as session:
             if awaiting:
                 replies = (await session.execute(
                     select(
@@ -280,7 +218,7 @@ async def _discover_wait_any_replies() -> None:
                         continue
                     reply_id = reply_identifier(reply["message_type"], reply["provider_payload"])
                     if question_buttons:
-                        branch = _match_question_button(
+                        branch = match_question_button(
                             question_buttons,
                             reply_id,
                             reply["content"],
@@ -288,7 +226,7 @@ async def _discover_wait_any_replies() -> None:
                             WaitAnyConditionKind.MEDIA_RECEIVED in awaiting,
                         )
                     else:
-                        branch = _resume_branch(kind, awaiting)
+                        branch = resume_branch(kind, awaiting)
                         if branch is None:
                             continue
                     analysis = reply["analysis"] if isinstance(reply["analysis"], dict) else {}
@@ -324,10 +262,9 @@ async def _discover_wait_any_replies() -> None:
                     **({"message_context": reply_context} if reply_context else {}),
                 },
             ))
-            await session.commit()
             resumed = True
     if resumed:
-        _wake.set()
+        wakeup.wake()
 
 
 async def _discover_timed_events() -> None:
@@ -336,7 +273,7 @@ async def _discover_timed_events() -> None:
     ``customer_response_overdue`` no aparece aquí: se programa al insertar cada
     mensaje del vendedor y, por tanto, no necesita recorrer chats por minuto.
     """
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rules = (await session.execute(select(AutomationRule).where(
             AutomationRule.is_active.is_(True),
             AutomationRule.trigger_type.in_([
@@ -346,7 +283,7 @@ async def _discover_timed_events() -> None:
         ))).scalars().all()
     for rule in rules:
         if rule.trigger_type == AutomationTrigger.TASK_DUE:
-            async with get_sessionmaker()() as session:
+            async with session_scope() as session:
                 tasks = (await session.execute(select(
                     LeadTask.id, LeadTask.lead_id, LeadTask.assigned_user_id, LeadTask.title,
                     LeadTask.due_at,
@@ -382,7 +319,7 @@ async def _discover_timed_events() -> None:
         ).where(WspMessage.sent_at >= lookback).order_by(
             WspMessage.chat_id, WspMessage.sent_at.desc(), WspMessage.id.desc()
         ).distinct(WspMessage.chat_id).subquery()
-        async with get_sessionmaker()() as session:
+        async with session_scope() as session:
             rows = (await session.execute(select(last_message).where(
                 last_message.c.sender == expected_sender,
                 last_message.c.sent_at <= threshold,
@@ -433,7 +370,7 @@ async def _auto_close_idle_conversations() -> int:
         .correlate(Lead)
         .scalar_subquery()
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         lead_ids = (await session.execute(
             select(Lead.id).where(
                 Lead.conversacion_abierta.is_(True),
@@ -457,7 +394,7 @@ async def _auto_close_idle_conversations() -> int:
 async def _release_stale_executions() -> None:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(minutes=STALE_EXECUTION_MINUTES)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         # Las que ya agotaron sus reclamos no se re-agendan más: quedan failed
         # para que el fallo sea visible en vez de reintentarse para siempre.
         exhausted = (await session.execute(update(AutomationExecution).where(
@@ -478,17 +415,24 @@ async def _release_stale_executions() -> None:
             error="Reintentando una ejecución interrumpida",
             attempts=AutomationExecution.attempts + 1,
         ).returning(AutomationExecution.id))).scalars().all()
-        await session.commit()
+        failed = (await session.execute(
+            select(AutomationExecution, AutomationRule)
+            .join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id)
+            .where(AutomationExecution.id.in_(exhausted))
+        )).all() if exhausted else []
     # El frontend ya no sondea las ejecuciones con el WebSocket conectado:
     # todo cambio de estado tiene que avisarse.
     if exhausted or released:
-        await manager.broadcast({"type": "automations_updated"})
-    for execution_id in exhausted:
-        async with get_sessionmaker()() as session:
-            execution = await session.get(AutomationExecution, execution_id)
-            rule = await session.get(AutomationRule, execution.rule_id) if execution else None
-        if execution and rule:
-            await _notify_execution_failure(rule, execution, execution.error or "")
+        await publish(AutomationsChanged())
+    for execution, rule in failed:
+        await publish(ExecutionFailed(
+            execution_id=execution.id,
+            rule_id=rule.id,
+            rule_name=rule.name,
+            rule_owner_id=rule.created_by_user_id,
+            lead_id=execution.lead_id,
+            error=execution.error or "",
+        ))
 
 
 async def backfill_automation_state() -> None:
@@ -504,7 +448,7 @@ async def backfill_automation_state() -> None:
        después los mensajes los mantienen sin ningún barrido periódico.
     """
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         published_rules = (await session.execute(select(
             AutomationRule.id, AutomationRule.flow_version, AutomationRule.published_flow_definition,
         ).where(
@@ -563,9 +507,8 @@ async def backfill_automation_state() -> None:
             AutomationRule.is_active.is_(True),
             AutomationRule.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
         ))).scalars().all()
-        await session.commit()
     for rule_id in customer_deadline_rule_ids:
-        await _backfill_customer_response_deadlines(rule_id)
+        await backfill_customer_response_deadlines(rule_id)
 
 
 async def watch_automations() -> None:
@@ -580,7 +523,7 @@ async def watch_automations() -> None:
                 await _auto_close_idle_conversations()
                 next_housekeeping_at = now_mono + 60.0
             # Fuera del bloque de housekeeping: un cliente que toca un botón
-            # despierta el bucle por `_wake`, y esperar hasta un minuto a que
+            # despierta el bucle por `wakeup`, y esperar hasta un minuto a que
             # el bot conteste es la diferencia entre parecer un bot y parecer
             # un cuelgue. Es una sola query, y filtrada.
             await _discover_wait_any_replies()
@@ -589,11 +532,7 @@ async def watch_automations() -> None:
             raise
         except Exception:
             logger.exception("Error al procesar automatizaciones")
-        # Duerme hasta el próximo ciclo o hasta que un trigger active _wake —
+        # Duerme hasta el próximo ciclo o hasta que un trigger lo despierte —
         # así los eventos de los routers se procesan al instante sin que la
         # request HTTP tenga que esperar a las acciones.
-        try:
-            await asyncio.wait_for(_wake.wait(), timeout=AUTOMATION_POLL_SECONDS)
-        except TimeoutError:
-            pass
-        _wake.clear()
+        await wakeup.sleep(AUTOMATION_POLL_SECONDS)
