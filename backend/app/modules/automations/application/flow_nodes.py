@@ -22,6 +22,7 @@ from app.modules.automations.application.deps import AutomationDeps
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.execution import child_flow_payload, require_invocable
 from app.modules.automations.domain.rules import business_timezone, is_business_hours, render_variables, wait_seconds
+from app.modules.automations.domain.errors import StepFailed
 
 
 async def start_invoked_flow(
@@ -43,7 +44,7 @@ async def start_invoked_flow(
         payload=payload, now=deps.now(),
     )
     if child_id is None:
-        raise ValueError("No se pudo recuperar la ejecución del flujo hijo")
+        raise StepFailed("No se pudo recuperar la ejecución del flujo hijo")
     await deps.publish(AutomationsChanged(wake=True))
     return child_id, target.name
 
@@ -260,7 +261,7 @@ class QuestionNode(FlowNodeHandler):
         text = render_variables(node["data"]["text"], run.chat).strip()
         buttons_data = node["data"]["buttons"]
         if not text:
-            raise ValueError("La pregunta no tiene contenido para enviar")
+            raise StepFailed("La pregunta no tiene contenido para enviar")
         await require_service_window(run.chat, run.execution, run.deps)
         buttons = [{"id": button["id"], "title": button["label"]} for button in buttons_data]
         message = await send_buttons_message(

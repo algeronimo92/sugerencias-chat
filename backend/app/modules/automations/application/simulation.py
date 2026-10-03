@@ -12,19 +12,21 @@ from app.modules.automations.application.ports import automation_ports
 from app.modules.automations.application.validation import validate_visual_flow
 from app.modules.automations.domain.flow_graph import flow_indexes
 from app.modules.automations.domain.limits import MAX_FLOW_NODES
+from app.modules.automations.domain.errors import InvalidAutomation, rejects_malformed_input
 
 
+@rejects_malformed_input
 async def simulate_visual_flow(rule_id: int, lead_id: str, deps: AutomationDeps | None = None) -> dict:
     deps = deps or default_deps()
     current = await automation_ports().rules.get(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        raise ValueError("Flujo visual no encontrado")
+        raise InvalidAutomation("Flujo visual no encontrado")
     validated = await validate_visual_flow(
         current["name"], current["flow_definition"], current_rule_id=rule_id,
     )
     chat = await deps.fetch_chat(lead_id)
     if not chat:
-        raise ValueError("Lead no encontrado")
+        raise InvalidAutomation("Lead no encontrado")
     matches, reason = await matches_condition_values(validated["conditions"], chat, rule_id, deps)
     if not matches:
         return {
@@ -49,4 +51,4 @@ async def simulate_visual_flow(rule_id: int, lead_id: str, deps: AutomationDeps 
                 "lead_id": chat["chat_id"], "lead_name": chat.get("name"),
                 "flow_version": current["flow_version"], "path": simulation.path,
             }
-    raise ValueError("La simulación excedió el máximo de bloques")
+    raise InvalidAutomation("La simulación excedió el máximo de bloques")

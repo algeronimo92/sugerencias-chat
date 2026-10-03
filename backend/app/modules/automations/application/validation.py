@@ -7,6 +7,7 @@ from app.modules.automations.application.ports import ReferenceChecker, RuleStor
 from app.modules.automations.domain.flow_definition import check_invoked_flows, connect_flow, normalize_flow
 from app.modules.automations.domain.limits import MAX_ACTIONS
 from app.modules.automations.domain.validation import ActionReferences, normalize_rate_limit, normalize_rule
+from app.modules.automations.domain.errors import InvalidAutomation
 
 
 async def verify_references(refs: ActionReferences, references: ReferenceChecker) -> None:
@@ -17,15 +18,15 @@ async def verify_references(refs: ActionReferences, references: ReferenceChecker
         if keys:
             problem = await references.stage_problem(keys, active_only=active_only)
             if problem:
-                raise ValueError(f"Etapa inválida: {problem}")
+                raise InvalidAutomation(f"Etapa inválida: {problem}")
     if refs.users and await references.inactive_users(refs.users):
-        raise ValueError("Algún usuario seleccionado no existe o está inactivo")
+        raise InvalidAutomation("Algún usuario seleccionado no existe o está inactivo")
     if refs.tags and await references.inactive_tags(refs.tags):
-        raise ValueError("Alguna etiqueta seleccionada no existe o está inactiva")
+        raise InvalidAutomation("Alguna etiqueta seleccionada no existe o está inactiva")
     if refs.templates and await references.unusable_templates(refs.templates):
-        raise ValueError("El envío automático solo admite plantillas internas activas (sin botones/listas)")
+        raise InvalidAutomation("El envío automático solo admite plantillas internas activas (sin botones/listas)")
     if refs.media_assets and await references.missing_media_assets(refs.media_assets):
-        raise ValueError("Algún archivo de la librería de medios ya no existe")
+        raise InvalidAutomation("Algún archivo de la librería de medios ya no existe")
 
 
 async def validate_automation_rule(
@@ -60,13 +61,13 @@ async def validate_visual_flow(
     flow = normalize_flow(name, definition)
     await verify_references(flow.refs, references)
     if flow.condition_users and await references.inactive_users(flow.condition_users):
-        raise ValueError("Algún vendedor usado en una condición no existe o está inactivo")
+        raise InvalidAutomation("Algún vendedor usado en una condición no existe o está inactivo")
     if flow.condition_tags and await references.inactive_tags(flow.condition_tags):
-        raise ValueError("Alguna etiqueta usada en una condición no existe o está inactiva")
+        raise InvalidAutomation("Alguna etiqueta usada en una condición no existe o está inactiva")
     if flow.condition_stages:
         problem = await references.stage_problem(flow.condition_stages, active_only=False)
         if problem:
-            raise ValueError(f"Etapa usada en una condición: {problem}")
+            raise InvalidAutomation(f"Etapa usada en una condición: {problem}")
     if flow.invoked_flow_ids:
         check_invoked_flows(
             await rules.flow_targets(), flow.invoked_flow_ids, current_rule_id, {"nodes": flow.nodes},

@@ -29,6 +29,7 @@ from app.modules.automations.domain.execution import (
 )
 from app.modules.automations.domain.flow_graph import flow_indexes
 from app.modules.automations.domain.limits import MAX_CONCURRENT_EXECUTIONS, MAX_FLOW_NODES, RATE_LIMIT_RETRY_MINUTES
+from app.modules.automations.domain.errors import StepFailed
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
     try:
         for _ in range(MAX_FLOW_NODES + 1):
             if not current_id or current_id not in nodes:
-                raise ValueError("El flujo perdió la referencia al siguiente bloque")
+                raise StepFailed("El flujo perdió la referencia al siguiente bloque")
             node = nodes[current_id]
             path.append(current_id)
             outcome = await flow_node_handler(node["type"]).execute(node, run)
@@ -168,7 +169,7 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
                 scheduled_for=outcome.scheduled_for, wait_any_state=outcome.wait_state,
             )
             return
-        raise ValueError("El flujo excedió el máximo de bloques permitidos")
+        raise StepFailed("El flujo excedió el máximo de bloques permitidos")
     except Exception as exc:
         if not isinstance(exc, EXPECTED_FAILURES):
             logger.exception("Error inesperado al ejecutar la automatización visual %s", execution.id)

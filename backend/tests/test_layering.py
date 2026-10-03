@@ -556,6 +556,21 @@ def test_automations_keeps_its_logic_inside_the_rings():
     assert root == {"__init__.py", "api.py", "public.py", "queries.py", "schemas.py", "subscribers.py"}
 
 
+
+def test_automations_raises_domain_errors_and_its_routes_do_not_translate():
+    """Las reglas levantan errores de ``domain/errors.py``, con su status; la
+    API no atrapa ``ValueError`` ni ``TypeError`` para elegir uno."""
+    automations = MODULES / "automations"
+    bare = sorted(
+        path.relative_to(BACKEND).as_posix()
+        for path in automations.rglob("*.py")
+        if "raise ValueError(" in path.read_text(encoding="utf-8")
+        or "raise TypeError(" in path.read_text(encoding="utf-8")
+    )
+    assert bare == []
+    api = (automations / "api.py").read_text(encoding="utf-8")
+    assert not re.search(r"except \(?(ValueError|TypeError)", api)
+
 # La traducción a HTTP tiene un solo lugar: el handler de DomainError en
 # bootstrap. Fuera de las rutas, los casos de uso, servicios y dependencias de
 # autenticación levantan errores de dominio.

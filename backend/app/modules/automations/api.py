@@ -40,10 +40,7 @@ async def get_rules(_admin: User = Depends(require_admin)):
 
 @router.post("", response_model=AutomationRuleItem, status_code=201)
 async def post_rule(body: AutomationRuleCreate, admin: User = Depends(require_admin)):
-    try:
-        values = await validate_automation_rule(body.model_dump())
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    values = await validate_automation_rule(body.model_dump())
     item = await create_automation_rule(values, admin.id)
     return item
 
@@ -58,10 +55,7 @@ async def post_duplicate(rule_id: int, admin: User = Depends(require_admin)):
 
 @router.post("/flows", response_model=AutomationRuleItem, status_code=201)
 async def post_flow(body: AutomationFlowCreate, admin: User = Depends(require_admin)):
-    try:
-        item = await create_visual_flow(body.name, body.flow_definition, admin.id)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    item = await create_visual_flow(body.name, body.flow_definition, admin.id)
     return item
 
 
@@ -74,21 +68,15 @@ async def patch_flow(
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         raise HTTPException(404, "Flujo visual no encontrado")
-    try:
-        item = await save_visual_flow(
-            rule_id, body.name if body.name is not None else current["name"], body.flow_definition
-        )
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    item = await save_visual_flow(
+        rule_id, body.name if body.name is not None else current["name"], body.flow_definition
+    )
     return item
 
 
 @router.post("/{rule_id}/publish", response_model=AutomationRuleItem)
 async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
-    try:
-        item = await publish_visual_flow(rule_id)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    item = await publish_visual_flow(rule_id)
     if item is None:
         raise HTTPException(404, "Flujo visual no encontrado")
     return item
@@ -108,10 +96,7 @@ async def post_restore_flow_version(
     version: int,
     _admin: User = Depends(require_admin),
 ):
-    try:
-        item = await restore_flow_version(rule_id, version)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    item = await restore_flow_version(rule_id, version)
     if item is None:
         raise HTTPException(404, "Versión no encontrada")
     return item
@@ -123,10 +108,7 @@ async def simulate_flow(
     body: AutomationFlowSimulationRequest,
     _admin: User = Depends(require_admin),
 ):
-    try:
-        return await simulate_visual_flow(rule_id, body.lead_id)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+    return await simulate_visual_flow(rule_id, body.lead_id)
 
 
 @router.patch("/{rule_id}", response_model=AutomationRuleItem)
@@ -172,10 +154,7 @@ async def patch_rule(
                 "visible_to_sellers",
             )
         }
-        try:
-            normalized = await validate_automation_rule(merged)
-        except (ValueError, TypeError) as exc:
-            raise HTTPException(400, str(exc))
+        normalized = await validate_automation_rule(merged)
         item = await update_automation_rule(rule_id, normalized)
     if item is None:
         raise HTTPException(404, "Automatización no encontrada")
@@ -184,10 +163,7 @@ async def patch_rule(
 
 @router.delete("/{rule_id}")
 async def delete_rule(rule_id: int, _admin: User = Depends(require_admin)):
-    try:
-        result = await delete_automation_rule(rule_id)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc))
+    result = await delete_automation_rule(rule_id)
     if result is None:
         raise HTTPException(404, "Automatización no encontrada")
     return {"status": "ok", **result}
@@ -213,10 +189,7 @@ async def post_start_manual_flow(
     body: ManualFlowStartRequest,
     user: User = Depends(get_current_user),
 ):
-    try:
-        item = await start_manual_flow_execution(rule_id, body.chat_id, user.id, user.role == "admin")
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    item = await start_manual_flow_execution(rule_id, body.chat_id, user.id, user.role == "admin")
     return item
 
 
@@ -325,10 +298,7 @@ async def post_pause_execution(execution_id: int, user: User = Depends(get_curre
 @router.post("/executions/{execution_id}/resume", response_model=AutomationExecutionItem)
 async def post_resume_execution(execution_id: int, user: User = Depends(get_current_user)):
     await _require_execution_access(execution_id, user, "reanudar")
-    try:
-        item = await resume_automation_execution(execution_id)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc))
+    item = await resume_automation_execution(execution_id)
     if item is None:
         raise HTTPException(409, "Solo se pueden reanudar ejecuciones pausadas")
     return item

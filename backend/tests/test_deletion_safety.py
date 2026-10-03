@@ -7,7 +7,9 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
-from app.modules.automations import api as automations
+from app.modules.automations.application.management import delete_automation_rule
+from app.modules.automations.domain.errors import AutomationConflict
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations import queries
 from app.modules.catalogs import templates_api as templates
 from app.modules.catalogs import template_policies
@@ -71,15 +73,13 @@ async def test_template_delete_returns_conflict_when_referenced(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_automation_delete_returns_conflict_while_execution_runs(monkeypatch):
-    monkeypatch.setattr(
-        automations,
-        "delete_automation_rule",
-        AsyncMock(side_effect=ValueError("ejecución en curso")),
-    )
+async def test_automation_delete_returns_conflict_while_execution_runs(in_memory_automations):
+    rules = in_memory_automations.rules
+    rules.rules[9] = {"id": 9, "active_statuses": [AutomationExecutionStatus.RUNNING]}
 
-    with pytest.raises(HTTPException) as caught:
-        await automations.delete_rule(9, _admin=object())
+    with pytest.raises(AutomationConflict) as caught:
+        await delete_automation_rule(9)
 
     assert caught.value.status_code == 409
     assert "curso" in caught.value.detail
+    assert not rules.rules[9].get("deleted_at")

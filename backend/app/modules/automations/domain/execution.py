@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
+from app.modules.automations.domain.errors import StepFailed
 
 TERMINAL_STATUSES = frozenset({
     AutomationExecutionStatus.COMPLETED,
@@ -83,7 +84,7 @@ def resolve_recipient(action: dict, chat: dict, payload: dict) -> int:
         return int(chat["vendedor_id"])
     if payload.get("assigned_user_id"):
         return int(payload["assigned_user_id"])
-    raise ValueError("El lead no tiene vendedor asignado")
+    raise StepFailed("El lead no tiene vendedor asignado")
 
 
 def execution_message_context(execution: Any) -> dict:
@@ -115,9 +116,9 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
     ancestry = [int(item) for item in (payload.get("flow_ancestry") or [])]
     ancestry.append(parent.rule_id)
     if flow_rule_id in ancestry:
-        raise ValueError("La invocación entre flujos contiene un ciclo")
+        raise StepFailed("La invocación entre flujos contiene un ciclo")
     if len(ancestry) >= MAX_FLOW_INVOCATION_DEPTH:
-        raise ValueError("La cadena de flujos invocados es demasiado profunda")
+        raise StepFailed("La cadena de flujos invocados es demasiado profunda")
     message_context = execution_message_context(parent)
     child_payload = {
         "parent_execution_id": parent.id,
@@ -131,11 +132,11 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
 
 def require_invocable(target: Any) -> None:
     if target is None or target.deleted_at is not None:
-        raise ValueError("El flujo hijo ya no existe")
+        raise StepFailed("El flujo hijo ya no existe")
     if target.builder_mode != AutomationBuilderMode.VISUAL:
-        raise ValueError("El destino ya no es un flujo visual")
+        raise StepFailed("El destino ya no es un flujo visual")
     if not target.is_active or not target.published_flow_definition:
-        raise ValueError(f"El flujo hijo {target.name} no está publicado y activo")
+        raise StepFailed(f"El flujo hijo {target.name} no está publicado y activo")
 
 
 def initial_flow_state(builder_mode: str, flow_version: int) -> dict:

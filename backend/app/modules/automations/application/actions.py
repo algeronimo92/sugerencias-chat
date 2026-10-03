@@ -28,6 +28,7 @@ from app.modules.catalogs.ports.template_delivery import build_internal_template
 from app.modules.conversations.ports.message_items import interactive_item, media_item, text_item
 from app.modules.conversations.ports.message_media import mediatype_from_content_type
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR
+from app.modules.automations.domain.errors import StepFailed
 
 
 async def _action_create_task(action, chat, execution, rule, deps: AutomationDeps) -> dict:
@@ -37,7 +38,7 @@ async def _action_create_task(action, chat, execution, rule, deps: AutomationDep
         or (execution.event_payload or {}).get("assigned_user_id")
     )
     if not assigned_user_id:
-        raise ValueError("No se puede crear la tarea porque el lead no tiene vendedor")
+        raise StepFailed("No se puede crear la tarea porque el lead no tiene vendedor")
     due_at = deps.now() + timedelta(minutes=action["due_minutes"])
     remind_at = (
         due_at - timedelta(minutes=action["remind_minutes_before"])
@@ -62,7 +63,7 @@ async def _update_lead(chat, execution, deps: AutomationDeps, values: dict) -> N
     actor_type, actor_user_id = execution_actor(execution)
     updated = await deps.update_lead(chat["chat_id"], values, actor_type, actor_user_id)
     if not updated:
-        raise ValueError("Lead no encontrado")
+        raise StepFailed("Lead no encontrado")
     chat.update(updated)
 
 
@@ -94,7 +95,7 @@ async def _action_assign_seller(action, chat, execution, rule, deps: AutomationD
 async def _action_add_tag(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     _actor_type, actor_user_id = execution_actor(execution)
     if not await deps.assign_tag(chat["chat_id"], action["tag_id"], actor_user_id):
-        raise ValueError("Lead o etiqueta no encontrado")
+        raise StepFailed("Lead o etiqueta no encontrado")
     return {"status": AutomationExecutionStatus.COMPLETED, "tag_id": action["tag_id"]}
 
 
@@ -118,7 +119,7 @@ async def _action_change_stage(action, chat, execution, rule, deps: AutomationDe
         {"automation_rule_id": rule.id, "automation_execution_id": execution.id},
     )
     if not updated:
-        raise ValueError("Lead no encontrado")
+        raise StepFailed("Lead no encontrado")
     chat.update(updated)
     return {"status": AutomationExecutionStatus.COMPLETED, "stage": action["stage"]}
 
@@ -156,7 +157,7 @@ async def require_service_window(chat: dict, execution, deps: AutomationDeps) ->
         return
     window = await deps.get_customer_service_window(chat["chat_id"])
     if not window or not window["is_open"]:
-        raise ValueError(SERVICE_WINDOW_CLOSED_ERROR)
+        raise StepFailed(SERVICE_WINDOW_CLOSED_ERROR)
 
 
 async def _queued(chat: dict, deps: AutomationDeps) -> None:
@@ -171,14 +172,14 @@ async def _action_send_template(action, chat, execution, rule, deps: AutomationD
         or template["template_type"] != TemplateType.INTERNAL
         or template["interactive_type"] != InteractiveType.NONE
     ):
-        raise ValueError("La plantilla automática dejó de ser una plantilla interna válida")
+        raise StepFailed("La plantilla automática dejó de ser una plantilla interna válida")
     attachments = template["attachments"]
     await require_service_window(chat, execution, deps)
     text = render_variables(template["content"], chat).strip()
     if not text and not attachments:
-        raise ValueError("La plantilla no tiene contenido para enviar")
+        raise StepFailed("La plantilla no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
-        raise ValueError("El contenido renderizado de la plantilla no es válido")
+        raise StepFailed("El contenido renderizado de la plantilla no es válido")
 
     items = build_internal_template_items(text, attachments)
     # Un solo enqueue_messages para texto + todos los adjuntos: quedan
@@ -201,9 +202,9 @@ async def _action_send_message(action, chat, execution, rule, deps: AutomationDe
     await require_service_window(chat, execution, deps)
     text = render_variables(action["text"], chat).strip()
     if not text:
-        raise ValueError("El mensaje no tiene contenido para enviar")
+        raise StepFailed("El mensaje no tiene contenido para enviar")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
-        raise ValueError("El contenido renderizado del mensaje no es válido")
+        raise StepFailed("El contenido renderizado del mensaje no es válido")
     sent = await deps.enqueue_messages(chat["chat_id"], [text_item(text)])
     await _queued(chat, deps)
     return {"status": AutomationExecutionStatus.COMPLETED, "message_ids": [sent[0]["id"]]}
@@ -216,7 +217,7 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
     """
     target = await deps.fetch_latest_customer_message_target(chat["chat_id"])
     if not target:
-        raise ValueError("No hay un mensaje confirmado del cliente al que reaccionar")
+        raise StepFailed("No hay un mensaje confirmado del cliente al que reaccionar")
 
     emoji = action["emoji"]
     # Igual que la reacción manual: primero WhatsApp y luego el badge local,
@@ -234,7 +235,7 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
 async def _media_asset(action, deps: AutomationDeps) -> dict:
     asset = await deps.load_media_asset(action["media_asset_id"])
     if not asset:
-        raise ValueError("El archivo elegido ya no existe en la librería de medios")
+        raise StepFailed("El archivo elegido ya no existe en la librería de medios")
     return asset
 
 
@@ -243,7 +244,7 @@ async def _action_send_audio(action, chat, execution, rule, deps: AutomationDeps
     de medios — no crea una plantilla para un envío de un solo uso."""
     asset = await _media_asset(action, deps)
     if not asset["content_type"].startswith("audio/"):
-        raise ValueError("El archivo elegido ya no es un audio")
+        raise StepFailed("El archivo elegido ya no es un audio")
     await require_service_window(chat, execution, deps)
     sent = await deps.enqueue_messages(chat["chat_id"], [
         media_item(asset["media_url"], "audio", content_type=asset["content_type"]),
@@ -278,7 +279,7 @@ async def _action_send_media(action, chat, execution, rule, deps: AutomationDeps
     await require_service_window(chat, execution, deps)
     caption = render_variables(action.get("caption") or "", chat).strip()
     if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
-        raise ValueError("El caption renderizado admite máximo 1024 caracteres")
+        raise StepFailed("El caption renderizado admite máximo 1024 caracteres")
 
     mediatype = mediatype_from_content_type(asset["content_type"])
     items = [media_item(
@@ -364,7 +365,7 @@ async def execute_action(
 ) -> dict:
     handler = ACTION_HANDLERS.get(action["type"])
     if handler is None:
-        raise ValueError(f"Acción no soportada: {action['type']}")
+        raise StepFailed(f"Acción no soportada: {action['type']}")
     if position is not None:
         deps = with_outbox_dedupe(deps, execution.id, position)
     result = await handler(action, chat, execution, rule, deps)

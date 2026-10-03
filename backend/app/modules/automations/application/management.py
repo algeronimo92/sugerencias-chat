@@ -23,6 +23,7 @@ from app.modules.automations.application.validation import validate_visual_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import normalize_visual_draft
 from app.modules.leads.public import fetch_lead_raw
+from app.modules.automations.domain.errors import AutomationConflict, InvalidAutomation
 
 _DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config", "delay_minutes"}
 
@@ -109,7 +110,7 @@ async def delete_automation_rule(rule_id: int) -> dict | None:
         if statuses is None:
             return None
         if AutomationExecutionStatus.RUNNING in statuses:
-            raise ValueError(
+            raise AutomationConflict(
                 "La automatización tiene una ejecución en curso. Cancélala o espera a que termine antes de eliminarla."
             )
         cancelled = await rules.retire(rule_id, _now())
@@ -161,7 +162,7 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
         current["name"], current["flow_definition"], current_rule_id=rule_id,
     )
     if validated["flow_definition"] == current["published_flow_definition"]:
-        raise ValueError("No hay cambios pendientes para publicar")
+        raise InvalidAutomation("No hay cambios pendientes para publicar")
     rules = automation_ports().rules
     async with unit_of_work():
         await rules.publish(rule_id, validated, version=current["flow_version"] + 1, now=_now())
@@ -291,7 +292,7 @@ async def resume_automation_execution(execution_id: int) -> dict | None:
         if execution.start_source != "manual" and execution.lead_id:
             lead = await fetch_lead_raw(execution.lead_id)
             if lead is not None and lead.get("automatizacion_pausada"):
-                raise ValueError(
+                raise AutomationConflict(
                     "Este chat tiene la automatización pausada: reanudala con el botón "
                     "del bot en la cabecera para que el flujo siga."
                 )
@@ -326,13 +327,13 @@ async def start_manual_flow_execution(
     """
     rule = await automation_ports().rules.get(rule_id)
     if rule is None:
-        raise ValueError("Flujo no encontrado")
+        raise InvalidAutomation("Flujo no encontrado")
     if rule["builder_mode"] != AutomationBuilderMode.VISUAL or rule["trigger_type"] != AutomationTrigger.MANUAL:
-        raise ValueError("La regla no es un flujo de inicio manual")
+        raise InvalidAutomation("La regla no es un flujo de inicio manual")
     if not rule["is_active"]:
-        raise ValueError("Publica y activa el flujo antes de iniciarlo")
+        raise InvalidAutomation("Publica y activa el flujo antes de iniciarlo")
     if not is_admin and not rule["visible_to_sellers"]:
-        raise ValueError("Este flujo no está disponible para vendedores")
+        raise InvalidAutomation("Este flujo no está disponible para vendedores")
 
     event_key = f"manual:{uuid4()}"
     try:
@@ -346,16 +347,16 @@ async def start_manual_flow_execution(
             start_source="manual",
         )
     except ExecutionAlreadyRunning as exc:
-        raise ValueError(
+        raise InvalidAutomation(
             "Ya hay una ejecución de este flujo en curso para este lead. "
             "Esperá a que termine o cancelala antes de iniciar otra."
         ) from exc
     if not created:
-        raise ValueError("No se pudo iniciar el flujo: verifica que el lead exista")
+        raise InvalidAutomation("No se pudo iniciar el flujo: verifica que el lead exista")
 
     executions = automation_ports().executions
     execution_id = await executions.find_by_event_key(rule_id, event_key)
     execution = await executions.view(execution_id) if execution_id else None
     if execution is None:
-        raise ValueError("No se pudo recuperar la ejecución iniciada")
+        raise InvalidAutomation("No se pudo recuperar la ejecución iniciada")
     return execution

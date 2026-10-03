@@ -211,7 +211,6 @@ def deps(
         now=lambda: frozen_now,
         publish=publish,
         fetch_chat=nothing,
-        fetch_lead=nothing,
         latest_message=nothing,
         latest_outbound_media_wa_id=nothing,
         load_template=nothing,

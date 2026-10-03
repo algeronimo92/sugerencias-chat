@@ -12,6 +12,7 @@ from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from app.modules.leads.ports.types import LEAD_STAGE_KEY_PATTERN
+from app.modules.automations.domain.errors import InvalidAutomation
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
 BUSINESS_START_HOUR = 8
@@ -80,7 +81,7 @@ def normalize_conditions(raw_conditions: object) -> dict:
     # Solo la forma: las etapas son de cada negocio y su existencia se valida
     # contra la base en application.validation, que sí tiene I/O.
     if normalized["stage"] and not is_stage_key(normalized["stage"]):
-        raise ValueError("Etapa de condición inválida")
+        raise InvalidAutomation("Etapa de condición inválida")
     return normalized
 
 

@@ -38,11 +38,8 @@ class LeadMergeError(Invalid):
     code = "lead_merge_invalid"
 
 
-class LeadStageError(DomainError, ValueError):
-    """Base de los errores de etapas (mensaje apto para el usuario).
-
-    Sigue siendo ``ValueError`` para los llamadores que todavía lo atrapan así.
-    """
+class LeadStageError(DomainError):
+    """Base de los errores de etapas (mensaje apto para el usuario)."""
 
     status_code = 409
     code = "lead_stage_conflict"

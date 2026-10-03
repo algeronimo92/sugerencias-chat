@@ -23,6 +23,7 @@ from app.modules.automations.application.management import (
     resume_lead_executions,
 )
 from app.modules.automations.domain.events import AutomationsChanged
+from app.modules.automations.domain.errors import AutomationConflict
 from tests.automation_fakes import execution
 
 LEAD = "lead-1"
@@ -107,8 +108,9 @@ async def test_resuming_one_execution_is_refused_while_the_lead_is_paused(in_mem
     )
     monkeypatch.setattr(management, "fetch_lead_raw", AsyncMock(return_value={"automatizacion_pausada": True}))
 
-    with pytest.raises(ValueError, match="botón del bot"):
+    with pytest.raises(AutomationConflict, match="botón del bot") as caught:
         await resume_automation_execution(7)
+    assert caught.value.status_code == 409
     assert in_memory_automations.executions.executions[7].status == AutomationExecutionStatus.PAUSED
 
 

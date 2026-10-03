@@ -93,7 +93,6 @@ class AutomationDeps:
     change_stage: Callable[..., Awaitable[dict | None]] = change_stage
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
-    fetch_lead: Callable[[str], Awaitable[dict | None]] = leads.fetch_lead_raw
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
 
     load_template: Callable[[int], Awaitable[dict | None]] = fetch_template_for_delivery
