@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.media.schemas import MediaAssetItem
 from app.modules.ai.ai_assistant_service import PROFILE_FIELDS, get_profile, update_profile
 from app.modules.auth.public import require_admin

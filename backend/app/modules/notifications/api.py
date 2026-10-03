@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.notifications.schemas import NotificationPage
 from app.modules.auth.ports.auth_service import (get_current_user)
 from app.modules.notifications.queries import list_notifications

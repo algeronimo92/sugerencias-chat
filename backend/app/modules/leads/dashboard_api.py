@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.auth.public import get_current_user
 from app.modules.leads.dashboard_service import SCOPE_MINE, SCOPE_TEAM, get_dashboard_metrics
 

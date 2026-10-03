@@ -1,4 +1,11 @@
-"""Dependencias de identidad compartidas con otros módulos."""
+"""Dependencias de identidad compartidas con otros módulos.
+
+``User`` es el usuario autenticado que entregan ``get_current_user`` y
+``require_admin``: las rutas de otros módulos lo usan para anotar la
+dependencia sin tocar el modelo de auth.
+"""
+
+from app.db.models.auth import User
 
 from app.modules.auth.auth_service import (
     cookie_is_secure,

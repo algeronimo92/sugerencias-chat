@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.auth.ports.auth_service import get_current_user
 from app.modules.conversations.internal_notes_service import (
     NoteAuthor,

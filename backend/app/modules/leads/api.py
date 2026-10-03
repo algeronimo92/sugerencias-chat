@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.phone_utils import PhoneValidationError, normalize_phone
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.conversations.ports.chat_queries import CHATS_PAGE_SIZE
 from app.modules.leads.kanban_queries import KANBAN_PAGE_SIZE
 from app.modules.auth.public import get_current_user, list_active_sellers, require_admin

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.auth.ports.auth_service import get_current_user
 from app.modules.conversations.application.scheduling import cancel_scheduled_message, schedule_message
 from app.modules.conversations.scheduled_queries import list_scheduled_messages

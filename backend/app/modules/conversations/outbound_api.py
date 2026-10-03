@@ -7,7 +7,7 @@ encola con ``queue_messages``. Los avisos por WebSocket salen del suscriptor de
 ``DomainError`` (``OutboundRejected`` es 422)."""
 
 from fastapi import Depends, HTTPException
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.catalogs.schemas import SendTemplateRequest
 from app.modules.conversations.schemas import ForwardMessagesRequest, ForwardMessagesResponse, Message, SendInteractiveRequest, StickerRequest, SendLocationRequest, SendContactsRequest, SendMediaRequest, SendMessageRequest
 from app.modules.media.ports.media_upload import (save_decoded_media, save_media_file)

@@ -9,7 +9,7 @@ from app.modules.appointments.application import commands
 from app.modules.appointments.domain.appointment import AppointmentRequest
 from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.appointments.schemas import AppointmentCreate, AppointmentItem
 from app.modules.auth.public import get_current_user
 from app.modules.media.ports.media_upload import (normalize_media_content_type)

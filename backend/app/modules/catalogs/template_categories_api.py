@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.catalogs.schemas import TemplateCategoryCreate, TemplateCategoryItem, TemplateCategoryUpdate
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.catalogs.template_categories_queries import list_template_categories

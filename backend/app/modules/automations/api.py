@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.automations.domain.types import AutomationBuilderMode
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.automations.schemas import AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.automations.public import (

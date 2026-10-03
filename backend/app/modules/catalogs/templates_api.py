@@ -5,7 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
 from app.modules.catalogs.queries import get_lead_service_by_name

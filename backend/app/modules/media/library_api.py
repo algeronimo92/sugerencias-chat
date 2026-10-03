@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 import logging
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.media.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from app.modules.media.media_upload import normalize_media_content_type, save_media_file
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)

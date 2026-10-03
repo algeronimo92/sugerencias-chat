@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.catalogs.schemas import CustomFieldDefinitionCreate, CustomFieldDefinitionItem, CustomFieldDefinitionUpdate, CustomFieldEntity, CustomFieldValues
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.catalogs.custom_fields import (

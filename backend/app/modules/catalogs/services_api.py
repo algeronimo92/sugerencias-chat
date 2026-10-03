@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.catalogs.schemas import LeadServiceCreate, LeadServiceItem, LeadServiceUpdate
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.catalogs.queries import list_lead_services

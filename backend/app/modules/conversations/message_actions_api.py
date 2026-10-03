@@ -5,7 +5,7 @@ import logging
 import httpx
 from fastapi import Depends, HTTPException
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.integrations.whatsapp.channel import ChannelError, describe_send_failure
 from app.modules.auth.public import get_current_user
 from app.modules.conversations.application.inbox import pin_message, unpin_message

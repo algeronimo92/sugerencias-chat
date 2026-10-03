@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from app.core.config import settings
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.notifications.schemas import PushSubscribeRequest, PushUnsubscribeRequest, VapidPublicKeyResponse
 from app.modules.auth.ports.auth_service import (get_current_user)
 from app.modules.notifications.push_service import delete_subscription, save_subscription

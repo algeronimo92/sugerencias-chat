@@ -620,3 +620,103 @@ def test_flat_module_services_are_not_pass_throughs():
                 ):
                     offenders.add(f"{path.relative_to(BACKEND)}::{node.name}")
     assert offenders == set()
+
+
+# --- Propiedad de tablas --------------------------------------------------
+
+# Cada archivo de app/db/models pertenece a un módulo. Otro módulo que importa
+# esos modelos está leyendo (o escribiendo) tablas ajenas: solo se permite en
+# los casos de esta lista, que solo puede achicarse.
+MODEL_OWNERS = {"reports": "issue_reports", "control": "platform", "settings": "platform"}
+FOREIGN_TABLES = {
+    # Lado de lectura que une tablas de varios módulos en una sola consulta:
+    # la bandeja, el kanban, el historial, el dashboard y el contexto de la
+    # IA. Pasarlo por contratos públicos multiplicaría las consultas.
+    "app/modules/conversations/chat_queries.py": {"auth", "catalogs", "leads"},
+    "app/modules/conversations/chat_rows.py": {"catalogs", "leads"},
+    "app/modules/conversations/inbox_queries.py": {"leads"},
+    "app/modules/conversations/message_history.py": {"leads"},
+    "app/modules/conversations/message_queries.py": {"leads"},
+    "app/modules/leads/kanban_queries.py": {"conversations"},
+    "app/modules/leads/dashboard_activity_repository.py": {"auth", "conversations"},
+    "app/modules/leads/dashboard_appointments_repository.py": {"appointments", "auth"},
+    "app/modules/leads/dashboard_automations_repository.py": {"auth", "automations"},
+    "app/modules/leads/dashboard_leads_repository.py": {"auth"},
+    "app/modules/leads/dashboard_summary_repository.py": {"appointments", "automations", "conversations", "tasks"},
+    "app/modules/leads/dashboard_tags_repository.py": {"auth", "catalogs"},
+    "app/modules/ai/ai_context.py": {"conversations", "leads"},
+    "app/modules/ai/ai_jobs.py": {"conversations", "leads"},
+    "app/modules/ai/suggestions_repository.py": {"conversations", "leads"},
+    "app/modules/appointments/queries.py": {"auth", "leads"},
+    "app/modules/automations/queries.py": {"auth", "leads"},
+    "app/modules/tasks/queries.py": {"auth", "leads"},
+    # Nombre de quien creó o modificó algo, unido en la misma consulta.
+    "app/modules/catalogs/queries.py": {"auth"},
+    "app/modules/catalogs/repository.py": {"auth"},
+    "app/modules/catalogs/template_categories_queries.py": {"auth"},
+    "app/modules/catalogs/template_queries.py": {"auth", "media"},
+    "app/modules/conversations/scheduled_queries.py": {"auth"},
+    "app/modules/conversations/internal_notes_repository.py": {"auth", "leads"},
+    "app/modules/conversations/infrastructure/sql_scheduled.py": {"auth", "leads"},
+    "app/modules/issue_reports/queries.py": {"auth"},
+    "app/modules/issue_reports/repository.py": {"auth"},
+    "app/modules/leads/queries.py": {"auth"},
+    "app/modules/leads/assignment.py": {"auth"},
+    "app/modules/leads/infrastructure/repository.py": {"auth", "catalogs"},
+    "app/modules/media/media_library_queries.py": {"auth", "catalogs"},
+    "app/modules/tasks/repository.py": {"auth", "leads"},
+    # Integridad entre módulos que la base no puede expresar sola: si lo que
+    # se guarda o se borra está referenciado del otro lado.
+    "app/modules/automations/infrastructure/sql_references.py": {"auth", "catalogs", "media"},
+    "app/modules/catalogs/custom_fields.py": {"leads"},
+    "app/modules/catalogs/template_repository.py": {"automations"},
+    "app/modules/leads/stages.py": {"automations", "catalogs"},
+    "app/modules/appointments/infrastructure/repository.py": {"leads"},
+    # El motor y el inbox miran el estado del lead (pausa, existencia,
+    # columnas de bandeja) en la misma transacción que sus propias filas.
+    "app/modules/automations/infrastructure/sql_executions.py": {"leads"},
+    "app/modules/automations/infrastructure/sql_scheduling.py": {"conversations", "leads"},
+    "app/modules/automations/infrastructure/worker.py": {"conversations", "leads", "tasks"},
+    "app/modules/conversations/infrastructure/sql_inbox.py": {"leads"},
+    # Escrituras que cruzan módulos a propósito: la fusión de dos leads
+    # re-apunta las filas de los demás, y renombrar un recurso de la
+    # librería renombra sus adjuntos en las plantillas.
+    "app/modules/leads/infrastructure/merge.py": {"automations", "conversations", "notifications", "tasks"},
+    "app/modules/media/media_library_repository.py": {"catalogs"},
+    # El plan del negocio vive en el plano de control.
+    "app/modules/ai/ai_access.py": {"platform"},
+}
+
+
+def _foreign_tables() -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    for path in MODULES.rglob("*.py"):
+        owner = path.relative_to(MODULES).parts[0]
+        for module in _imported_modules(path):
+            parts = module.split(".")
+            if parts[:3] != ["app", "db", "models"] or len(parts) < 4:
+                continue
+            table_owner = MODEL_OWNERS.get(parts[3], parts[3])
+            if table_owner != owner:
+                found.setdefault(path.relative_to(BACKEND).as_posix(), set()).add(table_owner)
+    return found
+
+
+def test_modules_only_touch_their_own_tables():
+    found = _foreign_tables()
+    unexpected = {
+        path: tables - FOREIGN_TABLES.get(path, set())
+        for path, tables in found.items()
+        if tables - FOREIGN_TABLES.get(path, set())
+    }
+    assert unexpected == {}
+
+
+def test_the_foreign_table_list_has_no_leftovers():
+    found = _foreign_tables()
+    leftovers = {
+        path: tables - found.get(path, set())
+        for path, tables in FOREIGN_TABLES.items()
+        if tables - found.get(path, set())
+    }
+    assert leftovers == {}

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from app.db.models.auth import User
+from app.modules.auth.public import User
 from app.modules.leads.schemas import LeadStageKey, LeadStageAdminItem, LeadStageCreate, LeadStageItem, LeadStageOrder, LeadStagePatch
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.leads.stages import (
