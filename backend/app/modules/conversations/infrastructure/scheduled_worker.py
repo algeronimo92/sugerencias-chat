@@ -43,3 +43,8 @@ async def scheduled_tick() -> bool:
     if due:
         await asyncio.gather(*(dispatch_bounded(scheduled_id) for scheduled_id in due))
     return bool(due)
+
+
+def forget_scheduled(key: object) -> None:
+    """Si el negocio vuelve, se recuperan de nuevo los que quedaron a medias."""
+    _recovered.discard(key)

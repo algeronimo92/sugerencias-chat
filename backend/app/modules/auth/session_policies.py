@@ -9,7 +9,7 @@ from time import monotonic
 from app.core.config import settings
 from app.db.models.auth import User
 from app.tenancy.context import get_current_tenant
-from app.db.signals import signal, tell_others_soon
+from app.db.signals import on_reconnect, signal, tell_others_soon
 
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
@@ -96,6 +96,13 @@ def invalidate_session_cache(*, user_id: int | None = None, session_id: str | No
 @signal(SESSION_CACHE_SIGNAL).on
 async def _invalidated_elsewhere(payload: dict) -> None:
     _invalidate_here(payload.get("organization_id"), payload.get("user_id"), payload.get("session_id"))
+
+
+@on_reconnect
+async def _forget_every_session() -> None:
+    """Con el bus caído pudo perderse una revocación: cada sesión se vuelve a
+    validar contra la base en su próximo pedido."""
+    _session_cache.clear()
 
 
 def _invalidate_here(organization_id: str | None, user_id: int | None, session_id: str | None) -> None:

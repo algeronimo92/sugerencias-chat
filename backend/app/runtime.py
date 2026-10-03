@@ -39,12 +39,17 @@ from app.integrations.storage.media_storage import storage_backend
 from app.integrations.tts_service import close_tts_client
 from app.modules.auth.auth_service import hash_password
 from app.modules.auth.users_repository import seed_admin_if_needed
-from app.modules.automations.public import automations_tick, backfill_automation_state, wait_for_automation_work
+from app.modules.automations.public import (
+    automations_tick,
+    backfill_automation_state,
+    forget_automations,
+    wait_for_automation_work,
+)
 from app.modules.conversations.chat_queries import set_unaccent_enabled
-from app.modules.conversations.chat_watcher import POLL_INTERVAL_SECONDS, chat_watcher_tick
-from app.modules.conversations.infrastructure.outbox_worker import outbox_tick, wait_for_outbox_work
+from app.modules.conversations.chat_watcher import POLL_INTERVAL_SECONDS, chat_watcher_tick, forget_chat_watcher
+from app.modules.conversations.infrastructure.outbox_worker import forget_outbox, outbox_tick, wait_for_outbox_work
 from app.modules.conversations.infrastructure.scheduled_worker import POLL_SECONDS as SCHEDULED_POLL_SECONDS
-from app.modules.conversations.infrastructure.scheduled_worker import scheduled_tick
+from app.modules.conversations.infrastructure.scheduled_worker import forget_scheduled, scheduled_tick
 from app.modules.platform.platform_settings import migrate_legacy_platform_settings, platform_setting
 from app.modules.platform.settings_service import migrate_settings_encryption
 from app.modules.tasks.task_reminder import deliver_due_reminders
@@ -353,17 +358,20 @@ API_LOOPS = (
 
 # El trabajo de fondo, que puede vivir en un proceso aparte.
 BACKGROUND_LOOPS = (
-    TenantLoop("chat-watcher", chat_watcher_tick, sleeping(POLL_INTERVAL_SECONDS)),
-    TenantLoop("automations", automations_tick, wait_for_automation_work),
-    TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work),
-    TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS)),
+    TenantLoop("chat-watcher", chat_watcher_tick, sleeping(POLL_INTERVAL_SECONDS), forget_chat_watcher),
+    TenantLoop("automations", automations_tick, wait_for_automation_work, forget_automations),
+    TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work, forget_outbox),
+    TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
 )
 
 
 def start_background(*, api: bool, workers: bool) -> list[asyncio.Task]:
     tenants = CachedTenants() if settings.multitenancy_enabled else single_tenant
     loops = (API_LOOPS if api else ()) + (BACKGROUND_LOOPS if workers else ())
-    tasks = [asyncio.create_task(run_bus(), name="signal-bus")]
+    # Una sola instancia que lo corre todo no tiene a quién avisarle: sin bus
+    # no hay conexión de LISTEN ni un pg_notify por cada aviso.
+    bus = settings.signal_bus_enabled if settings.signal_bus_enabled is not None else not (api and workers)
+    tasks = [asyncio.create_task(run_bus(), name="signal-bus")] if bus else []
     tasks += [asyncio.create_task(run_tenant_loop(loop, tenants), name=loop.name) for loop in loops]
     if workers:
         # El inbox de Meta vive en el plano de control: un solo ciclo para

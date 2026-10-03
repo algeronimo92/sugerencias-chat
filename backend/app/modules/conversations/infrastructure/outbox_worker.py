@@ -258,3 +258,7 @@ async def outbox_tick() -> bool:
 
 async def wait_for_outbox_work() -> None:
     await _wait_for_work()
+
+
+def forget_outbox(key: object) -> None:
+    _next_sweep_at.pop(key, None)

@@ -15,7 +15,7 @@ from app.core.secret_cipher import (
     needs_reencryption,
 )
 from app.tenancy.context import get_current_tenant
-from app.db.signals import signal, tell_others_soon
+from app.db.signals import on_reconnect, signal, tell_others_soon
 
 
 @dataclass(frozen=True)
@@ -280,6 +280,12 @@ def _invalidate_here(all_tenants: bool, scope: str | None) -> None:
 @signal(SETTINGS_CACHE_SIGNAL).on
 async def _invalidated_elsewhere(payload: dict) -> None:
     _invalidate_here(bool(payload.get("all_tenants")), payload.get("scope"))
+
+
+@on_reconnect
+async def _forget_everything() -> None:
+    """Con el bus caído pudo perderse una invalidación: se relee todo."""
+    _effective_cache.clear()
 
 
 async def _effective_values() -> dict[str, str]:

@@ -16,29 +16,60 @@ activo (``start_bus``), la publica con ``pg_notify`` para los demás. Cada
 proceso ignora sus propios mensajes al volver por LISTEN: ya los atendió.
 Sin bus (tests, scripts) todo queda en el proceso, igual que antes.
 
-NOTIFY admite hasta 8000 bytes de payload: los más grandes se comprimen y, si
-aun así no entran, se atienden solo en el proceso local y se registra el
-error.
+Lo que viaja por NOTIFY va comprimido y cifrado (AES-GCM, con una clave
+derivada de ``SECRET_KEY`` y separada de la de configuración): el contenido
+de los clientes que lleva un aviso no queda legible en los logs de
+PostgreSQL, y quien pueda hacer NOTIFY sin conocer la clave no puede inyectar
+avisos ni desconectar a un negocio. NOTIFY admite hasta 8000 bytes: lo que no
+entra se atiende solo en el proceso local y se registra el error.
+
+La conexión de LISTEN se comprueba con un ``SELECT 1`` periódico: un corte de
+red puede dejarla abierta pero sorda. Al reconectar se corren los handlers de
+``on_reconnect`` (las cachés se vacían enteras, porque pudo perderse una
+invalidación) y se despiertan los ciclos locales.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
+import os
 import uuid
 import zlib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 logger = logging.getLogger(__name__)
 
 CHANNEL = "app_signals"
 MAX_NOTIFY_BYTES = 7500
+KEEPALIVE_SECONDS = 15.0
 PROCESS_ID = uuid.uuid4().hex
+_KEY_CONTEXT = b"dermicapro:signals:v1\x00"
+_AAD = b"app_signals:v1"
 
 Handler = Callable[[dict], Awaitable[None]]
+ReconnectHandler = Callable[[], Awaitable[None]]
+_reconnect_handlers: list[ReconnectHandler] = []
+
+
+def on_reconnect(handler: ReconnectHandler) -> ReconnectHandler:
+    """Lo que hay que rehacer si pudieron perderse señales (vaciar cachés)."""
+    if handler not in _reconnect_handlers:
+        _reconnect_handlers.append(handler)
+    return handler
+
+
+def _key() -> bytes:
+    from app.core.config import settings
+
+    return hashlib.sha256(_KEY_CONTEXT + settings.secret_key.encode("utf-8")).digest()
 
 
 class Signal:
@@ -86,20 +117,19 @@ def signal(name: str) -> Signal:
 
 def _encode(name: str, payload: dict) -> str | None:
     body = json.dumps({"s": name, "o": PROCESS_ID, "p": payload}, separators=(",", ":"), default=str)
-    if len(body.encode()) <= MAX_NOTIFY_BYTES:
-        return body
-    packed = base64.b64encode(zlib.compress(body.encode())).decode("ascii")
-    compressed = json.dumps({"z": packed}, separators=(",", ":"))
-    if len(compressed) <= MAX_NOTIFY_BYTES:
-        return compressed
+    nonce = os.urandom(12)
+    sealed = AESGCM(_key()).encrypt(nonce, zlib.compress(body.encode("utf-8")), _AAD)
+    token = base64.b64encode(nonce + sealed).decode("ascii")
+    if len(token) <= MAX_NOTIFY_BYTES:
+        return token
     logger.error("La señal %s pesa %s bytes: se atiende solo en este proceso", name, len(body))
     return None
 
 
 def _decode(raw: str) -> tuple[str, str, dict]:
-    message = json.loads(raw)
-    if "z" in message:
-        message = json.loads(zlib.decompress(base64.b64decode(message["z"])))
+    sealed = base64.b64decode(raw)
+    body = zlib.decompress(AESGCM(_key()).decrypt(sealed[:12], sealed[12:], _AAD))
+    message = json.loads(body)
     return message["s"], message["o"], message.get("p") or {}
 
 
@@ -157,6 +187,9 @@ def ring_soon(name: str, payload: dict | None = None) -> None:
 async def _on_notification(_connection: Any, _pid: int, _channel: str, raw: str) -> None:
     try:
         name, origin, payload = _decode(raw)
+    except (InvalidTag, ValueError):
+        logger.warning("Señal descartada en %s: no está firmada con la clave de esta aplicación", CHANNEL)
+        return
     except Exception:
         logger.exception("Señal ilegible en %s", CHANNEL)
         return
@@ -165,7 +198,17 @@ async def _on_notification(_connection: Any, _pid: int, _channel: str, raw: str)
     await signal(name).deliver(payload)
 
 
-async def run_bus(reconnect_seconds: float = 5.0) -> None:
+async def _resync() -> None:
+    for handler in _reconnect_handlers:
+        try:
+            await handler()
+        except Exception:
+            logger.exception("Falló un handler de reconexión del bus")
+    for item in list(_signals.values()):
+        item._event.set()
+
+
+async def run_bus(reconnect_seconds: float = 5.0, keepalive_seconds: float = KEEPALIVE_SECONDS) -> None:
     """Escucha el canal mientras el proceso vive; reconecta si se corta."""
     import asyncpg
 
@@ -173,6 +216,7 @@ async def run_bus(reconnect_seconds: float = 5.0) -> None:
 
     global _bus_running
     _bus_running = True
+    connected_before = False
     try:
         while True:
             connection = None
@@ -186,15 +230,23 @@ async def run_bus(reconnect_seconds: float = 5.0) -> None:
 
                 await connection.add_listener(CHANNEL, listener)
                 logger.info("Bus de señales escuchando %s", CHANNEL)
-                while not connection.is_closed():
-                    await asyncio.sleep(reconnect_seconds)
+                if connected_before:
+                    # Mientras estuvo caído pudieron perderse avisos e
+                    # invalidaciones de otros procesos.
+                    await _resync()
+                connected_before = True
+                while True:
+                    await asyncio.sleep(keepalive_seconds)
+                    # Una conexión cortada a medias sigue "abierta" pero ya no
+                    # recibe nada: solo una consulta lo descubre.
+                    await asyncio.wait_for(connection.fetchval("SELECT 1"), timeout=keepalive_seconds)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("El bus de señales perdió la conexión; reintentando")
             finally:
                 if connection is not None and not connection.is_closed():
-                    await connection.close()
+                    connection.terminate()
             await asyncio.sleep(reconnect_seconds)
     finally:
         _bus_running = False

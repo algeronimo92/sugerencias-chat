@@ -534,3 +534,7 @@ async def wait_for_automation_work() -> None:
     así los eventos de los routers se procesan al instante sin que la request
     HTTP tenga que esperar a las acciones."""
     await wakeup.sleep(AUTOMATION_POLL_SECONDS)
+
+
+def forget_automations(key: object) -> None:
+    _next_housekeeping_at.pop(key, None)

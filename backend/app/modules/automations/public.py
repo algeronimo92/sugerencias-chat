@@ -27,6 +27,7 @@ from app.modules.automations.application.validation import validate_automation_r
 from app.modules.automations.infrastructure.worker import (
     automations_tick,
     backfill_automation_state,
+    forget_automations,
     wait_for_automation_work,
 )
 from app.modules.automations.queries import (

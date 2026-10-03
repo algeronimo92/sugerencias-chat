@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Puerto donde el proceso worker sirve sus métricas de Prometheus. 0 lo
     # desactiva (desarrollo, tests).
     worker_metrics_port: int = 0
+    # El bus de señales (LISTEN/NOTIFY) solo hace falta si hay más de un
+    # proceso: API sin workers, worker aparte o varias réplicas. Sin valor se
+    # decide solo (apagado en una instalación de un solo proceso); true lo
+    # fuerza, por ejemplo con varias réplicas que corren sus propios workers.
+    signal_bus_enabled: bool | None = None
     # Hosts que sirven exclusivamente operaciones de plataforma. CSV evita que
     # una variable de entorno requiera sintaxis JSON; en producción debe ser una
     # lista explícita y mínima.

@@ -88,3 +88,40 @@ async def test_presence_bound_delivery_does_not_leave_the_process(monkeypatch) -
 
     assert delivered is False
     remote.assert_not_awaited()
+
+
+async def test_an_unsigned_notification_is_discarded() -> None:
+    """Quien pueda hacer NOTIFY en la base pero no conozca SECRET_KEY no puede
+    inyectar avisos ni desconectar a un negocio."""
+    import json
+
+    received = []
+    name = f"test-{uuid4().hex}"
+    signals.signal(name).on(AsyncMock(side_effect=lambda payload: received.append(payload)))
+    forged = json.dumps({"s": name, "o": "otro", "p": {"kind": "disconnect"}})
+
+    await signals._on_notification(None, 0, signals.CHANNEL, forged)
+    await signals._on_notification(None, 0, signals.CHANNEL, base64.b64encode(b"x" * 40).decode())
+
+    assert received == []
+
+
+def test_the_payload_is_not_readable_in_transit() -> None:
+    encoded = signals._encode("realtime", {"message": {"content": "mi DNI es 12345678"}})
+
+    assert "12345678" not in encoded and "realtime" not in encoded
+
+
+async def test_reconnecting_clears_caches_and_wakes_the_loops(monkeypatch) -> None:
+    from app.modules.auth import session_policies
+    from app.modules.platform import settings_service
+
+    session_policies._session_cache[("org", "digest")] = (0.0, object())
+    settings_service._effective_cache["org"] = (0.0, {})
+    bell = signals.signal(f"test-{uuid4().hex}")
+
+    await signals._resync()
+
+    assert session_policies._session_cache == {}
+    assert settings_service._effective_cache == {}
+    await asyncio.wait_for(bell.wait(timeout=5), timeout=1)

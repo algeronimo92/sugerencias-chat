@@ -57,3 +57,9 @@ async def chat_watcher_tick() -> None:
         _cursors[key] = await fetch_latest_message_cursor()
         return
     _cursors[key] = await process_chat_changes(_cursors[key])
+
+
+def forget_chat_watcher(key: object) -> None:
+    """El negocio dejó de estar activo: si vuelve, arranca desde el último
+    mensaje en vez de procesar todo lo que entró mientras estuvo suspendido."""
+    _cursors.pop(key, None)
