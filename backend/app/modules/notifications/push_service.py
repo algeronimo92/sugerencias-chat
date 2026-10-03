@@ -1,4 +1,5 @@
-from app.modules.notifications import push_repository
+"""Suscripciones push del navegador y el envío de avisos a cada una."""
+
 import asyncio
 import json
 import logging
@@ -8,20 +9,27 @@ from pywebpush import WebPushException, webpush
 
 from app.core.config import settings
 from app.db.models.notifications import PushSubscription
+from app.db.uow import unit_of_work
+from app.modules.notifications import push_repository
 
 logger = logging.getLogger(__name__)
 
 
 async def save_subscription(user_id: int, endpoint: str, p256dh: str, auth: str, user_agent: str | None) -> None:
-    return await push_repository.save_subscription(user_id, endpoint, p256dh, auth, user_agent)
+    async with unit_of_work():
+        await push_repository.save_subscription(user_id, endpoint, p256dh, auth, user_agent)
 
 
 async def delete_subscription(user_id: int, endpoint: str) -> None:
-    return await push_repository.delete_subscription(user_id, endpoint)
+    async with unit_of_work():
+        await push_repository.delete_subscription(user_id, endpoint)
 
 
 async def _delete_dead_subscription(endpoint: str) -> None:
-    return await push_repository._delete_dead_subscription(endpoint)
+    """El navegador dio de baja la suscripción (404/410): no se vuelve a
+    intentar con ella."""
+    async with unit_of_work():
+        await push_repository._delete_dead_subscription(endpoint)
 
 
 def _send_one(subscription: PushSubscription, payload: str) -> None:
