@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from app.modules.catalogs.schemas import TemplateCreate
 from app.modules.catalogs import templates_api as templates
+from app.realtime import ws_manager
 
 
 def _buttons_payload(buttons, **overrides):
@@ -63,7 +64,7 @@ async def test_internal_buttons_accept_reply_only(monkeypatch):
 
     monkeypatch.setattr(templates, "get_template_category_by_name", _category_found)
     monkeypatch.setattr(templates, "create_template", fake_create_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     payload = _buttons_payload([{"type": "reply", "reply": {"id": "reply_1", "title": "Mañana"}}])
 

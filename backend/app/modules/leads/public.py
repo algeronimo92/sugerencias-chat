@@ -23,6 +23,7 @@ from app.modules.leads.domain.errors import (
 )
 from app.modules.leads.domain.events import (
     ConversationStarted,
+    LeadChangedOutside,
     LeadCreated,
     LeadDeleted,
     LeadEvent,
@@ -37,6 +38,7 @@ from app.modules.leads.queries import fetch_lead_raw, fetch_messages_raw
 
 __all__ = [
     "Actor",
+    "LeadChangedOutside",
     "ConversationStarted",
     "InvalidLeadStageError",
     "LeadAlreadyExists",

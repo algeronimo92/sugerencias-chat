@@ -4,8 +4,8 @@ from domain_types import TaskStatus
 from app.db.models.auth import User
 from app.modules.tasks.schemas import TaskCreate, TaskItem, TaskUpdate
 from app.modules.auth.public import get_current_user
-from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, get_task, list_tasks, update_task
-from app.realtime.ws_manager import manager
+from app.modules.tasks.queries import get_task, list_tasks
+from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, update_task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -38,7 +38,6 @@ async def post_task(body: TaskCreate, user: User = Depends(get_current_user)):
         item = await create_task(values, user.id)
     except MissingTaskReferenceError as exc:
         raise HTTPException(404, str(exc))
-    await manager.broadcast({"type": "tasks_updated"})
     return item
 
 
@@ -56,8 +55,6 @@ async def post_complete_all_tasks(
         assigned_user_id,
         all_users,
     )
-    if completed:
-        await manager.broadcast({"type": "tasks_updated"})
     return {"completed": completed}
 
 
@@ -77,5 +74,4 @@ async def patch_task(task_id: int, body: TaskUpdate, user: User = Depends(get_cu
         raise HTTPException(404, str(exc))
     if not item:
         raise HTTPException(404, "Tarea no encontrada")
-    await manager.broadcast({"type": "tasks_updated"})
     return item

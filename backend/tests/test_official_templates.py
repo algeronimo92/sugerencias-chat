@@ -9,6 +9,7 @@ from app.modules.catalogs.schemas import TemplateCreate, TemplateMetaImport, Tem
 from app.modules.catalogs import templates_api as templates
 from app.modules.catalogs import template_validation
 from app.integrations.meta.client import MetaApiError
+from app.realtime import ws_manager
 
 
 def _official_payload(**overrides):
@@ -57,7 +58,7 @@ async def test_official_template_create_sends_full_components_to_meta(monkeypatc
     monkeypatch.setattr(templates, "get_template_category_by_name", _category_found)
     monkeypatch.setattr(templates, "create_whatsapp_template", fake_create_whatsapp_template)
     monkeypatch.setattr(templates, "create_template", fake_create_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     await templates.post_template(_official_payload(), SimpleNamespace(id=11))
 
@@ -160,7 +161,7 @@ async def test_sync_endpoint_replaces_full_meta_managed_state(monkeypatch):
     monkeypatch.setattr(templates, "list_templates", fake_list_templates)
     monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
     monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await templates.post_sync_template(9, SimpleNamespace(id=11))
 
@@ -203,7 +204,7 @@ async def test_sync_endpoint_saves_rejection_reason_from_meta(monkeypatch):
     monkeypatch.setattr(templates, "list_templates", fake_list_templates)
     monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
     monkeypatch.setattr(templates, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await templates.post_sync_template(9, SimpleNamespace(id=11))
 
@@ -271,7 +272,7 @@ async def test_import_meta_template_links_without_recreating_on_meta(monkeypatch
     monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
     monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
     monkeypatch.setattr(templates, "create_template", fake_create_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     body = TemplateMetaImport(name="Bienvenida", category="Seguimiento", official_parameter_values=["{{nombre}}"])
     result = await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
@@ -357,7 +358,7 @@ async def test_import_meta_template_image_header_falls_back_to_none(monkeypatch)
     monkeypatch.setattr(templates, "get_whatsapp_template", fake_get_whatsapp_template)
     monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
     monkeypatch.setattr(templates, "create_template", fake_create_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     body = TemplateMetaImport(name="Promo", category="Seguimiento")
     await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
@@ -418,7 +419,7 @@ async def test_import_meta_template_downloads_image_header_example(monkeypatch):
     monkeypatch.setattr(templates, "create_media_asset", fake_create_media_asset)
     monkeypatch.setattr(templates, "get_template_category_by_name", fake_category_found)
     monkeypatch.setattr(templates, "create_template", fake_create_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     body = TemplateMetaImport(name="Promo", category="Seguimiento")
     await templates.post_import_meta_template("meta-999", body, SimpleNamespace(id=11))
@@ -444,7 +445,7 @@ async def test_delete_cleans_up_meta_template_after_local_delete(monkeypatch):
 
     monkeypatch.setattr(templates, "delete_template_record", fake_delete_template_record)
     monkeypatch.setattr(templates, "delete_whatsapp_template", fake_delete_whatsapp_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await templates.delete_template(9, SimpleNamespace(id=11))
 
@@ -471,7 +472,7 @@ async def test_delete_of_imported_template_never_touches_meta(monkeypatch):
 
     monkeypatch.setattr(templates, "delete_template_record", fake_delete_template_record)
     monkeypatch.setattr(templates, "delete_whatsapp_template", fake_delete_whatsapp_template)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await templates.delete_template(9, SimpleNamespace(id=11))
 

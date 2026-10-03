@@ -6,6 +6,7 @@ from app.modules.media.schemas import MediaAssetUpdate
 from app.modules.media import library_api as media_library
 from app.modules.media import media_library_service
 from tests.conftest import patch_session_scope
+from app.realtime import ws_manager
 
 
 @pytest.mark.parametrize(
@@ -76,7 +77,7 @@ async def test_patch_rename_broadcasts_library_and_template_updates(monkeypatch)
         events.append(("broadcast", payload))
 
     monkeypatch.setattr(media_library, "rename_media_asset", fake_rename)
-    monkeypatch.setattr(media_library.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await media_library.patch_library_asset(
         42,

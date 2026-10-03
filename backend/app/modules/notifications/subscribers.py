@@ -9,6 +9,7 @@ from app.core.events import Phase, subscribe
 from app.modules.appointments.public import AppointmentCreated
 from app.modules.conversations.public import NoteMentionsAdded, NoteMentionsRead
 from app.modules.issue_reports.ports.service import list_active_admin_ids
+from app.modules.notifications.events import NotificationCreated, NotificationsRead
 from app.modules.notifications.push_service import send_push_to_user
 from app.modules.notifications.repository import create_mention_notifications, mark_lead_notifications_read
 from app.modules.notifications.service import create_system_notification
@@ -67,3 +68,18 @@ async def notify_new_appointment(event: AppointmentCreated) -> None:
             )
     except Exception:
         logger.exception("No se pudo avisar de la nueva cita %s", event.appointment_id)
+
+
+@subscribe(NotificationsRead, phase=Phase.AFTER_COMMIT)
+async def refresh_the_bell(event: NotificationsRead) -> None:
+    await manager.send_to_user(event.user_id, {"type": "notifications_updated"})
+
+
+@subscribe(NotificationCreated, phase=Phase.AFTER_COMMIT)
+async def deliver_notification(event: NotificationCreated) -> None:
+    await manager.send_to_user(event.user_id, {"type": "notification_created", "notification": event.notification})
+    try:
+        await send_push_to_user(event.user_id, event.push_title, event.push_body, event.push_url, tag=event.push_tag)
+    except Exception:
+        # La notificación ya quedó guardada; un fallo del push no la deshace.
+        logger.exception("No se pudo enviar push de la notificación a user %s", event.user_id)

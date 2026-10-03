@@ -14,7 +14,8 @@ from app.modules.leads.stages import (
     reorder_lead_stages,
     update_lead_stage_definition,
 )
-from app.realtime.ws_manager import manager
+from app.core.events import publish
+from app.modules.leads.domain.events import LeadStagesChanged
 
 router = APIRouter(prefix="/api/lead-stages", tags=["lead-stages"])
 
@@ -26,9 +27,7 @@ def _clean_description(value: str | None) -> str | None:
 
 
 async def _broadcast_stages_changed() -> None:
-    # Kanban, filtros y fichas abiertas rotulan con estas etapas: sin el
-    # aviso, un renombre no se vería hasta el siguiente refresco.
-    await manager.broadcast({"type": "lead_stages_updated"})
+    await publish(LeadStagesChanged())
 
 
 def _raise_http(exc: Exception) -> None:

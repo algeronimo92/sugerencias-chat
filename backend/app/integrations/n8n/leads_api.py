@@ -1,7 +1,6 @@
 from fastapi import Depends, Header, HTTPException
 from app.modules.leads.public import Actor, InvalidLeadStageError, LeadNotFound, change_stage, register_follow_up, update_lead
 from app.integrations.whatsapp.identity import lead_id_for_identifier
-from app.realtime.ws_manager import manager
 from app.integrations.n8n.webhook_schemas import (
     LeadTouchWebhookBody,
     LeadStageWebhookBody,
@@ -13,6 +12,8 @@ from app.integrations.n8n.common import _parse_iso_datetime, webhooks_router
 from app.modules.ai.ports.ai_context import (fetch_context_revision)
 from app.modules.ai.ports.ai_job_tokens import (AIJobClaims, require_ai_job_context)
 from app.modules.ai.ports.ai_jobs import (AIContextStale, AIJobConflict, AIJobExpired, AIJobNotFound, apply_analysis_job_atomic, finish_ai_job)
+from app.core.events import publish
+from app.modules.leads.public import LeadChangedOutside
 
 
 router = webhooks_router()
@@ -43,9 +44,7 @@ async def _broadcast_lead_updated(chat_id: str) -> None:
     hasta que otra cosa provoque un refresco: mientras el WebSocket está
     conectado el frontend no hace polling (ver useChats.ts, refetchInterval).
     """
-    await manager.broadcast(
-        {"type": "chats_updated", "chat_id": chat_id, "reason": "lead_updated"}
-    )
+    await publish(LeadChangedOutside(lead_id=chat_id))
 
 
 @router.post("/lead-stage")

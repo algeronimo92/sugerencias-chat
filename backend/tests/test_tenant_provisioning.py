@@ -10,6 +10,7 @@ import pytest
 import scripts.migrate as migrate_script
 import app.tenancy.provisioning as provisioning
 from app.tenancy.context import TenantContext, get_current_tenant
+from app.realtime import ws_manager
 
 
 _D2_PATH = (
@@ -172,7 +173,7 @@ async def test_suspend_organization_revokes_sessions_and_closes_sockets(monkeypa
 
     monkeypatch.setattr(provisioning, "_mark_suspended", mark_suspended)
     monkeypatch.setattr(provisioning, "revoke_all_sessions_in_current_tenant", revoke)
-    monkeypatch.setattr(provisioning.ws_manager, "disconnect_organization", disconnect)
+    monkeypatch.setattr(ws_manager.manager, "disconnect_organization", disconnect)
 
     result = await provisioning.suspend_organization(CONTEXT.organization_id)
 

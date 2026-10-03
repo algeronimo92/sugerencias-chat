@@ -238,7 +238,6 @@ async def create_lead_stage(values: dict) -> dict:
         try:
             await session.flush()
         except IntegrityError as exc:
-            await session.rollback()
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
         row = (
             await session.execute(select(*_COLUMNS).where(LeadStage.key == key))
@@ -276,7 +275,6 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
         try:
             await session.flush()
         except IntegrityError as exc:
-            await session.rollback()
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
         row = (
             await session.execute(select(*_COLUMNS).where(LeadStage.key == key))
@@ -325,7 +323,6 @@ async def delete_lead_stage(key: str) -> None:
         except IntegrityError as exc:
             # Un lead entró a la etapa entre la verificación y el borrado: la
             # FK de leads.estado lo frena.
-            await session.rollback()
             raise LeadStageInUseError(
                 "La etapa está en uso. Desactívala en lugar de eliminarla."
             ) from exc

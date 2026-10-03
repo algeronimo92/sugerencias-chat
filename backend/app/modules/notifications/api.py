@@ -8,7 +8,8 @@ from app.modules.notifications.service import (
     mark_all_notifications_read,
     mark_notification_read,
 )
-from app.realtime.ws_manager import manager
+from app.core.events import publish
+from app.modules.notifications.events import NotificationsRead
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -27,12 +28,12 @@ async def get_notifications(
 async def post_notification_read(notification_id: int, user: User = Depends(get_current_user)):
     if not await mark_notification_read(notification_id, user.id):
         raise HTTPException(404, "Notificación no encontrada")
-    await manager.send_to_user(user.id, {"type": "notifications_updated"})
+    await publish(NotificationsRead(user_id=user.id))
     return {"status": "ok"}
 
 
 @router.post("/read-all")
 async def post_notifications_read_all(user: User = Depends(get_current_user)):
     count = await mark_all_notifications_read(user.id)
-    await manager.send_to_user(user.id, {"type": "notifications_updated"})
+    await publish(NotificationsRead(user_id=user.id))
     return {"status": "ok", "updated": count}

@@ -14,13 +14,15 @@ from app.modules.catalogs.public import ServiceRenamed
 from app.modules.conversations.public import InternalNoteWritten
 from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
+    LeadChangedOutside,
     LeadCreated,
     LeadDeleted,
     LeadNoShowRegistered,
     LeadStageChanged,
-    LeadsMerged,
+    LeadStagesChanged,
     LeadTagged,
     LeadUpdated,
+    LeadsMerged,
 )
 from app.modules.leads.domain.lead import BOOKKEEPING_FIELDS, Actor
 from app.realtime.ws_manager import manager
@@ -85,3 +87,15 @@ async def audit_internal_note(event: InternalNoteWritten) -> None:
         note_id=event.note_id, old_content=event.old_content, new_content=event.new_content,
         mention_ids=event.mention_ids,
     )
+
+
+@subscribe(LeadChangedOutside, phase=Phase.AFTER_COMMIT)
+async def lead_changed_outside(event: LeadChangedOutside) -> None:
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
+
+
+@subscribe(LeadStagesChanged, phase=Phase.AFTER_COMMIT)
+async def stages_changed(event: LeadStagesChanged) -> None:
+    # Kanban, filtros y fichas abiertas rotulan con estas etapas: sin el
+    # aviso, un renombre no se vería hasta el siguiente refresco.
+    await manager.broadcast({"type": "lead_stages_updated"})

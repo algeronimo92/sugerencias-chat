@@ -13,12 +13,13 @@ from app.integrations.n8n import api as webhooks
 from app.integrations.n8n.webhook_schemas import LeadAnalysisWebhookBody, LeadInboundActivityWebhookBody
 from app.modules.leads.domain.errors import LeadNotFound
 from tests.conftest import patch_webhooks
+from app.realtime import ws_manager
 
 
 @pytest.fixture(autouse=True)
 def broadcast(monkeypatch):
     mock = AsyncMock()
-    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
+    monkeypatch.setattr(ws_manager.manager, "broadcast", mock)
     return mock
 
 

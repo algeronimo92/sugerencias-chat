@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.models.auth import User
-from domain_types import IssueReportPriority, IssueReportStatus, NotificationType
+from domain_types import IssueReportPriority, IssueReportStatus
 from app.modules.issue_reports.schemas import (
     IssueReportCommentCreate,
     IssueReportCommentItem,
@@ -27,10 +27,14 @@ from app.modules.issue_reports.service import (
     list_issue_reports,
     update_issue_report,
 )
+from app.core.events import publish
 from app.integrations.storage.media_storage import (MediaStorageError, delete_media)
-from app.modules.notifications.ports.service import (create_system_notification)
-from app.modules.notifications.ports.push_service import (send_push_to_user)
-from app.realtime.ws_manager import manager
+from app.modules.issue_reports.events import (
+    IssueReportCommented,
+    IssueReportFiled,
+    IssueReportsChanged,
+    IssueReportStatusChanged,
+)
 
 
 router = APIRouter(prefix="/api/issue-reports", tags=["issue-reports"])
@@ -118,34 +122,10 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
         await _delete_saved(saved_urls)
         raise
 
-    try:
-        for admin_id in await list_active_admin_ids():
-            if admin_id == user.id:
-                continue
-            notification = await create_system_notification(
-                admin_id,
-                NotificationType.ISSUE_REPORT,
-                f"Nuevo reporte {report['public_code']}",
-                f"{user.name}: {report['title']}",
-                source_id=str(report["id"]),
-                metadata={"issue_report_id": report["id"]},
-            )
-            await manager.send_to_user(admin_id, {
-                "type": "notification_created",
-                "notification": notification,
-            })
-            await send_push_to_user(
-                admin_id,
-                f"Nuevo reporte {report['public_code']}",
-                f"{user.name}: {report['title']}",
-                f"/reports?report={report['id']}",
-                tag=f"issue-report-{report['id']}",
-            )
-    except Exception:
-        # El reporte ya quedó persistido; un aviso no puede convertir ese éxito
-        # en un 500 que invite al vendedor a enviarlo otra vez.
-        logger.exception("No se pudo avisar a los administradores del reporte %s", report["id"])
-    await manager.broadcast({"type": "issue_reports_updated"})
+    await publish(IssueReportFiled(
+        report_id=report["id"], public_code=report["public_code"], title=report["title"],
+        reporter_id=user.id, reporter_name=user.name,
+    ))
     return report
 
 
@@ -179,29 +159,12 @@ async def patch_report(
             IssueReportStatus.NEEDS_INFO.value: "Necesita información",
             IssueReportStatus.RESOLVED.value: "Resuelto",
         }
-        try:
-            notification = await create_system_notification(
-                report["reporter_user_id"],
-                NotificationType.ISSUE_REPORT,
-                f"{report['public_code']} · {labels[report['status']]}",
-                report["title"],
-                source_id=str(report["id"]),
-                metadata={"issue_report_id": report["id"]},
-            )
-            await manager.send_to_user(report["reporter_user_id"], {
-                "type": "notification_created",
-                "notification": notification,
-            })
-            await send_push_to_user(
-                report["reporter_user_id"],
-                f"{report['public_code']} · {labels[report['status']]}",
-                report["title"],
-                f"/reports?report={report['id']}",
-                tag=f"issue-report-{report['id']}",
-            )
-        except Exception:
-            logger.exception("No se pudo avisar al autor del reporte %s", report["id"])
-    await manager.broadcast({"type": "issue_reports_updated"})
+        await publish(IssueReportStatusChanged(
+            report_id=report["id"], public_code=report["public_code"], title=report["title"],
+            status_label=labels[report["status"]], reporter_id=report["reporter_user_id"],
+        ))
+    else:
+        await publish(IssueReportsChanged())
     return report
 
 
@@ -226,30 +189,8 @@ async def post_report_comment(
         if user.role == "admin"
         else await list_active_admin_ids()
     )
-    try:
-        for recipient_id in dict.fromkeys(recipient_ids):
-            if recipient_id == user.id:
-                continue
-            notification = await create_system_notification(
-                recipient_id,
-                NotificationType.ISSUE_REPORT,
-                f"Nuevo comentario en {report['public_code']}",
-                f"{user.name}: {content}",
-                source_id=str(report_id),
-                metadata={"issue_report_id": report_id},
-            )
-            await manager.send_to_user(recipient_id, {
-                "type": "notification_created",
-                "notification": notification,
-            })
-            await send_push_to_user(
-                recipient_id,
-                f"Nuevo comentario en {report['public_code']}",
-                f"{user.name}: {content}",
-                f"/reports?report={report_id}",
-                tag=f"issue-report-{report_id}",
-            )
-    except Exception:
-        logger.exception("No se pudo avisar del comentario en el reporte %s", report_id)
-    await manager.broadcast({"type": "issue_reports_updated"})
+    await publish(IssueReportCommented(
+        report_id=report_id, public_code=report["public_code"], author_id=user.id, author_name=user.name,
+        content=content, recipient_ids=tuple(recipient_ids),
+    ))
     return comment

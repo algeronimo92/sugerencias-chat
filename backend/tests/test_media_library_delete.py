@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.modules.media import library_api as media_library
 from app.integrations.storage.media_storage import MediaStorageError
+from app.realtime import ws_manager
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ async def test_delete_library_asset_removes_storage_before_database(monkeypatch)
 
     monkeypatch.setattr(media_library, "delete_media", fake_delete_media)
     monkeypatch.setattr(media_library, "delete_media_asset", fake_delete_asset)
-    monkeypatch.setattr(media_library.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await media_library.delete_library_asset(42, SimpleNamespace(role="admin"))
 

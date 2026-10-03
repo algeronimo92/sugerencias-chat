@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from domain_types import IssueReportPriority, IssueReportStatus
 from app.modules.issue_reports import api as issue_reports
 from app.modules.issue_reports.schemas import IssueReportCommentCreate, IssueReportCreate, IssueReportUpdate
+from app.realtime import ws_manager
 
 
 def report_item(**overrides):
@@ -110,7 +111,7 @@ async def test_admin_changes_priority_and_records_actor(monkeypatch):
 
     monkeypatch.setattr(issue_reports, "get_issue_report", fake_get)
     monkeypatch.setattr(issue_reports, "update_issue_report", fake_update)
-    monkeypatch.setattr(issue_reports.manager, "broadcast", no_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", no_broadcast)
 
     result = await issue_reports.patch_report(
         7,
@@ -162,7 +163,7 @@ async def test_report_accepts_image_and_persists_metadata(monkeypatch):
     monkeypatch.setattr(issue_reports, "save_media_file", fake_save)
     monkeypatch.setattr(issue_reports, "create_issue_report", fake_create)
     monkeypatch.setattr(issue_reports, "list_active_admin_ids", no_admins)
-    monkeypatch.setattr(issue_reports.manager, "broadcast", no_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", no_broadcast)
 
     encoded = base64.b64encode(b"fake-png").decode("ascii")
     body = IssueReportCreate(

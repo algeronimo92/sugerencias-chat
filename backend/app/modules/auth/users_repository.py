@@ -60,7 +60,6 @@ async def create_user(email: str, name: str, password_hash: str, role: str) -> d
             await session.execute(stmt)
             await session.flush()
         except IntegrityError:
-            await session.rollback()
             raise EmailAlreadyExistsError(email)
 
     user = await get_user_by_email(email)

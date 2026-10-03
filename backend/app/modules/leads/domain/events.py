@@ -68,3 +68,17 @@ class LeadsMerged(LeadEvent):
     """``source_id`` se fusionó dentro de ``lead_id`` y dejó de existir."""
 
     source_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class LeadChangedOutside(DomainEvent):
+    """Algo de afuera (el agente analista de n8n) escribió el lead sin pasar
+    por un comando: los paneles abiertos tienen que releerlo."""
+
+    lead_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class LeadStagesChanged(DomainEvent):
+    """Cambió el catálogo de etapas del negocio (alta, edición, orden o
+    baja): kanban, filtros y fichas rotulan con él."""

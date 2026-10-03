@@ -12,6 +12,7 @@ from app.modules.conversations.domain.events import MessageSent, ProviderMessage
 from app.modules.tasks import subscribers as task_subscribers
 from app.modules.tasks import repository as task_service
 from tests.conftest import patch_session_scope
+from app.realtime import ws_manager
 
 
 class _SessionContext:
@@ -127,7 +128,7 @@ async def test_admin_can_complete_current_team_filter(monkeypatch):
     complete = AsyncMock(return_value=4)
     monkeypatch.setattr(tasks, "complete_pending_tasks", complete)
     broadcast = AsyncMock()
-    monkeypatch.setattr(tasks.manager, "broadcast", broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", broadcast)
     admin = SimpleNamespace(id=1, role="admin")
 
     result = await tasks.post_complete_all_tasks(
@@ -138,7 +139,29 @@ async def test_admin_can_complete_current_team_filter(monkeypatch):
 
     assert result == {"completed": 4}
     complete.assert_awaited_once_with(1, True, 7, False)
-    broadcast.assert_awaited_once_with({"type": "tasks_updated"})
+    # El aviso lo registra el comando como TasksChanged (ver
+    # test_completing_tasks_announces_it): la ruta ya no emite nada.
+    broadcast.assert_not_awaited()
+
+
+async def test_completing_tasks_announces_it(monkeypatch):
+    from app.modules.tasks import service as task_service
+    from app.modules.tasks.events import TasksChanged
+    from tests.conversation_fakes import _FakeSession
+    from app.db import uow
+
+    published = []
+
+    async def record(pending):
+        published.extend(pending)
+
+    monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
+    monkeypatch.setattr(uow, "dispatch_in_transaction", record)
+    monkeypatch.setattr(task_service.repository, "complete_pending_tasks", AsyncMock(side_effect=[3, 0]))
+
+    assert await task_service.complete_pending_tasks(1, True) == 3
+    assert await task_service.complete_pending_tasks(1, True) == 0
+    assert published == [TasksChanged()]
 
 
 async def test_seller_cannot_bulk_complete_other_users(monkeypatch):

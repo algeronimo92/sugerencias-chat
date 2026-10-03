@@ -70,7 +70,7 @@ async def create_template(values: dict, user_id: int):
             result = await session.execute(insert(MessageTemplate).values(**values, visibility=visibility, created_by_user_id=user_id, created_at=now, updated_at=now).returning(MessageTemplate.id))
             template_id = result.scalar_one(); await session.flush()
         except IntegrityError:
-            await session.rollback(); raise ValueError("El atajo ya existe")
+            raise ValueError("El atajo ya existe")
     return next(item for item in await list_templates(user_id, True) if item["id"] == template_id)
 
 async def update_template(template_id: int, values: dict):
@@ -80,7 +80,7 @@ async def update_template(template_id: int, values: dict):
             result = await session.execute(update(MessageTemplate).where(MessageTemplate.id == template_id).values(**values))
             await session.flush()
         except IntegrityError:
-            await session.rollback(); raise ValueError("El atajo ya existe")
+            raise ValueError("El atajo ya existe")
     if not result.rowcount:
         return None
     async with session_scope() as session:

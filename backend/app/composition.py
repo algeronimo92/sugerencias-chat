@@ -31,9 +31,15 @@ from app.modules.conversations.infrastructure.sql_outbox import SqlOutboxStore
 from app.modules.conversations.infrastructure.sql_scheduled import SqlScheduledStore
 from app.modules.leads.application.ports import provide_lead_repository
 from app.modules.leads.infrastructure.repository import SqlLeadRepository
+from app.modules.tasks.task_reminder import provide_reminder_delivery
+from app.realtime.ws_manager import manager
 
 # Cada módulo que reacciona a eventos expone un ``subscribers.py``.
 SUBSCRIBER_MODULES: tuple[str, ...] = (
+    "app.realtime.subscribers",
+    "app.modules.catalogs.subscribers",
+    "app.modules.media.subscribers",
+    "app.modules.issue_reports.subscribers",
     "app.modules.conversations.subscribers",
     "app.modules.leads.subscribers",
     "app.modules.automations.subscribers",
@@ -56,6 +62,7 @@ def register_adapters() -> None:
         channel=current_channel,
     ))
     provide_ai_provider(N8nAiProvider())
+    provide_reminder_delivery(manager.send_to_user)
     provide_appointment_ports(AppointmentPorts(
         repository=SqlAppointmentRepository(),
         calendar=GoogleCalendar(),

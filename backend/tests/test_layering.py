@@ -518,19 +518,7 @@ def test_only_leads_moves_a_lead_between_stages():
 # Los avisos por WebSocket salen de suscriptores, después del commit. Un caso
 # de uso que emite su propio aviso puede anunciar algo que la transacción
 # termina revirtiendo. Esta lista de transición solo puede achicarse.
-REALTIME_TRANSITION = {
-    "app/integrations/meta_webhook/processor.py",
-    "app/integrations/n8n/leads_api.py",
-    "app/modules/ai/assistant_api.py",
-    "app/modules/catalogs/templates_api.py",
-    "app/modules/issue_reports/api.py",
-    "app/modules/leads/stages_api.py",
-    "app/modules/media/library_api.py",
-    "app/modules/notifications/api.py",
-    "app/modules/tasks/api.py",
-    "app/modules/tasks/task_reminder.py",
-    "app/tenancy/provisioning.py",
-}
+REALTIME_TRANSITION: set[str] = set()
 
 
 def _realtime_importers() -> set[str]:

@@ -22,7 +22,8 @@ from app.db.session import control_session, get_engine
 from app.modules.auth.users_repository import seed_admin_if_needed
 from app.modules.auth.session_service import revoke_all_sessions_in_current_tenant
 from app.modules.platform.settings_service import update_settings
-from app.realtime.ws_manager import manager as ws_manager
+from app.core.events import publish
+from app.tenancy.events import OrganizationSuspended
 from app.tenancy.context import (
     TenantContext,
     build_storage_segment,
@@ -445,7 +446,7 @@ async def suspend_organization(organization_id: UUID) -> TenantContext:
     context = await _mark_suspended(organization_id)
     with tenant_context(context):
         await revoke_all_sessions_in_current_tenant()
-    await ws_manager.disconnect_organization(context.organization_id)
+    await publish(OrganizationSuspended(organization_id=context.organization_id))
     return context
 
 

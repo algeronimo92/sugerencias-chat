@@ -6,6 +6,7 @@ from app.integrations.meta_webhook import processor
 from app.integrations.meta_webhook.inbox import InboxEvent, split_changes
 from app.modules.catalogs.template_service import _meta_managed_template_values
 from tests.meta_fixtures import WABA_ID, webhook_body
+from app.realtime import ws_manager
 
 
 def _template_event(field: str, value: dict) -> InboxEvent:
@@ -43,7 +44,7 @@ async def test_template_change_fetches_full_meta_state_replaces_and_broadcasts(m
 
     monkeypatch.setattr(processor.meta_service, "get_whatsapp_template", fake_get)
     monkeypatch.setattr(processor, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(processor.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     event = _template_event(field, {"event": "APPROVED", "message_template_id": "META_1"})
     assert event.payload["entry_id"] == WABA_ID
@@ -66,7 +67,7 @@ async def test_template_change_unlinked_is_acknowledged_without_broadcast(monkey
 
     monkeypatch.setattr(processor.meta_service, "get_whatsapp_template", fake_get)
     monkeypatch.setattr(processor, "replace_official_template_from_meta", fake_replace)
-    monkeypatch.setattr(processor.manager, "broadcast", unexpected_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", unexpected_broadcast)
 
     await processor.process_change(
         _template_event("message_template_status_update", {"message_template_id": "META_EXTERNAL"})

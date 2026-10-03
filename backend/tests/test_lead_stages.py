@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.modules.leads.schemas import LeadStageCreate, LeadStagePatch, LeadStageUpdate
 from app.modules.leads import stages_api as router
 from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, StageRule, _mentions_stage, _unique_key, require_destination, slugify_stage_key, update_lead_stage_definition
+from app.realtime import ws_manager
 
 ADMIN = SimpleNamespace(id=1, role="admin")
 
@@ -85,7 +86,7 @@ async def test_create_normalizes_and_broadcasts(monkeypatch):
     create = AsyncMock(return_value={"key": "cita_pagada"})
     broadcast = AsyncMock()
     monkeypatch.setattr(router, "create_lead_stage", create)
-    monkeypatch.setattr(router, "manager", SimpleNamespace(broadcast=broadcast))
+    monkeypatch.setattr(ws_manager.manager, "broadcast", broadcast)
 
     await router.post_lead_stage(
         LeadStageCreate(name="Cita   pagada", color="#0ea5e9", description="   "), ADMIN

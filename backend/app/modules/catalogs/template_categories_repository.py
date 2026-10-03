@@ -66,7 +66,6 @@ async def create_template_category(name: str, user_id: int) -> dict:
             ).scalar_one()
             await session.flush()
         except IntegrityError:
-            await session.rollback()
             raise TemplateCategoryAlreadyExistsError(name)
     return next(
         item for item in await list_template_categories(include_inactive=True)
@@ -84,7 +83,6 @@ async def update_template_category(category_id: int, values: dict) -> dict | Non
                 setattr(category, key, value)
             await session.flush()
         except IntegrityError:
-            await session.rollback()
             raise TemplateCategoryAlreadyExistsError(values.get("name", ""))
     return next(
         item for item in await list_template_categories(include_inactive=True)

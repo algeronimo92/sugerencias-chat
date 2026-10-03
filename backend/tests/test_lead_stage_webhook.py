@@ -11,6 +11,7 @@ from app.integrations.n8n.webhook_schemas import LeadStageWebhookBody
 from app.modules.leads.domain.errors import LeadNotFound
 from app.modules.leads.domain.events import LeadStageChanged
 from tests.conftest import patch_webhooks
+from app.realtime import ws_manager
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 REASON = "El vendedor habló último y pasaron 24 horas sin respuesta."
@@ -25,7 +26,7 @@ def _body(**overrides):
 @pytest.fixture
 def broadcast(monkeypatch):
     mock = AsyncMock()
-    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
+    monkeypatch.setattr(ws_manager.manager, "broadcast", mock)
     return mock
 
 

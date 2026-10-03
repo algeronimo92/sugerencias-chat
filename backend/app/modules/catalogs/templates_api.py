@@ -25,7 +25,8 @@ from app.modules.catalogs.template_categories_service import get_template_catego
 from app.modules.media.ports.media_upload import (normalize_media_content_type, save_media_file)
 from app.modules.media.ports.media_library_service import (create_media_asset, delete_media_asset, get_media_asset)
 from app.integrations.storage.media_storage import (MediaStorageError, delete_media, media_size)
-from app.realtime.ws_manager import manager
+from app.core.events import publish
+from app.modules.catalogs.events import TemplatesChanged
 from app.integrations.meta.client import (
     MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
     download_template_header_example, get_whatsapp_template, list_whatsapp_templates,
@@ -230,7 +231,7 @@ async def post_import_meta_template(
         item = await create_template(values, admin.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await manager.broadcast({"type": "templates_updated"})
+    await publish(TemplatesChanged())
     return item
 
 
@@ -265,7 +266,7 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
         item = await create_template(values, admin.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await manager.broadcast({"type": "templates_updated"})
+    await publish(TemplatesChanged())
     return item
 
 
@@ -286,7 +287,7 @@ async def post_personal_template(body: PersonalTemplateCreate, user: User = Depe
         item = await create_personal_template(values["name"], values["content"], values["shortcut"], user.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await manager.broadcast({"type": "templates_updated"})
+    await publish(TemplatesChanged())
     return item
 
 
@@ -354,8 +355,7 @@ async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admi
         except MediaStorageError:
             pass
         raise HTTPException(404, "Plantilla no encontrada")
-    await manager.broadcast({"type": "templates_updated"})
-    await manager.broadcast({"type": "media_library_updated"})
+    await publish(TemplatesChanged(media_library_affected=True))
     return item
 
 
@@ -380,8 +380,7 @@ async def post_library_attachment(
         raise HTTPException(400, str(exc))
     if item is None:
         raise HTTPException(404, "Plantilla no encontrada")
-    await manager.broadcast({"type": "templates_updated"})
-    await manager.broadcast({"type": "media_library_updated"})
+    await publish(TemplatesChanged(media_library_affected=True))
     return item
 
 
@@ -395,8 +394,7 @@ async def delete_attachment(attachment_id: int, _admin: User = Depends(require_a
             await asyncio.to_thread(delete_media, attachment["media_url"])
         except MediaStorageError as exc:
             raise HTTPException(503, str(exc))
-    await manager.broadcast({"type": "templates_updated"})
-    await manager.broadcast({"type": "media_library_updated"})
+    await publish(TemplatesChanged(media_library_affected=True))
     return {"status": "ok"}
 
 
@@ -468,7 +466,7 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         raise HTTPException(409, str(exc))
     if not item:
         raise HTTPException(404, "Plantilla no encontrada")
-    await manager.broadcast({"type": "templates_updated"})
+    await publish(TemplatesChanged())
     return item
 
 
@@ -489,8 +487,7 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
             await delete_whatsapp_template(deleted["official_name"], deleted["meta_template_id"])
         except MetaApiError as exc:
             logger.warning("No se pudo borrar la plantilla %s en Meta: %s", deleted["official_name"], exc)
-    await manager.broadcast({"type": "templates_updated"})
-    await manager.broadcast({"type": "media_library_updated"})
+    await publish(TemplatesChanged(media_library_affected=True))
     return {"status": "ok"}
 
 
@@ -514,5 +511,5 @@ async def post_sync_template(template_id: int, admin: User = Depends(require_adm
         for candidate in await list_templates(admin.id, True)
         if candidate["id"] == template_id
     )
-    await manager.broadcast({"type": "templates_updated"})
+    await publish(TemplatesChanged())
     return item

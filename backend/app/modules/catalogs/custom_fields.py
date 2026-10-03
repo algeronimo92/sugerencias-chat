@@ -76,7 +76,6 @@ async def create_definition(values: dict) -> dict:
         try:
             await session.flush()
         except IntegrityError as exc:
-            await session.rollback()
             raise CustomFieldAlreadyExistsError("Ya existe un campo con esa clave") from exc
         await session.refresh(row)
         return _item(row)

@@ -7,6 +7,7 @@ from app.modules.catalogs.schemas import TemplateCategoryCreate, TemplateCategor
 from app.modules.catalogs import template_categories_api as template_categories
 from app.modules.catalogs import templates_api as templates
 from app.modules.catalogs.template_categories_repository import TemplateCategoryAlreadyExistsError
+from app.realtime import ws_manager
 
 
 @pytest.mark.asyncio
@@ -125,7 +126,7 @@ async def test_template_uses_canonical_category_name(monkeypatch):
 
     monkeypatch.setattr(templates, "get_template_category_by_name", category_found)
     monkeypatch.setattr(templates, "create_template", fake_create)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     await templates.post_template(
         TemplateCreate(name="Saludo", content="Hola", category="seguimiento"),
@@ -192,7 +193,7 @@ async def test_template_uses_canonical_service_name(monkeypatch):
     monkeypatch.setattr(templates, "get_template_category_by_name", category_found)
     monkeypatch.setattr(templates, "get_lead_service_by_name", service_found)
     monkeypatch.setattr(templates, "create_template", fake_create)
-    monkeypatch.setattr(templates.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     await templates.post_template(
         TemplateCreate(
