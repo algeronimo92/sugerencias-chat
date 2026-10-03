@@ -1,12 +1,12 @@
 """Read-only projection owned by this capability, consumed by AI."""
 from sqlalchemy import func, select, true
 from app.db.models.catalogs import LeadService
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 async def list_ai_catalog_rows() -> list[dict]:
     """Servicios activos con lo que el asistente necesita para cotizar."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(

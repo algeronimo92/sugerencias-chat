@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.modules.conversations import message_history
+from tests.conftest import patch_session_scope
 
 
 @pytest.mark.asyncio
@@ -29,7 +30,7 @@ async def test_thread_serves_every_meta_type_and_hides_only_reactions(monkeypatc
             statements.append(statement)
             return FakeResult()
 
-    monkeypatch.setattr(message_history, "get_sessionmaker", lambda: FakeSession)
+    patch_session_scope(monkeypatch, message_history, lambda: FakeSession)
 
     result = await message_history.fetch_messages("00000000-0000-0000-0000-000000000001")
 

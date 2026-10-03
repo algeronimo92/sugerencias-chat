@@ -5,13 +5,13 @@ from sqlalchemy import and_, bindparam, func, or_, select, update
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import MessageOutbox, WspMessage
-from app.db.session import get_sessionmaker
 from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES
 from app.db.store_common import (
     MEDIA_DIMENSION_CONCURRENCY,
     MESSAGES_PAGE_SIZE,
 )
 from app.modules.conversations.message_serialization import serialize_message
+from app.db.uow import session_scope
 
 # Techo del salto a un mensaje de búsqueda: evita cargar una conversación
 # gigante entera si el match está muy atrás en el historial.
@@ -38,7 +38,7 @@ async def fetch_messages(
     if (cursor_ts is None) != (cursor_id is None):
         raise ValueError("cursor_ts y cursor_id deben enviarse juntos")
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         if until_id is not None and cursor_id is None:
             target_ts = await session.scalar(
                 select(WspMessage.sent_at).where(
@@ -179,7 +179,7 @@ async def fetch_reply_target(chat_id: str, message_id: int) -> dict | None:
         WspMessage.sent_at,
         WspMessage.deleted_at,
     ).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row is not None else None
 
@@ -215,7 +215,7 @@ async def fetch_messages_to_forward(chat_id: str, message_ids: list[int]) -> lis
         )
         .order_by(WspMessage.sent_at.asc(), WspMessage.id.asc())
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [dict(row) for row in rows]
 
@@ -225,7 +225,7 @@ async def filter_existing_leads(chat_ids: list[str]) -> set[str]:
     if not chat_ids:
         return set()
     stmt = select(Lead.id).where(Lead.id.in_(chat_ids))
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return set((await session.execute(stmt)).scalars().all())
 
 
@@ -247,7 +247,7 @@ async def fetch_latest_customer_message_target(chat_id: str) -> dict | None:
         .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row is not None else None
 
@@ -300,7 +300,7 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
             for row in pending
         ],
     )
-    await session.commit()
+    await session.flush()
 
 
 async def fetch_pinned_messages(chat_id: str) -> list[dict]:
@@ -312,6 +312,6 @@ async def fetch_pinned_messages(chat_id: str) -> list[dict]:
         .order_by(WspMessage.pinned_at.asc())
         .limit(MAX_PINNED_MESSAGES)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).scalars().all()
     return [serialize_message(row) for row in rows]

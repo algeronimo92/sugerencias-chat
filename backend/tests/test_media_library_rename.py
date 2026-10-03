@@ -5,6 +5,7 @@ import pytest
 from app.modules.media.schemas import MediaAssetUpdate
 from app.modules.media import library_api as media_library
 from app.modules.media import media_library_service
+from tests.conftest import patch_session_scope
 
 
 @pytest.mark.parametrize(
@@ -44,14 +45,14 @@ async def test_rename_updates_library_and_linked_template_attachments(monkeypatc
             statements.append(statement)
             return FakeResult()
 
-        async def commit(self):
+        async def flush(self):
             nonlocal committed
             committed = True
 
     async def fake_get_asset(asset_id):
         return {"id": asset_id, "filename": "nuevo.jpg"}
 
-    monkeypatch.setattr(media_library_service.media_library_repository, "get_sessionmaker", lambda: FakeSession)
+    patch_session_scope(monkeypatch, media_library_service.media_library_repository, lambda: FakeSession)
     monkeypatch.setattr(media_library_service.media_library_repository, "get_media_asset", fake_get_asset)
 
     result = await media_library_service.rename_media_asset(42, "nuevo.jpg")

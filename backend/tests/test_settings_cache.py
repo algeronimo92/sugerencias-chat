@@ -6,6 +6,7 @@ import pytest
 
 from app.core import secret_cipher
 from app.modules.platform import settings_service
+from tests.conftest import patch_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +71,10 @@ async def test_updating_secret_setting_never_persists_plaintext(monkeypatch):
         async def execute(self, statement):
             statements.append(statement)
 
-        async def commit(self):
+        async def flush(self):
             return None
 
-    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
+    patch_session_scope(monkeypatch, settings_service.settings_repository, lambda: FakeSession)
     monkeypatch.setattr(
         secret_cipher.settings,
         "settings_encryption_key",
@@ -102,10 +103,10 @@ async def test_updating_public_setting_persists_usable_plaintext(monkeypatch):
         async def execute(self, statement):
             statements.append(statement)
 
-        async def commit(self):
+        async def flush(self):
             return None
 
-    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
+    patch_session_scope(monkeypatch, settings_service.settings_repository, lambda: FakeSession)
 
     public_url = "https://n8n.example.test/citas"
     await settings_service.update_settings({"n8n_citas_webhook_url": public_url})
@@ -130,10 +131,10 @@ async def test_migration_encrypts_secrets_and_restores_public_plaintext(monkeypa
         async def execute(self, statement):
             statements.append(statement)
 
-        async def commit(self):
+        async def flush(self):
             return None
 
-    monkeypatch.setattr(settings_service.settings_repository, "get_sessionmaker", lambda: FakeSession)
+    patch_session_scope(monkeypatch, settings_service.settings_repository, lambda: FakeSession)
     monkeypatch.setattr(
         secret_cipher.settings,
         "settings_encryption_key",

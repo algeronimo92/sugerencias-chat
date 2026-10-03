@@ -5,8 +5,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.catalogs import TemplateCategory
 from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from app.core.time_format import iso_utc
+from app.db.uow import session_scope
 
 
 class TemplateCategoryAlreadyExistsError(Exception):
@@ -39,7 +39,7 @@ async def list_template_categories(include_inactive: bool = False) -> list[dict]
     stmt = _query().order_by(func.lower(TemplateCategory.name).asc())
     if not include_inactive:
         stmt = stmt.where(TemplateCategory.is_active == true())
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [_item(row) for row in rows]
 
@@ -48,14 +48,14 @@ async def get_template_category_by_name(name: str, active_only: bool = True) -> 
     stmt = _query().where(func.lower(TemplateCategory.name) == name.casefold())
     if active_only:
         stmt = stmt.where(TemplateCategory.is_active == true())
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return _item(row) if row else None
 
 
 async def create_template_category(name: str, user_id: int) -> dict:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             category_id = (
                 await session.execute(
@@ -64,7 +64,7 @@ async def create_template_category(name: str, user_id: int) -> dict:
                     .returning(TemplateCategory.id)
                 )
             ).scalar_one()
-            await session.commit()
+            await session.flush()
         except IntegrityError:
             await session.rollback()
             raise TemplateCategoryAlreadyExistsError(name)
@@ -75,14 +75,14 @@ async def create_template_category(name: str, user_id: int) -> dict:
 
 
 async def update_template_category(category_id: int, values: dict) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         category = await session.get(TemplateCategory, category_id, with_for_update=True)
         if category is None:
             return None
         try:
             for key, value in values.items():
                 setattr(category, key, value)
-            await session.commit()
+            await session.flush()
         except IntegrityError:
             await session.rollback()
             raise TemplateCategoryAlreadyExistsError(values.get("name", ""))

@@ -576,3 +576,16 @@ def test_only_routes_raise_http_exceptions():
         and "HTTPException" in path.read_text(encoding="utf-8")
     }
     assert offenders == HTTP_EXCEPTION_OUTSIDE_ROUTES
+
+
+def test_only_the_db_package_opens_sessions():
+    """Toda sesión pasa por ``app.db.uow``: dentro de un caso de uso comparte
+    su transacción y, fuera, confirma al salir. Abrir una a mano esquiva la
+    unidad de trabajo."""
+    offenders = {
+        path.relative_to(BACKEND).as_posix()
+        for path in (BACKEND / "app").rglob("*.py")
+        if "db" != path.relative_to(BACKEND / "app").parts[0]
+        and "get_sessionmaker()" in path.read_text(encoding="utf-8")
+    }
+    assert offenders == set()

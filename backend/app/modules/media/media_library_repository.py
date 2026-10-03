@@ -6,8 +6,8 @@ from sqlalchemy import and_, delete, func, insert, or_, select, update
 from app.db.models.media import MediaAsset
 from app.db.models.catalogs import TemplateAttachment
 from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from app.modules.media.media_library_policies import (_asset, validated_media_filename)
+from app.db.uow import session_scope
 
 def _asset_query():
     return (
@@ -46,12 +46,12 @@ async def list_media_assets(search: str | None = None, kind: str | None = None) 
             ~MediaAsset.content_type.startswith("audio/"),
         ))
     stmt = stmt.order_by(MediaAsset.created_at.desc(), MediaAsset.id.desc()).limit(500)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [_asset(row) for row in rows]
 
 async def get_media_asset(asset_id: int) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(_asset_query().where(MediaAsset.id == asset_id))).mappings().one_or_none()
     return _asset(row) if row else None
 
@@ -62,7 +62,7 @@ async def create_media_asset(
     size_bytes: int,
     uploaded_by_user_id: int | None,
 ) -> dict:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             insert(MediaAsset)
             .values(
@@ -76,7 +76,7 @@ async def create_media_asset(
             .returning(MediaAsset.id)
         )
         asset_id = result.scalar_one()
-        await session.commit()
+        await session.flush()
     asset = await get_media_asset(asset_id)
     if asset is None:
         raise RuntimeError("No se pudo recuperar el archivo creado")
@@ -84,7 +84,7 @@ async def create_media_asset(
 
 async def rename_media_asset(asset_id: int, filename: str) -> dict | None:
     """Renombra el metadato sin mover el objeto de MinIO ni cambiar su URL."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         asset = (await session.execute(
             select(MediaAsset).where(MediaAsset.id == asset_id).with_for_update()
         )).scalar_one_or_none()
@@ -97,14 +97,14 @@ async def rename_media_asset(asset_id: int, filename: str) -> dict | None:
         await session.execute(update(TemplateAttachment).where(
             TemplateAttachment.library_asset_id == asset_id
         ).values(filename=normalized))
-        await session.commit()
+        await session.flush()
     return await get_media_asset(asset_id)
 
 async def set_media_asset_ai_description(asset_id: int, description: str | None) -> dict | None:
     """Con descripción el asistente IA puede proponer el archivo como adjunto;
     ``None`` o vacío lo saca de sus recursos."""
     normalized = " ".join((description or "").split()) or None
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             update(MediaAsset)
             .where(MediaAsset.id == asset_id)
@@ -113,7 +113,7 @@ async def set_media_asset_ai_description(asset_id: int, description: str | None)
         )
         if result.scalar_one_or_none() is None:
             return None
-        await session.commit()
+        await session.flush()
     return await get_media_asset(asset_id)
 
 async def delete_media_asset(
@@ -127,7 +127,7 @@ async def delete_media_asset(
     ``before_delete``, el objeto físico se elimina antes de confirmar la
     transacción; si esa operación falla, el registro permanece intacto.
     """
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         media_url = (await session.execute(
             select(MediaAsset.media_url)
             .where(MediaAsset.id == asset_id)
@@ -146,5 +146,5 @@ async def delete_media_asset(
         if before_delete is not None:
             await before_delete(media_url)
         await session.execute(delete(MediaAsset).where(MediaAsset.id == asset_id))
-        await session.commit()
+        await session.flush()
     return media_url

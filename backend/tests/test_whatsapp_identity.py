@@ -13,6 +13,7 @@ from app.integrations.whatsapp.identity import (
     resolve_whatsapp_destination,
 )
 from tests.meta_fixtures import PHONE_NUMBER_ID, inbound_cases
+from tests.conftest import patch_session_scope
 
 
 def test_inbound_takes_wa_id_user_id_and_profile_literally():
@@ -75,7 +76,7 @@ class _Session:
 @pytest.mark.asyncio
 async def test_destination_prefers_the_most_recent_identifier_of_each_kind(monkeypatch):
     rows = [("wa_id", "51900011122"), ("user_id", "PE.9"), ("wa_id", "51987654321")]
-    monkeypatch.setattr(whatsapp_identity_service, "get_sessionmaker", lambda: lambda: _Session(rows))
+    patch_session_scope(monkeypatch, whatsapp_identity_service, lambda: lambda: _Session(rows))
 
     destination = await resolve_whatsapp_destination("lead-1")
 
@@ -84,7 +85,7 @@ async def test_destination_prefers_the_most_recent_identifier_of_each_kind(monke
 
 @pytest.mark.asyncio
 async def test_lead_without_identifiers_has_no_destination(monkeypatch):
-    monkeypatch.setattr(whatsapp_identity_service, "get_sessionmaker", lambda: lambda: _Session([]))
+    patch_session_scope(monkeypatch, whatsapp_identity_service, lambda: lambda: _Session([]))
 
     with pytest.raises(InvalidWhatsAppIdentityError):
         await resolve_whatsapp_destination("lead-1")

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from app.modules.auth import admin_totp
 from app.modules.auth.admin_totp import _matching_step, _new_recovery_code, _recovery_hash, _totp
+from tests.conftest import patch_session_scope
 
 
 def test_totp_matches_rfc_6238_sha1_vector_truncated_to_six_digits():
@@ -52,7 +53,7 @@ async def test_totp_step_cannot_be_reused(monkeypatch):
     secret = base64.b32encode(b"12345678901234567890").decode("ascii")
     row = SimpleNamespace(enabled_at=datetime.now(timezone.utc), secret_ciphertext="encrypted", last_used_step=None)
     session = _FakeSession(row)
-    monkeypatch.setattr(admin_totp, "get_sessionmaker", lambda: lambda: session)
+    patch_session_scope(monkeypatch, admin_totp, lambda: lambda: session)
     monkeypatch.setattr(admin_totp, "_decrypt", lambda _user_id, _value: secret)
     monkeypatch.setattr(admin_totp.time, "time", lambda: 59)
 
@@ -65,7 +66,7 @@ async def test_recovery_code_is_single_use(monkeypatch):
     row = SimpleNamespace(enabled_at=datetime.now(timezone.utc), secret_ciphertext="encrypted", last_used_step=None)
     recovery = SimpleNamespace(code_hash=_recovery_hash("AAAAA-BBBBB-CCCCC-DDDDD"))
     session = _FakeSession(row, recovery)
-    monkeypatch.setattr(admin_totp, "get_sessionmaker", lambda: lambda: session)
+    patch_session_scope(monkeypatch, admin_totp, lambda: lambda: session)
     monkeypatch.setattr(admin_totp, "_decrypt", lambda _user_id, _value: secret)
 
     assert await admin_totp.verify_mfa(7, "AAAAA-BBBBB-CCCCC-DDDDD") is True

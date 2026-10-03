@@ -4,17 +4,17 @@ from sqlalchemy import and_, func, or_, select
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
 from app.integrations.meta_webhook.projection import reply_identifier
 from app.db.store_common import (
     _fmt_ts,
 )
+from app.db.uow import session_scope
 
 
 async def fetch_chat_signature() -> str:
     """Firma liviana del estado de los mensajes, usada para detectar mensajes nuevos como respaldo del webhook."""
     stmt = select(func.count(WspMessage.id), func.max(WspMessage.sent_at))
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         count, last_sent = (await session.execute(stmt)).one()
     return f"{count}:{last_sent.isoformat() if last_sent else ''}"
 
@@ -28,7 +28,7 @@ async def fetch_last_wa_message_id(chat_id: str) -> str | None:
         .order_by(WspMessage.id.desc())
         .limit(1)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return await session.scalar(stmt)
 
 
@@ -43,7 +43,7 @@ async def fetch_latest_message_cursor() -> tuple[datetime, int] | None:
         .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).first()
     if row is None:
         return None
@@ -103,7 +103,7 @@ async def fetch_messages_after_cursor(
             and_(WspMessage.sent_at == cursor_ts, WspMessage.id > cursor_id),
         ))
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
 
     return [
@@ -124,7 +124,7 @@ async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
         .order_by(WspMessage.id.desc())
         .limit(1)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
 
     if row is None:
@@ -133,7 +133,7 @@ async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
 
 
 async def chat_id_for_wa_message(wa_message_id: str) -> str | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return await session.scalar(
             select(WspMessage.chat_id).where(WspMessage.wa_message_id == wa_message_id)
         )

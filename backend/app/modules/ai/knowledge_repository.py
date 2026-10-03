@@ -1,8 +1,8 @@
 """Atomic document/chunk persistence; receives validated text and prepared chunks."""
 from sqlalchemy import delete, func, select
 from app.db.models.ai import KnowledgeChunk, KnowledgeDocument
-from app.db.session import get_sessionmaker
 from app.modules.ai.errors import KnowledgeLimitError
+from app.db.uow import session_scope
 
 def _summary(document: KnowledgeDocument, chunk_count: int) -> dict:
     return {
@@ -21,7 +21,7 @@ async def list_documents() -> list[dict]:
         .group_by(KnowledgeChunk.document_id)
         .subquery()
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(KnowledgeDocument, func.coalesce(chunk_counts.c.chunk_count, 0))
@@ -32,7 +32,7 @@ async def list_documents() -> list[dict]:
     return [_summary(document, int(count)) for document, count in rows]
 
 async def get_document(document_id: str) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         document = await session.get(KnowledgeDocument, document_id)
         if document is None:
             return None
@@ -48,7 +48,7 @@ def _chunk_rows(document_id: str, chunks: list[str]) -> list[KnowledgeChunk]:
     ]
 
 async def create_document(title: str, content: str, document_type: str | None, chunks: list[str], max_documents: int) -> dict:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         existing = await session.scalar(select(func.count()).select_from(KnowledgeDocument))
         if (existing or 0) >= max_documents:
             raise KnowledgeLimitError(f"Se alcanzó el máximo de {max_documents} documentos")
@@ -58,14 +58,14 @@ async def create_document(title: str, content: str, document_type: str | None, c
         session.add(document)
         await session.flush()
         session.add_all(_chunk_rows(document.id, chunks))
-        await session.commit()
+        await session.flush()
         document_id = str(document.id)
     created = await get_document(document_id)
     assert created is not None
     return created
 
 async def update_document(document_id: str, title: str, content: str, chunks: list[str]) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         document = await session.get(KnowledgeDocument, document_id, with_for_update=True)
         if document is None:
             return None
@@ -76,16 +76,16 @@ async def update_document(document_id: str, title: str, content: str, chunks: li
             delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document_id)
         )
         session.add_all(_chunk_rows(document_id, chunks))
-        await session.commit()
+        await session.flush()
     return await get_document(document_id)
 
 async def delete_document(document_id: str) -> bool:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             delete(KnowledgeDocument)
             .where(KnowledgeDocument.id == document_id)
             .returning(KnowledgeDocument.id)
         )
         deleted = result.scalar_one_or_none() is not None
-        await session.commit()
+        await session.flush()
     return deleted

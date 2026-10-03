@@ -11,6 +11,7 @@ from app.core.events import dispatch_after_commit
 from app.modules.conversations.domain.events import MessageSent, ProviderMessageStored
 from app.modules.tasks import subscribers as task_subscribers
 from app.modules.tasks import repository as task_service
+from tests.conftest import patch_session_scope
 
 
 class _SessionContext:
@@ -37,7 +38,7 @@ async def test_reply_completion_only_targets_sellers_follow_up_tasks(monkeypatch
         return SimpleNamespace(rowcount=2)
 
     session.execute = execute
-    monkeypatch.setattr(task_service, "get_sessionmaker", _sessionmaker(session))
+    patch_session_scope(monkeypatch, task_service, _sessionmaker(session))
 
     completed = await task_service.complete_reply_tasks("lead-1", 7)
 
@@ -48,7 +49,7 @@ async def test_reply_completion_only_targets_sellers_follow_up_tasks(monkeypatch
     assert "pending" in params.values()
     assert "completed" in params.values()
     assert any(value == ["seguimiento", "whatsapp"] for value in params.values())
-    session.commit.assert_awaited_once()
+    session.flush.assert_awaited_once()
 
 
 async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatch):
@@ -60,7 +61,7 @@ async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatc
         return SimpleNamespace(rowcount=1)
 
     session.execute = execute
-    monkeypatch.setattr(task_service, "get_sessionmaker", _sessionmaker(session))
+    patch_session_scope(monkeypatch, task_service, _sessionmaker(session))
 
     completed = await task_service.complete_assigned_seller_reply_tasks("lead-1")
 
@@ -72,7 +73,7 @@ async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatc
     assert "lead-1" in params.values()
     assert "vendedor" in params.values()
     assert any(value == ["seguimiento", "whatsapp"] for value in params.values())
-    session.commit.assert_awaited_once()
+    session.flush.assert_awaited_once()
 
 
 async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypatch):

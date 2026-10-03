@@ -9,8 +9,8 @@ from app.db.models.automations import AutomationExecution, AutomationFlowVersion
 from app.db.models.media import MediaAsset
 from app.db.models.catalogs import MessageTemplate, TemplateAttachment, TemplateUserState
 from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from app.modules.catalogs.template_policies import (_meta_managed_template_values, _references_template, _template)
+from app.db.uow import session_scope
 
 async def list_templates(user_id: int, include_inactive=False):
     stmt = (
@@ -46,7 +46,7 @@ async def list_templates(user_id: int, include_inactive=False):
     )
     if not include_inactive:
         stmt = stmt.where(MessageTemplate.is_active.is_(True))
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
         template_ids = [row["id"] for row in rows]
         attachment_rows = (await session.execute(
@@ -65,25 +65,25 @@ async def list_templates(user_id: int, include_inactive=False):
 async def create_template(values: dict, user_id: int):
     now = datetime.now(timezone.utc)
     visibility = values.pop("visibility", "global")
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             result = await session.execute(insert(MessageTemplate).values(**values, visibility=visibility, created_by_user_id=user_id, created_at=now, updated_at=now).returning(MessageTemplate.id))
-            template_id = result.scalar_one(); await session.commit()
+            template_id = result.scalar_one(); await session.flush()
         except IntegrityError:
             await session.rollback(); raise ValueError("El atajo ya existe")
     return next(item for item in await list_templates(user_id, True) if item["id"] == template_id)
 
 async def update_template(template_id: int, values: dict):
     values["updated_at"] = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             result = await session.execute(update(MessageTemplate).where(MessageTemplate.id == template_id).values(**values))
-            await session.commit()
+            await session.flush()
         except IntegrityError:
             await session.rollback(); raise ValueError("El atajo ya existe")
     if not result.rowcount:
         return None
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         owner_id = await session.scalar(select(MessageTemplate.created_by_user_id).where(MessageTemplate.id == template_id))
     return next((item for item in await list_templates(owner_id, True) if item["id"] == template_id), None)
 
@@ -93,7 +93,7 @@ async def replace_official_template_from_meta(
 ) -> list[int]:
     """Reemplaza toda la representacion administrada por Meta de forma idempotente."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(
@@ -111,7 +111,7 @@ async def replace_official_template_from_meta(
                 .where(MessageTemplate.id == template_id)
                 .values(**_meta_managed_template_values(remote, header_media_asset_id))
             )
-        await session.commit()
+        await session.flush()
     return [template_id for template_id, _header_media_asset_id in rows]
 
 async def delete_template(template_id: int) -> dict | None:
@@ -121,7 +121,7 @@ async def delete_template(template_id: int) -> dict | None:
     convertir una espera ya programada en una ejecución rota. Devuelve la
     metadata oficial de la plantilla borrada (para que el router pueda
     limpiarla también del lado de Meta) o `None` si no existía."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         template = (await session.execute(
             select(MessageTemplate).where(MessageTemplate.id == template_id).with_for_update()
         )).scalar_one_or_none()
@@ -185,7 +185,7 @@ async def delete_template(template_id: int) -> dict | None:
             )
 
         await session.execute(delete(MessageTemplate).where(MessageTemplate.id == template_id))
-        await session.commit()
+        await session.flush()
     return {
         "template_type": template.template_type,
         "official_name": template.official_name,
@@ -203,7 +203,7 @@ async def _visible_template(session, template_id: int, user_id: int):
     )
 
 async def set_template_favorite(template_id: int, user_id: int, is_favorite: bool) -> bool:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         if not await _visible_template(session, template_id, user_id):
             return False
         stmt = pg_insert(TemplateUserState).values(
@@ -212,12 +212,12 @@ async def set_template_favorite(template_id: int, user_id: int, is_favorite: boo
             index_elements=[TemplateUserState.user_id, TemplateUserState.template_id],
             set_={"is_favorite": is_favorite},
         )
-        await session.execute(stmt); await session.commit()
+        await session.execute(stmt); await session.flush()
     return True
 
 async def fetch_template_for_delivery(template_id: int) -> dict | None:
     """La plantilla con sus adjuntos en orden, lista para armar el envío."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         template = await session.get(MessageTemplate, template_id)
         if template is None:
             return None
@@ -245,7 +245,7 @@ async def fetch_template_for_delivery(template_id: int) -> dict | None:
 
 async def record_template_use(template_id: int, user_id: int) -> bool:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         if not await _visible_template(session, template_id, user_id):
             return False
         stmt = pg_insert(TemplateUserState).values(
@@ -254,7 +254,7 @@ async def record_template_use(template_id: int, user_id: int) -> bool:
             index_elements=[TemplateUserState.user_id, TemplateUserState.template_id],
             set_={"last_used_at": now, "use_count": TemplateUserState.use_count + 1},
         )
-        await session.execute(stmt); await session.commit()
+        await session.execute(stmt); await session.flush()
     return True
 
 async def add_template_attachment(
@@ -265,7 +265,7 @@ async def add_template_attachment(
     library_asset_id: int | None = None,
 ) -> dict | None:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         exists = await session.get(MessageTemplate, template_id)
         if not exists:
             return None
@@ -287,14 +287,14 @@ async def add_template_attachment(
             filename=filename, library_asset_id=library_asset_id,
             position=position, created_at=now,
         ).returning(TemplateAttachment.id))
-        attachment_id = result.scalar_one(); await session.commit()
+        attachment_id = result.scalar_one(); await session.flush()
     return {
         "id": attachment_id, "media_url": media_url, "content_type": content_type,
         "filename": filename, "position": position, "library_asset_id": library_asset_id,
     }
 
 async def remove_template_attachment(attachment_id: int) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(
             select(TemplateAttachment.media_url, TemplateAttachment.library_asset_id)
             .where(TemplateAttachment.id == attachment_id)
@@ -302,5 +302,5 @@ async def remove_template_attachment(attachment_id: int) -> dict | None:
         if row is None:
             return None
         await session.execute(delete(TemplateAttachment).where(TemplateAttachment.id == attachment_id))
-        await session.commit()
+        await session.flush()
     return dict(row)

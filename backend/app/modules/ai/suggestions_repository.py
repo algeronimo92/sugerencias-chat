@@ -4,8 +4,8 @@ from sqlalchemy import exists, func, select, update
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
 from app.modules.ai.ai_context import make_context_revision
+from app.db.uow import session_scope
 
 
 async def get_cached_suggestion(chat_id: str) -> dict | None:
@@ -25,7 +25,7 @@ async def get_cached_suggestion(chat_id: str) -> dict | None:
         Lead.cached_suggestion_at,
         has_newer_message.label("has_newer_message"),
     ).where(Lead.id == chat_id)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().one_or_none()
 
     if (
@@ -57,7 +57,7 @@ async def get_suggestion_status(chat_id: str) -> dict | None:
         Lead.cached_suggestion_at,
         has_newer_message.label("has_newer_message"),
     ).where(Lead.id == chat_id)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().one_or_none()
 
     if row is None:
@@ -77,9 +77,9 @@ async def cache_suggestion(chat_id: str, suggestion: dict) -> bool:
         .where(Lead.id == chat_id)
         .values(cached_suggestion=suggestion, cached_suggestion_at=datetime.now(timezone.utc))
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
-        await session.commit()
+        await session.flush()
     return result.rowcount > 0
 
 
@@ -94,7 +94,7 @@ async def cache_suggestion_if_current(
     comprobaciÃ³n con ediciones del CRM; el id mÃ¡ximo detecta mensajes nuevos.
     """
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         lead = (
             await session.execute(
                 select(Lead.id, Lead.updated_at)
@@ -118,5 +118,5 @@ async def cache_suggestion_if_current(
                 cached_suggestion_at=datetime.now(timezone.utc),
             )
         )
-        await session.commit()
+        await session.flush()
     return "cached"

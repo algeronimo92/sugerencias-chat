@@ -17,10 +17,10 @@ from sqlalchemy import func, select
 from app.db.models.automations import AutomationExecution
 from app.db.models.tasks import LeadTask
 from app.db.models.conversations import MessageOutbox, ScheduledMessage
-from app.db.session import get_sessionmaker
 from domain_types import AutomationExecutionStatus, TaskStatus
 from app.realtime.ws_manager import manager
 from app.tenancy.context import get_current_tenant
+from app.db.uow import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ ws_local_connections = _gauge(
 
 async def _update_once() -> None:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         outbox_counts = dict((await session.execute(
             select(MessageOutbox.status, func.count(MessageOutbox.id)).group_by(MessageOutbox.status)
         )).all())

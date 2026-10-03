@@ -9,8 +9,8 @@ from sqlalchemy.orm import aliased
 from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
 from app.db.models.auth import User
 from domain_types import IssueReportPriority, IssueReportStatus
-from app.db.session import get_sessionmaker
 from app.core.time_format import iso_utc
+from app.db.uow import session_scope
 
 
 class InvalidReportContextError(Exception):
@@ -63,7 +63,7 @@ async def _attachments_by_report(report_ids: list[int]) -> dict[int, list[dict]]
         .where(IssueReportAttachment.report_id.in_(report_ids))
         .order_by(IssueReportAttachment.id.asc())
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).scalars().all()
     grouped: dict[int, list[dict]] = {}
     for row in rows:
@@ -113,14 +113,14 @@ async def list_issue_reports(
     if priority:
         stmt = stmt.where(IssueReport.priority == priority)
     stmt = stmt.order_by(IssueReport.created_at.desc(), IssueReport.id.desc()).limit(500)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     attachments = await _attachments_by_report([row["id"] for row in rows])
     return [_serialize(row, attachments.get(row["id"], [])) for row in rows]
 
 
 async def get_issue_report(report_id: int) -> dict | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(
             _report_query().where(IssueReport.id == report_id)
         )).mappings().one_or_none()
@@ -160,7 +160,7 @@ async def get_issue_report_detail(report_id: int) -> dict | None:
         .where(IssueReportEvent.report_id == report_id)
         .order_by(IssueReportEvent.created_at.asc(), IssueReportEvent.id.asc())
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         comment_rows = (await session.execute(comments_stmt)).mappings().all()
         event_rows = (await session.execute(events_stmt)).mappings().all()
     report["comments"] = [{
@@ -185,7 +185,7 @@ async def get_issue_report_detail(report_id: int) -> dict | None:
 async def create_issue_report(values: dict, attachments: list[dict], reporter_user_id: int) -> dict:
     now = datetime.now(timezone.utc)
     try:
-        async with get_sessionmaker()() as session:
+        async with session_scope() as session:
             report_id = (await session.execute(
                 insert(IssueReport).values(
                     reporter_user_id=reporter_user_id,
@@ -213,7 +213,7 @@ async def create_issue_report(values: dict, attachments: list[dict], reporter_us
                 new_value=IssueReportStatus.NEW,
                 created_at=now,
             ))
-            await session.commit()
+            await session.flush()
     except IntegrityError as exc:
         raise InvalidReportContextError(
             "El contexto del reporte ya no es válido"
@@ -230,7 +230,7 @@ async def update_issue_report(
     actor_user_id: int,
 ) -> dict | None:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         report = await session.get(IssueReport, report_id)
         if report is None:
             return None
@@ -261,13 +261,13 @@ async def update_issue_report(
         if events:
             report.updated_at = now
             await session.execute(insert(IssueReportEvent), events)
-        await session.commit()
+        await session.flush()
     return await get_issue_report(report_id)
 
 
 async def create_issue_report_comment(report_id: int, author_user_id: int, content: str) -> dict:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         comment_id = (await session.execute(
             insert(IssueReportComment).values(
                 report_id=report_id,
@@ -279,7 +279,7 @@ async def create_issue_report_comment(report_id: int, author_user_id: int, conte
         report = await session.get(IssueReport, report_id)
         if report is not None:
             report.updated_at = now
-        await session.commit()
+        await session.flush()
         row = (await session.execute(
             select(
                 IssueReportComment.id,
@@ -303,7 +303,7 @@ async def create_issue_report_comment(report_id: int, author_user_id: int, conte
 
 
 async def list_active_admin_ids() -> list[int]:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(
             select(User.id).where(User.role == "admin", User.is_active.is_(True))
         )).scalars().all()

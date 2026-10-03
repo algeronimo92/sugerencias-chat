@@ -8,10 +8,10 @@ from sqlalchemy import or_, select
 
 from app.db.models.auth import User
 from app.db.models.conversations import ScheduledMessage
-from app.db.session import get_sessionmaker
 from app.modules.conversations.infrastructure.sql_scheduled import scheduled_columns as _columns
 from app.modules.conversations.scheduled_message_policies import _item
 from domain_types import ScheduledMessageStatus
+from app.db.uow import session_scope
 
 
 async def list_scheduled_messages(lead_id: str) -> list[dict]:
@@ -29,6 +29,6 @@ async def list_scheduled_messages(lead_id: str) -> list[dict]:
         .order_by(ScheduledMessage.scheduled_at.asc(), ScheduledMessage.id.asc())
         .limit(20)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [_item(row) for row in rows]

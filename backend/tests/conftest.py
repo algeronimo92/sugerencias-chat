@@ -328,6 +328,24 @@ def _package_tree(package_name: str):
     ]
 
 
+def patch_session_scope(monkeypatch, module, sessionmaker):
+    """Hace que ``module.session_scope`` entregue la sesión falsa que abre
+    ``sessionmaker()()``. Las sesiones falsas viejas tenían ``commit``; con la
+    unidad de trabajo los repositorios hacen ``flush`` y el scope confirma."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def session_scope():
+        async with sessionmaker()() as session:
+            if not hasattr(session, "flush"):
+                async def flush():
+                    return None
+                session.flush = flush
+            yield session
+
+    monkeypatch.setattr(module, "session_scope", session_scope)
+
+
 def patch_automations(monkeypatch, name, value):
     """Reemplaza un colaborador en todos los módulos del motor de automatizaciones que lo usan."""
     _patch_everywhere(monkeypatch, _package_tree("app.modules.automations"), name, value)

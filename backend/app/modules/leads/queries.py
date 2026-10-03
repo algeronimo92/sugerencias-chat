@@ -12,8 +12,8 @@ from sqlalchemy import select, text
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
 from app.db.models.leads import LeadActivity
-from app.db.session import get_sessionmaker
 from app.db.store_common import _json_safe_row
+from app.db.uow import session_scope
 
 
 async def list_lead_activity(chat_id: str, limit: int = 50) -> list[dict]:
@@ -33,7 +33,7 @@ async def list_lead_activity(chat_id: str, limit: int = 50) -> list[dict]:
         .order_by(LeadActivity.created_at.desc(), LeadActivity.id.desc())
         .limit(limit)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [
         {
@@ -54,7 +54,7 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
     """Fila cruda de ``leads`` (todas las columnas de la tabla, incluidas las
     que no están mapeadas en el ORM). La usan los endpoints que reemplazan a
     los nodos Postgres ``get lead1``/``try to get lead`` de n8n."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (
             await session.execute(text("SELECT * FROM leads WHERE id = :id"), {"id": chat_id})
         ).mappings().first()
@@ -64,7 +64,7 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
 async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
     """Filas crudas de ``wsp_messages`` de un chat, más recientes primero.
     Reemplaza al nodo Postgres ``get messages`` de n8n."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 text("SELECT * FROM wsp_messages WHERE chat_id = :chat_id ORDER BY id DESC LIMIT :limit"),

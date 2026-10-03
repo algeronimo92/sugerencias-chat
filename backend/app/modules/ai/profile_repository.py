@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.models.ai import AIProfile
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 def _profile_dict(row: AIProfile | None, fields: tuple[str, ...]) -> dict:
     values = {key: getattr(row, key) if row is not None else None for key in fields}
@@ -13,13 +13,13 @@ def _profile_dict(row: AIProfile | None, fields: tuple[str, ...]) -> dict:
     }
 
 async def get_profile(fields: tuple[str, ...]) -> dict:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = await session.get(AIProfile, 1)
         return _profile_dict(row, fields)
 
 async def save_profile(normalized: dict[str, str | None], user_id: int | None, fields: tuple[str, ...]) -> dict:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         statement = pg_insert(AIProfile).values(
             id=1, **normalized, updated_by=user_id, updated_at=now
         )
@@ -28,5 +28,5 @@ async def save_profile(normalized: dict[str, str | None], user_id: int | None, f
             set_={**normalized, "updated_by": user_id, "updated_at": now},
         )
         await session.execute(statement)
-        await session.commit()
+        await session.flush()
     return await get_profile(fields)

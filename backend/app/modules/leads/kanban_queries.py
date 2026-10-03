@@ -3,9 +3,9 @@
 from sqlalchemy import func, select, true
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
 from app.db.store_common import KANBAN_PAGE_SIZE, _row_to_chat, _tags_by_lead
 from app.modules.conversations.ports.chat_queries import (_chat_columns, _chat_search_condition, _last_message_subquery, _matched_message_subquery, _search_rank_expression, _visible_lead_condition)
+from app.db.uow import session_scope
 async def _ordered_stage_keys(session) -> list[str]:
     """Claves de las etapas del negocio en el orden del embudo."""
     return list(
@@ -30,7 +30,7 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
     if search:
         stmt = stmt.where(_chat_search_condition(search))
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         stage_keys = await _ordered_stage_keys(session)
         rows = (await session.execute(stmt)).all()
 
@@ -83,7 +83,7 @@ async def fetch_kanban_snapshot(
         .order_by(ranked.c.stage, ranked.c.stage_rank)
     )
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         stage_keys = await _ordered_stage_keys(session)
         rows = (await session.execute(stmt)).mappings().all()
         tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in rows])
@@ -134,7 +134,7 @@ async def fetch_kanban_stage(
 
     stmt = stmt.order_by(*order_keys).offset(offset).limit(limit + 1)
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
         page_rows = rows[:limit]
         tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in page_rows])

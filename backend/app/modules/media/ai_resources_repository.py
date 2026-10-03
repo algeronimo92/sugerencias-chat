@@ -1,12 +1,12 @@
 """Read-only projection owned by this capability, consumed by AI."""
 from sqlalchemy import func, select
 from app.db.models.media import MediaAsset
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 async def list_ai_resource_rows(max_resources: int) -> list[dict]:
     """Archivos de la biblioteca que el negocio describió para el asistente."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(

@@ -15,11 +15,12 @@ from sqlalchemy import and_, func, or_, select
 
 from app.db.models.ai import AIJob
 from app.db.models.control import Organization
-from app.db.session import control_session, get_sessionmaker
+from app.db.session import control_session
 from app.modules.ai.ai_job_tokens import signing_key_configured
 from app.modules.auth.public import try_send_operational_alert
 from app.modules.platform.public import platform_setting
 from app.tenancy.context import get_current_tenant
+from app.db.uow import session_scope
 
 # Operaciones que invocan un modelo a pedido de un usuario del negocio.
 BILLABLE_OPERATIONS = ("rag", "analyst")
@@ -73,7 +74,7 @@ async def count_usage_this_month() -> int:
     """Generaciones del mes en el schema del tenant activo."""
 
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         value = await session.scalar(
             select(func.count())
             .select_from(AIJob)

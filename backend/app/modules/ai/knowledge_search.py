@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from sqlalchemy import text
+from app.db.uow import session_scope
 
-from app.db.session import get_sessionmaker
 
 
 _LEXICAL_SQL = text(
@@ -56,7 +56,7 @@ def _escape_like(value: str) -> str:
 async def search_knowledge_chunks(query: str, top_k: int) -> list[dict]:
     """Search only the knowledge tables selected by the current tenant session."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(_LEXICAL_SQL, {"query": query, "top_k": top_k})
         ).mappings().all()

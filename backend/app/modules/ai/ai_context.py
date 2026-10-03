@@ -13,9 +13,9 @@ from sqlalchemy import func, select
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
 from app.integrations.meta.text import message_text
 from app.db.store_common import _fmt_ts, _json_safe_row
+from app.db.uow import session_scope
 
 # Raíces de Meta que no son mensajes del cliente ni del negocio.
 NON_CONVERSATIONAL_TYPES = frozenset({"system"})
@@ -33,7 +33,7 @@ def make_context_revision(updated_at: datetime | None, latest_message_id: int | 
 async def fetch_context_revision(chat_id: str) -> str | None:
     """Return the current revision, or ``None`` when the lead is missing."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         updated_at = await session.scalar(select(Lead.updated_at).where(Lead.id == chat_id))
         if updated_at is None:
             # Old leads may not have updated_at. Check existence separately.
@@ -81,7 +81,7 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         WspMessage.wa_message_id,
     )
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         lead_row = (
             await session.execute(select(*lead_columns).where(Lead.id == chat_id))
         ).mappings().first()

@@ -67,7 +67,7 @@ class TestMp4Dimensions:
 async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
     """El UPDATE por lotes debe evitar el modo Bulk UPDATE del ORM."""
     monkeypatch.setattr(media_storage, "image_dimensions", lambda _url: (640, 480))
-    session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+    session = SimpleNamespace(execute=AsyncMock(), flush=AsyncMock())
     rows = [{
         "id": 22267,
         "message_type": "image",
@@ -87,4 +87,4 @@ async def test_backfill_dimensions_uses_core_bulk_update(monkeypatch):
         "width": 640,
         "height": 480,
     }]
-    session.commit.assert_awaited_once()
+    session.flush.assert_awaited_once()

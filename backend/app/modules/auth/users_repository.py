@@ -4,11 +4,11 @@ from sqlalchemy import func, insert, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from app.db.store_common import (
     EmailAlreadyExistsError,
     LastAdminError,
 )
+from app.db.uow import session_scope
 
 
 def _row_to_user(user: User) -> dict:
@@ -22,26 +22,26 @@ def _row_to_user(user: User) -> dict:
 
 
 async def get_user_by_id(user_id: int) -> User | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return await session.get(User, user_id)
 
 
 async def get_user_by_email(email: str) -> User | None:
     stmt = select(User).where(User.email == email)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def list_users() -> list[dict]:
     stmt = select(User).order_by(User.created_at.asc())
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         users = (await session.execute(stmt)).scalars().all()
     return [_row_to_user(u) for u in users]
 
 
 async def list_active_sellers() -> list[dict]:
     stmt = select(User.id, User.name, User.role).where(User.is_active == true()).order_by(User.name.asc())
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [dict(row) for row in rows]
 
@@ -55,10 +55,10 @@ async def create_user(email: str, name: str, password_hash: str, role: str) -> d
         is_active=True,
         created_at=datetime.now(timezone.utc),
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             await session.execute(stmt)
-            await session.commit()
+            await session.flush()
         except IntegrityError:
             await session.rollback()
             raise EmailAlreadyExistsError(email)
@@ -71,7 +71,7 @@ async def count_active_admins(exclude_user_id: int | None = None) -> int:
     stmt = select(func.count(User.id)).where(User.role == "admin", User.is_active == true())
     if exclude_user_id is not None:
         stmt = stmt.where(User.id != exclude_user_id)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one()
 
 
@@ -89,11 +89,11 @@ async def update_user(user_id: int, values: dict) -> dict | None:
         return _row_to_user(user) if user else None
 
     stmt = update(User).where(User.id == user_id).values(**values)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
         if result.rowcount == 0:
             return None
-        await session.commit()
+        await session.flush()
 
     user = await get_user_by_id(user_id)
     return _row_to_user(user) if user else None
@@ -101,16 +101,16 @@ async def update_user(user_id: int, values: dict) -> dict | None:
 
 async def set_user_password(user_id: int, password_hash: str) -> bool:
     stmt = update(User).where(User.id == user_id).values(password_hash=password_hash)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
-        await session.commit()
+        await session.flush()
         return result.rowcount > 0
 
 
 async def seed_admin_if_needed(email: str, password_hash: str) -> None:
     """Crea el primer admin si la tabla users está vacía. No hace nada si ya
     existe algún usuario (aunque ADMIN_EMAIL/ADMIN_PASSWORD sigan en el .env)."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         count = (await session.execute(select(func.count(User.id)))).scalar_one()
     if count > 0:
         return

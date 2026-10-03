@@ -35,8 +35,8 @@ from app.modules.leads.domain.stage import StageRule, require_destination
 from app.db.models.automations import AutomationRule
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.catalogs import MessageTemplate
-from app.db.session import get_sessionmaker
 from domain_types import INITIAL_LEAD_STAGE, LeadStageKind
+from app.db.uow import session_scope
 
 
 MAX_STAGES = 40
@@ -91,7 +91,7 @@ async def list_lead_stages(*, include_usage: bool = False) -> list[dict]:
     leads que siguen en ellas y el historial de cambios.
     """
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(*_COLUMNS).order_by(LeadStage.position.asc(), LeadStage.key.asc())
@@ -116,7 +116,7 @@ async def list_lead_stages(*, include_usage: bool = False) -> list[dict]:
 async def list_stages_for_ai() -> list[dict]:
     """Etapas válidas como destino para el analista IA, en orden del embudo."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(LeadStage.key, LeadStage.name, LeadStage.kind, LeadStage.description)
@@ -215,7 +215,7 @@ def _describe_usage(usage: dict[str, int]) -> str:
 
 async def create_lead_stage(values: dict) -> dict:
     name = values["name"]
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         existing = (
             await session.execute(select(LeadStage.key, LeadStage.name, LeadStage.position))
         ).all()
@@ -236,7 +236,7 @@ async def create_lead_stage(values: dict) -> dict:
         )
         session.add(stage)
         try:
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             await session.rollback()
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
@@ -256,7 +256,7 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
             )
         if values.get("kind") not in (None, LeadStageKind.OPEN):
             raise LeadStageProtectedError("La etapa inicial tiene que ser una etapa abierta")
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         stage = await session.get(LeadStage, key, with_for_update=True)
         if stage is None:
             raise LeadStageNotFoundError("Etapa no encontrada")
@@ -274,7 +274,7 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
                 setattr(stage, field, values[field])
         stage.updated_at = datetime.now(timezone.utc)
         try:
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             await session.rollback()
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
@@ -288,7 +288,7 @@ async def reorder_lead_stages(keys: list[str]) -> list[dict]:
     """Fija el orden del embudo. Exige la lista completa de claves para que
     dos pantallas abiertas no dejen posiciones repetidas o huecos."""
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         current = set(
             (await session.execute(select(LeadStage.key).with_for_update())).scalars().all()
         )
@@ -303,14 +303,14 @@ async def reorder_lead_stages(keys: list[str]) -> list[dict]:
                 .where(LeadStage.key == key, LeadStage.position != position)
                 .values(position=position, updated_at=now)
             )
-        await session.commit()
+        await session.flush()
     return await list_lead_stages(include_usage=True)
 
 
 async def delete_lead_stage(key: str) -> None:
     if key == INITIAL_LEAD_STAGE:
         raise LeadStageProtectedError("La etapa inicial no se puede eliminar")
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         stage = await session.get(LeadStage, key, with_for_update=True)
         if stage is None:
             raise LeadStageNotFoundError("Etapa no encontrada")
@@ -321,7 +321,7 @@ async def delete_lead_stage(key: str) -> None:
             )
         await session.delete(stage)
         try:
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             # Un lead entró a la etapa entre la verificación y el borrado: la
             # FK de leads.estado lo frena.

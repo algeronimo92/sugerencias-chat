@@ -7,9 +7,9 @@ from domain_types import TaskStatus, TaskType
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 from app.db.models.auth import User
-from app.db.session import get_sessionmaker
 from app.core.time_format import iso_utc
 from app.modules.tasks.policies import new_task_values, task_update_values
+from app.db.uow import session_scope
 
 
 class MissingTaskReferenceError(Exception):
@@ -58,18 +58,18 @@ async def list_tasks(
     if lead_id:
         stmt = stmt.where(LeadTask.lead_id == lead_id)
     stmt = stmt.order_by(LeadTask.due_at.asc()).limit(500)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return [_task(r) for r in (await session.execute(stmt)).mappings().all()]
 
 
 async def create_task(values: dict, user_id: int):
     now = datetime.now(timezone.utc)
     values = new_task_values(values, user_id, now)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             result = await session.execute(insert(LeadTask).values(**values).returning(LeadTask.id))
             task_id = result.scalar_one()
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             await session.rollback()
             raise MissingTaskReferenceError("Lead o responsable no encontrado") from exc
@@ -77,7 +77,7 @@ async def create_task(values: dict, user_id: int):
 
 
 async def get_task(task_id: int):
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(_task_query().where(LeadTask.id == task_id))).mappings().one_or_none()
     return _task(row) if row else None
 
@@ -85,10 +85,10 @@ async def get_task(task_id: int):
 async def update_task(task_id: int, values: dict, user_id: int):
     values = task_update_values(values, user_id, datetime.now(timezone.utc))
     stmt = update(LeadTask).where(LeadTask.id == task_id).values(**values)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         try:
             result = await session.execute(stmt)
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             await session.rollback()
             raise MissingTaskReferenceError("Responsable no encontrado") from exc
@@ -118,9 +118,9 @@ async def complete_reply_tasks(lead_id: str, user_id: int) -> int:
             updated_at=now,
         )
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
-        await session.commit()
+        await session.flush()
     return result.rowcount
 
 
@@ -154,9 +154,9 @@ async def complete_assigned_seller_reply_tasks(lead_id: str) -> int:
             updated_at=now,
         )
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
-        await session.commit()
+        await session.flush()
     return result.rowcount
 
 
@@ -179,9 +179,9 @@ async def complete_pending_tasks(
         completed_by_user_id=user_id,
         updated_at=now,
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
-        await session.commit()
+        await session.flush()
     return result.rowcount
 
 
@@ -204,7 +204,7 @@ async def claim_due_reminders() -> list[dict]:
         .limit(100)
         .with_for_update(of=LeadTask, skip_locked=True)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).all()
         reminders = []
         for task, lead_name in rows:
@@ -218,16 +218,16 @@ async def claim_due_reminders() -> list[dict]:
                 "due_at": iso_utc(task.due_at),
             })
         if rows:
-            await session.commit()
+            await session.flush()
     return reminders
 
 
 async def release_reminder(task_id: int) -> None:
     """Devuelve el recordatorio a la cola si el responsable no está conectado."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         await session.execute(
             update(LeadTask)
             .where(LeadTask.id == task_id, LeadTask.status == TaskStatus.PENDING)
             .values(reminder_sent_at=None)
         )
-        await session.commit()
+        await session.flush()

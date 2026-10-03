@@ -15,7 +15,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models.auth import AuthLoginThrottle
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 WINDOW = timedelta(minutes=15)
 LOCK = timedelta(minutes=15)
@@ -48,57 +48,56 @@ async def reserve_login_attempt(email: str, ip: str, *, scope: str = "crm") -> N
     now = datetime.now(timezone.utc)
     limits = {_key(f"{scope}:account", email): ACCOUNT_LIMIT, _key(f"{scope}:ip", ip): IP_LIMIT}
     retry_after = 0
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            rows = []
-            # Orden fijo: dos logins concurrentes con la misma IP/cuenta no
-            # adquieren locks en orden inverso.
-            for key in sorted(limits):
-                await session.execute(
-                    insert(AuthLoginThrottle)
-                    .values(key_hash=key, attempts=0, window_started_at=now)
-                    .on_conflict_do_nothing(index_elements=[AuthLoginThrottle.key_hash])
-                )
-                row = await session.scalar(
-                    select(AuthLoginThrottle)
-                    .where(AuthLoginThrottle.key_hash == key)
-                    .with_for_update()
-                )
-                rows.append((row, limits[key]))
+    async with session_scope() as session:
+        rows = []
+        # Orden fijo: dos logins concurrentes con la misma IP/cuenta no
+        # adquieren locks en orden inverso.
+        for key in sorted(limits):
+            await session.execute(
+                insert(AuthLoginThrottle)
+                .values(key_hash=key, attempts=0, window_started_at=now)
+                .on_conflict_do_nothing(index_elements=[AuthLoginThrottle.key_hash])
+            )
+            row = await session.scalar(
+                select(AuthLoginThrottle)
+                .where(AuthLoginThrottle.key_hash == key)
+                .with_for_update()
+            )
+            rows.append((row, limits[key]))
 
-            for row, _limit in rows:
-                if row.locked_until and row.locked_until > now:
-                    raise LoginThrottledError(math.ceil((row.locked_until - now).total_seconds()))
+        for row, _limit in rows:
+            if row.locked_until and row.locked_until > now:
+                raise LoginThrottledError(math.ceil((row.locked_until - now).total_seconds()))
 
-            for row, limit in rows:
-                if _consume(row, limit, now):
-                    retry_after = int(LOCK.total_seconds())
-            if secrets.randbelow(100) == 0:
-                await session.execute(
-                    delete(AuthLoginThrottle)
-                    .where(AuthLoginThrottle.window_started_at < now - WINDOW - LOCK)
-                )
+        for row, limit in rows:
+            if _consume(row, limit, now):
+                retry_after = int(LOCK.total_seconds())
+        if secrets.randbelow(100) == 0:
+            await session.execute(
+                delete(AuthLoginThrottle)
+                .where(AuthLoginThrottle.window_started_at < now - WINDOW - LOCK)
+            )
     if retry_after:
         raise LoginThrottledError(retry_after)
 
 
 async def clear_account_attempts(email: str, *, scope: str = "crm") -> None:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         await session.execute(
             update(AuthLoginThrottle)
             .where(AuthLoginThrottle.key_hash == _key(f"{scope}:account", email))
             .values(attempts=0, window_started_at=now, locked_until=None)
         )
-        await session.commit()
+        await session.flush()
 
 
 async def prune_old_attempts() -> int:
     """Para tarea de mantenimiento: borra ventanas ya inactivas."""
     cutoff = datetime.now(timezone.utc) - WINDOW - LOCK
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             delete(AuthLoginThrottle).where(AuthLoginThrottle.window_started_at < cutoff)
         )
-        await session.commit()
+        await session.flush()
         return result.rowcount or 0

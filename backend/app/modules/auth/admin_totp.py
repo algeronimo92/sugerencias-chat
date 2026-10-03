@@ -13,9 +13,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models.auth import AdminTotp, AdminTotpRecoveryCode
-from app.db.session import get_sessionmaker
 from app.core.secret_cipher import decrypt_secret, encrypt_secret
 from app.tenancy.context import get_current_tenant
+from app.db.uow import session_scope
 
 STEP_SECONDS = 30
 PENDING_LIFETIME = timedelta(minutes=10)
@@ -71,7 +71,7 @@ def _new_recovery_code() -> str:
 
 
 async def mfa_status(user_id: int) -> dict:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = await session.get(AdminTotp, user_id)
         enabled = bool(row and row.enabled_at and row.secret_ciphertext)
         remaining = 0
@@ -86,19 +86,18 @@ async def mfa_status(user_id: int) -> dict:
 async def start_enrollment(user_id: int, email: str) -> dict:
     secret = base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            await session.execute(
-                insert(AdminTotp).values(user_id=user_id)
-                .on_conflict_do_nothing(index_elements=[AdminTotp.user_id])
-            )
-            row = await session.scalar(
-                select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
-            )
-            if row.enabled_at:
-                raise TotpSetupError("La verificación en dos pasos ya está activa")
-            row.pending_ciphertext = _encrypt(user_id, secret)
-            row.pending_expires_at = now + PENDING_LIFETIME
+    async with session_scope() as session:
+        await session.execute(
+            insert(AdminTotp).values(user_id=user_id)
+            .on_conflict_do_nothing(index_elements=[AdminTotp.user_id])
+        )
+        row = await session.scalar(
+            select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
+        )
+        if row.enabled_at:
+            raise TotpSetupError("La verificación en dos pasos ya está activa")
+        row.pending_ciphertext = _encrypt(user_id, secret)
+        row.pending_expires_at = now + PENDING_LIFETIME
     label = quote(f"CRM:{email}", safe="")
     uri = f"otpauth://totp/{label}?secret={secret}&issuer=CRM&algorithm=SHA1&digits=6&period=30"
     return {"secret": secret, "otpauth_uri": uri}
@@ -107,61 +106,58 @@ async def start_enrollment(user_id: int, email: str) -> dict:
 async def confirm_enrollment(user_id: int, code: str) -> list[str]:
     now = datetime.now(timezone.utc)
     recovery_codes = [_new_recovery_code() for _ in range(RECOVERY_COUNT)]
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            row = await session.scalar(
-                select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
-            )
-            if not row or not row.pending_ciphertext or not row.pending_expires_at or row.pending_expires_at < now or row.enabled_at:
-                raise TotpSetupError("La configuración venció. Vuelve a comenzar")
-            secret = _decrypt(user_id, row.pending_ciphertext)
-            step = _matching_step(secret, code)
-            if step is None:
-                raise TotpSetupError("Código incorrecto")
-            row.secret_ciphertext = row.pending_ciphertext
-            row.pending_ciphertext = None
-            row.pending_expires_at = None
-            row.enabled_at = now
-            row.last_used_step = step
-            await session.execute(
-                delete(AdminTotpRecoveryCode).where(AdminTotpRecoveryCode.user_id == user_id)
-            )
-            session.add_all(
-                AdminTotpRecoveryCode(user_id=user_id, code_hash=_recovery_hash(code))
-                for code in recovery_codes
-            )
+    async with session_scope() as session:
+        row = await session.scalar(
+            select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
+        )
+        if not row or not row.pending_ciphertext or not row.pending_expires_at or row.pending_expires_at < now or row.enabled_at:
+            raise TotpSetupError("La configuración venció. Vuelve a comenzar")
+        secret = _decrypt(user_id, row.pending_ciphertext)
+        step = _matching_step(secret, code)
+        if step is None:
+            raise TotpSetupError("Código incorrecto")
+        row.secret_ciphertext = row.pending_ciphertext
+        row.pending_ciphertext = None
+        row.pending_expires_at = None
+        row.enabled_at = now
+        row.last_used_step = step
+        await session.execute(
+            delete(AdminTotpRecoveryCode).where(AdminTotpRecoveryCode.user_id == user_id)
+        )
+        session.add_all(
+            AdminTotpRecoveryCode(user_id=user_id, code_hash=_recovery_hash(code))
+            for code in recovery_codes
+        )
     return recovery_codes
 
 
 async def verify_mfa(user_id: int, code: str) -> bool:
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            row = await session.scalar(
-                select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
+    async with session_scope() as session:
+        row = await session.scalar(
+            select(AdminTotp).where(AdminTotp.user_id == user_id).with_for_update()
+        )
+        if not row or not row.enabled_at or not row.secret_ciphertext:
+            return False
+        step = _matching_step(_decrypt(user_id, row.secret_ciphertext), code)
+        if step is not None and (row.last_used_step is None or step > row.last_used_step):
+            row.last_used_step = step
+            return True
+        if len(code.replace("-", "")) == 20:
+            recovery = await session.get(
+                AdminTotpRecoveryCode, (user_id, _recovery_hash(code))
             )
-            if not row or not row.enabled_at or not row.secret_ciphertext:
-                return False
-            step = _matching_step(_decrypt(user_id, row.secret_ciphertext), code)
-            if step is not None and (row.last_used_step is None or step > row.last_used_step):
-                row.last_used_step = step
+            if recovery:
+                await session.delete(recovery)
                 return True
-            if len(code.replace("-", "")) == 20:
-                recovery = await session.get(
-                    AdminTotpRecoveryCode, (user_id, _recovery_hash(code))
-                )
-                if recovery:
-                    await session.delete(recovery)
-                    return True
     return False
 
 
 async def disable_mfa(user_id: int, code: str) -> bool:
     if not await verify_mfa(user_id, code):
         return False
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            await session.execute(
-                delete(AdminTotpRecoveryCode).where(AdminTotpRecoveryCode.user_id == user_id)
-            )
-            await session.execute(delete(AdminTotp).where(AdminTotp.user_id == user_id))
+    async with session_scope() as session:
+        await session.execute(
+            delete(AdminTotpRecoveryCode).where(AdminTotpRecoveryCode.user_id == user_id)
+        )
+        await session.execute(delete(AdminTotp).where(AdminTotp.user_id == user_id))
     return True

@@ -4,7 +4,7 @@ from sqlalchemy import func, or_, select
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 
 async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
@@ -23,7 +23,7 @@ async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
         )
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return list((await session.execute(stmt)).scalars().all())
 
 
@@ -37,5 +37,5 @@ async def fetch_total_unread_chat_count() -> int:
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
         )
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one()

@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.catalogs import CustomFieldDefinition
 from app.db.models.leads import Lead
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 
 class CustomFieldError(ValueError):
@@ -56,7 +56,7 @@ async def list_definitions(entity_type: str, *, include_inactive: bool = False) 
     if not include_inactive:
         stmt = stmt.where(CustomFieldDefinition.is_active.is_(True))
     stmt = stmt.order_by(CustomFieldDefinition.position, CustomFieldDefinition.id)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.scalars(stmt)).all()
     return [_item(row) for row in rows]
 
@@ -70,11 +70,11 @@ async def create_definition(values: dict) -> dict:
         raise CustomFieldError("Un campo de selección necesita al menos una opción")
     if values["field_type"] != "select":
         values["options"] = []
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = CustomFieldDefinition(**values)
         session.add(row)
         try:
-            await session.commit()
+            await session.flush()
         except IntegrityError as exc:
             await session.rollback()
             raise CustomFieldAlreadyExistsError("Ya existe un campo con esa clave") from exc
@@ -88,7 +88,7 @@ async def update_definition(field_id: int, values: dict) -> dict | None:
         values["label"] = " ".join(values["label"].split())
     if "options" in values:
         values["options"] = _clean_options(values["options"] or [])
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = await session.get(CustomFieldDefinition, field_id)
         if row is None:
             return None
@@ -98,7 +98,7 @@ async def update_definition(field_id: int, values: dict) -> dict | None:
             raise CustomFieldError("Un campo de selección necesita al menos una opción")
         values["updated_at"] = func.now()
         await session.execute(update(CustomFieldDefinition).where(CustomFieldDefinition.id == field_id).values(**values))
-        await session.commit()
+        await session.flush()
         await session.refresh(row)
         return _item(row)
 
@@ -156,13 +156,13 @@ async def normalize_values(entity_type: str, values: dict[str, Any], *, require_
 
 
 async def get_lead_values(lead_id: str) -> dict[str, Any] | None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return await session.scalar(select(Lead.custom_fields).where(Lead.id == lead_id))
 
 
 async def update_lead_values(lead_id: str, values: dict[str, Any]) -> dict[str, Any] | None:
     normalized = await normalize_values("lead", values, require_required=False)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         current = await session.scalar(select(Lead.custom_fields).where(Lead.id == lead_id).with_for_update())
         if current is None:
             return None
@@ -173,5 +173,5 @@ async def update_lead_values(lead_id: str, values: dict[str, Any]) -> dict[str, 
             else:
                 merged.pop(key, None)
         await session.execute(update(Lead).where(Lead.id == lead_id).values(custom_fields=merged))
-        await session.commit()
+        await session.flush()
     return merged

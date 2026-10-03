@@ -18,10 +18,10 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.leads import Lead, WhatsAppIdentity
-from app.db.session import get_sessionmaker
 from app.modules.leads.ports.assignment import (pick_next_vendedor_id)
 from app.modules.platform.ports.settings_service import (get_effective)
 from app.integrations.whatsapp.connection import ANY_CONNECTION
+from app.db.uow import session_scope
 
 
 logger = logging.getLogger(__name__)
@@ -133,82 +133,81 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
     # Se lee antes de abrir la transacción: no tiene sentido tener tomado el
     # lock del contacto mientras se consulta la configuración.
     auto_assign = create and (await get_effective("auto_assign_leads_enabled")) == "true"
-    async with get_sessionmaker()() as session:
-        async with session.begin():
-            # Serializa eventos que comparten algún identificador. El UNIQUE
-            # sigue siendo la última defensa frente a carreras entre workers.
-            lock_key = "|".join(sorted(f"{kind}:{value}" for kind, value in identity.aliases()))
+    async with session_scope() as session:
+        # Serializa eventos que comparten algún identificador. El UNIQUE
+        # sigue siendo la última defensa frente a carreras entre workers.
+        lock_key = "|".join(sorted(f"{kind}:{value}" for kind, value in identity.aliases()))
+        await session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
+        aliases = (
             await session.execute(
-                select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+                select(WhatsAppIdentity).where(_alias_filter(identity)).with_for_update()
             )
-            aliases = (
-                await session.execute(
-                    select(WhatsAppIdentity).where(_alias_filter(identity)).with_for_update()
-                )
-            ).scalars().all()
+        ).scalars().all()
 
-            lead_ids = {alias.lead_id for alias in aliases}
-            if len(lead_ids) > 1:
+        lead_ids = {alias.lead_id for alias in aliases}
+        if len(lead_ids) > 1:
+            raise WhatsAppIdentityConflictError(lead_ids)
+
+        lead_created = False
+        if lead_ids:
+            chat_id = next(iter(lead_ids))
+            lead = await session.get(Lead, chat_id, with_for_update=True)
+            if lead is None:
                 raise WhatsAppIdentityConflictError(lead_ids)
-
-            lead_created = False
-            if lead_ids:
-                chat_id = next(iter(lead_ids))
-                lead = await session.get(Lead, chat_id, with_for_update=True)
-                if lead is None:
-                    raise WhatsAppIdentityConflictError(lead_ids)
-            else:
-                if not create:
-                    return None
-                vendedor_id = None
-                if auto_assign:
-                    # Serializa la asignación entre leads nuevos concurrentes.
-                    await session.execute(
-                        select(func.pg_advisory_xact_lock(
-                            func.hashtextextended("lead_round_robin_assignment", 0)
-                        ))
-                    )
-                    vendedor_id = await pick_next_vendedor_id(session)
-                lead = Lead(
-                    telefono=identity.wa_id,
-                    nombre=identity.profile_name,
-                    nombre_usuario=_display_username(identity.username),
-                    vendedor_id=vendedor_id,
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(lead)
-                await session.flush()
-                chat_id = lead.id
-                lead_created = True
-
-            if identity.wa_id and not lead.telefono:
-                lead.telefono = identity.wa_id
-                lead.updated_at = now
-            if identity.profile_name and not lead.nombre:
-                lead.nombre = identity.profile_name
-                lead.updated_at = now
-            username = _display_username(identity.username)
-            if username and not lead.nombre_usuario:
-                lead.nombre_usuario = username
-                lead.updated_at = now
-
-            known = {(alias.kind, alias.identifier): alias for alias in aliases}
-            for kind, value in identity.aliases():
-                existing = known.get((kind, value))
-                if existing is None:
-                    session.add(WhatsAppIdentity(
-                        phone_number_id=identity.phone_number_id,
-                        identifier=value,
-                        kind=kind,
-                        lead_id=chat_id,
+        else:
+            if not create:
+                return None
+            vendedor_id = None
+            if auto_assign:
+                # Serializa la asignación entre leads nuevos concurrentes.
+                await session.execute(
+                    select(func.pg_advisory_xact_lock(
+                        func.hashtextextended("lead_round_robin_assignment", 0)
                     ))
-                elif existing.phone_number_id == ANY_CONNECTION:
-                    # Alias creado a mano sin número conocido: el primer evento
-                    # de Meta dice por cuál llega.
-                    existing.phone_number_id = identity.phone_number_id
-                    existing.updated_at = now
+                )
+                vendedor_id = await pick_next_vendedor_id(session)
+            lead = Lead(
+                telefono=identity.wa_id,
+                nombre=identity.profile_name,
+                nombre_usuario=_display_username(identity.username),
+                vendedor_id=vendedor_id,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(lead)
             await session.flush()
+            chat_id = lead.id
+            lead_created = True
+
+        if identity.wa_id and not lead.telefono:
+            lead.telefono = identity.wa_id
+            lead.updated_at = now
+        if identity.profile_name and not lead.nombre:
+            lead.nombre = identity.profile_name
+            lead.updated_at = now
+        username = _display_username(identity.username)
+        if username and not lead.nombre_usuario:
+            lead.nombre_usuario = username
+            lead.updated_at = now
+
+        known = {(alias.kind, alias.identifier): alias for alias in aliases}
+        for kind, value in identity.aliases():
+            existing = known.get((kind, value))
+            if existing is None:
+                session.add(WhatsAppIdentity(
+                    phone_number_id=identity.phone_number_id,
+                    identifier=value,
+                    kind=kind,
+                    lead_id=chat_id,
+                ))
+            elif existing.phone_number_id == ANY_CONNECTION:
+                # Alias creado a mano sin número conocido: el primer evento
+                # de Meta dice por cuál llega.
+                existing.phone_number_id = identity.phone_number_id
+                existing.updated_at = now
+        await session.flush()
 
         return ResolvedIdentity(chat_id=chat_id, lead_created=lead_created)
 
@@ -237,7 +236,7 @@ async def resolve_whatsapp_destination(chat_id: str) -> Destination:
     Se prefieren los más recientes: un contacto que cambió de número llega
     con su ``wa_id`` nuevo y ese es el que sirve.
     """
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (
             await session.execute(
                 select(WhatsAppIdentity.kind, WhatsAppIdentity.identifier)
@@ -257,7 +256,7 @@ async def resolve_whatsapp_destination(chat_id: str) -> Destination:
 
 async def lead_id_for_identifier(identifier: str) -> str | None:
     """Lead dueño de un ``wa_id`` o ``user_id``, o None si no está registrado."""
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return await session.scalar(
             select(WhatsAppIdentity.lead_id)
             .where(WhatsAppIdentity.identifier == identifier)
@@ -276,28 +275,27 @@ async def add_identity_alias(chat_id: str, phone_number_id: str, kind: str, iden
     if identifier is None or kind not in {WA_ID, USER_ID}:
         return False
     try:
-        async with get_sessionmaker()() as session:
-            async with session.begin():
-                owner = await session.scalar(
-                    select(WhatsAppIdentity.lead_id).where(
-                        WhatsAppIdentity.kind == kind,
-                        WhatsAppIdentity.identifier == identifier,
-                    )
+        async with session_scope() as session:
+            owner = await session.scalar(
+                select(WhatsAppIdentity.lead_id).where(
+                    WhatsAppIdentity.kind == kind,
+                    WhatsAppIdentity.identifier == identifier,
                 )
-                if owner == chat_id:
-                    return False
-                if owner is not None:
-                    logger.warning(
-                        "El %s %s ya pertenece al lead %s y no a %s",
-                        kind, identifier, owner, chat_id,
-                    )
-                    return False
-                session.add(WhatsAppIdentity(
-                    phone_number_id=phone_number_id or ANY_CONNECTION,
-                    identifier=identifier,
-                    kind=kind,
-                    lead_id=chat_id,
-                ))
+            )
+            if owner == chat_id:
+                return False
+            if owner is not None:
+                logger.warning(
+                    "El %s %s ya pertenece al lead %s y no a %s",
+                    kind, identifier, owner, chat_id,
+                )
+                return False
+            session.add(WhatsAppIdentity(
+                phone_number_id=phone_number_id or ANY_CONNECTION,
+                identifier=identifier,
+                kind=kind,
+                lead_id=chat_id,
+            ))
     except IntegrityError:
         return False
     return True

@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import func, true
+from app.db.uow import session_scope
 
-from app.db.session import get_sessionmaker
 
 
 # Perú mantiene UTC-5 todo el año; el offset fijo evita depender del paquete
@@ -66,7 +66,7 @@ def local_day(column):
 
 
 async def execute_mapping(stmt):
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return (await session.execute(stmt)).mappings().all()
 
 

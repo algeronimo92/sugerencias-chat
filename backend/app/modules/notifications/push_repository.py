@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.models.notifications import PushSubscription
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 
 
 async def list_subscriptions(user_id: int) -> list[PushSubscription]:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = await session.execute(select(PushSubscription).where(PushSubscription.user_id == user_id))
         return list(rows.scalars().all())
 
@@ -26,7 +26,7 @@ async def save_subscription(
     actualiza en vez de duplicar la fila.
     """
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         stmt = (
             pg_insert(PushSubscription)
             .values(
@@ -50,19 +50,19 @@ async def save_subscription(
             )
         )
         await session.execute(stmt)
-        await session.commit()
+        await session.flush()
 
 async def delete_subscription(user_id: int, endpoint: str) -> None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         await session.execute(
             delete(PushSubscription).where(
                 PushSubscription.user_id == user_id,
                 PushSubscription.endpoint == endpoint,
             )
         )
-        await session.commit()
+        await session.flush()
 
 async def _delete_dead_subscription(endpoint: str) -> None:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         await session.execute(delete(PushSubscription).where(PushSubscription.endpoint == endpoint))
-        await session.commit()
+        await session.flush()

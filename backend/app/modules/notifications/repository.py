@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
 from domain_types import NotificationType
 from app.db.models.notifications import UserNotification
-from app.db.session import get_sessionmaker
 from app.modules.notifications.policies import (_notification)
+from app.db.uow import session_scope
 
 async def create_system_notification(
     user_id: int,
@@ -17,7 +17,7 @@ async def create_system_notification(
     metadata: dict | None = None,
 ) -> dict:
     now = datetime.now(timezone.utc)
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         notification_id = (await session.execute(
             insert(UserNotification).values(
                 user_id=user_id,
@@ -31,7 +31,7 @@ async def create_system_notification(
                 created_at=now,
             ).returning(UserNotification.id)
         )).scalar_one()
-        await session.commit()
+        await session.flush()
         row = await session.get(UserNotification, notification_id)
     return _notification(row)
 
@@ -41,7 +41,7 @@ async def create_mention_notifications(note: dict, user_ids: list[int], actor) -
         return []
     now = datetime.now(timezone.utc)
     created: list[tuple[int, int]] = []
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         for user_id in recipients:
             notification_id = (await session.execute(
                 insert(UserNotification).values(
@@ -57,7 +57,7 @@ async def create_mention_notifications(note: dict, user_ids: list[int], actor) -
                 ).returning(UserNotification.id)
             )).scalar_one()
             created.append((user_id, notification_id))
-        await session.commit()
+        await session.flush()
         rows = (await session.execute(
             select(UserNotification).where(UserNotification.id.in_([item[1] for item in created]))
         )).scalars().all()
@@ -78,7 +78,7 @@ async def list_notifications(
         .offset(offset)
         .limit(limit + 1)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).scalars().all()
         unread_count = await session.scalar(
             select(func.count(UserNotification.id)).where(
@@ -93,27 +93,27 @@ async def list_notifications(
     }
 
 async def mark_notification_read(notification_id: int, user_id: int) -> bool:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             update(UserNotification)
             .where(UserNotification.id == notification_id, UserNotification.user_id == user_id)
             .values(read_at=func.coalesce(UserNotification.read_at, datetime.now(timezone.utc)))
         )
-        await session.commit()
+        await session.flush()
     return result.rowcount > 0
 
 async def mark_all_notifications_read(user_id: int) -> int:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             update(UserNotification)
             .where(UserNotification.user_id == user_id, UserNotification.read_at.is_(None))
             .values(read_at=datetime.now(timezone.utc))
         )
-        await session.commit()
+        await session.flush()
     return result.rowcount
 
 async def mark_lead_notifications_read(lead_id: str, user_id: int) -> int:
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         result = await session.execute(
             update(UserNotification)
             .where(
@@ -123,5 +123,5 @@ async def mark_lead_notifications_read(lead_id: str, user_id: int) -> int:
             )
             .values(read_at=datetime.now(timezone.utc))
         )
-        await session.commit()
+        await session.flush()
     return result.rowcount
