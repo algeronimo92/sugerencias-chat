@@ -15,7 +15,7 @@ from app.modules.issue_reports.events import (
     IssueReportsChanged,
     IssueReportStatusChanged,
 )
-from app.modules.issue_reports.service import list_active_admin_ids
+from app.modules.issue_reports.queries import list_active_admin_ids
 from app.modules.notifications.ports.push_service import send_push_to_user
 from app.modules.notifications.ports.service import create_system_notification
 from app.realtime.ws_manager import manager

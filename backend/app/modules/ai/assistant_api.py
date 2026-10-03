@@ -28,8 +28,6 @@ from app.modules.ai.knowledge_service import (
     update_document,
 )
 from app.modules.media.ports.media_library_service import (set_media_asset_ai_description)
-from app.core.events import publish
-from app.modules.media.public import MediaLibraryChanged
 
 router = APIRouter(prefix="/api/ai", tags=["ai-assistant"])
 
@@ -94,5 +92,4 @@ async def update_ai_resource(asset_id: int, body: AIResourceBody):
     asset = await set_media_asset_ai_description(asset_id, body.ai_description)
     if asset is None:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    await publish(MediaLibraryChanged())
     return asset

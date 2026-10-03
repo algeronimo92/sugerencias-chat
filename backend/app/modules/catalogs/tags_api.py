@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.catalogs.schemas import Tag, TagCreate, TagUpdate
 from app.modules.auth.public import get_current_user, require_admin
-from app.modules.catalogs.service import TagAlreadyExistsError, create_tag, list_tags, update_tag
+from app.modules.catalogs.queries import list_tags
+from app.modules.catalogs.service import TagAlreadyExistsError, create_tag, update_tag
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")

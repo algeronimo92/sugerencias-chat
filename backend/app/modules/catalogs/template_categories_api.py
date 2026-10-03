@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.catalogs.schemas import TemplateCategoryCreate, TemplateCategoryItem, TemplateCategoryUpdate
 from app.modules.auth.public import get_current_user, require_admin
-from app.modules.catalogs.template_categories_service import TemplateCategoryAlreadyExistsError, create_template_category, list_template_categories, update_template_category
+from app.modules.catalogs.template_categories_queries import list_template_categories
+from app.modules.catalogs.template_categories_service import TemplateCategoryAlreadyExistsError, create_template_category, update_template_category
 
 router = APIRouter(prefix="/api/template-categories", tags=["template-categories"])
 

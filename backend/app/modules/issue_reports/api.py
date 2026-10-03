@@ -17,24 +17,14 @@ from app.modules.issue_reports.schemas import (
 )
 from app.modules.media.ports.media_upload import (normalize_media_content_type, save_media_file)
 from app.modules.auth.public import get_current_user
+from app.modules.issue_reports.queries import get_issue_report, get_issue_report_detail, list_issue_reports
 from app.modules.issue_reports.service import (
     InvalidReportContextError,
-    create_issue_report,
-    create_issue_report_comment,
-    get_issue_report,
-    get_issue_report_detail,
-    list_active_admin_ids,
-    list_issue_reports,
+    comment_issue_report,
+    file_issue_report,
     update_issue_report,
 )
-from app.core.events import publish
 from app.integrations.storage.media_storage import (MediaStorageError, delete_media)
-from app.modules.issue_reports.events import (
-    IssueReportCommented,
-    IssueReportFiled,
-    IssueReportsChanged,
-    IssueReportStatusChanged,
-)
 
 
 router = APIRouter(prefix="/api/issue-reports", tags=["issue-reports"])
@@ -98,7 +88,7 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
                 "size_bytes": len(raw),
             })
 
-        report = await create_issue_report(
+        report = await file_issue_report(
             {
                 "title": title,
                 "description": description,
@@ -107,7 +97,8 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
                 "technical_context": body.technical_context,
             },
             attachments,
-            user.id,
+            reporter_id=user.id,
+            reporter_name=user.name,
         )
     except HTTPException:
         await _delete_saved(saved_urls)
@@ -122,10 +113,6 @@ async def post_report(body: IssueReportCreate, user: User = Depends(get_current_
         await _delete_saved(saved_urls)
         raise
 
-    await publish(IssueReportFiled(
-        report_id=report["id"], public_code=report["public_code"], title=report["title"],
-        reporter_id=user.id, reporter_name=user.name,
-    ))
     return report
 
 
@@ -147,24 +134,9 @@ async def patch_report(
 ):
     if user.role != "admin":
         raise HTTPException(403, "Solo un administrador puede cambiar el estado")
-    previous = await get_issue_report(report_id)
-    if previous is None:
-        raise HTTPException(404, "Reporte no encontrado")
     report = await update_issue_report(report_id, body.status, body.priority, user.id)
-    assert report is not None
-    if report["reporter_user_id"] != user.id and previous["status"] != report["status"]:
-        labels = {
-            IssueReportStatus.NEW.value: "Nuevo",
-            IssueReportStatus.IN_REVIEW.value: "En revisión",
-            IssueReportStatus.NEEDS_INFO.value: "Necesita información",
-            IssueReportStatus.RESOLVED.value: "Resuelto",
-        }
-        await publish(IssueReportStatusChanged(
-            report_id=report["id"], public_code=report["public_code"], title=report["title"],
-            status_label=labels[report["status"]], reporter_id=report["reporter_user_id"],
-        ))
-    else:
-        await publish(IssueReportsChanged())
+    if report is None:
+        raise HTTPException(404, "Reporte no encontrado")
     return report
 
 
@@ -182,15 +154,7 @@ async def post_report_comment(
     content = body.content.strip()
     if not content:
         raise HTTPException(400, "El comentario no puede estar vacío")
-    comment = await create_issue_report_comment(report_id, user.id, content)
-
-    recipient_ids = (
-        [report["reporter_user_id"]]
-        if user.role == "admin"
-        else await list_active_admin_ids()
+    comment = await comment_issue_report(
+        report, author_id=user.id, author_name=user.name, author_is_admin=user.role == "admin", content=content,
     )
-    await publish(IssueReportCommented(
-        report_id=report_id, public_code=report["public_code"], author_id=user.id, author_name=user.name,
-        content=content, recipient_ids=tuple(recipient_ids),
-    ))
     return comment

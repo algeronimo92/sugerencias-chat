@@ -4,7 +4,7 @@ import pytest
 
 from app.integrations.meta_webhook import processor
 from app.integrations.meta_webhook.inbox import InboxEvent, split_changes
-from app.modules.catalogs.template_service import _meta_managed_template_values
+from app.modules.catalogs.template_policies import _meta_managed_template_values
 from tests.meta_fixtures import WABA_ID, webhook_body
 from app.realtime import ws_manager
 
@@ -34,9 +34,9 @@ async def test_template_change_fetches_full_meta_state_replaces_and_broadcasts(m
         assert meta_template_id == "META_1"
         return remote
 
-    async def fake_replace(meta_template_id, representation):
+    async def fake_replace(meta_template_id, representation, *, source=None):
         nonlocal received
-        received = (meta_template_id, representation)
+        received = (meta_template_id, representation, source)
         return [7]
 
     async def fake_broadcast(payload):
@@ -50,8 +50,9 @@ async def test_template_change_fetches_full_meta_state_replaces_and_broadcasts(m
     assert event.payload["entry_id"] == WABA_ID
     await processor.process_change(event)
 
-    assert received == ("META_1", remote)
-    assert broadcasts == [{"type": "templates_updated", "template_ids": [7], "source": "meta_webhook"}]
+    assert received == ("META_1", remote, "meta_webhook")
+    # El aviso lo registra el comando de catalogs (ver el test de abajo).
+    assert broadcasts == []
 
 
 @pytest.mark.asyncio
@@ -59,7 +60,7 @@ async def test_template_change_unlinked_is_acknowledged_without_broadcast(monkey
     async def fake_get(_meta_template_id):
         return {"id": "META_EXTERNAL", "components": []}
 
-    async def fake_replace(_meta_template_id, _remote):
+    async def fake_replace(_meta_template_id, _remote, *, source=None):
         return []
 
     async def unexpected_broadcast(_payload):
@@ -108,3 +109,18 @@ def test_full_meta_mapper_replaces_category_status_content_and_components() -> N
     assert values["official_buttons"] == [
         {"type": "url", "text": "Ver", "url": "https://example.test"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_replacing_from_meta_announces_the_templates_it_touched(monkeypatch, collected_events) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.modules.catalogs import template_repository, template_service
+    from app.modules.catalogs.events import TemplatesChanged
+
+    monkeypatch.setattr(template_repository, "replace_official_template_from_meta", AsyncMock(side_effect=[[7], []]))
+
+    await template_service.replace_official_template_from_meta("META_1", {}, source="meta_webhook")
+    await template_service.replace_official_template_from_meta("META_EXTERNAL", {}, source="meta_webhook")
+
+    assert collected_events == [TemplatesChanged(template_ids=(7,), source="meta_webhook")]

@@ -593,3 +593,30 @@ def test_published_types_are_leaves():
             continue
         imported = _imported_modules(path)
         assert imported <= {"enum", "enum.StrEnum"}, (path, imported)
+
+
+# Módulos CRUD planos: la API lee de *_queries.py y escribe por comandos del
+# servicio, que abren la unidad de trabajo y anuncian lo que cambió. Un
+# servicio que solo reenvía al repositorio es una capa vacía.
+FLAT_MODULES = ("catalogs", "media", "notifications", "issue_reports", "tasks")
+
+
+def test_flat_module_services_are_not_pass_throughs():
+    offenders = set()
+    for module in FLAT_MODULES:
+        for path in (MODULES / module).glob("*service.py"):
+            for node in ast.parse(path.read_text(encoding="utf-8")).body:
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                body = [s for s in node.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+                if len(body) != 1 or not isinstance(body[0], ast.Return):
+                    continue
+                value = body[0].value.value if isinstance(body[0].value, ast.Await) else body[0].value
+                if (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and isinstance(value.func.value, ast.Name)
+                    and value.func.value.id.endswith("repository")
+                ):
+                    offenders.add(f"{path.relative_to(BACKEND)}::{node.name}")
+    assert offenders == set()

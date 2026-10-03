@@ -13,10 +13,9 @@ from app.db.models.auth import User
 from app.modules.media.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from app.modules.media.media_upload import normalize_media_content_type, save_media_file
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
-from app.modules.media.media_library_service import create_media_asset, delete_media_asset, list_media_assets, rename_media_asset
+from app.modules.media.media_library_queries import list_media_assets
+from app.modules.media.media_library_service import create_media_asset, delete_media_asset, rename_media_asset
 from app.integrations.storage.media_storage import MediaNotFoundError, MediaStorageError, delete_media, media_size, read_media_bytes
-from app.core.events import publish
-from app.modules.media.events import MediaLibraryChanged
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,6 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
         except MediaStorageError:
             pass
         raise
-    await publish(MediaLibraryChanged())
     return item
 
 
@@ -108,7 +106,6 @@ async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(re
         except MediaStorageError:
             pass
         raise
-    await publish(MediaLibraryChanged())
     return item
 
 
@@ -125,7 +122,6 @@ async def delete_library_asset(asset_id: int, _admin: User = Depends(require_adm
         raise HTTPException(503, str(exc))
     if media_url is None:
         raise HTTPException(404, "Archivo no encontrado")
-    await publish(MediaLibraryChanged())
     return {"status": "ok"}
 
 
@@ -141,5 +137,4 @@ async def patch_library_asset(
         raise HTTPException(400, str(exc))
     if item is None:
         raise HTTPException(404, "Archivo no encontrado")
-    await publish(MediaLibraryChanged(templates_affected=True))
     return item

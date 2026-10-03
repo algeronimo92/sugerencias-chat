@@ -1,4 +1,4 @@
-"""Atomic domain persistence. No HTTP, realtime, or service imports."""
+"""Escrituras de las notificaciones. Las lecturas viven en queries.py."""
 from __future__ import annotations
 from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
@@ -63,34 +63,6 @@ async def create_mention_notifications(note: dict, user_ids: list[int], actor) -
         )).scalars().all()
     by_id = {row.id: _notification(row) for row in rows}
     return [(user_id, by_id[notification_id]) for user_id, notification_id in created]
-
-async def list_notifications(
-    user_id: int,
-    unread_only: bool = False,
-    limit: int = 50,
-    offset: int = 0,
-) -> dict:
-    stmt = select(UserNotification).where(UserNotification.user_id == user_id)
-    if unread_only:
-        stmt = stmt.where(UserNotification.read_at.is_(None))
-    stmt = (
-        stmt.order_by(UserNotification.created_at.desc(), UserNotification.id.desc())
-        .offset(offset)
-        .limit(limit + 1)
-    )
-    async with session_scope() as session:
-        rows = (await session.execute(stmt)).scalars().all()
-        unread_count = await session.scalar(
-            select(func.count(UserNotification.id)).where(
-                UserNotification.user_id == user_id,
-                UserNotification.read_at.is_(None),
-            )
-        )
-    return {
-        "items": [_notification(row) for row in rows[:limit]],
-        "unread_count": int(unread_count or 0),
-        "has_more": len(rows) > limit,
-    }
 
 async def mark_notification_read(notification_id: int, user_id: int) -> bool:
     async with session_scope() as session:

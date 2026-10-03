@@ -404,5 +404,35 @@ def store_patch(name, new=None):
     return _patching(patch_store, name, new)
 
 
+@pytest.fixture
+def collected_events(monkeypatch) -> list:
+    """Unidad de trabajo sin base: los comandos corren contra repositorios
+    falsos y se registra lo que cada uno anunció."""
+    from contextlib import asynccontextmanager
+
+    from app.db import uow
+
+    class _Session:
+        @asynccontextmanager
+        async def begin(self):
+            yield self
+
+        async def close(self):
+            return None
+
+    events: list = []
+
+    async def record(pending):
+        events.extend(pending)
+
+    async def nothing(_events):
+        return None
+
+    monkeypatch.setattr(uow, "get_sessionmaker", lambda: _Session)
+    monkeypatch.setattr(uow, "dispatch_in_transaction", record)
+    monkeypatch.setattr(uow, "dispatch_after_commit", nothing)
+    return events
+
+
 # Los adaptadores y suscriptores reales, igual que en la API y los workers.
 configure_composition()

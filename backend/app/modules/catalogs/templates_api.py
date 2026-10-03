@@ -8,25 +8,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
-from app.modules.catalogs.service import get_lead_service_by_name
+from app.modules.catalogs.queries import get_lead_service_by_name
 from app.modules.catalogs.template_service import (
     add_template_attachment,
     create_personal_template,
     create_template,
     delete_template as delete_template_record,
-    list_templates,
     record_template_use,
     replace_official_template_from_meta,
     remove_template_attachment,
     set_template_favorite,
     update_template,
 )
-from app.modules.catalogs.template_categories_service import get_template_category_by_name
+from app.modules.catalogs.template_categories_queries import get_template_category_by_name
+from app.modules.catalogs.template_queries import list_templates
 from app.modules.media.ports.media_upload import (normalize_media_content_type, save_media_file)
 from app.modules.media.ports.media_library_service import (create_media_asset, delete_media_asset, get_media_asset)
 from app.integrations.storage.media_storage import (MediaStorageError, delete_media, media_size)
-from app.core.events import publish
-from app.modules.catalogs.events import TemplatesChanged
 from app.integrations.meta.client import (
     MetaApiError, create_whatsapp_template, delete_whatsapp_template, describe_template_error,
     download_template_header_example, get_whatsapp_template, list_whatsapp_templates,
@@ -231,7 +229,6 @@ async def post_import_meta_template(
         item = await create_template(values, admin.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await publish(TemplatesChanged())
     return item
 
 
@@ -266,7 +263,6 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
         item = await create_template(values, admin.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await publish(TemplatesChanged())
     return item
 
 
@@ -287,7 +283,6 @@ async def post_personal_template(body: PersonalTemplateCreate, user: User = Depe
         item = await create_personal_template(values["name"], values["content"], values["shortcut"], user.id)
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    await publish(TemplatesChanged())
     return item
 
 
@@ -355,7 +350,6 @@ async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admi
         except MediaStorageError:
             pass
         raise HTTPException(404, "Plantilla no encontrada")
-    await publish(TemplatesChanged(media_library_affected=True))
     return item
 
 
@@ -380,7 +374,6 @@ async def post_library_attachment(
         raise HTTPException(400, str(exc))
     if item is None:
         raise HTTPException(404, "Plantilla no encontrada")
-    await publish(TemplatesChanged(media_library_affected=True))
     return item
 
 
@@ -394,7 +387,6 @@ async def delete_attachment(attachment_id: int, _admin: User = Depends(require_a
             await asyncio.to_thread(delete_media, attachment["media_url"])
         except MediaStorageError as exc:
             raise HTTPException(503, str(exc))
-    await publish(TemplatesChanged(media_library_affected=True))
     return {"status": "ok"}
 
 
@@ -466,7 +458,6 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         raise HTTPException(409, str(exc))
     if not item:
         raise HTTPException(404, "Plantilla no encontrada")
-    await publish(TemplatesChanged())
     return item
 
 
@@ -487,7 +478,6 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
             await delete_whatsapp_template(deleted["official_name"], deleted["meta_template_id"])
         except MetaApiError as exc:
             logger.warning("No se pudo borrar la plantilla %s en Meta: %s", deleted["official_name"], exc)
-    await publish(TemplatesChanged(media_library_affected=True))
     return {"status": "ok"}
 
 
@@ -511,5 +501,4 @@ async def post_sync_template(template_id: int, admin: User = Depends(require_adm
         for candidate in await list_templates(admin.id, True)
         if candidate["id"] == template_id
     )
-    await publish(TemplatesChanged())
     return item

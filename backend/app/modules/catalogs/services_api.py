@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.catalogs.schemas import LeadServiceCreate, LeadServiceItem, LeadServiceUpdate
 from app.modules.auth.public import get_current_user, require_admin
-from app.modules.catalogs.service import LeadServiceAlreadyExistsError, create_lead_service, list_lead_services, update_lead_service
+from app.modules.catalogs.queries import list_lead_services
+from app.modules.catalogs.service import LeadServiceAlreadyExistsError, create_lead_service, update_lead_service
 
 router = APIRouter(prefix="/api/services", tags=["lead-services"])
 

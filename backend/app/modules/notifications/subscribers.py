@@ -11,8 +11,11 @@ from app.modules.conversations.public import NoteMentionsAdded, NoteMentionsRead
 from app.modules.issue_reports.ports.service import list_active_admin_ids
 from app.modules.notifications.events import NotificationCreated, NotificationsRead
 from app.modules.notifications.push_service import send_push_to_user
-from app.modules.notifications.repository import create_mention_notifications, mark_lead_notifications_read
-from app.modules.notifications.service import create_system_notification
+from app.modules.notifications.service import (
+    create_mention_notifications,
+    create_system_notification,
+    mark_lead_notifications_read,
+)
 from app.realtime.ws_manager import manager
 from app.modules.notifications.types import NotificationType
 

@@ -149,7 +149,7 @@ async def test_report_accepts_image_and_persists_metadata(monkeypatch):
         saved.append((content_type, data_base64, filename))
         return "/media/evidence.png"
 
-    async def fake_create(values, attachments, reporter_id):
+    async def fake_create(values, attachments, *, reporter_id, reporter_name):
         nonlocal created
         created = (values, attachments, reporter_id)
         return report_item(attachments=[{"id": 1, **attachments[0]}])
@@ -161,8 +161,7 @@ async def test_report_accepts_image_and_persists_metadata(monkeypatch):
         return None
 
     monkeypatch.setattr(issue_reports, "save_media_file", fake_save)
-    monkeypatch.setattr(issue_reports, "create_issue_report", fake_create)
-    monkeypatch.setattr(issue_reports, "list_active_admin_ids", no_admins)
+    monkeypatch.setattr(issue_reports, "file_issue_report", fake_create)
     monkeypatch.setattr(ws_manager.manager, "broadcast", no_broadcast)
 
     encoded = base64.b64encode(b"fake-png").decode("ascii")

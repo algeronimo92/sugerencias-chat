@@ -1,6 +1,6 @@
 """Consumer contract: only the operations used outside this capability."""
 
-from app.modules.issue_reports.service import (
+from app.modules.issue_reports.queries import (
     list_active_admin_ids,
 )
 

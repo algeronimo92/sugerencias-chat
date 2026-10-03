@@ -1,185 +1,20 @@
-"""Persistence operations for the issue reports module."""
+"""Escrituras de los reportes de problemas. Las lecturas viven en queries.py."""
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import aliased
 
-from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
-from app.db.models.auth import User
-from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
 from app.core.time_format import iso_utc
+from app.db.models.auth import User
+from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
 from app.db.uow import session_scope
+from app.modules.issue_reports.queries import get_issue_report
+from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
 
 
 class InvalidReportContextError(Exception):
     """El lead o el usuario al que el reporte hace referencia ya no existe."""
-
-
-Reporter = aliased(User)
-Resolver = aliased(User)
-CommentAuthor = aliased(User)
-EventActor = aliased(User)
-
-
-def _public_code(report_id: int) -> str:
-    return f"REP-{report_id:06d}"
-
-
-def _report_query():
-    return (
-        select(
-            IssueReport.id,
-            IssueReport.reporter_user_id,
-            Reporter.name.label("reporter_name"),
-            IssueReport.title,
-            IssueReport.description,
-            IssueReport.status,
-            IssueReport.priority,
-            IssueReport.current_path,
-            IssueReport.lead_id,
-            IssueReport.technical_context,
-            IssueReport.resolved_at,
-            Resolver.name.label("resolved_by_name"),
-            IssueReport.created_at,
-            IssueReport.updated_at,
-            select(func.count(IssueReportComment.id))
-            .where(IssueReportComment.report_id == IssueReport.id)
-            .correlate(IssueReport)
-            .scalar_subquery()
-            .label("comment_count"),
-        )
-        .join(Reporter, Reporter.id == IssueReport.reporter_user_id)
-        .outerjoin(Resolver, Resolver.id == IssueReport.resolved_by_user_id)
-    )
-
-
-async def _attachments_by_report(report_ids: list[int]) -> dict[int, list[dict]]:
-    if not report_ids:
-        return {}
-    stmt = (
-        select(IssueReportAttachment)
-        .where(IssueReportAttachment.report_id.in_(report_ids))
-        .order_by(IssueReportAttachment.id.asc())
-    )
-    async with session_scope() as session:
-        rows = (await session.execute(stmt)).scalars().all()
-    grouped: dict[int, list[dict]] = {}
-    for row in rows:
-        grouped.setdefault(row.report_id, []).append({
-            "id": row.id,
-            "media_url": row.media_url,
-            "filename": row.filename,
-            "content_type": row.content_type,
-            "size_bytes": row.size_bytes,
-        })
-    return grouped
-
-
-def _serialize(row, attachments: list[dict]) -> dict:
-    return {
-        "id": row["id"],
-        "public_code": _public_code(row["id"]),
-        "reporter_user_id": row["reporter_user_id"],
-        "reporter_name": row["reporter_name"],
-        "title": row["title"],
-        "description": row["description"],
-        "status": row["status"],
-        "priority": row["priority"],
-        "current_path": row["current_path"],
-        "lead_id": row["lead_id"],
-        "technical_context": row["technical_context"] or {},
-        "attachments": attachments,
-        "comment_count": row["comment_count"],
-        "resolved_at": iso_utc(row["resolved_at"]),
-        "resolved_by_name": row["resolved_by_name"],
-        "created_at": iso_utc(row["created_at"]),
-        "updated_at": iso_utc(row["updated_at"]),
-    }
-
-
-async def list_issue_reports(
-    user_id: int,
-    is_admin: bool,
-    status: str | None = None,
-    priority: str | None = None,
-) -> list[dict]:
-    stmt = _report_query()
-    if not is_admin:
-        stmt = stmt.where(IssueReport.reporter_user_id == user_id)
-    if status:
-        stmt = stmt.where(IssueReport.status == status)
-    if priority:
-        stmt = stmt.where(IssueReport.priority == priority)
-    stmt = stmt.order_by(IssueReport.created_at.desc(), IssueReport.id.desc()).limit(500)
-    async with session_scope() as session:
-        rows = (await session.execute(stmt)).mappings().all()
-    attachments = await _attachments_by_report([row["id"] for row in rows])
-    return [_serialize(row, attachments.get(row["id"], [])) for row in rows]
-
-
-async def get_issue_report(report_id: int) -> dict | None:
-    async with session_scope() as session:
-        row = (await session.execute(
-            _report_query().where(IssueReport.id == report_id)
-        )).mappings().one_or_none()
-    if row is None:
-        return None
-    attachments = await _attachments_by_report([report_id])
-    return _serialize(row, attachments.get(report_id, []))
-
-
-async def get_issue_report_detail(report_id: int) -> dict | None:
-    report = await get_issue_report(report_id)
-    if report is None:
-        return None
-    comments_stmt = (
-        select(
-            IssueReportComment.id,
-            IssueReportComment.author_user_id,
-            CommentAuthor.name.label("author_name"),
-            CommentAuthor.role.label("author_role"),
-            IssueReportComment.content,
-            IssueReportComment.created_at,
-        )
-        .join(CommentAuthor, CommentAuthor.id == IssueReportComment.author_user_id)
-        .where(IssueReportComment.report_id == report_id)
-        .order_by(IssueReportComment.created_at.asc(), IssueReportComment.id.asc())
-    )
-    events_stmt = (
-        select(
-            IssueReportEvent.id,
-            EventActor.name.label("actor_name"),
-            IssueReportEvent.event_type,
-            IssueReportEvent.previous_value,
-            IssueReportEvent.new_value,
-            IssueReportEvent.created_at,
-        )
-        .outerjoin(EventActor, EventActor.id == IssueReportEvent.actor_user_id)
-        .where(IssueReportEvent.report_id == report_id)
-        .order_by(IssueReportEvent.created_at.asc(), IssueReportEvent.id.asc())
-    )
-    async with session_scope() as session:
-        comment_rows = (await session.execute(comments_stmt)).mappings().all()
-        event_rows = (await session.execute(events_stmt)).mappings().all()
-    report["comments"] = [{
-        "id": row["id"],
-        "author_user_id": row["author_user_id"],
-        "author_name": row["author_name"],
-        "author_role": row["author_role"],
-        "content": row["content"],
-        "created_at": iso_utc(row["created_at"]),
-    } for row in comment_rows]
-    report["events"] = [{
-        "id": row["id"],
-        "actor_name": row["actor_name"],
-        "event_type": row["event_type"],
-        "previous_value": row["previous_value"],
-        "new_value": row["new_value"],
-        "created_at": iso_utc(row["created_at"]),
-    } for row in event_rows]
-    return report
 
 
 async def create_issue_report(values: dict, attachments: list[dict], reporter_user_id: int) -> dict:
@@ -300,11 +135,3 @@ async def create_issue_report_comment(report_id: int, author_user_id: int, conte
         "content": row["content"],
         "created_at": iso_utc(row["created_at"]),
     }
-
-
-async def list_active_admin_ids() -> list[int]:
-    async with session_scope() as session:
-        rows = (await session.execute(
-            select(User.id).where(User.role == "admin", User.is_active.is_(True))
-        )).scalars().all()
-    return list(rows)

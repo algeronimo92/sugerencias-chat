@@ -44,8 +44,6 @@ from app.integrations.whatsapp.identity import (
     identity_from_inbound,
     resolve_whatsapp_identity,
 )
-from app.core.events import publish
-from app.modules.catalogs.public import TemplatesChanged
 from app.tenancy.context import TenantContext, tenant_context
 from app.tenancy.resolver import resolve_tenant_by_phone_number_id, resolve_tenant_by_waba_id
 
@@ -258,9 +256,7 @@ async def _template_change(change: dict, _webhook_event_id: str) -> None:
     if not template_id:
         raise ValueError(f"Evento {change['field']} sin id de plantilla")
     remote = await meta_service.get_whatsapp_template(str(template_id))
-    template_ids = await replace_official_template_from_meta(str(template_id), remote)
-    if template_ids:
-        await publish(TemplatesChanged(template_ids=tuple(template_ids), source="meta_webhook"))
+    await replace_official_template_from_meta(str(template_id), remote, source="meta_webhook")
 
 
 ChangeHandler = Callable[[dict, str], Awaitable[None]]

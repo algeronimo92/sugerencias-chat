@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 from app.modules.automations import api as automations
 from app.modules.automations import queries
 from app.modules.catalogs import templates_api as templates
-from app.modules.catalogs import template_service
+from app.modules.catalogs import template_policies
 
 
 @pytest.mark.parametrize(
@@ -22,8 +22,8 @@ from app.modules.catalogs import template_service
     ],
 )
 def test_template_reference_is_found_in_simple_and_visual_definitions(definition):
-    assert template_service._references_template(definition, 7)
-    assert not template_service._references_template(definition, 8)
+    assert template_policies._references_template(definition, 7)
+    assert not template_policies._references_template(definition, 8)
 
 
 @pytest.mark.asyncio
