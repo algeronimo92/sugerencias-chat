@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
 from app.db.uow import session_scope
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.domain.types import AutomationExecutionStatus
 from app.modules.automations.queries import get_automation_rule
 
 _RULE_FIELDS_WITH_SERVICES = ("conditions", "actions", "flow_definition", "published_flow_definition")

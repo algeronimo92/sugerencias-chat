@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
-from domain_types import AutomationBuilderMode, AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
 
 from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
 from app.modules.automations.domain.limits import FLOW_NODE_TYPES, MAX_FLOW_EDGES, MAX_FLOW_NODES, TRIGGER_TYPES

@@ -1,7 +1,7 @@
 """Contratos HTTP de notifications."""
 
 from pydantic import BaseModel
-from domain_types import NotificationType
+from app.modules.notifications.types import NotificationType
 
 
 class NotificationItem(BaseModel):

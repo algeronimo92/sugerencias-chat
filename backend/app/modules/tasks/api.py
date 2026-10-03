@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from domain_types import TaskStatus
+from app.modules.tasks.types import TaskStatus
 from app.db.models.auth import User
 from app.modules.tasks.schemas import TaskCreate, TaskItem, TaskUpdate
 from app.modules.auth.public import get_current_user

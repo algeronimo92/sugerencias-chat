@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 
 from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
 from app.db.models.auth import User
-from domain_types import IssueReportPriority, IssueReportStatus
+from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
 from app.core.time_format import iso_utc
 from app.db.uow import session_scope
 

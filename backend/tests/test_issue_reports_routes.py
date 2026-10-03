@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from domain_types import IssueReportPriority, IssueReportStatus
+from app.modules.issue_reports.ports.types import IssueReportPriority, IssueReportStatus
 from app.modules.issue_reports import api as issue_reports
 from app.modules.issue_reports.schemas import IssueReportCommentCreate, IssueReportCreate, IssueReportUpdate
 from app.realtime import ws_manager

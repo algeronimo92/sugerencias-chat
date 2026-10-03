@@ -11,7 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from domain_types import LEAD_STAGE_KEY_PATTERN
+from app.modules.leads.ports.types import LEAD_STAGE_KEY_PATTERN
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
 BUSINESS_START_HOUR = 8

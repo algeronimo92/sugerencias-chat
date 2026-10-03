@@ -18,7 +18,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 
-from domain_types import LeadStageKind
+from app.modules.leads.domain.types import LeadStageKind
 
 from app.db.models.appointments import Appointment
 from app.db.models.auth import User

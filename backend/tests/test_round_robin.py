@@ -4,7 +4,7 @@ que exige conectarlas todas, y el motor repartiendo una ejecución por turno.
 
 import pytest
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations.application.engine import run_visual_execution
 from app.modules.automations.domain.flow_graph import validate_graph_topology
 from app.modules.automations.domain.validation import normalize_round_robin

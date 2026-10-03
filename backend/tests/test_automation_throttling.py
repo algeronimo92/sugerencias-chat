@@ -9,7 +9,7 @@ import dataclasses
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations.application.conditions import matches_condition_values
 from app.modules.automations.application.engine import _rate_limit_reached, run_execution
 from app.modules.automations.domain.limits import RATE_LIMIT_RETRY_MINUTES

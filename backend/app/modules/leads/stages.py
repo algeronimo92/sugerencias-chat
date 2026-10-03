@@ -35,7 +35,7 @@ from app.modules.leads.domain.stage import StageRule, require_destination
 from app.db.models.automations import AutomationRule
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.catalogs import MessageTemplate
-from domain_types import INITIAL_LEAD_STAGE, LeadStageKind
+from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LeadStageKind
 from app.db.uow import session_scope
 
 

@@ -28,7 +28,7 @@ from app.modules.leads.domain.errors import LeadAlreadyExists
 from app.modules.leads.domain.lead import ActivityRecord, Lead, TriggerMessage
 from app.modules.leads.domain.stage import StageRule
 from app.modules.leads.infrastructure.merge import merge_rows
-from domain_types import INITIAL_LEAD_STAGE
+from app.modules.leads.domain.types import INITIAL_LEAD_STAGE
 
 # Columnas que el agregado siempre necesita para decidir.
 _BASE_COLUMNS = ("id", "estado", "razon_perdido", "contador_noshow", "conversacion_version", "telefono")

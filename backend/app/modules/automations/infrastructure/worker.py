@@ -23,13 +23,8 @@ from app.db.models.leads import Lead, LeadActivity
 from app.db.models.tasks import LeadTask
 from app.db.uow import session_scope
 from app.integrations.meta_webhook.projection import reply_identifier
-from domain_types import (
-    AutomationBuilderMode,
-    AutomationExecutionStatus,
-    AutomationTrigger,
-    TaskStatus,
-    WaitAnyConditionKind,
-)
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, WaitAnyConditionKind
+from app.modules.tasks.ports.types import TaskStatus
 from app.modules.automations.application.engine import process_due_automation_executions
 from app.modules.automations.application.triggers import (
     backfill_customer_response_deadlines,

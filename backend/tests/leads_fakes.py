@@ -19,7 +19,7 @@ from app.modules.leads.application import ports
 from app.modules.leads.domain.errors import LeadAlreadyExists
 from app.modules.leads.domain.lead import ActivityRecord, Lead, TriggerMessage
 from app.modules.leads.domain.stage import StageRule
-from domain_types import LeadStageKind
+from app.modules.leads.ports.types import LeadStageKind
 
 DEFAULT_STAGES = {
     "nuevo": StageRule("nuevo", LeadStageKind.OPEN, True),

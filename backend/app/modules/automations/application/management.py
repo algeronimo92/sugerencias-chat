@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
 
 from app.db.uow import collect, unit_of_work
 from app.modules.automations.application.ports import ExecutionAlreadyRunning, automation_ports

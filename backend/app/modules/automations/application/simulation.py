@@ -3,7 +3,7 @@ nada ni gastar turnos de un Round robin."""
 
 from __future__ import annotations
 
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
 
 from app.modules.automations.application.conditions import matches_condition_values
 from app.modules.automations.application.deps import AutomationDeps, default_deps

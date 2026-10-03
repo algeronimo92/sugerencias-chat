@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationActionType, AutomationExecutionStatus, NotificationType
+from app.modules.automations.ports.types import AutomationActionType, AutomationExecutionStatus
+from app.modules.notifications.ports.types import NotificationType
 from app.modules.automations import subscribers
 from app.modules.automations.application.actions import execute_action
 from app.modules.automations.application.management import retry_automation_execution

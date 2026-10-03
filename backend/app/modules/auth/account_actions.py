@@ -25,7 +25,7 @@ from app.integrations.email_service import (
     send_password_reset,
 )
 from app.modules.auth.session_service import revoke_all_for_user
-from app.db.store_common import EmailAlreadyExistsError
+from app.modules.auth.errors import EmailAlreadyExistsError
 from app.db.uow import session_scope
 
 

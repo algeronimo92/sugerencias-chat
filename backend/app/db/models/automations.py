@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationBuilderMode, AutomationExecutionStatus
 from app.db.base import Base
 
 

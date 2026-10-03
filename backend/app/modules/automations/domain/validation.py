@@ -8,15 +8,8 @@ etiqueta o una plantilla existen y están activos) se junta en
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from domain_types import (
-    AutomationActionType,
-    AutomationRecipient,
-    AutomationTrigger,
-    FlowConditionType,
-    TaskPriority,
-    TaskType,
-    WaitAnyConditionKind,
-)
+from app.modules.automations.domain.types import AutomationActionType, AutomationRecipient, AutomationTrigger, FlowConditionType, WaitAnyConditionKind
+from app.modules.tasks.ports.types import TaskPriority, TaskType
 from app.integrations.meta.contract import limit
 from app.modules.automations.domain.limits import (
     AUTOMATION_RECIPIENTS,

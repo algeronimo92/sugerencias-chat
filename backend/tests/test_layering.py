@@ -76,6 +76,11 @@ PROVISIONING_IMPORTS = {
 }
 
 
+# Los modelos guardan valores de los enums de cada módulo (defaults y checks):
+# leen solo su contrato publicado, un archivo hoja sin dependencias.
+PUBLISHED_TYPES = re.compile(r"^app\.modules\.\w+\.ports\.types(\.\w+)?$")
+
+
 @pytest.mark.parametrize(("package", "forbidden_prefix"), [
     ("app/db", "app.modules"),
     ("app/db", "app.integrations"),
@@ -92,6 +97,7 @@ def test_layers_do_not_depend_on_forbidden_packages(package, forbidden_prefix):
             path == BACKEND / "app/tenancy/provisioning.py"
             and module in PROVISIONING_IMPORTS
         )
+        and not (package == "app/db" and PUBLISHED_TYPES.match(module))
     }
 
     assert violations == set()
@@ -577,3 +583,13 @@ def test_only_the_db_package_opens_sessions():
         and "get_sessionmaker()" in path.read_text(encoding="utf-8")
     }
     assert offenders == set()
+
+
+def test_published_types_are_leaves():
+    """Un ``types.py`` de módulo solo declara enums y constantes: lo importan
+    los modelos de la base y el dominio de otros módulos sin arrastrar nada."""
+    for path in MODULES.rglob("types.py"):
+        if "ports" in path.parts:
+            continue
+        imported = _imported_modules(path)
+        assert imported <= {"enum", "enum.StrEnum"}, (path, imported)

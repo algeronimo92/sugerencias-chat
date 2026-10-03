@@ -3,7 +3,10 @@
 from sqlalchemy import func, select, true
 from app.db.models.leads import Lead, LeadStage
 from app.db.models.conversations import WspMessage
-from app.db.store_common import KANBAN_PAGE_SIZE, _row_to_chat, _tags_by_lead
+from app.modules.conversations.ports.chat_queries import _row_to_chat, _tags_by_lead
+
+KANBAN_PAGE_SIZE = 40
+
 from app.modules.conversations.ports.chat_queries import (_chat_columns, _chat_search_condition, _last_message_subquery, _matched_message_subquery, _search_rank_expression, _visible_lead_condition)
 from app.db.uow import session_scope
 async def _ordered_stage_keys(session) -> list[str]:

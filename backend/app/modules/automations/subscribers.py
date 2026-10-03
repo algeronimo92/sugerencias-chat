@@ -39,7 +39,8 @@ from app.modules.leads.public import LeadCreated, LeadStageChanged, LeadUpdated
 from app.modules.notifications.ports.push_service import send_push_to_user
 from app.modules.notifications.ports.service import create_system_notification
 from app.realtime.ws_manager import manager
-from domain_types import AutomationTrigger, NotificationType
+from app.modules.automations.domain.types import AutomationTrigger
+from app.modules.notifications.ports.types import NotificationType
 
 logger = logging.getLogger(__name__)
 

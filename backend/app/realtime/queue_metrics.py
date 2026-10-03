@@ -17,7 +17,8 @@ from sqlalchemy import func, select
 from app.db.models.automations import AutomationExecution
 from app.db.models.tasks import LeadTask
 from app.db.models.conversations import MessageOutbox, ScheduledMessage
-from domain_types import AutomationExecutionStatus, TaskStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
+from app.modules.tasks.ports.types import TaskStatus
 from app.realtime.ws_manager import manager
 from app.tenancy.context import get_current_tenant
 from app.db.uow import session_scope

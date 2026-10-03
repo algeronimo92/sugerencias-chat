@@ -6,7 +6,7 @@ corte del bucle en run_execution/run_visual_execution."""
 import dataclasses
 from unittest.mock import AsyncMock
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations.application.engine import run_execution, run_visual_execution, save_execution
 from app.modules.automations.application.management import cancel_automation_execution, retry_automation_execution
 from app.modules.automations.domain.events import AutomationsChanged

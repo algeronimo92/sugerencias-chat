@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from domain_types import TaskPriority, TaskStatus, TaskType
+from app.modules.tasks.ports.types import TaskPriority, TaskStatus, TaskType
 from app.db.base import Base
 
 

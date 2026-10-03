@@ -9,14 +9,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timedelta, timezone
 
-from domain_types import (
-    AutomationActionType,
-    AutomationExecutionStatus,
-    FlowHandle,
-    FlowNodeType,
-    QuestionHandle,
-    WaitAnyConditionKind,
-)
+from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus, FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
 
 from app.modules.automations.application.actions import (
     execute_action,

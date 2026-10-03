@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock
 
-from domain_types import AutomationTrigger
+from app.modules.automations.ports.types import AutomationTrigger
 from app.modules.automations.application import triggers
 from app.modules.automations.domain.events import AutomationsScheduled
 from app.modules.automations.domain.flow_definition import normalize_visual_draft

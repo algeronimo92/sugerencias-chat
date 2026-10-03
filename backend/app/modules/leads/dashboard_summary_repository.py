@@ -8,7 +8,8 @@ del panel.
 from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 
-from domain_types import AutomationExecutionStatus, TaskStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
+from app.modules.tasks.ports.types import TaskStatus
 from app.db.models.appointments import Appointment
 from app.db.models.automations import AutomationExecution
 from app.db.models.conversations import WspMessage

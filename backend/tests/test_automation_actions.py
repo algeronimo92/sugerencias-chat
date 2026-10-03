@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
+from app.modules.automations.ports.types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
 from app.modules.automations.application.actions import execute_action
 from app.modules.automations.application.engine import run_execution
 from app.modules.automations.application.validation import validate_automation_rule

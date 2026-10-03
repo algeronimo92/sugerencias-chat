@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
 from app.db.models.media import MediaAsset
 from app.db.models.catalogs import MessageTemplate, TemplateAttachment, TemplateUserState

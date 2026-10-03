@@ -11,7 +11,7 @@ from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.domain.events import ScheduledMessageChanged
 from app.modules.conversations.domain.scheduling import ensure_can_cancel, normalized_send_time
 from app.modules.conversations.domain.service_window import SERVICE_WINDOW_CLOSED_DETAIL, window_is_open
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.domain.types import ScheduledMessageStatus
 
 
 def _now() -> datetime:

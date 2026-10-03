@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from domain_types import FlowHandle, FlowNodeType
+from app.modules.automations.ports.types import FlowHandle, FlowNodeType
 from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
 from app.modules.automations.domain.replies import classify_customer_reply
 from app.modules.automations.domain.rules import (

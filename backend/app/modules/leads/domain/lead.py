@@ -16,7 +16,8 @@ from typing import Any
 from uuid import uuid4
 
 from app.modules.leads.domain.stage import StageRule
-from domain_types import INITIAL_LEAD_STAGE, AutomationTrigger
+from app.modules.automations.ports.types import AutomationTrigger
+from app.modules.leads.domain.types import INITIAL_LEAD_STAGE
 
 # Cuánto del último mensaje del cliente se congela en la auditoría del cambio
 # de etapa: alcanza para entender por qué se movió sin guardar el chat entero.

@@ -357,8 +357,6 @@ def patch_store(monkeypatch, name, value):
     for package in ("conversations", "leads", "catalogs", "tasks", "auth", "ai", "appointments", "platform"):
         facade = f"app.modules.{package}.public" if package in {"auth", "ai", "platform"} else f"app.modules.{package}"
         modules.extend(_package_modules(facade, f"app.modules.{package}"))
-    from app.db import store_common
-    modules.append(store_common)
     _patch_everywhere(monkeypatch, modules, name, value)
 
 

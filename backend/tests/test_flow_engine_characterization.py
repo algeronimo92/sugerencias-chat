@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationActionType
+from app.modules.automations.ports.types import AutomationActionType
 from app.modules.automations.application import simulation
 from app.modules.automations.application.engine import run_visual_execution
 from app.modules.automations.application.flow_nodes import FLOW_NODE_HANDLERS
@@ -248,6 +248,6 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
 
 
 def test_every_flow_node_type_has_a_handler():
-    from domain_types import FlowNodeType
+    from app.modules.automations.ports.types import FlowNodeType
 
     assert set(FLOW_NODE_HANDLERS) == set(FlowNodeType)

@@ -14,7 +14,7 @@ from app.modules.notifications.push_service import send_push_to_user
 from app.modules.notifications.repository import create_mention_notifications, mark_lead_notifications_read
 from app.modules.notifications.service import create_system_notification
 from app.realtime.ws_manager import manager
-from domain_types import NotificationType
+from app.modules.notifications.types import NotificationType
 
 logger = logging.getLogger(__name__)
 

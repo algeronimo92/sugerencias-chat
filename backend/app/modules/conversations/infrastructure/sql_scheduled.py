@@ -11,7 +11,7 @@ from app.db.models.conversations import ScheduledMessage
 from app.db.models.leads import Lead
 from app.db.uow import current_session, session_scope
 from app.modules.conversations.scheduled_message_policies import CLAIM_LIMIT, STALE_PROCESSING_MINUTES, _item
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.domain.types import ScheduledMessageStatus
 
 
 def scheduled_columns():

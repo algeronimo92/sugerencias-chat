@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from domain_types import INITIAL_LEAD_STAGE
+from app.modules.leads.ports.types import INITIAL_LEAD_STAGE
 from app.db.base import Base
 
 
@@ -199,7 +199,7 @@ class LeadStage(Base):
     ``key`` es la clave estable que guardan ``leads.estado``, las
     automatizaciones, las plantillas y el historial: renombrar la etapa solo
     cambia ``name``. ``kind`` es la semántica que usa el código (ver
-    domain_types.LeadStageKind), nunca el nombre. Una etapa en uso no se
+    LeadStageKind), nunca el nombre. Una etapa en uso no se
     borra: se desactiva, y deja de ofrecerse como destino.
     """
 

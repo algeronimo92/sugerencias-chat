@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from domain_types import TaskStatus
+from app.modules.tasks.types import TaskStatus
 
 
 def new_task_values(values: dict, user_id: int, now: datetime) -> dict:

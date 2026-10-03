@@ -20,7 +20,7 @@ from app.integrations.meta.outbound import OutboundRejected, reaction_message, t
 from app.integrations.whatsapp.channel import SendReceipt
 from app.modules.conversations.application import ports
 from app.modules.conversations.application.ports import ConversationPorts
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 
 class FakeOutbox:

@@ -9,14 +9,9 @@ from app.db.models.auth import User
 from app.db.models.conversations import WspMessage
 from app.db.uow import session_scope
 from app.integrations.whatsapp.connection import connection_scope
-from app.db.store_common import (
-    CHATS_PAGE_SIZE,
-    CUSTOMER_SERVICE_WINDOW,
-    _fmt_ts,
-    _parse_ts,
-    _row_to_chat,
-    _tags_by_lead,
-)
+from app.modules.conversations.chat_rows import CHATS_PAGE_SIZE, _row_to_chat, _tags_by_lead
+from app.modules.conversations.domain.service_window import CUSTOMER_SERVICE_WINDOW
+from app.core.time_format import iso_utc_micros as _fmt_ts, parse_iso_utc_micros as _parse_ts
 
 
 def _last_message_subquery():

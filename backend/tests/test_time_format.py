@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.db.store_common import _fmt_ts, _parse_ts
+from app.core.time_format import iso_utc_micros as _fmt_ts, parse_iso_utc_micros as _parse_ts
 from app.core.time_format import iso_utc, iso_utc_micros, parse_iso_utc_micros
 
 EXACT_SECOND = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)

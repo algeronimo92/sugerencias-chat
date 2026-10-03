@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from app.db.store_common import _fmt_ts
+from app.core.time_format import iso_utc_micros as _fmt_ts
 
 MESSAGE_FIELDS = (
     "id",

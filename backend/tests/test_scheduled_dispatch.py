@@ -4,7 +4,7 @@ import pytest
 
 from app.modules.conversations.application.scheduling import dispatch_scheduled_message
 from app.modules.conversations.domain.events import OutboundQueued, ScheduledMessageChanged
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 CHAT_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
 

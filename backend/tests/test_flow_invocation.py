@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from domain_types import AutomationBuilderMode, AutomationTrigger, FlowNodeType
+from app.modules.automations.ports.types import AutomationBuilderMode, AutomationTrigger, FlowNodeType
 from app.modules.automations.application.flow_nodes import start_invoked_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import check_invoked_flows, invoked_flow_ids

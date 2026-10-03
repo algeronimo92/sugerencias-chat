@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from domain_types import AutomationTrigger
+from app.modules.automations.domain.types import AutomationTrigger
 
 from app.core.events import publish
 from app.db.uow import collect, unit_of_work

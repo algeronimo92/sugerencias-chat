@@ -17,7 +17,7 @@ import pytest
 from app.core.events import DomainEvent
 from app.modules.automations.application import ports as automation_ports_module
 from app.modules.automations.application.ports import AutomationPorts, ExecutionAlreadyRunning
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 
 
 class InMemoryExecutionStore:

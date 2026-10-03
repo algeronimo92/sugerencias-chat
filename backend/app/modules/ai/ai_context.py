@@ -14,7 +14,8 @@ from sqlalchemy import func, select
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
 from app.integrations.meta.text import message_text
-from app.db.store_common import _fmt_ts, _json_safe_row
+from app.core.serialization import json_safe_row as _json_safe_row
+from app.core.time_format import iso_utc_micros as _fmt_ts
 from app.db.uow import session_scope
 
 # Raíces de Meta que no son mensajes del cliente ni del negocio.

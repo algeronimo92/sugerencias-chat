@@ -11,7 +11,7 @@ from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
 from app.modules.automations.domain.limits import ACTIVE_EXECUTION_STATUSES
 from app.modules.automations.domain.rules import local_day_range_utc
 

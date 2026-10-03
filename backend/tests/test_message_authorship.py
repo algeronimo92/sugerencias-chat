@@ -9,7 +9,7 @@ diferencia es justamente lo que el dashboard cuenta.
 
 from app.modules.conversations.application.outbound import queue_messages
 from app.modules.conversations.application.scheduling import dispatch_scheduled_message
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 
 def _text(body: str) -> dict:

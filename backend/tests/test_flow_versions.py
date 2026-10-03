@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationBuilderMode
+from app.modules.automations.ports.types import AutomationBuilderMode
 from app.modules.automations import queries
 from app.modules.automations.application import management
 from app.modules.automations.application.management import publish_visual_flow, restore_flow_version

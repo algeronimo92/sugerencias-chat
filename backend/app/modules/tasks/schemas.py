@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pydantic import BaseModel
-from domain_types import TaskPriority, TaskStatus, TaskType
+from app.modules.tasks.types import TaskPriority, TaskStatus, TaskType
 
 
 class TaskCreate(BaseModel):

@@ -7,11 +7,8 @@ from app.db.models.catalogs import LeadService, LeadTag
 from app.db.models.auth import User
 from app.db.uow import collect, current_session, session_scope, unit_of_work
 from app.modules.catalogs.events import ServiceRenamed
-from app.db.store_common import (
-    LeadServiceAlreadyExistsError,
-    TagAlreadyExistsError,
-    _fmt_ts,
-)
+from app.core.time_format import iso_utc_micros as _fmt_ts
+from app.modules.catalogs.errors import LeadServiceAlreadyExistsError, TagAlreadyExistsError
 
 
 async def list_tags(include_inactive: bool = False) -> list[dict]:

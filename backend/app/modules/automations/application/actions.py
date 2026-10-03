@@ -11,7 +11,9 @@ import dataclasses
 import itertools
 from datetime import timedelta
 
-from domain_types import AutomationActionType, AutomationExecutionStatus, InteractiveType, NotificationType, TemplateType
+from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus
+from app.modules.catalogs.ports.types import InteractiveType, TemplateType
+from app.modules.notifications.ports.types import NotificationType
 
 from app.modules.automations.application.deps import AutomationDeps
 from app.modules.automations.domain.events import (

@@ -1,7 +1,7 @@
 """Contratos HTTP de automations."""
 
 from pydantic import BaseModel, Field
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
 
 
 class AutomationRuleCreate(BaseModel):

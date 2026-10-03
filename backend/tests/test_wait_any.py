@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations.application import flow_nodes
 from app.modules.automations.application.engine import run_visual_execution
 from app.modules.automations.domain.replies import match_question_button

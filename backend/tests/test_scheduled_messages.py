@@ -14,7 +14,7 @@ from app.modules.conversations.domain.scheduling import (
     ScheduleInThePast,
 )
 from app.modules.conversations.schemas import ScheduledMessageCreate
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 LEAD_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
 SELLER = SimpleNamespace(id=4, role="seller")

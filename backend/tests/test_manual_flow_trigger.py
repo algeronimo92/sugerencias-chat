@@ -7,7 +7,7 @@ Cubre start_manual_flow_execution contra los puertos en memoria. Que el
 
 import pytest
 
-from domain_types import AutomationBuilderMode, AutomationTrigger
+from app.modules.automations.ports.types import AutomationBuilderMode, AutomationTrigger
 from app.modules.automations.application.management import start_manual_flow_execution
 from app.modules.automations.domain.events import AutomationsScheduled
 from tests.automation_fakes import execution

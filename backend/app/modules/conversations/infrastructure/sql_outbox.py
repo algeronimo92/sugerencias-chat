@@ -18,7 +18,7 @@ from app.db.models.conversations import MessageOutbox, ScheduledMessage, WspMess
 from app.db.uow import current_session, session_scope
 from app.modules.conversations.domain.delivery import retry_delay, statuses_after_failure
 from app.modules.conversations.message_serialization import serialize_message
-from domain_types import MessageOutboxStatus, OutboxStatus, ScheduledMessageStatus
+from app.modules.conversations.domain.types import MessageOutboxStatus, OutboxStatus, ScheduledMessageStatus
 
 WORKER_CONCURRENCY = 4
 

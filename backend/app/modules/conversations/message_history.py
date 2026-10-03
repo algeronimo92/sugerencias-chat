@@ -6,10 +6,7 @@ from sqlalchemy import and_, bindparam, func, or_, select, update
 from app.db.models.leads import Lead
 from app.db.models.conversations import MessageOutbox, WspMessage
 from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES
-from app.db.store_common import (
-    MEDIA_DIMENSION_CONCURRENCY,
-    MESSAGES_PAGE_SIZE,
-)
+from app.modules.conversations.chat_rows import MEDIA_DIMENSION_CONCURRENCY, MESSAGES_PAGE_SIZE
 from app.modules.conversations.message_serialization import serialize_message
 from app.db.uow import session_scope
 

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations.application import management
 from app.modules.automations.application.management import (
     pause_automation_execution,

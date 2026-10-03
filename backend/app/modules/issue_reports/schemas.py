@@ -2,7 +2,7 @@
 
 from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
-from domain_types import IssueReportPriority, IssueReportStatus
+from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
 
 
 class IssueReportAttachmentCreate(BaseModel):

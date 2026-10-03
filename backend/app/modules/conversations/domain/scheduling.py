@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.core.errors import Conflict, Forbidden, Invalid
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.domain.types import ScheduledMessageStatus
 
 # Margen para que "programar para ya" no termine saliendo antes de guardarse.
 MIN_LEAD_TIME = timedelta(seconds=5)

@@ -26,7 +26,7 @@ from app.modules.automations.infrastructure.sql_rules import SqlRuleStore
 from app.modules.automations.infrastructure.sql_scheduling import SqlSchedulingStore
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
 from app.tenancy.context import tenant_context
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
 
 NOW = datetime.now(timezone.utc)

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
 
 TERMINAL_STATUSES = frozenset({
     AutomationExecutionStatus.COMPLETED,

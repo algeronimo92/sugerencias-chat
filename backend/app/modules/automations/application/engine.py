@@ -12,7 +12,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from domain_types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
 
 from app.integrations.whatsapp.channel import SEND_FAILURES
 from app.modules.automations.application.actions import execute_action

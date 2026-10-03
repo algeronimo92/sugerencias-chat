@@ -5,9 +5,7 @@ from sqlalchemy import and_, func, or_, select
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
 from app.integrations.meta_webhook.projection import reply_identifier
-from app.db.store_common import (
-    _fmt_ts,
-)
+from app.core.time_format import iso_utc_micros as _fmt_ts
 from app.db.uow import session_scope
 
 

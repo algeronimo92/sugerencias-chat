@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from domain_types import AutomationTrigger
+from app.modules.automations.ports.types import AutomationTrigger
 from app.modules.automations.application import triggers
 from app.modules.automations.application.engine import _customer_response_deadline_is_current
 from app.modules.automations.domain.events import AutomationsChanged

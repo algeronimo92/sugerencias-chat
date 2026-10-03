@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Any, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
-from domain_types import INITIAL_LEAD_STAGE, LEAD_STAGE_KEY_PATTERN
+from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LEAD_STAGE_KEY_PATTERN
 from app.modules.catalogs.public import Tag
 
 

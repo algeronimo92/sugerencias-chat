@@ -1,7 +1,7 @@
 """Cómo se interpreta lo que contesta el cliente mientras un flujo espera:
 qué clase de respuesta es, a qué botón corresponde y por qué rama sigue."""
 
-from domain_types import QuestionHandle, WaitAnyConditionKind
+from app.modules.automations.domain.types import QuestionHandle, WaitAnyConditionKind
 
 from app.modules.automations.domain.rules import normalize_reply_text
 

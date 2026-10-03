@@ -2,7 +2,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
-from domain_types import NotificationType
+from app.modules.notifications.types import NotificationType
 from app.db.models.notifications import UserNotification
 from app.modules.notifications.policies import (_notification)
 from app.db.uow import session_scope

@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from fastapi import HTTPException, Query
 from app.modules.conversations.schemas import CustomerServiceWindow, MessagePage
-from app.db.store_common import MESSAGES_PAGE_SIZE
+from app.modules.conversations.chat_rows import MESSAGES_PAGE_SIZE
 from app.modules.conversations.message_history import fetch_messages
 from app.modules.conversations.chat_queries import get_customer_service_window
 from app.modules.conversations.common import chats_router

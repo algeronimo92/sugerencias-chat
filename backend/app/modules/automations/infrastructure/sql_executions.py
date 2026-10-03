@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.domain.types import AutomationExecutionStatus
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
 from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION, PAUSE_SCOPE_LEAD
 from app.modules.automations.queries import get_automation_execution

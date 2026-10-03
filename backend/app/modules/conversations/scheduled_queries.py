@@ -10,7 +10,7 @@ from app.db.models.auth import User
 from app.db.models.conversations import ScheduledMessage
 from app.modules.conversations.infrastructure.sql_scheduled import scheduled_columns as _columns
 from app.modules.conversations.scheduled_message_policies import _item
-from domain_types import ScheduledMessageStatus
+from app.modules.conversations.domain.types import ScheduledMessageStatus
 from app.db.uow import session_scope
 
 

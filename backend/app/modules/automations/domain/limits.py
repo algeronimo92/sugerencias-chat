@@ -5,17 +5,8 @@ ese contrato es parte del lenguaje del dominio (ver la excepción explícita en
 ``tests/test_layering.py``).
 """
 
-from domain_types import (
-    AutomationActionType,
-    AutomationExecutionStatus,
-    AutomationRecipient,
-    AutomationTrigger,
-    FlowConditionType,
-    FlowHandle,
-    FlowNodeType,
-    TaskPriority,
-    TaskType,
-)
+from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger, FlowConditionType, FlowHandle, FlowNodeType
+from app.modules.tasks.ports.types import TaskPriority, TaskType
 from app.integrations.meta.contract import limit
 
 TRIGGER_TYPES = frozenset(AutomationTrigger)

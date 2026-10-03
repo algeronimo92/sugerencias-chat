@@ -1,7 +1,7 @@
 """Semántica de las etapas del embudo al mover un lead.
 
 Las etapas son filas de cada negocio: el código nunca decide por la clave ni
-por el nombre visible, sino por ``kind`` (``domain_types.LeadStageKind``).
+por el nombre visible, sino por ``kind`` (``LeadStageKind``).
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.modules.leads.domain.errors import InvalidLeadStageError
-from domain_types import LeadStageKind
+from app.modules.leads.domain.types import LeadStageKind
 
 
 @dataclass(frozen=True)

@@ -54,7 +54,6 @@ def test_nobody_reimplements_the_window_on_their_own():
     que lo calcula y del módulo de la regla, usarlo significa estar
     reimplementando la decisión."""
     permitidos = {
-        "app/db/store_common.py",
         "app/modules/conversations/chat_queries.py",
         "app/modules/conversations/service_window.py",
         "app/modules/conversations/domain/service_window.py",

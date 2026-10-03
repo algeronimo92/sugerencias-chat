@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from domain_types import FlowConditionType
+from app.modules.automations.ports.types import FlowConditionType
 from app.modules.automations.domain.conditions import match_flow_condition
 from app.modules.automations.domain.validation import normalize_flow_condition
 from app.integrations.meta.contract import message_subtype

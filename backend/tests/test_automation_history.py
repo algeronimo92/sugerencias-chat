@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.modules.automations import queries
 
 

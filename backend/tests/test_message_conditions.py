@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from domain_types import AutomationExecutionStatus, FlowConditionType
+from app.modules.automations.ports.types import AutomationExecutionStatus, FlowConditionType
 from app.modules.automations.application.engine import run_visual_execution
 from app.modules.automations.domain.conditions import match_condition_node, match_flow_condition
 from app.modules.automations.domain.execution import execution_message_context

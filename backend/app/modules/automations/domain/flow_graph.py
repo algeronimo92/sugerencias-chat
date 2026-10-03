@@ -1,7 +1,7 @@
 """Forma del grafo de un flujo visual: conexiones válidas, topología
 ejecutable e índices para recorrerlo."""
 
-from domain_types import FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
+from app.modules.automations.domain.types import FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
 
 
 def normalize_edges(

@@ -3,7 +3,7 @@ from app.modules.catalogs.template_policies import (_meta_managed_template_value
 """Plantillas de mensaje: catálogo, favoritos, uso y adjuntos."""
 
 from datetime import datetime, timezone
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
 from app.db.models.media import MediaAsset
 from app.db.models.catalogs import MessageTemplate, TemplateAttachment, TemplateUserState

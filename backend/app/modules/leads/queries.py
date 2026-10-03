@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
 from app.db.models.leads import LeadActivity
-from app.db.store_common import _json_safe_row
+from app.core.serialization import json_safe_row as _json_safe_row
 from app.db.uow import session_scope
 
 

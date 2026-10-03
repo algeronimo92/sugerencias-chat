@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from domain_types import IssueReportPriority, IssueReportStatus
+from app.modules.issue_reports.ports.types import IssueReportPriority, IssueReportStatus
 from app.db.base import Base
 
 

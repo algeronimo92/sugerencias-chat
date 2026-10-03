@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from domain_types import FlowConditionType, FlowHandle
+from app.modules.automations.domain.types import FlowConditionType, FlowHandle
 
 from app.modules.automations.domain.rules import business_timezone, is_business_hours, normalize_reply_text
 

@@ -9,7 +9,7 @@ from app.db.models.auth import User
 from app.db.models.catalogs import LeadTag, MessageTemplate
 from app.db.models.media import MediaAsset
 from app.db.uow import session_scope
-from domain_types import InteractiveType, TemplateType
+from app.modules.catalogs.ports.types import InteractiveType, TemplateType
 from app.modules.leads.ports.stages import InvalidLeadStageError, verify_stage_keys
 
 

@@ -9,7 +9,7 @@ import asyncio
 
 from sqlalchemy import func, select
 
-from domain_types import AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationRule
 

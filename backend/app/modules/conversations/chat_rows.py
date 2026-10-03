@@ -1,52 +1,18 @@
-from datetime import date, datetime, timedelta, timezone
+"""La tarjeta de un chat tal como la sirven la bandeja y el kanban: la fila
+de la consulta convertida a dict, con sus etiquetas."""
 
 from sqlalchemy import select, true
 
+from app.core.time_format import iso_utc_micros
 from app.db.models.catalogs import LeadTag
 from app.db.models.leads import LeadTagAssignment
-from app.core.time_format import iso_utc_micros, parse_iso_utc_micros
 
 CHATS_PAGE_SIZE = 30
-KANBAN_PAGE_SIZE = 40
 MESSAGES_PAGE_SIZE = 50
 # Cuántas dimensiones de multimedia se miden a la vez al abrir un historial.
 MEDIA_DIMENSION_CONCURRENCY = 6
-CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
-
-
-class LeadAlreadyExistsError(Exception):
-    pass
-
-
-class EmailAlreadyExistsError(Exception):
-    pass
-
-
-class TagAlreadyExistsError(Exception):
-    pass
-
-
-class LeadServiceAlreadyExistsError(Exception):
-    pass
-
-
-class LastAdminError(Exception):
-    """Se levanta al intentar desactivar/degradar al único admin activo."""
-
-    pass
-
 
 _fmt_ts = iso_utc_micros
-
-
-def _activity_safe(values: dict) -> dict:
-    """old_value/new_value son columnas JSONB: un date o un datetime crudo
-    rompe el json.dumps del driver. El UPDATE sigue recibiendo los objetos
-    originales — esto es solo para la auditoría."""
-    return {
-        key: value.isoformat() if isinstance(value, (date, datetime)) else value
-        for key, value in values.items()
-    }
 
 
 def _row_to_chat(row, tags: list[dict] | None = None) -> dict:
@@ -120,24 +86,4 @@ async def _tags_by_lead(session, chat_ids: list[str]) -> dict[str, list[dict]]:
     result: dict[str, list[dict]] = {chat_id: [] for chat_id in chat_ids}
     for row in rows:
         result[row["lead_id"]].append(_tag_dict(row))
-    return result
-
-
-_parse_ts = parse_iso_utc_micros
-
-
-def _json_safe_row(row: dict) -> dict:
-    """Convierte una fila cruda (``SELECT *`` vía SQL crudo) a JSON-safe:
-    datetime/date a ISO, bytes a None (no serializable, sin uso fuera de la
-    app). Lo demás (str, int, bool, dict de columnas JSONB) ya es JSON-safe."""
-    result = {}
-    for key, value in row.items():
-        if isinstance(value, datetime):
-            result[key] = _fmt_ts(value)
-        elif isinstance(value, date):
-            result[key] = value.isoformat()
-        elif isinstance(value, (bytes, bytearray)):
-            result[key] = None
-        else:
-            result[key] = value
     return result

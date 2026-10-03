@@ -3,7 +3,7 @@ from app.modules.notifications.policies import (_notification)
 from datetime import datetime, timezone
 
 
-from domain_types import NotificationType
+from app.modules.notifications.types import NotificationType
 from app.db.models.notifications import UserNotification
 from app.core.time_format import iso_utc
 

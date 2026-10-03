@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 from enum import StrEnum
 
-from domain_types import MessageOutboxStatus, OutboxStatus
+from app.modules.conversations.domain.types import MessageOutboxStatus, OutboxStatus
 
 MAX_ATTEMPTS = 3
 

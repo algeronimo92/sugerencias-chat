@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from sqlalchemy import case, func, select
 
-from domain_types import LeadStageKind
+from app.modules.leads.domain.types import LeadStageKind
 
 from app.db.models.auth import User
 from app.db.models.leads import Lead, LeadStage

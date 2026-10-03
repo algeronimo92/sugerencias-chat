@@ -9,7 +9,7 @@ from app.db.models.auth import User
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 from app.db.uow import session_scope
-from domain_types import TaskStatus
+from app.modules.tasks.types import TaskStatus
 
 
 def _task(row):

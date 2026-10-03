@@ -4,10 +4,7 @@ from sqlalchemy import func, insert, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
-from app.db.store_common import (
-    EmailAlreadyExistsError,
-    LastAdminError,
-)
+from app.modules.auth.errors import EmailAlreadyExistsError, LastAdminError
 from app.db.uow import session_scope
 
 

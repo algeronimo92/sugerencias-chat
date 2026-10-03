@@ -27,7 +27,7 @@ from app.modules.leads.domain.events import (
 )
 from app.modules.leads.domain.lead import ActivityRecord, Actor, FieldChanges, Lead, audit_safe
 from app.modules.leads.domain.stage import require_destination
-from domain_types import AutomationTrigger
+from app.modules.automations.ports.types import AutomationTrigger
 
 
 def _now() -> datetime:

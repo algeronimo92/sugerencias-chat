@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.models.auth import User
-from domain_types import IssueReportPriority, IssueReportStatus
+from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
 from app.modules.issue_reports.schemas import (
     IssueReportCommentCreate,
     IssueReportCommentItem,

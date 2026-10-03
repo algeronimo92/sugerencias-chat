@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
-from domain_types import TaskStatus, TaskType
+from app.modules.tasks.types import TaskStatus, TaskType
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 from app.db.models.auth import User

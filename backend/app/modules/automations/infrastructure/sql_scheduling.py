@@ -18,7 +18,7 @@ from app.db.models.automations import AutomationExecution, AutomationRule
 from app.db.models.conversations import WspMessage
 from app.db.models.leads import Lead, LeadActivity
 from app.db.uow import session_scope
-from domain_types import AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationTrigger
 from app.modules.automations.application.ports import ExecutionAlreadyRunning
 from app.modules.automations.domain.execution import initial_flow_state
 from app.modules.automations.domain.limits import OVERDUE_LOOKBACK_GRACE_MINUTES, TRIGGER_TYPES

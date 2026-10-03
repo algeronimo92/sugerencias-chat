@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Any, Literal
 from pydantic import BaseModel, Field
-from domain_types import TaskType
+from app.modules.tasks.ports.types import TaskType
 from app.modules.catalogs.tag_schema import Tag
 from app.modules.leads.schemas import LeadStageKey
 
