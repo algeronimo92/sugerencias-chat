@@ -128,14 +128,15 @@ def test_http_contracts_live_with_their_domain():
     assert violations == set()
 @pytest.mark.parametrize("module", [
     "app/integrations/meta/outbound.py",
-    "app/modules/conversations/reactions.py",
+    "app/modules/conversations/application/outbound.py",
     "app/modules/automations/actions.py",
     "app/modules/automations/engine.py",
     "app/modules/automations/automation_deps.py",
     "app/modules/conversations/outbound_api.py",
     "app/modules/conversations/message_actions_api.py",
     "app/modules/conversations/read_state_api.py",
-    "app/modules/conversations/message_outbox.py",
+    "app/modules/conversations/infrastructure/outbox_worker.py",
+    "app/modules/conversations/infrastructure/sql_outbox.py",
     "app/integrations/whatsapp/capabilities.py",
 ])
 def test_messaging_flows_depend_on_the_channel_port_not_on_meta(module):
@@ -214,7 +215,7 @@ def test_only_the_outbox_writes_to_the_outbox():
     touch del lead, la deduplicación y el aviso al worker. Quien arme la fila
     por su cuenta se pierde todo eso en silencio."""
     culpables = set()
-    owner = BACKEND / "app/modules/conversations/message_outbox.py"
+    owner = BACKEND / "app/modules/conversations/infrastructure/sql_outbox.py"
     for base in ("app/modules", "app/integrations"):
         for path in (BACKEND / base).rglob("*.py"):
             if path == owner:
@@ -231,7 +232,6 @@ def test_conversation_consumers_do_not_import_queries_through_db_service():
     consumers = [
         * (BACKEND / "app/modules/conversations").rglob("*.py"),
         * (BACKEND / "app/integrations/meta_webhook").rglob("*.py"),
-        BACKEND / "app/modules/conversations/reactions.py",
         BACKEND / "app/modules/conversations/service_window.py",
         BACKEND / "app/modules/automations/simulation.py",
         BACKEND / "app/modules/automations/flow_nodes.py",
@@ -444,12 +444,18 @@ def _layer_files(layer: str) -> list[Path]:
     return [path for path in MODULES.rglob("*.py") if layer in path.relative_to(MODULES).parts]
 
 
+# Módulos que solo declaran puertos (Protocol, dataclasses, errores) sin IO:
+# la aplicación puede nombrarlos sin acoplarse a una implementación.
+PORT_DEFINITION_MODULES = ("app.integrations.whatsapp.channel",)
+
+
 def test_application_layers_only_talk_to_ports():
     violations = {
         f"{path.relative_to(BACKEND)} -> {module}"
         for path in _layer_files("application")
         for module in _imported_modules(path)
         if module.startswith(APPLICATION_FORBIDDEN)
+        and not module.startswith(PORT_DEFINITION_MODULES)
     }
     assert violations == set()
 
@@ -502,3 +508,49 @@ def test_only_leads_moves_a_lead_between_stages():
         and pattern.search(path.read_text(encoding="utf-8"))
     }
     assert violations == set()
+
+
+# Los avisos por WebSocket salen de suscriptores, después del commit. Un caso
+# de uso que emite su propio aviso puede anunciar algo que la transacción
+# termina revirtiendo. Esta lista de transición solo puede achicarse.
+REALTIME_TRANSITION = {
+    "app/integrations/meta_webhook/processor.py",
+    "app/integrations/n8n/leads_api.py",
+    "app/modules/ai/assistant_api.py",
+    "app/modules/appointments/service.py",
+    "app/modules/automations/api.py",
+    "app/modules/automations/automation_deps.py",
+    "app/modules/automations/discovery.py",
+    "app/modules/automations/engine.py",
+    "app/modules/automations/rules.py",
+    "app/modules/automations/scheduler.py",
+    "app/modules/catalogs/templates_api.py",
+    "app/modules/issue_reports/api.py",
+    "app/modules/leads/stages_api.py",
+    "app/modules/media/library_api.py",
+    "app/modules/notifications/api.py",
+    "app/modules/tasks/api.py",
+    "app/modules/tasks/task_reminder.py",
+    "app/tenancy/provisioning.py",
+}
+
+
+def _realtime_importers() -> set[str]:
+    return {
+        path.relative_to(BACKEND).as_posix()
+        for base in ("app/modules", "app/integrations", "app/tenancy", "app/workers")
+        for path in (BACKEND / base).rglob("*.py")
+        if any(module.startswith("app.realtime") for module in _imported_modules(path))
+    }
+
+
+def test_only_subscribers_talk_to_the_websocket():
+    offenders = {
+        path for path in _realtime_importers()
+        if not path.endswith("/subscribers.py") and path not in REALTIME_TRANSITION
+    }
+    assert offenders == set()
+
+
+def test_the_realtime_transition_list_has_no_leftovers():
+    assert REALTIME_TRANSITION - _realtime_importers() == set()

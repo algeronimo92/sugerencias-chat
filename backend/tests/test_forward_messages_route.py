@@ -34,8 +34,7 @@ def _patch(monkeypatch, *, messages, existing=None):
         AsyncMock(return_value={TARGET} if existing is None else existing),
     )
     enqueue = AsyncMock(return_value=[])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "queue_messages", enqueue)
     return enqueue
 
 

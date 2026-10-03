@@ -1,17 +1,16 @@
 import asyncio
-from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
-from app.db.models.conversations import WspMessage
-from app.modules.conversations import message_outbox
+from app.modules.conversations.application.outbound import queue_messages
+from app.modules.conversations.domain.delivery import MAX_ATTEMPTS, SendOutcome, is_final_failure
+from app.modules.conversations.infrastructure import outbox_worker
+from app.modules.conversations.infrastructure.outbox_worker import classify_send_failure
 from app.integrations.meta import client as meta_service
 from app.integrations.whatsapp import channel as whatsapp_channel
 from app.integrations.storage.media_storage import MediaNotFoundError
-from app.modules.conversations.message_outbox import SendOutcome, classify_send_failure, is_final_failure
 from app.integrations.meta.client import MetaApiError, WhatsAppWindowClosedError
 from app.integrations.whatsapp.channel import ChannelError, DeliveryUnconfirmedError, SendReceipt
 from app.integrations.whatsapp.identity import Destination
@@ -55,7 +54,7 @@ class _ScriptedSender(FakeSender):
 
 def _install_sender(monkeypatch, handler):
     install_channel(monkeypatch, sender=_ScriptedSender(handler))
-    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
+    monkeypatch.setattr(outbox_worker, "require_capabilities", AsyncMock())
 
 
 @pytest.mark.parametrize(("exc", "expected"), [
@@ -77,7 +76,7 @@ def test_send_failures_are_classified_by_whether_a_retry_can_duplicate(exc, expe
 
 def test_only_retryable_failures_get_more_attempts():
     assert is_final_failure(1, SendOutcome.RETRYABLE) is False
-    assert is_final_failure(message_outbox.MAX_ATTEMPTS, SendOutcome.RETRYABLE) is True
+    assert is_final_failure(MAX_ATTEMPTS, SendOutcome.RETRYABLE) is True
     assert is_final_failure(1, SendOutcome.DEFINITIVE) is True
     assert is_final_failure(1, SendOutcome.UNCONFIRMED) is True
 
@@ -116,30 +115,29 @@ def test_unconfirmed_delivery_is_explained_to_the_seller():
 
 
 async def test_accepted_message_is_never_requeued_when_recording_it_fails(monkeypatch):
-    monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0, 0))
+    monkeypatch.setattr(outbox_worker, "RECORD_SENT_RETRY_DELAYS", (0, 0, 0))
     _install_sender(monkeypatch, AsyncMock(return_value=DELIVERY))
-    record = AsyncMock(side_effect=[RuntimeError("db"), RuntimeError("db"), False])
-    announce = AsyncMock()
+    record = AsyncMock(side_effect=[RuntimeError("db"), RuntimeError("db"), None])
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "_record_sent", record)
-    monkeypatch.setattr(message_outbox, "_announce_sent", announce)
-    monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
+    monkeypatch.setattr(outbox_worker, "record_sent", record)
+    monkeypatch.setattr(outbox_worker, "_mark_failed", mark_failed)
 
-    await message_outbox._process_job(_job())
+    await outbox_worker._process_job(_job())
 
+    # El aviso a los paneles lo emite el suscriptor de MessageSent cuando el
+    # registro por fin confirma.
     assert record.await_count == 3
-    announce.assert_awaited_once()
     mark_failed.assert_not_awaited()
 
 
 async def test_accepted_message_stays_out_of_retry_even_if_it_never_gets_recorded(monkeypatch):
-    monkeypatch.setattr(message_outbox, "RECORD_SENT_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(outbox_worker, "RECORD_SENT_RETRY_DELAYS", (0, 0))
     _install_sender(monkeypatch, AsyncMock(return_value=DELIVERY))
-    monkeypatch.setattr(message_outbox, "_record_sent", AsyncMock(side_effect=RuntimeError("db")))
+    monkeypatch.setattr(outbox_worker, "record_sent", AsyncMock(side_effect=RuntimeError("db")))
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
+    monkeypatch.setattr(outbox_worker, "_mark_failed", mark_failed)
 
-    await message_outbox._process_job(_job())
+    await outbox_worker._process_job(_job())
 
     mark_failed.assert_not_awaited()
 
@@ -148,15 +146,15 @@ async def test_failed_send_is_recorded_with_its_outcome(monkeypatch):
     exc = DeliveryUnconfirmedError("sin respuesta")
     _install_sender(monkeypatch, AsyncMock(side_effect=exc))
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
+    monkeypatch.setattr(outbox_worker, "_mark_failed", mark_failed)
 
-    await message_outbox._process_job(_job())
+    await outbox_worker._process_job(_job())
 
     mark_failed.assert_awaited_once_with(_job(), exc, SendOutcome.UNCONFIRMED)
 
 
 async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed(monkeypatch):
-    monkeypatch.setattr(message_outbox, "SHUTDOWN_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(outbox_worker, "SHUTDOWN_GRACE_SECONDS", 0.05)
     release_quick = asyncio.Event()
 
     async def send(chat_id, message):
@@ -168,12 +166,12 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
     persist = AsyncMock(return_value=True)
     mark_failed = AsyncMock()
     _install_sender(monkeypatch, send)
-    monkeypatch.setattr(message_outbox, "_persist_sent", persist)
-    monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
+    monkeypatch.setattr(outbox_worker, "_persist_sent", persist)
+    monkeypatch.setattr(outbox_worker, "_mark_failed", mark_failed)
 
     quick = _job(id=1, message_id=1, payload={"message": _text("rápido")})
     stuck = _job(id=2, message_id=2, payload={"message": _text("colgado")})
-    worker = asyncio.create_task(message_outbox._process_batch([quick, stuck]))
+    worker = asyncio.create_task(outbox_worker._process_batch([quick, stuck]))
     await asyncio.sleep(0)
     worker.cancel()
     await asyncio.sleep(0)
@@ -192,21 +190,11 @@ async def test_shutdown_lets_quick_sends_finish_and_marks_stuck_ones_unconfirmed
 
 async def test_stale_processing_jobs_are_marked_unconfirmed_instead_of_resent(monkeypatch):
     stale = {"id": 3, "message_id": 30, "chat_id": "lead-1", "payload": {"message": _text("x")}, "attempts": 0}
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: [stale])))
-
-    class _Context:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *_args):
-            return False
-
-    monkeypatch.setattr(message_outbox, "get_sessionmaker", lambda: _Context)
+    monkeypatch.setattr(outbox_worker, "stale_jobs", AsyncMock(return_value=[stale]))
     mark_failed = AsyncMock()
-    monkeypatch.setattr(message_outbox, "_mark_failed", mark_failed)
+    monkeypatch.setattr(outbox_worker, "_mark_failed", mark_failed)
 
-    await message_outbox._recover_stale_jobs()
+    await outbox_worker._recover_stale_jobs()
 
     failed_job, failed_exc, outcome = mark_failed.await_args.args
     assert failed_job == stale
@@ -214,30 +202,14 @@ async def test_stale_processing_jobs_are_marked_unconfirmed_instead_of_resent(mo
     assert outcome is SendOutcome.UNCONFIRMED
 
 
-async def test_enqueue_with_known_dedupe_key_returns_the_existing_message(monkeypatch):
-    existing = WspMessage(
-        id=55, chat_id="lead-1", sender="vendedor", content="Hola",
-        sent_at=datetime(2026, 9, 15, tzinfo=timezone.utc), outbox_status="queued", message_type="text",
-    )
-    session = AsyncMock()
-    session.add = lambda _obj: pytest.fail("no debe insertar un mensaje ya encolado")
-    session.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: [("automation:1:1:0:0", existing)]))
-
-    class _Context:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *_args):
-            return False
-
-    monkeypatch.setattr(message_outbox, "get_sessionmaker", lambda: _Context)
-    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
-
-    sent = await message_outbox.enqueue_messages("lead-1", [{
-        "content": "Hola",
-        "message": _text("Hola"),
-        "dedupe_key": "automation:1:1:0:0",
+async def test_enqueue_with_known_dedupe_key_returns_the_existing_message(in_memory_conversations):
+    [first] = await queue_messages("lead-1", [{
+        "content": "Hola", "message": _text("Hola"), "dedupe_key": "automation:1:1:0:0",
     }])
 
-    assert [message["id"] for message in sent] == [55]
-    session.commit.assert_not_awaited()
+    [again] = await queue_messages("lead-1", [{
+        "content": "Hola", "message": _text("Hola"), "dedupe_key": "automation:1:1:0:0",
+    }])
+
+    assert again["id"] == first["id"]
+    assert len(in_memory_conversations.outbox.queued) == 1

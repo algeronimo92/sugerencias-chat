@@ -2,9 +2,9 @@ import asyncio
 import logging
 from datetime import datetime
 
-from app.modules.conversations.messages import fetch_latest_message_cursor, fetch_messages_after_cursor
-from app.realtime.ws_manager import manager
-from app.modules.automations.public import trigger_inbound_message
+from app.core.events import publish
+from app.modules.conversations.domain.events import ExternalMessageDetected, ExternalMessagesSynced
+from app.modules.conversations.message_queries import fetch_latest_message_cursor, fetch_messages_after_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +28,17 @@ async def process_chat_changes(
         if not batch:
             break
         for next_cursor, message in batch:
-            await trigger_inbound_message(message)
+            # Estricto: si una automatización no se pudo agendar, la pasada se
+            # corta sin mover el cursor y el próximo ciclo la reintenta (las
+            # ejecuciones se deduplican por event_key).
+            await publish(ExternalMessageDetected(chat_id=message["chat_id"], message=message), strict=True)
             cursor = next_cursor
             latest = message
         if len(batch) < MESSAGE_BATCH_SIZE:
             break
 
     if latest is not None:
-        await manager.broadcast({
-            "type": "chats_updated",
-            "reason": "external_message",
-            "latest_message": latest,
-            "chat_id": latest["chat_id"],
-        })
+        await publish(ExternalMessagesSynced(chat_id=latest["chat_id"], latest=latest))
     return cursor
 
 

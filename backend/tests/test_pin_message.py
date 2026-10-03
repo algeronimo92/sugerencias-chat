@@ -1,161 +1,100 @@
-"""pin_message/unpin_message/fetch_pinned_messages: fijado nativo del CRM
-(no existe forma de mandarlo hacia WhatsApp). Mismo doble de sesión que
-test_message_edit_secret_db.py (no hay Postgres en este entorno de tests)."""
+"""Fijar mensajes dentro del CRM, contra PostgreSQL real."""
+
+from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import insert, select
 
-import app.modules.conversations.message_edits as _domain_app_modules_conversations_message_edits
-from app.modules.conversations.message_edits import PinLimitReachedError
-from tests.conftest import patch_store
+from app.db.models.auth import User
+from app.db.models.conversations import WspMessage
+from app.db.uow import session_scope
+from app.modules.conversations.application.inbox import pin_message, unpin_message
+from app.modules.conversations.domain.errors import MessageNotFound, PinLimitReached
+from app.modules.leads.infrastructure.repository import ensure_lead_stub
+from app.tenancy.context import tenant_context
+from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
 
-CHAT_ID = "d17d73fb-70aa-4750-bfa2-c069e37d78db"
+
+async def _chat_with_messages(count: int, **overrides) -> tuple[str, list[int]]:
+    chat_id = str(uuid4())
+    await ensure_lead_stub(chat_id, None, None)
+    ids = []
+    async with session_scope() as session:
+        for position in range(count):
+            ids.append((await session.execute(insert(WspMessage).values(
+                chat_id=chat_id, sender="cliente", content=f"m{position}",
+                sent_at=datetime.now(timezone.utc), message_type="text", **overrides,
+            ).returning(WspMessage.id))).scalar_one())
+    return chat_id, ids
 
 
-class _Row:
-    """Doble mínimo de WspMessage: solo los atributos que _message_payload y
-    las funciones bajo prueba tocan."""
-
-    def __init__(self, **overrides):
-        defaults = dict(
-            id=42,
-            chat_id=CHAT_ID,
-            sender="cliente",
-            content="texto original",
-            sent_at=datetime.now(timezone.utc),
-            media_url=None,
-            wa_message_id="3EB0ABCDEF1234567890",
-            outbox_status=None,
-            meta_status="sent",
-            message_type="text",
-            analysis=None,
-            payload=None,
-            reactions=None,
-            edited_at=None,
-            deleted_at=None,
-            pinned_at=None,
-            pinned_by_user_id=None,
-            media_width=None,
-            media_height=None,
+async def _user() -> int:
+    async with session_scope() as session:
+        user = User(
+            email=f"pin-{uuid4().hex[:8]}@example.test", name="Vendedora", password_hash="!",
+            role="vendedor", is_active=True, created_at=datetime.now(timezone.utc),
         )
-        defaults.update(overrides)
-        for key, value in defaults.items():
-            setattr(self, key, value)
+        session.add(user)
+        await session.flush()
+        return user.id
 
 
-class _ScalarResult:
-    def __init__(self, row):
-        self._row = row
-
-    def scalar_one_or_none(self):
-        return self._row
-
-
-def _session_context(row, *, pinned_count=0):
-    session = AsyncMock()
-    session.execute.return_value = _ScalarResult(row)
-    session.scalar.return_value = pinned_count
-
-    class SessionContext:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *_args):
-            return False
-
-    return SessionContext, session
+async def _pinned_by(message_id: int):
+    async with session_scope() as session:
+        return (await session.execute(
+            select(WspMessage.pinned_at, WspMessage.pinned_by_user_id).where(WspMessage.id == message_id)
+        )).one()
 
 
-@pytest.mark.asyncio
-async def test_pin_sets_pinned_at_and_user_when_under_the_limit(monkeypatch):
-    row = _Row()
-    SessionContext, session = _session_context(row, pinned_count=1)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
+async def test_pin_records_who_and_when_up_to_the_limit(tenant):
+    with tenant_context(tenant):
+        user_id = await _user()
+        chat_id, ids = await _chat_with_messages(4)
+        for message_id in ids[:3]:
+            await pin_message(chat_id, message_id, user_id=user_id)
+        pinned_at, pinned_by = await _pinned_by(ids[0])
+        assert pinned_at is not None and pinned_by == user_id
 
-    result = await _domain_app_modules_conversations_message_edits.pin_message(CHAT_ID, 42, user_id=7)
-
-    assert result["pinned_at"] is not None
-    assert row.pinned_by_user_id == 7
-    session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_pin_raises_when_chat_already_has_the_limit(monkeypatch):
-    row = _Row()
-    SessionContext, session = _session_context(row, pinned_count=3)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
-
-    with pytest.raises(PinLimitReachedError):
-        await _domain_app_modules_conversations_message_edits.pin_message(CHAT_ID, 42, user_id=7)
-
-    assert row.pinned_at is None
-    session.commit.assert_not_awaited()
+        with pytest.raises(PinLimitReached) as exc:
+            await pin_message(chat_id, ids[3], user_id=user_id)
+        assert exc.value.status_code == 409
+        assert "Desfijá uno primero" in exc.value.detail
 
 
-@pytest.mark.asyncio
-async def test_pin_is_idempotent_and_does_not_recheck_the_limit(monkeypatch):
-    already_pinned_at = datetime.now(timezone.utc)
-    row = _Row(pinned_at=already_pinned_at, pinned_by_user_id=3)
-    # pinned_count=3 probaría que igual pasa: un mensaje ya fijado no vuelve a
-    # contar contra el límite al "re-fijarse".
-    SessionContext, session = _session_context(row, pinned_count=3)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
+async def test_pinning_twice_keeps_its_place_without_rechecking_the_limit(tenant):
+    with tenant_context(tenant):
+        user_id = await _user()
+        chat_id, ids = await _chat_with_messages(3)
+        for message_id in ids:
+            await pin_message(chat_id, message_id, user_id=user_id)
+        first_pinned_at, _ = await _pinned_by(ids[0])
 
-    result = await _domain_app_modules_conversations_message_edits.pin_message(CHAT_ID, 42, user_id=7)
+        again = await pin_message(chat_id, ids[0], user_id=await _user())
 
-    assert result["pinned_at"] is not None
-    assert row.pinned_by_user_id == 3  # no lo pisa el segundo usuario
-    session.commit.assert_not_awaited()
+        assert again["id"] == ids[0]
+        assert (await _pinned_by(ids[0]))[0] == first_pinned_at
 
 
-@pytest.mark.asyncio
-async def test_pin_returns_none_for_a_deleted_message(monkeypatch):
-    row = _Row(deleted_at=datetime.now(timezone.utc))
-    SessionContext, session = _session_context(row)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
+async def test_unpin_is_idempotent(tenant):
+    with tenant_context(tenant):
+        chat_id, [message_id] = await _chat_with_messages(1)
+        await pin_message(chat_id, message_id, user_id=await _user())
 
-    assert await _domain_app_modules_conversations_message_edits.pin_message(CHAT_ID, 42, user_id=7) is None
-    session.commit.assert_not_awaited()
+        await unpin_message(chat_id, message_id)
+        await unpin_message(chat_id, message_id)
 
-
-@pytest.mark.asyncio
-async def test_pin_returns_none_when_message_not_found(monkeypatch):
-    SessionContext, session = _session_context(None)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
-
-    assert await _domain_app_modules_conversations_message_edits.pin_message(CHAT_ID, 999, user_id=7) is None
+        assert await _pinned_by(message_id) == (None, None)
 
 
-@pytest.mark.asyncio
-async def test_unpin_clears_pinned_fields(monkeypatch):
-    row = _Row(pinned_at=datetime.now(timezone.utc), pinned_by_user_id=7)
-    SessionContext, session = _session_context(row)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
-
-    result = await _domain_app_modules_conversations_message_edits.unpin_message(CHAT_ID, 42)
-
-    assert result["pinned_at"] is None
-    assert row.pinned_by_user_id is None
-    session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_unpin_is_idempotent(monkeypatch):
-    row = _Row(pinned_at=None)
-    SessionContext, session = _session_context(row)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
-
-    result = await _domain_app_modules_conversations_message_edits.unpin_message(CHAT_ID, 42)
-
-    assert result["pinned_at"] is None
-    session.commit.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_unpin_returns_none_when_message_not_found(monkeypatch):
-    SessionContext, session = _session_context(None)
-    patch_store(monkeypatch, "get_sessionmaker", lambda: SessionContext)
-
-    assert await _domain_app_modules_conversations_message_edits.unpin_message(CHAT_ID, 999) is None
+async def test_missing_or_deleted_messages_cannot_be_pinned(tenant):
+    with tenant_context(tenant):
+        chat_id, [deleted_id] = await _chat_with_messages(1, deleted_at=datetime.now(timezone.utc))
+        with pytest.raises(MessageNotFound):
+            await pin_message(chat_id, deleted_id, user_id=1)
+        with pytest.raises(MessageNotFound):
+            await pin_message(chat_id, 999_999, user_id=1)
+        with pytest.raises(MessageNotFound):
+            await unpin_message(chat_id, 999_999)

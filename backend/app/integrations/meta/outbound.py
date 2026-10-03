@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.errors import Invalid
 from app.integrations.meta.contract import capability_for, contract, limit
 from app.modules.platform.ports.settings_service import (get_effective_many)
 
@@ -30,8 +31,11 @@ MEDIA_FIELDS = {
 }
 
 
-class OutboundRejected(ValueError):
-    """La salida no es algo que Meta acepte enviar. ``reason`` va a métricas."""
+class OutboundRejected(Invalid, ValueError):
+    """La salida no es algo que Meta acepte enviar (422). ``reason`` va a
+    métricas. Sigue siendo ``ValueError`` para el clasificador de fallos."""
+
+    code = "outbound_rejected"
 
     def __init__(self, message: str, *, reason: str = "invalid"):
         super().__init__(message)

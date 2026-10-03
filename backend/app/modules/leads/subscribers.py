@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from app.core.events import Phase, subscribe
 from app.modules.catalogs.public import ServiceRenamed
-from app.modules.leads.application.commands import rename_service
+from app.modules.conversations.public import InternalNoteWritten
+from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
     LeadCreated,
     LeadDeleted,
@@ -74,4 +75,13 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
     await rename_service(
         event.old_name, event.new_name,
         actor=Actor.of(event.actor_user_id), service_id=event.service_id,
+    )
+
+
+@subscribe(InternalNoteWritten, phase=Phase.TRANSACTION)
+async def audit_internal_note(event: InternalNoteWritten) -> None:
+    await record_note_activity(
+        event.chat_id, action=event.action, actor=Actor.user(event.actor_user_id),
+        note_id=event.note_id, old_content=event.old_content, new_content=event.new_content,
+        mention_ids=event.mention_ids,
     )

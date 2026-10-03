@@ -329,27 +329,32 @@ async def test_media_is_imported_without_touching_the_meta_object(tenant, fake_m
 
 @pytest.mark.asyncio
 async def test_outbound_records_the_exact_body_sent_and_the_meta_status(tenant, monkeypatch) -> None:
-    from app.modules.conversations import message_outbox
+    from datetime import datetime, timezone
+
+    from app.modules.conversations.application.outbound import queue_messages
+    from app.modules.conversations.infrastructure import outbox_worker
+    from app.modules.conversations.infrastructure.sql_outbox import claim_batch
     from app.modules.leads.public import Actor, create_lead
+    from app.realtime.ws_manager import manager
     from tests.conftest import FakeSender, install_channel
 
     context, _phone, _ids = tenant
     sender = FakeSender()
     install_channel(monkeypatch, sender=sender)
-    monkeypatch.setattr(message_outbox, "manager", type("M", (), {"broadcast": staticmethod(_noop)})())
+    monkeypatch.setattr(manager, "broadcast", _noop)
 
     with tenant_context(context):
         lead_id = await create_lead("51987654321", "Ana", actor=Actor.system())
-        [queued] = await message_outbox.enqueue_messages(lead_id, [{
+        [queued] = await queue_messages(lead_id, [{
             "content": "Hola Ana",
             "message": {"type": "text", "text": {"body": "Hola Ana"}},
         }], actor_user_id=None)
         assert queued["outbox_status"] == "queued"
         assert queued["provider_payload"] == {"type": "text", "text": {"body": "Hola Ana"}}
 
-        jobs = await message_outbox._claim_batch()
+        jobs = await claim_batch(datetime.now(timezone.utc))
         assert [job["message_id"] for job in jobs] == [queued["id"]]
-        await message_outbox._process_job(jobs[0])
+        await outbox_worker._process_job(jobs[0])
 
         async with get_sessionmaker()() as session:
             row = await session.get(WspMessage, queued["id"])

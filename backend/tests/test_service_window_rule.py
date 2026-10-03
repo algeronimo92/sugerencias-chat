@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
+from app.modules.conversations.domain.errors import ServiceWindowClosed
 
 from app.modules.conversations import api as chats
 from app.modules.conversations.schemas import SendMessageRequest
@@ -39,9 +39,9 @@ async def test_a_manual_send_with_the_window_closed_is_refused_before_queueing(m
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch, is_open=False)
     enqueue = AsyncMock()
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(ServiceWindowClosed) as exc:
         await chats.send_message(CHAT_ID, SendMessageRequest(text="Hola"), SELLER)
 
     assert exc.value.status_code == 409
@@ -57,6 +57,7 @@ def test_nobody_reimplements_the_window_on_their_own():
         "app/db/store_common.py",
         "app/modules/conversations/chat_queries.py",
         "app/modules/conversations/service_window.py",
+        "app/modules/conversations/domain/service_window.py",
     }
     culpables = set()
     for path in (BACKEND / "app").rglob("*.py"):

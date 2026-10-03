@@ -10,6 +10,7 @@ from app.modules.leads.application.commands import (
     change_stage,
     create_lead,
     open_conversation_from_inbound,
+    register_follow_up,
     remove_tag,
     update_lead,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "fetch_lead_raw",
     "fetch_messages_raw",
     "open_conversation_from_inbound",
+    "register_follow_up",
     "remove_tag",
     "update_lead",
 ]

@@ -186,6 +186,20 @@ async def register_no_show(lead_id: str, *, actor: Actor) -> int:
     return count
 
 
+async def register_follow_up(lead_id: str, *, actor: Actor) -> int:
+    """n8n avisa que mandó un seguimiento: suma un toque al lead."""
+    repository = lead_repository()
+    async with unit_of_work():
+        lead = await _locked(lead_id, ("toques_seguimiento",))
+        touches = lead.register_follow_up(now=_now())
+        await repository.save(lead)
+        collect(LeadUpdated(
+            lead_id=lead_id, actor=actor, fields=("toques_seguimiento", "fecha_ultimo_toque"),
+            event_type="lead_updated", values={"toques_seguimiento": touches},
+        ))
+    return touches
+
+
 async def delete_lead(lead_id: str, *, actor: Actor) -> None:
     """Borra el lead y todo lo que cuelga de él. No hay soft-delete."""
     async with unit_of_work():
@@ -264,6 +278,30 @@ async def rename_service(old_name: str, new_name: str, *, actor: Actor, service_
                 new_value={"servicio_interes": new_name},
                 metadata={"source": "service_catalog", "service_id": service_id},
             ))
+
+
+async def record_note_activity(
+    lead_id: str,
+    *,
+    action: str,
+    actor: Actor,
+    note_id: int,
+    old_content: str | None,
+    new_content: str | None,
+    mention_ids: tuple[int, ...],
+) -> None:
+    """Las notas internas son de ``conversations``, pero quedan en la
+    auditoría comercial del lead, que es de ``leads``."""
+    metadata: dict = {"note_id": note_id}
+    if action != "deleted":
+        metadata["mentioned_user_ids"] = list(mention_ids)
+    async with unit_of_work():
+        await lead_repository().record_activity(lead_id, ActivityRecord(
+            f"internal_note_{action}", actor,
+            old_value={"content": old_content} if old_content is not None else None,
+            new_value={"content": new_content} if new_content is not None else None,
+            metadata=metadata,
+        ))
 
 
 async def merge_leads(source_id: str, target_id: str, *, actor: Actor) -> None:

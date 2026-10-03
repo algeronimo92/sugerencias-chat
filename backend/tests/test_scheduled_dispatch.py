@@ -1,125 +1,88 @@
-"""Despacho de un mensaje programado.
-
-`_dispatch` no tenía cobertura y era el segundo escritor de `message_outbox`:
-armaba a mano el `WspMessage` y el `MessageOutbox`, copiando invariantes que
-ya resuelve `enqueue_messages`. Estos tests fijan que pase por esa puerta.
-"""
-
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
+"""Despacho de un mensaje programado que llegó a su hora."""
 
 import pytest
 
+from app.modules.conversations.application.scheduling import dispatch_scheduled_message
+from app.modules.conversations.domain.events import OutboundQueued, ScheduledMessageChanged
 from domain_types import ScheduledMessageStatus
-from app.modules.conversations import scheduled_message_service as sched
 
-CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
-
-
-class _SessionContext:
-    def __init__(self, session):
-        self._session = session
-
-    async def __aenter__(self):
-        return self._session
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-def _sessionmaker(session):
-    return lambda: (lambda: _SessionContext(session))
-
-
-def scheduled_row(**overrides):
-    defaults = {
-        "id": 5,
-        "lead_id": CHAT_ID,
-        "text": "Hola, ¿seguimos?",
-        "created_by_user_id": 9,
-        "status": ScheduledMessageStatus.PROCESSING,
-        "error": None,
-        "queued_message_id": None,
-        "updated_at": None,
-    }
-    return SimpleNamespace(**{**defaults, **overrides})
+CHAT_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
 
 
 @pytest.fixture
-def entorno(monkeypatch):
-    row = scheduled_row()
-    session = AsyncMock()
-    session.get = AsyncMock(return_value=row)
-    session.execute = AsyncMock(return_value=SimpleNamespace(rowcount=1))
-    monkeypatch.setattr(sched.scheduled_message_repository, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(sched, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    enqueue = AsyncMock(return_value={"id": 77, "status": "PENDING"})
-    monkeypatch.setattr(sched, "enqueue_text_message", enqueue)
-    monkeypatch.setattr(sched, "service_window_is_open", AsyncMock(return_value=True))
-    return SimpleNamespace(row=row, session=session, enqueue=enqueue)
+def entorno(in_memory_conversations):
+    in_memory_conversations.scheduled.rows[5] = {
+        "id": 5, "lead_id": CHAT_ID, "text": "Hola, ¿seguimos?",
+        "status": ScheduledMessageStatus.PROCESSING, "created_by_user_id": 9,
+    }
+    return in_memory_conversations
+
+
+def _row(world):
+    return world.scheduled.rows[5]
 
 
 async def test_it_queues_through_the_outbox_door_instead_of_writing_it_itself(entorno):
-    await sched._dispatch(5)
+    await dispatch_scheduled_message(5)
 
-    entorno.enqueue.assert_awaited_once()
-    chat_id, text = entorno.enqueue.await_args.args
-    assert (chat_id, text) == (CHAT_ID, "Hola, ¿seguimos?")
+    [queued] = entorno.outbox.queued
+    assert (queued["chat_id"], queued["content"]) == (CHAT_ID, "Hola, ¿seguimos?")
+    assert entorno.of(OutboundQueued)[0].message_ids == (queued["id"],)
 
 
 async def test_the_dedupe_key_is_derived_from_the_scheduled_row(entorno):
-    """Estable entre reintentos: si el proceso se cae entre encolar y marcar
-    QUEUED, el próximo intento devuelve el mismo mensaje en vez de otro."""
-    await sched._dispatch(5)
+    """Estable entre reintentos: un segundo despacho devuelve el mismo mensaje."""
+    await dispatch_scheduled_message(5)
+    _row(entorno)["status"] = ScheduledMessageStatus.PROCESSING
 
-    assert entorno.enqueue.await_args.kwargs["dedupe_key"] == "scheduled:5"
+    await dispatch_scheduled_message(5)
+
+    assert len(entorno.outbox.queued) == 1
+    assert "scheduled:5" in entorno.outbox.by_key
 
 
 async def test_it_does_not_claim_a_human_saw_the_chat(entorno):
-    """Sin actor_user_id: nadie está mirando la app cuando sale un programado,
-    así que cuenta como atendido por bot."""
-    await sched._dispatch(5)
+    """Sin actor: nadie está mirando la app cuando sale un programado, así que
+    cuenta como atendido por bot."""
+    await dispatch_scheduled_message(5)
 
-    assert entorno.enqueue.await_args.kwargs.get("actor_user_id") is None
+    assert entorno.outbox.queued[0]["job"]["actor_user_id"] is None
+    assert entorno.inbox.touches == [("bot", CHAT_ID)]
 
 
 async def test_the_row_keeps_the_id_of_the_message_that_was_queued(entorno):
-    await sched._dispatch(5)
+    await dispatch_scheduled_message(5)
 
-    valores = entorno.session.execute.await_args.args[0].compile().params
-    assert valores["status"] == ScheduledMessageStatus.QUEUED
-    assert valores["queued_message_id"] == 77
-    assert valores["error"] is None
+    assert _row(entorno)["status"] == ScheduledMessageStatus.QUEUED
+    assert _row(entorno)["queued_message_id"] == entorno.outbox.queued[0]["id"]
+    assert [event.status for event in entorno.of(ScheduledMessageChanged)] == [ScheduledMessageStatus.QUEUED]
 
 
-async def test_a_closed_window_fails_without_queueing_anything(entorno, monkeypatch):
-    monkeypatch.setattr(sched, "service_window_is_open", AsyncMock(return_value=False))
+async def test_a_closed_window_fails_without_queueing_anything(entorno):
+    entorno.windows[CHAT_ID] = False
 
-    await sched._dispatch(5)
+    await dispatch_scheduled_message(5)
 
-    entorno.enqueue.assert_not_awaited()
-    assert entorno.row.status == ScheduledMessageStatus.FAILED
-    assert "24 horas" in entorno.row.error
+    assert entorno.outbox.queued == []
+    assert _row(entorno)["status"] == ScheduledMessageStatus.FAILED
+    assert "24 horas" in _row(entorno)["error"]
+    assert [event.status for event in entorno.of(ScheduledMessageChanged)] == [ScheduledMessageStatus.FAILED]
 
 
 @pytest.mark.parametrize("estado", [
-    ScheduledMessageStatus.SCHEDULED,
-    ScheduledMessageStatus.CANCELLED,
-    ScheduledMessageStatus.QUEUED,
+    ScheduledMessageStatus.SCHEDULED, ScheduledMessageStatus.QUEUED, ScheduledMessageStatus.CANCELLED,
 ])
 async def test_only_a_row_this_worker_claimed_is_dispatched(entorno, estado):
-    """`_claim_due` deja la fila en processing; cualquier otro estado significa
-    que la cancelaron o que ya salió."""
-    entorno.row.status = estado
+    _row(entorno)["status"] = estado
 
-    await sched._dispatch(5)
+    await dispatch_scheduled_message(5)
 
-    entorno.enqueue.assert_not_awaited()
+    assert entorno.outbox.queued == []
 
 
 async def test_a_row_that_disappeared_is_not_dispatched(entorno):
-    entorno.session.get = AsyncMock(return_value=None)
+    entorno.scheduled.rows.pop(5)
 
-    await sched._dispatch(5)
+    await dispatch_scheduled_message(5)
 
-    entorno.enqueue.assert_not_awaited()
+    assert entorno.outbox.queued == []

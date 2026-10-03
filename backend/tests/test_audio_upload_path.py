@@ -42,7 +42,7 @@ def audio_route(monkeypatch):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "_resolve_reply_to", AsyncMock(return_value=None))
-    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[{"id": 1, "status": "PENDING"}]))
+    patch_chats(monkeypatch, "queue_messages", AsyncMock(return_value=[{"id": 1, "status": "PENDING"}]))
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
     monkeypatch.setattr(base64, "b64decode", counting_decode)
     monkeypatch.setattr(base64, "b64encode", counting_encode)

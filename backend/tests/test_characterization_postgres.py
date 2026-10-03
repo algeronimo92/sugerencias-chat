@@ -36,7 +36,8 @@ from app.modules.ai.ai_context import make_context_revision
 from app.modules.ai.ai_job_tokens import AIJobClaims, require_ai_job_context
 from app.modules.auth.auth_service import get_current_user, verify_webhook_token
 from app.modules.automations.engine import process_due_automation_executions
-from app.modules.conversations import scheduled_message_service
+from app.modules.conversations.application.ports import conversation_ports
+from app.modules.conversations.application.scheduling import dispatch_scheduled_message
 from app.realtime.ws_manager import manager
 from app.tenancy.context import tenant_context
 from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
@@ -439,9 +440,9 @@ async def test_a_scheduled_message_is_queued_and_credited_to_its_author(world: W
                 {"id": scheduled_id},
             )
             await session.commit()
-        claimed = await scheduled_message_service._claim_due()
+        claimed = await conversation_ports().scheduled.claim_due()
         assert scheduled_id in claimed
-        await scheduled_message_service._dispatch(scheduled_id)
+        await dispatch_scheduled_message(scheduled_id)
 
     row = await world.scalar(select(ScheduledMessage).where(ScheduledMessage.id == scheduled_id))
     assert row.status == "queued"

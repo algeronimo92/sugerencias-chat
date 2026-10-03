@@ -15,7 +15,7 @@ from app.db.store_common import CHATS_PAGE_SIZE, KANBAN_PAGE_SIZE
 from app.modules.auth.public import get_current_user, list_active_sellers, require_admin
 from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
 from app.modules.conversations.ports.chat_queries import fetch_chat, fetch_chats
-from app.modules.conversations.ports.read_state import fetch_total_unread_chat_count
+from app.modules.conversations.ports.inbox_queries import fetch_total_unread_chat_count
 from app.modules.leads.application import commands
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.kanban_queries import fetch_kanban_counts, fetch_kanban_snapshot, fetch_kanban_stage

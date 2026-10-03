@@ -1,14 +1,12 @@
+"""Adaptador HTTP de los mensajes programados."""
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.models.auth import User
+from app.modules.auth.ports.auth_service import get_current_user
+from app.modules.conversations.application.scheduling import cancel_scheduled_message, schedule_message
+from app.modules.conversations.scheduled_queries import list_scheduled_messages
 from app.modules.conversations.schemas import ScheduledMessageCreate, ScheduledMessageItem
-from app.modules.auth.ports.auth_service import (get_current_user)
-from app.modules.conversations.scheduled_message_service import (
-    cancel_scheduled_message,
-    create_scheduled_message,
-    list_scheduled_messages,
-)
-from app.realtime.ws_manager import manager
 
 router = APIRouter(tags=["scheduled-messages"])
 
@@ -37,23 +35,7 @@ async def post_scheduled_message(
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "El mensaje no puede estar vacío")
-    try:
-        item = await create_scheduled_message(
-            chat_id,
-            text,
-            body.scheduled_at,
-            user.id,
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    if item is None:
-        raise HTTPException(404, "Lead no encontrado")
-    await manager.broadcast({
-        "type": "scheduled_messages_updated",
-        "chat_id": chat_id,
-        "status": "scheduled",
-    })
-    return item
+    return await schedule_message(chat_id, text, body.scheduled_at, user.id)
 
 
 @router.delete("/api/scheduled-messages/{scheduled_id}")
@@ -61,21 +43,5 @@ async def delete_scheduled_message(
     scheduled_id: int,
     user: User = Depends(get_current_user),
 ):
-    try:
-        result = await cancel_scheduled_message(
-            scheduled_id,
-            user.id,
-            user.role == "admin",
-        )
-    except PermissionError as exc:
-        raise HTTPException(403, str(exc))
-    except ValueError as exc:
-        raise HTTPException(409, str(exc))
-    if result is None:
-        raise HTTPException(404, "Mensaje programado no encontrado")
-    await manager.broadcast({
-        "type": "scheduled_messages_updated",
-        "chat_id": result["lead_id"],
-        "status": "cancelled",
-    })
+    await cancel_scheduled_message(scheduled_id, user.id, user.role == "admin")
     return {"status": "cancelled"}

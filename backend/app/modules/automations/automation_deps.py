@@ -22,8 +22,7 @@ from app.modules.leads.public import Actor, LeadNotFound, TagNotAvailable
 from app.modules.leads import public as leads
 from app.modules.conversations.ports.chat_queries import (fetch_chat, get_customer_service_window)
 from app.modules.conversations.ports.message_history import (fetch_latest_customer_message_target)
-from app.modules.conversations.ports.message_outbox import (enqueue_messages)
-from app.modules.conversations.ports.reactions import (send_reaction)
+from app.modules.conversations.ports.outbound import queue_messages, send_reaction
 from app.modules.notifications.ports.service import (create_system_notification)
 from app.modules.tasks.ports.repository import (create_task)
 from app.modules.catalogs.ports.template_service import (record_template_use)
@@ -108,7 +107,7 @@ class AutomationDeps:
     # del vendedor. Las reacciones quedan afuera (send_reaction, abajo): no
     # tienen orden que preservar contra otros mensajes salientes y son
     # idempotentes (WhatsApp reemplaza la reacción propia).
-    enqueue_messages: Callable[[str, list[dict]], Awaitable[list[dict]]] = enqueue_messages
+    enqueue_messages: Callable[[str, list[dict]], Awaitable[list[dict]]] = queue_messages
     # (chat_id, wa_message_id objetivo, emoji) -> mensaje con el badge nuevo.
     send_reaction: Callable[[str, str, str], Awaitable[dict | None]] = send_reaction
 

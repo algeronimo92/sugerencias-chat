@@ -23,7 +23,7 @@ from app.db.models.leads import Lead as LeadRow, LeadActivity, LeadStage, LeadTa
 from app.db.uow import current_session, session_scope
 from app.integrations.whatsapp.connection import ANY_CONNECTION
 from app.integrations.whatsapp.identity import WA_ID
-from app.modules.conversations.ports.latest_message_repository import latest_customer_message
+from app.modules.conversations.ports.latest_message_queries import latest_customer_message
 from app.modules.leads.domain.errors import LeadAlreadyExists
 from app.modules.leads.domain.lead import ActivityRecord, Lead, TriggerMessage
 from app.modules.leads.domain.stage import StageRule

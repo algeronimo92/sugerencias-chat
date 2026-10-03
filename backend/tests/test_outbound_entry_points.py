@@ -18,10 +18,9 @@ CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 
 
 @pytest.fixture
-def broadcast(monkeypatch):
-    mock = AsyncMock()
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=mock))
-    return mock
+def broadcast():
+    """Los avisos por WebSocket los emite el suscriptor de OutboundQueued."""
+    return None
 
 
 async def test_sticker_is_queued_as_a_meta_sticker(monkeypatch, broadcast):
@@ -31,7 +30,7 @@ async def test_sticker_is_queued_as_a_meta_sticker(monkeypatch, broadcast):
         "id": 3, "media_url": "/api/media/images/gato.png", "content_type": "image/png",
     }))
     enqueue = AsyncMock(return_value=[{"id": 1, "outbox_status": "queued"}])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     result = await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
 
@@ -48,7 +47,7 @@ async def test_sticker_rejects_assets_that_are_not_images(monkeypatch, broadcast
         "id": 3, "media_url": "/api/media/documents/a.pdf", "content_type": "application/pdf",
     }))
     enqueue = AsyncMock()
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     with pytest.raises(HTTPException) as exc:
         await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
@@ -62,7 +61,7 @@ async def test_contacts_are_normalized_into_one_meta_contacts_message(monkeypatc
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "effective_country_code", AsyncMock(return_value="51"))
     enqueue = AsyncMock(return_value=[{"id": 8, "outbox_status": "queued"}])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     await chats.send_contacts(
         CHAT_ID,
@@ -85,7 +84,7 @@ async def test_interactive_is_sent_as_the_meta_object(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
     open_service_window(monkeypatch)
     enqueue = AsyncMock(return_value=[{"id": 9}])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
     interactive = outbound_cases()["interactive_list"]["interactive"]
 
     await chats.send_interactive(CHAT_ID, SendInteractiveRequest(interactive=interactive), SELLER)
@@ -97,9 +96,10 @@ async def test_interactive_is_sent_as_the_meta_object(monkeypatch, broadcast):
 async def test_outbound_rejected_by_meta_rules_is_422(monkeypatch, broadcast):
     patch_chats(monkeypatch, "lead_exists", AsyncMock(return_value=True))
     open_service_window(monkeypatch)
-    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(side_effect=OutboundRejected("no")))
+    patch_chats(monkeypatch, "queue_messages", AsyncMock(side_effect=OutboundRejected("no")))
 
-    with pytest.raises(HTTPException) as exc:
+    # El rechazo del proveedor es un error de dominio: el handler responde 422.
+    with pytest.raises(OutboundRejected) as exc:
         await chats.send_interactive(
             CHAT_ID, SendInteractiveRequest(interactive={"type": "button_reply"}), SELLER,
         )
@@ -115,7 +115,7 @@ async def test_official_template_to_unknown_lead_is_404_before_queueing(monkeypa
     }]))
     monkeypatch.setattr(chat_messaging, "lead_exists", AsyncMock(return_value=False))
     enqueue = AsyncMock()
-    monkeypatch.setattr(chat_messaging, "enqueue_messages", enqueue)
+    monkeypatch.setattr(chat_messaging, "queue_messages", enqueue)
 
     with pytest.raises(HTTPException) as exc:
         await chats.send_template(CHAT_ID, 4, SendTemplateRequest(), SELLER)

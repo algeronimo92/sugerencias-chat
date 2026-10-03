@@ -97,6 +97,21 @@ async def dispatch_after_commit(events: Iterable[DomainEvent]) -> None:
                 )
 
 
+async def publish(*events: DomainEvent, strict: bool = False) -> None:
+    """Para adaptadores que avisan algo sin abrir una transacción (p. ej. un
+    worker que detecta mensajes insertados por fuera): despacha ya la fase
+    ``after_commit``. Dentro de un caso de uso se usa ``app.db.uow.collect``.
+
+    Con ``strict`` un handler que falla corta y propaga el error, para que el
+    adaptador pueda reintentar (el vigilante no avanza su cursor)."""
+    if not strict:
+        await dispatch_after_commit(events)
+        return
+    for event in events:
+        for handler in handlers_for(event, Phase.AFTER_COMMIT):
+            await handler(event)
+
+
 def clear_handlers() -> None:
     """Solo para tests que registran handlers propios."""
     _handlers.clear()

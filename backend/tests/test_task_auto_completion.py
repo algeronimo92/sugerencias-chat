@@ -7,9 +7,10 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.tasks import api as tasks
-from app.modules.conversations import message_outbox
+from app.core.events import dispatch_after_commit
+from app.modules.conversations.domain.events import MessageSent, ProviderMessageStored
+from app.modules.tasks import subscribers as task_subscribers
 from app.modules.tasks import repository as task_service
-from app.integrations.whatsapp.channel import SendReceipt
 
 
 class _SessionContext:
@@ -75,80 +76,52 @@ async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatc
 
 
 async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypatch):
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=0),
-    ])
-    monkeypatch.setattr(message_outbox, "get_sessionmaker", _sessionmaker(session))
     complete = AsyncMock(return_value=2)
-    monkeypatch.setattr(message_outbox, "complete_reply_tasks", complete)
     broadcast = AsyncMock()
-    monkeypatch.setattr(message_outbox.manager, "broadcast", broadcast)
+    monkeypatch.setattr(task_subscribers, "complete_reply_tasks", complete)
+    monkeypatch.setattr(task_subscribers.manager, "broadcast", broadcast)
 
-    await message_outbox._persist_sent({
-        "id": 10,
-        "message_id": 20,
-        "chat_id": "lead-1",
-        "attempts": 0,
-        "payload": {"message": {"type": "text", "text": {"body": "Hola"}}, "actor_user_id": 7},
-    }, SendReceipt("WA-1", sent_body={"type": "text", "text": {"body": "Hola"}}))
+    await task_subscribers.reply_sent_from_the_app(
+        MessageSent(chat_id="lead-1", message_id=20, actor_user_id=7),
+    )
 
     complete.assert_awaited_once_with("lead-1", 7)
-    assert {"type": "tasks_updated"} in [call.args[0] for call in broadcast.await_args_list]
+    broadcast.assert_awaited_once_with({"type": "tasks_updated"})
 
 
 async def test_automatic_message_does_not_complete_seller_tasks(monkeypatch):
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=0),
-    ])
-    monkeypatch.setattr(message_outbox, "get_sessionmaker", _sessionmaker(session))
     complete = AsyncMock()
-    monkeypatch.setattr(message_outbox, "complete_reply_tasks", complete)
-    monkeypatch.setattr(message_outbox.manager, "broadcast", AsyncMock())
+    monkeypatch.setattr(task_subscribers, "complete_reply_tasks", complete)
 
-    await message_outbox._persist_sent({
-        "id": 10,
-        "message_id": 20,
-        "chat_id": "lead-1",
-        "attempts": 0,
-        "payload": {"message": {"type": "text", "text": {"body": "Mensaje automático"}}},
-    }, SendReceipt("WA-1", sent_body={"type": "text", "text": {"body": "Hola"}}))
+    await task_subscribers.reply_sent_from_the_app(
+        MessageSent(chat_id="lead-1", message_id=20, actor_user_id=None),
+    )
 
     complete.assert_not_awaited()
 
 
 async def test_task_completion_failure_does_not_fail_an_already_sent_message(monkeypatch):
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=1),
-        SimpleNamespace(rowcount=0),
-    ])
-    monkeypatch.setattr(message_outbox, "get_sessionmaker", _sessionmaker(session))
-    monkeypatch.setattr(
-        message_outbox,
-        "complete_reply_tasks",
-        AsyncMock(side_effect=RuntimeError("database temporarily unavailable")),
-    )
-    broadcast = AsyncMock()
-    monkeypatch.setattr(message_outbox.manager, "broadcast", broadcast)
+    """Corre después del commit del envío: un error se registra y no deshace
+    nada ni corta a los demás suscriptores."""
+    monkeypatch.setattr(task_subscribers, "complete_reply_tasks", AsyncMock(side_effect=RuntimeError("db")))
 
-    await message_outbox._persist_sent({
-        "id": 10,
-        "message_id": 20,
-        "chat_id": "lead-1",
-        "attempts": 0,
-        "payload": {"message": {"type": "text", "text": {"body": "Hola"}}, "actor_user_id": 7},
-    }, SendReceipt("WA-1", sent_body={"type": "text", "text": {"body": "Hola"}}))
-
-    assert broadcast.await_args_list[0].args[0]["reason"] == "outbound_message"
+    await dispatch_after_commit([MessageSent(chat_id="lead-1", message_id=20, actor_user_id=7)])
 
 
+async def test_a_reply_from_the_phone_completes_the_assigned_sellers_tasks(monkeypatch):
+    complete = AsyncMock(return_value=1)
+    monkeypatch.setattr(task_subscribers, "complete_assigned_seller_reply_tasks", complete)
+    monkeypatch.setattr(task_subscribers.manager, "broadcast", AsyncMock())
+    echo = ProviderMessageStored(chat_id="lead-1", message_id=3, wa_message_id="WA-3", inbound=False, conversational=True)
+    inbound = ProviderMessageStored(chat_id="lead-1", message_id=4, wa_message_id="WA-4", inbound=True, conversational=True)
+
+    await task_subscribers.reply_sent_from_the_phone(echo)
+    await task_subscribers.reply_sent_from_the_phone(inbound)
+
+    complete.assert_awaited_once_with("lead-1")
+
+
+@pytest.mark.asyncio
 async def test_admin_can_complete_current_team_filter(monkeypatch):
     complete = AsyncMock(return_value=4)
     monkeypatch.setattr(tasks, "complete_pending_tasks", complete)

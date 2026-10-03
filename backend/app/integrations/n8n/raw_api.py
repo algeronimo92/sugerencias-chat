@@ -1,7 +1,7 @@
 from fastapi import Depends, Header, HTTPException, Query
 
 from app.modules.leads.public import fetch_lead_raw, fetch_messages_raw
-from app.modules.conversations.ports.messages import (fetch_last_wa_message_id)
+from app.modules.conversations.ports.message_queries import fetch_last_wa_message_id
 from app.integrations.n8n.webhook_schemas import RagSearchWebhookBody
 from app.integrations.n8n.common import webhooks_router
 from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config, list_ai_catalog, list_ai_resources)

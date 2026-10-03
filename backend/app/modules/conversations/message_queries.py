@@ -130,3 +130,10 @@ async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
     if row is None:
         return None
     return _message_notification_payload(row)
+
+
+async def chat_id_for_wa_message(wa_message_id: str) -> str | None:
+    async with get_sessionmaker()() as session:
+        return await session.scalar(
+            select(WspMessage.chat_id).where(WspMessage.wa_message_id == wa_message_id)
+        )

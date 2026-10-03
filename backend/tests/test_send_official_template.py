@@ -32,15 +32,11 @@ def send_deps(monkeypatch):
     async def fake_record_template_use(_template_id, _user_id):
         return None
 
-    async def fake_broadcast(_payload):
-        return None
-
     async def fake_lead_exists(_chat_id):
         return True
 
-    monkeypatch.setattr(chat_messaging, "enqueue_messages", fake_enqueue_messages)
+    monkeypatch.setattr(chat_messaging, "queue_messages", fake_enqueue_messages)
     monkeypatch.setattr(chat_messaging, "record_template_use", fake_record_template_use)
-    monkeypatch.setattr(chat_messaging.manager, "broadcast", fake_broadcast)
     monkeypatch.setattr(chat_messaging, "lead_exists", fake_lead_exists)
 
     def sent():

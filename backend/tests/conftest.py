@@ -13,6 +13,7 @@ import pytest
 
 from app.composition import configure as configure_composition
 from tests.leads_fakes import in_memory_leads  # noqa: F401  (fixture compartido)
+from tests.conversation_fakes import in_memory_conversations  # noqa: F401  (fixture compartido)
 
 from app.modules.automations.automation_deps import AutomationDeps
 

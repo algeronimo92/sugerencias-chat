@@ -236,6 +236,15 @@ class Lead:
         ))
         return self.no_show_count
 
+    def register_follow_up(self, *, now: datetime) -> int:
+        """Un mensaje de seguimiento (recordatorio, cadencia de nutrición) ya
+        salió por WhatsApp. Cuenta para "sin toque hace N días"; no se audita:
+        el mensaje mismo queda en el historial."""
+        touches = (self.values.get("toques_seguimiento") or 0) + 1
+        self.values["toques_seguimiento"] = touches
+        self.changes.update(toques_seguimiento=touches, fecha_ultimo_toque=now, updated_at=now)
+        return touches
+
     def record_tag(self, tag: dict[str, Any], *, added: bool, actor: Actor) -> None:
         self.activities.append(ActivityRecord(
             "tag_added" if added else "tag_removed", actor,

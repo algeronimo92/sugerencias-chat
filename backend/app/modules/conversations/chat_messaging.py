@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from app.modules.automations.ports.automation_rules import (render_variables)
 from app.modules.conversations.chat_queries import fetch_chat, lead_exists
-from app.modules.conversations.message_outbox import enqueue_messages
+from app.modules.conversations.application.outbound import queue_messages
 from app.integrations.meta.outbound import interactive_item, location_item, media_item, sticker_item, template_item, text_item
 from app.modules.catalogs.ports.template_service import (list_templates, record_template_use)
 from app.modules.catalogs.ports.template_delivery import (build_internal_template_items)
@@ -14,7 +14,6 @@ from app.integrations.whatsapp.rules import (
     interactive_errors,
     resolve_default_footer,
 )
-from app.realtime.ws_manager import manager
 
 
 class ChatMessagingError(Exception):
@@ -243,7 +242,6 @@ async def send_template(
         raise LeadNotFoundError("Lead no encontrado")
     build_items = TEMPLATE_ITEM_BUILDERS[template_kind(template)]
     items = await build_items(template, chat_id, (text or "").strip(), parameters)
-    sent = await enqueue_messages(chat_id, items, actor_user_id=user_id)
+    sent = await queue_messages(chat_id, items, actor_user_id=user_id)
     await record_template_use(template_id, user_id)
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
     return sent

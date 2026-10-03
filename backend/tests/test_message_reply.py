@@ -2,11 +2,11 @@ from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 
 from app.modules.conversations.schemas import SendMessageRequest
 from app.modules.conversations import api as chats
-from app.modules.conversations import message_outbox
+from app.modules.conversations.domain.errors import MessageNotConfirmed, MessageNotFound
+from app.modules.conversations.infrastructure import meta_contract
 from tests.conftest import open_service_window, patch_chats
 from app.modules.conversations.outbound_api import _resolve_reply_to
 
@@ -17,8 +17,8 @@ USER = SimpleNamespace(id=7)
 @pytest.mark.asyncio
 async def test_la_cita_viaja_como_context_de_meta(monkeypatch):
     """Meta solo necesita el wa_message_id del citado en ``context``."""
-    monkeypatch.setattr(message_outbox, "require_capabilities", AsyncMock())
-    prepared = await message_outbox.prepare_items([{
+    monkeypatch.setattr(meta_contract, "require_capabilities", AsyncMock())
+    prepared = await meta_contract.MetaMessageContract().prepare([{
         "message": {"type": "text", "text": {"body": "Sale 200"}},
         "reply_to": {"id": 5, "sender": "cliente", "content": "¿Cuánto?", "wa_message_id": "WA-2"},
     }])
@@ -32,7 +32,7 @@ async def test_la_cita_viaja_como_context_de_meta(monkeypatch):
 async def test_responder_a_un_mensaje_inexistente_es_404(monkeypatch):
     patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=None))
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(MessageNotFound) as error:
         await _resolve_reply_to(CHAT_ID, 42)
 
     assert error.value.status_code == 404
@@ -46,7 +46,7 @@ async def test_responder_a_un_mensaje_aun_en_la_outbox_es_409(monkeypatch):
         "id": 42, "sender": "vendedor", "content": "Ahí va", "wa_message_id": None,
     }))
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(MessageNotConfirmed) as error:
         await _resolve_reply_to(CHAT_ID, 42)
 
     assert error.value.status_code == 409
@@ -59,7 +59,7 @@ async def test_el_texto_se_encola_con_el_mensaje_citado(monkeypatch):
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "fetch_reply_target", AsyncMock(return_value=target))
     enqueue = AsyncMock(return_value=[{"id": 90, "outbox_status": "queued"}])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
+    patch_chats(monkeypatch, "queue_messages", enqueue)
     patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     await chats.send_message(CHAT_ID, SendMessageRequest(text="Sale 200", reply_to_message_id=42), USER)

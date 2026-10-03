@@ -7,7 +7,7 @@ from app.db.models.leads import Lead, LeadTagAssignment, WhatsAppIdentity
 from app.db.models.catalogs import LeadTag
 from app.db.models.auth import User
 from app.db.models.conversations import WspMessage
-from app.db.session import get_sessionmaker
+from app.db.uow import session_scope
 from app.integrations.whatsapp.connection import connection_scope
 from app.db.store_common import (
     CHATS_PAGE_SIZE,
@@ -421,7 +421,7 @@ async def fetch_chats(
         order_keys.insert(0, _search_rank_expression(search).desc())
     stmt = stmt.order_by(*order_keys).limit(limit + 1)
 
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
         page_rows = rows[:limit]
         tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in page_rows])
@@ -440,7 +440,7 @@ async def fetch_chat(chat_id: str) -> dict | None:
         .join(last_message, true(), isouter=True)
         .where(Lead.id == chat_id)
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
         tags_by_lead = await _tags_by_lead(session, [chat_id]) if row is not None else {}
 
@@ -457,7 +457,7 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
         .correlate(Lead)
         .scalar_subquery()
     )
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         row = (await session.execute(
             select(Lead.id, last_customer_message.label("last_customer_message_at"))
             .where(Lead.id == chat_id)
@@ -480,5 +480,5 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
 async def lead_exists(chat_id: str) -> bool:
     """Validación ligera para operaciones que no necesitan la ventana de servicio."""
     stmt = select(exists().where(Lead.id == chat_id))
-    async with get_sessionmaker()() as session:
+    async with session_scope() as session:
         return bool(await session.scalar(stmt))

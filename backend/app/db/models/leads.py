@@ -50,7 +50,7 @@ class Lead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Columna histórica de la migración a n8n (b7a2c9d41e08), hoy la escribe
     # únicamente ensure_lead_stub al crear el lead. Nadie la actualiza todavía
-    # en mensajes posteriores -- ver app/modules/conversations/provider_messages.py --
+    # en mensajes posteriores -- ver app/modules/conversations/infrastructure/sql_messages.py --
     # así que por ahora solo sirve como fecha del primer mensaje, no del último.
     ultimo_mensaje_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Último momento en que se abrió el chat en el panel — se compara contra

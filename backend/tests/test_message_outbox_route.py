@@ -26,11 +26,9 @@ async def test_text_send_returns_queued_message_without_waiting_for_meta(monkeyp
     }
     require_lead = AsyncMock()
     enqueue = AsyncMock(return_value=[queued])
-    broadcast = AsyncMock()
     patch_chats(monkeypatch, "_require_existing_lead", require_lead)
     open_service_window(monkeypatch)
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     result = await chats.send_message(
         CHAT_ID,
@@ -45,11 +43,6 @@ async def test_text_send_returns_queued_message_without_waiting_for_meta(monkeyp
         [{"content": "Hola", "message": {"type": "text", "text": {"body": "Hola"}}, "reply_to": None}],
         actor_user_id=USER.id,
     )
-    broadcast.assert_awaited_once_with({
-        "type": "chats_updated",
-        "chat_id": CHAT_ID,
-        "reason": "outbound_queued",
-    })
 
 
 @pytest.mark.asyncio
@@ -64,9 +57,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_meta(monkeypatc
     open_service_window(monkeypatch)
     patch_chats(monkeypatch, "save_decoded_media", lambda *_args: queued["media_url"])
     enqueue = AsyncMock(return_value=[queued])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
-    broadcast = AsyncMock()
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     result = await chats.send_audio(
         CHAT_ID,
@@ -79,7 +70,6 @@ async def test_audio_send_stores_then_queues_without_waiting_for_meta(monkeypatc
     assert item["message"] == {"type": "audio", "audio": {"voice": True}}
     assert item["media"]["media_url"] == "/api/media/audio/voice.ogg"
     assert item["media_url"] == "/api/media/audio/voice.ogg"
-    broadcast.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -104,8 +94,7 @@ async def test_audio_send_transcodes_non_ogg_recordings_before_storing(monkeypat
     )
     transcode = lambda data: b"ogg-bytes"
     patch_chats(monkeypatch, "transcode_audio_to_ogg_opus", transcode)
-    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[queued]))
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "queue_messages", AsyncMock(return_value=[queued]))
 
     await chats.send_audio(
         CHAT_ID,
@@ -138,8 +127,7 @@ async def test_audio_send_falls_back_to_original_when_transcode_fails(monkeypatc
         raise AudioTranscodeError("ffmpeg no está disponible")
 
     patch_chats(monkeypatch, "transcode_audio_to_ogg_opus", _boom)
-    patch_chats(monkeypatch, "enqueue_messages", AsyncMock(return_value=[queued]))
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "queue_messages", AsyncMock(return_value=[queued]))
 
     await chats.send_audio(
         CHAT_ID,
@@ -161,8 +149,7 @@ async def test_location_send_returns_pending_job(monkeypatch):
     patch_chats(monkeypatch, "_require_existing_lead", AsyncMock())
     open_service_window(monkeypatch)
     enqueue = AsyncMock(return_value=[queued])
-    patch_chats(monkeypatch, "enqueue_messages", enqueue)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
+    patch_chats(monkeypatch, "queue_messages", enqueue)
 
     result = await chats.send_location(
         CHAT_ID,
@@ -183,7 +170,6 @@ async def test_retry_reuses_failed_message_instead_of_creating_a_duplicate(monke
     }
     retry = AsyncMock(return_value=retried)
     patch_chats(monkeypatch, "retry_failed_message", retry)
-    patch_chats(monkeypatch, "manager", SimpleNamespace(broadcast=AsyncMock()))
 
     result = await chats.retry_message(CHAT_ID, 80)
 

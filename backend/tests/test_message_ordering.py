@@ -54,7 +54,7 @@ MESSAGE_QUERY_MODULES = sorted(
 
 def test_message_ordering_guard_scans_actual_query_owners():
     assert MESSAGE_QUERY_MODULES
-    assert "app/modules/conversations/messages.py" in MESSAGE_QUERY_MODULES
+    assert "app/modules/conversations/message_queries.py" in MESSAGE_QUERY_MODULES
     assert "app/modules/conversations/message_history.py" in MESSAGE_QUERY_MODULES
 
 

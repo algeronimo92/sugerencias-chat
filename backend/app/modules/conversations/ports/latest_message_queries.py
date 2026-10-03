@@ -1,6 +1,6 @@
 """Consumer contract: only the operations used outside this capability."""
 
-from app.modules.conversations.latest_message_repository import (
+from app.modules.conversations.latest_message_queries import (
     latest_customer_message,
 )
 

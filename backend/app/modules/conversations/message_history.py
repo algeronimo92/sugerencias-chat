@@ -6,6 +6,7 @@ from sqlalchemy import and_, bindparam, func, or_, select, update
 from app.db.models.leads import Lead
 from app.db.models.conversations import MessageOutbox, WspMessage
 from app.db.session import get_sessionmaker
+from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES
 from app.db.store_common import (
     MEDIA_DIMENSION_CONCURRENCY,
     MESSAGES_PAGE_SIZE,
@@ -300,3 +301,17 @@ async def _fill_media_dimensions(session, rows: list[dict]) -> None:
         ],
     )
     await session.commit()
+
+
+async def fetch_pinned_messages(chat_id: str) -> list[dict]:
+    """Los mensajes fijados del chat, del más viejo al más nuevo: el mismo
+    orden en que se navega el carrusel de fijados."""
+    stmt = (
+        select(WspMessage)
+        .where(WspMessage.chat_id == chat_id, WspMessage.pinned_at.isnot(None))
+        .order_by(WspMessage.pinned_at.asc())
+        .limit(MAX_PINNED_MESSAGES)
+    )
+    async with get_sessionmaker()() as session:
+        rows = (await session.execute(stmt)).scalars().all()
+    return [serialize_message(row) for row in rows]

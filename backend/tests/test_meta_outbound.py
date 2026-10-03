@@ -4,7 +4,8 @@ import copy
 
 import pytest
 
-from app.modules.conversations import message_outbox
+from app.modules.conversations.domain.delivery import SendOutcome
+from app.modules.conversations.infrastructure import outbox_worker as message_outbox
 from app.integrations.meta import outbound as meta_outbound
 from app.integrations.meta.outbound import (
     OutboundRejected,
@@ -185,7 +186,7 @@ async def test_worker_refuses_jobs_from_the_previous_format():
     with pytest.raises(OutboundRejected) as exc:
         await message_outbox.build_final_message({"type": "text", "text": "hola"})
     assert exc.value.reason == "legacy_job"
-    assert message_outbox.classify_send_failure(exc.value) is message_outbox.SendOutcome.DEFINITIVE
+    assert message_outbox.classify_send_failure(exc.value) is SendOutcome.DEFINITIVE
 
 
 def test_sent_body_matches_the_stored_one_apart_from_envelope_and_ids():

@@ -24,46 +24,38 @@ WA_ID = "51987654321"
 ADMIN = SimpleNamespace(role="admin", id=1)
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_increments_and_broadcasts(monkeypatch):
+async def test_lead_touch_counts_a_follow_up(in_memory_leads, monkeypatch):
+    in_memory_leads.repository.seed(LEAD_ID, toques_seguimiento=2)
     patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
-    record_touch = AsyncMock(return_value=True)
-    patch_webhooks(monkeypatch, "record_lead_touch", record_touch)
-    broadcast = AsyncMock()
-    patch_webhooks(monkeypatch, "manager", SimpleNamespace(broadcast=broadcast))
 
     result = await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
-    record_touch.assert_awaited_once_with(LEAD_ID)
-    broadcast.assert_awaited_once_with(
-        {"type": "chats_updated", "chat_id": LEAD_ID, "reason": "lead_updated"}
-    )
     assert result == {"status": "ok", "chat_id": LEAD_ID}
+    assert in_memory_leads.repository.column(LEAD_ID, "toques_seguimiento") == 3
+    assert in_memory_leads.repository.column(LEAD_ID, "fecha_ultimo_toque") is not None
+    # El aviso a los paneles sale del suscriptor de LeadUpdated.
+    [event] = in_memory_leads.published
+    assert event.fields == ("toques_seguimiento", "fecha_ultimo_toque")
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_unknown_identifier_returns_404(monkeypatch):
+async def test_lead_touch_unknown_identifier_returns_404(in_memory_leads, monkeypatch):
     patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=None))
-    record_touch = AsyncMock()
-    patch_webhooks(monkeypatch, "record_lead_touch", record_touch)
 
     with pytest.raises(HTTPException) as exc:
         await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
-    record_touch.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(monkeypatch):
+async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(in_memory_leads, monkeypatch):
     """El alias seguía apuntando a un lead que ya no existe (fusión, borrado)."""
     patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
-    patch_webhooks(monkeypatch, "record_lead_touch", AsyncMock(return_value=False))
 
     with pytest.raises(HTTPException) as exc:
         await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
+    assert exc.value.detail == "No hay un lead asociado a ese identificador"
 
 
 async def test_register_no_show_returns_updated_chat(in_memory_leads, monkeypatch):

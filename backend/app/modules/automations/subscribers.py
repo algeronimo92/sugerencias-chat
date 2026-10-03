@@ -20,8 +20,10 @@ from app.db.uow import collect, current_session
 from app.modules.automations.automation_scheduling import schedule_automation_event_in_session
 from app.modules.automations.domain.events import AutomationsScheduled
 from app.modules.automations.rules import pause_lead_executions, resume_lead_executions
-from app.modules.automations.scheduler import notify_automations_scheduled
+from app.modules.automations.scheduler import notify_automations_scheduled, trigger_inbound_message
 from app.modules.catalogs.public import ServiceRenamed, rename_service_references
+from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
+from app.modules.conversations.public import ExternalMessageDetected, ProviderMessageStored
 from app.modules.leads.public import LeadCreated, LeadStageChanged, LeadUpdated
 from domain_types import AutomationTrigger
 
@@ -92,3 +94,20 @@ async def follow_lead_pause(event: LeadUpdated) -> None:
         await pause_lead_executions(event.lead_id)
     else:
         await resume_lead_executions(event.lead_id)
+
+
+@subscribe(ProviderMessageStored, phase=Phase.AFTER_COMMIT)
+async def follow_provider_message(event: ProviderMessageStored) -> None:
+    """Un mensaje nuevo (del cliente o eco del vendedor) puede abrir una
+    conversación, cumplir una espera o vencer un plazo. Los avisos de sistema
+    de Meta no son algo que dijo una persona."""
+    if not event.conversational:
+        return
+    message = await fetch_message_by_wa_id(event.wa_message_id)
+    if message is not None:
+        await trigger_inbound_message(message)
+
+
+@subscribe(ExternalMessageDetected, phase=Phase.AFTER_COMMIT)
+async def follow_external_message(event: ExternalMessageDetected) -> None:
+    await trigger_inbound_message(event.message)

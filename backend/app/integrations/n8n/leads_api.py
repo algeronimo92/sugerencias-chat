@@ -1,6 +1,5 @@
 from fastapi import Depends, Header, HTTPException
-from app.modules.leads.public import Actor, InvalidLeadStageError, change_stage, update_lead
-from app.modules.conversations.ports.read_state import (record_lead_touch)
+from app.modules.leads.public import Actor, InvalidLeadStageError, LeadNotFound, change_stage, register_follow_up, update_lead
 from app.integrations.whatsapp.identity import lead_id_for_identifier
 from app.realtime.ws_manager import manager
 from app.integrations.n8n.webhook_schemas import (
@@ -26,9 +25,12 @@ async def lead_touch_webhook(body: LeadTouchWebhookBody):
     etc.) — incrementa `leads.toques_seguimiento` y actualiza
     `fecha_ultimo_toque`."""
     lead_id = await lead_id_for_identifier(body.identifier)
-    if lead_id is None or not await record_lead_touch(lead_id):
-        raise HTTPException(status_code=404, detail="No hay un lead asociado a ese identificador")
-    await manager.broadcast({"type": "chats_updated", "chat_id": lead_id, "reason": "lead_updated"})
+    try:
+        if lead_id is None:
+            raise LeadNotFound()
+        await register_follow_up(lead_id, actor=Actor.agent())
+    except LeadNotFound as exc:
+        raise HTTPException(status_code=404, detail="No hay un lead asociado a ese identificador") from exc
     return {"status": "ok", "chat_id": lead_id}
 
 

@@ -1,6 +1,11 @@
 import asyncio
 import base64
 
+"""Adaptador HTTP de la salida: arma el cuerpo de cada tipo de mensaje y lo
+encola con ``queue_messages``. Los avisos por WebSocket salen del suscriptor de
+``OutboundQueued`` y los rechazos del proveedor los traduce el handler de
+``DomainError`` (``OutboundRejected`` es 422)."""
+
 from fastapi import Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.catalogs.schemas import SendTemplateRequest
@@ -13,14 +18,13 @@ from app.modules.platform.public import effective_country_code
 from app.modules.conversations.message_history import fetch_messages_to_forward, filter_existing_leads, fetch_reply_target
 from app.modules.auth.public import get_current_user
 from app.modules.conversations.message_media import mediatype_from_content_type as _mediatype_from_content_type
-from app.realtime.ws_manager import manager
-from app.modules.conversations.message_outbox import (
+from app.modules.conversations.application.outbound import (
     discard_failed_message,
-    enqueue_messages,
+    queue_messages,
     retry_failed_message,
 )
+from app.modules.conversations.domain.errors import MessageNotConfirmed, MessageNotFound
 from app.integrations.meta.outbound import (
-    OutboundRejected,
     contacts_item,
     interactive_item,
     location_item,
@@ -56,29 +60,19 @@ async def _resolve_reply_to(chat_id: str, message_id: int | None) -> dict | None
         return None
     target = await fetch_reply_target(chat_id, message_id)
     if target is None:
-        raise HTTPException(404, "El mensaje al que querés responder no existe en este chat")
+        raise MessageNotFound("El mensaje al que querés responder no existe en este chat")
     if not target["wa_message_id"]:
-        raise HTTPException(
-            409,
+        raise MessageNotConfirmed(
             "Ese mensaje todavía no se terminó de enviar a WhatsApp. "
-            "Esperá a que salga para poder responderlo.",
+            "Esperá a que salga para poder responderlo."
         )
     return target
 
 
 async def _enqueue_one(chat_id: str, item: dict, user: User, reply_to: dict | None = None) -> dict:
-    """Encola un envío del vendedor y avisa a los paneles.
-
-    Una salida que Meta no acepta (tipo, forma o capacidad de la cuenta) se
-    rechaza con 422 antes de crear nada en el outbox.
-    """
-    try:
-        message = (await enqueue_messages(
-            chat_id, [{**item, "reply_to": reply_to}], actor_user_id=user.id,
-        ))[0]
-    except OutboundRejected as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
+    """Encola un envío del vendedor. Una salida que Meta no acepta (tipo,
+    forma o capacidad de la cuenta) se rechaza antes de crear nada."""
+    [message] = await queue_messages(chat_id, [{**item, "reply_to": reply_to}], actor_user_id=user.id)
     return message
 
 
@@ -216,8 +210,6 @@ async def send_template(
         return await chat_messaging.send_template(chat_id, template_id, body.text, body.parameters, user.id)
     except ChatMessagingError as exc:
         raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
-    except OutboundRejected as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/{chat_id}/location", response_model=Message)
@@ -307,13 +299,7 @@ async def forward_messages(
         raise HTTPException(404, "Ninguno de los chats destino existe")
 
     for target in targets:
-        try:
-            await enqueue_messages(target, items, actor_user_id=user.id)
-        except OutboundRejected as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        await manager.broadcast({
-            "type": "chats_updated", "chat_id": target, "reason": "outbound_queued",
-        })
+        await queue_messages(target, items, actor_user_id=user.id)
 
     return ForwardMessagesResponse(
         forwarded_chats=len(targets),
@@ -324,16 +310,9 @@ async def forward_messages(
 
 @router.post("/{chat_id}/messages/{message_id}/retry", response_model=Message)
 async def retry_message(chat_id: str, message_id: int):
-    message = await retry_failed_message(chat_id, message_id)
-    if message is None:
-        raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
-    await manager.broadcast({"type": "chats_updated", "chat_id": chat_id, "reason": "outbound_queued"})
-    return message
+    return await retry_failed_message(chat_id, message_id)
 
 
 @router.post("/{chat_id}/messages/{message_id}/discard", response_model=Message)
 async def discard_message(chat_id: str, message_id: int):
-    message = await discard_failed_message(chat_id, message_id)
-    if message is None:
-        raise HTTPException(409, "El mensaje no está fallido o ya fue reintentado")
-    return message
+    return await discard_failed_message(chat_id, message_id)

@@ -62,9 +62,9 @@ from app.integrations.meta_webhook.worker import watch_meta_webhook_inbox
 from app.integrations.meta.client import close_meta_client
 from app.integrations.n8n.client import close_n8n_client
 from app.integrations.tts_service import close_tts_client
-from app.modules.conversations.message_outbox import watch_message_outbox
+from app.modules.conversations.infrastructure.outbox_worker import watch_message_outbox
 from app.realtime.queue_metrics import watch_queue_metrics
-from app.modules.conversations.scheduled_message_service import watch_scheduled_messages
+from app.modules.conversations.infrastructure.scheduled_worker import watch_scheduled_messages
 from app.core.request_metrics import begin_request_metrics, finish_request_metrics
 from app.core.request_context import reset_request_id, set_request_id
 from app.integrations.storage.media_storage import MediaStorageError, check_media_storage, storage_backend

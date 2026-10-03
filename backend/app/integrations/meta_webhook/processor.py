@@ -4,6 +4,10 @@ Orden: resolver el negocio por ``phone_number_id`` (o la WABA, en eventos de
 plantillas), abrir su contexto y aplicar un handler por ``field``. Dentro de
 ``messages`` cada raíz se guarda con su tipo y subtipo literales; lo que la UI
 no sabe mostrar todavía se guarda igual y deja una métrica.
+
+Es un adaptador de entrada: traduce el JSON de Meta y llama a los comandos de
+``conversations``. Avisar a los paneles, disparar automatizaciones y completar
+tareas lo hacen los suscriptores de los eventos que esos comandos publican.
 """
 
 from __future__ import annotations
@@ -18,16 +22,19 @@ from typing import Any
 from app.core.config import settings
 from app.integrations.meta import client as meta_service
 from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
-from app.modules.automations.public import trigger_inbound_message
-from app.modules.conversations.ports.messages import (fetch_message_by_wa_id)
-from app.modules.conversations.ports.message_edits import (set_message_reaction)
+from app.modules.conversations.ports.inbound import (
+    attach_media,
+    receive_provider_message,
+    record_provider_reaction,
+    record_provider_status,
+    set_message_payload,
+)
+from app.modules.conversations.ports.message_queries import chat_id_for_wa_message
 from app.modules.media.ports.media_upload import (save_decoded_media)
 from app.integrations.meta.contract import contract, is_known_inbound, message_subtype
 from app.integrations.meta_webhook import metrics
 from app.integrations.meta_webhook.inbox import InboxEvent
 from app.integrations.meta_webhook.projection import project, quoted_wa_message_id
-from app.modules.conversations.ports.provider_messages import (chat_id_for_wa_message, insert_provider_message, record_reaction_event, record_status_event, set_message_media_url, set_message_payload)
-from app.modules.tasks.ports.repository import (complete_assigned_seller_reply_tasks)
 from app.modules.catalogs.ports.template_service import (replace_official_template_from_meta)
 from app.integrations.whatsapp.identity import (
     WA_ID,
@@ -48,11 +55,6 @@ TEMPLATE_FIELDS = frozenset({
     "template_category_update",
     "message_template_components_update",
 })
-# Raíces que no son algo que el cliente dijo: no abren conversación ni
-# disparan automatizaciones de mensaje recibido.
-NON_CONVERSATIONAL_TYPES = frozenset({"system"})
-
-
 class UnroutableChange(RuntimeError):
     """El número o la WABA del evento no pertenece a ningún negocio activo."""
 
@@ -91,24 +93,6 @@ async def _tenant_for(change: dict) -> TenantContext | None:
     return context
 
 
-async def _broadcast_new_message(stored: dict, *, inbound: bool) -> None:
-    notification = await fetch_message_by_wa_id(stored["wa_message_id"])
-    await manager.broadcast({
-        "type": "chats_updated",
-        "chat_id": stored["chat_id"],
-        "reason": "inbound_message" if inbound else "outbound_message",
-        **({"latest_message": notification} if notification is not None else {}),
-    })
-    if notification is None:
-        return
-    if stored["message_type"] in NON_CONVERSATIONAL_TYPES:
-        return
-    try:
-        await trigger_inbound_message(notification)
-    except Exception:
-        logger.exception("No se pudo programar la automatización del mensaje %s", stored["wa_message_id"])
-
-
 async def _import_media(stored: dict, message: dict) -> None:
     projection = project(message)
     if not projection.media_id or stored.get("media_url"):
@@ -123,8 +107,7 @@ async def _import_media(stored: dict, message: dict) -> None:
         raise MediaImportError(
             f"No se pudo bajar el adjunto {projection.media_id} de {stored['wa_message_id']}: {exc}"
         ) from exc
-    await set_message_media_url(stored["id"], media_url)
-    await manager.broadcast({"type": "chats_updated", "chat_id": stored["chat_id"], "reason": "media_ready"})
+    await attach_media(stored["chat_id"], stored["id"], media_url)
 
 
 async def _rehost_referral(stored: dict, message: dict) -> None:
@@ -150,7 +133,7 @@ async def _store_message(
             message_type=message_type or "", message_subtype=subtype or ""
         ).inc()
         logger.warning("Mensaje de Meta con tipo sin renderer: %s/%s", message_type, subtype)
-    return await insert_provider_message(
+    return await receive_provider_message(
         chat_id=chat_id,
         sender=sender,
         wa_message_id=message["id"],
@@ -172,7 +155,7 @@ async def _reaction(message: dict, chat_id: str | None, *, actor: str, webhook_e
         return
     emoji = reaction.get("emoji") if isinstance(reaction.get("emoji"), str) else ""
     target_chat_id = await chat_id_for_wa_message(target) or chat_id
-    recorded = await record_reaction_event(
+    await record_provider_reaction(
         event_wa_id=message.get("id"),
         target_wa_message_id=target,
         chat_id=target_chat_id,
@@ -182,13 +165,8 @@ async def _reaction(message: dict, chat_id: str | None, *, actor: str, webhook_e
         occurred_at=_timestamp(message.get("timestamp")),
         webhook_event_id=webhook_event_id,
     )
-    if not recorded or target_chat_id is None:
-        if target_chat_id is None:
-            metrics.unmatched_messages.labels(kind="reaction").inc()
-        return
-    updated = await set_message_reaction(target_chat_id, target, emoji, from_me=actor == "business")
-    if updated is not None:
-        await manager.broadcast({"type": "chats_updated", "chat_id": target_chat_id, "reason": "reaction"})
+    if target_chat_id is None:
+        metrics.unmatched_messages.labels(kind="reaction").inc()
 
 
 async def _learn_changed_number(message: dict, chat_id: str, phone_number_id: str) -> None:
@@ -223,11 +201,6 @@ async def _conversation_message(
     if created:
         if message.get("type") == "system":
             await _learn_changed_number(message, resolved.chat_id, identity.phone_number_id)
-        if not inbound:
-            with contextlib.suppress(Exception):
-                if await complete_assigned_seller_reply_tasks(resolved.chat_id):
-                    await manager.broadcast({"type": "tasks_updated"})
-        await _broadcast_new_message(stored, inbound=inbound)
         if message.get("referral"):
             await _rehost_referral(stored, message)
     # Fuera del ``if created``: en un reintento el mensaje ya existe pero el
@@ -243,17 +216,9 @@ async def _status(status: dict, webhook_event_id: str) -> None:
     for error in status.get("errors") or []:
         if isinstance(error, dict):
             metrics.outbound_meta_errors.labels(code=str(error.get("code"))).inc()
-    update = await record_status_event(
+    await record_provider_status(
         status, occurred_at=_timestamp(status.get("timestamp")), webhook_event_id=webhook_event_id,
     )
-    if update is None:
-        return
-    await manager.broadcast({
-        "type": "chats_updated",
-        "chat_id": update["chat_id"],
-        "reason": "message_status",
-        "message_statuses": [{"id": update["id"], "meta_status": update["meta_status"]}],
-    })
 
 
 async def _messages_change(change: dict, webhook_event_id: str) -> None:
