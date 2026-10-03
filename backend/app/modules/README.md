@@ -72,6 +72,9 @@ capa vacía y la prohíbe `test_layering`.
   de tareas, métricas de colas). Con `RUN_WORKERS=true` (el default) corre
   además el trabajo de fondo; en producción va con `false` y el servicio
   `worker` lo corre aparte.
+- El mantenimiento de arranque (cifrado de configuración, backfills, admin
+  inicial) lo corre solo el proceso que tiene los workers, bajo un advisory
+  lock: dos colores de un blue-green no lo pisan.
 - Cada worker es una pasada por negocio (`app/workers/tenant_supervisor.py`):
   un ciclo por tipo que recorre los negocios activos.
 - `app/db/signals.py` lleva por LISTEN/NOTIFY los avisos de tiempo real entre

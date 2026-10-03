@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await prepare()
+    await prepare(maintenance=settings.run_workers)
     tasks = start_background(api=True, workers=settings.run_workers)
     yield
     await stop_background(tasks)

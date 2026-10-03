@@ -37,7 +37,7 @@ async def main() -> None:
         # El worker no sirve HTTP: sus contadores (envíos, rechazos, colas)
         # se exponen aparte para que Prometheus los raspe.
         start_http_server(settings.worker_metrics_port)
-    await prepare()
+    await prepare(maintenance=True)
     tasks = start_background(api=False, workers=True)
     stopping = asyncio.Event()
     loop = asyncio.get_running_loop()

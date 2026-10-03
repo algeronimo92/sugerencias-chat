@@ -111,4 +111,8 @@ async def seed_admin_if_needed(email: str, password_hash: str) -> None:
     if count > 0:
         return
 
-    await create_user(email=email, name="Admin", password_hash=password_hash, role="admin")
+    try:
+        await create_user(email=email, name="Admin", password_hash=password_hash, role="admin")
+    except EmailAlreadyExistsError:
+        # Otro proceso lo sembró entre la cuenta y el alta.
+        return

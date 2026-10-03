@@ -1,8 +1,9 @@
 """Arranque y trabajo de fondo, compartidos por la API y el worker.
 
-``prepare`` deja la base y la configuración listas (espera a PostgreSQL,
-verifica migraciones, normaliza la configuración cifrada y corre los
-backfills idempotentes). ``start_background`` arranca el bus de señales y
+``prepare`` deja la base y la configuración listas: espera a PostgreSQL y
+verifica migraciones en todos los procesos; normaliza la configuración
+cifrada, corre los backfills idempotentes y siembra el admin solo en el que
+corre el trabajo de fondo, bajo un advisory lock. ``start_background`` arranca el bus de señales y
 los ciclos de los workers que le tocan a cada proceso:
 
 - La API corre solo lo que depende de su propio proceso: los recordatorios
@@ -298,15 +299,31 @@ async def _check_media_persistence() -> None:
     )
 
 
-async def prepare() -> None:
-    """Todo lo que tiene que estar listo antes de atender o de trabajar."""
-    # El esquema ya no se toca aquí: lo aplica scripts/migrate.py bajo un
-    # advisory lock, antes de que arranque cualquier proceso.
-    await _wait_for_database()
-    await _log_database_encryption()
-    await _verify_schema_is_current()
-    await _detect_search_capabilities()
+# Entero estable que identifica el mantenimiento de arranque dentro del
+# espacio de advisory locks de la base (distinto del de scripts/migrate.py).
+MAINTENANCE_LOCK_ID = 728_413_906
 
+
+@contextlib.asynccontextmanager
+async def _maintenance_lock():
+    """Un proceso a la vez corre el mantenimiento de arranque.
+
+    En un despliegue blue-green arrancan dos workers (o una API con
+    ``RUN_WORKERS=true`` y un worker) a la vez: sin el lock los dos cifraban
+    la misma configuración y sembraban el mismo admin al mismo tiempo. El
+    segundo espera y, al entrar, encuentra el trabajo hecho.
+    """
+    async with get_engine().connect() as connection:
+        await connection.execute(text("SELECT pg_advisory_lock(:id)"), {"id": MAINTENANCE_LOCK_ID})
+        await connection.commit()
+        try:
+            yield
+        finally:
+            await connection.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": MAINTENANCE_LOCK_ID})
+            await connection.commit()
+
+
+async def _normalize_settings() -> None:
     if settings.multitenancy_enabled:
         for context in await list_active_tenants():
             with tenant_context(context):
@@ -320,34 +337,60 @@ async def prepare() -> None:
                         decrypted_settings,
                     )
                 await backfill_automation_state()
-    else:
-        encrypted_settings, decrypted_settings = await migrate_settings_encryption()
-        if encrypted_settings or decrypted_settings:
-            logger.info(
-                "Configuración persistida normalizada: secretos_cifrados=%s "
-                "públicos_descifrados=%s",
-                encrypted_settings,
-                decrypted_settings,
-            )
-        migrated_platform_settings = await migrate_legacy_platform_settings()
-        if migrated_platform_settings:
-            logger.info(
-                "Configuración global legacy migrada a plataforma: claves=%s",
-                migrated_platform_settings,
-            )
-        await backfill_automation_state()
+        return
 
-    # Después de migrar el esquema: el token puede vivir cifrado en el plano de
-    # plataforma y no en el entorno.
+    encrypted_settings, decrypted_settings = await migrate_settings_encryption()
+    if encrypted_settings or decrypted_settings:
+        logger.info(
+            "Configuración persistida normalizada: secretos_cifrados=%s "
+            "públicos_descifrados=%s",
+            encrypted_settings,
+            decrypted_settings,
+        )
+    migrated_platform_settings = await migrate_legacy_platform_settings()
+    if migrated_platform_settings:
+        logger.info(
+            "Configuración global legacy migrada a plataforma: claves=%s",
+            migrated_platform_settings,
+        )
+    await backfill_automation_state()
+
+
+async def _maintain() -> None:
+    """Escrituras idempotentes de arranque: normaliza la configuración
+    cifrada, corre los backfills y siembra el primer admin."""
+    async with _maintenance_lock():
+        await _normalize_settings()
+        if (
+            not settings.multitenancy_enabled
+            and settings.admin_email
+            and settings.admin_password
+        ):
+            await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
+
+
+async def prepare(*, maintenance: bool) -> None:
+    """Todo lo que tiene que estar listo antes de atender o de trabajar.
+
+    Las verificaciones corren en todos los procesos; el mantenimiento
+    (``maintenance``) solo en el que corre el trabajo de fondo: el worker, o
+    la API cuando lo corre ella misma (``RUN_WORKERS=true``). Así las réplicas
+    de la API no compiten por escribir lo mismo al arrancar.
+    """
+    # El esquema ya no se toca aquí: lo aplica scripts/migrate.py bajo un
+    # advisory lock, antes de que arranque cualquier proceso.
+    await _wait_for_database()
+    await _log_database_encryption()
+    await _verify_schema_is_current()
+    await _detect_search_capabilities()
+
+    if maintenance:
+        await _maintain()
+
+    # Después de normalizar la configuración: el token puede vivir cifrado en
+    # el plano de plataforma y no en el entorno.
     await _require_inbound_webhook_token()
     await _check_media_persistence()
-
-    if (
-        not settings.multitenancy_enabled
-        and settings.admin_email
-        and settings.admin_password
-    ):
-        await seed_admin_if_needed(settings.admin_email.strip().lower(), hash_password(settings.admin_password))
 
 
 # Lo que depende de este proceso: sus conexiones WebSocket y su /metrics.
