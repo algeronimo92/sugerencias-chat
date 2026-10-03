@@ -90,12 +90,15 @@ jobs:
           alembic upgrade head
       - name: ORM registry matches the migrated schema
         run: alembic check
-      - name: Real PostgreSQL isolation, ORM registry, Meta webhook and core flows
+      # Con TEST_DATABASE_URL los tests de PostgreSQL real dejan de saltarse
+      # (y fallan si la base no responde): la suite entera corre contra el
+      # esquema recién migrado, sin una lista de archivos que mantener a mano.
+      - name: Full suite against real PostgreSQL
         env:
           TEST_DATABASE_URL: "postgresql+asyncpg://app:app@localhost:5432/app"
         run: |
           pip install -r requirements-dev.txt
-          python -m pytest tests/test_model_registry.py tests/test_tenant_postgres_integration.py tests/test_meta_webhook_postgres.py tests/test_lead_stages_postgres.py tests/test_characterization_postgres.py
+          python -m pytest
 
   api-types-check:
     runs-on: ubuntu-latest
