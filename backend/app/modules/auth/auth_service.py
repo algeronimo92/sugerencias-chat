@@ -4,9 +4,10 @@ import secrets
 from urllib.parse import urlsplit
 
 import bcrypt
-from fastapi import Depends, Header, HTTPException, Request, Response
+from fastapi import Depends, Header, Request, Response
 
 from app.core.config import settings
+from app.core.errors import Forbidden, Unauthorized, Unavailable
 from app.db.models.auth import User
 from app.modules.auth.session_service import invalidate_session_cache, resolve_session
 
@@ -37,7 +38,7 @@ async def get_user_from_token(token: str | None) -> User | None:
 async def get_current_user(request: Request, response: Response) -> User:
     resolved = await resolve_session(request.cookies.get(COOKIE_NAME))
     if resolved is None:
-        raise HTTPException(status_code=401, detail="No autenticado")
+        raise Unauthorized("No autenticado")
     request.state.auth_session_id = resolved.session_id
     request.state.auth_method = resolved.auth_method
     if resolved.rotated_token:
@@ -129,7 +130,7 @@ def websocket_origin_allowed(
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Requiere permisos de administrador")
+        raise Forbidden("Requiere permisos de administrador")
     return user
 
 
@@ -164,7 +165,7 @@ async def verify_webhook_token(
             "INBOUND_WEBHOOK_TOKEN no está configurado: se rechazan los webhooks "
             "entrantes. Definirlo en el entorno o en el panel de plataforma."
         )
-        raise HTTPException(status_code=503, detail="Webhook entrante no configurado")
+        raise Unavailable("Webhook entrante no configurado")
     provided = _extract_bearer(authorization) or x_webhook_token
     # compare_digest en vez de != para no filtrar el token por el tiempo de
     # comparación: estos endpoints son públicos y admiten reintentos ilimitados.
@@ -177,4 +178,4 @@ async def verify_webhook_token(
             if not provided
             else "el token no coincide con INBOUND_WEBHOOK_TOKEN",
         )
-        raise HTTPException(status_code=401, detail="Token inválido")
+        raise Unauthorized("Token inválido")

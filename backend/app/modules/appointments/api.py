@@ -1,11 +1,13 @@
-"""Contrato HTTP de citas; los efectos de negocio viven en service.py."""
+"""Contrato HTTP de citas; los efectos de negocio viven en
+application/commands.py y los errores de dominio los traduce bootstrap."""
 
 import base64
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.appointments import service
-from app.modules.appointments.service import list_appointments
+from app.modules.appointments.application import commands
+from app.modules.appointments.domain.appointment import AppointmentRequest
+from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.db.models.auth import User
 from app.modules.appointments.schemas import AppointmentCreate, AppointmentItem
@@ -35,10 +37,7 @@ async def sync_appointment_calendar(
     appointment_id: int,
     _user: User = Depends(get_current_user),
 ):
-    try:
-        return await service.sync_calendar(appointment_id)
-    except service.AppointmentSyncError as exc:
-        raise HTTPException(exc.status_code, exc.detail) from exc
+    return await commands.sync_calendar(appointment_id)
 
 
 def _attachment(body: AppointmentCreate):
@@ -73,4 +72,12 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
     except CustomFieldError as exc:
         raise HTTPException(422, str(exc)) from exc
 
-    return await service.create_appointment(body, user, custom_fields, _attachment(body))
+    files = _attachment(body)
+    request = AppointmentRequest(
+        nombre_completo=body.nombre_completo, telefono=body.telefono, tratamiento=body.tratamiento,
+        fecha=body.fecha, hora=body.hora, vendedor=body.vendedor, dni=body.dni, detalle=body.detalle,
+        adelanto=body.adelanto, duration_minutes=body.duration_minutes, custom_fields=custom_fields,
+        comprobante_filename=body.comprobante.filename if body.comprobante else None,
+        test_mode=body.test_mode,
+    )
+    return await commands.create_appointment(request, created_by_user_id=user.id, files=files)

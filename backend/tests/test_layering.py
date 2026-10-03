@@ -522,7 +522,6 @@ REALTIME_TRANSITION = {
     "app/integrations/meta_webhook/processor.py",
     "app/integrations/n8n/leads_api.py",
     "app/modules/ai/assistant_api.py",
-    "app/modules/appointments/service.py",
     "app/modules/catalogs/templates_api.py",
     "app/modules/issue_reports/api.py",
     "app/modules/leads/stages_api.py",
@@ -561,3 +560,19 @@ def test_automations_keeps_its_logic_inside_the_rings():
     domain/application/infrastructure."""
     root = {path.name for path in (MODULES / "automations").glob("*.py")}
     assert root == {"__init__.py", "api.py", "public.py", "queries.py", "schemas.py", "subscribers.py"}
+
+
+# La traducción a HTTP tiene un solo lugar: el handler de DomainError en
+# bootstrap. Fuera de las rutas, los casos de uso, servicios y dependencias de
+# autenticación levantan errores de dominio.
+HTTP_EXCEPTION_OUTSIDE_ROUTES = {"app/bootstrap.py", "app/tenancy/dependencies.py"}
+
+
+def test_only_routes_raise_http_exceptions():
+    offenders = {
+        path.relative_to(BACKEND).as_posix()
+        for path in (BACKEND / "app").rglob("*.py")
+        if not (path.name == "api.py" or path.name.endswith("_api.py"))
+        and "HTTPException" in path.read_text(encoding="utf-8")
+    }
+    assert offenders == HTTP_EXCEPTION_OUTSIDE_ROUTES

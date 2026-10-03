@@ -18,8 +18,12 @@ issue_reports/
 `catalogs/`, `tasks/`, `leads/` y `appointments/` agrupan el CRM.
 Sus rutas viven en `api.py` o en archivos `*_api.py`, las consultas en
 `repository.py` y repositorios especializados, y las reglas puras en
-`policies.py` cuando hay transiciones compartidas. `appointments/service.py`
-coordina los conectores después de confirmar la cita local.
+`policies.py` cuando hay transiciones compartidas. `appointments/` es
+hexagonal: `application/commands.py` confirma la cita local antes de los
+conectores (calendario, n8n) que llegan por `application/ports.py`, y el
+aviso de cita nueva sale del evento `AppointmentCreated`. En `ai/`, los casos
+de uso del asistente (`application/assistant.py`) hablan con el proveedor de
+IA por el puerto `AiProvider`.
 
 `conversations/` contiene los archivos `*_api.py` con
 las rutas de mensajes, lectura y acciones; `chat_queries.py`,

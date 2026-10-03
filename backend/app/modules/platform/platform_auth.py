@@ -16,9 +16,10 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 from sqlalchemy import select
 
+from app.core.errors import Unauthorized
 from app.db.models.control import PlatformSession, PlatformUser
 from app.db.session import control_session
 from app.modules.auth.public import hash_password, verify_password
@@ -117,5 +118,5 @@ async def revoke_platform_session(token: str | None) -> None:
 async def get_current_platform_user(request: Request) -> PlatformUser:
     user = await resolve_platform_session(request.cookies.get(PLATFORM_COOKIE_NAME))
     if user is None:
-        raise HTTPException(status_code=401, detail="No autenticado")
+        raise Unauthorized("No autenticado")
     return user

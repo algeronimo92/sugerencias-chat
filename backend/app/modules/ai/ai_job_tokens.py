@@ -12,9 +12,10 @@ import logging
 from typing import AsyncIterator
 from uuid import UUID
 
-from fastapi import Header, HTTPException
+from fastapi import Header
 
 from app.core.config import settings
+from app.core.errors import Unauthorized
 from app.tenancy.context import reset_current_tenant, set_current_tenant
 from app.tenancy.resolver import resolve_tenant_by_organization_id
 
@@ -102,10 +103,10 @@ def decode_ai_job_token(token: str) -> AIJobClaims:
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         # Firma que no coincide o valor truncado/alterado por el workflow.
         logger.warning("X-Tenant-Context rechazado: %s (largo %d)", exc, len(token or ""))
-        raise HTTPException(status_code=401, detail="Contexto de job IA invalido") from exc
+        raise Unauthorized("Contexto de job IA invalido") from exc
     if claims.expires_at <= datetime.now(timezone.utc):
         logger.warning("X-Tenant-Context vencido para el job %s", claims.job_id)
-        raise HTTPException(status_code=401, detail="Contexto de job IA vencido")
+        raise Unauthorized("Contexto de job IA vencido")
     return claims
 
 
@@ -121,7 +122,7 @@ async def require_ai_job_context(
             "X-Tenant-Context de un negocio inactivo o sin dominio principal: %s",
             claims.organization_id,
         )
-        raise HTTPException(status_code=401, detail="Contexto de job IA invalido")
+        raise Unauthorized("Contexto de job IA invalido")
     token = set_current_tenant(context)
     try:
         yield claims

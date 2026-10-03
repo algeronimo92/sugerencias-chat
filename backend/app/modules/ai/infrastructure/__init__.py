@@ -1,0 +1,1 @@
+"""Adaptadores del asistente IA."""
