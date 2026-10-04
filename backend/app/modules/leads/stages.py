@@ -1,4 +1,7 @@
-"""Etapas del embudo administradas por cada negocio (``lead_stages``).
+"""Etapas del embudo administradas por cada negocio (``lead_stages``):
+comandos. Cada uno es una unidad de trabajo que registra
+``LeadStagesChanged``; el aviso a los navegadores sale después del commit.
+La lectura vive en ``stage_queries.py``.
 
 La tabla vive en el schema del tenant, así que todo lo de acá lee y escribe
 las etapas del negocio de la request actual sin filtrar por organización.
@@ -24,40 +27,23 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
+from app.db.models.automations import AutomationRule
+from app.db.models.catalogs import MessageTemplate
+from app.db.models.leads import Lead, LeadStage
+from app.db.uow import collect, current_session, unit_of_work
 from app.modules.leads.domain.errors import (
-    InvalidLeadStageError,
     LeadStageConflictError,
     LeadStageInUseError,
     LeadStageNotFoundError,
     LeadStageProtectedError,
 )
-from app.modules.leads.domain.stage import StageRule, require_destination
-from app.db.models.automations import AutomationRule
-from app.db.models.leads import Lead, LeadStage
-from app.db.models.catalogs import MessageTemplate
+from app.modules.leads.domain.events import LeadStagesChanged
 from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LeadStageKind
-from app.db.uow import session_scope
+from app.modules.leads.stage_queries import STAGE_COLUMNS, list_lead_stages, stage_dict
 
 
 MAX_STAGES = 40
 _KEY_MAX_LENGTH = 40
-
-
-_COLUMNS = (
-    LeadStage.key,
-    LeadStage.name,
-    LeadStage.color,
-    LeadStage.position,
-    LeadStage.kind,
-    LeadStage.is_active,
-    LeadStage.description,
-)
-
-
-def _stage_dict(row) -> dict:
-    data = dict(row)
-    data["is_system"] = data["key"] == INITIAL_LEAD_STAGE
-    return data
 
 
 def slugify_stage_key(name: str) -> str:
@@ -82,80 +68,6 @@ def _unique_key(base: str, taken: set[str]) -> str:
         if candidate not in taken:
             return candidate
         suffix += 1
-
-
-async def list_lead_stages(*, include_usage: bool = False) -> list[dict]:
-    """Todas las etapas (activas e inactivas) en el orden del embudo.
-
-    Las inactivas viajan igual: el frontend las necesita para rotular los
-    leads que siguen en ellas y el historial de cambios.
-    """
-
-    async with session_scope() as session:
-        rows = (
-            await session.execute(
-                select(*_COLUMNS).order_by(LeadStage.position.asc(), LeadStage.key.asc())
-            )
-        ).mappings().all()
-        counts: dict[str, int] = {}
-        if include_usage:
-            counts = dict(
-                (
-                    await session.execute(
-                        select(Lead.estado, func.count(Lead.id)).group_by(Lead.estado)
-                    )
-                ).all()
-            )
-    stages = [_stage_dict(row) for row in rows]
-    if include_usage:
-        for stage in stages:
-            stage["lead_count"] = int(counts.get(stage["key"], 0))
-    return stages
-
-
-async def list_stages_for_ai() -> list[dict]:
-    """Etapas válidas como destino para el analista IA, en orden del embudo."""
-
-    async with session_scope() as session:
-        rows = (
-            await session.execute(
-                select(LeadStage.key, LeadStage.name, LeadStage.kind, LeadStage.description)
-                .where(LeadStage.is_active.is_(True))
-                .order_by(LeadStage.position.asc(), LeadStage.key.asc())
-            )
-        ).mappings().all()
-    return [dict(row) for row in rows]
-
-
-async def load_stage_rules(session, keys) -> dict[str, StageRule]:
-    """Tipo y estado de las etapas pedidas, en la sesión del llamador (para
-    validar dentro de la misma transacción que mueve el lead)."""
-
-    wanted = {key for key in keys if key}
-    if not wanted:
-        return {}
-    rows = (
-        await session.execute(
-            select(LeadStage.key, LeadStage.kind, LeadStage.is_active).where(
-                LeadStage.key.in_(wanted)
-            )
-        )
-    ).all()
-    return {key: StageRule(key, kind, bool(is_active)) for key, kind, is_active in rows}
-
-
-async def verify_stage_keys(session, keys, *, active_only: bool) -> None:
-    """Valida claves mencionadas por automatizaciones antes de guardarlas."""
-
-    wanted = {key for key in keys if key}
-    if not wanted:
-        return
-    rules = await load_stage_rules(session, wanted)
-    for key in sorted(wanted):
-        if active_only:
-            require_destination(rules, key)
-        elif key not in rules:
-            raise InvalidLeadStageError(key)
 
 
 def _mentions_stage(value, key: str) -> bool:
@@ -215,7 +127,9 @@ def _describe_usage(usage: dict[str, int]) -> str:
 
 async def create_lead_stage(values: dict) -> dict:
     name = values["name"]
-    async with session_scope() as session:
+    async with unit_of_work():
+        session = current_session()
+        collect(LeadStagesChanged())
         existing = (
             await session.execute(select(LeadStage.key, LeadStage.name, LeadStage.position))
         ).all()
@@ -240,9 +154,9 @@ async def create_lead_stage(values: dict) -> dict:
         except IntegrityError as exc:
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
         row = (
-            await session.execute(select(*_COLUMNS).where(LeadStage.key == key))
+            await session.execute(select(*STAGE_COLUMNS).where(LeadStage.key == key))
         ).mappings().one()
-    return _stage_dict(row)
+    return stage_dict(row)
 
 
 async def update_lead_stage_definition(key: str, values: dict) -> dict:
@@ -255,7 +169,9 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
             )
         if values.get("kind") not in (None, LeadStageKind.OPEN):
             raise LeadStageProtectedError("La etapa inicial tiene que ser una etapa abierta")
-    async with session_scope() as session:
+    async with unit_of_work():
+        session = current_session()
+        collect(LeadStagesChanged())
         stage = await session.get(LeadStage, key, with_for_update=True)
         if stage is None:
             raise LeadStageNotFoundError("Etapa no encontrada")
@@ -277,16 +193,18 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
         except IntegrityError as exc:
             raise LeadStageConflictError("Ya existe una etapa con ese nombre") from exc
         row = (
-            await session.execute(select(*_COLUMNS).where(LeadStage.key == key))
+            await session.execute(select(*STAGE_COLUMNS).where(LeadStage.key == key))
         ).mappings().one()
-    return _stage_dict(row)
+    return stage_dict(row)
 
 
 async def reorder_lead_stages(keys: list[str]) -> list[dict]:
     """Fija el orden del embudo. Exige la lista completa de claves para que
     dos pantallas abiertas no dejen posiciones repetidas o huecos."""
 
-    async with session_scope() as session:
+    async with unit_of_work():
+        session = current_session()
+        collect(LeadStagesChanged())
         current = set(
             (await session.execute(select(LeadStage.key).with_for_update())).scalars().all()
         )
@@ -308,7 +226,9 @@ async def reorder_lead_stages(keys: list[str]) -> list[dict]:
 async def delete_lead_stage(key: str) -> None:
     if key == INITIAL_LEAD_STAGE:
         raise LeadStageProtectedError("La etapa inicial no se puede eliminar")
-    async with session_scope() as session:
+    async with unit_of_work():
+        session = current_session()
+        collect(LeadStagesChanged())
         stage = await session.get(LeadStage, key, with_for_update=True)
         if stage is None:
             raise LeadStageNotFoundError("Etapa no encontrada")

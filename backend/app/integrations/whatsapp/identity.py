@@ -21,7 +21,7 @@ from app.db.models.leads import Lead, WhatsAppIdentity
 from app.modules.leads.ports.assignment import (pick_next_vendedor_id)
 from app.modules.platform.ports.settings_service import (get_effective)
 from app.integrations.whatsapp.connection import ANY_CONNECTION
-from app.db.uow import session_scope
+from app.db.uow import session_scope, unit_of_work
 
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,10 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
     # Se lee antes de abrir la transacción: no tiene sentido tener tomado el
     # lock del contacto mientras se consulta la configuración.
     auto_assign = create and (await get_effective("auto_assign_leads_enabled")) == "true"
-    async with session_scope() as session:
+    # Unidad de trabajo y no una sesión suelta: el reparto de vendedor lee en
+    # esta misma transacción, la que tiene tomados los locks.
+    async with unit_of_work() as uow:
+        session = uow.session
         # Serializa eventos que comparten algún identificador. El UNIQUE
         # sigue siendo la última defensa frente a carreras entre workers.
         lock_key = "|".join(sorted(f"{kind}:{value}" for kind, value in identity.aliases()))
@@ -167,7 +170,7 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
                         func.hashtextextended("lead_round_robin_assignment", 0)
                     ))
                 )
-                vendedor_id = await pick_next_vendedor_id(session)
+                vendedor_id = await pick_next_vendedor_id()
             lead = Lead(
                 telefono=identity.wa_id,
                 nombre=identity.profile_name,

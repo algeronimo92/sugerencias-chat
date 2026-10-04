@@ -24,7 +24,7 @@ from app.db.models.appointments import Appointment
 from app.db.models.auth import User
 from app.db.models.leads import Lead, LeadStage
 
-from app.modules.leads.dashboard_scope import BUSINESS_TIMEZONE, DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import BUSINESS_TIMEZONE, DashboardScope, execute_mapping, items, local_day, series
 
 
 # Los estados que devuelve n8n al registrar la cita (ck_appointments_status).

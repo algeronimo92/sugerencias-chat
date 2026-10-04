@@ -29,7 +29,8 @@ from app.db.session import get_engine
 from app.modules.issue_reports import api as issue_reports
 from app.modules.appointments import api as appointments
 from app.modules.catalogs import custom_fields_api as custom_fields, services_api as lead_services, tags_api as tags, template_categories_api as template_categories
-from app.modules.leads import dashboard_api as dashboard, stages_api as lead_stages
+from app.modules.leads import stages_api as lead_stages
+from app.modules.leads.dashboard import api as dashboard
 from app.modules.tasks import api as tasks
 from app.integrations.meta_webhook import api as meta_webhook
 from app.modules.ai import assistant_api as ai_assistant, suggestions_api as suggestions

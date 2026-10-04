@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.leads import dashboard_service
+from app.modules.leads.dashboard import queries as dashboard_service
 from app.modules.auth import session_service
 from app.modules.platform import settings_service
 from app.tenancy.context import TenantContext, tenant_context

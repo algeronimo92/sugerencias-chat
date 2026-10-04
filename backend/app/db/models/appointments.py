@@ -68,6 +68,6 @@ class Appointment(Base):
             postgresql_where=text("lead_id IS NOT NULL"),
         ),
         # Citas del período por quien las registró: lo que agrupa el
-        # dashboard del vendedor (leads/dashboard_appointments_repository.py).
+        # dashboard del vendedor (leads/dashboard/appointments_queries.py).
         Index("idx_appointments_creator_created", created_by_user_id, created_at.desc()),
     )

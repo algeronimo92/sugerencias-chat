@@ -10,15 +10,15 @@ por separado multiplicaría los round-trips y el trabajo de caché.
 import asyncio
 from time import monotonic
 
-from app.modules.leads import (
-    dashboard_activity_repository as activity,
-    dashboard_appointments_repository as appointments,
-    dashboard_automations_repository as automations,
-    dashboard_leads_repository as leads,
-    dashboard_summary_repository as summary,
-    dashboard_tags_repository as tags,
+from app.modules.leads.dashboard import (
+    activity_queries as activity,
+    appointments_queries as appointments,
+    automations_queries as automations,
+    leads_queries as leads,
+    summary_queries as summary,
+    tags_queries as tags,
 )
-from app.modules.leads.dashboard_scope import SCOPE_MINE, SCOPE_TEAM, DashboardScope, build_scope
+from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, DashboardScope, build_scope
 from app.tenancy.context import get_current_tenant
 
 

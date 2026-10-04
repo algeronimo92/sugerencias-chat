@@ -10,7 +10,7 @@ from app.db.models.catalogs import LeadTag, MessageTemplate
 from app.db.models.media import MediaAsset
 from app.db.uow import session_scope
 from app.modules.catalogs.ports.types import InteractiveType, TemplateType
-from app.modules.leads.ports.stages import InvalidLeadStageError, verify_stage_keys
+from app.modules.leads.ports.stages import stage_problem
 
 
 class SqlReferenceChecker:
@@ -49,9 +49,4 @@ class SqlReferenceChecker:
         return set(ids) - found
 
     async def stage_problem(self, keys: set[str], *, active_only: bool) -> str | None:
-        async with session_scope() as session:
-            try:
-                await verify_stage_keys(session, keys, active_only=active_only)
-            except InvalidLeadStageError as exc:
-                return str(exc)
-        return None
+        return await stage_problem(keys, active_only=active_only)

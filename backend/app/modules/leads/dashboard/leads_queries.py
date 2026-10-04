@@ -11,7 +11,7 @@ from app.modules.leads.domain.types import LeadStageKind
 from app.db.models.auth import User
 from app.db.models.leads import Lead, LeadStage
 
-from app.modules.leads.dashboard_scope import DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
 
 
 # Las etapas son filas por negocio: el código las clasifica por `kind`, nunca

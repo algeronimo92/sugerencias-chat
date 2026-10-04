@@ -14,7 +14,7 @@ from app.db.models.auth import User
 from app.db.models.conversations import WspMessage
 from app.db.models.leads import LeadActivity
 
-from app.modules.leads.dashboard_scope import DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
 
 
 EVENT_LABELS = {

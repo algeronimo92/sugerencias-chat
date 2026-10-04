@@ -16,7 +16,7 @@ from app.db.models.conversations import WspMessage
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 
-from app.modules.leads.dashboard_scope import DashboardScope, execute_mapping
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping
 
 
 def _latest_sender():

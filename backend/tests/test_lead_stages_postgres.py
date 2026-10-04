@@ -17,7 +17,9 @@ from sqlalchemy import select, text
 
 from app.db.models.leads import Lead
 from app.db.session import control_session, get_sessionmaker
-from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, create_lead_stage, delete_lead_stage, list_lead_stages, list_stages_for_ai, reorder_lead_stages, update_lead_stage_definition
+from app.modules.leads.domain.errors import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError
+from app.modules.leads.stage_queries import list_lead_stages, list_stages_for_ai
+from app.modules.leads.stages import create_lead_stage, delete_lead_stage, reorder_lead_stages, update_lead_stage_definition
 from app.modules.leads.application.commands import change_stage
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
@@ -132,3 +134,25 @@ async def test_business_stages_lifecycle(tenant) -> None:
         counts = await fetch_kanban_counts()
         assert list(counts) == list(reversed(keys))
         assert counts["calificado"] == 1
+
+
+@pytest.mark.asyncio
+async def test_stage_changes_are_announced_only_after_a_commit(tenant, monkeypatch) -> None:
+    """Cada comando de etapas registra LeadStagesChanged en su unidad de
+    trabajo: sale si confirmó y no sale si falló."""
+    from app.db import uow
+    from app.modules.leads.domain.errors import LeadStageNotFoundError
+    from app.modules.leads.domain.events import LeadStagesChanged
+
+    announced = []
+
+    async def record(events):
+        announced.extend(events)
+
+    monkeypatch.setattr(uow, "dispatch_after_commit", record)
+    with tenant_context(tenant):
+        await create_lead_stage({"name": "Cita pagada", "color": "#0ea5e9"})
+        with pytest.raises(LeadStageNotFoundError):
+            await delete_lead_stage("no_existe")
+
+    assert announced == [LeadStagesChanged()]

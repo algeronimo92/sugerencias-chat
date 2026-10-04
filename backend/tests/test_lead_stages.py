@@ -9,8 +9,9 @@ from pydantic import ValidationError
 
 from app.modules.leads.schemas import LeadStageCreate, LeadStagePatch, LeadStageUpdate
 from app.modules.leads import stages_api as router
-from app.modules.leads.stages import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError, StageRule, _mentions_stage, _unique_key, require_destination, slugify_stage_key, update_lead_stage_definition
-from app.realtime import ws_manager
+from app.modules.leads.domain.errors import InvalidLeadStageError, LeadStageInUseError, LeadStageProtectedError
+from app.modules.leads.domain.stage import StageRule, require_destination
+from app.modules.leads.stages import _mentions_stage, _unique_key, slugify_stage_key, update_lead_stage_definition
 
 ADMIN = SimpleNamespace(id=1, role="admin")
 
@@ -82,11 +83,11 @@ async def test_initial_stage_cannot_be_turned_off_or_closed():
 
 
 @pytest.mark.asyncio
-async def test_create_normalizes_and_broadcasts(monkeypatch):
+async def test_create_normalizes_the_values(monkeypatch):
+    """El aviso a los navegadores ya no sale de la ruta: el comando registra
+    LeadStagesChanged y sale después del commit."""
     create = AsyncMock(return_value={"key": "cita_pagada"})
-    broadcast = AsyncMock()
     monkeypatch.setattr(router, "create_lead_stage", create)
-    monkeypatch.setattr(ws_manager.manager, "broadcast", broadcast)
 
     await router.post_lead_stage(
         LeadStageCreate(name="Cita   pagada", color="#0ea5e9", description="   "), ADMIN
@@ -95,7 +96,6 @@ async def test_create_normalizes_and_broadcasts(monkeypatch):
     values = create.await_args.args[0]
     assert values["name"] == "Cita pagada"
     assert values["description"] is None
-    broadcast.assert_awaited_once_with({"type": "lead_stages_updated"})
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,7 @@ async def test_stage_in_use_is_a_conflict_that_suggests_deactivating(monkeypatch
         "delete_lead_stage",
         AsyncMock(side_effect=LeadStageInUseError("La etapa está en uso (3 leads). Desactívala.")),
     )
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(LeadStageInUseError) as exc:
         await router.remove_lead_stage("agendado", ADMIN)
     assert exc.value.status_code == 409
     assert "Desactívala" in exc.value.detail
@@ -126,7 +126,7 @@ async def test_protected_stage_is_a_bad_request(monkeypatch):
         "delete_lead_stage",
         AsyncMock(side_effect=LeadStageProtectedError("La etapa inicial no se puede eliminar")),
     )
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(LeadStageProtectedError) as exc:
         await router.remove_lead_stage("nuevo", ADMIN)
     assert exc.value.status_code == 400
 
@@ -143,7 +143,7 @@ async def test_moving_a_lead_to_an_inactive_stage_is_422(in_memory_leads):
 
 
 class _StageSession:
-    """Sesión mínima que solo responde a load_stage_rules."""
+    """Sesión mínima que solo responde a la consulta de etapas."""
 
     def __init__(self, rows):
         self.rows = rows
@@ -159,12 +159,14 @@ def _validate_against_stages(monkeypatch, rows):
 
     from app.modules.automations.application.validation import validate_automation_rule
     from app.modules.automations.infrastructure import sql_references
+    from app.modules.leads import stage_queries
 
     @asynccontextmanager
     async def session_scope():
         yield _StageSession(rows)
 
     monkeypatch.setattr(sql_references, "session_scope", session_scope)
+    monkeypatch.setattr(stage_queries, "session_scope", session_scope)
     checker = sql_references.SqlReferenceChecker()
 
     async def validate(values):

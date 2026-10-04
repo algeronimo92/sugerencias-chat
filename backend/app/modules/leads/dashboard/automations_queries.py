@@ -13,7 +13,7 @@ from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationRule
 
-from app.modules.leads.dashboard_scope import DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
 
 
 ACTIVE_STATUSES = (

@@ -7,15 +7,16 @@ un vendedor, sin necesidad de reiniciar ningún contador.
 """
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.leads import Lead
 from app.db.models.auth import User
+from app.db.models.leads import Lead
+from app.db.uow import session_scope
 
 
-async def pick_next_vendedor_id(session: AsyncSession) -> int | None:
+async def pick_next_vendedor_id() -> int | None:
     """Devuelve el vendedor activo al que le toca el próximo lead, o None
-    si no hay ningún vendedor activo."""
+    si no hay ningún vendedor activo. Dentro de una unidad de trabajo lee en
+    su transacción (la del alta, que tiene tomado el lock del reparto)."""
     stmt = (
         select(User.id)
         .outerjoin(Lead, Lead.vendedor_id == User.id)
@@ -24,4 +25,5 @@ async def pick_next_vendedor_id(session: AsyncSession) -> int | None:
         .order_by(func.max(Lead.created_at).asc().nulls_first(), User.id.asc())
         .limit(1)
     )
-    return await session.scalar(stmt)
+    async with session_scope() as session:
+        return await session.scalar(stmt)

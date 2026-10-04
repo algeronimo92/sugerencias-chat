@@ -14,7 +14,7 @@ from app.db.models.auth import User
 from app.db.models.catalogs import LeadTag
 from app.db.models.leads import Lead, LeadTagAssignment
 
-from app.modules.leads.dashboard_scope import DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
 
 
 async def _coverage(scope: DashboardScope) -> dict:

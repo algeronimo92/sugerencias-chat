@@ -28,6 +28,11 @@ leads/
 └── schemas.py       # Contratos HTTP.
 ```
 
+- Un modelo de lectura grande va en su subpaquete con la misma regla: el
+  dashboard de `leads` vive en `leads/dashboard/` (`*_queries.py` por bloque).
+- Los puertos que se publican a otros módulos no reciben ni devuelven una
+  sesión: cada operación usa `session_scope()` y, dentro de una unidad de
+  trabajo, comparte su transacción.
 - `leads`, `conversations` y `appointments` siguen esta forma; `ai` tiene
   `application/` (casos de uso del asistente) e `infrastructure/` (el
   proveedor de n8n) sin dominio propio.
