@@ -353,9 +353,7 @@ def install_automation_ports(monkeypatch) -> AutomationWorld:
 
 
 def _modules_that_publish():
-    from app.modules.automations.application import triggers
-
-    return [triggers]
+    return []
 
 
 @pytest.fixture

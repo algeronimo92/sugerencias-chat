@@ -26,7 +26,7 @@ from contextvars import ContextVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.events import DomainEvent, dispatch_after_commit, dispatch_in_transaction
+from app.core.events import DomainEvent, dispatch_after_commit, dispatch_in_transaction, set_unit_of_work_probe
 from app.db.session import get_sessionmaker
 
 
@@ -40,6 +40,7 @@ class UnitOfWork:
 
 
 _current: ContextVar[UnitOfWork | None] = ContextVar("unit_of_work", default=None)
+set_unit_of_work_probe(lambda: _current.get() is not None)
 
 
 def current_unit_of_work() -> UnitOfWork | None:

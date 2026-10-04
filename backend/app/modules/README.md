@@ -57,6 +57,9 @@ capa vacía y la prohíbe `test_layering`.
 - `app/core/events.py`: los comandos registran eventos con `collect`; los
   handlers `transaction` corren antes del commit (auditoría, agendado) y los
   `after_commit` solo si el commit ocurrió (WebSocket, push, notificaciones).
+- `publish` despacha en el acto y es solo para adaptadores sin transacción
+  propia (vigilantes, workers, el motor entre pasos); dentro de una unidad
+  de trabajo se niega. La lista de quién lo usa está en `test_layering`.
 - `app/core/errors.py`: los casos de uso levantan `DomainError`; el handler
   de bootstrap responde `{"detail", "code"}`. `HTTPException` solo aparece en
   las rutas.

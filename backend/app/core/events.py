@@ -42,6 +42,15 @@ Handler = Callable[[Any], Awaitable[None]]
 
 _handlers: dict[tuple[type[DomainEvent], Phase], list[Handler]] = {}
 
+# Lo instala app.db.uow: dice si hay una unidad de trabajo abierta. Vive acá
+# como gancho para que este módulo no dependa de la base.
+_in_unit_of_work: Callable[[], bool] = lambda: False
+
+
+def set_unit_of_work_probe(probe: Callable[[], bool]) -> None:
+    global _in_unit_of_work
+    _in_unit_of_work = probe
+
 # Un handler en transacción puede registrar eventos nuevos (p. ej. una
 # automatización que cambia la etapa). Se despachan en la misma pasada; el
 # tope corta un ciclo entre handlers en lugar de colgar la petición.
@@ -103,7 +112,12 @@ async def publish(*events: DomainEvent, strict: bool = False) -> None:
     ``after_commit``. Dentro de un caso de uso se usa ``app.db.uow.collect``.
 
     Con ``strict`` un handler que falla corta y propaga el error, para que el
-    adaptador pueda reintentar (el vigilante no avanza su cursor)."""
+    adaptador pueda reintentar (el vigilante no avanza su cursor).
+
+    Dentro de una unidad de trabajo se niega: el aviso saldría antes del
+    commit y anunciaría un cambio que todavía puede revertirse."""
+    if _in_unit_of_work():
+        raise RuntimeError("Dentro de una unidad de trabajo los eventos se registran con collect")
     if not strict:
         await dispatch_after_commit(events)
         return

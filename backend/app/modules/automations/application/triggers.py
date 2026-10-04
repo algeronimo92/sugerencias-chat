@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 
 from app.modules.automations.domain.types import AutomationTrigger
 
-from app.core.events import publish
 from app.db.uow import collect, unit_of_work
 from app.modules.automations.application.ports import automation_ports
 from app.modules.automations.domain.events import AutomationsChanged, AutomationsScheduled
@@ -49,9 +48,10 @@ async def trigger_lead_created(lead_id: str) -> None:
 async def schedule_customer_response_deadlines(message: dict, rule_id: int | None = None) -> int:
     """Crea o mueve el vencimiento de cada regla de silencio del cliente para
     el chat de ``message`` (un mensaje del vendedor)."""
-    changed = await automation_ports().scheduling.schedule_customer_deadlines(message, rule_id=rule_id)
-    if changed:
-        await publish(AutomationsChanged(wake=True))
+    async with unit_of_work():
+        changed = await automation_ports().scheduling.schedule_customer_deadlines(message, rule_id=rule_id)
+        if changed:
+            collect(AutomationsChanged(wake=True))
     return changed
 
 
@@ -85,8 +85,9 @@ async def trigger_inbound_message(message: dict) -> None:
         await schedule_customer_response_deadlines(message)
         return
     scheduling = automation_ports().scheduling
-    if await scheduling.cancel_customer_deadlines(lead_id, datetime.now(timezone.utc)):
-        await publish(AutomationsChanged())
+    async with unit_of_work():
+        if await scheduling.cancel_customer_deadlines(lead_id, datetime.now(timezone.utc)):
+            collect(AutomationsChanged())
     # El contexto del mensaje viaja con el evento: las condiciones del flujo
     # pueden mirar su tipo literal y el id que eligió el cliente.
     message_context = {

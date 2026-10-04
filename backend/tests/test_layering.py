@@ -571,6 +571,28 @@ def test_automations_raises_domain_errors_and_its_routes_do_not_translate():
     api = (automations / "api.py").read_text(encoding="utf-8")
     assert not re.search(r"except \(?(ValueError|TypeError)", api)
 
+
+# ``publish`` despacha en el acto: es para adaptadores que avisan algo sin
+# transacción propia (un vigilante, un worker, el motor entre pasos). Un caso
+# de uso registra con ``collect`` y el aviso sale después del commit.
+PUBLISH_ADAPTERS = {
+    "app/integrations/n8n/leads_api.py",
+    "app/modules/automations/application/deps.py",
+    "app/modules/automations/infrastructure/worker.py",
+    "app/modules/conversations/chat_watcher.py",
+    "app/tenancy/provisioning.py",
+}
+
+
+def test_only_adapters_publish_events_outside_a_unit_of_work():
+    publishers = {
+        path.relative_to(BACKEND).as_posix()
+        for path in (BACKEND / "app").rglob("*.py")
+        if "app.core.events.publish" in _imported_modules(path)
+    }
+    assert publishers == PUBLISH_ADAPTERS
+
+
 # La traducción a HTTP tiene un solo lugar: el handler de DomainError en
 # bootstrap. Fuera de las rutas, los casos de uso, servicios y dependencias de
 # autenticación levantan errores de dominio.
