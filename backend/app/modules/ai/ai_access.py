@@ -21,6 +21,7 @@ from app.modules.auth.public import try_send_operational_alert
 from app.modules.platform.public import platform_setting
 from app.tenancy.context import get_current_tenant
 from app.db.uow import session_scope
+from app.modules.ai.application.ports import AiUnavailable
 
 # Operaciones que invocan un modelo a pedido de un usuario del negocio.
 BILLABLE_OPERATIONS = ("rag", "analyst")
@@ -39,14 +40,8 @@ class AIEntitlement:
     monthly_quota: int | None
 
 
-class AIUnavailableError(Exception):
-    """El negocio no puede generar ahora; ``status_code`` va directo al HTTP."""
-
-    def __init__(self, code: str, message: str, status_code: int):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.status_code = status_code
+# El error es el del puerto: los casos de uso lo atrapan sin conocer este módulo.
+AIUnavailableError = AiUnavailable
 
 
 def month_start(now: datetime | None = None) -> datetime:

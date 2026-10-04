@@ -34,8 +34,11 @@ leads/
   sesión: cada operación usa `session_scope()` y, dentro de una unidad de
   trabajo, comparte su transacción.
 - `leads`, `conversations` y `appointments` siguen esta forma; `ai` tiene
-  `application/` (casos de uso del asistente) e `infrastructure/` (el
-  proveedor de n8n) sin dominio propio.
+  `application/` (casos de uso del asistente, sobre `AiProvider`,
+  `AiAccess`, `AiJobs` y `AssistantContext`) e `infrastructure/` (el
+  proveedor de n8n y los adaptadores) sin dominio propio.
+- `application/` llega a su propio módulo solo por puertos: de la raíz puede
+  importar `errors.py`, `schemas.py` y `types.py`, nada más.
 - `automations` agrega anillos de arquitectura limpia: `domain/` (reglas,
   validación, condiciones y grafo del flujo), `application/` (motor,
   acciones, bloques, simulación, gestión y disparadores, sobre

@@ -12,7 +12,8 @@ from __future__ import annotations
 import importlib
 
 from app.integrations.whatsapp.channels import current_channel
-from app.modules.ai.application.ports import provide_ai_provider
+from app.modules.ai.application.ports import AssistantPorts, provide_ai_provider, provide_assistant_ports
+from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, SqlAiJobs, SqlAssistantContext
 from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
 from app.modules.appointments.infrastructure.integrations import GoogleCalendar, N8nAppointmentSync
@@ -62,6 +63,11 @@ def register_adapters() -> None:
         channel=current_channel,
     ))
     provide_ai_provider(N8nAiProvider())
+    provide_assistant_ports(AssistantPorts(
+        access=PlatformAiAccess(),
+        jobs=SqlAiJobs(),
+        context=SqlAssistantContext(),
+    ))
     provide_reminder_delivery(manager.send_to_user_here)
     provide_appointment_ports(AppointmentPorts(
         repository=SqlAppointmentRepository(),

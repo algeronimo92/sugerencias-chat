@@ -482,6 +482,23 @@ def test_application_never_imports_its_adapters():
     assert violations == set()
 
 
+# La aplicación puede usar el núcleo compartido de su módulo (errores,
+# contratos, tipos); el resto de los archivos de la raíz son adaptadores y le
+# llegan por puertos.
+APPLICATION_SHARED_ROOT = {"errors", "schemas", "types"}
+
+
+def test_application_reaches_its_module_only_through_ports():
+    violations = set()
+    for path in _layer_files("application"):
+        module = path.relative_to(MODULES).parts[0]
+        root = {f"app.modules.{module}.{p.stem}" for p in (MODULES / module).glob("*.py")}
+        for imported in _imported_modules(path):
+            owner = next((name for name in root if imported == name or imported.startswith(name + ".")), None)
+            if owner and owner.rsplit(".", 1)[-1] not in APPLICATION_SHARED_ROOT | {"__init__"}:
+                violations.add(f"{path.relative_to(BACKEND).as_posix()} -> {owner}")
+    assert violations == set()
+
 def test_http_never_reaches_infrastructure():
     violations = {
         f"{path.relative_to(BACKEND)} -> {module}"
