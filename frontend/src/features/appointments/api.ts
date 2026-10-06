@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { AppointmentListItem,AppointmentResult,CreateAppointmentInput } from './types';
+import type { AppointmentListItem, AppointmentResult, CreateAppointmentInput } from './types';
 
 export async function fetchAppointments() {
   return (await client.get<AppointmentListItem[]>('/api/appointments')).data

@@ -1,5 +1,5 @@
-import { FolderTree,Loader2,Plus } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { FolderTree, Loader2, Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'

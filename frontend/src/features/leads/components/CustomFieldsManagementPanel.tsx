@@ -1,10 +1,10 @@
-import { ListPlus,Loader2,Plus } from 'lucide-react'
+import { ListPlus, Loader2, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
-import { Input,Select } from '../../../shared/ui/Input'
+import { Input, Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCreateCustomField,useCustomFields,useUpdateCustomField,type CustomFieldEntity,type CustomFieldType } from '../hooks/useCustomFields'
+import { useCreateCustomField, useCustomFields, useUpdateCustomField, type CustomFieldEntity, type CustomFieldType } from '../hooks/useCustomFields'
 
 const TYPE_LABELS: Record<CustomFieldType, string> = {
   text: 'Texto', textarea: 'Texto largo', number: 'Número', date: 'Fecha',

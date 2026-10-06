@@ -10,7 +10,6 @@ import { Button } from '../../../shared/ui/Button'
 import { Input, Textarea, labelClass } from '../../../shared/ui/Input'
 import { dialogContentPositionClassElevated, dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
 
-
 const MAX_EVIDENCE = 3
 const MAX_BYTES = 5 * 1024 * 1024
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])

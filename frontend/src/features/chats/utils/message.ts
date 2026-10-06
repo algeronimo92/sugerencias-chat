@@ -21,9 +21,9 @@ Video,
 Workflow,
 type LucideIcon,
 } from "lucide-react";
-import type { JsonObject,JsonValue } from '../../../shared/types';
+import type { JsonObject, JsonValue } from '../../../shared/types';
 import { META_CONTRACT } from "../domain/metaContract";
-import type { MessageAnalysis,MessageType } from '../types';
+import type { MessageAnalysis, MessageType } from '../types';
 
 /** Tipo literal de Meta (`messages[].type`). Un tipo que el contrato todavía
  * no conoce llega igual, con su nombre, y se muestra con un renderer genérico. */
@@ -618,10 +618,8 @@ export function groupByDay<T extends { key: string; sentAt: string | null }>(
   return sections;
 }
 
-
 import { resolveMediaUrl } from '../../../shared/utils/mediaUrl';
 export { resolveMediaUrl } from '../../../shared/utils/mediaUrl';
-
 
 export type RichSegmentType =
   | "text"

@@ -1,6 +1,6 @@
-import { useMutation,useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAppointments,createAppointment,syncAppointmentCalendar } from './api'
+import { fetchAppointments, createAppointment, syncAppointmentCalendar } from './api'
 
 export type { AppointmentAttachmentInput } from './types'
 

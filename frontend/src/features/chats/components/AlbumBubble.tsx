@@ -1,6 +1,6 @@
-import { Check,CircleCheck,Download,Forward,Video } from 'lucide-react'
+import { Check, CircleCheck, Download, Forward, Video } from 'lucide-react'
 import type { Message } from '../types'
-import { formatMessageTime,resolveMediaUrl } from '../utils/message'
+import { formatMessageTime, resolveMediaUrl } from '../utils/message'
 import type { OpenMedia } from './MessageBubble'
 import { MessageStatusTicks } from './MessageBubble'
 

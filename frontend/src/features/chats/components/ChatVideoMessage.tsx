@@ -1,5 +1,5 @@
-import { Loader2,Play,Video } from 'lucide-react'
-import { useEffect,useRef,useState } from 'react'
+import { Loader2, Play, Video } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   src: string

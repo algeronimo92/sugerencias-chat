@@ -1,7 +1,7 @@
 import {
 AUTOMATION_TRIGGERS,AutomationExecutionStatus,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import type { AutomationExecution,AutomationTrigger } from '../types'
+import type { AutomationExecution, AutomationTrigger } from '../types'
 
 /** Helpers de presentación compartidos por las vistas que listan ejecuciones
  *  de automatizaciones: el Historial de admin (AutomationsPage) y "Flujos

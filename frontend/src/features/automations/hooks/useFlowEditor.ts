@@ -1,5 +1,5 @@
 import { useReducer } from 'react'
-import type { AutomationFlowDefinition,AutomationRule } from '../types'
+import type { AutomationFlowDefinition, AutomationRule } from '../types'
 
 export type FlowEditorDialog = 'simulation' | 'versions' | 'jsonView' | 'importJson' | 'exitConfirmation'
 export type FlowJsonTab = 'draft' | 'published'

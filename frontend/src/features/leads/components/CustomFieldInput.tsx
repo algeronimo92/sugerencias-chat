@@ -1,4 +1,4 @@
-import { Input,Select,Textarea } from '../../../shared/ui/Input'
+import { Input, Select, Textarea } from '../../../shared/ui/Input'
 import type { CustomFieldDefinition } from '../hooks/useCustomFields'
 
 interface Props {

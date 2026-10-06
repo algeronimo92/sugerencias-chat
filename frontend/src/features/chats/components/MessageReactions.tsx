@@ -1,9 +1,9 @@
-import type { EmojiClickData,EmojiStyle,Theme } from 'emoji-picker-react'
-import { Plus,SmilePlus,UserRound,X } from 'lucide-react'
-import { lazy,Suspense,useLayoutEffect,useRef,useState } from 'react'
+import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
+import { Plus, SmilePlus, UserRound, X } from 'lucide-react'
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
-import { dialogContentPositionClass,dialogOverlayClass,DialogPrimitive } from '../../../shared/ui/Dialog'
+import { dialogContentPositionClass, dialogOverlayClass, DialogPrimitive } from '../../../shared/ui/Dialog'
 import type { MessageReaction } from '../types'
 
 // Las seis reacciones rápidas de WhatsApp.

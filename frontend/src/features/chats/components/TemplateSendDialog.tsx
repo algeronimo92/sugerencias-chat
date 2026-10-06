@@ -1,13 +1,13 @@
-import { AlertTriangle,BadgeCheck,CheckCircle2,FileAudio,FileText,Image,Loader2,Maximize2,MessageSquareText,Send,Video,X } from 'lucide-react'
-import { useEffect,useMemo,useState } from 'react'
+import { AlertTriangle, BadgeCheck, CheckCircle2, FileAudio, FileText, Image, Loader2, Maximize2, MessageSquareText, Send, Video, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { MediaLightbox } from '../../../shared/ui/MediaLightbox'
-import { AudioPlayer,VideoPlayer } from '../../../shared/ui/MediaPlayer'
+import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendTemplate,type OptimisticMessageDraft } from '../hooks/useMessages'
+import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
-import type { Chat,MessageTemplate,MessageType,TemplateAttachment } from '../types'
-import { parseRichText,resolveMediaUrl } from '../utils/message'
-import { renderInteractiveConfig,renderOfficialParameterValues,renderOfficialTemplate,renderTemplate,templateParameterIdentifiers } from '../utils/templates'
+import type { Chat, MessageTemplate, MessageType, TemplateAttachment } from '../types'
+import { parseRichText, resolveMediaUrl } from '../utils/message'
+import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate, templateParameterIdentifiers } from '../utils/templates'
 
 interface Props {
   chat: Chat;

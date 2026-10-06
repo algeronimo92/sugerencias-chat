@@ -1,16 +1,16 @@
-import { Loader2,Send,X } from 'lucide-react'
+import { Loader2, Send, X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { Input,labelClass,Select,Textarea } from '../../../shared/ui/Input'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { Input, labelClass, Select, Textarea } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { META_CONTRACT } from '../domain/metaContract'
 import {
 availableNativeInteractives,buildNativeInteractive,EMPTY_NATIVE_INTERACTIVE_FORM,NATIVE_INTERACTIVE_LABELS,
 type NativeInteractiveForm,
 } from '../domain/nativeInteractive'
-import { useSendInteractive,type ReplyTarget } from '../hooks/useMessages'
+import { useSendInteractive, type ReplyTarget } from '../hooks/useMessages'
 import type { TemplateCapabilities } from '../types'
 
 interface Props {

@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { KeyRound,Laptop,Loader2,LogOut,ShieldCheck,Trash2,X } from 'lucide-react'
+import { KeyRound, Laptop, Loader2, LogOut, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { Input,labelClass } from '../../../shared/ui/Input'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { Input, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { PIN_LENGTH,useConfirmMfa,useDisableMfa,useLogoutAll,useMe,useMfaStatus,usePinStatus,useRemovePin,useRevokeSession,useSessions,useSetupPin,useStartMfa } from '../queries'
+import { PIN_LENGTH, useConfirmMfa, useDisableMfa, useLogoutAll, useMe, useMfaStatus, usePinStatus, useRemovePin, useRevokeSession, useSessions, useSetupPin, useStartMfa } from '../queries'
 import { endSession } from '../../../shared/queryClient'
 
 interface Props {

@@ -1,6 +1,6 @@
-import { useInfiniteQuery,useMutation,useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../../realtime/useRealtime'
-import { markAllNotificationsRead,markNotificationRead,fetchNotificationHistory } from '../api'
+import { markAllNotificationsRead, markNotificationRead, fetchNotificationHistory } from '../api'
 
 /** `limit` chico con el panel cerrado: ahí solo hacen falta el contador de
  * no leídas (el backend lo calcula aparte, no depende del límite) y la más

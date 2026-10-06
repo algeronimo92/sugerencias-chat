@@ -1,14 +1,14 @@
-import { ArrowLeft,Check,Loader2,Search,Send,UserRound,X } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { ArrowLeft, Check, Loader2, Search, Send, UserRound, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendContacts,type ReplyTarget } from '../hooks/useMessages'
+import { useSendContacts, type ReplyTarget } from '../hooks/useMessages'
 import { useInfiniteChats } from '../queries'
 import type { Chat } from '../types'
 import { EMPTY_CHAT_FILTERS } from '../types'
-import { avatarInitial,displayName,displayPhone } from '../utils/chat'
+import { avatarInitial, displayName, displayPhone } from '../utils/chat'
 
 const MAX_CONTACTS = 20
 

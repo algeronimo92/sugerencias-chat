@@ -1,16 +1,7 @@
-import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { createLead,deleteLead,fetchChatsPage,fetchLeadByPhone,markChatRead,markChatUnread,markNoShow,mergeLead,fetchChat,fetchPhoneConfig,fetchUnreadCount,updateLead } from './api'
-import type { ChatFilters,ChatsPage,LeadUpdateInput,PageParam } from './types'
-
-
-
-/** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend).
- * cursorRank indica en qué sección del orden con búsqueda quedó esa fila
- * (2 = matches por nombre, 1 = por campos CRM, 0 = por mensaje). */
-
-
-
+import { createLead, deleteLead, fetchChatsPage, fetchLeadByPhone, markChatRead, markChatUnread, markNoShow, mergeLead, fetchChat, fetchPhoneConfig, fetchUnreadCount, updateLead } from './api'
+import type { ChatFilters, ChatsPage, LeadUpdateInput, PageParam } from './types'
 
 /** Resuelve un único chat por su clave primaria, sin búsqueda ILIKE. */
 export function useChat(chatId: string | null) {
@@ -69,7 +60,6 @@ export function usePhoneConfig() {
 /** Busca si ya existe un lead con exactamente ese número (match por JID; la
  * búsqueda del servidor es por substring, el filtro fino se hace acá). */
 
-
 export function useDuplicateLead(digits: string | null) {
   return useQuery({
     queryKey: ['duplicate-lead', digits],
@@ -91,8 +81,6 @@ export function useFindLeadByPhone() {
     })
 }
 
-
-
 export function useCreateLead() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -103,8 +91,6 @@ export function useCreateLead() {
     },
   })
 }
-
-
 
 export function useUpdateLead(chatId: string) {
   const queryClient = useQueryClient()
@@ -117,8 +103,6 @@ export function useUpdateLead(chatId: string) {
   })
 }
 
-
-
 /** El vendedor confirma que el cliente no llegó a una cita agendada. */
 export function useMarkNoShow(chatId: string) {
   const queryClient = useQueryClient()
@@ -130,8 +114,6 @@ export function useMarkNoShow(chatId: string) {
     },
   })
 }
-
-
 
 /** Borra el lead entero (mensajes, tareas, notas incluidos). Irreversible. */
 export function useDeleteLead() {
@@ -146,8 +128,6 @@ export function useDeleteLead() {
   })
 }
 
-
-
 /** Fusiona `otherId` (se borra) dentro de `chatId` (se conserva su etapa e identidad). */
 export function useMergeLead(chatId: string) {
   const queryClient = useQueryClient()
@@ -161,8 +141,6 @@ export function useMergeLead(chatId: string) {
     },
   })
 }
-
-
 
 /** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo.
  *
@@ -195,8 +173,6 @@ export function useMarkChatRead() {
     },
   })
 }
-
-
 
 /** Marca manualmente un chat como pendiente sin cambiar los recibos de WhatsApp. */
 export function useMarkChatUnread() {

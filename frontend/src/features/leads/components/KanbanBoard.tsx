@@ -1,11 +1,11 @@
-import { AlertCircle,ArrowRight,BotOff,Check,GripVertical,Inbox,Loader2,MessageCircle,Search,Tag as TagIcon,UserRound,X } from 'lucide-react'
-import { useEffect,useState,type DragEvent } from 'react'
+import { AlertCircle, ArrowRight, BotOff, Check, GripVertical, Inbox, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
+import { useEffect, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
-import { Input,Select } from '../../../shared/ui/Input'
+import { Input, Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { avatarInitial,displayName,isBotAttended } from '../../chats/public/chat'
+import { avatarInitial, displayName, isBotAttended } from '../../chats/public/chat'
 import { parseContent } from '../../chats/public/message'
 import type { Chat } from '../../chats/types'
 import {
@@ -26,7 +26,7 @@ useLoadKanbanStage,
 useMoveLeadStage,
 type KanbanPage,
 } from '../kanban-queries'
-import type { LeadStage,LeadStageDefinition } from '../types'
+import type { LeadStage, LeadStageDefinition } from '../types'
 import { LostReasonDialog } from './LostReasonDialog'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
@@ -357,7 +357,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
       return next
     })
   }
-
 
   function handleBulkMove(stage: LeadStage, razonPerdido?: string | null) {
     if (catalog.isLost(stage) && razonPerdido === undefined) {

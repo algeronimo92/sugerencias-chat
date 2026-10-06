@@ -1,4 +1,4 @@
-import { Columns3,FolderTree,ListPlus,Sparkles,Tags } from 'lucide-react'
+import { Columns3, FolderTree, ListPlus, Sparkles, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { TemplateCategoriesManagementPanel } from '../../chats/public/TemplateCategoriesManagementPanel'
 import { CustomFieldsManagementPanel } from '../../leads/public/CustomFieldsManagementPanel'

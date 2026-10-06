@@ -2,7 +2,7 @@ import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Loader2,Pause,PauseCircle,Play,
 Workflow,
 } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
@@ -11,7 +11,7 @@ ACTIVE_EXECUTION_STATUSES,AUTOMATION_TRIGGERS,AutomationExecutionStatus,automati
 import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
 } from '../../automations/public/queries'
-import type { AutomationActionResult,AutomationExecution } from '../../automations/types'
+import type { AutomationActionResult, AutomationExecution } from '../../automations/types'
 
 interface Props {
   chatId: string

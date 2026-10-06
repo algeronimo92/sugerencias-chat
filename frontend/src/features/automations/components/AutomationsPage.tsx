@@ -1,10 +1,10 @@
-import { getCoreRowModel,useReactTable,type ColumnDef } from '@tanstack/react-table'
+import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
 Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
 FileJson,GitBranch,History,Layers3,Loader2,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
 Sparkles,Trash2,XCircle,
 } from 'lucide-react'
-import { useMemo,useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Checkbox } from '../../../shared/ui/Checkbox'
@@ -12,7 +12,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useTemplates } from '../../chats/public/useTemplates'
-import { INITIAL_LEAD_STAGE,conditionStageOptions,stageOptions } from '../../leads/public/leadStageMeta'
+import { INITIAL_LEAD_STAGE, conditionStageOptions, stageOptions } from '../../leads/public/leadStageMeta'
 import { useTags } from '../../leads/public/useLeadMeta'
 import { useLeadServices } from '../../leads/public/useLeadServices'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'

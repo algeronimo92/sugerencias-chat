@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { fetchStatus,connectWhatsapp,logoutWhatsapp } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchStatus, connectWhatsapp, logoutWhatsapp } from '../api'
 import type { StatusOptions } from '../types'
 
 export type { WhatsappState } from '../types'
@@ -7,10 +7,6 @@ export type { WhatsappState } from '../types'
 export type { WhatsappStatus } from '../types'
 
 export type { WhatsappQr } from '../types'
-
-
-
-
 
 export function useWhatsappStatus(options: StatusOptions = {}) {
   return useQuery({

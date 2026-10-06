@@ -1,6 +1,6 @@
 import type { AutomationExecutionFilters } from './types'
 import client from "../../shared/http/client";
-import type { AutomationExecution,AutomationFlowDefinition,AutomationFlowSimulation,AutomationFlowVersion,AutomationRule,AutomationRuleInput } from "./types";
+import type { AutomationExecution, AutomationFlowDefinition, AutomationFlowSimulation, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
 
 export async function fetchAutomationRules() {
   return (await client.get<AutomationRule[]>('/api/automations')).data

@@ -1,4 +1,3 @@
-import type {  } from './types'
 import client from "../../shared/http/client";
 import type { NotificationPage } from "../chats/types";
 import type { VapidPublicKeyResponse } from './types';

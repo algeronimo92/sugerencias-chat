@@ -1,4 +1,4 @@
-import { Camera,ContactRound,FileText,Headphones,Image,LayoutGrid,Loader2,MapPin,Paperclip } from 'lucide-react'
+import { Camera, ContactRound, FileText, Headphones, Image, LayoutGrid, Loader2, MapPin, Paperclip } from 'lucide-react'
 import { useState } from 'react'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 

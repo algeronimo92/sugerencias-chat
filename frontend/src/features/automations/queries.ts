@@ -1,7 +1,7 @@
-import { useMutation,useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution,fetchAutomationExecutions,fetchAutomationRules,cancelExecution,createAutomation,createVisualFlow,deleteAutomation,duplicateAutomation,fetchFlowVersions,fetchManualFlows,pauseExecution,publishVisualFlow,restoreFlowVersion,resumeExecution,retryExecution,saveVisualFlow,simulateVisualFlow,startManualFlow,updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters } from './types'
 
 export type { AutomationRuleInput } from './types'
@@ -14,8 +14,6 @@ export function useAutomationRules() {
     refetchInterval: connected ? false : 60_000,
   })
 }
-
-
 
 // Cada cambio de estado de una ejecución emite automations_updated, que
 // invalida estas queries. El poll corto es solo el respaldo con el WebSocket

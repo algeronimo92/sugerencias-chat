@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { createUser,fetchUsers,resendInvitation,fetchSellers,sendPasswordReset,updateUser } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createUser, fetchUsers, resendInvitation, fetchSellers, sendPasswordReset, updateUser } from '../api'
 
 export function useSellers({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
@@ -10,8 +10,6 @@ export function useSellers({ enabled = true }: { enabled?: boolean } = {}) {
   })
 }
 
-
-
 export function useUsers(enabled: boolean) {
   return useQuery({
     queryKey: ['users'],
@@ -20,10 +18,6 @@ export function useUsers(enabled: boolean) {
   })
 }
 
-
-
-
-
 export function useCreateUser() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -31,10 +25,6 @@ export function useCreateUser() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 }
-
-
-
-
 
 export function useUpdateUser() {
   const queryClient = useQueryClient()

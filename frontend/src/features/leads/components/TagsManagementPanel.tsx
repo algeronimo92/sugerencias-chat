@@ -1,11 +1,11 @@
-import { Loader2,Plus,Tags } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { Loader2, Plus, Tags } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCreateTag,useTags,useUpdateTag } from '../hooks/useLeadMeta'
+import { useCreateTag, useTags, useUpdateTag } from '../hooks/useLeadMeta'
 import type { Tag } from '../types'
 
 interface TagDraft {

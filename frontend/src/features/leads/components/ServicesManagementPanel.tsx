@@ -1,11 +1,11 @@
-import { Loader2,Plus,Sparkles } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { Loader2, Plus, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCreateLeadService,useLeadServices,useUpdateLeadService } from '../hooks/useLeadServices'
+import { useCreateLeadService, useLeadServices, useUpdateLeadService } from '../hooks/useLeadServices'
 import type { LeadService } from '../types'
 
 /** Campos editables de una fila; el precio viaja como texto hasta guardarlo. */

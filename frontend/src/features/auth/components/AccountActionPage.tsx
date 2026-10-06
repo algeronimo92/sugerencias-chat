@@ -1,4 +1,4 @@
-import { CheckCircle2,Eye,EyeOff,KeyRound,Loader2,Moon,Sun } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { useBrand } from '../../../shared/branding'
 import { useTheme } from '../../../shared/hooks/useTheme'
@@ -6,7 +6,7 @@ import { BrandLogo } from '../../../shared/ui/BrandLogo'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useActionToken,useCompleteAccountAction } from '../queries'
+import { useActionToken, useCompleteAccountAction } from '../queries'
 
 export function AccountActionPage() {
   const token = new URLSearchParams(window.location.search).get('token') ?? ''

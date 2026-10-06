@@ -4,9 +4,9 @@ MessagesSquare,
 Sparkles,
 X,
 } from "lucide-react";
-import { AnimatePresence,m } from "motion/react";
-import { lazy,Suspense,useEffect,useState } from "react";
-import { useLocation,useMatch,useNavigate } from "react-router-dom";
+import { AnimatePresence, m } from "motion/react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
 import { useLayout } from "../../../shared/hooks/useBreakpoint";

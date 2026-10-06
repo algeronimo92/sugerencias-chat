@@ -1,17 +1,11 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SuggestionStatus } from '../../chats/types'
-import { generateSuggestions,analyzeLead,fetchSuggestionStatus } from '../api'
+import { generateSuggestions, analyzeLead, fetchSuggestionStatus } from '../api'
 import type { GenerateParams } from '../types'
-
-
 
 /** Motivos por los que reintentar no sirve: los resuelve la plataforma
  * (plan, configuración) o el paso del tiempo (cuota del mes). */
 export { SuggestionError } from '../errors'
-
-
-
-
 
 /**
  * Estado de la sugerencia guardada del chat: lectura barata (GET) que NUNCA

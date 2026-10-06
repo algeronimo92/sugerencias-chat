@@ -1,4 +1,4 @@
-import { useEffect,useRef,useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // Duración del resaltado al saltar a un mensaje desde la búsqueda.
 const MESSAGE_FLASH_MS = 2000

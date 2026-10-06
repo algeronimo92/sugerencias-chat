@@ -1,8 +1,8 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { Textarea,labelClass } from '../../../shared/ui/Input'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { Textarea, labelClass } from '../../../shared/ui/Input'
 
 interface Props {
   /** Cuántos leads se están moviendo: 1 en el drag, N en la selección múltiple. */

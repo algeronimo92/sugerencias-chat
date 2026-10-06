@@ -1,6 +1,6 @@
-import { Loader2,X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { useState } from 'react'
-import { DialogPrimitive as Dialog,dialogContentPositionClassElevated,dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClassElevated, dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCreateTemplate } from '../hooks/useTemplates'
 import type { MessageTemplate } from '../types'

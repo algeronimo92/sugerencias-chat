@@ -1,9 +1,9 @@
-import type { EmojiClickData,EmojiStyle,Theme } from 'emoji-picker-react'
-import { Loader2,Plus,Search,Smile,Sticker } from 'lucide-react'
-import { lazy,Suspense,useRef,useState } from 'react'
+import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
+import { Loader2, Plus, Search, Smile, Sticker } from 'lucide-react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { useMe } from '../../auth/public/queries'
-import { useMediaLibrary,useUploadMediaAsset } from '../../media/public/queries'
+import { useMediaLibrary, useUploadMediaAsset } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import { resolveMediaUrl } from '../utils/message'
 

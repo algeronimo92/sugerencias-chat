@@ -1,9 +1,9 @@
-import { Check,Loader2,MessageSquareLock,Pencil,Trash2,X } from 'lucide-react'
+import { Check, Loader2, MessageSquareLock, Pencil, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useDeleteInternalNote,useUpdateInternalNote } from '../hooks/useInternalNotes'
+import { useDeleteInternalNote, useUpdateInternalNote } from '../hooks/useInternalNotes'
 import type { InternalNote } from '../types'
 import { formatMessageTime } from '../utils/message'
 interface Props {

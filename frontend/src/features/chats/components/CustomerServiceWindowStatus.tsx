@@ -1,5 +1,5 @@
-import { AlertTriangle,Clock3,LockKeyhole,MessageCircle } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { AlertTriangle, Clock3, LockKeyhole, MessageCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { CustomerServiceWindow } from '../types'
 
 function useRemainingSeconds(expiresAt: string | null | undefined) {

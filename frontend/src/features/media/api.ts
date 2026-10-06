@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { MediaAsset,MediaAssetKind,MediaAssetUpload } from "./types";
+import type { MediaAsset, MediaAssetKind, MediaAssetUpload } from "./types";
 
 export async function fetchMediaLibrary(search: string, kind: "" | MediaAssetKind) {
   return (await client.get<MediaAsset[]>('/api/media-library', {

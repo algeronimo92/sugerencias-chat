@@ -1,8 +1,8 @@
 import type { components } from '../../api/schema';
 import type { JsonObject } from "../../shared/types";
 import type { NotificationTypeValue } from '../automations/public/automationCatalog';
-import type { LeadStage,Tag,TaskType } from '../leads/types';
-import type { MetaInboundRootType,MetaOutboundRootType,MetaStatus as MetaStatusLiteral } from './domain/metaContract';
+import type { LeadStage, Tag, TaskType } from '../leads/types';
+import type { MetaInboundRootType, MetaOutboundRootType, MetaStatus as MetaStatusLiteral } from './domain/metaContract';
 
 type ApiSchemas = components['schemas']
 
@@ -300,7 +300,6 @@ export interface SuggestionStatus {
   stale: boolean
 }
 
-
 export interface MessageTemplate {
   id: number
   name: string
@@ -408,12 +407,14 @@ export interface TemplateAttachment {
   library_asset_id: number | null
 }
 
-
 export interface ChatsPage {
   items: Chat[]
   has_more: boolean
 }
 
+/** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend).
+ * cursorRank indica en qué sección del orden con búsqueda quedó esa fila
+ * (2 = matches por nombre, 1 = por campos CRM, 0 = por mensaje). */
 export type PageParam = { cursorTs: string | null; cursorId: string; cursorRank?: number } | null
 
 export interface MessagePage {
@@ -423,6 +424,8 @@ export interface MessagePage {
 
 export type MessageCursor = { cursorTs: string; cursorId: number } | null
 
+/** Mensaje al que se está respondiendo. El backend solo necesita el id; el
+ * resto viaja para poder pintar la cita antes de que conteste. */
 export interface ReplyTarget {
   id: number
   sender: string

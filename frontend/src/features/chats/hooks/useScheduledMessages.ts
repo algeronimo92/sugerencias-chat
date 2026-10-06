@@ -1,7 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { cancelScheduledMessage,createScheduledMessage,fetchScheduledMessages } from '../api'
-
-
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { cancelScheduledMessage, createScheduledMessage, fetchScheduledMessages } from '../api'
 
 export function useScheduledMessages(chatId: string) {
   return useQuery({
@@ -10,7 +8,6 @@ export function useScheduledMessages(chatId: string) {
     staleTime: 15_000,
   })
 }
-
 
 export function useCreateScheduledMessage(chatId: string) {
   const queryClient = useQueryClient()
@@ -21,7 +18,6 @@ export function useCreateScheduledMessage(chatId: string) {
     },
   })
 }
-
 
 export function useCancelScheduledMessage(chatId: string) {
   const queryClient = useQueryClient()

@@ -1,6 +1,6 @@
-import type { LeadStage,TaskPriority,TaskType } from '../leads/types';
-import type { AutomationActionTypeValue,AutomationBuilderModeValue,AutomationExecutionStatusValue,AutomationRecipientValue,AutomationTriggerValue,FlowConditionTypeValue,FlowHandleValue,FlowNodeTypeValue,QuestionHandleValue,WaitAnyConditionKindValue } from "./domain/automationCatalog";
-import { AutomationActionType,FlowNodeType,WaitAnyConditionKind } from './domain/automationCatalog';
+import type { LeadStage, TaskPriority, TaskType } from '../leads/types';
+import type { AutomationActionTypeValue, AutomationBuilderModeValue, AutomationExecutionStatusValue, AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue, FlowHandleValue, FlowNodeTypeValue, QuestionHandleValue, WaitAnyConditionKindValue } from "./domain/automationCatalog";
+import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from './domain/automationCatalog';
 
 export type AutomationTrigger = AutomationTriggerValue
 export type AutomationActionType = AutomationActionTypeValue
@@ -294,7 +294,6 @@ export interface AutomationExecution {
   window_override_at: string | null
   window_override_by_name: string | null
 }
-
 
 export interface AutomationRuleInput {
   name: string

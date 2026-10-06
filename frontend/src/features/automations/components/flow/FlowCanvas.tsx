@@ -16,7 +16,7 @@ FileText,
 Image as ImageIcon,MessageSquareText,Paperclip,
 SmilePlus,Tag,Trash2,UserRound,Video,
 } from 'lucide-react'
-import { memo,useCallback,useEffect,useMemo,useRef,useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../../../chats/public/message'
 import type { MessageTemplate } from '../../../chats/types'
 import { useLeadStageCatalog } from '../../../leads/public/useLeadStages'
@@ -30,9 +30,9 @@ QuestionHandle,
 WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
 } from '../../domain/automationCatalog'
-import { FLOW_NODE_VIEW,flowNodeSummary } from '../../domain/flowNodeView'
-import type { AutomationAction,AutomationFlowConditionGroup,AutomationFlowConditionType,AutomationFlowDefinition,AutomationFlowEdge,AutomationFlowNode,AutomationFlowNodeType,AutomationRule,AutomationTrigger,QuestionButton,RoundRobinOutput,WaitAnyCondition } from '../../types'
-import { fromCanvasEdge,toCanvasEdges } from './flowCanvasEdges'
+import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
+import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
+import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */

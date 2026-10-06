@@ -1,7 +1,7 @@
-import { Check,Loader2,Plus,X } from 'lucide-react'
+import { Check, Loader2, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { useMe } from '../../../shared/auth'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { useSaveStickerToLibrary } from '../queries'
 
 /** Previsualización de un sticker del chat (como al tocarlo en WhatsApp): lo

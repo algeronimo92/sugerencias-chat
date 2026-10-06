@@ -1,5 +1,5 @@
 import { SlidersHorizontal } from 'lucide-react'
-import { useId,useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { pillFieldClass } from '../../../shared/ui/Input'
 

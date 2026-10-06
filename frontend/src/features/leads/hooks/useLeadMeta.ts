@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { assignTag,createTag,fetchLeadActivity,removeTag,fetchTags,updateTag } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { assignTag, createTag, fetchLeadActivity, removeTag, fetchTags, updateTag } from '../api'
 
 export function useTags(includeInactive = false, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({

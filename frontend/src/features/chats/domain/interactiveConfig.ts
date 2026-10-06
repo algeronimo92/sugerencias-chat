@@ -1,4 +1,4 @@
-import type { InteractiveListSection,TemplateInteractiveConfig,TemplateInteractiveType } from '../types'
+import type { InteractiveListSection, TemplateInteractiveConfig, TemplateInteractiveType } from '../types'
 
 /** Botón de respuesta tal como lo edita el formulario de plantillas. */
 export interface EditableReplyButton {

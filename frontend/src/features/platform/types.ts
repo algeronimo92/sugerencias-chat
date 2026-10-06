@@ -11,7 +11,6 @@ export interface SettingItem {
   value: string | null
 }
 
-
 export interface AppUser {
   id: number
   email: string

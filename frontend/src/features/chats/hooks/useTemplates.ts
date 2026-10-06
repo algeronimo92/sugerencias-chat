@@ -1,6 +1,6 @@
-import { useMutation,useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../../shared/queryClient'
-import { addLibraryTemplateAttachment,createPersonalTemplate,createTemplate,deleteTemplate,deleteTemplateAttachment,importMetaTemplate,fetchMetaTemplateDetail,fetchMetaTemplates,recordTemplateUse,syncTemplate,fetchTemplateCapabilities,fetchTemplates,toggleTemplateFavorite,updateTemplate,uploadTemplateAttachment } from '../api'
+import { addLibraryTemplateAttachment, createPersonalTemplate, createTemplate, deleteTemplate, deleteTemplateAttachment, importMetaTemplate, fetchMetaTemplateDetail, fetchMetaTemplates, recordTemplateUse, syncTemplate, fetchTemplateCapabilities, fetchTemplates, toggleTemplateFavorite, updateTemplate, uploadTemplateAttachment } from '../api'
 
 export type { TemplateInput } from '../types'
 

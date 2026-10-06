@@ -1,10 +1,10 @@
-import { CheckCircle2,Link2,Loader2 } from "lucide-react";
-import { useEffect,useRef,useState } from "react";
+import { CheckCircle2, Link2, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../../shared/ui/Button";
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useFacebookSdk } from "../hooks/useFacebookSdk";
-import { useCompleteMetaEmbeddedSignup,useMetaPublicConfig } from "../hooks/useSettings";
+import { useCompleteMetaEmbeddedSignup, useMetaPublicConfig } from "../hooks/useSettings";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
 interface Props {
   onGoToClaves: () => void;

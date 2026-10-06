@@ -4,7 +4,7 @@ Copy,
 History,LayoutGrid,
 ListFilter,Loader2,MessageCircleQuestion,MessageSquareText,Play,Plus,Redo2,Repeat,Save,Split,Timer,Undo2,Upload,UserRound,X,
 } from 'lucide-react'
-import { useCallback,useEffect,useMemo,useRef,useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Select } from '../../../shared/ui/Input'
@@ -14,12 +14,12 @@ import { parseContent } from '../../chats/public/message'
 import { META_CONTRACT } from '../../chats/public/metaContract'
 import { useTemplates } from '../../chats/public/useTemplates'
 import type { MessageTemplate } from '../../chats/types'
-import { conditionStageOptions,INITIAL_LEAD_STAGE,stageOptions } from '../../leads/public/leadStageMeta'
+import { conditionStageOptions, INITIAL_LEAD_STAGE, stageOptions } from '../../leads/public/leadStageMeta'
 import { useTags } from '../../leads/public/useLeadMeta'
 import { useLeadServices } from '../../leads/public/useLeadServices'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import type { Tag } from '../../leads/types'
-import { AttachmentPreview,MediaAssetField } from '../../media/public/MediaAssetField'
+import { AttachmentPreview, MediaAssetField } from '../../media/public/MediaAssetField'
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import { useUsers } from '../../platform/public/useUsers'
@@ -52,14 +52,14 @@ AutomationTrigger as TriggerType,
 WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
 } from '../domain/automationCatalog'
-import { FLOW_NODE_VIEW,flowNodeSummary } from '../domain/flowNodeView'
+import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
 useAutomationRules,useCreateVisualFlow,useFlowVersions,usePublishVisualFlow,useRestoreFlowVersion,
 useSaveVisualFlow,useSimulateVisualFlow,useUpdateAutomation,
 } from '../queries'
-import type { AutomationAction,AutomationActionType,AutomationConditions,AutomationFlowConditionGroup,AutomationFlowConditionItem,AutomationFlowConditionType,AutomationFlowDefinition,AutomationFlowEdge,AutomationFlowNode,AutomationFlowNodeType,AutomationRule,QuestionButton,RoundRobinOutput,WaitAnyCondition } from '../types'
+import type { AutomationAction, AutomationActionType, AutomationConditions, AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../types'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'

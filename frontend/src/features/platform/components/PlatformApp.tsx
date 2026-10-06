@@ -1,5 +1,5 @@
-import { removeOrganizationLogo,removeOrganizationDomain,fetchOperator,fetchOrganizations,fetchOrganizationAi,fetchOrganizationBranding,fetchOrganizationIntegrations,fetchPlatformSettings,loginOperator,logoutOperator,createOrganization,setOrganizationStatus,addOrganizationDomain,saveOrganizationAi,saveOrganizationBranding,uploadOrganizationLogo,saveOrganizationIntegrations,savePlatformSettings } from '../api';
-import type { OperadorActual,Organization } from '../types';
+import { removeOrganizationLogo, removeOrganizationDomain, fetchOperator, fetchOrganizations, fetchOrganizationAi, fetchOrganizationBranding, fetchOrganizationIntegrations, fetchPlatformSettings, loginOperator, logoutOperator, createOrganization, setOrganizationStatus, addOrganizationDomain, saveOrganizationAi, saveOrganizationBranding, uploadOrganizationLogo, saveOrganizationIntegrations, savePlatformSettings } from '../api';
+import type { OperadorActual, Organization } from '../types';
 /**
  * Panel de plataforma: alta y administración de negocios.
  *
@@ -8,7 +8,7 @@ import type { OperadorActual,Organization } from '../types';
  * backend solo lo atiende en los hosts de plataforma; en el dominio de un
  * negocio estas rutas devuelven 404 y acá se ve como "panel no disponible".
  */
-import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import {
 Activity,
@@ -33,25 +33,13 @@ Sun,
 UserRound,
 X,
 } from "lucide-react";
-import { useEffect,useId,useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTheme } from "../../../shared/hooks/useTheme";
 import { BackendUnavailable } from "../../../shared/ui/BackendUnavailable";
 import { Button } from "../../../shared/ui/Button";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
-import { DialogPrimitive,dialogContentPositionClass,dialogOverlayClass } from "../../../shared/ui/Dialog";
+import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from "../../../shared/ui/Dialog";
 import { Input } from "../../../shared/ui/Input";
-
-
-
-
-
-
-
-
-
-
-
-
 
 const ORGANIZACIONES = ["platform", "organizations"] as const;
 const CONFIGURACION_PLATAFORMA = ["platform", "settings"] as const;
@@ -515,7 +503,6 @@ function Dominios({ organizacion }: { organizacion: Organization }) {
  * al abrir la sección: cada lectura entra al schema del negocio.
  */
 
-
 // Mismo mínimo que valida el backend (services/branding.py): los botones del
 // CRM llevan texto blanco sobre el color principal.
 const CONTRASTE_MINIMO = 3;
@@ -529,8 +516,6 @@ function contrasteConBlanco(hex: string): number | null {
   const luminancia = 0.2126 * canales[0] + 0.7152 * canales[1] + 0.0722 * canales[2];
   return 1.05 / (luminancia + 0.05);
 }
-
-
 
 /**
  * Marca con la que el negocio ve su CRM (acceso, encabezado, app instalada y

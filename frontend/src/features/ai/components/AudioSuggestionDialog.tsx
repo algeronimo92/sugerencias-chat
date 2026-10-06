@@ -1,6 +1,6 @@
-import { Loader2,Mic,X } from 'lucide-react'
+import { Loader2, Mic, X } from 'lucide-react'
 import { useState } from 'react'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSendAudio } from '../../chats/public/useMessages'

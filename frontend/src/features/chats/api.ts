@@ -1,7 +1,7 @@
 const requestTails = new Map<string, Promise<void>>()
 import client from "../../shared/http/client";
 import type { TemplateCategory } from "../leads/types";
-import type { AudioPayload,Chat,ChatFilters,ChatsPage,ContactsPayload,CustomerServiceWindow,ForwardPayload,ForwardResult,InteractivePayload,InternalNote,LeadInput,LeadUpdateInput,LocationPayload,MediaPayload,Message,MessageCursor,MessagePage,MessageTemplate,MetaTemplateRaw,NoteInput,PageParam,ReactionPayload,ScheduledMessage,SendTemplatePayload,StickerPayload,TemplateAttachment,TemplateCapabilities,TemplateInput,TextPayload } from "./types";
+import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, Message, MessageCursor, MessagePage, MessageTemplate, MetaTemplateRaw, NoteInput, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TemplateAttachment, TemplateCapabilities, TemplateInput, TextPayload } from "./types";
 
 export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
   const params: Record<string, string> = {}
@@ -337,6 +337,9 @@ export async function updateTemplateCategory({ id, ...values }: { id: number; na
     ).data
 }
 
+/** Los requests se serializan por chat, pero todas las burbujas aparecen de
+ * inmediato. Así se conserva el orden de pulsación incluso si una carga de
+ * archivo tarda más que el texto que se escribió después. */
 export function orderedRequest<T>(chatId: string, request: () => Promise<T>): Promise<T> {
   const previous = requestTails.get(chatId) ?? Promise.resolve()
   const current = previous.then(request)

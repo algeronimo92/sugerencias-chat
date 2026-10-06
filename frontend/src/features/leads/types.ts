@@ -1,5 +1,5 @@
 import type { components } from '../../api/schema';
-import type { TaskPriorityCatalogValue,TaskStatusCatalogValue,TaskTypeCatalogValue } from '../automations/public/automationCatalog';
+import type { TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue } from '../automations/public/automationCatalog';
 import type { Chat } from "../chats/types";
 
 type ApiSchemas = components['schemas']
@@ -44,7 +44,6 @@ export interface TemplateCategory {
   created_at?: string | null
 }
 
-
 export type TaskType = TaskTypeCatalogValue
 export type TaskStatus = TaskStatusCatalogValue
 export type TaskPriority = TaskPriorityCatalogValue
@@ -65,7 +64,6 @@ export interface LeadTask {
   is_overdue: boolean
   created_at: string
 }
-
 
 export interface DashboardMetricItem {
   name: string

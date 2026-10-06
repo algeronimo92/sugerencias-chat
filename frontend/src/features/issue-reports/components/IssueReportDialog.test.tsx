@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { IssueReportDialog } from './IssueReportDialog'
 
-
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   capture: vi.fn(),

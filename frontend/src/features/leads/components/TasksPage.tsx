@@ -4,26 +4,26 @@ AlertTriangle,ArrowUp,Bell,CalendarCheck,CalendarClock,CalendarDays,Check,CheckC
 ChevronDown,Clock,FileText,ListTodo,Loader2,MessageCircle,MessageSquare,Phone,RefreshCw,
 RotateCcw,Search,UserRound,
 } from 'lucide-react'
-import { useMemo,useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { Input,Select } from '../../../shared/ui/Input'
+import { Input, Select } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatChip } from '../../../shared/ui/StatChip'
-import { STAT_TONE_ICON,type StatTone } from '../../../shared/ui/tones'
+import { STAT_TONE_ICON, type StatTone } from '../../../shared/ui/tones'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import {
 TASK_PRIORITY_LABELS,TASK_TYPE_OPTIONS,TaskPriorityValue,TaskStatusValue,TaskTypeValue,
 } from '../../automations/public/automationCatalog'
-import { isoDateOffset,todayISODate } from '../../automations/public/automationExecutions'
+import { isoDateOffset, todayISODate } from '../../automations/public/automationExecutions'
 import { useUsers } from '../../platform/public/useUsers'
-import { useCompleteAllTasks,useTasks,useUpdateTask } from '../hooks/useTasks'
-import type { LeadTask,TaskStatus,TaskType } from '../types'
+import { useCompleteAllTasks, useTasks, useUpdateTask } from '../hooks/useTasks'
+import type { LeadTask, TaskStatus, TaskType } from '../types'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla

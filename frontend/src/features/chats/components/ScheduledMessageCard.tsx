@@ -1,5 +1,5 @@
-import { AlertCircle,CalendarClock,CheckCheck,Loader2,Plus,Send,X } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { AlertCircle, CalendarClock, CheckCheck, Loader2, Plus, Send, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -8,15 +8,13 @@ useCancelScheduledMessage,
 useCreateScheduledMessage,
 useScheduledMessages,
 } from '../hooks/useScheduledMessages'
-import type { Chat,ScheduledMessage,ScheduledMessageStatus } from '../types'
-
+import type { Chat, ScheduledMessage, ScheduledMessageStatus } from '../types'
 
 function defaultScheduledAt() {
   const date = new Date(Date.now() + 60 * 60 * 1000)
   date.setSeconds(0, 0)
   return toLocalInput(date)
 }
-
 
 const STATUS_META: Record<ScheduledMessageStatus, { label: string; className: string }> = {
   scheduled: { label: 'Programado', className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' },
@@ -26,7 +24,6 @@ const STATUS_META: Record<ScheduledMessageStatus, { label: string; className: st
   failed: { label: 'No enviado', className: 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300' },
   cancelled: { label: 'Cancelado', className: 'bg-wa-field text-gray-600 dark:bg-wa-active-dark dark:text-gray-300' },
 }
-
 
 function ScheduledItem({
   item,
@@ -78,7 +75,6 @@ function ScheduledItem({
     </div>
   )
 }
-
 
 export function ScheduledMessageCard({ chat }: { chat: Chat }) {
   const { data = [], isLoading } = useScheduledMessages(chat.chat_id)

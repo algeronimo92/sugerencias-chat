@@ -1,5 +1,5 @@
-import { Loader2,X } from 'lucide-react'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { Loader2, X } from 'lucide-react'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { MapPreview } from '../../../shared/ui/MapPreview'
 interface Props {
   latitude: number

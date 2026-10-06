@@ -2,8 +2,8 @@ import type { BulkActionResult } from './types'
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
 import client from "../../shared/http/client";
-import type { Chat,LeadActivity } from "../chats/types";
-import type { BulkAssignTagInput,BulkMoveStageInput,CustomFieldDefinition,CustomFieldEntity,DashboardMetrics,DashboardScope,KanbanPage,KanbanSnapshot,LeadService,LeadStage,LeadStageAdminDefinition,LeadStageDefinition,LeadStageInput,LeadTask,MoveLeadStageInput,Tag,TaskInput,TaskStatus } from "./types";
+import type { Chat, LeadActivity } from "../chats/types";
+import type { BulkAssignTagInput, BulkMoveStageInput, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadTask, MoveLeadStageInput, Tag, TaskInput, TaskStatus } from "./types";
 
 export async function fetchLeadStages() {
   return (await client.get<LeadStageDefinition[]>('/api/lead-stages')).data
@@ -170,6 +170,11 @@ export async function searchLeads(search: string, signal?: AbortSignal) {
     ).data.items.slice(0, LEAD_SEARCH_LIMIT)
 }
 
+/** Dispara un request por lead en paralelo en vez de pedir un endpoint de
+ * bulk al backend — no hay volumen para justificarlo (selecciones de a
+ * decenas, no miles) y así se reusan los mismos endpoints de a uno que ya
+ * están probados. Promise.allSettled para que un 404 suelto (un lead
+ * borrado mientras tanto) no tire abajo el resto de la selección. */
 async function runBulk<T>(chatIds: string[], run: (chatId: string) => Promise<T>): Promise<BulkActionResult> {
   const results = await Promise.allSettled(chatIds.map(run))
   const succeeded: string[] = []

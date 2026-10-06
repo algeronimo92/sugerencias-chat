@@ -1,21 +1,21 @@
-import { AlertTriangle,BadgeCheck,Download,FileText,FolderOpen,ImagePlus,List as ListIcon,Loader2,MessageSquareText,MousePointerClick,Pencil,Plus,Power,RefreshCw,Star,Trash2,UploadCloud } from 'lucide-react'
-import { useEffect,useReducer,useRef,useState,type SetStateAction } from 'react'
+import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
+import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { TASK_TYPE_OPTIONS as TASK_TYPES,isTaskType } from '../../automations/public/automationCatalog'
+import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../../automations/public/automationCatalog'
 import { stageOptions } from '../../leads/public/leadStageMeta'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { MediaAssetField } from '../../media/public/MediaAssetField'
 import { MediaLibraryPicker } from '../../media/public/MediaLibraryPicker'
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
-import { fromInteractiveConfig,toInteractiveConfig } from '../domain/interactiveConfig'
-import { EMPTY_TEMPLATE_FORM as EMPTY_FORM,validateTemplateForm,type TemplateFormState } from '../domain/templateForm'
-import { useCreateTemplateCategory,useTemplateCategories } from '../hooks/useTemplateCategories'
-import { useAddLibraryTemplateAttachment,useCreateTemplate,useDeleteTemplate,useDeleteTemplateAttachment,useSyncTemplate,useTemplateCapabilities,useTemplates,useUpdateTemplate,useUploadTemplateAttachment } from '../hooks/useTemplates'
-import type { MessageTemplate,OfficialTemplateButton } from '../types'
+import { fromInteractiveConfig, toInteractiveConfig } from '../domain/interactiveConfig'
+import { EMPTY_TEMPLATE_FORM as EMPTY_FORM, validateTemplateForm, type TemplateFormState } from '../domain/templateForm'
+import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
+import { useAddLibraryTemplateAttachment, useCreateTemplate, useDeleteTemplate, useDeleteTemplateAttachment, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate, useUploadTemplateAttachment } from '../hooks/useTemplates'
+import type { MessageTemplate, OfficialTemplateButton } from '../types'
 import { ImportMetaTemplatesDialog } from './ImportMetaTemplatesDialog'
 import './templates-page.css'
 
@@ -284,7 +284,6 @@ export function TemplatesPage() {
     dragDepth.current += 1
     if (event.dataTransfer.types.includes('Files')) setIsDraggingFiles(true)
   }
-
 
   function handleDragLeave(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault()

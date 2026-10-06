@@ -1,6 +1,6 @@
-import { Loader2,X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { useState } from 'react'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCreatePersonalTemplate } from '../hooks/useTemplates'
 export function SaveAsTemplateDialog({ content, onClose }: { content: string; onClose: () => void }) {

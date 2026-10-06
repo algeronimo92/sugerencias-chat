@@ -1,4 +1,4 @@
-import { MarkerType,type Connection,type Edge } from '@xyflow/react'
+import { MarkerType, type Connection, type Edge } from '@xyflow/react'
 
 import {
 FlowHandle,

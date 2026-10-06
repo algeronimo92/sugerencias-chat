@@ -1,8 +1,8 @@
 import { toSuggestionError } from './errors'
 import client from "../../shared/http/client";
-import type { SuggestionResponse,SuggestionStatus } from "../chats/types";
+import type { SuggestionResponse, SuggestionStatus } from "../chats/types";
 import type { MediaAsset } from "../media/types";
-import type { AIProfile,AIUsage,GenerateParams,KnowledgeDocument,KnowledgeDocumentSummary,LeadAnalysisResult,TtsResult } from "./types";
+import type { AIProfile, AIUsage, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
 
 export async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {

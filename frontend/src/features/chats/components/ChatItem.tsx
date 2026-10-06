@@ -1,15 +1,15 @@
-import { BotOff,CalendarX,Copy,Eye,GitMerge,Loader2,LockKeyhole,Mail,Trash2 } from 'lucide-react'
-import { lazy,Suspense,useEffect,useLayoutEffect,useRef,useState,type MouseEvent as ReactMouseEvent,type PointerEvent as ReactPointerEvent } from 'react'
+import { BotOff, CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2 } from 'lucide-react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate,useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import { useDeleteLead,useMarkNoShow } from '../queries'
+import { useDeleteLead, useMarkNoShow } from '../queries'
 import type { Chat } from '../types'
-import { avatarInitial,displayName,formatElapsedShort,isAwaitingReply,isBotAttended,waitingTier } from '../utils/chat'
-import { parseContent,searchSnippet,splitOnMatch } from '../utils/message'
+import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
+import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const MergeLeadDialog = lazy(() => import('../../leads/public/MergeLeadDialog').then(m => ({ default: m.MergeLeadDialog })))

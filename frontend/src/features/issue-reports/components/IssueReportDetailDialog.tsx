@@ -13,7 +13,6 @@ import { Select, Textarea } from '../../../shared/ui/Input'
 import { dialogContentPositionClassElevated, dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
 import { MediaLightbox, type MediaLightboxItem } from '../../../shared/ui/MediaLightbox'
 
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }

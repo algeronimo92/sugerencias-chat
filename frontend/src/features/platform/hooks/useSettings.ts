@@ -1,7 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { completeMetaEmbeddedSignup,fetchMetaPublicConfig,fetchSettings,fetchBusinessTimezones,saveSettings } from '../api'
-
-
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { completeMetaEmbeddedSignup, fetchMetaPublicConfig, fetchSettings, fetchBusinessTimezones, saveSettings } from '../api'
 
 export function useSettings(enabled: boolean) {
   return useQuery({
@@ -10,8 +8,6 @@ export function useSettings(enabled: boolean) {
     enabled,
   })
 }
-
-
 
 export function useSaveSettings() {
   const queryClient = useQueryClient()
@@ -36,8 +32,6 @@ export function useBusinessTimezones(enabled = true) {
 
 export type { MetaPublicConfig } from '../types'
 
-
-
 export function useMetaPublicConfig() {
   return useQuery({
     queryKey: ['platform-meta-public-config'],
@@ -46,8 +40,6 @@ export function useMetaPublicConfig() {
 }
 
 export type { MetaEmbeddedSignupPayload } from '../types'
-
-
 
 export function useCompleteMetaEmbeddedSignup() {
   const queryClient = useQueryClient()

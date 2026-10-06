@@ -6,14 +6,14 @@
  * archivos de su biblioteca puede proponer el asistente como adjuntos. Los
  * precios viven en Catálogos > Servicios, junto al resto del catálogo.
  */
-import { BookText,Building2,FileText,FolderOpen,Loader2,Plus,Sparkles,Trash2,Upload } from 'lucide-react'
-import { useEffect,useId,useRef,useState } from 'react'
+import { BookText, Building2, FileText, FolderOpen, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
-import { Input,Textarea,labelClass } from '../../../shared/ui/Input'
+import { Input, Textarea, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'

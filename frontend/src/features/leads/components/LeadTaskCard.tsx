@@ -1,4 +1,4 @@
-import { CalendarClock,Check,Loader2,Plus } from 'lucide-react'
+import { CalendarClock, Check, Loader2, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -13,8 +13,8 @@ isTaskPriority,
 isTaskType,
 } from '../../automations/public/automationCatalog'
 import type { Chat } from '../../chats/types'
-import { useCreateTask,useTasks,useUpdateTask } from '../hooks/useTasks'
-import type { TaskPriority,TaskType } from '../types'
+import { useCreateTask, useTasks, useUpdateTask } from '../hooks/useTasks'
+import type { TaskPriority, TaskType } from '../types'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.

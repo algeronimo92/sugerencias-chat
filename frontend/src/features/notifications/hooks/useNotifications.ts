@@ -1,4 +1,4 @@
-import { useCallback,useEffect,useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type NotificationPermissionState = 'default' | 'granted' | 'denied' | 'unsupported'
 export interface NotificationOptions { force?: boolean; tag?: string }

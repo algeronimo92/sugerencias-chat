@@ -1,20 +1,19 @@
-import { AlertTriangle,Loader2,MessageCircle,Plus,X } from 'lucide-react'
-import { useEffect,useMemo,useState } from 'react'
+import { AlertTriangle, Loader2, MessageCircle, Plus, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { Select,fieldClass,labelClass } from '../../../shared/ui/Input'
+import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { FALLBACK_COUNTRY_CODE,localMaxDigits,normalizePhone } from '../../../shared/utils/phone'
+import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../../../shared/utils/phone'
 import { useMe } from '../../auth/public/queries'
-import { useDuplicateLead,usePhoneConfig } from '../../chats/public/queries'
-import type { Chat,LeadUpdateInput } from '../../chats/types'
+import { useDuplicateLead, usePhoneConfig } from '../../chats/public/queries'
+import type { Chat, LeadUpdateInput } from '../../chats/types'
 import { useSellers } from '../../platform/public/useUsers'
 import { useCustomFields } from '../hooks/useCustomFields'
-import { useCreateLeadService,useLeadServices } from '../hooks/useLeadServices'
+import { useCreateLeadService, useLeadServices } from '../hooks/useLeadServices'
 import type { LeadService } from '../types'
 import { CustomFieldInput } from './CustomFieldInput'
-
 
 interface Props {
   title: string

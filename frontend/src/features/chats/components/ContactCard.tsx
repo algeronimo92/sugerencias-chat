@@ -1,5 +1,5 @@
-import { Check,Copy,Loader2,MessageCircle,X } from "lucide-react";
-import { lazy,Suspense,useState } from "react";
+import { Check, Copy, Loader2, MessageCircle, X } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -8,7 +8,7 @@ dialogContentPositionClass,
 dialogOverlayClass,
 } from "../../../shared/ui/Dialog";
 import { extractErrorMessage } from "../../../shared/utils/errors";
-import { useCreateLead,useFindLeadByPhone } from "../queries";
+import { useCreateLead, useFindLeadByPhone } from "../queries";
 import type { LeadUpdateInput } from '../types';
 import type { SharedContact } from "../utils/message";
 

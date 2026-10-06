@@ -1,14 +1,8 @@
 import { orderedRequest } from '../api'
-import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../../realtime/useRealtime'
-import { fetchMessages,forwardMessages,pinMessage,fetchPinnedMessages,reactToMessage,sendInteractive,sendMessage,retryFailedMessage,discardFailedMessage,sendTemplate,unpinMessage,sendAudio,sendContacts,sendLocation,sendMedia,sendSticker } from '../api'
-import type { AudioPayload,ContactsPayload,ForwardPayload,ForwardResult,InteractivePayload,LocationPayload,MediaPayload,Message,MessageCursor,MessagePage,MessageReaction,MessageType,OptimisticContext,OptimisticMessageDraft,ReactionPayload,SendTemplatePayload,StickerPayload,TextPayload } from '../types'
-
-
-
-
-
-
+import { fetchMessages, forwardMessages, pinMessage, fetchPinnedMessages, reactToMessage, sendInteractive, sendMessage, retryFailedMessage, discardFailedMessage, sendTemplate, unpinMessage, sendAudio, sendContacts, sendLocation, sendMedia, sendSticker } from '../api'
+import type { AudioPayload, ContactsPayload, ForwardPayload, ForwardResult, InteractivePayload, LocationPayload, MediaPayload, Message, MessageCursor, MessagePage, MessageReaction, MessageType, OptimisticContext, OptimisticMessageDraft, ReactionPayload, SendTemplatePayload, StickerPayload, TextPayload } from '../types'
 
 // untilId no forma parte de la queryKey a propósito: los updates optimistas
 // de useSendMessage escriben sobre ['messages', chatId] exacto. Solo influye
@@ -42,19 +36,9 @@ export function useMessages(chatId: string | null, untilId?: number | null) {
 let nextOptimisticMessageId = -1
 let lastOptimisticTimestamp = 0
 
-
-/** Mensaje al que se está respondiendo. El backend solo necesita el id; el
- * resto viaja para poder pintar la cita antes de que conteste. */
 export type { ReplyTarget } from '../types'
 
 export type { OptimisticMessageDraft } from '../types'
-
-
-
-/** Los requests se serializan por chat, pero todas las burbujas aparecen de
- * inmediato. Así se conserva el orden de pulsación incluso si una carga de
- * archivo tarda más que el texto que se escribió después. */
-
 
 function optimisticMessage(draft: OptimisticMessageDraft): Message {
   const timestamp = Math.max(Date.now(), lastOptimisticTimestamp + 1)
@@ -228,10 +212,6 @@ export function useSendMessage(chatId: string) {
   }
 }
 
-
-
-
-
 export function useSendAudio(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, AudioPayload, OptimisticContext>({
@@ -251,10 +231,6 @@ export function useSendAudio(chatId: string) {
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
-
-
-
-
 
 export function useSendMedia(chatId: string) {
   const queryClient = useQueryClient()
@@ -286,8 +262,6 @@ export function useSendMedia(chatId: string) {
   })
 }
 
-
-
 export function useSendTemplate(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message[], Error, SendTemplatePayload, OptimisticContext>({
@@ -314,8 +288,6 @@ function applyOwnReaction(reactions: MessageReaction[] | null, emoji: string): M
   const next = emoji ? [...others, { emoji, from_me: true }] : others
   return next.length ? next : null
 }
-
-
 
 export function useReactToMessage(chatId: string) {
   const queryClient = useQueryClient()
@@ -398,10 +370,6 @@ export function useForwardMessages(chatId: string) {
   })
 }
 
-
-
-
-
 export function useSendSticker(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, StickerPayload, OptimisticContext>({
@@ -420,10 +388,6 @@ export function useSendSticker(chatId: string) {
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
-
-
-
-
 
 export function useSendLocation(chatId: string) {
   const queryClient = useQueryClient()
@@ -447,10 +411,6 @@ export function useSendLocation(chatId: string) {
 }
 
 export type { ContactShareInput } from '../types'
-
-
-
-
 
 /** Comparte uno o varios contactos dentro de un único mensaje nativo. */
 export function useSendContacts(chatId: string) {
@@ -477,8 +437,6 @@ export function useSendContacts(chatId: string) {
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
   })
 }
-
-
 
 /** Manda un objeto `interactive` de Meta tal cual (producto, catálogo, Flow,
  * permiso de llamada). El backend lo valida contra el contrato y contra lo

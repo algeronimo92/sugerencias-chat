@@ -1,5 +1,5 @@
 import type { Message } from '../types'
-import { messageFilename,parseContent } from './message'
+import { messageFilename, parseContent } from './message'
 
 const DEFAULT_MEDIA_EXTENSIONS: Record<string, string> = {
   image: 'jpg',
@@ -40,4 +40,3 @@ export function messageMediaFilename(message: Message): string {
   const prefix = kind === 'document' ? 'documento' : kind === 'sticker' ? 'sticker' : kind
   return `${prefix || 'archivo'}${stamp ? `-${stamp}` : ''}.${extension}`
 }
-

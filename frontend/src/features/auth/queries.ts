@@ -1,16 +1,12 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { login,logout,fetchActionToken,completeAccountAction,confirmMfa,disableMfa,logoutAll,fetchMfaStatus,pinLogin,fetchPinStatus,removePin,requestPasswordReset,revokeSession,fetchSessions,setupPin,startMfa } from './api'
-import type { ActionTokenInfo,AuthUser } from './types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { login, logout, fetchActionToken, completeAccountAction, confirmMfa, disableMfa, logoutAll, fetchMfaStatus, pinLogin, fetchPinStatus, removePin, requestPasswordReset, revokeSession, fetchSessions, setupPin, startMfa } from './api'
+import type { ActionTokenInfo, AuthUser } from './types'
 export { useMe } from '../../shared/auth'
 import { endSession } from '../../shared/queryClient'
 
 /** Largo del PIN de acceso rápido. Tiene que coincidir con PIN_LENGTH del
  *  backend (services/session_service.py), que es quien lo valida de verdad. */
 export const PIN_LENGTH = 4
-
-
-
-
 
 function useSuccessfulLogin() {
   const queryClient = useQueryClient()
@@ -73,8 +69,6 @@ export function useRevokeSession() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
   })
 }
-
-
 
 export function useLogout() {
   const queryClient = useQueryClient()

@@ -1,6 +1,6 @@
-import { useMutation,useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../../shared/queryClient'
-import { completeAllTasks,createTask,fetchTasks,updateTask } from '../api'
+import { completeAllTasks, createTask, fetchTasks, updateTask } from '../api'
 import type { TaskStatus } from '../types'
 
 export type { TaskInput } from '../types'

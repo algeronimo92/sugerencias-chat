@@ -1,10 +1,10 @@
-import { CalendarClock,ExternalLink,FlaskConical,Loader2,RefreshCw,Search } from 'lucide-react'
-import { useMemo,useState } from 'react'
+import { CalendarClock, ExternalLink, FlaskConical, Loader2, RefreshCw, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { APPOINTMENT_STATUS_COLORS,APPOINTMENT_STATUS_LABELS,type AppointmentStatus } from '../constants'
-import { useAppointments,useSyncAppointmentCalendar,type AppointmentListItem } from '../queries'
+import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
+import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
 
 const ALL_STATUSES = Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]
 const FAILED_STATUSES: AppointmentStatus[] = ['error', 'created_with_errors']

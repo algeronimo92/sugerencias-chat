@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { createTemplateCategory,fetchTemplateCategories,updateTemplateCategory } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createTemplateCategory, fetchTemplateCategories, updateTemplateCategory } from '../api'
 
 export function useTemplateCategories(includeInactive = false) {
   return useQuery({

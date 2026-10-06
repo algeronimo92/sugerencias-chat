@@ -3,24 +3,24 @@ import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Layers,Loader2,MessageSquare,
 PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,XCircle,
 } from 'lucide-react'
-import { useMemo,useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { Select,fieldClass } from '../../../shared/ui/Input'
+import { Select, fieldClass } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatChip } from '../../../shared/ui/StatChip'
-import { STAT_TONE_ICON as TONE_ICON,type StatTone } from '../../../shared/ui/tones'
+import { STAT_TONE_ICON as TONE_ICON, type StatTone } from '../../../shared/ui/tones'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
 isServiceWindowError,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import { useAutomationExecutions,useCancelExecution,useManualFlows } from '../queries'
-import type { AutomationActionResult,AutomationExecution } from '../types'
+import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
+import type { AutomationActionResult, AutomationExecution } from '../types'
 import {
 executionStatusLabel,executionTriggerLabel,formatExecutionDate,isoDateOffset,todayISODate,
 } from '../utils/automationExecutions'

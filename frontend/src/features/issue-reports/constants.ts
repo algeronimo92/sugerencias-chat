@@ -1,6 +1,5 @@
 import type { IssueReportPriority, IssueReportStatus } from './types'
 
-
 export const ISSUE_STATUS_LABELS: Record<IssueReportStatus, string> = {
   new: 'Nuevo',
   in_review: 'En revisión',

@@ -3,17 +3,17 @@ CalendarClock,CalendarDays,CalendarPlus,Camera,CheckCircle2,FileText,
 FileUp,FlaskConical,History,Info,Loader2,MessageCircle,Save,
 SlidersHorizontal,UserRound,X,
 } from 'lucide-react'
-import { useEffect,useRef,useState,type ChangeEvent,type FormEvent,type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useMe } from '../../../shared/auth'
 import { Button } from '../../../shared/ui/Button'
 import { CameraCaptureDialog } from '../../../shared/ui/CameraCaptureDialog'
-import { Input,Select,Textarea } from '../../../shared/ui/Input'
+import { Input, Select, Textarea } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { CustomFieldInput } from '../../leads/public/CustomFieldInput'
 import { useCustomFields } from '../../leads/public/useCustomFields'
 import { useSellers } from '../../platform/public/useUsers'
-import { useCreateAppointment,type AppointmentAttachmentInput,type AppointmentResult } from '../queries'
+import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../queries'
 import { AppointmentCalendar } from './AppointmentCalendar'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
 

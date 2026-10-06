@@ -1,16 +1,10 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { fetchKanbanSnapshot,fetchKanbanStage,moveLeadStage,bulkAssignTag,bulkMoveStage } from './api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignTag, bulkMoveStage } from './api'
 import type { LeadStage } from './types'
-
-
 
 export type { KanbanPage } from './types'
 
 export type { KanbanSnapshot } from './types'
-
-
-
-
 
 export function useKanbanSnapshot(search: string) {
   return useQuery({
@@ -28,10 +22,6 @@ export function useLoadKanbanStage() {
   })
 }
 
-
-
-
-
 export function useMoveLeadStage() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -46,15 +36,6 @@ export function useMoveLeadStage() {
 
 export type { BulkActionResult } from './types'
 
-/** Dispara un request por lead en paralelo en vez de pedir un endpoint de
- * bulk al backend — no hay volumen para justificarlo (selecciones de a
- * decenas, no miles) y así se reusan los mismos endpoints de a uno que ya
- * están probados. Promise.allSettled para que un 404 suelto (un lead
- * borrado mientras tanto) no tire abajo el resto de la selección. */
-
-
-
-
 export function useBulkMoveStage() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -66,8 +47,6 @@ export function useBulkMoveStage() {
     },
   })
 }
-
-
 
 export function useBulkAssignTag() {
   const queryClient = useQueryClient()

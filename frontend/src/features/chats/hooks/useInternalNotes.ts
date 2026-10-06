@@ -1,8 +1,6 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { createInternalNote,deleteInternalNote,fetchInternalNotes,updateInternalNote } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createInternalNote, deleteInternalNote, fetchInternalNotes, updateInternalNote } from '../api'
 import type { NoteInput } from '../types'
-
-
 
 export function useInternalNotes(chatId: string | null) {
   return useQuery({

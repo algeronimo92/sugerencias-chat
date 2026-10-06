@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { LeadStage,LeadStageDefinition,LeadStageKind } from '../types'
+import type { LeadStage, LeadStageDefinition, LeadStageKind } from '../types'
 
 /**
  * Etapas del embudo. Cada negocio administra las suyas (Catálogos › Etapas) y

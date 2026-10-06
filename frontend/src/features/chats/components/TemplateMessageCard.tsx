@@ -1,6 +1,6 @@
-import { CornerUpLeft,ExternalLink } from 'lucide-react'
+import { CornerUpLeft, ExternalLink } from 'lucide-react'
 
-import { resolveMediaUrl,type TemplateMessage } from '../utils/message'
+import { resolveMediaUrl, type TemplateMessage } from '../utils/message'
 
 /** Encabezado de una plantilla oficial enviada: imagen o texto. */
 export function TemplateMessagePreview({ template }: { template: TemplateMessage }) {

@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { AppUser,AsistenteNegocio,BusinessTimezoneItem,CreateUserPayload,IntegracionNegocio,MarcaGuardada,MetaEmbeddedSignupPayload,MetaPublicConfig,OperadorActual,Organization,PlatformSetting,SellerOption,SettingItem,UpdateUserPayload,WhatsappQr,WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappQr, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<AppUser[]>('/api/users')

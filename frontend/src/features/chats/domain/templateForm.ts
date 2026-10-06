@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import type { LeadStage,TaskType } from '../../leads/types'
-import type { InteractiveLimits,MessageTemplate,OfficialTemplateButton } from '../types'
-import type { EditableListSection,EditableReplyButton } from './interactiveConfig'
+import type { LeadStage, TaskType } from '../../leads/types'
+import type { InteractiveLimits, MessageTemplate, OfficialTemplateButton } from '../types'
+import type { EditableListSection, EditableReplyButton } from './interactiveConfig'
 
 export function exceedsLimit(value: string, limit: number | undefined): limit is number {
   return limit !== undefined && value.length > limit

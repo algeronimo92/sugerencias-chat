@@ -1,8 +1,8 @@
-import { AlertTriangle,CheckCircle2,ScanSearch } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ScanSearch } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
-import { SuggestionError,useAnalyzeLead } from '../hooks/useSuggestions'
+import { SuggestionError, useAnalyzeLead } from '../hooks/useSuggestions'
 
 interface Props {
   chatId: string

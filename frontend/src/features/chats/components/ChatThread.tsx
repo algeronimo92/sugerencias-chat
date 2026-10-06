@@ -1,5 +1,5 @@
-import { ArrowLeft,Bot,BotOff,ChevronDown,Copy,Download,Forward,Loader2,MessageCircle,MessageCircleOff,Sparkles,X } from 'lucide-react'
-import { Fragment,lazy,Suspense,useEffect,useMemo,useState } from 'react'
+import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X } from 'lucide-react'
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
@@ -13,17 +13,17 @@ useSendMessage,useUnpinMessage,type ReplyTarget,
 } from '../hooks/useMessages'
 import { useThreadScroll } from '../hooks/useThreadScroll'
 import { useUpdateLead } from '../queries'
-import type { Chat,Message,MessageTemplate } from '../types'
-import { avatarInitial,displayName } from '../utils/chat'
-import { albumMemberIds,groupAlbumMessages } from '../utils/mediaGroups'
-import { formatDayLabel,formatMessageTime,parseContent } from '../utils/message'
+import type { Chat, Message, MessageTemplate } from '../types'
+import { avatarInitial, displayName } from '../utils/chat'
+import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
+import { formatDayLabel, formatMessageTime, parseContent } from '../utils/message'
 import { messageMediaFilename } from '../utils/messageMedia'
 import { AlbumBubble } from './AlbumBubble'
 import { ChatComposer } from './ChatComposer'
-import { CustomerServiceWindowBadge,CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
+import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
-import { MessageBubble,type OpenMedia } from './MessageBubble'
+import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
 import { StageChangeCard } from './StageChangeCard'
 
@@ -259,7 +259,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isSelecting])
-
 
   // El foco del cursor lo pone el compositor al ver la cita nueva: el
   // textarea es suyo, no de acá.
@@ -612,7 +611,6 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             onClose={() => setPreviewSticker(null)}
           />
         )}
-
 
         {templateContentToSave && (
           <SaveAsTemplateDialog content={templateContentToSave} onClose={() => setTemplateContentToSave(null)} />

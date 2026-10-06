@@ -296,7 +296,6 @@ describe('MessageBubble', () => {
     expect(onDownload).toHaveBeenCalledOnce()
   })
 
-
   it('muestra la lápida de un mensaje eliminado, sin su contenido ni acciones', () => {
     // El backend ya no manda el texto de un eliminado; se replica acá.
     renderBubble({ content: null, deleted_at: '2026-08-06T12:00:00.000Z' })

@@ -1,5 +1,5 @@
 import { currentBrandName } from '../../../shared/branding'
-import type { Chat,MessageTemplate,TemplateInteractiveConfig } from '../types'
+import type { Chat, MessageTemplate, TemplateInteractiveConfig } from '../types'
 
 export function renderTemplate(template: MessageTemplate, chat: Chat): string {
   return renderTemplateText(template.content, chat)

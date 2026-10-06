@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { ActionTokenInfo,AuthSession,AuthUser,LoginPayload,MfaStatus,PinStatus } from "./types";
+import type { ActionTokenInfo, AuthSession, AuthUser, LoginPayload, MfaStatus, PinStatus } from "./types";
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
   const { data } = await client.post<AuthUser>('/api/auth/login', {

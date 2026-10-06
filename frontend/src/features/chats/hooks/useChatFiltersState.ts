@@ -1,5 +1,5 @@
-import { useEffect,useState } from 'react'
-import type { ChatFiltersState,ChatQuickFilter } from '../layoutContext'
+import { useEffect, useState } from 'react'
+import type { ChatFiltersState, ChatQuickFilter } from '../layoutContext'
 import type { ChatFilters } from '../types'
 import { EMPTY_CHAT_FILTERS } from '../types'
 

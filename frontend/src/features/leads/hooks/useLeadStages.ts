@@ -1,7 +1,7 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { fetchAdminLeadStages,createLeadStage,deleteLeadStage,fetchLeadStages,reorderLeadStages,updateLeadStage } from '../api'
-import { buildStageCatalog,DEFAULT_LEAD_STAGES,type LeadStageCatalog } from '../domain/leadStageMeta'
+import { fetchAdminLeadStages, createLeadStage, deleteLeadStage, fetchLeadStages, reorderLeadStages, updateLeadStage } from '../api'
+import { buildStageCatalog, DEFAULT_LEAD_STAGES, type LeadStageCatalog } from '../domain/leadStageMeta'
 
 const STAGES_KEY = ['lead-stages'] as const
 

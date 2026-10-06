@@ -1,9 +1,9 @@
-import { AlertTriangle,ArrowDown,ArrowUp,Check,Columns3,Loader2,Plus,RefreshCw,Save,Trash2 } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { AlertTriangle, ArrowDown, ArrowUp, Check, Columns3, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { Input,Select } from '../../../shared/ui/Input'
+import { Input, Select } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
@@ -20,7 +20,7 @@ useDeleteLeadStage,
 useReorderLeadStages,
 useUpdateLeadStage,
 } from '../hooks/useLeadStages'
-import type { LeadStageAdminDefinition,LeadStageKind } from '../types'
+import type { LeadStageAdminDefinition, LeadStageKind } from '../types'
 
 interface StageDraft {
   name: string

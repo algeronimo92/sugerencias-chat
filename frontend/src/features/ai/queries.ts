@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { fetchAiProfile,fetchAiUsage,deleteKnowledgeDocument,fetchKnowledgeDocument,fetchKnowledgeDocuments,saveAiProfile,saveKnowledgeDocument,setAiResourceDescription } from './api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription } from './api'
 
 const PROFILE_KEY = ['ai-assistant', 'profile'] as const
 const KNOWLEDGE_KEY = ['ai-assistant', 'knowledge'] as const

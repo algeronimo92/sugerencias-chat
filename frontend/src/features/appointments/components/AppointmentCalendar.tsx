@@ -1,5 +1,5 @@
-import { ChevronLeft,ChevronRight,ExternalLink } from 'lucide-react'
-import { useMemo,useState } from 'react'
+import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { useAppointments } from '../queries'
 

@@ -1,4 +1,4 @@
-import { ChevronLeft,ChevronRight,Pin,X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pin, X } from 'lucide-react'
 import type { Message } from '../types'
 import { quotePreview } from '../utils/message'
 

@@ -1,7 +1,6 @@
 import { subscribePush, unsubscribePush } from '../api'
-import type {  } from '../types'
 import { useQuery } from '@tanstack/react-query'
-import { useCallback,useEffect,useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchVapidPublicKey } from '../api'
 
 // Función y no una constante de módulo: así los tests pueden simular
@@ -9,8 +8,6 @@ import { fetchVapidPublicKey } from '../api'
 function isPushSupported(): boolean {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
 }
-
-
 
 /** Convierte la clave pública VAPID (base64url) al `Uint8Array` que pide
  *  `PushManager.subscribe`. Conversión estándar: hay que rellenar el padding
@@ -28,10 +25,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   }
   return outputArray
 }
-
-
-
-
 
 /** Suscripción a Web Push, para que los avisos que hoy solo llegan por
  *  WebSocket (reportes de incidencias, menciones) también aparezcan como

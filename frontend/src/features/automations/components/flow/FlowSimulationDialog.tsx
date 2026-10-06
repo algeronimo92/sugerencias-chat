@@ -1,4 +1,4 @@
-import { Beaker,Loader2,Play,UserRound,X } from 'lucide-react'
+import { Beaker, Loader2, Play, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { extractErrorMessage } from '../../../../shared/utils/errors'
 import type { Chat } from '../../../chats/types'

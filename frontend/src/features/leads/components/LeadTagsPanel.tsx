@@ -1,11 +1,11 @@
-import { Loader2,Plus,Tag as TagIcon,X } from 'lucide-react'
+import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import type { Chat } from '../../chats/types'
-import { useAssignTag,useCreateTag,useRemoveTag,useTags } from '../hooks/useLeadMeta'
+import { useAssignTag, useCreateTag, useRemoveTag, useTags } from '../hooks/useLeadMeta'
 export function LeadTagsPanel({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
   const { data: tags = [] } = useTags()

@@ -1,5 +1,5 @@
-import { Activity,CheckCircle2,CirclePlay,MessageCircleQuestion,Repeat,Split,Timer,Zap,type LucideIcon } from 'lucide-react'
-import type { AutomationAction,AutomationFlowConditionGroup,AutomationFlowConditionType,AutomationFlowNodeType,AutomationTrigger,QuestionButton,RoundRobinOutput,WaitAnyCondition } from '../types'
+import { Activity, CheckCircle2, CirclePlay, MessageCircleQuestion, Repeat, Split, Timer, Zap, type LucideIcon } from 'lucide-react'
+import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../types'
 import {
 AUTOMATION_ACTION_LABELS,AUTOMATION_TRIGGERS,FLOW_CONDITION_LABELS,FlowNodeType,formatWaitDuration,
 isAutomationActionType,isFlowConditionType,WaitAnyConditionKind,

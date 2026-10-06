@@ -1,4 +1,4 @@
-import { useCallback,useReducer,type SetStateAction } from 'react'
+import { useCallback, useReducer, type SetStateAction } from 'react'
 
 const DEFAULT_HISTORY_LIMIT = 50
 const DEFAULT_MERGE_WINDOW_MS = 800
@@ -104,4 +104,3 @@ export function useFlowHistory<T>(
     canRedo: history.future.length > 0,
   }
 }
-

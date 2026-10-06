@@ -1,7 +1,7 @@
-import { useMutation,useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { deleteMediaAsset,fetchMediaLibrary,renameMediaAsset,saveStickerToLibrary,uploadMediaAsset } from './api'
-import type { MediaAsset,MediaAssetKind } from './types'
+import { deleteMediaAsset, fetchMediaLibrary, renameMediaAsset, saveStickerToLibrary, uploadMediaAsset } from './api'
+import type { MediaAsset, MediaAssetKind } from './types'
 
 export type { MediaAssetUpload } from './types'
 

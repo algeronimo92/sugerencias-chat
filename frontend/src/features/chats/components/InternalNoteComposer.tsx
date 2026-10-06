@@ -1,5 +1,5 @@
-import { AtSign,Loader2,Send,X } from 'lucide-react'
-import { useMemo,useRef,useState } from 'react'
+import { AtSign, Loader2, Send, X } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSellers } from '../../platform/public/useUsers'

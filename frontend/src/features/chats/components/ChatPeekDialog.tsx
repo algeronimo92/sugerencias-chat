@@ -1,14 +1,14 @@
-import { EyeOff,Loader2,MessageCircle,X } from 'lucide-react'
-import { useEffect,useMemo,useRef } from 'react'
+import { EyeOff, Loader2, MessageCircle, X } from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
 DialogPrimitive as Dialog,
 dialogContentPositionClassElevated,
 dialogOverlayClassElevated,
 } from '../../../shared/ui/Dialog'
 import { useMessages } from '../hooks/useMessages'
-import type { Chat,Message } from '../types'
-import { avatarInitial,displayName } from '../utils/chat'
-import { formatMessageTime,parseContent,resolveMediaUrl } from '../utils/message'
+import type { Chat, Message } from '../types'
+import { avatarInitial, displayName } from '../utils/chat'
+import { formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
 
 const MESSAGE_LIMIT = 12
 
