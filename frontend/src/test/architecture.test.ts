@@ -51,6 +51,83 @@ function reaches(start: string, forbidden: (path: string) => boolean, edges = gr
   }
 }
 
+// Medición inicial del refactor del frontend (fase 0). Estas listas solo
+// pueden achicarse: una dependencia nueva que cierre un ciclo, o un componente
+// que pase de MAX_COMPONENT_LINES, hace fallar el test. Al resolver uno, se
+// quita de la lista (el test exige que no queden entradas sobrantes).
+
+/** Dependencias entre features que hoy forman parte de un ciclo. La fase 3
+ * las elimina ordenando las features en capas. */
+const KNOWN_CYCLE_EDGES = [
+  'ai -> chats',
+  'ai -> leads',
+  'ai -> media',
+  'automations -> chats',
+  'automations -> leads',
+  'automations -> media',
+  'automations -> platform',
+  'chats -> ai',
+  'chats -> automations',
+  'chats -> leads',
+  'chats -> media',
+  'chats -> platform',
+  'leads -> automations',
+  'leads -> chats',
+  'leads -> platform',
+  'media -> chats',
+  'platform -> chats',
+  'platform -> leads',
+]
+
+const MAX_COMPONENT_LINES = 400
+
+/** Componentes que hoy superan MAX_COMPONENT_LINES. La fase 8 los parte. */
+const KNOWN_LARGE_COMPONENTS = [
+  'features/ai/components/AiAssistantPage.tsx',
+  'features/auth/components/LoginPage.tsx',
+  'features/automations/components/AutomationsPage.tsx',
+  'features/automations/components/MyAutomationExecutionsPage.tsx',
+  'features/automations/components/VisualFlowBuilder.tsx',
+  'features/automations/components/flow/FlowCanvas.tsx',
+  'features/chats/components/ChatComposer.tsx',
+  'features/chats/components/ChatItem.tsx',
+  'features/chats/components/ChatList.tsx',
+  'features/chats/components/ChatThread.tsx',
+  'features/chats/components/ChatWorkspace.tsx',
+  'features/chats/components/MessageBody.tsx',
+  'features/chats/components/MessageBubble.tsx',
+  'features/chats/components/TemplateSendDialog.tsx',
+  'features/chats/components/TemplatesPage.tsx',
+  'features/leads/components/KanbanBoard.tsx',
+  'features/leads/components/LeadFormDialog.tsx',
+  'features/leads/components/TasksPage.tsx',
+  'features/platform/components/PlatformApp.tsx',
+]
+
+const isTestOrStory = (path: string) => /\.(test|stories)\.tsx?$/.test(path)
+
+function featureOf(path: string): string | undefined {
+  if (!isInside(features, path)) return undefined
+  return relative(features, path).split(/[\\/]/)[0]
+}
+
+/** Grafo entre features: A -> B si algún archivo de producción de A importa
+ * uno de B. */
+function featureEdges(): Map<string, Set<string>> {
+  const edges = new Map<string, Set<string>>()
+  for (const [path, targets] of graph) {
+    const owner = featureOf(path)
+    if (!owner || isTestOrStory(path)) continue
+    for (const target of targets) {
+      const other = featureOf(target)
+      if (!other || other === owner) continue
+      if (!edges.has(owner)) edges.set(owner, new Set())
+      edges.get(owner)!.add(other)
+    }
+  }
+  return edges
+}
+
 describe('feature architecture', () => {
   it('parses side-effect, dynamic, type, require and re-export imports', () => {
     expect(imports("import './side'; export { x } from './bridge'; const x = import('./dynamic'); type T = import('./type').T; import y = require('./require')")).toEqual(['./side', './bridge', './dynamic', './type', './require'])
@@ -98,5 +175,21 @@ describe('feature architecture', () => {
     const routes = readFileSync(join(src, 'app/routes.tsx'), 'utf8')
     expect(routes).toContain('from "./layout"')
     expect(routes).toContain('from "./providers"')
+  })
+
+  it('does not add dependencies that close a cycle between features', () => {
+    const edges = featureEdges()
+    const reachesBack = (from: string, to: string) => reaches(from, path => path === to, new Map([...edges].map(([key, value]) => [key, [...value]])))
+    const cycleEdges = [...edges].flatMap(([owner, targets]) => [...targets].filter(target => reachesBack(target, owner)).map(target => `${owner} -> ${target}`))
+    expect(cycleEdges.sort()).toEqual(KNOWN_CYCLE_EDGES)
+  })
+
+  it(`keeps components under ${MAX_COMPONENT_LINES} lines`, () => {
+    const large = sourceFiles(src)
+      .filter(path => path.endsWith('.tsx') && !isTestOrStory(path))
+      .filter(path => readFileSync(path, 'utf8').split('\n').length > MAX_COMPONENT_LINES)
+      .map(path => relative(src, path).split(/[\\/]/).join('/'))
+      .sort()
+    expect(large).toEqual(KNOWN_LARGE_COMPONENTS)
   })
 })

@@ -31,6 +31,12 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
+// Ni scrollTo sobre elementos, que el hilo y la lista usan para anclar el
+// scroll.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {}
+}
+
 // Radix Select usa pointer capture para distinguir un click de un arrastre.
 // jsdom todavía no implementa esa parte de Pointer Events.
 if (!Element.prototype.hasPointerCapture) {
