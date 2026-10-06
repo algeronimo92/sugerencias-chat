@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 
+export const ME_QUERY_KEY = ['auth', 'me'] as const
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -17,3 +19,18 @@ export const queryClient = new QueryClient({
     },
   },
 })
+
+/** Termina la sesión del lado del cliente: vuelve al login y descarta la
+ * caché de esa sesión.
+ *
+ * El orden importa. ``clear()`` primero dejaba la app en el CRM: borraba la
+ * query de ``/me`` que observa la guarda de sesión, y el ``null`` posterior
+ * caía en una query nueva que nadie observaba, así que la pantalla no cambiaba
+ * hasta el próximo re-render (por ejemplo, volver a enfocar la pestaña). Ahora
+ * se marca la sesión como cerrada sobre la query existente y después se
+ * descarta el resto. */
+export function endSession(client: QueryClient = queryClient) {
+  client.setQueryData(ME_QUERY_KEY, null)
+  client.removeQueries({ predicate: query => !(query.queryKey[0] === ME_QUERY_KEY[0] && query.queryKey[1] === ME_QUERY_KEY[1]) })
+  client.getMutationCache().clear()
+}

@@ -2,6 +2,7 @@ import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
 import { login,logout,requestActionToken,requestCompleteAccountAction,requestConfirmMfa,requestDisableMfa,requestLogoutAll,requestMfaStatus,requestPinLogin,requestPinStatus,requestRemovePin,requestRequestPasswordReset,requestRevokeSession,requestSessions,requestSetupPin,requestStartMfa } from './api'
 import type { ActionTokenInfo,AuthUser } from './types'
 export { useMe } from '../../shared/auth'
+import { endSession } from '../../shared/queryClient'
 
 /** Largo del PIN de acceso rápido. Tiene que coincidir con PIN_LENGTH del
  *  backend (services/session_service.py), que es quien lo valida de verdad. */
@@ -80,10 +81,7 @@ export function useLogout() {
   // La sesión se limpia también si la llamada falla (sin red, cookie ya
   // vencida, etc.): del lado del cliente el resultado deseado es el mismo,
   // volver al login, igual que hace el interceptor 401 en api/client.ts.
-  const clearSession = () => {
-    queryClient.clear()
-    queryClient.setQueryData(['auth', 'me'], null)
-  }
+  const clearSession = () => endSession(queryClient)
   return useMutation({
     mutationFn: logout,
     onSuccess: clearSession,
@@ -95,10 +93,7 @@ export function useLogoutAll() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: requestLogoutAll(),
-    onSuccess: () => {
-      queryClient.clear()
-      queryClient.setQueryData(['auth', 'me'], null)
-    },
+    onSuccess: () => endSession(queryClient),
   })
 }
 

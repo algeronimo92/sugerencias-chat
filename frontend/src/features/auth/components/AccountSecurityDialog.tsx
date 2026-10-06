@@ -6,6 +6,7 @@ import { DialogPrimitive as Dialog,dialogContentPositionClass,dialogOverlayClass
 import { Input,labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { PIN_LENGTH,useConfirmMfa,useDisableMfa,useLogoutAll,useMe,useMfaStatus,usePinStatus,useRemovePin,useRevokeSession,useSessions,useSetupPin,useStartMfa } from '../queries'
+import { endSession } from '../../../shared/queryClient'
 
 interface Props {
   onClose: () => void
@@ -42,8 +43,7 @@ export function AccountSecurityDialog({ onClose }: Props) {
 
   function finishMfaSetup() {
     setRecoveryCodes(null)
-    queryClient.clear()
-    queryClient.setQueryData(['auth', 'me'], null)
+    endSession(queryClient)
     onClose()
   }
 
