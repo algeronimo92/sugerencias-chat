@@ -63,17 +63,16 @@ export async function markChatUnread(chatId: string): Promise<void> {
   await client.post(`/api/chats/${encodeURIComponent(chatId)}/unread`)
 }
 
-export function requestChat(chatId: string | null) {
-  return async () => (await client.get<Chat>(`/api/chats/${encodeURIComponent(chatId as string)}`)).data
+export async function fetchChat(chatId: string | null) {
+  return (await client.get<Chat>(`/api/chats/${encodeURIComponent(chatId as string)}`)).data
 }
 
-export function requestUnreadCount() {
-  return async () => (await client.get<{ count: number }>('/api/chats/unread-count')).data.count
+export async function fetchUnreadCount() {
+  return (await client.get<{ count: number }>('/api/chats/unread-count')).data.count
 }
 
-export function requestPhoneConfig() {
-  return async () =>
-      (await client.get<{ default_country_code: string }>('/api/chats/phone-config')).data
+export async function fetchPhoneConfig() {
+  return (await client.get<{ default_country_code: string }>('/api/chats/phone-config')).data
 }
 
 export async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {
@@ -138,8 +137,8 @@ export async function sendContacts(chatId: string, { contacts, replyTo }: Contac
   return data
 }
 
-export function requestSendMessage(chatId: string) {
-  return ({ text, replyTo }: TextPayload) => orderedRequest(chatId, async () => (
+export function sendMessage(chatId: string, { text, replyTo }: TextPayload) {
+  return orderedRequest(chatId, async () => (
       await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
         text,
         reply_to_message_id: replyTo?.id ?? null,
@@ -147,59 +146,57 @@ export function requestSendMessage(chatId: string) {
     ).data)
 }
 
-export function requestSendMessage1(chatId: string) {
-  return (message: Message) => orderedRequest(chatId, async () => (
+export function retryFailedMessage(chatId: string, message: Message) {
+  return orderedRequest(chatId, async () => (
       await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/retry`)
     ).data)
 }
 
-export function requestSendMessage2(chatId: string) {
-  return async (message: Message) => (
+export async function discardFailedMessage(chatId: string, message: Message) {
+  return (
       await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/discard`)
     ).data
 }
 
-export function requestSendTemplate(chatId: string) {
-  return ({ templateId, text, parameters = [] }: SendTemplatePayload) => orderedRequest(chatId, async () =>
+export function sendTemplate(chatId: string, { templateId, text, parameters = [] }: SendTemplatePayload) {
+  return orderedRequest(chatId, async () =>
       (await client.post<Message[]>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })).data)
 }
 
-export function requestReactToMessage(chatId: string) {
-  return async ({ messageId, emoji }: ReactionPayload) =>
-      (await client.post<Message>(
+export async function reactToMessage(chatId: string, { messageId, emoji }: ReactionPayload) {
+  return (await client.post<Message>(
         `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/reaction`,
         { emoji },
       )).data
 }
 
-export function requestPinnedMessages(chatId: string | null) {
-  return async () => (await client.get<{ items: Message[] }>(
+export async function fetchPinnedMessages(chatId: string | null) {
+  return (await client.get<{ items: Message[] }>(
       `/api/chats/${encodeURIComponent(chatId as string)}/pinned-messages`,
     )).data.items
 }
 
-export function requestPinMessage(chatId: string) {
-  return async (messageId: number) => (await client.post<Message>(
+export async function pinMessage(chatId: string, messageId: number) {
+  return (await client.post<Message>(
       `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/pin`,
     )).data
 }
 
-export function requestUnpinMessage(chatId: string) {
-  return async (messageId: number) => (await client.post<Message>(
+export async function unpinMessage(chatId: string, messageId: number) {
+  return (await client.post<Message>(
       `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/unpin`,
     )).data
 }
 
-export function requestForwardMessages(chatId: string) {
-  return async ({ messageIds, targetChatIds }: ForwardPayload) =>
-      (await client.post<ForwardResult>(
+export async function forwardMessages(chatId: string, { messageIds, targetChatIds }: ForwardPayload) {
+  return (await client.post<ForwardResult>(
         `/api/chats/${encodeURIComponent(chatId)}/messages/forward`,
         { message_ids: messageIds, target_chat_ids: targetChatIds },
       )).data
 }
 
-export function requestSendInteractive(chatId: string) {
-  return ({ interactive, replyTo }: InteractivePayload) => orderedRequest(chatId, async () => (
+export function sendInteractive(chatId: string, { interactive, replyTo }: InteractivePayload) {
+  return orderedRequest(chatId, async () => (
       await client.post<Message>(`/api/chats/${encodeURIComponent(chatId)}/interactive`, {
         interactive,
         reply_to_message_id: replyTo?.id ?? null,
@@ -207,121 +204,108 @@ export function requestSendInteractive(chatId: string) {
     ).data)
 }
 
-export function requestTemplates(includeInactive: boolean) {
-  return async () => (await client.get<MessageTemplate[]>('/api/templates', { params: { include_inactive: includeInactive } })).data
+export async function fetchTemplates(includeInactive: boolean) {
+  return (await client.get<MessageTemplate[]>('/api/templates', { params: { include_inactive: includeInactive } })).data
 }
 
-export function requestTemplateCapabilities() {
-  return async () => (await client.get<TemplateCapabilities>('/api/templates/capabilities')).data
+export async function fetchTemplateCapabilities() {
+  return (await client.get<TemplateCapabilities>('/api/templates/capabilities')).data
 }
 
-export function requestCreateTemplate() {
-  return async (input: TemplateInput) => (await client.post<MessageTemplate>('/api/templates', input)).data
+export async function createTemplate(input: TemplateInput) {
+  return (await client.post<MessageTemplate>('/api/templates', input)).data
 }
 
-export function requestUpdateTemplate() {
-  return async ({ id, ...input }: Partial<MessageTemplate> & { id: number }) => (await client.patch<MessageTemplate>(`/api/templates/${id}`, input)).data
+export async function updateTemplate({ id, ...input }: Partial<MessageTemplate> & { id: number }) {
+  return (await client.patch<MessageTemplate>(`/api/templates/${id}`, input)).data
 }
 
-export function requestCreatePersonalTemplate() {
-  return async (input: { name: string; content: string; shortcut?: string | null }) =>
-      (await client.post<MessageTemplate>('/api/templates/personal', input)).data
+export async function createPersonalTemplate(input: { name: string; content: string; shortcut?: string | null }) {
+  return (await client.post<MessageTemplate>('/api/templates/personal', input)).data
 }
 
-export function requestToggleTemplateFavorite() {
-  return async ({ id, isFavorite }: { id: number; isFavorite: boolean }) => {
+export async function toggleTemplateFavorite({ id, isFavorite }: { id: number; isFavorite: boolean }) {
       await client.put(`/api/templates/${id}/favorite`, { is_favorite: isFavorite })
     }
-}
 
-export function requestRecordTemplateUse() {
-  return async (id: number) => { await client.post(`/api/templates/${id}/use`) }
-}
+export async function recordTemplateUse(id: number) { await client.post(`/api/templates/${id}/use`) }
 
-export function requestUploadTemplateAttachment() {
-  return async ({ templateId, contentType, dataBase64, filename }: { templateId: number; contentType: string; dataBase64: string; filename: string }) =>
-      (await client.post<TemplateAttachment>(`/api/templates/${templateId}/attachments`, {
+export async function uploadTemplateAttachment({ templateId, contentType, dataBase64, filename }: { templateId: number; contentType: string; dataBase64: string; filename: string }) {
+  return (await client.post<TemplateAttachment>(`/api/templates/${templateId}/attachments`, {
         content_type: contentType, data_base64: dataBase64, filename,
       })).data
 }
 
-export function requestAddLibraryTemplateAttachment() {
-  return async ({ templateId, assetId }: { templateId: number; assetId: number }) =>
-      (await client.post<TemplateAttachment>(`/api/templates/${templateId}/attachments/library`, {
+export async function addLibraryTemplateAttachment({ templateId, assetId }: { templateId: number; assetId: number }) {
+  return (await client.post<TemplateAttachment>(`/api/templates/${templateId}/attachments/library`, {
         asset_id: assetId,
       })).data
 }
 
-export function requestDeleteTemplateAttachment() {
-  return async (id: number) => { await client.delete(`/api/templates/attachments/${id}`) }
+export async function deleteTemplateAttachment(id: number) { await client.delete(`/api/templates/attachments/${id}`) }
+
+export async function fetchMetaTemplates() {
+  return (await client.get<MetaTemplateRaw[]>('/api/templates/meta')).data
 }
 
-export function requestMetaTemplates() {
-  return async () => (await client.get<MetaTemplateRaw[]>('/api/templates/meta')).data
+export async function fetchMetaTemplateDetail(metaTemplateId: string | null) {
+  return (await client.get<MetaTemplateRaw>(`/api/templates/meta/${metaTemplateId}`)).data
 }
 
-export function requestMetaTemplateDetail(metaTemplateId: string | null) {
-  return async () => (await client.get<MetaTemplateRaw>(`/api/templates/meta/${metaTemplateId}`)).data
-}
-
-export function requestImportMetaTemplate() {
-  return async ({ metaTemplateId, name, category, shortcut, officialParameterValues }: {
+export async function importMetaTemplate({ metaTemplateId, name, category, shortcut, officialParameterValues }: {
       metaTemplateId: string
       name: string
       category: string
       shortcut: string | null
       officialParameterValues: string[]
-    }) => (await client.post<MessageTemplate>(`/api/templates/meta/${metaTemplateId}/import`, {
+    }) {
+  return (await client.post<MessageTemplate>(`/api/templates/meta/${metaTemplateId}/import`, {
       name, category, shortcut, official_parameter_values: officialParameterValues,
     })).data
 }
 
-export function requestSyncTemplate() {
-  return async (id: number) => (await client.post<MessageTemplate>(`/api/templates/${id}/sync`)).data
+export async function syncTemplate(id: number) {
+  return (await client.post<MessageTemplate>(`/api/templates/${id}/sync`)).data
 }
 
-export function requestDeleteTemplate() {
-  return async (id: number) => { await client.delete(`/api/templates/${id}`) }
+export async function deleteTemplate(id: number) { await client.delete(`/api/templates/${id}`) }
+
+export async function fetchInternalNotes(chatId: string | null) {
+  return (await client.get<InternalNote[]>(`/api/chats/${encodeURIComponent(chatId as string)}/notes`)).data
 }
 
-export function requestInternalNotes(chatId: string | null) {
-  return async () => (await client.get<InternalNote[]>(`/api/chats/${encodeURIComponent(chatId as string)}/notes`)).data
-}
-
-export function requestCreateInternalNote(chatId: string) {
-  return async (input: NoteInput) => (await client.post<InternalNote>(
+export async function createInternalNote(chatId: string, input: NoteInput) {
+  return (await client.post<InternalNote>(
       `/api/chats/${encodeURIComponent(chatId)}/notes`,
       { content: input.content, mentioned_user_ids: input.mentionedUserIds },
     )).data
 }
 
-export function requestUpdateInternalNote(chatId: string) {
-  return async ({ id, ...input }: NoteInput & { id: number }) => (await client.patch<InternalNote>(
+export async function updateInternalNote(chatId: string, { id, ...input }: NoteInput & { id: number }) {
+  return (await client.patch<InternalNote>(
       `/api/chats/${encodeURIComponent(chatId)}/notes/${id}`,
       { content: input.content, mentioned_user_ids: input.mentionedUserIds },
     )).data
 }
 
-export function requestDeleteInternalNote(chatId: string) {
-  return async (id: number) => { await client.delete(`/api/chats/${encodeURIComponent(chatId)}/notes/${id}`) }
-}
+export async function deleteInternalNote(chatId: string, id: number) { await client.delete(`/api/chats/${encodeURIComponent(chatId)}/notes/${id}`) }
 
-export function requestCustomerServiceWindow(chatId: string | null) {
-  return async () => (await client.get<CustomerServiceWindow>(
+export async function fetchCustomerServiceWindow(chatId: string | null) {
+  return (await client.get<CustomerServiceWindow>(
       `/api/chats/${encodeURIComponent(chatId as string)}/service-window`,
     )).data
 }
 
-export function requestScheduledMessages(chatId: string) {
-  return async () => (
+export async function fetchScheduledMessages(chatId: string) {
+  return (
       await client.get<ScheduledMessage[]>(
         `/api/chats/${encodeURIComponent(chatId)}/scheduled-messages`,
       )
     ).data
 }
 
-export function requestCreateScheduledMessage(chatId: string) {
-  return async ({ text, scheduledAt }: { text: string; scheduledAt: string }) => (
+export async function createScheduledMessage(chatId: string, { text, scheduledAt }: { text: string; scheduledAt: string }) {
+  return (
       await client.post<ScheduledMessage>(
         `/api/chats/${encodeURIComponent(chatId)}/scheduled-messages`,
         { text, scheduled_at: scheduledAt },
@@ -329,28 +313,26 @@ export function requestCreateScheduledMessage(chatId: string) {
     ).data
 }
 
-export function requestCancelScheduledMessage() {
-  return async (scheduledId: number) => {
+export async function cancelScheduledMessage(scheduledId: number) {
       await client.delete(`/api/scheduled-messages/${scheduledId}`)
     }
-}
 
-export function requestTemplateCategories(includeInactive: boolean) {
-  return async () => (
+export async function fetchTemplateCategories(includeInactive: boolean) {
+  return (
       await client.get<TemplateCategory[]>(
         includeInactive ? '/api/template-categories/all' : '/api/template-categories',
       )
     ).data
 }
 
-export function requestCreateTemplateCategory() {
-  return async (name: string) => (
+export async function createTemplateCategory(name: string) {
+  return (
       await client.post<TemplateCategory>('/api/template-categories', { name })
     ).data
 }
 
-export function requestUpdateTemplateCategory() {
-  return async ({ id, ...values }: { id: number; name?: string; is_active?: boolean }) => (
+export async function updateTemplateCategory({ id, ...values }: { id: number; name?: string; is_active?: boolean }) {
+  return (
       await client.patch<TemplateCategory>(`/api/template-categories/${id}`, values)
     ).data
 }

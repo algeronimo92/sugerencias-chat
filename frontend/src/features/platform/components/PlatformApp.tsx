@@ -1,4 +1,4 @@
-import { deleteApiPlatformOrganizationsBrandingLogo7,deleteApiPlatformOrganizationsDomains3,getApiPlatformAuthMe17,getApiPlatformOrganizations15,getApiPlatformOrganizationsAi8,getApiPlatformOrganizationsBranding4,getApiPlatformOrganizationsIntegrations9,getApiPlatformSettings13,postApiPlatformAuthLogin0,postApiPlatformAuthLogout16,postApiPlatformOrganizations1,postApiPlatformOrganizations12,postApiPlatformOrganizationsDomains2,putApiPlatformOrganizationsAi10,putApiPlatformOrganizationsBranding5,putApiPlatformOrganizationsBrandingLogo6,putApiPlatformOrganizationsIntegrations11,putApiPlatformSettings14 } from '../api';
+import { removeOrganizationLogo,removeOrganizationDomain,fetchOperator,fetchOrganizations,fetchOrganizationAi,fetchOrganizationBranding,fetchOrganizationIntegrations,fetchPlatformSettings,loginOperator,logoutOperator,createOrganization,setOrganizationStatus,addOrganizationDomain,saveOrganizationAi,saveOrganizationBranding,uploadOrganizationLogo,saveOrganizationIntegrations,savePlatformSettings } from '../api';
 import type { OperadorActual,Organization } from '../types';
 /**
  * Panel de plataforma: alta y administración de negocios.
@@ -138,7 +138,7 @@ function Login({ onEntrar }: { onEntrar: () => void }) {
   const [password, setPassword] = useState("");
   const entrar = useMutation({
     mutationFn: async () => {
-      await postApiPlatformAuthLogin0(email, password);
+      await loginOperator(email, password);
     },
     onSuccess: onEntrar,
   });
@@ -330,7 +330,7 @@ function NuevoNegocio({ onCreado }: { onCreado: () => void }) {
 
   const crear = useMutation({
     mutationFn: async () => {
-      await postApiPlatformOrganizations1(name, hostname, adminEmail, adminPassword);
+      await createOrganization(name, hostname, adminEmail, adminPassword);
     },
     onSuccess: () => {
       setName("");
@@ -430,7 +430,7 @@ function Dominios({ organizacion }: { organizacion: Organization }) {
 
   const agregar = useMutation({
     mutationFn: async () => {
-      await postApiPlatformOrganizationsDomains2(organizacion, hostname);
+      await addOrganizationDomain(organizacion, hostname);
     },
     onSuccess: () => {
       setHostname("");
@@ -440,7 +440,7 @@ function Dominios({ organizacion }: { organizacion: Organization }) {
 
   const quitar = useMutation({
     mutationFn: async (valor: string) => {
-      await deleteApiPlatformOrganizationsDomains3(organizacion, valor);
+      await removeOrganizationDomain(organizacion, valor);
     },
     onSuccess: refrescar,
   });
@@ -548,7 +548,7 @@ function MarcaNegocio({ organizacion }: { organizacion: Organization }) {
   const marca = useQuery({
     queryKey: clave,
     queryFn: async () =>
-      (await getApiPlatformOrganizationsBranding4(organizacion)).data,
+      await fetchOrganizationBranding(organizacion),
     enabled: abierta,
   });
 
@@ -560,23 +560,19 @@ function MarcaNegocio({ organizacion }: { organizacion: Organization }) {
 
   const guardar = useMutation({
     mutationFn: async () =>
-      (
-        await putApiPlatformOrganizationsBranding5(organizacion, nombre, color)
-      ).data,
+      await saveOrganizationBranding(organizacion, nombre, color),
     onSuccess: (data) => queryClient.setQueryData(clave, data),
   });
 
   const subirLogo = useMutation({
     mutationFn: async (archivo: File) =>
-      (
-        await putApiPlatformOrganizationsBrandingLogo6(organizacion, archivo)
-      ).data,
+      await uploadOrganizationLogo(organizacion, archivo),
     onSuccess: (data) => queryClient.setQueryData(clave, data),
   });
 
   const quitarLogo = useMutation({
     mutationFn: async () =>
-      (await deleteApiPlatformOrganizationsBrandingLogo7(organizacion)).data,
+      await removeOrganizationLogo(organizacion),
     onSuccess: (data) => queryClient.setQueryData(clave, data),
   });
 
@@ -735,13 +731,13 @@ function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) 
   const asistente = useQuery({
     queryKey: claveAsistente,
     queryFn: async () =>
-      (await getApiPlatformOrganizationsAi8(organizacion)).data,
+      await fetchOrganizationAi(organizacion),
     enabled: abierta,
   });
   const integracionesQuery = useQuery({
     queryKey: claveIntegraciones,
     queryFn: async () =>
-      (await getApiPlatformOrganizationsIntegrations9(organizacion)).data,
+      await fetchOrganizationIntegrations(organizacion),
     enabled: abierta,
   });
 
@@ -758,9 +754,7 @@ function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) 
 
   const guardarAsistente = useMutation({
     mutationFn: async (monthlyQuota: number | null) =>
-      (
-        await putApiPlatformOrganizationsAi10(organizacion, habilitado, monthlyQuota)
-      ).data,
+      await saveOrganizationAi(organizacion, habilitado, monthlyQuota),
     onSuccess: (data) => {
       queryClient.setQueryData(claveAsistente, data);
       queryClient.invalidateQueries({ queryKey: ORGANIZACIONES, exact: true });
@@ -769,9 +763,7 @@ function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) 
 
   const guardarIntegraciones = useMutation({
     mutationFn: async () =>
-      (
-        await putApiPlatformOrganizationsIntegrations11(organizacion, integraciones)
-      ).data,
+      await saveOrganizationIntegrations(organizacion, integraciones),
     onSuccess: (data) => queryClient.setQueryData(claveIntegraciones, data),
   });
 
@@ -915,7 +907,7 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
   const cambiarEstado = useMutation({
     mutationFn: async () => {
       const accion = suspendido ? "activate" : "suspend";
-      await postApiPlatformOrganizations12(organizacion, accion);
+      await setOrganizationStatus(organizacion, accion);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ORGANIZACIONES }),
   });
@@ -997,10 +989,7 @@ function CredencialesPlataforma() {
   const [saved, setSaved] = useState(false);
   const settingsQuery = useQuery({
     queryKey: CONFIGURACION_PLATAFORMA,
-    queryFn: async () => {
-      const { data } = await getApiPlatformSettings13();
-      return data;
-    },
+    queryFn: fetchPlatformSettings,
   });
 
   useEffect(() => {
@@ -1021,8 +1010,7 @@ function CredencialesPlataforma() {
         const value = draft[item.key] ?? "";
         if (!item.secret || value) values[item.key] = value;
       }
-      const { data } = await putApiPlatformSettings14(values);
-      return data;
+      return await savePlatformSettings(values);
     },
     onSuccess: (data) => {
       queryClient.setQueryData(CONFIGURACION_PLATAFORMA, data);
@@ -1114,15 +1102,12 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
 
   const negocios = useQuery({
     queryKey: ORGANIZACIONES,
-    queryFn: async () => {
-      const { data } = await getApiPlatformOrganizations15();
-      return data;
-    },
+    queryFn: fetchOrganizations,
   });
 
   const salir = useMutation({
     mutationFn: async () => {
-      await postApiPlatformAuthLogout16();
+      await logoutOperator();
     },
     onSuccess: onSalir,
   });
@@ -1230,8 +1215,7 @@ export function PlatformApp() {
     queryKey: ["platform", "me"],
     queryFn: async () => {
       try {
-        const { data } = await getApiPlatformAuthMe17();
-        return data;
+        return await fetchOperator();
       } catch (error) {
         // 401 = todavía no entró. 404 = el panel no vive en este dominio, que
         // es la respuesta esperada desde el CRM de un negocio.

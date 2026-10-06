@@ -1,6 +1,6 @@
 import { useInfiniteQuery,useMutation,useQueryClient } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../../realtime/useRealtime'
-import { requestMarkAllNotificationsRead,requestMarkNotificationRead,requestNotificationHistory } from '../api'
+import { markAllNotificationsRead,markNotificationRead,fetchNotificationHistory } from '../api'
 
 /** `limit` chico con el panel cerrado: ahí solo hacen falta el contador de
  * no leídas (el backend lo calcula aparte, no depende del límite) y la más
@@ -10,7 +10,7 @@ export function useNotificationHistory(unreadOnly = false, limit = 50) {
   const connected = useChatSocketConnected()
   return useInfiniteQuery({
     queryKey: ['notifications', unreadOnly, limit],
-    queryFn: requestNotificationHistory(unreadOnly, limit),
+    queryFn: ({ pageParam }) => fetchNotificationHistory(unreadOnly, limit, pageParam),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => lastPage.has_more
       ? pages.reduce((total, page) => total + page.items.length, 0)
@@ -25,7 +25,7 @@ export function useNotificationHistory(unreadOnly = false, limit = 50) {
 export function useMarkNotificationRead() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestMarkNotificationRead(),
+    mutationFn: markNotificationRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 }
@@ -33,7 +33,7 @@ export function useMarkNotificationRead() {
 export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestMarkAllNotificationsRead(),
+    mutationFn: markAllNotificationsRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 }

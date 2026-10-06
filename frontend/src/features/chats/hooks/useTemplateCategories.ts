@@ -1,10 +1,10 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestCreateTemplateCategory,requestTemplateCategories,requestUpdateTemplateCategory } from '../api'
+import { createTemplateCategory,fetchTemplateCategories,updateTemplateCategory } from '../api'
 
 export function useTemplateCategories(includeInactive = false) {
   return useQuery({
     queryKey: ['template-categories', { includeInactive }],
-    queryFn: requestTemplateCategories(includeInactive),
+    queryFn: () => fetchTemplateCategories(includeInactive),
     staleTime: 60_000,
   })
 }
@@ -12,7 +12,7 @@ export function useTemplateCategories(includeInactive = false) {
 export function useCreateTemplateCategory() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCreateTemplateCategory(),
+    mutationFn: createTemplateCategory,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['template-categories'] }),
   })
 }
@@ -20,7 +20,7 @@ export function useCreateTemplateCategory() {
 export function useUpdateTemplateCategory() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestUpdateTemplateCategory(),
+    mutationFn: updateTemplateCategory,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['template-categories'] })
       queryClient.invalidateQueries({ queryKey: ['templates'] })

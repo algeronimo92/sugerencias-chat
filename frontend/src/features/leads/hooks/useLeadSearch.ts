@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { requestLeadSearch } from '../api'
+import { searchLeads } from '../api'
 
 
 
@@ -7,7 +7,7 @@ export function useLeadSearch(term: string) {
   const search = term.trim()
   return useQuery({
     queryKey: ['lead-search', search],
-    queryFn: requestLeadSearch(search),
+    queryFn: ({ signal }) => searchLeads(search, signal),
     enabled: search.length > 0,
     staleTime: 30_000,
   })

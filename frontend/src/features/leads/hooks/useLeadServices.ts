@@ -1,10 +1,10 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestCreateLeadService,requestLeadServices,requestUpdateLeadService } from '../api'
+import { createLeadService,fetchLeadServices,updateLeadService } from '../api'
 
 export function useLeadServices(includeInactive = false) {
   return useQuery({
     queryKey: ['lead-services', { includeInactive }],
-    queryFn: requestLeadServices(includeInactive),
+    queryFn: () => fetchLeadServices(includeInactive),
     staleTime: 60_000,
   })
 }
@@ -12,7 +12,7 @@ export function useLeadServices(includeInactive = false) {
 export function useCreateLeadService() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCreateLeadService(),
+    mutationFn: createLeadService,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lead-services'] }),
   })
 }
@@ -20,7 +20,7 @@ export function useCreateLeadService() {
 export function useUpdateLeadService() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestUpdateLeadService(),
+    mutationFn: updateLeadService,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lead-services'] }),
   })
 }

@@ -1,7 +1,7 @@
 import { orderedRequest } from '../api'
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../../realtime/useRealtime'
-import { fetchMessages,requestForwardMessages,requestPinMessage,requestPinnedMessages,requestReactToMessage,requestSendInteractive,requestSendMessage,requestSendMessage1,requestSendMessage2,requestSendTemplate,requestUnpinMessage,sendAudio,sendContacts,sendLocation,sendMedia,sendSticker } from '../api'
+import { fetchMessages,forwardMessages,pinMessage,fetchPinnedMessages,reactToMessage,sendInteractive,sendMessage,retryFailedMessage,discardFailedMessage,sendTemplate,unpinMessage,sendAudio,sendContacts,sendLocation,sendMedia,sendSticker } from '../api'
 import type { AudioPayload,ContactsPayload,ForwardPayload,ForwardResult,InteractivePayload,LocationPayload,MediaPayload,Message,MessageCursor,MessagePage,MessageReaction,MessageType,OptimisticContext,OptimisticMessageDraft,ReactionPayload,SendTemplatePayload,StickerPayload,TextPayload } from '../types'
 
 
@@ -159,7 +159,7 @@ export function useSendMessage(chatId: string) {
   const queryClient = useQueryClient()
   const mutation = useMutation<Message, Error, TextPayload, OptimisticContext>({
     mutationKey: ['send-message', chatId],
-    mutationFn: requestSendMessage(chatId),
+    mutationFn: (variables: TextPayload) => sendMessage(chatId, variables),
     onMutate: async ({ text, replyTo }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, [{ content: text, reply_to: replyTo }])
@@ -175,7 +175,7 @@ export function useSendMessage(chatId: string) {
 
   const retry = useMutation<Message, Error, Message>({
     mutationKey: ['send-message', chatId],
-    mutationFn: requestSendMessage1(chatId),
+    mutationFn: (message: Message) => retryFailedMessage(chatId, message),
     onMutate: async message => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
@@ -196,7 +196,7 @@ export function useSendMessage(chatId: string) {
   // Descartar no pasa por orderedRequest: no envía nada a WhatsApp, solo cierra
   // el job, así que no compite por el orden de la cola del chat.
   const discard = useMutation<Message, Error, Message>({
-    mutationFn: requestSendMessage2(chatId),
+    mutationFn: (message: Message) => discardFailedMessage(chatId, message),
     onMutate: async message => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
@@ -292,7 +292,7 @@ export function useSendTemplate(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message[], Error, SendTemplatePayload, OptimisticContext>({
     mutationKey: ['send-message', chatId],
-    mutationFn: requestSendTemplate(chatId),
+    mutationFn: (variables: SendTemplatePayload) => sendTemplate(chatId, variables),
     onMutate: async payload => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       return appendOptimisticMessages(queryClient, chatId, payload.optimisticMessages)
@@ -320,7 +320,7 @@ function applyOwnReaction(reactions: MessageReaction[] | null, emoji: string): M
 export function useReactToMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, ReactionPayload, { previous: MessageReaction[] | null }>({
-    mutationFn: requestReactToMessage(chatId),
+    mutationFn: (variables: ReactionPayload) => reactToMessage(chatId, variables),
     onMutate: async ({ messageId, emoji }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       let previous: MessageReaction[] | null = null
@@ -348,7 +348,7 @@ export function useReactToMessage(chatId: string) {
 export function usePinnedMessages(chatId: string | null) {
   return useQuery({
     queryKey: ['pinned-messages', chatId],
-    queryFn: requestPinnedMessages(chatId),
+    queryFn: () => fetchPinnedMessages(chatId),
     enabled: !!chatId,
   })
 }
@@ -356,7 +356,7 @@ export function usePinnedMessages(chatId: string | null) {
 export function usePinMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, number>({
-    mutationFn: requestPinMessage(chatId),
+    mutationFn: (messageId: number) => pinMessage(chatId, messageId),
     onSuccess: message => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
       void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
@@ -367,7 +367,7 @@ export function usePinMessage(chatId: string) {
 export function useUnpinMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, number>({
-    mutationFn: requestUnpinMessage(chatId),
+    mutationFn: (messageId: number) => unpinMessage(chatId, messageId),
     onSuccess: message => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
       void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
@@ -388,7 +388,7 @@ export type { ForwardResult } from '../types'
 export function useForwardMessages(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<ForwardResult, Error, ForwardPayload>({
-    mutationFn: requestForwardMessages(chatId),
+    mutationFn: (variables: ForwardPayload) => forwardMessages(chatId, variables),
     onSuccess: (_result, { targetChatIds }) => {
       void queryClient.invalidateQueries({ queryKey: ['chats'] })
       for (const target of targetChatIds) {
@@ -487,7 +487,7 @@ export function useSendInteractive(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, InteractivePayload, OptimisticContext>({
     mutationKey: ['send-message', chatId],
-    mutationFn: requestSendInteractive(chatId),
+    mutationFn: (variables: InteractivePayload) => sendInteractive(chatId, variables),
     onMutate: async ({ interactive, replyTo }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
       const body = interactive.body

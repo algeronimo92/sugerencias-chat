@@ -1,6 +1,6 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
 import type { SuggestionStatus } from '../../chats/types'
-import { generateSuggestions,requestAnalyzeLead,requestSuggestionStatus } from '../api'
+import { generateSuggestions,analyzeLead,fetchSuggestionStatus } from '../api'
 import type { GenerateParams } from '../types'
 
 
@@ -24,7 +24,7 @@ export { SuggestionError } from '../errors'
 export function useSuggestionStatus(chatId: string | null) {
   return useQuery({
     queryKey: ['suggestions', chatId],
-    queryFn: requestSuggestionStatus(chatId),
+    queryFn: () => fetchSuggestionStatus(chatId),
     enabled: !!chatId,
     staleTime: 60_000,
     retry: false,
@@ -70,7 +70,7 @@ export function useAnalyzeLead() {
 
   return useMutation({
     mutationKey: ['analyze-lead'],
-    mutationFn: requestAnalyzeLead(),
+    mutationFn: analyzeLead,
     onSuccess: (_data, chatId) => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })

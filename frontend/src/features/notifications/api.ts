@@ -3,31 +3,27 @@ import client from "../../shared/http/client";
 import type { NotificationPage } from "../chats/types";
 import type { VapidPublicKeyResponse } from './types';
 
-export function requestNotificationHistory(unreadOnly: boolean, limit: number) {
-  return async ({ pageParam }: { pageParam: number }) => (await client.get<NotificationPage>('/api/notifications', {
-      params: { unread_only: unreadOnly, limit, offset: pageParam },
+export async function fetchNotificationHistory(unreadOnly: boolean, limit: number, offset: number) {
+  return (await client.get<NotificationPage>('/api/notifications', {
+      params: { unread_only: unreadOnly, limit, offset },
     })).data
 }
 
-export function requestMarkNotificationRead() {
-  return async (id: number) => { await client.post(`/api/notifications/${id}/read`) }
-}
+export async function markNotificationRead(id: number) { await client.post(`/api/notifications/${id}/read`) }
 
-export function requestMarkAllNotificationsRead() {
-  return async () => { await client.post('/api/notifications/read-all') }
-}
+export async function markAllNotificationsRead() { await client.post('/api/notifications/read-all') }
 
 export async function fetchVapidPublicKey(): Promise<string> {
   const { data } = await client.get<VapidPublicKeyResponse>('/api/push/vapid-public-key')
   return data.public_key
 }
 
-export function postApiPushSubscribe0(subscription: PushSubscription) {
-  return client.post('/api/push/subscribe', subscriptionPayload(subscription))
+export async function subscribePush(subscription: PushSubscription) {
+  return (await client.post('/api/push/subscribe', subscriptionPayload(subscription))).data
 }
 
-export function postApiPushUnsubscribe1(endpoint: string) {
-  return client.post('/api/push/unsubscribe', { endpoint })
+export async function unsubscribePush(endpoint: string) {
+  return (await client.post('/api/push/unsubscribe', { endpoint })).data
 }
 
 function subscriptionPayload(subscription: PushSubscription) {

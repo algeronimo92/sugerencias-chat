@@ -1,10 +1,10 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { createUser,fetchUsers,requestResendInvitation,requestSellers,requestSendPasswordReset,updateUser } from '../api'
+import { createUser,fetchUsers,resendInvitation,fetchSellers,sendPasswordReset,updateUser } from '../api'
 
 export function useSellers({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['sellers'],
-    queryFn: requestSellers(),
+    queryFn: fetchSellers,
     enabled,
     staleTime: 60_000,
   })
@@ -46,14 +46,14 @@ export function useUpdateUser() {
 
 export function useSendPasswordReset() {
   return useMutation({
-    mutationFn: requestSendPasswordReset(),
+    mutationFn: sendPasswordReset,
   })
 }
 
 export function useResendInvitation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestResendInvitation(),
+    mutationFn: resendInvitation,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 }

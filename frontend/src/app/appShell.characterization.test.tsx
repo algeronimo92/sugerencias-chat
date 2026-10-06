@@ -9,7 +9,7 @@
  */
 
 import { AxiosError } from 'axios'
-import { render, screen, waitFor } from '@testing-library/react'
+import { configure, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -25,6 +25,11 @@ vi.mock('virtual:pwa-register/react', () => ({
 
 const api = installFakeApi()
 installFakeSocket()
+
+// Estos tests montan la app entera y cargan sus pantallas de forma diferida:
+// con la suite corriendo en paralelo, el segundo que espera `findBy` por
+// defecto se queda corto sin que haya nada roto.
+configure({ asyncUtilTimeout: 5_000 })
 
 const ADMIN = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin' }
 const SELLER = { id: 2, email: 'vendedor@clinica.test', name: 'Vendedor', role: 'vendedor' }

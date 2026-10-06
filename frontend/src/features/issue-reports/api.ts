@@ -8,7 +8,7 @@ import type {
   IssueReportStatus,
 } from './types'
 
-export async function listIssueReports(
+export async function fetchIssueReports(
   status: IssueReportStatus | '' = '',
   priority: IssueReportPriority | '' = '',
 ) {
@@ -17,7 +17,7 @@ export async function listIssueReports(
   })).data
 }
 
-export async function getIssueReport(reportId: number) {
+export async function fetchIssueReport(reportId: number) {
   return (await client.get<IssueReportDetail>(`/api/issue-reports/${reportId}`)).data
 }
 

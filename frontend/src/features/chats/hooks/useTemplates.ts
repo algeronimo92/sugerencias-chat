@@ -1,13 +1,13 @@
 import { useMutation,useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../../shared/queryClient'
-import { requestAddLibraryTemplateAttachment,requestCreatePersonalTemplate,requestCreateTemplate,requestDeleteTemplate,requestDeleteTemplateAttachment,requestImportMetaTemplate,requestMetaTemplateDetail,requestMetaTemplates,requestRecordTemplateUse,requestSyncTemplate,requestTemplateCapabilities,requestTemplates,requestToggleTemplateFavorite,requestUpdateTemplate,requestUploadTemplateAttachment } from '../api'
+import { addLibraryTemplateAttachment,createPersonalTemplate,createTemplate,deleteTemplate,deleteTemplateAttachment,importMetaTemplate,fetchMetaTemplateDetail,fetchMetaTemplates,recordTemplateUse,syncTemplate,fetchTemplateCapabilities,fetchTemplates,toggleTemplateFavorite,updateTemplate,uploadTemplateAttachment } from '../api'
 
 export type { TemplateInput } from '../types'
 
 export function useTemplates(includeInactive = false) {
   return useQuery({
     queryKey: ['templates', includeInactive],
-    queryFn: requestTemplates(includeInactive),
+    queryFn: () => fetchTemplates(includeInactive),
     // El composer de cada chat la monta: sin esto se repedía al cambiar de
     // chat. Las ediciones llegan por templates_updated y por las mutaciones.
     staleTime: 5 * 60_000,
@@ -17,7 +17,7 @@ export function useTemplates(includeInactive = false) {
 export function useTemplateCapabilities() {
   return useQuery({
     queryKey: ['template-capabilities'],
-    queryFn: requestTemplateCapabilities(),
+    queryFn: fetchTemplateCapabilities,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   })
@@ -25,42 +25,42 @@ export function useTemplateCapabilities() {
 
 export function useCreateTemplate() {
   return useMutation({
-    mutationFn: requestCreateTemplate(),
+    mutationFn: createTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useUpdateTemplate() {
   return useMutation({
-    mutationFn: requestUpdateTemplate(),
+    mutationFn: updateTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useCreatePersonalTemplate() {
   return useMutation({
-    mutationFn: requestCreatePersonalTemplate(),
+    mutationFn: createPersonalTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useToggleTemplateFavorite() {
   return useMutation({
-    mutationFn: requestToggleTemplateFavorite(),
+    mutationFn: toggleTemplateFavorite,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useRecordTemplateUse() {
   return useMutation({
-    mutationFn: requestRecordTemplateUse(),
+    mutationFn: recordTemplateUse,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useUploadTemplateAttachment() {
   return useMutation({
-    mutationFn: requestUploadTemplateAttachment(),
+    mutationFn: uploadTemplateAttachment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       queryClient.invalidateQueries({ queryKey: ['media-library'] })
@@ -70,7 +70,7 @@ export function useUploadTemplateAttachment() {
 
 export function useAddLibraryTemplateAttachment() {
   return useMutation({
-    mutationFn: requestAddLibraryTemplateAttachment(),
+    mutationFn: addLibraryTemplateAttachment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       queryClient.invalidateQueries({ queryKey: ['media-library'] })
@@ -80,7 +80,7 @@ export function useAddLibraryTemplateAttachment() {
 
 export function useDeleteTemplateAttachment() {
   return useMutation({
-    mutationFn: requestDeleteTemplateAttachment(),
+    mutationFn: deleteTemplateAttachment,
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['templates'] }),
@@ -96,7 +96,7 @@ export function useDeleteTemplateAttachment() {
 export function useMetaTemplates(enabled: boolean) {
   return useQuery({
     queryKey: ['meta-templates'],
-    queryFn: requestMetaTemplates(),
+    queryFn: fetchMetaTemplates,
     enabled,
   })
 }
@@ -104,28 +104,28 @@ export function useMetaTemplates(enabled: boolean) {
 export function useMetaTemplateDetail(metaTemplateId: string | null) {
   return useQuery({
     queryKey: ['meta-templates', metaTemplateId],
-    queryFn: requestMetaTemplateDetail(metaTemplateId),
+    queryFn: () => fetchMetaTemplateDetail(metaTemplateId),
     enabled: metaTemplateId != null,
   })
 }
 
 export function useImportMetaTemplate() {
   return useMutation({
-    mutationFn: requestImportMetaTemplate(),
+    mutationFn: importMetaTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useSyncTemplate() {
   return useMutation({
-    mutationFn: requestSyncTemplate(),
+    mutationFn: syncTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }
 
 export function useDeleteTemplate() {
   return useMutation({
-    mutationFn: requestDeleteTemplate(),
+    mutationFn: deleteTemplate,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   })
 }

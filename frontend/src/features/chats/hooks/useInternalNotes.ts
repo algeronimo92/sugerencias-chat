@@ -1,12 +1,13 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestCreateInternalNote,requestDeleteInternalNote,requestInternalNotes,requestUpdateInternalNote } from '../api'
+import { createInternalNote,deleteInternalNote,fetchInternalNotes,updateInternalNote } from '../api'
+import type { NoteInput } from '../types'
 
 
 
 export function useInternalNotes(chatId: string | null) {
   return useQuery({
     queryKey: ['internal-notes', chatId],
-    queryFn: requestInternalNotes(chatId),
+    queryFn: () => fetchInternalNotes(chatId),
     enabled: !!chatId,
     staleTime: 15_000,
   })
@@ -15,7 +16,7 @@ export function useInternalNotes(chatId: string | null) {
 export function useCreateInternalNote(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCreateInternalNote(chatId),
+    mutationFn: (input: NoteInput) => createInternalNote(chatId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internal-notes', chatId] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
@@ -26,7 +27,7 @@ export function useCreateInternalNote(chatId: string) {
 export function useUpdateInternalNote(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestUpdateInternalNote(chatId),
+    mutationFn: (note: NoteInput & { id: number }) => updateInternalNote(chatId, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internal-notes', chatId] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
@@ -37,7 +38,7 @@ export function useUpdateInternalNote(chatId: string) {
 export function useDeleteInternalNote(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestDeleteInternalNote(chatId),
+    mutationFn: (id: number) => deleteInternalNote(chatId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internal-notes', chatId] })
       queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })

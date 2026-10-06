@@ -1,12 +1,12 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestCancelScheduledMessage,requestCreateScheduledMessage,requestScheduledMessages } from '../api'
+import { cancelScheduledMessage,createScheduledMessage,fetchScheduledMessages } from '../api'
 
 
 
 export function useScheduledMessages(chatId: string) {
   return useQuery({
     queryKey: ['scheduled-messages', chatId],
-    queryFn: requestScheduledMessages(chatId),
+    queryFn: () => fetchScheduledMessages(chatId),
     staleTime: 15_000,
   })
 }
@@ -15,7 +15,7 @@ export function useScheduledMessages(chatId: string) {
 export function useCreateScheduledMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCreateScheduledMessage(chatId),
+    mutationFn: (variables: { text: string; scheduledAt: string }) => createScheduledMessage(chatId, variables),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['scheduled-messages', chatId] })
     },
@@ -26,7 +26,7 @@ export function useCreateScheduledMessage(chatId: string) {
 export function useCancelScheduledMessage(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCancelScheduledMessage(),
+    mutationFn: cancelScheduledMessage,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['scheduled-messages', chatId] })
     },

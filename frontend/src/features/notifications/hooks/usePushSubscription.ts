@@ -1,4 +1,4 @@
-import { postApiPushSubscribe0, postApiPushUnsubscribe1 } from '../api'
+import { subscribePush, unsubscribePush } from '../api'
 import type {  } from '../types'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback,useEffect,useState } from 'react'
@@ -70,7 +70,7 @@ export function usePushSubscription() {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     })
-    await postApiPushSubscribe0(subscription)
+    await subscribePush(subscription)
     setSubscribed(true)
   }, [vapidPublicKey])
 
@@ -84,7 +84,7 @@ export function usePushSubscription() {
     }
     const endpoint = subscription.endpoint
     await subscription.unsubscribe()
-    await postApiPushUnsubscribe1(endpoint)
+    await unsubscribePush(endpoint)
     setSubscribed(false)
   }, [])
 

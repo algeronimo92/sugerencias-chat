@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { requestCustomerServiceWindow } from '../api'
+import { fetchCustomerServiceWindow } from '../api'
 
 export function useCustomerServiceWindow(chatId: string | null) {
   return useQuery({
     queryKey: ['customer-service-window', chatId],
-    queryFn: requestCustomerServiceWindow(chatId),
+    queryFn: () => fetchCustomerServiceWindow(chatId),
     enabled: !!chatId,
     staleTime: 60_000,
     refetchOnWindowFocus: true,

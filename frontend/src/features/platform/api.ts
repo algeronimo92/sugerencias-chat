@@ -16,18 +16,16 @@ export async function updateUser({ id, ...values }: UpdateUserPayload): Promise<
   return data
 }
 
-export function requestSellers() {
-  return async () => (await client.get<SellerOption[]>('/api/chats/sellers')).data
+export async function fetchSellers() {
+  return (await client.get<SellerOption[]>('/api/chats/sellers')).data
 }
 
-export function requestSendPasswordReset() {
-  return async (id: number) => {
+export async function sendPasswordReset(id: number) {
       await client.post(`/api/users/${id}/send-password-reset`)
     }
-}
 
-export function requestResendInvitation() {
-  return async (id: number) => (
+export async function resendInvitation(id: number) {
+  return (
       await client.post<AppUser>(`/api/users/${id}/resend-invitation`)
     ).data
 }
@@ -37,13 +35,12 @@ export async function fetchStatus(): Promise<WhatsappStatus> {
   return data
 }
 
-export function requestConnectWhatsapp() {
-  return async (): Promise<WhatsappQr> =>
-      (await client.post<WhatsappQr>('/api/whatsapp/connect')).data
+export async function connectWhatsapp(): Promise<WhatsappQr> {
+  return (await client.post<WhatsappQr>('/api/whatsapp/connect')).data
 }
 
-export function requestLogoutWhatsapp() {
-  return async () => (await client.post('/api/whatsapp/logout')).data
+export async function logoutWhatsapp() {
+  return (await client.post('/api/whatsapp/logout')).data
 }
 
 export async function fetchSettings(): Promise<SettingItem[]> {
@@ -66,103 +63,103 @@ export async function completeMetaEmbeddedSignup(payload: MetaEmbeddedSignupPayl
   return data
 }
 
-export function requestBusinessTimezones() {
-  return async () => (
+export async function fetchBusinessTimezones() {
+  return (
       await client.get<BusinessTimezoneItem[]>('/api/settings/timezones')
     ).data
 }
 
-export function postApiPlatformAuthLogin0(email: string, password: string) {
-  return client.post("/api/platform/auth/login", { email, password })
+export async function loginOperator(email: string, password: string) {
+  return (await client.post("/api/platform/auth/login", { email, password })).data
 }
 
-export function postApiPlatformOrganizations1(name: string, hostname: string, adminEmail: string, adminPassword: string) {
-  return client.post("/api/platform/organizations", {
+export async function createOrganization(name: string, hostname: string, adminEmail: string, adminPassword: string) {
+  return (await client.post("/api/platform/organizations", {
         name,
         hostname,
         admin_email: adminEmail || null,
         admin_password: adminPassword || null,
-      })
+      })).data
 }
 
-export function postApiPlatformOrganizationsDomains2(organizacion: Organization, hostname: string) {
-  return client.post(`/api/platform/organizations/${organizacion.id}/domains`, {
+export async function addOrganizationDomain(organizacion: Organization, hostname: string) {
+  return (await client.post(`/api/platform/organizations/${organizacion.id}/domains`, {
         hostname,
-      })
+      })).data
 }
 
-export function deleteApiPlatformOrganizationsDomains3(organizacion: Organization, valor: string) {
-  return client.delete(
+export async function removeOrganizationDomain(organizacion: Organization, valor: string) {
+  return (await client.delete(
         `/api/platform/organizations/${organizacion.id}/domains/${encodeURIComponent(valor)}`,
-      )
+      )).data
 }
 
-export function getApiPlatformOrganizationsBranding4(organizacion: Organization) {
-  return client.get<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`)
+export async function fetchOrganizationBranding(organizacion: Organization) {
+  return (await client.get<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`)).data
 }
 
-export function putApiPlatformOrganizationsBranding5(organizacion: Organization, nombre: string, color: string) {
-  return client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`, {
+export async function saveOrganizationBranding(organizacion: Organization, nombre: string, color: string) {
+  return (await client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding`, {
           display_name: nombre,
           primary_color: color,
-        })
+        })).data
 }
 
-export async function putApiPlatformOrganizationsBrandingLogo6(organizacion: Organization, archivo: File) {
-  return client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`, {
+export async function uploadOrganizationLogo(organizacion: Organization, archivo: File) {
+  return (await client.put<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`, {
           data_base64: await leerComoBase64(archivo),
-        })
+        })).data
 }
 
-export function deleteApiPlatformOrganizationsBrandingLogo7(organizacion: Organization) {
-  return client.delete<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`)
+export async function removeOrganizationLogo(organizacion: Organization) {
+  return (await client.delete<MarcaGuardada>(`/api/platform/organizations/${organizacion.id}/branding/logo`)).data
 }
 
-export function getApiPlatformOrganizationsAi8(organizacion: Organization) {
-  return client.get<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`)
+export async function fetchOrganizationAi(organizacion: Organization) {
+  return (await client.get<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`)).data
 }
 
-export function getApiPlatformOrganizationsIntegrations9(organizacion: Organization) {
-  return client.get<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`)
+export async function fetchOrganizationIntegrations(organizacion: Organization) {
+  return (await client.get<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`)).data
 }
 
-export function putApiPlatformOrganizationsAi10(organizacion: Organization, habilitado: boolean, monthlyQuota: number | null) {
-  return client.put<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`, {
+export async function saveOrganizationAi(organizacion: Organization, habilitado: boolean, monthlyQuota: number | null) {
+  return (await client.put<AsistenteNegocio>(`/api/platform/organizations/${organizacion.id}/ai`, {
           enabled: habilitado,
           monthly_quota: monthlyQuota,
-        })
+        })).data
 }
 
-export function putApiPlatformOrganizationsIntegrations11(organizacion: Organization, integraciones: Record<string, string>) {
-  return client.put<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`, {
+export async function saveOrganizationIntegrations(organizacion: Organization, integraciones: Record<string, string>) {
+  return (await client.put<IntegracionNegocio[]>(`/api/platform/organizations/${organizacion.id}/integrations`, {
           values: integraciones,
-        })
+        })).data
 }
 
-export function postApiPlatformOrganizations12(organizacion: Organization, accion: "activate" | "suspend") {
-  return client.post(`/api/platform/organizations/${organizacion.id}/${accion}`)
+export async function setOrganizationStatus(organizacion: Organization, accion: "activate" | "suspend") {
+  return (await client.post(`/api/platform/organizations/${organizacion.id}/${accion}`)).data
 }
 
-export function getApiPlatformSettings13() {
-  return client.get<PlatformSetting[]>("/api/platform/settings")
+export async function fetchPlatformSettings() {
+  return (await client.get<PlatformSetting[]>("/api/platform/settings")).data
 }
 
-export function putApiPlatformSettings14(values: Record<string, string>) {
-  return client.put<PlatformSetting[]>("/api/platform/settings", { values })
+export async function savePlatformSettings(values: Record<string, string>) {
+  return (await client.put<PlatformSetting[]>("/api/platform/settings", { values })).data
 }
 
-export function getApiPlatformOrganizations15() {
-  return client.get<{ head: string; items: Organization[] }>(
+export async function fetchOrganizations() {
+  return (await client.get<{ head: string; items: Organization[] }>(
         "/api/platform/organizations",
-      )
+      )).data
 }
 
-export function postApiPlatformAuthLogout16() {
-  return client.post("/api/platform/auth/logout")
+export async function logoutOperator() {
+  return (await client.post("/api/platform/auth/logout")).data
 }
 
-export function getApiPlatformAuthMe17() {
-  return client.get<OperadorActual>("/api/platform/auth/me")
+export async function fetchOperator() {
+  return (await client.get<OperadorActual>("/api/platform/auth/me")).data
 }
 
 function leerComoBase64(archivo: File): Promise<string> {

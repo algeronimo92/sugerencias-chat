@@ -3,8 +3,8 @@ import { queryClient } from '../../shared/queryClient'
 import {
   addIssueReportComment,
   createIssueReport,
-  getIssueReport,
-  listIssueReports,
+  fetchIssueReport,
+  fetchIssueReports,
   updateIssueReport,
 } from './api'
 import type { CreateIssueReportInput, IssueReportPriority, IssueReportStatus } from './types'
@@ -12,14 +12,14 @@ import type { CreateIssueReportInput, IssueReportPriority, IssueReportStatus } f
 export function useIssueReports(status: IssueReportStatus | '' = '', priority: IssueReportPriority | '' = '') {
   return useQuery({
     queryKey: ['issue-reports', status, priority],
-    queryFn: () => listIssueReports(status, priority),
+    queryFn: () => fetchIssueReports(status, priority),
   })
 }
 
 export function useIssueReport(reportId: number | null) {
   return useQuery({
     queryKey: ['issue-reports', 'detail', reportId],
-    queryFn: () => getIssueReport(reportId as number),
+    queryFn: () => fetchIssueReport(reportId as number),
     enabled: reportId != null,
   })
 }

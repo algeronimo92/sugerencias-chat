@@ -1,15 +1,11 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { websocketUrl } from '../shared/config'
 import { useNavigate } from 'react-router-dom'
 import { parseChatSocketEvent } from './socketEvents'
 import { dispatchSocketEvent, type InternalMentionFn, type NotifyFn, type SocketHandlerContext } from './socketHandlers'
 
 export type { InternalMentionAlert } from './socketHandlers'
-
-function chatsSocketUrl(): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-  return `${base.replace(/^http/, 'ws')}/ws/chats`
-}
 
 const RECONNECT_DELAY_MS = 3_000
 // Heartbeat: se manda un ping cada PING_INTERVAL_MS y, si no llega NINGÚN dato
@@ -104,7 +100,7 @@ export function useChatUpdates(
     }
 
     function connect() {
-      socket = new WebSocket(chatsSocketUrl())
+      socket = new WebSocket(websocketUrl('/ws/chats'))
 
       socket.onopen = () => {
         setSocketConnected(true)

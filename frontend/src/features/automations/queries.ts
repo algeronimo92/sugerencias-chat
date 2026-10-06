@@ -1,7 +1,7 @@
 import { useMutation,useQuery } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { requestAutomationExecution,requestAutomationExecutions,requestAutomationRules,requestCancelExecution,requestCreateAutomation,requestCreateVisualFlow,requestDeleteAutomation,requestDuplicateAutomation,requestFlowVersions,requestManualFlows,requestPauseExecution,requestPublishVisualFlow,requestRestoreFlowVersion,requestResumeExecution,requestRetryExecution,requestSaveVisualFlow,requestSimulateVisualFlow,requestStartManualFlow,requestUpdateAutomation } from './api'
+import { fetchAutomationExecution,fetchAutomationExecutions,fetchAutomationRules,cancelExecution,createAutomation,createVisualFlow,deleteAutomation,duplicateAutomation,fetchFlowVersions,fetchManualFlows,pauseExecution,publishVisualFlow,restoreFlowVersion,resumeExecution,retryExecution,saveVisualFlow,simulateVisualFlow,startManualFlow,updateAutomation } from './api'
 import type { AutomationExecutionFilters } from './types'
 
 export type { AutomationRuleInput } from './types'
@@ -10,7 +10,7 @@ export function useAutomationRules() {
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['automations'],
-    queryFn: requestAutomationRules(),
+    queryFn: fetchAutomationRules,
     refetchInterval: connected ? false : 60_000,
   })
 }
@@ -27,7 +27,7 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all', dateFrom ?? 'none', dateTo ?? 'none', mine],
-    queryFn: requestAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine }),
+    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine }),
     refetchInterval: (query) => {
       if (connected) return false
       if (chatId) {
@@ -57,7 +57,7 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
 export function useManualFlows(chatId?: string, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['automation-manual-flows', chatId ?? 'all'],
-    queryFn: requestManualFlows(chatId),
+    queryFn: () => fetchManualFlows(chatId),
     enabled,
     // Catálogo que cambia solo al editar flujos, y eso llega por
     // automations_updated.
@@ -67,7 +67,7 @@ export function useManualFlows(chatId?: string, { enabled = true }: { enabled?: 
 
 export function useStartManualFlow() {
   return useMutation({
-    mutationFn: requestStartManualFlow(),
+    mutationFn: startManualFlow,
     onSuccess: invalidateAutomations,
   })
 }
@@ -81,28 +81,28 @@ function invalidateAutomations() {
 
 export function useCreateAutomation() {
   return useMutation({
-    mutationFn: requestCreateAutomation(),
+    mutationFn: createAutomation,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useUpdateAutomation() {
   return useMutation({
-    mutationFn: requestUpdateAutomation(),
+    mutationFn: updateAutomation,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useDuplicateAutomation() {
   return useMutation({
-    mutationFn: requestDuplicateAutomation(),
+    mutationFn: duplicateAutomation,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useDeleteAutomation() {
   return useMutation({
-    mutationFn: requestDeleteAutomation(),
+    mutationFn: deleteAutomation,
     onSuccess: invalidateAutomations,
   })
 }
@@ -112,7 +112,7 @@ export function useDeleteAutomation() {
  *  cerrada; vale solo para esa ejecución y el backend registra quién la dio. */
 export function useRetryExecution() {
   return useMutation({
-    mutationFn: requestRetryExecution(),
+    mutationFn: retryExecution,
     onSuccess: invalidateAutomations,
   })
 }
@@ -124,14 +124,14 @@ export function useRetryExecution() {
 export function useAutomationExecution(executionId: number | null) {
   return useQuery({
     queryKey: ['automation-executions', 'by-id', executionId],
-    queryFn: requestAutomationExecution(executionId),
+    queryFn: () => fetchAutomationExecution(executionId),
     enabled: executionId !== null,
   })
 }
 
 export function useCancelExecution() {
   return useMutation({
-    mutationFn: requestCancelExecution(),
+    mutationFn: cancelExecution,
     onSuccess: invalidateAutomations,
   })
 }
@@ -141,35 +141,35 @@ export function useCancelExecution() {
  *  tiempo que le faltaba para su próximo paso. */
 export function usePauseExecution() {
   return useMutation({
-    mutationFn: requestPauseExecution(),
+    mutationFn: pauseExecution,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useResumeExecution() {
   return useMutation({
-    mutationFn: requestResumeExecution(),
+    mutationFn: resumeExecution,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useCreateVisualFlow() {
   return useMutation({
-    mutationFn: requestCreateVisualFlow(),
+    mutationFn: createVisualFlow,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function useSaveVisualFlow() {
   return useMutation({
-    mutationFn: requestSaveVisualFlow(),
+    mutationFn: saveVisualFlow,
     onSuccess: invalidateAutomations,
   })
 }
 
 export function usePublishVisualFlow() {
   return useMutation({
-    mutationFn: requestPublishVisualFlow(),
+    mutationFn: publishVisualFlow,
     onSuccess: invalidateAutomations,
   })
 }
@@ -179,14 +179,14 @@ export type { AutomationFlowVersion } from './types'
 export function useFlowVersions(ruleId: number | null) {
   return useQuery({
     queryKey: ['automation-flow-versions', ruleId],
-    queryFn: requestFlowVersions(ruleId),
+    queryFn: () => fetchFlowVersions(ruleId),
     enabled: ruleId != null,
   })
 }
 
 export function useRestoreFlowVersion() {
   return useMutation({
-    mutationFn: requestRestoreFlowVersion(),
+    mutationFn: restoreFlowVersion,
     onSuccess: invalidateAutomations,
   })
 }
@@ -197,6 +197,6 @@ export type { AutomationFlowSimulationStep } from './types'
 
 export function useSimulateVisualFlow() {
   return useMutation({
-    mutationFn: requestSimulateVisualFlow(),
+    mutationFn: simulateVisualFlow,
   })
 }

@@ -1,5 +1,5 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestCreateCustomField,requestCustomFields,requestLeadCustomFieldValues,requestUpdateCustomField,requestUpdateLeadCustomFieldValues } from '../api'
+import { createCustomField,fetchCustomFields,fetchLeadCustomFieldValues,updateCustomField,updateLeadCustomFieldValues } from '../api'
 import type { CustomFieldEntity } from '../types'
 
 export type { CustomFieldEntity,CustomFieldType } from '../types'
@@ -9,7 +9,7 @@ export type { CustomFieldDefinition } from '../types'
 export function useCustomFields(entityType: CustomFieldEntity, includeInactive = false) {
   return useQuery({
     queryKey: ['custom-fields', entityType, { includeInactive }],
-    queryFn: requestCustomFields(entityType, includeInactive),
+    queryFn: () => fetchCustomFields(entityType, includeInactive),
     staleTime: 60_000,
   })
 }
@@ -17,7 +17,7 @@ export function useCustomFields(entityType: CustomFieldEntity, includeInactive =
 export function useCreateCustomField() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestCreateCustomField(),
+    mutationFn: createCustomField,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['custom-fields'] }),
   })
 }
@@ -25,7 +25,7 @@ export function useCreateCustomField() {
 export function useUpdateCustomField() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestUpdateCustomField(),
+    mutationFn: updateCustomField,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['custom-fields'] }),
   })
 }
@@ -33,7 +33,7 @@ export function useUpdateCustomField() {
 export function useLeadCustomFieldValues(leadId: string) {
   return useQuery({
     queryKey: ['lead-custom-fields', leadId],
-    queryFn: requestLeadCustomFieldValues(leadId),
+    queryFn: () => fetchLeadCustomFieldValues(leadId),
     enabled: Boolean(leadId),
   })
 }
@@ -41,7 +41,7 @@ export function useLeadCustomFieldValues(leadId: string) {
 export function useUpdateLeadCustomFieldValues(leadId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestUpdateLeadCustomFieldValues(leadId),
+    mutationFn: (values: Record<string, unknown>) => updateLeadCustomFieldValues(leadId, values),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lead-custom-fields', leadId] }),
   })
 }

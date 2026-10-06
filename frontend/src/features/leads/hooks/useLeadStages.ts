@@ -1,6 +1,6 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { requestAdminLeadStages,requestCreateLeadStage,requestDeleteLeadStage,requestLeadStages,requestReorderLeadStages,requestUpdateLeadStage } from '../api'
+import { fetchAdminLeadStages,createLeadStage,deleteLeadStage,fetchLeadStages,reorderLeadStages,updateLeadStage } from '../api'
 import { buildStageCatalog,DEFAULT_LEAD_STAGES,type LeadStageCatalog } from '../domain/leadStageMeta'
 
 const STAGES_KEY = ['lead-stages'] as const
@@ -11,7 +11,7 @@ const STAGES_KEY = ['lead-stages'] as const
 export function useLeadStages() {
   return useQuery({
     queryKey: [...STAGES_KEY, 'list'],
-    queryFn: requestLeadStages(),
+    queryFn: fetchLeadStages,
     staleTime: 5 * 60_000,
   })
 }
@@ -31,7 +31,7 @@ export function useLeadStageCatalog(): LeadStageCatalog & { isLoading: boolean }
 export function useAdminLeadStages() {
   return useQuery({
     queryKey: [...STAGES_KEY, 'admin'],
-    queryFn: requestAdminLeadStages(),
+    queryFn: fetchAdminLeadStages,
   })
 }
 
@@ -50,7 +50,7 @@ export type { LeadStageInput } from '../types'
 export function useCreateLeadStage() {
   const invalidate = useInvalidateStages()
   return useMutation({
-    mutationFn: requestCreateLeadStage(),
+    mutationFn: createLeadStage,
     onSuccess: invalidate,
   })
 }
@@ -58,7 +58,7 @@ export function useCreateLeadStage() {
 export function useUpdateLeadStage() {
   const invalidate = useInvalidateStages()
   return useMutation({
-    mutationFn: requestUpdateLeadStage(),
+    mutationFn: updateLeadStage,
     onSuccess: invalidate,
   })
 }
@@ -66,7 +66,7 @@ export function useUpdateLeadStage() {
 export function useReorderLeadStages() {
   const invalidate = useInvalidateStages()
   return useMutation({
-    mutationFn: requestReorderLeadStages(),
+    mutationFn: reorderLeadStages,
     onSuccess: invalidate,
   })
 }
@@ -74,7 +74,7 @@ export function useReorderLeadStages() {
 export function useDeleteLeadStage() {
   const invalidate = useInvalidateStages()
   return useMutation({
-    mutationFn: requestDeleteLeadStage(),
+    mutationFn: deleteLeadStage,
     onSuccess: invalidate,
   })
 }

@@ -1,5 +1,5 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { requestAiProfile,requestAiUsage,requestDeleteKnowledgeDocument,requestKnowledgeDocument,requestKnowledgeDocuments,requestSaveAiProfile,requestSaveKnowledgeDocument,requestSetAiResourceDescription } from './api'
+import { fetchAiProfile,fetchAiUsage,deleteKnowledgeDocument,fetchKnowledgeDocument,fetchKnowledgeDocuments,saveAiProfile,saveKnowledgeDocument,setAiResourceDescription } from './api'
 
 const PROFILE_KEY = ['ai-assistant', 'profile'] as const
 const KNOWLEDGE_KEY = ['ai-assistant', 'knowledge'] as const
@@ -8,7 +8,7 @@ const KNOWLEDGE_KEY = ['ai-assistant', 'knowledge'] as const
 export function useAiUsage() {
   return useQuery({
     queryKey: ['ai-assistant', 'usage'],
-    queryFn: requestAiUsage(),
+    queryFn: fetchAiUsage,
     staleTime: 60_000,
   })
 }
@@ -16,14 +16,14 @@ export function useAiUsage() {
 export function useAiProfile() {
   return useQuery({
     queryKey: PROFILE_KEY,
-    queryFn: requestAiProfile(),
+    queryFn: fetchAiProfile,
   })
 }
 
 export function useSaveAiProfile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestSaveAiProfile(),
+    mutationFn: saveAiProfile,
     onSuccess: data => queryClient.setQueryData(PROFILE_KEY, data),
   })
 }
@@ -31,14 +31,14 @@ export function useSaveAiProfile() {
 export function useKnowledgeDocuments() {
   return useQuery({
     queryKey: KNOWLEDGE_KEY,
-    queryFn: requestKnowledgeDocuments(),
+    queryFn: fetchKnowledgeDocuments,
   })
 }
 
 export function useKnowledgeDocument(id: string | null) {
   return useQuery({
     queryKey: [...KNOWLEDGE_KEY, id],
-    queryFn: requestKnowledgeDocument(id),
+    queryFn: () => fetchKnowledgeDocument(id),
     enabled: !!id,
   })
 }
@@ -46,7 +46,7 @@ export function useKnowledgeDocument(id: string | null) {
 export function useSaveKnowledgeDocument() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestSaveKnowledgeDocument(),
+    mutationFn: saveKnowledgeDocument,
     onSuccess: data => {
       queryClient.setQueryData([...KNOWLEDGE_KEY, data.id], data)
       return queryClient.invalidateQueries({ queryKey: KNOWLEDGE_KEY, exact: true })
@@ -57,7 +57,7 @@ export function useSaveKnowledgeDocument() {
 export function useDeleteKnowledgeDocument() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestDeleteKnowledgeDocument(),
+    mutationFn: deleteKnowledgeDocument,
     onSuccess: (_data, id) => {
       // Sin esto el detalle del documento borrado se refetchea y da 404.
       queryClient.removeQueries({ queryKey: [...KNOWLEDGE_KEY, id] })
@@ -69,7 +69,7 @@ export function useDeleteKnowledgeDocument() {
 export function useSetAiResourceDescription() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestSetAiResourceDescription(),
+    mutationFn: setAiResourceDescription,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
   })
 }

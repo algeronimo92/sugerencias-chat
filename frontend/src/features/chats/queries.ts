@@ -1,6 +1,6 @@
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { createLead,deleteLead,fetchChatsPage,fetchLeadByPhone,markChatRead,markChatUnread,markNoShow,mergeLead,requestChat,requestPhoneConfig,requestUnreadCount,updateLead } from './api'
+import { createLead,deleteLead,fetchChatsPage,fetchLeadByPhone,markChatRead,markChatUnread,markNoShow,mergeLead,fetchChat,fetchPhoneConfig,fetchUnreadCount,updateLead } from './api'
 import type { ChatFilters,ChatsPage,LeadUpdateInput,PageParam } from './types'
 
 
@@ -17,7 +17,7 @@ export function useChat(chatId: string | null) {
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['chat', chatId],
-    queryFn: requestChat(chatId),
+    queryFn: () => fetchChat(chatId),
     enabled: !!chatId,
     staleTime: 30_000,
     refetchInterval: connected ? false : 60_000,
@@ -28,7 +28,7 @@ export function useUnreadCount() {
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: ['unread-count'],
-    queryFn: requestUnreadCount(),
+    queryFn: fetchUnreadCount,
     staleTime: 10_000,
     refetchInterval: connected ? false : 60_000,
   })
@@ -61,7 +61,7 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
 export function usePhoneConfig() {
   return useQuery({
     queryKey: ['phone-config'],
-    queryFn: requestPhoneConfig(),
+    queryFn: fetchPhoneConfig,
     staleTime: Infinity,
   })
 }

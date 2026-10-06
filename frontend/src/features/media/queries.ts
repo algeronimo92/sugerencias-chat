@@ -1,6 +1,6 @@
 import { useMutation,useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { requestDeleteMediaAsset,requestMediaLibrary,requestRenameMediaAsset,requestSaveStickerToLibrary,requestUploadMediaAsset } from './api'
+import { deleteMediaAsset,fetchMediaLibrary,renameMediaAsset,saveStickerToLibrary,uploadMediaAsset } from './api'
 import type { MediaAsset,MediaAssetKind } from './types'
 
 export type { MediaAssetUpload } from './types'
@@ -8,13 +8,13 @@ export type { MediaAssetUpload } from './types'
 export function useMediaLibrary(search = '', kind: MediaAssetKind | '' = '') {
   return useQuery({
     queryKey: ['media-library', search, kind],
-    queryFn: requestMediaLibrary(search, kind),
+    queryFn: () => fetchMediaLibrary(search, kind),
   })
 }
 
 export function useUploadMediaAsset() {
   return useMutation({
-    mutationFn: requestUploadMediaAsset(),
+    mutationFn: uploadMediaAsset,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
   })
 }
@@ -23,14 +23,14 @@ export function useUploadMediaAsset() {
  * como el "agregar a favoritos" de WhatsApp. */
 export function useSaveStickerToLibrary() {
   return useMutation({
-    mutationFn: requestSaveStickerToLibrary(),
+    mutationFn: saveStickerToLibrary,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
   })
 }
 
 export function useRenameMediaAsset() {
   return useMutation({
-    mutationFn: requestRenameMediaAsset(),
+    mutationFn: renameMediaAsset,
     onSuccess: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: ['media-library'] }),
       queryClient.invalidateQueries({ queryKey: ['templates'] }),
@@ -40,7 +40,7 @@ export function useRenameMediaAsset() {
 
 export function useDeleteMediaAsset() {
   return useMutation({
-    mutationFn: requestDeleteMediaAsset(),
+    mutationFn: deleteMediaAsset,
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['media-library'] })
       const previous = queryClient.getQueriesData<MediaAsset[]>({ queryKey: ['media-library'] })

@@ -1,5 +1,5 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { completeMetaEmbeddedSignup,fetchMetaPublicConfig,fetchSettings,requestBusinessTimezones,saveSettings } from '../api'
+import { completeMetaEmbeddedSignup,fetchMetaPublicConfig,fetchSettings,fetchBusinessTimezones,saveSettings } from '../api'
 
 
 
@@ -28,7 +28,7 @@ export type { BusinessTimezoneItem } from '../types'
 export function useBusinessTimezones(enabled = true) {
   return useQuery({
     queryKey: ['settings', 'timezones'],
-    queryFn: requestBusinessTimezones(),
+    queryFn: fetchBusinessTimezones,
     enabled,
     staleTime: 60 * 60 * 1000,
   })

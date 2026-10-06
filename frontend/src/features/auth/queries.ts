@@ -1,5 +1,5 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { login,logout,requestActionToken,requestCompleteAccountAction,requestConfirmMfa,requestDisableMfa,requestLogoutAll,requestMfaStatus,requestPinLogin,requestPinStatus,requestRemovePin,requestRequestPasswordReset,requestRevokeSession,requestSessions,requestSetupPin,requestStartMfa } from './api'
+import { login,logout,fetchActionToken,completeAccountAction,confirmMfa,disableMfa,logoutAll,fetchMfaStatus,pinLogin,fetchPinStatus,removePin,requestPasswordReset,revokeSession,fetchSessions,setupPin,startMfa } from './api'
 import type { ActionTokenInfo,AuthUser } from './types'
 export { useMe } from '../../shared/auth'
 import { endSession } from '../../shared/queryClient'
@@ -28,7 +28,7 @@ export function useLogin() {
 export function usePinLogin() {
   const onSuccess = useSuccessfulLogin()
   return useMutation({
-    mutationFn: requestPinLogin(),
+    mutationFn: pinLogin,
     onSuccess,
   })
 }
@@ -36,7 +36,7 @@ export function usePinLogin() {
 export function usePinStatus() {
   return useQuery({
     queryKey: ['auth', 'pin-status'],
-    queryFn: requestPinStatus(),
+    queryFn: fetchPinStatus,
     staleTime: 30_000,
     retry: false,
   })
@@ -45,7 +45,7 @@ export function usePinStatus() {
 export function useSetupPin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestSetupPin(),
+    mutationFn: setupPin,
     onSuccess: (status) => queryClient.setQueryData(['auth', 'pin-status'], status),
   })
 }
@@ -53,7 +53,7 @@ export function useSetupPin() {
 export function useRemovePin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestRemovePin(),
+    mutationFn: removePin,
     onSuccess: () => queryClient.setQueryData(['auth', 'pin-status'], { available: false, locked_seconds: 0 }),
   })
 }
@@ -61,7 +61,7 @@ export function useRemovePin() {
 export function useSessions(enabled = true) {
   return useQuery({
     queryKey: ['auth', 'sessions'],
-    queryFn: requestSessions(),
+    queryFn: fetchSessions,
     enabled,
   })
 }
@@ -69,7 +69,7 @@ export function useSessions(enabled = true) {
 export function useRevokeSession() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestRevokeSession(),
+    mutationFn: revokeSession,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
   })
 }
@@ -92,7 +92,7 @@ export function useLogout() {
 export function useLogoutAll() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestLogoutAll(),
+    mutationFn: logoutAll,
     onSuccess: () => endSession(queryClient),
   })
 }
@@ -102,27 +102,27 @@ export type { MfaStatus } from './types'
 export function useMfaStatus(enabled = true) {
   return useQuery({
     queryKey: ['auth', 'mfa-status'],
-    queryFn: requestMfaStatus(),
+    queryFn: fetchMfaStatus,
     enabled,
   })
 }
 
 export function useStartMfa() {
   return useMutation({
-    mutationFn: requestStartMfa(),
+    mutationFn: startMfa,
   })
 }
 
 export function useConfirmMfa() {
   return useMutation({
-    mutationFn: requestConfirmMfa(),
+    mutationFn: confirmMfa,
   })
 }
 
 export function useDisableMfa() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestDisableMfa(),
+    mutationFn: disableMfa,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'mfa-status'] }),
   })
 }
@@ -131,14 +131,14 @@ export type { ActionTokenInfo } from './types'
 
 export function useRequestPasswordReset() {
   return useMutation({
-    mutationFn: requestRequestPasswordReset(),
+    mutationFn: requestPasswordReset,
   })
 }
 
 export function useActionToken(token: string) {
   return useQuery({
     queryKey: ['auth', 'action-token', token],
-    queryFn: requestActionToken(token),
+    queryFn: () => fetchActionToken(token),
     enabled: token.length > 0,
     retry: false,
   })
@@ -146,6 +146,6 @@ export function useActionToken(token: string) {
 
 export function useCompleteAccountAction(purpose: ActionTokenInfo['purpose'] | undefined) {
   return useMutation({
-    mutationFn: requestCompleteAccountAction(purpose),
+    mutationFn: (variables: { token: string; password: string }) => completeAccountAction(purpose, variables),
   })
 }

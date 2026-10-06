@@ -1,5 +1,5 @@
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query'
-import { fetchKanbanSnapshot,fetchKanbanStage,moveLeadStage,requestBulkAssignTag,requestBulkMoveStage } from './api'
+import { fetchKanbanSnapshot,fetchKanbanStage,moveLeadStage,bulkAssignTag,bulkMoveStage } from './api'
 import type { LeadStage } from './types'
 
 
@@ -58,7 +58,7 @@ export type { BulkActionResult } from './types'
 export function useBulkMoveStage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestBulkMoveStage(),
+    mutationFn: bulkMoveStage,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban'] })
       queryClient.invalidateQueries({ queryKey: ['chats'] })
@@ -72,7 +72,7 @@ export function useBulkMoveStage() {
 export function useBulkAssignTag() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: requestBulkAssignTag(),
+    mutationFn: bulkAssignTag,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       queryClient.invalidateQueries({ queryKey: ['kanban'] })

@@ -1,12 +1,12 @@
 import client from "../../shared/http/client";
 import type { AppointmentListItem,AppointmentResult,CreateAppointmentInput } from './types';
 
-export function requestAppointments() {
-  return async () => (await client.get<AppointmentListItem[]>('/api/appointments')).data
+export async function fetchAppointments() {
+  return (await client.get<AppointmentListItem[]>('/api/appointments')).data
 }
 
-export function requestCreateAppointment() {
-  return async (input: CreateAppointmentInput) => (await client.post<AppointmentResult>('/api/appointments', {
+export async function createAppointment(input: CreateAppointmentInput) {
+  return (await client.post<AppointmentResult>('/api/appointments', {
       nombre_completo: input.nombreCompleto,
       dni: input.dni,
       telefono: input.telefono,
@@ -27,8 +27,8 @@ export function requestCreateAppointment() {
     })).data
 }
 
-export function requestSyncAppointmentCalendar() {
-  return async (appointmentId: number) => (
+export async function syncAppointmentCalendar(appointmentId: number) {
+  return (
       await client.post<AppointmentListItem>(`/api/appointments/${appointmentId}/sync-calendar`)
     ).data
 }
