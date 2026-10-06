@@ -1,5 +1,6 @@
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 import type { LeadStage, TaskPriority, TaskType } from '../leads/types';
-import type { AutomationActionTypeValue, AutomationBuilderModeValue, AutomationExecutionStatusValue, AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue, FlowHandleValue, FlowNodeTypeValue, QuestionHandleValue, WaitAnyConditionKindValue } from "./domain/automationCatalog";
+import type { AutomationActionTypeValue, AutomationExecutionStatusValue, AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue, FlowHandleValue, FlowNodeTypeValue, QuestionHandleValue, WaitAnyConditionKindValue } from "./domain/automationCatalog";
 import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from './domain/automationCatalog';
 
 export type AutomationTrigger = AutomationTriggerValue
@@ -207,31 +208,28 @@ export interface AutomationFlowDefinition {
   edges: AutomationFlowEdge[]
 }
 
-export interface AutomationRule {
-  id: number
-  name: string
-  trigger_type: AutomationTrigger
+/** Una regla tal como la entrega el backend (contrato `AutomationRuleItem`). */
+export type ContractAutomationRule = Delivered<ApiSchemas['AutomationRuleItem']>
+
+/**
+ * Una regla de automatización. Sale del contrato con lo que el contrato deja
+ * abierto refinado en la frontera (`toAutomationRule`): la configuración, las
+ * condiciones, las acciones y el flujo son JSON que valida el dominio del
+ * backend, y `last_execution_status` es el estado de una ejecución.
+ *
+ * `visible_to_sellers` solo aplica a flujos visuales con trigger manual: si es
+ * true aparece en "Iniciar flujo" del chat (el admin siempre puede).
+ */
+export type AutomationRule = Omit<
+  ContractAutomationRule,
+  'trigger_config' | 'conditions' | 'actions' | 'flow_definition' | 'published_flow_definition' | 'last_execution_status'
+> & {
   trigger_config: { minutes?: number }
   conditions: AutomationConditions
   actions: AutomationAction[]
-  builder_mode: AutomationBuilderModeValue
   flow_definition: AutomationFlowDefinition | Record<string, never>
   published_flow_definition: AutomationFlowDefinition | null
-  flow_version: number
-  delay_minutes: number
-  max_executions_per_hour: number | null
-  is_active: boolean
-  /** Solo aplica a flujos visuales con trigger_type='manual': si está en
-   *  true, aparece en el selector "Iniciar flujo" del vendedor dentro del
-   *  chat. El admin siempre puede dispararlo aunque esté en false. */
-  visible_to_sellers: boolean
-  created_by_user_id: number
-  created_by_name: string
-  execution_count: number
-  last_execution_at: string | null
   last_execution_status: AutomationExecutionStatusValue | null
-  created_at: string
-  updated_at: string
 }
 
 export type AutomationExecutionStartSource = 'system' | 'manual' | 'flow'
@@ -255,26 +253,28 @@ export interface AutomationActionResult {
   message_ids?: number[]
 }
 
-export interface AutomationExecution {
-  id: number
-  rule_id: number
-  rule_name: string
-  rule_deleted: boolean
-  lead_id: string | null
-  lead_name: string | null
-  trigger_type: AutomationTrigger
-  status: AutomationExecutionStatusValue
-  /** Cuándo le toca correr al paso pendiente. Mientras está `paused`, sigue
-   *  siendo el vencimiento de antes de congelarse: lo que falta se mide
-   *  contra `paused_at`, no contra ahora. */
-  scheduled_for: string
-  paused_at: string | null
-  /** Quién la congeló: 'lead' si fue pausar el chat entero (botón del bot en la
-   *  cabecera), 'execution' si el vendedor pausó solo esta desde el panel.
-   *  Una de alcance 'lead' no se puede reanudar sola: la reanuda el chat. */
-  pause_scope: 'lead' | 'execution' | null
-  started_at: string | null
-  finished_at: string | null
+/** Una ejecución tal como la entrega el backend (contrato `AutomationExecutionItem`). */
+export type ContractAutomationExecution = Delivered<ApiSchemas['AutomationExecutionItem']>
+
+export const PAUSE_SCOPES = ['lead', 'execution'] as const
+
+/**
+ * Una ejecución de una regla. Sale del contrato con lo que el contrato deja
+ * abierto refinado en la frontera (`toAutomationExecution`):
+ *
+ * - `scheduled_for`: cuándo le toca el paso pendiente. Mientras está `paused`
+ *   sigue siendo el vencimiento de antes de congelarse.
+ * - `pause_scope`: 'lead' si se pausó el chat entero (botón del bot en la
+ *   cabecera), 'execution' si se pausó solo esta. Una de alcance 'lead' la
+ *   reanuda el chat.
+ * - `start_source`: 'system' para los triggers automáticos, 'manual' para
+ *   "Iniciar flujo" del chat, 'flow' para un flujo invocado por otro.
+ * - `window_override_at`: un admin autorizó enviar con la ventana de 24 h
+ *   cerrada.
+ * - `action_results` y `flow_state` son JSON que escribe el motor.
+ */
+export type AutomationExecution = Omit<ContractAutomationExecution, 'pause_scope' | 'action_results' | 'flow_state'> & {
+  pause_scope: (typeof PAUSE_SCOPES)[number] | null
   action_results: AutomationActionResult[]
   flow_state: {
     current_node_id?: string | null
@@ -282,17 +282,6 @@ export interface AutomationExecution {
     flow_version?: number
     definition?: AutomationFlowDefinition
   }
-  error: string | null
-  created_at: string
-  /** 'system' para los triggers automáticos de siempre, 'manual' cuando la
-   *  inició un vendedor con el botón "Iniciar flujo" del chat. */
-  start_source: AutomationExecutionStartSource
-  started_by_user_id: number | null
-  started_by_name: string | null
-  /** Un admin autorizó a esta ejecución a enviar con la ventana de 24 h
-   *  cerrada. null cuando corre con la regla de siempre. */
-  window_override_at: string | null
-  window_override_by_name: string | null
 }
 
 export interface AutomationRuleInput {

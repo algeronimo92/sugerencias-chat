@@ -21,7 +21,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { deferred, installFakeApi, type FakeReply } from '../../../test/fakeApi'
 import { createTestQueryClient, queryWrapper } from '../../../test/queryWrapper'
-import type { Message, MessagePage, ReplyTarget } from '../types'
+import { toMessage } from '../api'
+import type { ContractMessage, Message, MessagePage, ReplyTarget } from '../types'
 import {
   useReactToMessage,
   useSendAudio,
@@ -41,29 +42,41 @@ const REPLY: ReplyTarget = { id: 7, sender: 'cliente', content: 'Hola' }
 const api = installFakeApi()
 let queryClient: QueryClient
 
-function serverMessage(overrides: Partial<Message> = {}): Message {
+/** Un mensaje como lo manda el backend: con todos los campos del contrato
+ * (TypeScript exige que no falte ninguno). */
+function serverMessage(overrides: Partial<ContractMessage> = {}): ContractMessage {
   return {
     id: 500,
     sender: 'vendedor',
+    direction: 'outbound',
     content: null,
     sent_at: '2026-10-06T15:00:00Z',
     media_url: null,
     wa_message_id: null,
     outbox_status: 'queued',
+    meta_status: null,
+    status_payload: null,
     message_type: null,
     message_subtype: null,
-    direction: 'outbound',
+    provider_payload: null,
     analysis: null,
     payload: null,
-    provider_payload: null,
+    reactions: null,
+    edited_at: null,
+    deleted_at: null,
+    media_width: null,
+    media_height: null,
     quoted_message_id: null,
     quoted_sender: null,
     quoted_content: null,
+    quoted_message_type: null,
+    pinned_at: null,
+    error_detail: null,
     ...overrides,
-  } as Message
+  }
 }
 
-const EXISTING = serverMessage({ id: 7, sender: 'cliente', content: 'Hola', direction: 'inbound', outbox_status: null })
+const EXISTING = toMessage(serverMessage({ id: 7, sender: 'cliente', content: 'Hola', direction: 'inbound', outbox_status: null }))
 
 function thread(): Message[] {
   const data = queryClient.getQueryData<InfiniteData<MessagePage>>(['messages', CHAT])
@@ -94,10 +107,10 @@ interface SendCase {
   variables: unknown
   body: unknown
   bubbles: Array<Partial<Message>>
-  reply: (bodyMessage: Message) => FakeReply
+  reply: (bodyMessage: ContractMessage) => FakeReply
 }
 
-const single = (message: Message): FakeReply => ({ data: message })
+const single = (message: ContractMessage): FakeReply => ({ data: message })
 
 const CASES: SendCase[] = [
   {
@@ -269,7 +282,7 @@ describe('orden de los envíos', () => {
 })
 
 describe('reintentar y descartar un envío fallido', () => {
-  const failed = serverMessage({ id: 640, content: 'No salió', outbox_status: 'failed', meta_status: 'failed', wa_message_id: 'wamid.x' })
+  const failed = toMessage(serverMessage({ id: 640, content: 'No salió', outbox_status: 'failed', meta_status: 'failed', wa_message_id: 'wamid.x' }))
 
   beforeEach(() => {
     queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', CHAT], {

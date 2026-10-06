@@ -1,12 +1,13 @@
 import client from "../../shared/http/client";
+import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
 import type { AppointmentListItem, AppointmentResult, CreateAppointmentInput } from './types';
 
-export async function fetchAppointments() {
-  return (await client.get<AppointmentListItem[]>('/api/appointments')).data
+export async function fetchAppointments(): Promise<AppointmentListItem[]> {
+  return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
 }
 
-export async function createAppointment(input: CreateAppointmentInput) {
-  return (await client.post<AppointmentResult>('/api/appointments', {
+export async function createAppointment(input: CreateAppointmentInput): Promise<AppointmentResult> {
+  return (await client.post<UntypedResponse<'/api/appointments', 'post', AppointmentResult>>('/api/appointments', {
       nombre_completo: input.nombreCompleto,
       dni: input.dni,
       telefono: input.telefono,
@@ -27,8 +28,8 @@ export async function createAppointment(input: CreateAppointmentInput) {
     })).data
 }
 
-export async function syncAppointmentCalendar(appointmentId: number) {
+export async function syncAppointmentCalendar(appointmentId: number): Promise<AppointmentListItem> {
   return (
-      await client.post<AppointmentListItem>(`/api/appointments/${appointmentId}/sync-calendar`)
+      await client.post<ApiResponse<'/api/appointments/{appointment_id}/sync-calendar', 'post'>>(`/api/appointments/${appointmentId}/sync-calendar`)
     ).data
 }

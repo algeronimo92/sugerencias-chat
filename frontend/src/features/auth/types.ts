@@ -1,4 +1,5 @@
 
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 export type { AuthUser } from '../../shared/types'
 
 export interface PinStatus {
@@ -9,15 +10,7 @@ export interface PinStatus {
   locked_seconds: number
 }
 
-export interface AuthSession {
-  id: string
-  device_name: string
-  auth_method: 'password' | 'pin'
-  current: boolean
-  created_at: string
-  last_used_at: string
-  absolute_expires_at: string
-}
+export type AuthSession = Delivered<ApiSchemas['SessionOut']>
 
 export interface LoginPayload {
   email: string
@@ -31,8 +24,4 @@ export interface MfaStatus {
   recovery_codes_remaining: number
 }
 
-export interface ActionTokenInfo {
-  purpose: 'invitation' | 'password_reset'
-  email: string
-  name: string
-}
+export type ActionTokenInfo = Delivered<ApiSchemas['ActionTokenOut']>

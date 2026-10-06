@@ -1,8 +1,9 @@
 import client from "../../shared/http/client";
+import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
 import type { ActionTokenInfo, AuthSession, AuthUser, LoginPayload, MfaStatus, PinStatus } from "./types";
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
-  const { data } = await client.post<AuthUser>('/api/auth/login', {
+  const { data } = await client.post<ApiResponse<'/api/auth/login', 'post'>>('/api/auth/login', {
     ...payload,
     mfa_code: payload.mfa_code?.trim() || null,
   })
@@ -10,66 +11,69 @@ export async function login(payload: LoginPayload): Promise<AuthUser> {
 }
 
 export async function logout(): Promise<void> {
-  await client.post('/api/auth/logout')
+  await client.post<ApiResponse<'/api/auth/logout', 'post'>>('/api/auth/logout')
 }
 
-export async function pinLogin(pin: string) {
+export async function pinLogin(pin: string): Promise<AuthUser> {
   return (
-      await client.post<AuthUser>('/api/auth/pin/login', { pin })
+      await client.post<ApiResponse<'/api/auth/pin/login', 'post'>>('/api/auth/pin/login', { pin })
     ).data
 }
 
-export async function fetchPinStatus() {
-  return (await client.get<PinStatus>('/api/auth/pin/status')).data
+export async function fetchPinStatus(): Promise<PinStatus> {
+  return (await client.get<ApiResponse<'/api/auth/pin/status', 'get'>>('/api/auth/pin/status')).data
 }
 
-export async function setupPin({ pin, currentPassword }: { pin: string; currentPassword: string }) {
+export async function setupPin({ pin, currentPassword }: { pin: string; currentPassword: string }): Promise<PinStatus> {
   return (
-      await client.post<PinStatus>('/api/auth/pin/setup', { pin, current_password: currentPassword })
+      await client.post<ApiResponse<'/api/auth/pin/setup', 'post'>>('/api/auth/pin/setup', { pin, current_password: currentPassword })
     ).data
 }
 
-export async function removePin() { await client.delete('/api/auth/pin') }
+export async function removePin() { await client.delete<ApiResponse<'/api/auth/pin', 'delete'>>('/api/auth/pin') }
 
-export async function fetchSessions() {
-  return (await client.get<AuthSession[]>('/api/auth/sessions')).data
+export async function fetchSessions(): Promise<AuthSession[]> {
+  return (await client.get<ApiResponse<'/api/auth/sessions', 'get'>>('/api/auth/sessions')).data
 }
 
-export async function revokeSession(sessionId: string) { await client.delete(`/api/auth/sessions/${sessionId}`) }
+export async function revokeSession(sessionId: string) { await client.delete<ApiResponse<'/api/auth/sessions/{session_id}', 'delete'>>(`/api/auth/sessions/${sessionId}`) }
 
-export async function logoutAll() { await client.post('/api/auth/logout-all') }
+export async function logoutAll() { await client.post<ApiResponse<'/api/auth/logout-all', 'post'>>('/api/auth/logout-all') }
 
-export async function fetchMfaStatus() {
-  return (await client.get<MfaStatus>('/api/auth/mfa/status')).data
+export async function fetchMfaStatus(): Promise<MfaStatus> {
+  return (await client.get<UntypedResponse<'/api/auth/mfa/status', 'get', MfaStatus>>('/api/auth/mfa/status')).data
 }
 
-export async function startMfa(currentPassword: string) {
+export async function startMfa(currentPassword: string): Promise<{ secret: string; otpauth_uri: string }> {
   return (
-      await client.post<{ secret: string; otpauth_uri: string }>('/api/auth/mfa/start', { current_password: currentPassword })
+      await client.post<UntypedResponse<'/api/auth/mfa/start', 'post', { secret: string; otpauth_uri: string }>>('/api/auth/mfa/start', { current_password: currentPassword })
     ).data
 }
 
-export async function confirmMfa(code: string) {
+export async function confirmMfa(code: string): Promise<{ recovery_codes: string[] }> {
   return (
-      await client.post<{ recovery_codes: string[] }>('/api/auth/mfa/confirm', { code })
+      await client.post<UntypedResponse<'/api/auth/mfa/confirm', 'post', { recovery_codes: string[] }>>('/api/auth/mfa/confirm', { code })
     ).data
 }
 
 export async function disableMfa({ code, currentPassword }: { code: string; currentPassword: string }) {
-      await client.post('/api/auth/mfa/disable', { code, current_password: currentPassword })
-    }
+  await client.post<ApiResponse<'/api/auth/mfa/disable', 'post'>>('/api/auth/mfa/disable', { code, current_password: currentPassword })
+}
 
 export async function requestPasswordReset(email: string) {
-      await client.post('/api/auth/forgot-password', { email })
-    }
+  await client.post<ApiResponse<'/api/auth/forgot-password', 'post'>>('/api/auth/forgot-password', { email })
+}
 
-export async function fetchActionToken(token: string) {
+export async function fetchActionToken(token: string): Promise<ActionTokenInfo> {
   return (
-      await client.get<ActionTokenInfo>(`/api/auth/action-token/${encodeURIComponent(token)}`)
+      await client.get<ApiResponse<'/api/auth/action-token/{token}', 'get'>>(`/api/auth/action-token/${encodeURIComponent(token)}`)
     ).data
 }
 
-export async function completeAccountAction(purpose: "invitation" | "password_reset" | undefined, { token, password }: { token: string; password: string }) {
-      const path = purpose === 'invitation' ? 'accept-invitation' : 'reset-password'
-      await client.post(`/api/auth/${path}`, { token, password })
-    }
+export async function completeAccountAction(purpose: string | undefined, { token, password }: { token: string; password: string }) {
+  if (purpose === 'invitation') {
+    await client.post<ApiResponse<'/api/auth/accept-invitation', 'post'>>('/api/auth/accept-invitation', { token, password })
+    return
+  }
+  await client.post<ApiResponse<'/api/auth/reset-password', 'post'>>('/api/auth/reset-password', { token, password })
+}

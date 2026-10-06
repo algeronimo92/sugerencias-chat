@@ -60,6 +60,17 @@ function optimisticMessage(draft: OptimisticMessageDraft): Message {
     quoted_message_id: draft.reply_to?.id ?? null,
     quoted_sender: draft.reply_to?.sender ?? null,
     quoted_content: draft.reply_to?.content ?? null,
+    // Lo que el servidor completa al confirmar el envío.
+    meta_status: null,
+    status_payload: null,
+    reactions: null,
+    edited_at: null,
+    deleted_at: null,
+    media_width: null,
+    media_height: null,
+    quoted_message_type: null,
+    pinned_at: null,
+    error_detail: null,
   }
 }
 

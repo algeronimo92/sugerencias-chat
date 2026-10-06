@@ -1,4 +1,5 @@
-import type { JsonObject, UserRole } from '../../shared/types'
+import type { JsonObject } from '../../shared/types'
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 
 export type IssueReportStatus = 'new' | 'in_review' | 'needs_info' | 'resolved'
 export type IssueReportPriority = 'low' | 'normal' | 'high' | 'critical'
@@ -31,23 +32,11 @@ export interface IssueReport {
   updated_at: string
 }
 
-export interface IssueReportComment {
-  id: number
-  author_user_id: number
-  author_name: string
-  author_role: UserRole
-  content: string
-  created_at: string
-}
+export type IssueReportComment = Delivered<ApiSchemas['IssueReportCommentItem']>
 
-export interface IssueReportEvent {
-  id: number
-  actor_name: string | null
-  event_type: 'created' | 'status_changed' | 'priority_changed'
-  previous_value: string | null
-  new_value: string | null
-  created_at: string
-}
+/** Un evento del historial del reporte. `event_type` llega como texto: los
+ * que la pantalla conoce son 'created', 'status_changed' y 'priority_changed'. */
+export type IssueReportEvent = Delivered<ApiSchemas['IssueReportEventItem']>
 
 export interface IssueReportDetail extends IssueReport {
   comments: IssueReportComment[]

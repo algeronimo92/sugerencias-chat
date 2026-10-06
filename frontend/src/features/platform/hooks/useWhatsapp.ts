@@ -1,12 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchStatus, connectWhatsapp, logoutWhatsapp } from '../api'
+import { useQuery } from '@tanstack/react-query'
+import { fetchStatus } from '../api'
 import type { StatusOptions } from '../types'
 
 export type { WhatsappState } from '../types'
 
 export type { WhatsappStatus } from '../types'
-
-export type { WhatsappQr } from '../types'
 
 export function useWhatsappStatus(options: StatusOptions = {}) {
   return useQuery({
@@ -23,19 +21,5 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
           return state === 'open' || state === 'not_configured' ? false : 3000
         }
       : false,
-  })
-}
-
-export function useConnectWhatsapp() {
-  return useMutation({
-    mutationFn: connectWhatsapp,
-  })
-}
-
-export function useLogoutWhatsapp() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: logoutWhatsapp,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp', 'status'] }),
   })
 }

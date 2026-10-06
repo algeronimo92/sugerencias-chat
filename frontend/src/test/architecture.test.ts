@@ -104,6 +104,57 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/platform/components/PlatformApp.tsx',
 ]
 
+/** Respuestas que el contrato todavía no tipa: el endpoint del backend no
+ * declara `response_model`. La feature declara la forma con
+ * `UntypedResponse`; cuando el backend la tipe, se pasa a `ApiResponse` y se
+ * quita de acá. */
+const UNTYPED_ENDPOINTS = [
+  'get /api/auth/mfa/status',
+  'get /api/chats/phone-config',
+  'get /api/chats/unread-count',
+  'get /api/dashboard',
+  'get /api/platform/auth/me',
+  'get /api/platform/organizations',
+  'get /api/suggestions/usage',
+  'get /api/templates/meta',
+  'get /api/templates/meta/{meta_template_id}',
+  'get /api/whatsapp/status',
+  'post /api/appointments',
+  'post /api/auth/mfa/confirm',
+  'post /api/auth/mfa/start',
+  'post /api/automations/{rule_id}/simulate',
+  'post /api/suggestions/analyze',
+  'post /api/tasks/complete-all',
+]
+
+const CONTRACT_TYPES = new Set(['ApiResponse', 'UntypedResponse'])
+
+function parse(path: string) {
+  return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+}
+
+function walkNodes(node: ts.Node, visit: (node: ts.Node) => void) {
+  visit(node)
+  ts.forEachChild(node, child => walkNodes(child, visit))
+}
+
+/** Llamadas `client.get/post/...` de un archivo. */
+function httpCalls(path: string): ts.CallExpression[] {
+  const calls: ts.CallExpression[] = []
+  walkNodes(parse(path), node => {
+    if (
+      ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === 'client'
+      && ['get', 'post', 'put', 'patch', 'delete'].includes(node.expression.name.text)
+    ) calls.push(node)
+  })
+  return calls
+}
+
+const productionFiles = () => sourceFiles(src).filter(path => !isTestOrStory(path) && !path.endsWith('.d.ts'))
+
 const isTestOrStory = (path: string) => /\.(test|stories)\.tsx?$/.test(path)
 
 function featureOf(path: string): string | undefined {
@@ -191,5 +242,47 @@ describe('feature architecture', () => {
       .map(path => relative(src, path).split(/[\\/]/).join('/'))
       .sort()
     expect(large).toEqual(KNOWN_LARGE_COMPONENTS)
+  })
+
+  it('reads the backend base URL only in shared/config', () => {
+    const readers = productionFiles()
+      .filter(path => readFileSync(path, 'utf8').includes('VITE_API_BASE_URL'))
+      .map(path => relative(src, path).split(/[\\/]/).join('/'))
+    expect(readers).toEqual(['shared/config.ts'])
+  })
+
+  it('exposes API adapters as plain functions with domain names', () => {
+    const violations = sourceFiles(features).filter(path => path.endsWith('api.ts')).flatMap(path => parse(path).statements.flatMap(node => {
+      if (!ts.isFunctionDeclaration(node) || !node.name || !node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) return []
+      const name = `${relative(src, path)}: ${node.name.text}`
+      const statements = node.body?.statements ?? []
+      const returnsFunction = statements.length === 1 && ts.isReturnStatement(statements[0]) && !!statements[0].expression && ts.isArrowFunction(statements[0].expression)
+      return [
+        ...(/\d$/.test(node.name.text) ? [`${name} termina en número`] : []),
+        ...(returnsFunction ? [`${name} devuelve una función`] : []),
+      ]
+    }))
+    expect(violations).toEqual([])
+  })
+
+  it('types every HTTP response from the contract', () => {
+    const violations = productionFiles().flatMap(path => httpCalls(path).flatMap(call => {
+      const typeArgument = call.typeArguments?.[0]
+      const contractType = typeArgument && ts.isTypeReferenceNode(typeArgument) && ts.isIdentifier(typeArgument.typeName) && CONTRACT_TYPES.has(typeArgument.typeName.text)
+      return contractType ? [] : [`${relative(src, path)}: ${call.getText().slice(0, 80)}`]
+    }))
+    expect(violations).toEqual([])
+  })
+
+  it('lists the responses the contract does not type yet', () => {
+    const untyped = new Set<string>()
+    for (const path of productionFiles()) walkNodes(parse(path), node => {
+      if (!ts.isTypeReferenceNode(node) || !ts.isIdentifier(node.typeName) || node.typeName.text !== 'UntypedResponse') return
+      const [route, method] = node.typeArguments ?? []
+      if (route && method && ts.isLiteralTypeNode(route) && ts.isLiteralTypeNode(method) && ts.isStringLiteral(route.literal) && ts.isStringLiteral(method.literal)) {
+        untyped.add(`${method.literal.text} ${route.literal.text}`)
+      }
+    })
+    expect([...untyped].sort()).toEqual(UNTYPED_ENDPOINTS)
   })
 })

@@ -1,10 +1,9 @@
-import type { components } from '../../api/schema';
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 import type { JsonObject } from "../../shared/types";
 import type { NotificationTypeValue } from '../automations/public/automationCatalog';
-import type { LeadStage, Tag, TaskType } from '../leads/types';
+import type { LeadStage, Tag } from '../leads/types';
 import type { MetaInboundRootType, MetaOutboundRootType, MetaStatus as MetaStatusLiteral } from './domain/metaContract';
 
-type ApiSchemas = components['schemas']
 
 export interface ChatFilters {
   unreadOnly: boolean
@@ -176,7 +175,8 @@ export interface LeadUpdateInput {
 /** Estado interno de un envío en la cola propia (outbox). `discarded` es un
  * fallo que alguien revisó y decidió no reenviar: sigue sin haber llegado al
  * cliente, pero ya no ofrece reintento. */
-export type OutboxStatus = 'queued' | 'sending' | 'sent' | 'retryable_failed' | 'failed' | 'discarded'
+export const OUTBOX_STATUSES = ['queued', 'sending', 'sent', 'retryable_failed', 'failed', 'discarded'] as const
+export type OutboxStatus = (typeof OUTBOX_STATUSES)[number]
 
 /** Estado literal que informa Meta. Un valor nuevo llega con su nombre. */
 export type MetaStatus = MetaStatusLiteral | (string & {})
@@ -203,52 +203,29 @@ export interface MessageReaction {
    * false = la puso el cliente. */
   from_me: boolean
 }
-export interface Message {
-  id: number
-  sender: string
-  /** Generado por el backend desde `sender`: `inbound` o `outbound`. */
-  direction?: 'inbound' | 'outbound' | null
-  content: string | null
-  sent_at: string | null
-  media_url: string | null
-  wa_message_id: string | null
-  /** Estado de la cola propia (solo salientes enviados desde el CRM). */
-  outbox_status?: OutboxStatus | null
-  /** Estado literal que informó Meta, y el evento completo con sus errores. */
-  meta_status?: MetaStatus | null
-  status_payload?: JsonObject | null
-  message_type?: MessageType | null
-  /** Subtipo literal (`interactive.type`, `system.type`). */
-  message_subtype?: string | null
-  /** El objeto de Meta del mensaje, o el cuerpo exacto que se le envió. */
-  provider_payload?: JsonObject | null
-  /** Enriquecimiento IA del adjunto, servido aparte de `content`. */
-  analysis?: MessageAnalysis | null
-  /** Proyección del CRM: lo que el cuerpo de Meta no trae (datos de plantilla,
-   * reenviado, álbum, imagen del anuncio). */
-  payload?: JsonObject | null
-  /** Reacciones sobre este mensaje (badge estilo WhatsApp, no una burbuja
-   * aparte): a lo sumo una por lado en un chat 1:1. null si nadie reaccionó. */
-  reactions?: MessageReaction[] | null
-  edited_at?: string | null
-  /** Eliminado para todos (histórico). Con valor, el backend ya no sirve el
-   * contenido ni el adjunto y la burbuja se pinta como lápida. */
-  deleted_at?: string | null
-  /** Dimensiones de la imagen adjunta: permiten reservar el espacio exacto
-   * antes de que cargue, para que la conversación no se mueva. */
-  media_width?: number | null
-  media_height?: number | null
-  /** Mensaje citado, ya resuelto por el backend. Viene en null cuando el
-   * mensaje no responde a nada o cuando el citado no está en nuestra base. */
-  quoted_message_id?: number | null
-  quoted_sender?: string | null
-  quoted_content?: string | null
-  quoted_message_type?: MessageType | null
-  /** Fijado nativo del CRM (no existe forma de fijar un mensaje del lado de
-   * quien envía en WhatsApp, así que esto no se refleja allá). */
-  pinned_at?: string | null
-  /** Motivo real de un envío que el outbox dio por fallido. */
-  error_detail?: string | null
+/** Un mensaje del hilo tal como lo entrega el backend (contrato `Message`). */
+export type ContractMessage = Delivered<ApiSchemas['Message']>
+
+export const MESSAGE_DIRECTIONS = ['inbound', 'outbound'] as const
+export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number]
+
+/**
+ * Un mensaje del hilo. Sale del contrato (`ContractMessage`) con lo que el
+ * contrato deja abierto ya estrechado en la frontera (`toMessage`):
+ *
+ * - `direction` y `outbox_status`: el backend los tipa como texto; uno que la
+ *   app no conoce llega en `null`.
+ * - `analysis` y `reactions`: el backend los guarda como JSON con la forma que
+ *   valida su dominio.
+ *
+ * `message_type` y `meta_status` quedan como texto: son los literales de Meta,
+ * y uno que el contrato todavía no conoce se muestra igual con su nombre.
+ */
+export type Message = Omit<ContractMessage, 'direction' | 'outbox_status' | 'analysis' | 'reactions'> & {
+  direction: MessageDirection | null
+  outbox_status: OutboxStatus | null
+  analysis: MessageAnalysis | null
+  reactions: MessageReaction[] | null
 }
 
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
@@ -276,7 +253,7 @@ export interface CustomerServiceWindow {
 export interface Sugerencia {
   tactica: string
   canal: string
-  texto?: string
+  texto: string | null
   adjuntos: string[]
   motivo_adjuntos: string
   porque: string
@@ -300,43 +277,17 @@ export interface SuggestionStatus {
   stale: boolean
 }
 
-export interface MessageTemplate {
-  id: number
-  name: string
-  content: string
-  shortcut: string | null
-  category: string
-  stage: LeadStage | null
-  task_type: TaskType | null
-  service: string | null
-  is_active: boolean
-  visibility: 'global' | 'personal'
-  template_type: 'internal' | 'official'
-  official_name: string | null
-  official_language: string | null
-  official_category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | null
-  official_status: string | null
-  official_rejected_reason: string | null
-  official_parameter_values: string[]
-  meta_template_id: string | null
-  official_header_type: 'none' | 'text' | 'image'
-  official_header_text: string | null
-  official_header_media_asset_id: number | null
-  official_header_media_url: string | null
-  official_header_media_content_type: string | null
-  official_header_media_filename: string | null
-  official_footer: string | null
+/** Una plantilla tal como la entrega el backend (contrato `TemplateItem`). */
+export type ContractMessageTemplate = Delivered<ApiSchemas['TemplateItem']>
+
+/**
+ * Una plantilla. Sale del contrato con sus campos JSON refinados en la
+ * frontera (`toMessageTemplate`): los botones oficiales y la configuración
+ * interactiva los guarda el backend como JSON que valida al crearlos.
+ */
+export type MessageTemplate = Omit<ContractMessageTemplate, 'official_buttons' | 'interactive_config'> & {
   official_buttons: OfficialTemplateButton[]
-  interactive_type: TemplateInteractiveType
   interactive_config: TemplateInteractiveConfig
-  imported_from_meta: boolean
-  is_favorite: boolean
-  last_used_at: string | null
-  use_count: number
-  created_by_user_id?: number | null
-  created_by_name?: string | null
-  created_at?: string | null
-  attachments: TemplateAttachment[]
 }
 
 export interface OfficialTemplateButton {

@@ -1,4 +1,5 @@
 import type { UserRole } from "../../shared/types";
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 
 export interface SettingItem {
   key: string
@@ -11,19 +12,9 @@ export interface SettingItem {
   value: string | null
 }
 
-export interface AppUser {
-  id: number
-  email: string
-  name: string
-  role: UserRole
-  is_active: boolean
-}
+export type AppUser = Delivered<ApiSchemas['UserItem']>
 
-export interface SellerOption {
-  id: number
-  name: string
-  role: UserRole
-}
+export type SellerOption = Delivered<ApiSchemas['SellerItem']>
 
 export interface CreateUserPayload {
   email: string
@@ -48,14 +39,6 @@ export type WhatsappState =
 export interface WhatsappStatus {
   state: WhatsappState
   instance: string | null
-}
-
-export interface WhatsappQr {
-  base64: string | null
-  code?: string | null
-  pairing_code: string | null
-  instance: string
-  state?: WhatsappState
 }
 
 export interface StatusOptions {
@@ -115,14 +98,7 @@ export type IntegracionNegocio = {
 
 export type OperadorActual = { id: string; email: string; name: string };
 
-export type PlatformSetting = {
-  key: string;
-  label: string;
-  secret: boolean;
-  configured: boolean;
-  source: "platform" | "environment" | "legacy" | "missing";
-  value: string | null;
-};
+export type PlatformSetting = Delivered<ApiSchemas['PlatformSettingItem']>;
 
 export type MarcaGuardada = {
   name: string;

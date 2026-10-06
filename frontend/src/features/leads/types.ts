@@ -1,8 +1,7 @@
-import type { components } from '../../api/schema';
+import type { ApiSchemas } from '../../shared/http/contract'
 import type { TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue } from '../automations/public/automationCatalog';
 import type { Chat } from "../chats/types";
 
-type ApiSchemas = components['schemas']
 
 export type LeadStage = string
 
