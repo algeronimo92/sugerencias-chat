@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field
+from app.modules.conversations.domain.types import MessageDirection, MessageOutboxStatus
 
 
 class InternalNoteMentionItem(BaseModel):
@@ -44,13 +45,13 @@ class Message(BaseModel):
 
     id: int
     sender: str
-    direction: str | None = None
+    direction: MessageDirection | None = None
     content: str | None = None
     sent_at: str | None = None
     media_url: str | None = None
     wa_message_id: str | None = None
     # Estado interno del envío (outbox) y el que informa Meta, por separado.
-    outbox_status: str | None = None
+    outbox_status: MessageOutboxStatus | None = None
     meta_status: str | None = None
     # Último evento de estado completo de Meta (errores, pricing, conversation).
     status_payload: dict | None = None

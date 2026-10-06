@@ -1,4 +1,4 @@
-from app.modules.auth.schemas import (LoginRequest, PinLoginRequest, PinSetupRequest, MfaStartRequest, MfaCodeRequest, MfaDisableRequest, UserOut, PinStatusOut, SessionOut, ForgotPasswordRequest, CompleteActionRequest, ActionTokenOut)
+from app.modules.auth.schemas import (LoginRequest, PinLoginRequest, PinSetupRequest, MfaStartRequest, MfaCodeRequest, MfaDisableRequest, UserOut, PinStatusOut, SessionOut, ForgotPasswordRequest, CompleteActionRequest, ActionTokenOut, MfaEnrollmentOut, MfaStatusOut, RecoveryCodesOut)
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -205,14 +205,14 @@ async def delete_pin(
     clear_device_cookie(response, request)
 
 
-@router.get("/mfa/status")
+@router.get("/mfa/status", response_model=MfaStatusOut)
 async def get_mfa_status(user: User = Depends(get_current_user)):
     if user.role != "admin":
         return {"enabled": False, "recovery_codes_remaining": 0}
     return await mfa_status(user.id)
 
 
-@router.post("/mfa/start")
+@router.post("/mfa/start", response_model=MfaEnrollmentOut)
 async def start_mfa(body: MfaStartRequest, request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Solo para administradores")
@@ -227,7 +227,7 @@ async def start_mfa(body: MfaStartRequest, request: Request, user: User = Depend
     return result
 
 
-@router.post("/mfa/confirm")
+@router.post("/mfa/confirm", response_model=RecoveryCodesOut)
 async def confirm_mfa(body: MfaCodeRequest, response: Response, request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Solo para administradores")

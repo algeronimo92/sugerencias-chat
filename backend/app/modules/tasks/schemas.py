@@ -42,3 +42,6 @@ class TaskItem(BaseModel):
     assigned_user_name: str
     is_overdue: bool
     created_at: str
+
+class CompletedTasks(BaseModel):
+    completed: int

@@ -1,7 +1,9 @@
 """Contratos HTTP de automations."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, ExecutionPauseScope, ExecutionStartSource
 
 
 class AutomationRuleCreate(BaseModel):
@@ -47,7 +49,7 @@ class AutomationRuleItem(BaseModel):
     created_by_name: str
     execution_count: int
     last_execution_at: str | None = None
-    last_execution_status: str | None = None
+    last_execution_status: AutomationExecutionStatus | None = None
     created_at: str
     updated_at: str
 
@@ -65,14 +67,14 @@ class AutomationExecutionItem(BaseModel):
     paused_at: str | None = None
     # 'lead' si la congeló pausar el lead entero, 'execution' si el vendedor
     # pausó solo esta ejecución. None cuando no está congelada.
-    pause_scope: str | None = None
+    pause_scope: ExecutionPauseScope | None = None
     started_at: str | None = None
     finished_at: str | None = None
     action_results: list[dict]
     flow_state: dict = Field(default_factory=dict)
     error: str | None = None
     created_at: str
-    start_source: str = "system"
+    start_source: ExecutionStartSource = ExecutionStartSource.SYSTEM
     started_by_user_id: int | None = None
     started_by_name: str | None = None
     # Un admin autorizó a esta ejecución a enviar con la ventana de 24 h
@@ -113,3 +115,10 @@ class AutomationFlowVersionItem(BaseModel):
     node_count: int
     edge_count: int
     is_current: bool
+
+class AutomationFlowSimulation(BaseModel):
+    lead_id: str
+    lead_name: str | None = None
+    flow_version: int
+    # Un paso por bloque recorrido; cada tipo de bloque aporta sus datos.
+    path: list[dict[str, Any]]

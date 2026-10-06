@@ -132,6 +132,7 @@ class AutomationExecution(Base):
     window_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        CheckConstraint("pause_scope IN ('lead', 'execution')", name="ck_automation_executions_pause_scope"),
         Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),
         Index("idx_automation_executions_due", status, scheduled_for),
         Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),

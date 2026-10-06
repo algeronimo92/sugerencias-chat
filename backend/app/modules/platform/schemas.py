@@ -1,5 +1,7 @@
 """Domain HTTP contracts."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from app.modules.platform import branding as branding_service
 
@@ -23,7 +25,8 @@ class PlatformSettingItem(BaseModel):
     label: str
     secret: bool
     configured: bool
-    source: str
+    # Lo calcula platform_settings: de dónde sale el valor efectivo.
+    source: Literal["platform", "environment", "legacy", "missing"]
     value: str | None = None
 
 class UpdatePlatformSettingsBody(BaseModel):
@@ -93,3 +96,43 @@ class BusinessTimezoneItem(BaseModel):
     id: str
     label: str
     offset_minutes: int
+
+class OperatorItem(BaseModel):
+    id: str
+    email: str
+    name: str
+
+
+class OrganizationDomainItem(BaseModel):
+    id: str
+    hostname: str
+    is_primary: bool
+
+
+class OrganizationItem(BaseModel):
+    id: str
+    name: str
+    status: str
+    schema_name: str
+    storage_prefix: str
+    ai_enabled: bool
+    ai_monthly_quota: int | None = None
+    created_at: str | None = None
+    # Revisión y estado de migración del schema del negocio.
+    revision: str | None = None
+    migration_status: str | None = None
+    up_to_date: bool
+    domains: list[OrganizationDomainItem]
+
+
+class OrganizationList(BaseModel):
+    # Revisión que espera este código: el panel compara cada negocio con ella.
+    head: str | None = None
+    items: list[OrganizationItem]
+
+
+class WhatsappStatusItem(BaseModel):
+    # Con Meta Cloud API no hay ciclo de QR: o el número está vinculado o
+    # faltan las credenciales.
+    state: Literal["open", "not_configured"]
+    instance: str | None = None

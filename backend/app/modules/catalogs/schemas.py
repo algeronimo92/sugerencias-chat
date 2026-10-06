@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from app.modules.tasks.ports.types import TaskType
 from app.modules.catalogs.tag_schema import Tag
 from app.modules.leads.schemas import LeadStageKey
@@ -258,3 +258,18 @@ class TemplateCapabilities(BaseModel):
 
 class TemplateFavoriteUpdate(BaseModel):
     is_favorite: bool
+
+class MetaTemplateRaw(BaseModel):
+    """Una plantilla tal como la devuelve Meta. Se declaran los campos que se
+    le piden; cualquier otro que Meta agregue viaja igual."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+    status: str
+    category: str
+    language: str
+    rejected_reason: str | None = None
+    # Solo en el detalle: el listado no pide los componentes.
+    components: list[dict[str, Any]] | None = None

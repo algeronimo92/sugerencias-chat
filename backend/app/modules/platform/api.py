@@ -6,7 +6,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem)
+from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList)
 
 import base64
 import binascii
@@ -100,12 +100,12 @@ async def logout(request: Request, response: Response) -> dict:
     return {"status": "ok"}
 
 
-@router.get("/auth/me", dependencies=protected)
+@router.get("/auth/me", dependencies=protected, response_model=OperatorItem)
 async def me(user: PlatformUser = Depends(get_current_platform_user)) -> dict:
     return {"id": str(user.id), "email": user.email, "name": user.name}
 
 
-@router.get("/organizations", dependencies=protected)
+@router.get("/organizations", dependencies=protected, response_model=OrganizationList)
 async def list_organizations() -> dict:
     return await listar_organizaciones()
 

@@ -112,3 +112,20 @@ class KnowledgeDocumentItem(KnowledgeDocumentSummary):
 
 class AIResourceBody(BaseModel):
     ai_description: str | None = Field(default=None, max_length=500)
+
+class AIUsage(BaseModel):
+    enabled: bool
+    # None = sin tope mensual.
+    monthly_quota: int | None = None
+    used_this_month: int
+    remaining: int | None = None
+
+
+class LeadAnalysisResult(BaseModel):
+    status: str
+    job_id: str
+    applied: bool
+    # Los jobs aplicados antes de que el resultado guardara estos campos no
+    # los traen.
+    changed: bool | None = None
+    stage: str | None = None

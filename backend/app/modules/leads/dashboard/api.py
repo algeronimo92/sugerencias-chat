@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, Query
 
 from app.modules.auth.public import User
+from app.modules.leads.schemas import DashboardMetrics
 from app.modules.auth.public import get_current_user
 from app.modules.leads.dashboard.queries import SCOPE_MINE, SCOPE_TEAM, get_dashboard_metrics
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-@router.get("")
+@router.get("", response_model=DashboardMetrics)
 async def dashboard(
     days: int = Query(default=30, ge=7, le=365),
     # Sin `scope` cada rol ve lo que le sirve de entrada: el vendedor sus leads

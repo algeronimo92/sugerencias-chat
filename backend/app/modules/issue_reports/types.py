@@ -15,3 +15,9 @@ class IssueReportPriority(StrEnum):
     NORMAL = "normal"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class IssueReportEventType(StrEnum):
+    CREATED = "created"
+    STATUS_CHANGED = "status_changed"
+    PRIORITY_CHANGED = "priority_changed"

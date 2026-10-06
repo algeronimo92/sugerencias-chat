@@ -22,6 +22,8 @@ from app.modules.leads.domain.lead import Actor
 from app.modules.leads.kanban_queries import fetch_kanban_counts, fetch_kanban_snapshot, fetch_kanban_stage
 from app.modules.leads.queries import list_lead_activity
 from app.modules.leads.schemas import (
+    PhoneConfig,
+    UnreadCount,
     Chat,
     ChatPage,
     KanbanPage,
@@ -105,7 +107,7 @@ async def get_chats(
         raise HTTPException(status_code=500, detail="Error interno al listar chats")
 
 
-@router.get("/unread-count")
+@router.get("/unread-count", response_model=UnreadCount)
 async def get_unread_count():
     """Cantidad de chats no leídos; solo baja al marcar uno como visto."""
     return {"count": await fetch_total_unread_chat_count()}
@@ -190,7 +192,7 @@ async def get_sellers():
     return await list_active_sellers()
 
 
-@router.get("/phone-config")
+@router.get("/phone-config", response_model=PhoneConfig)
 async def get_phone_config():
     """Código de país por defecto para el form de leads. Existe aparte de
     /api/settings porque aquel es admin-only y los vendedores también crean

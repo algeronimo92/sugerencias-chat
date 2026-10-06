@@ -1,7 +1,7 @@
 """Contratos HTTP de appointments."""
 
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AppointmentAttachment(BaseModel):
@@ -61,3 +61,16 @@ class AppointmentItem(BaseModel):
     calendar_sync_status: Literal["not_configured", "pending", "synced", "error", "skipped"] = "not_configured"
     calendar_sync_error: str | None = None
     created_at: str
+
+class AppointmentCreated(BaseModel):
+    """Resultado de registrar una cita. Lleva además lo que devolvió el
+    workflow de n8n (por ejemplo ``citaDuplicada``), que viaja tal cual."""
+
+    model_config = ConfigDict(extra="allow")
+
+    success: bool
+    message: str | None = None
+    appointment: AppointmentItem
+    eventLink: str | None = None
+    calendarSyncStatus: str
+    integrationErrors: list[str]

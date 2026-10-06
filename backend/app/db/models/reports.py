@@ -87,4 +87,10 @@ class IssueReportEvent(Base):
     new_value: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (Index("idx_issue_report_events_report_created", report_id, created_at),)
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('created', 'status_changed', 'priority_changed')",
+            name="issue_report_events_event_type_check",
+        ),
+        Index("idx_issue_report_events_report_created", report_id, created_at),
+    )

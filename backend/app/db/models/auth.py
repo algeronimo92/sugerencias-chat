@@ -18,6 +18,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'vendedor')", name="users_role_check"),
+    )
+
 
 class AuthLoginThrottle(Base):
     """Contador compartido por todas las instancias del backend de un tenant."""
@@ -153,6 +157,7 @@ class AuthSession(Base):
     device_name: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (
+        CheckConstraint("auth_method IN ('password', 'pin')", name="auth_sessions_auth_method_check"),
         Index("idx_auth_sessions_user", user_id, revoked_at),
         Index("idx_auth_sessions_expires", idle_expires_at, absolute_expires_at),
         Index("idx_auth_sessions_device", trusted_device_id),

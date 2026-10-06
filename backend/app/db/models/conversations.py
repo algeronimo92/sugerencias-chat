@@ -101,6 +101,12 @@ class WspMessage(Base):
     status_payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
 
     __table_args__ = (
+        # wsp_messages está en EXTERNAL_TABLES: alembic no la compara, el
+        # CHECK lo crea la migración d4b7e2a9c615 a mano.
+        CheckConstraint(
+            "outbox_status IN ('queued', 'sending', 'sent', 'retryable_failed', 'failed', 'discarded')",
+            name="wsp_messages_outbox_status_check",
+        ),
         Index(
             "idx_wsp_messages_chat_cursor",
             chat_id,

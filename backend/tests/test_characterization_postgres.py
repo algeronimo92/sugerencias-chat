@@ -453,3 +453,52 @@ async def test_a_scheduled_message_is_queued_and_credited_to_its_author(world: W
     assert job.dedupe_key == f"scheduled:{scheduled_id}"
     # Nadie miraba la app cuando salió: cuenta como atendido por bot.
     assert job.payload["actor_user_id"] is None
+
+
+# --- Contrato de las respuestas -------------------------------------------
+
+
+async def test_the_dashboard_contract_keeps_everything_the_metrics_compute(world: World) -> None:
+    """El response_model del dashboard no descarta nada: lo que calcula cada
+    bloque, con datos reales en cada lista, pasa por el modelo sin perderse."""
+    from fastapi.encoders import jsonable_encoder
+
+    from app.modules.leads.dashboard.queries import _compute
+    from app.modules.leads.dashboard.scope import build_scope
+    from app.modules.leads.schemas import DashboardMetrics
+
+    chat_id = await world.create_lead("Paciente Panel")
+    await world.customer_says(chat_id, "Hola, ¿precio?")
+    await _stage_rule(world, "Panel", [])
+    moved = await world.request("PATCH", f"/api/chats/{chat_id}/stage", json={"stage": "calificado"})
+    assert moved.status_code == 200, moved.text
+    world.acting_user = world.admin
+    tag = await world.request("POST", "/api/tags", json={"name": "Panel", "color": "#16a34a"})
+    assert (await world.request("POST", f"/api/chats/{chat_id}/tags/{tag.json()['id']}")).status_code == 200
+    phone = await world.scalar(select(Lead.telefono).where(Lead.id == chat_id))
+    appointment = await world.request("POST", "/api/appointments", json={
+        "nombre_completo": "Paciente Panel", "telefono": phone, "tratamiento": "Limpieza",
+        "fecha": (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat(),
+        "hora": "10:00", "vendedor": "Vendedora",
+    })
+    assert appointment.status_code == 200, appointment.text
+
+    with tenant_context(world.tenant):
+        payload = await _compute(build_scope(30, "team", world.admin.id))
+
+    assert payload["stages"] and payload["automations"]["by_flow"] and payload["appointments"]["upcoming"]
+    assert DashboardMetrics.model_validate(payload).model_dump(mode="json") == jsonable_encoder(payload)
+    response = await world.request("GET", "/api/dashboard", params={"days": 30, "scope": "team"})
+    assert response.status_code == 200, response.text
+
+
+async def test_the_organization_list_contract_keeps_every_field(world: World) -> None:
+    from fastapi.encoders import jsonable_encoder
+
+    from app.modules.platform.platform_organizations import list_organizations
+    from app.modules.platform.schemas import OrganizationList
+
+    payload = await list_organizations()
+
+    assert payload["items"] and payload["items"][0]["domains"]
+    assert OrganizationList.model_validate(payload).model_dump(mode="json") == jsonable_encoder(payload)

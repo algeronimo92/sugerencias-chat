@@ -10,6 +10,13 @@ class MessageSender(StrEnum):
     SELLER = "vendedor"
 
 
+class MessageDirection(StrEnum):
+    """``wsp_messages.direction``: la calcula la base desde ``sender``."""
+
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
 class MessageOutboxStatus(StrEnum):
     """Estado interno de un envío en ``wsp_messages.outbox_status``.
 

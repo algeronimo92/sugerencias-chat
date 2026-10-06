@@ -5,6 +5,7 @@ from typing import Any, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LEAD_STAGE_KEY_PATTERN
 from app.modules.catalogs.public import Tag
+from app.modules.auth.ports.types import UserRole
 
 
 # Clave de una etapa del embudo del negocio (lead_stages.key). Ya no es una
@@ -180,4 +181,161 @@ class LeadUpdate(BaseModel):
 class SellerItem(BaseModel):
     id: int
     name: str
-    role: str
+    role: UserRole
+
+class UnreadCount(BaseModel):
+    count: int
+
+
+class PhoneConfig(BaseModel):
+    default_country_code: str
+
+
+# --- Dashboard -----------------------------------------------------------
+# Un bloque por panel; lo arma leads/dashboard/queries.py.
+
+class DashboardMetricItem(BaseModel):
+    name: str
+    value: int
+
+
+class DashboardPoint(BaseModel):
+    date: str
+    value: int
+
+
+class DashboardFunnelStep(DashboardMetricItem):
+    # Porcentaje sobre los leads creados en el período, o None si no hubo.
+    rate: float | None = None
+
+
+class DashboardFlowRow(DashboardMetricItem):
+    rule_id: int
+    trigger_type: str
+    completed: int
+    failed: int
+    skipped: int
+    active: int
+    last_at: str | None = None
+
+
+class DashboardTagRow(DashboardMetricItem):
+    id: int
+    color: str
+
+
+class DashboardUpcomingAppointment(BaseModel):
+    id: int
+    # None cuando el teléfono de la cita no identificó a un único lead.
+    lead_id: str | None = None
+    name: str
+    date: str
+    # Tal como se registró en el formulario: es texto, no un horario.
+    time: str
+    treatment: str | None = None
+
+
+class DashboardSummary(BaseModel):
+    total_leads: int
+    new_leads: int
+    awaiting_reply: int
+    overdue_tasks: int
+    completed_tasks: int
+    avg_response_minutes: float | None = None
+    appointments_created: int
+    flows_started: int
+    flows_active: int
+    messages_sent: int
+    tagged_leads: int
+
+
+class DashboardPipeline(BaseModel):
+    stale: list[DashboardMetricItem]
+    conversations_open: int
+    conversations_closed: int
+    avg_close_hours: float | None = None
+
+
+class DashboardFlowFailures(BaseModel):
+    total: int
+    failed: int
+    rate: float | None = None
+    top_errors: list[DashboardMetricItem]
+
+
+class DashboardAutomations(BaseModel):
+    by_flow: list[DashboardFlowRow]
+    by_actor: list[DashboardMetricItem]
+    by_source: list[DashboardMetricItem]
+    by_trigger: list[DashboardMetricItem]
+    trend: list[DashboardPoint]
+    failures: DashboardFlowFailures
+    active_now: dict[str, int]
+
+
+class DashboardCoverage(BaseModel):
+    total: int
+    tagged: int
+    untagged: int
+    rate: float | None = None
+
+
+class DashboardTags(BaseModel):
+    coverage: DashboardCoverage
+    top: list[DashboardTagRow]
+    by_user: list[DashboardMetricItem]
+    trend: list[DashboardPoint]
+
+
+class DashboardNoShows(BaseModel):
+    leads: int
+    total: int
+
+
+class DashboardLinkage(BaseModel):
+    total: int
+    linked: int
+    unlinked: int
+    rate: float | None = None
+
+
+class DashboardAppointments(BaseModel):
+    by_status: list[DashboardMetricItem]
+    by_user: list[DashboardMetricItem]
+    by_owner: list[DashboardMetricItem]
+    by_treatment: list[DashboardMetricItem]
+    trend: list[DashboardPoint]
+    lost_reasons: list[DashboardMetricItem]
+    upcoming: list[DashboardUpcomingAppointment]
+    no_shows: DashboardNoShows
+    linkage: DashboardLinkage
+
+
+class DashboardMessages(BaseModel):
+    trend: list[DashboardPoint]
+    by_user: list[DashboardMetricItem]
+
+
+class DashboardActivity(BaseModel):
+    trend: list[DashboardPoint]
+    by_type: list[DashboardMetricItem]
+    by_user: list[DashboardMetricItem]
+    messages: DashboardMessages
+
+
+class DashboardMetrics(BaseModel):
+    period_days: int
+    scope: Literal["mine", "team"]
+    summary: DashboardSummary
+    stages: list[DashboardMetricItem]
+    origins: list[DashboardMetricItem]
+    services: list[DashboardMetricItem]
+    sellers: list[DashboardMetricItem]
+    new_leads_trend: list[DashboardPoint]
+    funnel: list[DashboardFunnelStep]
+    pipeline: DashboardPipeline
+    automations: DashboardAutomations
+    tags: DashboardTags
+    appointments: DashboardAppointments
+    activity: DashboardActivity
+    generated_at: str

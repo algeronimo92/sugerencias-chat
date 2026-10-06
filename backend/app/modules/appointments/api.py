@@ -10,7 +10,7 @@ from app.modules.appointments.domain.appointment import AppointmentRequest
 from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.modules.auth.public import User
-from app.modules.appointments.schemas import AppointmentCreate, AppointmentItem
+from app.modules.appointments.schemas import AppointmentCreate, AppointmentCreated, AppointmentItem
 from app.modules.auth.public import get_current_user
 from app.modules.media.ports.media_upload import (normalize_media_content_type)
 from app.core.phone_utils import PhoneValidationError, normalize_phone
@@ -57,7 +57,7 @@ def _attachment(body: AppointmentCreate):
     return {"Comprobante": (body.comprobante.filename, raw, content_type)}
 
 
-@router.post("")
+@router.post("", response_model=AppointmentCreated)
 async def post_appointment(body: AppointmentCreate, user: User = Depends(get_current_user)):
     try:
         normalize_phone(body.telefono, await effective_country_code())

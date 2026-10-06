@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
-from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
+from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, MetaTemplateRaw, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
 from app.modules.catalogs.queries import get_lead_service_by_name
 from app.modules.catalogs.template_service import (
@@ -72,7 +72,7 @@ async def get_templates(include_inactive: bool = False, user: User = Depends(get
     return await list_templates(user.id, include_inactive and user.role == "admin")
 
 
-@router.get("/meta")
+@router.get("/meta", response_model=list[MetaTemplateRaw])
 async def get_meta_templates(_admin: User = Depends(require_admin)):
     """Lista tal cual las devuelve Meta (`GET /{waba_id}/message_templates`),
     sin pasar por las plantillas guardadas en la BD -- sirve para ver el
@@ -84,7 +84,7 @@ async def get_meta_templates(_admin: User = Depends(require_admin)):
         raise HTTPException(502, describe_template_error(exc))
 
 
-@router.get("/meta/{meta_template_id}")
+@router.get("/meta/{meta_template_id}", response_model=MetaTemplateRaw)
 async def get_meta_template_detail(meta_template_id: str, _admin: User = Depends(require_admin)):
     """Detalle completo (con `components`) de una plantilla puntual de Meta --
     lo que necesita el diálogo de importación para mostrar cuántas variables

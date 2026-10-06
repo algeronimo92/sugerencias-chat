@@ -2,7 +2,8 @@
 
 from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
-from app.modules.issue_reports.types import IssueReportPriority, IssueReportStatus
+from app.modules.auth.ports.types import UserRole
+from app.modules.issue_reports.types import IssueReportEventType, IssueReportPriority, IssueReportStatus
 
 
 class IssueReportAttachmentCreate(BaseModel):
@@ -67,7 +68,7 @@ class IssueReportCommentItem(BaseModel):
     id: int
     author_user_id: int
     author_name: str
-    author_role: str
+    author_role: UserRole
     content: str
     created_at: str
 
@@ -75,7 +76,7 @@ class IssueReportCommentItem(BaseModel):
 class IssueReportEventItem(BaseModel):
     id: int
     actor_name: str | None = None
-    event_type: str
+    event_type: IssueReportEventType
     previous_value: str | None = None
     new_value: str | None = None
     created_at: str

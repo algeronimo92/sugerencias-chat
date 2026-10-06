@@ -5,19 +5,19 @@ from fastapi import APIRouter
 
 from app.modules.ai.ai_access import usage_summary
 from app.modules.ai.application.assistant import LeadNotFound, analyze_lead, suggest_reply
-from app.modules.ai.schemas import AnalysisRequest, SuggestionRequest, SuggestionResponse, SuggestionStatus
+from app.modules.ai.schemas import AIUsage, AnalysisRequest, LeadAnalysisResult, SuggestionRequest, SuggestionResponse, SuggestionStatus
 from app.modules.ai.suggestions_service import get_suggestion_status
 
 router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
 
 
-@router.get("/usage")
+@router.get("/usage", response_model=AIUsage)
 async def read_ai_usage():
     """Si el asistente está habilitado y cuánto queda de la cuota del mes."""
     return await usage_summary()
 
 
-@router.post("/analyze")
+@router.post("/analyze", response_model=LeadAnalysisResult)
 async def analyze_lead_on_demand(body: AnalysisRequest):
     """Run the analyst only after an authenticated user asks for it."""
     return await analyze_lead(body.chat_id)

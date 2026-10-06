@@ -206,6 +206,9 @@ def simulator(in_memory_automations, deps, monkeypatch):
 async def test_simulator_walks_every_node_type(simulator):
     result = await simulation.simulate_visual_flow(1, "lead-1", simulator)
 
+    # El response_model de la ruta no descarta nada de lo que arma el simulador.
+    from app.modules.automations.schemas import AutomationFlowSimulation
+    assert AutomationFlowSimulation.model_validate(result).model_dump(mode="json") == result
     assert result["flow_version"] == 3
     assert [
         {key: step[key] for key in ("node_id", "type", "status", "branch", "detail", "seconds") if key in step}

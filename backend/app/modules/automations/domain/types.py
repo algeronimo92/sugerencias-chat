@@ -114,3 +114,19 @@ class AutomationExecutionStatus(StrEnum):
 class AutomationRecipient(StrEnum):
     SELLER = "seller"
     SPECIFIC = "specific"
+
+
+class ExecutionPauseScope(StrEnum):
+    """Quién congeló una ejecución: el lead entero o solo esta ejecución."""
+
+    LEAD = "lead"
+    EXECUTION = "execution"
+
+
+class ExecutionStartSource(StrEnum):
+    """Cómo arrancó una ejecución: un trigger del sistema, el botón "Iniciar
+    flujo" del chat o la invocación desde otro flujo."""
+
+    SYSTEM = "system"
+    MANUAL = "manual"
+    FLOW = "flow"

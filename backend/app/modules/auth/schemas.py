@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
+from app.modules.auth.types import AccountActionPurpose, SessionAuthMethod, UserRole
 
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -29,7 +30,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     name: str
-    role: str
+    role: UserRole
 
 class PinStatusOut(BaseModel):
     available: bool
@@ -41,7 +42,7 @@ class PinStatusOut(BaseModel):
 class SessionOut(BaseModel):
     id: str
     device_name: str
-    auth_method: str
+    auth_method: SessionAuthMethod
     current: bool
     created_at: datetime
     last_used_at: datetime
@@ -62,7 +63,7 @@ class CompleteActionRequest(BaseModel):
         return value
 
 class ActionTokenOut(BaseModel):
-    purpose: str
+    purpose: AccountActionPurpose
     email: str
     name: str
 
@@ -72,7 +73,7 @@ class UserItem(BaseModel):
     id: int
     email: str
     name: str
-    role: str
+    role: UserRole
     is_active: bool
 
 class CreateUserRequest(BaseModel):
@@ -83,3 +84,16 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
+
+class MfaStatusOut(BaseModel):
+    enabled: bool
+    recovery_codes_remaining: int
+
+
+class MfaEnrollmentOut(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class RecoveryCodesOut(BaseModel):
+    recovery_codes: list[str]

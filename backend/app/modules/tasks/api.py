@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.tasks.types import TaskStatus
 from app.modules.auth.public import User
-from app.modules.tasks.schemas import TaskCreate, TaskItem, TaskUpdate
+from app.modules.tasks.schemas import CompletedTasks, TaskCreate, TaskItem, TaskUpdate
 from app.modules.auth.public import get_current_user
 from app.modules.tasks.queries import get_task, list_tasks
 from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, update_task
@@ -41,7 +41,7 @@ async def post_task(body: TaskCreate, user: User = Depends(get_current_user)):
     return item
 
 
-@router.post("/complete-all")
+@router.post("/complete-all", response_model=CompletedTasks)
 async def post_complete_all_tasks(
     assigned_user_id: int | None = None,
     all_users: bool = False,
