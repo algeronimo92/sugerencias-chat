@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { assignTag, createTag, fetchLeadActivity, removeTag, fetchTags, updateTag } from '../api'
+import { leadKeys, tagKeys } from '../keys'
+import { chatKeys } from '../../chats/public/keys'
 
 export function useTags(includeInactive = false, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: ['tags', { includeInactive }],
+    queryKey: tagKeys.list(includeInactive),
     queryFn: () => fetchTags(includeInactive),
     enabled,
     staleTime: 60_000,
@@ -14,7 +16,7 @@ export function useCreateTag() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createTag,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: tagKeys.all }),
   })
 }
 
@@ -22,7 +24,7 @@ export function useUpdateTag() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateTag,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: tagKeys.all }),
   })
 }
 
@@ -31,8 +33,8 @@ export function useAssignTag(chatId: string) {
   return useMutation({
     mutationFn: (tagId: number) => assignTag(chatId, tagId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
   })
 }
@@ -42,15 +44,15 @@ export function useRemoveTag(chatId: string) {
   return useMutation({
     mutationFn: (tagId: number) => removeTag(chatId, tagId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
   })
 }
 
 export function useLeadActivity(chatId: string) {
   return useQuery({
-    queryKey: ['lead-activity', chatId],
+    queryKey: leadKeys.activity(chatId),
     queryFn: () => fetchLeadActivity(chatId),
     enabled: !!chatId,
     staleTime: 10_000,

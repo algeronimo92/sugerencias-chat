@@ -40,9 +40,8 @@ import { Button } from "../../../shared/ui/Button";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from "../../../shared/ui/Dialog";
 import { Input } from "../../../shared/ui/Input";
+import { platformKeys } from '../keys'
 
-const ORGANIZACIONES = ["platform", "organizations"] as const;
-const CONFIGURACION_PLATAFORMA = ["platform", "settings"] as const;
 
 function mensajeDeError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -414,7 +413,7 @@ function Dominios({ organizacion }: { organizacion: Organization }) {
   const queryClient = useQueryClient();
   const [hostname, setHostname] = useState("");
   const campoId = useId();
-  const refrescar = () => queryClient.invalidateQueries({ queryKey: ORGANIZACIONES });
+  const refrescar = () => queryClient.invalidateQueries({ queryKey: platformKeys.organizations });
 
   const agregar = useMutation({
     mutationFn: async () => {
@@ -528,7 +527,7 @@ function MarcaNegocio({ organizacion }: { organizacion: Organization }) {
   const [nombre, setNombre] = useState("");
   const [color, setColor] = useState("#00a884");
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
-  const clave = ["platform", "organizations", organizacion.id, "branding"];
+  const clave = platformKeys.branding(organizacion.id);
 
   const marca = useQuery({
     queryKey: clave,
@@ -710,8 +709,8 @@ function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) 
   const [cuota, setCuota] = useState(organizacion.ai_monthly_quota?.toString() ?? "");
   const [integraciones, setIntegraciones] = useState<Record<string, string>>({});
   const [errorCuota, setErrorCuota] = useState<string | null>(null);
-  const claveAsistente = ["platform", "organizations", organizacion.id, "ai"];
-  const claveIntegraciones = ["platform", "organizations", organizacion.id, "integrations"];
+  const claveAsistente = platformKeys.ai(organizacion.id);
+  const claveIntegraciones = platformKeys.integrations(organizacion.id);
 
   const asistente = useQuery({
     queryKey: claveAsistente,
@@ -742,7 +741,7 @@ function ConfiguracionNegocio({ organizacion }: { organizacion: Organization }) 
       await saveOrganizationAi(organizacion, habilitado, monthlyQuota),
     onSuccess: (data) => {
       queryClient.setQueryData(claveAsistente, data);
-      queryClient.invalidateQueries({ queryKey: ORGANIZACIONES, exact: true });
+      queryClient.invalidateQueries({ queryKey: platformKeys.organizations, exact: true });
     },
   });
 
@@ -894,7 +893,7 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
       const accion = suspendido ? "activate" : "suspend";
       await setOrganizationStatus(organizacion, accion);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ORGANIZACIONES }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformKeys.organizations }),
   });
 
   const colorEstado = organizacion.status === "active"
@@ -973,7 +972,7 @@ function CredencialesPlataforma() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const settingsQuery = useQuery({
-    queryKey: CONFIGURACION_PLATAFORMA,
+    queryKey: platformKeys.settings,
     queryFn: fetchPlatformSettings,
   });
 
@@ -998,7 +997,7 @@ function CredencialesPlataforma() {
       return await savePlatformSettings(values);
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(CONFIGURACION_PLATAFORMA, data);
+      queryClient.setQueryData(platformKeys.settings, data);
       setDraft((previous) => {
         const next = { ...previous };
         for (const item of data) if (item.secret) delete next[item.key];
@@ -1083,10 +1082,10 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
   const [busqueda, setBusqueda] = useState("");
-  const refrescar = () => queryClient.invalidateQueries({ queryKey: ORGANIZACIONES });
+  const refrescar = () => queryClient.invalidateQueries({ queryKey: platformKeys.organizations });
 
   const negocios = useQuery({
-    queryKey: ORGANIZACIONES,
+    queryKey: platformKeys.organizations,
     queryFn: fetchOrganizations,
   });
 
@@ -1197,7 +1196,7 @@ export function PlatformApp() {
     document.title = "Cliniventas · Panel de plataforma";
   }, []);
   const sesion = useQuery({
-    queryKey: ["platform", "me"],
+    queryKey: platformKeys.me,
     queryFn: async () => {
       try {
         return await fetchOperator();
@@ -1214,7 +1213,7 @@ export function PlatformApp() {
   });
 
   const recargarSesion = () =>
-    queryClient.invalidateQueries({ queryKey: ["platform", "me"] });
+    queryClient.invalidateQueries({ queryKey: platformKeys.me });
 
   if (sesion.isLoading) {
     return (

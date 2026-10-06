@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
@@ -105,6 +105,36 @@ const KNOWN_LARGE_COMPONENTS = [
 ]
 
 const CONTRACT_TYPES = new Set(['ApiResponse'])
+
+/** Piezas internas de features que app/ todavía importa directo. La fase 3
+ * las publica como puntos de entrada; la lista solo puede achicarse. */
+const KNOWN_APP_INTERNAL_IMPORTS = [
+  'app/layout.tsx -> features/auth/queries.ts',
+  'app/layout.tsx -> features/chats/hooks/useChatFiltersState.ts',
+  'app/layout.tsx -> features/chats/layoutContext.ts',
+  'app/layout.tsx -> features/chats/queries.ts',
+  'app/layout.tsx -> features/notifications/components/NotificationCenter.tsx',
+  'app/layout.tsx -> features/notifications/hooks/useNotifications.ts',
+  'app/layout.tsx -> features/platform/components/SettingsDialog.tsx',
+  'app/routes.tsx -> features/auth/queries.ts',
+  'app/routes.tsx -> features/chats/components/ChatWorkspace.tsx',
+  'app/routes.tsx -> features/chats/components/TemplatesPage.tsx',
+  'app/routes.tsx -> features/chats/layoutContext.ts',
+  'app/routes.tsx -> features/chats/useOpenChat.ts',
+  'app/routes.tsx -> features/leads/components/DashboardPage.tsx',
+  'app/routes.tsx -> features/leads/components/TasksPage.tsx',
+  'app/routes.tsx -> features/platform/components/CatalogsPage.tsx',
+]
+
+/** Punto de entrada de una feature para app/: su public/ o un archivo de
+ * nivel superior que publica una pantalla, un diálogo o sus tipos. */
+const FEATURE_ENTRY_FILE = /^(index|types|page|[a-z-]+-page|dialog)\.tsx?$/
+
+const QUERY_KEY_CALLS = new Set(['setQueryData', 'getQueryData', 'getQueryState', 'fetchQuery', 'prefetchQuery'])
+
+/** Donde se escriben claves de caché: los keys.ts de cada feature y la clave
+ * de la sesión, que la guarda de la app lee desde shared. */
+const isKeyFile = (path: string) => basename(path) === 'keys.ts' || isInside(join(src, 'shared', 'queryClient.ts'), path)
 
 function parse(path: string) {
   return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
@@ -249,5 +279,42 @@ describe('feature architecture', () => {
       return contractType ? [] : [`${relative(src, path)}: ${call.getText().slice(0, 80)}`]
     }))
     expect(violations).toEqual([])
+  })
+
+  it('writes query keys only in the keys.ts of each feature', () => {
+    const violations = productionFiles().filter(path => !isKeyFile(path)).flatMap(path => {
+      const found: string[] = []
+      walkNodes(parse(path), node => {
+        const literalKey = (
+          ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && ['queryKey', 'mutationKey'].includes(node.name.text)
+          && ts.isArrayLiteralExpression(node.initializer)
+        ) || (
+          ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && QUERY_KEY_CALLS.has(node.expression.name.text)
+          && !!node.arguments[0] && ts.isArrayLiteralExpression(node.arguments[0])
+        )
+        if (literalKey) found.push(`${relative(src, path).split(/[\\/]/).join('/')}: ${node.getText().slice(0, 60)}`)
+      })
+      return found
+    })
+    expect(violations).toEqual([])
+  })
+
+  it('keeps realtime/ independent from features and app, transitively', () => {
+    const violations = sourceFiles(join(src, 'realtime')).filter(path => !isTestOrStory(path)).flatMap(path => {
+      const target = reaches(path, candidate => isInside(features, candidate) || isInside(join(src, 'app'), candidate))
+      return target ? [relative(src, path) + ' -> ' + relative(src, target)] : []
+    })
+    expect(violations).toEqual([])
+  })
+
+  it('lets app/ reach features only through their entry points', () => {
+    const violations = sourceFiles(join(src, 'app')).filter(path => !isTestOrStory(path)).flatMap(path =>
+      (graph.get(path) ?? []).filter(target => {
+        if (!isInside(features, target)) return false
+        const parts = relative(features, target).split(/[\\/]/)
+        return parts[1] !== 'public' && !(parts.length === 2 && FEATURE_ENTRY_FILE.test(parts[1]))
+      }).map(target => `${relative(src, path)} -> ${relative(src, target)}`.split(/[\\/]/).join('/')),
+    )
+    expect([...new Set(violations)].sort()).toEqual(KNOWN_APP_INTERNAL_IMPORTS)
   })
 })

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchStatus } from '../api'
 import type { StatusOptions } from '../types'
+import { whatsappKeys } from '../keys'
 
 export type { WhatsappState } from '../types'
 
@@ -8,7 +9,7 @@ export type { WhatsappStatus } from '../types'
 
 export function useWhatsappStatus(options: StatusOptions = {}) {
   return useQuery({
-    queryKey: ['whatsapp', 'status'],
+    queryKey: whatsappKeys.status,
     queryFn: fetchStatus,
     enabled: options.enabled ?? true,
     // Refleja una conexión externa sin evento de WebSocket: siempre se

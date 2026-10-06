@@ -18,7 +18,8 @@ import type { PropsWithChildren } from 'react'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useChatUpdates } from '../../../realtime/useRealtime'
+import { createAppRealtimeBus } from '../app/realtime'
+import { useRealtimeConnection } from './useRealtime'
 
 const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 
@@ -93,9 +94,9 @@ function statusEvent() {
   }
 }
 
-describe('useChatUpdates con un evento message_status', () => {
+describe('useRealtimeConnection con un evento message_status', () => {
   it('parchea el estado de las burbujas en la caché', () => {
-    renderHook(() => useChatUpdates(), { wrapper })
+    renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
     act(() => {
       FakeWebSocket.last.onopen?.()
       FakeWebSocket.last.emit(statusEvent())
@@ -112,7 +113,7 @@ describe('useChatUpdates con un evento message_status', () => {
   })
 
   it('no invalida ninguna query', () => {
-    renderHook(() => useChatUpdates(), { wrapper })
+    renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
     // onopen resincroniza deliberadamente las queries para recuperar eventos
     // que pudieron perderse mientras el socket estuvo desconectado. Eso no
     // forma parte del procesamiento del message_status que mide este test.
@@ -129,9 +130,9 @@ describe('useChatUpdates con un evento message_status', () => {
   })
 })
 
-describe('useChatUpdates con otros motivos', () => {
+describe('useRealtimeConnection con otros motivos', () => {
   it('un mensaje entrante sí refresca la lista y el historial', () => {
-    renderHook(() => useChatUpdates(), { wrapper })
+    renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
     const invalidate = vi.spyOn(currentClient, 'invalidateQueries')
 
     act(() => {
@@ -146,7 +147,7 @@ describe('useChatUpdates con otros motivos', () => {
   })
 
   it('marcar como leído no debe refetchear el historial', () => {
-    renderHook(() => useChatUpdates(), { wrapper })
+    renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
     const invalidate = vi.spyOn(currentClient, 'invalidateQueries')
 
     act(() => {
@@ -162,7 +163,7 @@ describe('useChatUpdates con otros motivos', () => {
 
 describe('ciclo de vida del socket', () => {
   it('cierra el socket y suelta los handlers al desmontar', () => {
-    const { unmount } = renderHook(() => useChatUpdates(), { wrapper })
+    const { unmount } = renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
     const socket = FakeWebSocket.last
 
     unmount()

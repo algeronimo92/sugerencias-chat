@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { completeMetaEmbeddedSignup, fetchMetaPublicConfig, fetchSettings, fetchBusinessTimezones, saveSettings } from '../api'
+import { settingsKeys, whatsappKeys } from '../keys'
 
 export function useSettings(enabled: boolean) {
   return useQuery({
-    queryKey: ['settings'],
+    queryKey: settingsKeys.all,
     queryFn: fetchSettings,
     enabled,
   })
@@ -14,7 +15,7 @@ export function useSaveSettings() {
   return useMutation({
     mutationFn: saveSettings,
     onSuccess: (data) => {
-      queryClient.setQueryData(['settings'], data)
+      queryClient.setQueryData(settingsKeys.all, data)
     },
   })
 }
@@ -23,7 +24,7 @@ export type { BusinessTimezoneItem } from '../types'
 
 export function useBusinessTimezones(enabled = true) {
   return useQuery({
-    queryKey: ['settings', 'timezones'],
+    queryKey: settingsKeys.timezones,
     queryFn: fetchBusinessTimezones,
     enabled,
     staleTime: 60 * 60 * 1000,
@@ -34,7 +35,7 @@ export type { MetaPublicConfig } from '../types'
 
 export function useMetaPublicConfig() {
   return useQuery({
-    queryKey: ['platform-meta-public-config'],
+    queryKey: settingsKeys.metaPublicConfig,
     queryFn: fetchMetaPublicConfig,
   })
 }
@@ -46,10 +47,10 @@ export function useCompleteMetaEmbeddedSignup() {
   return useMutation({
     mutationFn: completeMetaEmbeddedSignup,
     onSuccess: (data) => {
-      queryClient.setQueryData(['settings'], data)
+      queryClient.setQueryData(settingsKeys.all, data)
       // El estado de WhatsApp se deriva de las credenciales de Meta: sin esto
       // el CTA de "conectá tu WhatsApp" sigue visible hasta el próximo refetch.
-      queryClient.invalidateQueries({ queryKey: ['whatsapp', 'status'] })
+      queryClient.invalidateQueries({ queryKey: whatsappKeys.status })
     },
   })
 }

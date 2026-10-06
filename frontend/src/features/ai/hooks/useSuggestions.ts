@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SuggestionStatus } from '../../chats/types'
 import { generateSuggestions, analyzeLead, fetchSuggestionStatus } from '../api'
 import type { GenerateParams } from '../types'
+import { leadKeys } from '../../leads/public/keys'
+import { chatKeys } from '../../chats/public/keys'
+import { aiKeys } from '../keys'
 
 /** Motivos por los que reintentar no sirve: los resuelve la plataforma
  * (plan, configuración) o el paso del tiempo (cuota del mes). */
@@ -17,7 +20,7 @@ export { SuggestionError } from '../errors'
  */
 export function useSuggestionStatus(chatId: string | null) {
   return useQuery({
-    queryKey: ['suggestions', chatId],
+    queryKey: aiKeys.suggestions(chatId),
     queryFn: () => fetchSuggestionStatus(chatId),
     enabled: !!chatId,
     staleTime: 60_000,
@@ -35,18 +38,18 @@ export function useGenerateSuggestions() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationKey: ['generate-suggestions'],
+    mutationKey: aiKeys.generating,
     mutationFn: (params: GenerateParams) => generateSuggestions(params),
     onSuccess: (data, variables) => {
-      queryClient.setQueryData<SuggestionStatus>(['suggestions', variables.chat_id], {
+      queryClient.setQueryData<SuggestionStatus>(aiKeys.suggestions(variables.chat_id), {
         suggestion: data,
         generated_at: new Date().toISOString(),
         stale: false,
       })
       // La sugerencia pudo cambiar la etapa del lead / registrar actividad.
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', variables.chat_id] })
-      queryClient.invalidateQueries({ queryKey: ['ai-assistant', 'usage'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(variables.chat_id) })
+      queryClient.invalidateQueries({ queryKey: aiKeys.usage })
     },
   })
 }
@@ -63,12 +66,12 @@ export function useAnalyzeLead() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationKey: ['analyze-lead'],
+    mutationKey: aiKeys.analyzing,
     mutationFn: analyzeLead,
     onSuccess: (_data, chatId) => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
-      queryClient.invalidateQueries({ queryKey: ['ai-assistant', 'usage'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
+      queryClient.invalidateQueries({ queryKey: aiKeys.usage })
     },
   })
 }

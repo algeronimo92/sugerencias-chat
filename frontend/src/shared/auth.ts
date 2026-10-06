@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import client from './http/client'
 import type { ApiResponse } from './http/contract'
+import { ME_QUERY_KEY } from './queryClient'
 import type { AuthUser } from './types'
 
 async function fetchMe(): Promise<AuthUser | null> {
@@ -17,7 +18,7 @@ async function fetchMe(): Promise<AuthUser | null> {
 
 export function useMe() {
   return useQuery({
-    queryKey: ['auth', 'me'],
+    queryKey: ME_QUERY_KEY,
     queryFn: fetchMe,
     staleTime: 5 * 60_000,
     retry: false,

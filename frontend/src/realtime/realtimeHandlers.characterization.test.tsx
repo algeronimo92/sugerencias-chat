@@ -3,8 +3,8 @@
  *
  * Fija qué datos se refrescan con cada evento del WebSocket, qué avisos se
  * muestran y a dónde lleva tocarlos, y qué se resincroniza al reconectar.
- * La fase 2 reparte estos handlers entre las features; este test tiene que
- * seguir pasando igual.
+ * Los handlers viven en cada feature (fase 2) y se prueban juntos, con el bus
+ * que arma la app.
  *
  * Se siembran en la caché todas las claves que el tiempo real puede tocar y
  * se compara el conjunto exacto de las que quedaron invalidadas: refrescar de
@@ -19,8 +19,9 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { deferred } from '../test/fakeApi'
 import { FakeWebSocket, installFakeSocket } from '../test/fakeSocket'
 import { createTestQueryClient, queryWrapper } from '../test/queryWrapper'
-import type { InternalMentionFn, NotifyFn } from './socketHandlers'
-import { useChatUpdates } from './useRealtime'
+import { createAppRealtimeBus } from '../app/realtime'
+import type { InternalMentionFn, NotifyFn } from './bus'
+import { useRealtimeConnection } from './useRealtime'
 
 const CHAT = '3f6a9d2e-7c41-4b8a-9e15-2d0c8f7b6a53'
 const OTHER = 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f'
@@ -53,8 +54,9 @@ beforeEach(() => {
 })
 
 function connect() {
+  const bus = createAppRealtimeBus()
   return renderHook(() => {
-    useChatUpdates(null, notify, onMention)
+    useRealtimeConnection(bus, notify, onMention)
     return useLocation()
   }, { wrapper: queryWrapper(queryClient) })
 }

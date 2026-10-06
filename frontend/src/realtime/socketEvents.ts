@@ -1,6 +1,11 @@
+import type { ApiSchemas } from '../shared/http/contract'
 import type { JsonValue } from '../shared/types'
-import type { MessageType, MetaStatus, OutboxStatus } from '../features/chats/types'
-import { isJsonObject } from '../features/chats/utils/message'
+import { isJsonObject } from '../shared/utils/json'
+
+type OutboxStatus = ApiSchemas['MessageOutboxStatus']
+/** Literales de Meta: uno que el contrato todavía no conoce llega igual. */
+type MetaStatus = string
+type MessageType = string
 
 export const REALTIME_EVENT_TYPES = [
   'chats_updated',

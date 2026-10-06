@@ -2,10 +2,10 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { websocketUrl } from '../shared/config'
 import { useNavigate } from 'react-router-dom'
+import type { InternalMentionFn, NotifyFn, RealtimeBus, RealtimeContext } from './bus'
 import { parseChatSocketEvent } from './socketEvents'
-import { dispatchSocketEvent, type InternalMentionFn, type NotifyFn, type SocketHandlerContext } from './socketHandlers'
 
-export type { InternalMentionAlert } from './socketHandlers'
+export type { InternalMentionAlert } from './bus'
 
 const RECONNECT_DELAY_MS = 3_000
 // Heartbeat: se manda un ping cada PING_INTERVAL_MS y, si no llega NINGÚN dato
@@ -14,7 +14,6 @@ const RECONNECT_DELAY_MS = 3_000
 const PING_INTERVAL_MS = 25_000
 const WATCHDOG_INTERVAL_MS = 10_000
 const ACTIVITY_TIMEOUT_MS = 40_000
-const RESYNC_QUERY_KEYS = [['chats'], ['unread-count'], ['kanban'], ['dashboard'], ['notifications'], ['messages'], ['chat'], ['issue-reports'], ['templates']]
 const socketListeners = new Set<() => void>()
 let socketConnected = false
 
@@ -37,26 +36,21 @@ export function useChatSocketConnected() {
   )
 }
 
-/** Escucha el websocket del backend y refresca chats/mensajes en cuanto hay
- * novedades. También dispara una notificación cuando el mensaje nuevo es de
- * un cliente y la aplicación está en segundo plano. Llamar una sola vez.
- * `activeChatId` se mantiene como parámetro por compatibilidad con las vistas;
- * useNotifications determina si la aplicación está realmente visible.
+/** Mantiene abierta la conexión del WebSocket y reparte cada evento al bus
+ * (ver bus.ts): cada feature refresca lo suyo. Llamar una sola vez.
  * `notify` se recibe por parámetro (en vez de llamar a useNotifications acá
  * adentro) para que el estado de permiso de notificaciones quede en una
  * única instancia, compartida con el botón del header que lo controla. */
-export function useChatUpdates(
-  activeChatId: string | null = null,
+export function useRealtimeConnection(
+  bus: RealtimeBus,
   notify: NotifyFn = () => {},
   onInternalMention: InternalMentionFn = () => {},
 ) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const lastNotifiedMessageIdRef = useRef<string | null>(null)
 
   // El socket se conecta una sola vez (no queremos reconectar cada vez que
-  // cambia el chat abierto o el permiso de notificaciones).
-  void activeChatId
+  // cambia el permiso de notificaciones).
   const notifyRef = useRef(notify)
   const internalMentionRef = useRef(onInternalMention)
 
@@ -78,12 +72,11 @@ export function useChatUpdates(
     let lastActivityAt = Date.now()
     let stopped = false
 
-    const context: SocketHandlerContext = {
+    const context: RealtimeContext = {
       queryClient,
       navigate,
       notify: (...args) => notifyRef.current(...args),
       onInternalMention: alert => internalMentionRef.current(alert),
-      lastNotifiedMessageId: lastNotifiedMessageIdRef,
     }
 
     function clearHeartbeat() {
@@ -96,7 +89,7 @@ export function useChatUpdates(
     // enviaron a un socket muerto), así que hay que refetchear para no quedar
     // desactualizado hasta el próximo broadcast o un F5.
     function resync() {
-      for (const queryKey of RESYNC_QUERY_KEYS) queryClient.invalidateQueries({ queryKey })
+      for (const queryKey of bus.resyncKeys) void queryClient.invalidateQueries({ queryKey })
     }
 
     function connect() {
@@ -122,7 +115,7 @@ export function useChatUpdates(
         lastActivityAt = Date.now()
         try {
           const payload = parseChatSocketEvent(event.data)
-          if (payload) dispatchSocketEvent(payload, context)
+          if (payload) bus.dispatch(payload, context)
         } catch {
           // Ignora payloads que no sean JSON válido
         }
@@ -154,5 +147,5 @@ export function useChatUpdates(
         socket.close()
       }
     }
-  }, [queryClient, navigate])
+  }, [bus, queryClient, navigate])
 }

@@ -2,12 +2,14 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteD
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { createLead, deleteLead, fetchChatsPage, fetchLeadByPhone, markChatRead, markChatUnread, markNoShow, mergeLead, fetchChat, fetchPhoneConfig, fetchUnreadCount, updateLead } from './api'
 import type { ChatFilters, ChatsPage, LeadUpdateInput, PageParam } from './types'
+import { kanbanKeys, leadKeys } from '../leads/public/keys'
+import { chatKeys } from './keys'
 
 /** Resuelve un único chat por su clave primaria, sin búsqueda ILIKE. */
 export function useChat(chatId: string | null) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['chat', chatId],
+    queryKey: chatKeys.detail(chatId),
     queryFn: () => fetchChat(chatId),
     enabled: !!chatId,
     staleTime: 30_000,
@@ -18,7 +20,7 @@ export function useChat(chatId: string | null) {
 export function useUnreadCount() {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['unread-count'],
+    queryKey: chatKeys.unreadCount,
     queryFn: fetchUnreadCount,
     staleTime: 10_000,
     refetchInterval: connected ? false : 60_000,
@@ -29,7 +31,7 @@ export function useUnreadCount() {
 export function useInfiniteChats(search: string = '', filters: ChatFilters) {
   const connected = useChatSocketConnected()
   return useInfiniteQuery({
-    queryKey: ['chats', 'list', search, filters],
+    queryKey: chatKeys.list(search, filters),
     queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters),
     initialPageParam: null as PageParam,
     getNextPageParam: (lastPage) => {
@@ -51,7 +53,7 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
  * Configuración). staleTime infinito: cambia una vez cada nunca. */
 export function usePhoneConfig() {
   return useQuery({
-    queryKey: ['phone-config'],
+    queryKey: chatKeys.phoneConfig,
     queryFn: fetchPhoneConfig,
     staleTime: Infinity,
   })
@@ -62,7 +64,7 @@ export function usePhoneConfig() {
 
 export function useDuplicateLead(digits: string | null) {
   return useQuery({
-    queryKey: ['duplicate-lead', digits],
+    queryKey: chatKeys.duplicate(digits),
     queryFn: () => fetchLeadByPhone(digits ?? ''),
     enabled: !!digits && digits.length >= 8,
     staleTime: 15_000,
@@ -75,7 +77,7 @@ export function useFindLeadByPhone() {
   const queryClient = useQueryClient()
   return (digits: string) =>
     queryClient.fetchQuery({
-      queryKey: ['duplicate-lead', digits],
+      queryKey: chatKeys.duplicate(digits),
       queryFn: () => fetchLeadByPhone(digits),
       staleTime: 15_000,
     })
@@ -86,8 +88,8 @@ export function useCreateLead() {
   return useMutation({
     mutationFn: createLead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
     },
   })
 }
@@ -97,8 +99,8 @@ export function useUpdateLead(chatId: string) {
   return useMutation({
     mutationFn: (payload: LeadUpdateInput) => updateLead(chatId, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
   })
 }
@@ -109,8 +111,8 @@ export function useMarkNoShow(chatId: string) {
   return useMutation({
     mutationFn: () => markNoShow(chatId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
   })
 }
@@ -121,9 +123,9 @@ export function useDeleteLead() {
   return useMutation({
     mutationFn: deleteLead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
-      queryClient.invalidateQueries({ queryKey: ['kanban'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
     },
   })
 }
@@ -134,17 +136,17 @@ export function useMergeLead(chatId: string) {
   return useMutation({
     mutationFn: (otherId: string) => mergeLead(chatId, otherId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
-      queryClient.invalidateQueries({ queryKey: ['kanban'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity', chatId] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
   })
 }
 
 /** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo.
  *
- * Parchea la caché en vez de invalidar ['chats']: invalidar reordena la
+ * Parchea la caché en vez de invalidar chatKeys.all: invalidar reordena la
  * lista completa (por actividad/no-leídos) mientras en móvil sigue montada
  * pero oculta detrás del chat abierto. Como esto se dispara en casi cada
  * entrada a un lead, el usuario volvía a la lista con el scroll "saltado"
@@ -155,7 +157,7 @@ export function useMarkChatRead() {
     mutationFn: markChatRead,
     onSuccess: (_data, chatId) => {
       queryClient.setQueriesData<InfiniteData<ChatsPage>>(
-        { queryKey: ['chats', 'list'] },
+        { queryKey: chatKeys.lists },
         (current) => {
           if (!current) return current
           return {
@@ -169,7 +171,7 @@ export function useMarkChatRead() {
           }
         }
       )
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
     },
   })
 }
@@ -180,8 +182,8 @@ export function useMarkChatUnread() {
   return useMutation({
     mutationFn: markChatUnread,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
     },
   })
 }

@@ -2,6 +2,7 @@ import { subscribePush, unsubscribePush } from '../api'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { fetchVapidPublicKey } from '../api'
+import { notificationKeys } from '../keys'
 
 // Función y no una constante de módulo: así los tests pueden simular
 // navegadores con/sin soporte de Push sin tener que reimportar el módulo.
@@ -34,7 +35,7 @@ export function usePushSubscription() {
   const [subscribed, setSubscribed] = useState(false)
 
   const { data: vapidPublicKey } = useQuery({
-    queryKey: ['push', 'vapid-public-key'],
+    queryKey: notificationKeys.vapidPublicKey,
     queryFn: fetchVapidPublicKey,
     enabled: isPushSupported(),
     staleTime: Infinity,

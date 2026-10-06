@@ -2,15 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { fetchAdminLeadStages, createLeadStage, deleteLeadStage, fetchLeadStages, reorderLeadStages, updateLeadStage } from '../api'
 import { buildStageCatalog, DEFAULT_LEAD_STAGES, type LeadStageCatalog } from '../domain/leadStageMeta'
+import { dashboardKeys, kanbanKeys, stageKeys } from '../keys'
 
-const STAGES_KEY = ['lead-stages'] as const
 
 /** Etapas del negocio (activas e inactivas) en el orden del embudo. Cambian
  *  poco y el backend avisa por WebSocket (`lead_stages_updated`) cuando el
  *  admin las edita, así que se sirven de caché varios minutos. */
 export function useLeadStages() {
   return useQuery({
-    queryKey: [...STAGES_KEY, 'list'],
+    queryKey: stageKeys.list,
     queryFn: fetchLeadStages,
     staleTime: 5 * 60_000,
   })
@@ -30,7 +30,7 @@ export function useLeadStageCatalog(): LeadStageCatalog & { isLoading: boolean }
 
 export function useAdminLeadStages() {
   return useQuery({
-    queryKey: [...STAGES_KEY, 'admin'],
+    queryKey: stageKeys.admin,
     queryFn: fetchAdminLeadStages,
   })
 }
@@ -38,10 +38,10 @@ export function useAdminLeadStages() {
 function useInvalidateStages() {
   const queryClient = useQueryClient()
   return () => {
-    void queryClient.invalidateQueries({ queryKey: STAGES_KEY })
+    void queryClient.invalidateQueries({ queryKey: stageKeys.all })
     // El kanban y el dashboard ordenan y rotulan con las etapas.
-    void queryClient.invalidateQueries({ queryKey: ['kanban'] })
-    void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    void queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+    void queryClient.invalidateQueries({ queryKey: dashboardKeys.all })
   }
 }
 

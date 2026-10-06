@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { AnimatePresence, m } from "motion/react";
 import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, ShieldCheck, Moon, Sun, X } from "lucide-react";
@@ -14,7 +14,8 @@ import { Sidebar } from "./Sidebar";
 import { useLayout } from "../shared/hooks/useBreakpoint";
 import { useLogout, useMe } from "../features/auth/queries";
 import { useUnreadCount } from "../features/chats/queries";
-import { useChatUpdates, type InternalMentionAlert } from "../realtime/useRealtime";
+import { useRealtimeConnection, type InternalMentionAlert } from "../realtime/useRealtime";
+import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from "../features/notifications/hooks/useNotifications";
 import { useTheme } from "../shared/hooks/useTheme";
 import { Tooltip } from "../shared/ui/Tooltip";
@@ -92,7 +93,8 @@ export function MainLayout() {
     setInternalMention(alert);
   }
 
-  useChatUpdates(chatId ?? null, notify, showInternalMention);
+  const realtimeBus = useMemo(createAppRealtimeBus, []);
+  useRealtimeConnection(realtimeBus, notify, showInternalMention);
 
   useEffect(() => {
     if (!internalMention) return;

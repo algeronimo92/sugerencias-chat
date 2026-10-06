@@ -2,12 +2,14 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
 import { deleteMediaAsset, fetchMediaLibrary, renameMediaAsset, saveStickerToLibrary, uploadMediaAsset } from './api'
 import type { MediaAsset, MediaAssetKind } from './types'
+import { mediaKeys } from './keys'
+import { templateKeys } from '../chats/public/keys'
 
 export type { MediaAssetUpload } from './types'
 
 export function useMediaLibrary(search = '', kind: MediaAssetKind | '' = '') {
   return useQuery({
-    queryKey: ['media-library', search, kind],
+    queryKey: mediaKeys.list(search, kind),
     queryFn: () => fetchMediaLibrary(search, kind),
   })
 }
@@ -15,7 +17,7 @@ export function useMediaLibrary(search = '', kind: MediaAssetKind | '' = '') {
 export function useUploadMediaAsset() {
   return useMutation({
     mutationFn: uploadMediaAsset,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
 }
 
@@ -24,7 +26,7 @@ export function useUploadMediaAsset() {
 export function useSaveStickerToLibrary() {
   return useMutation({
     mutationFn: saveStickerToLibrary,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
 }
 
@@ -32,8 +34,8 @@ export function useRenameMediaAsset() {
   return useMutation({
     mutationFn: renameMediaAsset,
     onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['media-library'] }),
-      queryClient.invalidateQueries({ queryKey: ['templates'] }),
+      queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
+      queryClient.invalidateQueries({ queryKey: templateKeys.all }),
     ]),
   })
 }
@@ -42,9 +44,9 @@ export function useDeleteMediaAsset() {
   return useMutation({
     mutationFn: deleteMediaAsset,
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['media-library'] })
-      const previous = queryClient.getQueriesData<MediaAsset[]>({ queryKey: ['media-library'] })
-      queryClient.setQueriesData<MediaAsset[]>({ queryKey: ['media-library'] }, current =>
+      await queryClient.cancelQueries({ queryKey: mediaKeys.all })
+      const previous = queryClient.getQueriesData<MediaAsset[]>({ queryKey: mediaKeys.all })
+      queryClient.setQueriesData<MediaAsset[]>({ queryKey: mediaKeys.all }, current =>
         current?.filter(asset => asset.id !== id),
       )
       return { previous }
@@ -52,6 +54,6 @@ export function useDeleteMediaAsset() {
     onError: (_error, _id, context) => {
       context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['media-library'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
 }

@@ -3,16 +3,17 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteD
 import { useChatSocketConnected } from '../../../realtime/useRealtime'
 import { fetchMessages, forwardMessages, pinMessage, fetchPinnedMessages, reactToMessage, sendInteractive, sendMessage, retryFailedMessage, discardFailedMessage, sendTemplate, unpinMessage, sendAudio, sendContacts, sendLocation, sendMedia, sendSticker } from '../api'
 import type { AudioPayload, ContactsPayload, ForwardPayload, ForwardResult, InteractivePayload, LocationPayload, MediaPayload, Message, MessageCursor, MessagePage, MessageReaction, MessageType, OptimisticContext, OptimisticMessageDraft, ReactionPayload, SendTemplatePayload, StickerPayload, TextPayload } from '../types'
+import { chatKeys, messageKeys, templateKeys } from '../keys'
 
 // untilId no forma parte de la queryKey a propósito: los updates optimistas
-// de useSendMessage escriben sobre ['messages', chatId] exacto. Solo influye
+// de useSendMessage escriben sobre messageKeys.thread(chatId) exacto. Solo influye
 // en cómo se pide la primera página cuando la cache está vacía; si el chat ya
 // estaba cacheado sin el mensaje buscado, ChatThread pagina hacia atrás hasta
 // encontrarlo.
 export function useMessages(chatId: string | null, untilId?: number | null) {
   const connected = useChatSocketConnected()
   return useInfiniteQuery({
-    queryKey: ['messages', chatId],
+    queryKey: messageKeys.thread(chatId),
     queryFn: ({ pageParam }) => fetchMessages(chatId as string, pageParam, untilId),
     enabled: !!chatId,
     initialPageParam: null as MessageCursor,
@@ -79,7 +80,7 @@ function mutateMessageCache(
   chatId: string,
   update: (message: Message) => Message | null,
 ) {
-  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+  queryClient.setQueryData<InfiniteData<MessagePage>>(messageKeys.thread(chatId), current => {
     if (!current) return current
     return {
       ...current,
@@ -97,7 +98,7 @@ function appendOptimisticMessages(
   drafts: OptimisticMessageDraft[],
 ): OptimisticContext {
   const messages = drafts.map(optimisticMessage)
-  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+  queryClient.setQueryData<InfiniteData<MessagePage>>(messageKeys.thread(chatId), current => {
     if (!current) return { pages: [{ items: messages, has_more: false }], pageParams: [null] }
     const pages = [...current.pages]
     const newestPage = pages[0] ?? { items: [], has_more: false }
@@ -122,7 +123,7 @@ function reconcileOptimisticMessages(
   serverMessages: Message[],
 ) {
   const optimisticIds = new Set(context?.optimisticIds ?? [])
-  queryClient.setQueryData<InfiniteData<MessagePage>>(['messages', chatId], current => {
+  queryClient.setQueryData<InfiniteData<MessagePage>>(messageKeys.thread(chatId), current => {
     const base = current ?? { pages: [{ items: [], has_more: false }], pageParams: [null] }
     const pages = base.pages.map(page => ({
       ...page,
@@ -142,8 +143,8 @@ function refetchAfterLastSend(queryClient: ReturnType<typeof useQueryClient>, ch
   // onSettled corre antes de que TanStack cambie la mutación a success/error.
   // Un timer (no un microtask) deja que esa transición finalice primero.
   setTimeout(() => {
-    if (queryClient.isMutating({ mutationKey: ['send-message', chatId] }) === 0) {
-      void queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+    if (queryClient.isMutating({ mutationKey: messageKeys.sending(chatId) }) === 0) {
+      void queryClient.invalidateQueries({ queryKey: messageKeys.thread(chatId) })
     }
   }, 0)
 }
@@ -153,10 +154,10 @@ export type { TextPayload } from '../types'
 export function useSendMessage(chatId: string) {
   const queryClient = useQueryClient()
   const mutation = useMutation<Message, Error, TextPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: (variables: TextPayload) => sendMessage(chatId, variables),
     onMutate: async ({ text, replyTo }) => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, [{ content: text, reply_to: replyTo }])
     },
     onSuccess: (message, _payload, context) => {
@@ -169,10 +170,10 @@ export function useSendMessage(chatId: string) {
   })
 
   const retry = useMutation<Message, Error, Message>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: (message: Message) => retryFailedMessage(chatId, message),
     onMutate: async message => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
         ? { ...current, outbox_status: 'queued', meta_status: null, wa_message_id: null }
         : current)
@@ -193,7 +194,7 @@ export function useSendMessage(chatId: string) {
   const discard = useMutation<Message, Error, Message>({
     mutationFn: (message: Message) => discardFailedMessage(chatId, message),
     onMutate: async message => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       mutateMessageCache(queryClient, chatId, current => current.id === message.id
         ? { ...current, outbox_status: 'discarded' }
         : current)
@@ -226,10 +227,10 @@ export function useSendMessage(chatId: string) {
 export function useSendAudio(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, AudioPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: payload => orderedRequest(chatId, () => sendAudio(chatId, payload)),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
         message_type: 'audio',
@@ -246,10 +247,10 @@ export function useSendAudio(chatId: string) {
 export function useSendMedia(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, MediaPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: payload => orderedRequest(chatId, () => sendMedia(chatId, payload)),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       const messageType: MessageType = payload.contentType.startsWith('image/') ? 'image'
         : payload.contentType.startsWith('video/') ? 'video'
           : payload.contentType.startsWith('audio/') ? 'audio' : 'document'
@@ -276,15 +277,15 @@ export function useSendMedia(chatId: string) {
 export function useSendTemplate(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message[], Error, SendTemplatePayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: (variables: SendTemplatePayload) => sendTemplate(chatId, variables),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, payload.optimisticMessages)
     },
     onSuccess: (messages, _payload, context) => {
       reconcileOptimisticMessages(queryClient, chatId, context, messages)
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      queryClient.invalidateQueries({ queryKey: templateKeys.all })
     },
     onError: (_error, _payload, context) => removeOptimisticMessages(queryClient, chatId, context),
     onSettled: () => refetchAfterLastSend(queryClient, chatId),
@@ -305,7 +306,7 @@ export function useReactToMessage(chatId: string) {
   return useMutation<Message, Error, ReactionPayload, { previous: MessageReaction[] | null }>({
     mutationFn: (variables: ReactionPayload) => reactToMessage(chatId, variables),
     onMutate: async ({ messageId, emoji }) => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       let previous: MessageReaction[] | null = null
       mutateMessageCache(queryClient, chatId, message => {
         if (message.id !== messageId) return message
@@ -330,7 +331,7 @@ export function useReactToMessage(chatId: string) {
  * fijado puede estar fuera de la página del hilo que está cargada. */
 export function usePinnedMessages(chatId: string | null) {
   return useQuery({
-    queryKey: ['pinned-messages', chatId],
+    queryKey: messageKeys.pinned(chatId),
     queryFn: () => fetchPinnedMessages(chatId),
     enabled: !!chatId,
   })
@@ -342,7 +343,7 @@ export function usePinMessage(chatId: string) {
     mutationFn: (messageId: number) => pinMessage(chatId, messageId),
     onSuccess: message => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
-      void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
+      void queryClient.invalidateQueries({ queryKey: messageKeys.pinned(chatId) })
     },
   })
 }
@@ -353,7 +354,7 @@ export function useUnpinMessage(chatId: string) {
     mutationFn: (messageId: number) => unpinMessage(chatId, messageId),
     onSuccess: message => {
       mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
-      void queryClient.invalidateQueries({ queryKey: ['pinned-messages', chatId] })
+      void queryClient.invalidateQueries({ queryKey: messageKeys.pinned(chatId) })
     },
   })
 }
@@ -373,9 +374,9 @@ export function useForwardMessages(chatId: string) {
   return useMutation<ForwardResult, Error, ForwardPayload>({
     mutationFn: (variables: ForwardPayload) => forwardMessages(chatId, variables),
     onSuccess: (_result, { targetChatIds }) => {
-      void queryClient.invalidateQueries({ queryKey: ['chats'] })
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all })
       for (const target of targetChatIds) {
-        void queryClient.invalidateQueries({ queryKey: ['messages', target] })
+        void queryClient.invalidateQueries({ queryKey: messageKeys.thread(target) })
       }
     },
   })
@@ -384,10 +385,10 @@ export function useForwardMessages(chatId: string) {
 export function useSendSticker(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, StickerPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: payload => orderedRequest(chatId, () => sendSticker(chatId, payload)),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
         message_type: 'sticker',
@@ -403,10 +404,10 @@ export function useSendSticker(chatId: string) {
 export function useSendLocation(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, LocationPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: payload => orderedRequest(chatId, () => sendLocation(chatId, payload)),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
         message_type: 'location',
@@ -427,10 +428,10 @@ export type { ContactShareInput } from '../types'
 export function useSendContacts(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, ContactsPayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: payload => orderedRequest(chatId, () => sendContacts(chatId, payload)),
     onMutate: async payload => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       return appendOptimisticMessages(queryClient, chatId, [{
         content: null,
         message_type: 'contacts',
@@ -455,10 +456,10 @@ export function useSendContacts(chatId: string) {
 export function useSendInteractive(chatId: string) {
   const queryClient = useQueryClient()
   return useMutation<Message, Error, InteractivePayload, OptimisticContext>({
-    mutationKey: ['send-message', chatId],
+    mutationKey: messageKeys.sending(chatId),
     mutationFn: (variables: InteractivePayload) => sendInteractive(chatId, variables),
     onMutate: async ({ interactive, replyTo }) => {
-      await queryClient.cancelQueries({ queryKey: ['messages', chatId] })
+      await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
       const body = interactive.body
       const text = body && typeof body === 'object' && !Array.isArray(body) && typeof body.text === 'string' ? body.text : null
       return appendOptimisticMessages(queryClient, chatId, [{

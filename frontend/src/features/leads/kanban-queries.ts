@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignTag, bulkMoveStage } from './api'
 import type { LeadStage } from './types'
+import { kanbanKeys, leadKeys } from './keys'
+import { chatKeys } from '../chats/public/keys'
 
 export type { KanbanPage } from './types'
 
@@ -8,7 +10,7 @@ export type { KanbanSnapshot } from './types'
 
 export function useKanbanSnapshot(search: string) {
   return useQuery({
-    queryKey: ['kanban', 'snapshot', search],
+    queryKey: kanbanKeys.snapshot(search),
     queryFn: () => fetchKanbanSnapshot(search),
     staleTime: 20_000,
     retry: false,
@@ -27,9 +29,9 @@ export function useMoveLeadStage() {
   return useMutation({
     mutationFn: moveLeadStage,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kanban'] })
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },
   })
 }
@@ -41,9 +43,9 @@ export function useBulkMoveStage() {
   return useMutation({
     mutationFn: bulkMoveStage,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kanban'] })
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },
   })
 }
@@ -53,9 +55,9 @@ export function useBulkAssignTag() {
   return useMutation({
     mutationFn: bulkAssignTag,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chats'] })
-      queryClient.invalidateQueries({ queryKey: ['kanban'] })
-      queryClient.invalidateQueries({ queryKey: ['lead-activity'] })
+      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },
   })
 }

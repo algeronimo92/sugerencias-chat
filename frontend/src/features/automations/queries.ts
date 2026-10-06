@@ -3,13 +3,14 @@ import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
 import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters } from './types'
+import { automationKeys, executionKeys } from './keys'
 
 export type { AutomationRuleInput } from './types'
 
 export function useAutomationRules() {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automations'],
+    queryKey: automationKeys.all,
     queryFn: fetchAutomationRules,
     refetchInterval: connected ? false : 60_000,
   })
@@ -24,7 +25,7 @@ const ACTIVE_EXECUTION_POLL_MS = 12_000
 export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: ['automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all', dateFrom ?? 'none', dateTo ?? 'none', mine],
+    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine }),
     queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine }),
     refetchInterval: (query) => {
       if (connected) return false
@@ -54,7 +55,7 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
  *  por automatización. */
 export function useManualFlows(chatId?: string, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: ['automation-manual-flows', chatId ?? 'all'],
+    queryKey: automationKeys.manualFlows(chatId),
     queryFn: () => fetchManualFlows(chatId),
     enabled,
     // Catálogo que cambia solo al editar flujos, y eso llega por
@@ -72,8 +73,8 @@ export function useStartManualFlow() {
 
 function invalidateAutomations() {
   return Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['automations'] }),
-    queryClient.invalidateQueries({ queryKey: ['automation-executions'] }),
+    queryClient.invalidateQueries({ queryKey: automationKeys.all }),
+    queryClient.invalidateQueries({ queryKey: executionKeys.all }),
   ])
 }
 
@@ -121,7 +122,7 @@ export function useRetryExecution() {
  *  solo la ejecución lo tiene. */
 export function useAutomationExecution(executionId: number | null) {
   return useQuery({
-    queryKey: ['automation-executions', 'by-id', executionId],
+    queryKey: executionKeys.detail(executionId),
     queryFn: () => fetchAutomationExecution(executionId),
     enabled: executionId !== null,
   })
@@ -176,7 +177,7 @@ export type { AutomationFlowVersion } from './types'
 
 export function useFlowVersions(ruleId: number | null) {
   return useQuery({
-    queryKey: ['automation-flow-versions', ruleId],
+    queryKey: automationKeys.flowVersions(ruleId),
     queryFn: () => fetchFlowVersions(ruleId),
     enabled: ruleId != null,
   })

@@ -3,6 +3,7 @@ import { login, logout, fetchActionToken, completeAccountAction, confirmMfa, dis
 import type { ActionTokenInfo, AuthUser } from './types'
 export { useMe } from '../../shared/auth'
 import { endSession } from '../../shared/queryClient'
+import { authKeys } from './keys'
 
 /** Largo del PIN de acceso rápido. Tiene que coincidir con PIN_LENGTH del
  *  backend (services/session_service.py), que es quien lo valida de verdad. */
@@ -11,8 +12,8 @@ export const PIN_LENGTH = 4
 function useSuccessfulLogin() {
   const queryClient = useQueryClient()
   return (user: AuthUser) => {
-    queryClient.setQueryData(['auth', 'me'], user)
-    void queryClient.invalidateQueries({ queryKey: ['auth', 'pin-status'] })
+    queryClient.setQueryData(authKeys.me, user)
+    void queryClient.invalidateQueries({ queryKey: authKeys.pinStatus })
   }
 }
 
@@ -31,7 +32,7 @@ export function usePinLogin() {
 
 export function usePinStatus() {
   return useQuery({
-    queryKey: ['auth', 'pin-status'],
+    queryKey: authKeys.pinStatus,
     queryFn: fetchPinStatus,
     staleTime: 30_000,
     retry: false,
@@ -42,7 +43,7 @@ export function useSetupPin() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: setupPin,
-    onSuccess: (status) => queryClient.setQueryData(['auth', 'pin-status'], status),
+    onSuccess: (status) => queryClient.setQueryData(authKeys.pinStatus, status),
   })
 }
 
@@ -50,13 +51,13 @@ export function useRemovePin() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: removePin,
-    onSuccess: () => queryClient.setQueryData(['auth', 'pin-status'], { available: false, locked_seconds: 0 }),
+    onSuccess: () => queryClient.setQueryData(authKeys.pinStatus, { available: false, locked_seconds: 0 }),
   })
 }
 
 export function useSessions(enabled = true) {
   return useQuery({
-    queryKey: ['auth', 'sessions'],
+    queryKey: authKeys.sessions,
     queryFn: fetchSessions,
     enabled,
   })
@@ -66,7 +67,7 @@ export function useRevokeSession() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: revokeSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: authKeys.sessions }),
   })
 }
 
@@ -95,7 +96,7 @@ export type { MfaStatus } from './types'
 
 export function useMfaStatus(enabled = true) {
   return useQuery({
-    queryKey: ['auth', 'mfa-status'],
+    queryKey: authKeys.mfaStatus,
     queryFn: fetchMfaStatus,
     enabled,
   })
@@ -117,7 +118,7 @@ export function useDisableMfa() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: disableMfa,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'mfa-status'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: authKeys.mfaStatus }),
   })
 }
 
@@ -131,7 +132,7 @@ export function useRequestPasswordReset() {
 
 export function useActionToken(token: string) {
   return useQuery({
-    queryKey: ['auth', 'action-token', token],
+    queryKey: authKeys.actionToken(token),
     queryFn: () => fetchActionToken(token),
     enabled: token.length > 0,
     retry: false,

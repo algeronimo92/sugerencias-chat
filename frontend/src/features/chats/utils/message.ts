@@ -22,6 +22,7 @@ Workflow,
 type LucideIcon,
 } from "lucide-react";
 import type { JsonObject, JsonValue } from '../../../shared/types';
+import { isJsonObject } from '../../../shared/utils/json';
 import { META_CONTRACT } from "../domain/metaContract";
 import type { MessageAnalysis, MessageType } from '../types';
 
@@ -159,11 +160,7 @@ function asString(value: JsonValue | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function isJsonObject(
-  value: JsonValue | undefined,
-): value is JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
+export { isJsonObject };
 
 function asObject(value: JsonValue | undefined): JsonObject {
   return isJsonObject(value) ? value : {};
