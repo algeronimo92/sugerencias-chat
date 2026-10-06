@@ -84,6 +84,8 @@ export default defineConfig({
     // reales de userEvent (escribir, subir archivo, abrir/cerrar diálogos)
     // cuando la suite corre en paralelo bajo contención de CPU: no hay
     // ningún bug detrás, el test solo necesita más margen para terminar.
-    testTimeout: 15000,
+    // Los tests de caracterización que montan la app entera (src/app)
+    // sumaron carga: un test de un segundo llegó a tardar 13 s en la suite.
+    testTimeout: 30000,
   },
 });
