@@ -1,4 +1,4 @@
-import type { LeadStage } from "../leads/types";
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 export interface AIProfile {
   business_name: string | null
   business_description: string | null
@@ -25,12 +25,7 @@ export interface KnowledgeDocument extends KnowledgeDocumentSummary {
   content: string
 }
 
-export interface AIUsage {
-  enabled: boolean
-  monthly_quota: number | null
-  used_this_month: number
-  remaining: number | null
-}
+export type AIUsage = Delivered<ApiSchemas['AIUsage']>
 
 export interface GenerateParams {
   chat_id: string
@@ -42,10 +37,7 @@ export interface GenerateParams {
   instruction?: string
 }
 
-export interface LeadAnalysisResult {
-  changed?: boolean
-  stage?: LeadStage | null
-}
+export type LeadAnalysisResult = Delivered<ApiSchemas['LeadAnalysisResult']>
 
 export interface TtsResult {
   contentType: string

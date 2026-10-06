@@ -1,6 +1,6 @@
 import { toSuggestionError } from './errors'
 import client from "../../shared/http/client";
-import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
+import type { ApiResponse } from '../../shared/http/contract'
 import type { SuggestionResponse, SuggestionStatus } from "../chats/types";
 import type { MediaAsset } from "../media/types";
 import type { AIProfile, AIUsage, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
@@ -23,7 +23,7 @@ export async function fetchSuggestionStatus(chatId: string | null): Promise<Sugg
 
 export async function analyzeLead(chatId: string): Promise<LeadAnalysisResult> {
   try {
-    const { data } = await client.post<UntypedResponse<'/api/suggestions/analyze', 'post', LeadAnalysisResult>>('/api/suggestions/analyze', { chat_id: chatId })
+    const { data } = await client.post<ApiResponse<'/api/suggestions/analyze', 'post'>>('/api/suggestions/analyze', { chat_id: chatId })
     return data
   } catch (err) {
     throw toSuggestionError(err)
@@ -36,7 +36,7 @@ export async function generateSpeech(text: string): Promise<TtsResult> {
 }
 
 export async function fetchAiUsage(): Promise<AIUsage> {
-  return (await client.get<UntypedResponse<'/api/suggestions/usage', 'get', AIUsage>>('/api/suggestions/usage')).data
+  return (await client.get<ApiResponse<'/api/suggestions/usage', 'get'>>('/api/suggestions/usage')).data
 }
 
 export async function fetchAiProfile(): Promise<AIProfile> {

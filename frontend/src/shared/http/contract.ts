@@ -10,7 +10,7 @@
  */
 
 import type { components, paths } from '../../api/schema'
-import type { JsonObject, JsonValue } from '../types'
+import type { JsonValue } from '../types'
 
 export type ApiSchemas = components['schemas']
 
@@ -49,49 +49,7 @@ export type Delivered<T> =
 export type ApiResponse<P extends ApiPath, M extends ApiMethod> =
   Operation<P, M> extends { responses: infer Responses } ? Delivered<SuccessContent<Responses>> : never
 
-/** Cuerpo JSON que acepta `método ruta`. */
-export type ApiBody<P extends ApiPath, M extends ApiMethod> =
-  Operation<P, M> extends { requestBody?: infer Body } ? JsonContent<NonNullable<Body>> : never
-
-/** Parámetros de query que acepta `método ruta`. */
-export type ApiQuery<P extends ApiPath, M extends ApiMethod> =
-  Operation<P, M> extends { parameters: { query?: infer Query } } ? NonNullable<Query> : never
-
-// --- Donde el contrato no alcanza ------------------------------------------
-//
-// Cada uso de UntypedResponse queda listado en architecture.test.ts y la
-// lista solo puede achicarse.
-
-/** Un valor JSON libre: lo que el esquema describe como `dict` o `Any`. */
-type FreeJson<T> = [T] extends [JsonValue] ? (JsonObject extends T ? true : JsonValue extends T ? true : false) : false
-
-/** Error que aparece en el tipo cuando el contrato y la feature no encajan. */
-interface ContractMismatch<Reason extends string> {
-  readonly __contractMismatch: Reason
-}
-
-/**
- * Respuesta que el contrato todavía no tipa: el endpoint del backend no
- * declara `response_model` (o declara un `dict`). La feature declara la forma
- * que espera, sin verificación. Cuando el backend tipa la respuesta, este
- * helper deja de compilar y la función pasa a `ApiResponse`.
- */
-export type UntypedResponse<P extends ApiPath, M extends ApiMethod, Expected> =
-  FreeJson<ApiResponse<P, M>> extends true
-    ? Expected
-    : ContractMismatch<'El contrato ya tipa esta respuesta: usar ApiResponse'>
-
 // --- Frontera: de lo que dice el contrato a lo que usa la feature ----------
-
-/**
- * Estrecha un texto del contrato a los valores que la feature conoce. El
- * contrato lo tipa como `str` (la base no lo restringe), así que un valor
- * desconocido queda en `null`, como si el campo no tuviera estado: es lo que
- * ya hacía la pantalla al no reconocerlo.
- */
-export function oneOf<const T extends string>(value: string | null, allowed: readonly T[]): T | null {
-  return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : null
-}
 
 /**
  * Lee con su forma de dominio un campo que el backend guarda como JSON libre

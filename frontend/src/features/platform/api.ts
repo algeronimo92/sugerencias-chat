@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
-import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappStatus } from './types';
+import type { ApiResponse } from '../../shared/http/contract'
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -32,7 +32,7 @@ export async function resendInvitation(id: number): Promise<AppUser> {
 }
 
 export async function fetchStatus(): Promise<WhatsappStatus> {
-  const { data } = await client.get<UntypedResponse<'/api/whatsapp/status', 'get', WhatsappStatus>>('/api/whatsapp/status')
+  const { data } = await client.get<ApiResponse<'/api/whatsapp/status', 'get'>>('/api/whatsapp/status')
   return data
 }
 
@@ -145,8 +145,8 @@ export async function savePlatformSettings(values: Record<string, string>): Prom
   return (await client.put<ApiResponse<'/api/platform/settings', 'put'>>("/api/platform/settings", { values })).data
 }
 
-export async function fetchOrganizations(): Promise<{ head: string; items: Organization[] }> {
-  return (await client.get<UntypedResponse<'/api/platform/organizations', 'get', { head: string; items: Organization[] }>>(
+export async function fetchOrganizations(): Promise<OrganizationList> {
+  return (await client.get<ApiResponse<'/api/platform/organizations', 'get'>>(
         "/api/platform/organizations",
       )).data
 }
@@ -156,7 +156,7 @@ export async function logoutOperator() {
 }
 
 export async function fetchOperator(): Promise<OperadorActual> {
-  return (await client.get<UntypedResponse<'/api/platform/auth/me', 'get', OperadorActual>>("/api/platform/auth/me")).data
+  return (await client.get<ApiResponse<'/api/platform/auth/me', 'get'>>("/api/platform/auth/me")).data
 }
 
 function leerComoBase64(archivo: File): Promise<string> {

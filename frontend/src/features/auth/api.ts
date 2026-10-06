@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
+import type { ApiResponse } from '../../shared/http/contract'
 import type { ActionTokenInfo, AuthSession, AuthUser, LoginPayload, MfaStatus, PinStatus } from "./types";
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
@@ -41,18 +41,18 @@ export async function revokeSession(sessionId: string) { await client.delete<Api
 export async function logoutAll() { await client.post<ApiResponse<'/api/auth/logout-all', 'post'>>('/api/auth/logout-all') }
 
 export async function fetchMfaStatus(): Promise<MfaStatus> {
-  return (await client.get<UntypedResponse<'/api/auth/mfa/status', 'get', MfaStatus>>('/api/auth/mfa/status')).data
+  return (await client.get<ApiResponse<'/api/auth/mfa/status', 'get'>>('/api/auth/mfa/status')).data
 }
 
 export async function startMfa(currentPassword: string): Promise<{ secret: string; otpauth_uri: string }> {
   return (
-      await client.post<UntypedResponse<'/api/auth/mfa/start', 'post', { secret: string; otpauth_uri: string }>>('/api/auth/mfa/start', { current_password: currentPassword })
+      await client.post<ApiResponse<'/api/auth/mfa/start', 'post'>>('/api/auth/mfa/start', { current_password: currentPassword })
     ).data
 }
 
 export async function confirmMfa(code: string): Promise<{ recovery_codes: string[] }> {
   return (
-      await client.post<UntypedResponse<'/api/auth/mfa/confirm', 'post', { recovery_codes: string[] }>>('/api/auth/mfa/confirm', { code })
+      await client.post<ApiResponse<'/api/auth/mfa/confirm', 'post'>>('/api/auth/mfa/confirm', { code })
     ).data
 }
 

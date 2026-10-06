@@ -1,3 +1,4 @@
+import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 import type { AppointmentStatus } from "./constants";
 
 export interface AppointmentAttachmentInput {
@@ -22,16 +23,9 @@ export interface CreateAppointmentInput {
   testMode: boolean
 }
 
-export interface AppointmentResult {
-  success?: boolean
-  status?: string
-  message?: string
-  eventLink?: string
-  calendarSyncStatus?: 'not_configured' | 'pending' | 'synced' | 'error' | 'skipped'
-  integrationErrors?: string[]
-  citaDuplicada?: boolean
-  [key: string]: unknown
-}
+/** Resultado de registrar una cita; trae además lo que devolvió el workflow
+ * de n8n (por ejemplo `citaDuplicada`). */
+export type AppointmentResult = Delivered<ApiSchemas['AppointmentCreated']>
 
 export interface AppointmentListItem {
   id: number

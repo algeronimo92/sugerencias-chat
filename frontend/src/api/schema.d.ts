@@ -3177,10 +3177,25 @@ export interface components {
             /** Ai Description */
             ai_description?: string | null;
         };
+        /** AIUsage */
+        AIUsage: {
+            /** Enabled */
+            enabled: boolean;
+            /** Monthly Quota */
+            monthly_quota?: number | null;
+            /** Used This Month */
+            used_this_month: number;
+            /** Remaining */
+            remaining?: number | null;
+        };
+        /**
+         * AccountActionPurpose
+         * @enum {string}
+         */
+        AccountActionPurpose: "invitation" | "password_reset";
         /** ActionTokenOut */
         ActionTokenOut: {
-            /** Purpose */
-            purpose: string;
+            purpose: components["schemas"]["AccountActionPurpose"];
             /** Email */
             email: string;
             /** Name */
@@ -3244,6 +3259,26 @@ export interface components {
              * @default false
              */
             test_mode: boolean;
+        };
+        /**
+         * AppointmentCreated
+         * @description Resultado de registrar una cita. Lleva además lo que devolvió el
+         *     workflow de n8n (por ejemplo ``citaDuplicada``), que viaja tal cual.
+         */
+        AppointmentCreated: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message?: string | null;
+            appointment: components["schemas"]["AppointmentItem"];
+            /** Eventlink */
+            eventLink?: string | null;
+            /** Calendarsyncstatus */
+            calendarSyncStatus: string;
+            /** Integrationerrors */
+            integrationErrors: string[];
+        } & {
+            [key: string]: unknown;
         };
         /** AppointmentItem */
         AppointmentItem: {
@@ -3340,8 +3375,7 @@ export interface components {
             scheduled_for: string;
             /** Paused At */
             paused_at?: string | null;
-            /** Pause Scope */
-            pause_scope?: string | null;
+            pause_scope?: components["schemas"]["ExecutionPauseScope"] | null;
             /** Started At */
             started_at?: string | null;
             /** Finished At */
@@ -3358,11 +3392,8 @@ export interface components {
             error?: string | null;
             /** Created At */
             created_at: string;
-            /**
-             * Start Source
-             * @default system
-             */
-            start_source: string;
+            /** @default system */
+            start_source: components["schemas"]["ExecutionStartSource"];
             /** Started By User Id */
             started_by_user_id?: number | null;
             /** Started By Name */
@@ -3398,6 +3429,19 @@ export interface components {
             flow_definition: {
                 [key: string]: unknown;
             };
+        };
+        /** AutomationFlowSimulation */
+        AutomationFlowSimulation: {
+            /** Lead Id */
+            lead_id: string;
+            /** Lead Name */
+            lead_name?: string | null;
+            /** Flow Version */
+            flow_version: number;
+            /** Path */
+            path: {
+                [key: string]: unknown;
+            }[];
         };
         /** AutomationFlowSimulationRequest */
         AutomationFlowSimulationRequest: {
@@ -3514,8 +3558,7 @@ export interface components {
             execution_count: number;
             /** Last Execution At */
             last_execution_at?: string | null;
-            /** Last Execution Status */
-            last_execution_status?: string | null;
+            last_execution_status?: components["schemas"]["AutomationExecutionStatus"] | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -3703,6 +3746,11 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** CompletedTasks */
+        CompletedTasks: {
+            /** Completed */
+            completed: number;
+        };
         /** ContactShareItem */
         ContactShareItem: {
             /** Full Name */
@@ -3813,6 +3861,246 @@ export interface components {
              */
             seconds_remaining: number;
         };
+        /** DashboardActivity */
+        DashboardActivity: {
+            /** Trend */
+            trend: components["schemas"]["DashboardPoint"][];
+            /** By Type */
+            by_type: components["schemas"]["DashboardMetricItem"][];
+            /** By User */
+            by_user: components["schemas"]["DashboardMetricItem"][];
+            messages: components["schemas"]["DashboardMessages"];
+        };
+        /** DashboardAppointments */
+        DashboardAppointments: {
+            /** By Status */
+            by_status: components["schemas"]["DashboardMetricItem"][];
+            /** By User */
+            by_user: components["schemas"]["DashboardMetricItem"][];
+            /** By Owner */
+            by_owner: components["schemas"]["DashboardMetricItem"][];
+            /** By Treatment */
+            by_treatment: components["schemas"]["DashboardMetricItem"][];
+            /** Trend */
+            trend: components["schemas"]["DashboardPoint"][];
+            /** Lost Reasons */
+            lost_reasons: components["schemas"]["DashboardMetricItem"][];
+            /** Upcoming */
+            upcoming: components["schemas"]["DashboardUpcomingAppointment"][];
+            no_shows: components["schemas"]["DashboardNoShows"];
+            linkage: components["schemas"]["DashboardLinkage"];
+        };
+        /** DashboardAutomations */
+        DashboardAutomations: {
+            /** By Flow */
+            by_flow: components["schemas"]["DashboardFlowRow"][];
+            /** By Actor */
+            by_actor: components["schemas"]["DashboardMetricItem"][];
+            /** By Source */
+            by_source: components["schemas"]["DashboardMetricItem"][];
+            /** By Trigger */
+            by_trigger: components["schemas"]["DashboardMetricItem"][];
+            /** Trend */
+            trend: components["schemas"]["DashboardPoint"][];
+            failures: components["schemas"]["DashboardFlowFailures"];
+            /** Active Now */
+            active_now: {
+                [key: string]: number;
+            };
+        };
+        /** DashboardCoverage */
+        DashboardCoverage: {
+            /** Total */
+            total: number;
+            /** Tagged */
+            tagged: number;
+            /** Untagged */
+            untagged: number;
+            /** Rate */
+            rate?: number | null;
+        };
+        /** DashboardFlowFailures */
+        DashboardFlowFailures: {
+            /** Total */
+            total: number;
+            /** Failed */
+            failed: number;
+            /** Rate */
+            rate?: number | null;
+            /** Top Errors */
+            top_errors: components["schemas"]["DashboardMetricItem"][];
+        };
+        /** DashboardFlowRow */
+        DashboardFlowRow: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Rule Id */
+            rule_id: number;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Completed */
+            completed: number;
+            /** Failed */
+            failed: number;
+            /** Skipped */
+            skipped: number;
+            /** Active */
+            active: number;
+            /** Last At */
+            last_at?: string | null;
+        };
+        /** DashboardFunnelStep */
+        DashboardFunnelStep: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Rate */
+            rate?: number | null;
+        };
+        /** DashboardLinkage */
+        DashboardLinkage: {
+            /** Total */
+            total: number;
+            /** Linked */
+            linked: number;
+            /** Unlinked */
+            unlinked: number;
+            /** Rate */
+            rate?: number | null;
+        };
+        /** DashboardMessages */
+        DashboardMessages: {
+            /** Trend */
+            trend: components["schemas"]["DashboardPoint"][];
+            /** By User */
+            by_user: components["schemas"]["DashboardMetricItem"][];
+        };
+        /** DashboardMetricItem */
+        DashboardMetricItem: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+        };
+        /** DashboardMetrics */
+        DashboardMetrics: {
+            /** Period Days */
+            period_days: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "mine" | "team";
+            summary: components["schemas"]["DashboardSummary"];
+            /** Stages */
+            stages: components["schemas"]["DashboardMetricItem"][];
+            /** Origins */
+            origins: components["schemas"]["DashboardMetricItem"][];
+            /** Services */
+            services: components["schemas"]["DashboardMetricItem"][];
+            /** Sellers */
+            sellers: components["schemas"]["DashboardMetricItem"][];
+            /** New Leads Trend */
+            new_leads_trend: components["schemas"]["DashboardPoint"][];
+            /** Funnel */
+            funnel: components["schemas"]["DashboardFunnelStep"][];
+            pipeline: components["schemas"]["DashboardPipeline"];
+            automations: components["schemas"]["DashboardAutomations"];
+            tags: components["schemas"]["DashboardTags"];
+            appointments: components["schemas"]["DashboardAppointments"];
+            activity: components["schemas"]["DashboardActivity"];
+            /** Generated At */
+            generated_at: string;
+        };
+        /** DashboardNoShows */
+        DashboardNoShows: {
+            /** Leads */
+            leads: number;
+            /** Total */
+            total: number;
+        };
+        /** DashboardPipeline */
+        DashboardPipeline: {
+            /** Stale */
+            stale: components["schemas"]["DashboardMetricItem"][];
+            /** Conversations Open */
+            conversations_open: number;
+            /** Conversations Closed */
+            conversations_closed: number;
+            /** Avg Close Hours */
+            avg_close_hours?: number | null;
+        };
+        /** DashboardPoint */
+        DashboardPoint: {
+            /** Date */
+            date: string;
+            /** Value */
+            value: number;
+        };
+        /** DashboardSummary */
+        DashboardSummary: {
+            /** Total Leads */
+            total_leads: number;
+            /** New Leads */
+            new_leads: number;
+            /** Awaiting Reply */
+            awaiting_reply: number;
+            /** Overdue Tasks */
+            overdue_tasks: number;
+            /** Completed Tasks */
+            completed_tasks: number;
+            /** Avg Response Minutes */
+            avg_response_minutes?: number | null;
+            /** Appointments Created */
+            appointments_created: number;
+            /** Flows Started */
+            flows_started: number;
+            /** Flows Active */
+            flows_active: number;
+            /** Messages Sent */
+            messages_sent: number;
+            /** Tagged Leads */
+            tagged_leads: number;
+        };
+        /** DashboardTagRow */
+        DashboardTagRow: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Id */
+            id: number;
+            /** Color */
+            color: string;
+        };
+        /** DashboardTags */
+        DashboardTags: {
+            coverage: components["schemas"]["DashboardCoverage"];
+            /** Top */
+            top: components["schemas"]["DashboardTagRow"][];
+            /** By User */
+            by_user: components["schemas"]["DashboardMetricItem"][];
+            /** Trend */
+            trend: components["schemas"]["DashboardPoint"][];
+        };
+        /** DashboardUpcomingAppointment */
+        DashboardUpcomingAppointment: {
+            /** Id */
+            id: number;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Treatment */
+            treatment?: string | null;
+        };
         /** DomainBody */
         DomainBody: {
             /** Hostname */
@@ -3823,6 +4111,19 @@ export interface components {
              */
             is_primary: boolean;
         };
+        /**
+         * ExecutionPauseScope
+         * @description Quién congeló una ejecución: el lead entero o solo esta ejecución.
+         * @enum {string}
+         */
+        ExecutionPauseScope: "lead" | "execution";
+        /**
+         * ExecutionStartSource
+         * @description Cómo arrancó una ejecución: un trigger del sistema, el botón "Iniciar
+         *     flujo" del chat o la invocación desde otro flujo.
+         * @enum {string}
+         */
+        ExecutionStartSource: "system" | "manual" | "flow";
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /** Email */
@@ -3965,8 +4266,7 @@ export interface components {
             author_user_id: number;
             /** Author Name */
             author_name: string;
-            /** Author Role */
-            author_role: string;
+            author_role: components["schemas"]["UserRole"];
             /** Content */
             content: string;
             /** Created At */
@@ -4042,8 +4342,7 @@ export interface components {
             id: number;
             /** Actor Name */
             actor_name?: string | null;
-            /** Event Type */
-            event_type: string;
+            event_type: components["schemas"]["IssueReportEventType"];
             /** Previous Value */
             previous_value?: string | null;
             /** New Value */
@@ -4051,6 +4350,11 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /**
+         * IssueReportEventType
+         * @enum {string}
+         */
+        IssueReportEventType: "created" | "status_changed" | "priority_changed";
         /** IssueReportItem */
         IssueReportItem: {
             /** Id */
@@ -4219,6 +4523,19 @@ export interface components {
             proxima_cita?: string | null;
             /** Con Especialista */
             con_especialista?: boolean | null;
+        };
+        /** LeadAnalysisResult */
+        LeadAnalysisResult: {
+            /** Status */
+            status: string;
+            /** Job Id */
+            job_id: string;
+            /** Applied */
+            applied: boolean;
+            /** Changed */
+            changed?: boolean | null;
+            /** Stage */
+            stage?: string | null;
         };
         /**
          * LeadAnalysisResultWebhookBody
@@ -4575,8 +4892,7 @@ export interface components {
             id: number;
             /** Sender */
             sender: string;
-            /** Direction */
-            direction?: string | null;
+            direction?: components["schemas"]["MessageDirection"] | null;
             /** Content */
             content?: string | null;
             /** Sent At */
@@ -4585,8 +4901,7 @@ export interface components {
             media_url?: string | null;
             /** Wa Message Id */
             wa_message_id?: string | null;
-            /** Outbox Status */
-            outbox_status?: string | null;
+            outbox_status?: components["schemas"]["MessageOutboxStatus"] | null;
             /** Meta Status */
             meta_status?: string | null;
             /** Status Payload */
@@ -4634,6 +4949,21 @@ export interface components {
             /** Error Detail */
             error_detail?: string | null;
         };
+        /**
+         * MessageDirection
+         * @description ``wsp_messages.direction``: la calcula la base desde ``sender``.
+         * @enum {string}
+         */
+        MessageDirection: "inbound" | "outbound";
+        /**
+         * MessageOutboxStatus
+         * @description Estado interno de un envío en ``wsp_messages.outbox_status``.
+         *
+         *     Describe nuestra cola, no WhatsApp: lo que pasó del lado de Meta vive en
+         *     ``meta_status`` con el valor literal que informa Meta.
+         * @enum {string}
+         */
+        MessageOutboxStatus: "queued" | "sending" | "sent" | "retryable_failed" | "failed" | "discarded";
         /** MessagePage */
         MessagePage: {
             /** Items */
@@ -4657,6 +4987,31 @@ export interface components {
             /** Config Id */
             config_id?: string | null;
         };
+        /**
+         * MetaTemplateRaw
+         * @description Una plantilla tal como la devuelve Meta. Se declaran los campos que se
+         *     le piden; cualquier otro que Meta agregue viaja igual.
+         */
+        MetaTemplateRaw: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Category */
+            category: string;
+            /** Language */
+            language: string;
+            /** Rejected Reason */
+            rejected_reason?: string | null;
+            /** Components */
+            components?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** MfaCodeRequest */
         MfaCodeRequest: {
             /** Code */
@@ -4669,10 +5024,24 @@ export interface components {
             /** Current Password */
             current_password: string;
         };
+        /** MfaEnrollmentOut */
+        MfaEnrollmentOut: {
+            /** Secret */
+            secret: string;
+            /** Otpauth Uri */
+            otpauth_uri: string;
+        };
         /** MfaStartRequest */
         MfaStartRequest: {
             /** Current Password */
             current_password: string;
+        };
+        /** MfaStatusOut */
+        MfaStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Recovery Codes Remaining */
+            recovery_codes_remaining: number;
         };
         /** NewOrganizationBody */
         NewOrganizationBody: {
@@ -4728,6 +5097,15 @@ export interface components {
          * @enum {string}
          */
         NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed";
+        /** OperatorItem */
+        OperatorItem: {
+            /** Id */
+            id: string;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+        };
         /** OrganizationAIBody */
         OrganizationAIBody: {
             /** Enabled */
@@ -4744,6 +5122,15 @@ export interface components {
             /** Used This Month */
             used_this_month: number;
         };
+        /** OrganizationDomainItem */
+        OrganizationDomainItem: {
+            /** Id */
+            id: string;
+            /** Hostname */
+            hostname: string;
+            /** Is Primary */
+            is_primary: boolean;
+        };
         /** OrganizationIntegrationItem */
         OrganizationIntegrationItem: {
             /** Key */
@@ -4755,6 +5142,40 @@ export interface components {
             /** Value */
             value?: string | null;
         };
+        /** OrganizationItem */
+        OrganizationItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Schema Name */
+            schema_name: string;
+            /** Storage Prefix */
+            storage_prefix: string;
+            /** Ai Enabled */
+            ai_enabled: boolean;
+            /** Ai Monthly Quota */
+            ai_monthly_quota?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Revision */
+            revision?: string | null;
+            /** Migration Status */
+            migration_status?: string | null;
+            /** Up To Date */
+            up_to_date: boolean;
+            /** Domains */
+            domains: components["schemas"]["OrganizationDomainItem"][];
+        };
+        /** OrganizationList */
+        OrganizationList: {
+            /** Head */
+            head?: string | null;
+            /** Items */
+            items: components["schemas"]["OrganizationItem"][];
+        };
         /** PersonalTemplateCreate */
         PersonalTemplateCreate: {
             /** Name */
@@ -4763,6 +5184,11 @@ export interface components {
             content: string;
             /** Shortcut */
             shortcut?: string | null;
+        };
+        /** PhoneConfig */
+        PhoneConfig: {
+            /** Default Country Code */
+            default_country_code: string;
         };
         /** PinLoginRequest */
         PinLoginRequest: {
@@ -4807,8 +5233,11 @@ export interface components {
             secret: boolean;
             /** Configured */
             configured: boolean;
-            /** Source */
-            source: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "platform" | "environment" | "legacy" | "missing";
             /** Value */
             value?: string | null;
         };
@@ -4849,6 +5278,11 @@ export interface components {
              * @default
              */
             emoji: string;
+        };
+        /** RecoveryCodesOut */
+        RecoveryCodesOut: {
+            /** Recovery Codes */
+            recovery_codes: string[];
         };
         /** ScheduledMessageCreate */
         ScheduledMessageCreate: {
@@ -4892,8 +5326,7 @@ export interface components {
             id: number;
             /** Name */
             name: string;
-            /** Role */
-            role: string;
+            role: components["schemas"]["UserRole"];
         };
         /** SendContactsRequest */
         SendContactsRequest: {
@@ -4949,14 +5382,18 @@ export interface components {
             /** Parameters */
             parameters?: string[];
         };
+        /**
+         * SessionAuthMethod
+         * @enum {string}
+         */
+        SessionAuthMethod: "password" | "pin";
         /** SessionOut */
         SessionOut: {
             /** Id */
             id: string;
             /** Device Name */
             device_name: string;
-            /** Auth Method */
-            auth_method: string;
+            auth_method: components["schemas"]["SessionAuthMethod"];
             /** Current */
             current: boolean;
             /**
@@ -5527,6 +5964,11 @@ export interface components {
             /** Data Base64 */
             data_base64: string;
         };
+        /** UnreadCount */
+        UnreadCount: {
+            /** Count */
+            count: number;
+        };
         /** UpdatePlatformSettingsBody */
         UpdatePlatformSettingsBody: {
             /** Values */
@@ -5556,8 +5998,7 @@ export interface components {
             email: string;
             /** Name */
             name: string;
-            /** Role */
-            role: string;
+            role: components["schemas"]["UserRole"];
             /** Is Active */
             is_active: boolean;
         };
@@ -5569,9 +6010,13 @@ export interface components {
             email: string;
             /** Name */
             name: string;
-            /** Role */
-            role: string;
+            role: components["schemas"]["UserRole"];
         };
+        /**
+         * UserRole
+         * @enum {string}
+         */
+        UserRole: "admin" | "vendedor";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -5585,6 +6030,16 @@ export interface components {
         VapidPublicKeyResponse: {
             /** Public Key */
             public_key: string;
+        };
+        /** WhatsappStatusItem */
+        WhatsappStatusItem: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "not_configured";
+            /** Instance */
+            instance?: string | null;
         };
     };
     responses: never;
@@ -5767,7 +6222,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MfaStatusOut"];
                 };
             };
         };
@@ -5791,7 +6246,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MfaEnrollmentOut"];
                 };
             };
             /** @description Validation Error */
@@ -5824,7 +6279,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RecoveryCodesOut"];
                 };
             };
             /** @description Validation Error */
@@ -6253,9 +6708,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["OperatorItem"];
                 };
             };
         };
@@ -6275,9 +6728,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["OrganizationList"];
                 };
             };
         };
@@ -7046,7 +7497,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["UnreadCount"];
                 };
             };
         };
@@ -7315,7 +7766,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PhoneConfig"];
                 };
             };
         };
@@ -8138,7 +8589,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AIUsage"];
                 };
             };
         };
@@ -8162,7 +8613,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LeadAnalysisResult"];
                 };
             };
             /** @description Validation Error */
@@ -8652,7 +9103,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WhatsappStatusItem"];
                 };
             };
         };
@@ -9236,7 +9687,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CompletedTasks"];
                 };
             };
             /** @description Validation Error */
@@ -9461,7 +9912,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MetaTemplateRaw"][];
                 };
             };
         };
@@ -9483,7 +9934,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MetaTemplateRaw"];
                 };
             };
             /** @description Validation Error */
@@ -10352,7 +10803,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AppointmentCreated"];
                 };
             };
             /** @description Validation Error */
@@ -10751,7 +11202,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DashboardMetrics"];
                 };
             };
             /** @description Validation Error */
@@ -11032,7 +11483,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AutomationFlowSimulation"];
                 };
             };
             /** @description Validation Error */

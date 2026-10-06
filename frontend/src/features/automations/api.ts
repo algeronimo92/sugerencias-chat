@@ -1,11 +1,7 @@
 import type { AutomationExecutionFilters } from './types'
 import client from "../../shared/http/client";
-import { jsonAs, oneOf, type ApiResponse, type UntypedResponse } from '../../shared/http/contract'
-import { AutomationExecutionStatus } from './domain/automationCatalog'
-import { PAUSE_SCOPES } from './types'
-import type { AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
-
-const EXECUTION_STATUSES = Object.values(AutomationExecutionStatus)
+import { jsonAs, type ApiResponse } from '../../shared/http/contract'
+import type { AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
 
 /** De lo que entrega el contrato a la regla que usan las pantallas. */
 export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
@@ -16,7 +12,6 @@ export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
     actions: rule.actions.map(action => jsonAs<AutomationAction>(action)),
     flow_definition: jsonAs<AutomationRule['flow_definition']>(rule.flow_definition),
     published_flow_definition: rule.published_flow_definition === null ? null : jsonAs<AutomationFlowDefinition>(rule.published_flow_definition),
-    last_execution_status: oneOf(rule.last_execution_status, EXECUTION_STATUSES),
   }
 }
 
@@ -24,7 +19,6 @@ export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
 export function toAutomationExecution(execution: ContractAutomationExecution): AutomationExecution {
   return {
     ...execution,
-    pause_scope: oneOf(execution.pause_scope, PAUSE_SCOPES),
     action_results: execution.action_results.map(result => jsonAs<AutomationActionResult>(result)),
     flow_state: jsonAs<AutomationExecution['flow_state']>(execution.flow_state),
   }
@@ -127,5 +121,6 @@ export async function restoreFlowVersion({ id, version }: { id: number; version:
 }
 
 export async function simulateVisualFlow({ id, leadId }: { id: number; leadId: string }): Promise<AutomationFlowSimulation> {
-  return (await client.post<UntypedResponse<'/api/automations/{rule_id}/simulate', 'post', AutomationFlowSimulation>>(`/api/automations/${id}/simulate`, { lead_id: leadId })).data
+  const { data } = await client.post<ApiResponse<'/api/automations/{rule_id}/simulate', 'post'>>(`/api/automations/${id}/simulate`, { lead_id: leadId })
+  return { ...data, path: data.path.map(step => jsonAs<AutomationFlowSimulationStep>(step)) }
 }

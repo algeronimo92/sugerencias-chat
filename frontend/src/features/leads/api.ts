@@ -2,7 +2,7 @@ import type { BulkActionResult } from './types'
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
 import client from "../../shared/http/client";
-import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
+import type { ApiResponse } from '../../shared/http/contract'
 import type { Chat, LeadActivity } from "../chats/types";
 import type { BulkAssignTagInput, BulkMoveStageInput, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadTask, MoveLeadStageInput, Tag, TaskInput, TaskStatus } from "./types";
 
@@ -113,7 +113,7 @@ export async function updateTask({ id, ...values }: Partial<TaskInput> & { id: n
 
 export async function completeAllTasks({ assignedUserId, allUsers }: { assignedUserId?: number; allUsers?: boolean }): Promise<{ completed: number }> {
   return (
-      await client.post<UntypedResponse<'/api/tasks/complete-all', 'post', { completed: number }>>('/api/tasks/complete-all', undefined, {
+      await client.post<ApiResponse<'/api/tasks/complete-all', 'post'>>('/api/tasks/complete-all', undefined, {
         params: {
           assigned_user_id: assignedUserId,
           all_users: allUsers || undefined,
@@ -159,7 +159,7 @@ export function bulkAssignTag({ chatIds, tagId }: BulkAssignTagInput) {
 
 export async function fetchDashboard(days: number, scope: DashboardScope | null): Promise<DashboardMetrics> {
   return (
-      await client.get<UntypedResponse<'/api/dashboard', 'get', DashboardMetrics>>('/api/dashboard', {
+      await client.get<ApiResponse<'/api/dashboard', 'get'>>('/api/dashboard', {
         // Sin scope el backend elige por rol: el vendedor ve lo suyo y el
         // admin el total del equipo.
         params: { days, ...(scope ? { scope } : {}) },

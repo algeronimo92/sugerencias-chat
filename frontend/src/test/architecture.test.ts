@@ -104,30 +104,7 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/platform/components/PlatformApp.tsx',
 ]
 
-/** Respuestas que el contrato todavía no tipa: el endpoint del backend no
- * declara `response_model`. La feature declara la forma con
- * `UntypedResponse`; cuando el backend la tipe, se pasa a `ApiResponse` y se
- * quita de acá. */
-const UNTYPED_ENDPOINTS = [
-  'get /api/auth/mfa/status',
-  'get /api/chats/phone-config',
-  'get /api/chats/unread-count',
-  'get /api/dashboard',
-  'get /api/platform/auth/me',
-  'get /api/platform/organizations',
-  'get /api/suggestions/usage',
-  'get /api/templates/meta',
-  'get /api/templates/meta/{meta_template_id}',
-  'get /api/whatsapp/status',
-  'post /api/appointments',
-  'post /api/auth/mfa/confirm',
-  'post /api/auth/mfa/start',
-  'post /api/automations/{rule_id}/simulate',
-  'post /api/suggestions/analyze',
-  'post /api/tasks/complete-all',
-]
-
-const CONTRACT_TYPES = new Set(['ApiResponse', 'UntypedResponse'])
+const CONTRACT_TYPES = new Set(['ApiResponse'])
 
 function parse(path: string) {
   return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
@@ -272,17 +249,5 @@ describe('feature architecture', () => {
       return contractType ? [] : [`${relative(src, path)}: ${call.getText().slice(0, 80)}`]
     }))
     expect(violations).toEqual([])
-  })
-
-  it('lists the responses the contract does not type yet', () => {
-    const untyped = new Set<string>()
-    for (const path of productionFiles()) walkNodes(parse(path), node => {
-      if (!ts.isTypeReferenceNode(node) || !ts.isIdentifier(node.typeName) || node.typeName.text !== 'UntypedResponse') return
-      const [route, method] = node.typeArguments ?? []
-      if (route && method && ts.isLiteralTypeNode(route) && ts.isLiteralTypeNode(method) && ts.isStringLiteral(route.literal) && ts.isStringLiteral(method.literal)) {
-        untyped.add(`${method.literal.text} ${route.literal.text}`)
-      }
-    })
-    expect([...untyped].sort()).toEqual(UNTYPED_ENDPOINTS)
   })
 })

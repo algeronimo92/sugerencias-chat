@@ -19,9 +19,6 @@ export interface LoginPayload {
   mfa_code?: string
 }
 
-export interface MfaStatus {
-  enabled: boolean
-  recovery_codes_remaining: number
-}
+export type MfaStatus = Delivered<ApiSchemas['MfaStatusOut']>
 
 export type ActionTokenInfo = Delivered<ApiSchemas['ActionTokenOut']>

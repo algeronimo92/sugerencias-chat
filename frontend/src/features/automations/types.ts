@@ -215,21 +215,20 @@ export type ContractAutomationRule = Delivered<ApiSchemas['AutomationRuleItem']>
  * Una regla de automatización. Sale del contrato con lo que el contrato deja
  * abierto refinado en la frontera (`toAutomationRule`): la configuración, las
  * condiciones, las acciones y el flujo son JSON que valida el dominio del
- * backend, y `last_execution_status` es el estado de una ejecución.
+ * backend.
  *
  * `visible_to_sellers` solo aplica a flujos visuales con trigger manual: si es
  * true aparece en "Iniciar flujo" del chat (el admin siempre puede).
  */
 export type AutomationRule = Omit<
   ContractAutomationRule,
-  'trigger_config' | 'conditions' | 'actions' | 'flow_definition' | 'published_flow_definition' | 'last_execution_status'
+  'trigger_config' | 'conditions' | 'actions' | 'flow_definition' | 'published_flow_definition'
 > & {
   trigger_config: { minutes?: number }
   conditions: AutomationConditions
   actions: AutomationAction[]
   flow_definition: AutomationFlowDefinition | Record<string, never>
   published_flow_definition: AutomationFlowDefinition | null
-  last_execution_status: AutomationExecutionStatusValue | null
 }
 
 export type AutomationExecutionStartSource = 'system' | 'manual' | 'flow'
@@ -256,8 +255,6 @@ export interface AutomationActionResult {
 /** Una ejecución tal como la entrega el backend (contrato `AutomationExecutionItem`). */
 export type ContractAutomationExecution = Delivered<ApiSchemas['AutomationExecutionItem']>
 
-export const PAUSE_SCOPES = ['lead', 'execution'] as const
-
 /**
  * Una ejecución de una regla. Sale del contrato con lo que el contrato deja
  * abierto refinado en la frontera (`toAutomationExecution`):
@@ -273,8 +270,7 @@ export const PAUSE_SCOPES = ['lead', 'execution'] as const
  *   cerrada.
  * - `action_results` y `flow_state` son JSON que escribe el motor.
  */
-export type AutomationExecution = Omit<ContractAutomationExecution, 'pause_scope' | 'action_results' | 'flow_state'> & {
-  pause_scope: (typeof PAUSE_SCOPES)[number] | null
+export type AutomationExecution = Omit<ContractAutomationExecution, 'action_results' | 'flow_state'> & {
   action_results: AutomationActionResult[]
   flow_state: {
     current_node_id?: string | null
@@ -327,10 +323,13 @@ export interface AutomationFlowVersion {
   is_current: boolean
 }
 
-export interface AutomationFlowSimulation {
-  lead_id: string
-  lead_name: string | null
-  flow_version: number
+/** Lo que entrega el backend al simular un flujo (contrato
+ * `AutomationFlowSimulation`). */
+export type ContractFlowSimulation = Delivered<ApiSchemas['AutomationFlowSimulation']>
+
+/** Una simulación. Cada paso lo arma el bloque que se recorrió: el contrato lo
+ * declara como JSON y la frontera le da su forma (`toFlowSimulation`). */
+export type AutomationFlowSimulation = Omit<ContractFlowSimulation, 'path'> & {
   path: AutomationFlowSimulationStep[]
 }
 

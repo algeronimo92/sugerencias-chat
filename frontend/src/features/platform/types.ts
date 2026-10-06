@@ -28,18 +28,10 @@ export interface UpdateUserPayload {
   is_active?: boolean
 }
 
-export type WhatsappState =
-  | 'open'
-  | 'connecting'
-  | 'close'
-  | 'missing'
-  | 'not_configured'
-  | 'unknown'
-
-export interface WhatsappStatus {
-  state: WhatsappState
-  instance: string | null
-}
+/** Con Meta Cloud API no hay ciclo de QR: el número está vinculado o faltan
+ * las credenciales. */
+export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
+export type WhatsappState = WhatsappStatus['state']
 
 export interface StatusOptions {
   enabled?: boolean
@@ -66,22 +58,10 @@ export interface MetaEmbeddedSignupPayload {
   phone_number_id?: string
 }
 
-export type Domain = { id: string; hostname: string; is_primary: boolean };
+export type Domain = Delivered<ApiSchemas['OrganizationDomainItem']>;
 
-export type Organization = {
-  id: string;
-  name: string;
-  status: string;
-  schema_name: string;
-  storage_prefix: string | null;
-  created_at: string | null;
-  revision: string | null;
-  migration_status: string | null;
-  up_to_date: boolean;
-  ai_enabled: boolean;
-  ai_monthly_quota: number | null;
-  domains: Domain[];
-};
+export type Organization = Delivered<ApiSchemas['OrganizationItem']>;
+export type OrganizationList = Delivered<ApiSchemas['OrganizationList']>;
 
 export type AsistenteNegocio = {
   enabled: boolean;
@@ -96,7 +76,7 @@ export type IntegracionNegocio = {
   value: string | null;
 };
 
-export type OperadorActual = { id: string; email: string; name: string };
+export type OperadorActual = Delivered<ApiSchemas['OperatorItem']>;
 
 export type PlatformSetting = Delivered<ApiSchemas['PlatformSettingItem']>;
 

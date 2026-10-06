@@ -1,16 +1,13 @@
 const requestTails = new Map<string, Promise<void>>()
 import client from "../../shared/http/client";
-import { jsonAs, oneOf, type ApiResponse, type UntypedResponse } from '../../shared/http/contract'
+import { jsonAs, type ApiResponse } from '../../shared/http/contract'
 import type { TemplateCategory } from "../leads/types";
-import { MESSAGE_DIRECTIONS, OUTBOX_STATUSES } from './types'
-import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, ContractMessage, ContractMessageTemplate, Message, MessageAnalysis, MessageCursor, MessageReaction, MessagePage, MessageTemplate, MetaTemplateRaw, NoteInput, OfficialTemplateButton, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TemplateAttachment, TemplateCapabilities, TemplateInput, TemplateInteractiveConfig, TextPayload } from "./types";
+import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, ContractMessage, ContractMessageTemplate, Message, MessageAnalysis, MessageCursor, MessageReaction, MessagePage, MessageTemplate, ContractMetaTemplate, MetaTemplateComponent, MetaTemplateRaw, NoteInput, OfficialTemplateButton, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TemplateAttachment, TemplateCapabilities, TemplateInput, TemplateInteractiveConfig, TextPayload } from "./types";
 
 /** De lo que entrega el contrato a lo que usa el hilo (ver `Message`). */
 export function toMessage(message: ContractMessage): Message {
   return {
     ...message,
-    direction: oneOf(message.direction, MESSAGE_DIRECTIONS),
-    outbox_status: oneOf(message.outbox_status, OUTBOX_STATUSES),
     analysis: message.analysis === null ? null : jsonAs<MessageAnalysis>(message.analysis),
     reactions: message.reactions === null ? null : message.reactions.map(reaction => jsonAs<MessageReaction>(reaction)),
   }
@@ -90,11 +87,11 @@ export async function fetchChat(chatId: string | null): Promise<Chat> {
 }
 
 export async function fetchUnreadCount() {
-  return (await client.get<UntypedResponse<'/api/chats/unread-count', 'get', { count: number }>>('/api/chats/unread-count')).data.count
+  return (await client.get<ApiResponse<'/api/chats/unread-count', 'get'>>('/api/chats/unread-count')).data.count
 }
 
 export async function fetchPhoneConfig(): Promise<{ default_country_code: string }> {
-  return (await client.get<UntypedResponse<'/api/chats/phone-config', 'get', { default_country_code: string }>>('/api/chats/phone-config')).data
+  return (await client.get<ApiResponse<'/api/chats/phone-config', 'get'>>('/api/chats/phone-config')).data
 }
 
 export async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {
@@ -278,12 +275,26 @@ export async function addLibraryTemplateAttachment({ templateId, assetId }: { te
 
 export async function deleteTemplateAttachment(id: number) { await client.delete<ApiResponse<'/api/templates/attachments/{attachment_id}', 'delete'>>(`/api/templates/attachments/${id}`) }
 
+function toMetaTemplate(template: ContractMetaTemplate): MetaTemplateRaw {
+  return {
+    id: template.id,
+    name: template.name,
+    status: template.status,
+    category: template.category,
+    language: template.language,
+    rejected_reason: template.rejected_reason,
+    components: template.components === null ? null : template.components.map(component => jsonAs<MetaTemplateComponent>(component)),
+  }
+}
+
 export async function fetchMetaTemplates(): Promise<MetaTemplateRaw[]> {
-  return (await client.get<UntypedResponse<'/api/templates/meta', 'get', MetaTemplateRaw[]>>('/api/templates/meta')).data
+  const { data } = await client.get<ApiResponse<'/api/templates/meta', 'get'>>('/api/templates/meta')
+  return data.map(toMetaTemplate)
 }
 
 export async function fetchMetaTemplateDetail(metaTemplateId: string | null): Promise<MetaTemplateRaw> {
-  return (await client.get<UntypedResponse<'/api/templates/meta/{meta_template_id}', 'get', MetaTemplateRaw>>(`/api/templates/meta/${metaTemplateId}`)).data
+  const { data } = await client.get<ApiResponse<'/api/templates/meta/{meta_template_id}', 'get'>>(`/api/templates/meta/${metaTemplateId}`)
+  return toMetaTemplate(data)
 }
 
 export async function importMetaTemplate({ metaTemplateId, name, category, shortcut, officialParameterValues }: {

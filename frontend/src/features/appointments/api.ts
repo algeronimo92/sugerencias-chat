@@ -1,5 +1,5 @@
 import client from "../../shared/http/client";
-import type { ApiResponse, UntypedResponse } from '../../shared/http/contract'
+import type { ApiResponse } from '../../shared/http/contract'
 import type { AppointmentListItem, AppointmentResult, CreateAppointmentInput } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
@@ -7,7 +7,7 @@ export async function fetchAppointments(): Promise<AppointmentListItem[]> {
 }
 
 export async function createAppointment(input: CreateAppointmentInput): Promise<AppointmentResult> {
-  return (await client.post<UntypedResponse<'/api/appointments', 'post', AppointmentResult>>('/api/appointments', {
+  return (await client.post<ApiResponse<'/api/appointments', 'post'>>('/api/appointments', {
       nombre_completo: input.nombreCompleto,
       dni: input.dni,
       telefono: input.telefono,

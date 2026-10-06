@@ -175,8 +175,7 @@ export interface LeadUpdateInput {
 /** Estado interno de un envío en la cola propia (outbox). `discarded` es un
  * fallo que alguien revisó y decidió no reenviar: sigue sin haber llegado al
  * cliente, pero ya no ofrece reintento. */
-export const OUTBOX_STATUSES = ['queued', 'sending', 'sent', 'retryable_failed', 'failed', 'discarded'] as const
-export type OutboxStatus = (typeof OUTBOX_STATUSES)[number]
+export type OutboxStatus = ApiSchemas['MessageOutboxStatus']
 
 /** Estado literal que informa Meta. Un valor nuevo llega con su nombre. */
 export type MetaStatus = MetaStatusLiteral | (string & {})
@@ -206,24 +205,17 @@ export interface MessageReaction {
 /** Un mensaje del hilo tal como lo entrega el backend (contrato `Message`). */
 export type ContractMessage = Delivered<ApiSchemas['Message']>
 
-export const MESSAGE_DIRECTIONS = ['inbound', 'outbound'] as const
-export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number]
+export type MessageDirection = ApiSchemas['MessageDirection']
 
 /**
- * Un mensaje del hilo. Sale del contrato (`ContractMessage`) con lo que el
- * contrato deja abierto ya estrechado en la frontera (`toMessage`):
- *
- * - `direction` y `outbox_status`: el backend los tipa como texto; uno que la
- *   app no conoce llega en `null`.
- * - `analysis` y `reactions`: el backend los guarda como JSON con la forma que
- *   valida su dominio.
+ * Un mensaje del hilo. Sale del contrato (`ContractMessage`); `analysis` y
+ * `reactions` los guarda el backend como JSON con la forma que valida su
+ * dominio, y la frontera se la da (`toMessage`).
  *
  * `message_type` y `meta_status` quedan como texto: son los literales de Meta,
  * y uno que el contrato todavía no conoce se muestra igual con su nombre.
  */
-export type Message = Omit<ContractMessage, 'direction' | 'outbox_status' | 'analysis' | 'reactions'> & {
-  direction: MessageDirection | null
-  outbox_status: OutboxStatus | null
+export type Message = Omit<ContractMessage, 'analysis' | 'reactions'> & {
   analysis: MessageAnalysis | null
   reactions: MessageReaction[] | null
 }
@@ -299,19 +291,20 @@ export interface OfficialTemplateButton {
 
 /** Plantilla tal cual la devuelve la Graph API (`GET /{waba_id}/message_templates`),
  * antes de vincularla a la app -- ver `useMetaTemplates`. */
-export interface MetaTemplateRaw {
-  id: string
-  name: string
-  status: string
-  category: string
-  language: string
-  rejected_reason?: string | null
-  components?: {
-    type: string
-    format?: string
-    text?: string
-    buttons?: { type: string; text: string; url?: string; phone_number?: string }[]
-  }[]
+/** Un componente de una plantilla de Meta (encabezado, cuerpo, pie, botones). */
+export interface MetaTemplateComponent {
+  type: string
+  format?: string
+  text?: string
+  buttons?: { type: string; text: string; url?: string; phone_number?: string }[]
+}
+
+/** Una plantilla tal como la devuelve Meta (contrato `MetaTemplateRaw`). El
+ * contrato admite campos extra de Meta; se usan los declarados, y los
+ * componentes, que son JSON de Meta, reciben su forma en la frontera. */
+export type ContractMetaTemplate = Delivered<ApiSchemas['MetaTemplateRaw']>
+export type MetaTemplateRaw = Pick<ContractMetaTemplate, 'id' | 'name' | 'status' | 'category' | 'language' | 'rejected_reason'> & {
+  components: MetaTemplateComponent[] | null
 }
 
 /** Subtipo interactivo de una plantilla del CRM: el literal de Meta. */
