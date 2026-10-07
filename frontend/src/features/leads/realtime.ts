@@ -1,11 +1,11 @@
 /**
- * Tiempo real de leads: la actividad del lead, el kanban, el dashboard, las
- * etapas y las tareas (con su recordatorio).
+ * Tiempo real de leads: la actividad del lead, el kanban, el dashboard y las
+ * etapas.
  */
 
 import { invalidate, type RealtimeModule } from '../../realtime/bus'
 import type { ChatsUpdateReason } from '../../realtime/socketEvents'
-import { dashboardKeys, kanbanKeys, leadKeys, stageKeys, taskKeys } from './keys'
+import { dashboardKeys, kanbanKeys, leadKeys, stageKeys } from './keys'
 
 /** Cambios que mueven tarjetas del kanban. */
 const KANBAN_REASONS: ReadonlySet<ChatsUpdateReason> = new Set(['lead_created', 'lead_updated', 'stage_changed', 'tag_changed'])
@@ -28,19 +28,11 @@ export function createLeadsRealtime(): RealtimeModule {
         if (reason && DASHBOARD_REASONS.has(reason)) invalidate(queryClient, dashboardKeys.all)
       },
       internal_notes_updated: (event, { queryClient }) => invalidate(queryClient, leadKeys.activity(event.lead_id)),
-      tasks_updated: (_event, { queryClient }) => invalidate(queryClient, taskKeys.all, dashboardKeys.all),
+      // Las tareas cuentan en el dashboard.
+      tasks_updated: (_event, { queryClient }) => invalidate(queryClient, dashboardKeys.all),
       // Renombres, colores u orden del embudo: el kanban y el dashboard también
       // rotulan y ordenan con ellas.
       lead_stages_updated: (_event, { queryClient }) => invalidate(queryClient, stageKeys.all, kanbanKeys.all, dashboardKeys.all),
-      task_reminder: ({ task }, { queryClient, navigate, notify }) => {
-        invalidate(queryClient, taskKeys.all)
-        notify(
-          `Recordatorio: ${task.lead_name || 'Lead'}`,
-          task.title,
-          () => navigate(`/chat/${task.lead_id}`),
-          { force: true, tag: `task-reminder-${task.task_id}` },
-        )
-      },
     },
     resync: [kanbanKeys.all, dashboardKeys.all],
   }

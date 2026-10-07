@@ -49,12 +49,6 @@ export const customFieldKeys = {
   leadValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
 }
 
-export const taskKeys = {
-  all: ['tasks'] as const,
-  list: (status: string | undefined, leadId: string | undefined, assignedUserId: number | undefined, allUsers: boolean | undefined) =>
-    ['tasks', status ?? 'all', leadId ?? 'all', assignedUserId ?? 'mine', allUsers] as const,
-}
-
 export const dashboardKeys = {
   all: ['dashboard'] as const,
   metrics: (days: number, scope: DashboardScope | null) => ['dashboard', days, scope] as const,

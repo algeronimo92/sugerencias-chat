@@ -33,7 +33,7 @@ const KanbanBoard = lazy(() =>
   })),
 );
 const TasksPage = lazy(() =>
-  import("../features/leads/components/TasksPage").then((module) => ({
+  import("../features/tasks/page").then((module) => ({
     default: module.TasksPage,
   })),
 );

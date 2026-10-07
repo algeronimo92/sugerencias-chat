@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import type { LeadStage, TaskType } from '../../leads/types'
+import type { LeadStage } from '../../leads/types'
+import type { TaskType } from '../../tasks/types'
 import type { InteractiveLimits, MessageTemplate, OfficialTemplateButton } from '../types'
 import type { EditableListSection, EditableReplyButton } from './interactiveConfig'
 

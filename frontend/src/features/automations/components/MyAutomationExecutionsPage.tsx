@@ -21,9 +21,8 @@ isServiceWindowError,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
-import {
-executionStatusLabel,executionTriggerLabel,formatExecutionDate,isoDateOffset,todayISODate,
-} from '../utils/automationExecutions'
+import { executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
+import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla

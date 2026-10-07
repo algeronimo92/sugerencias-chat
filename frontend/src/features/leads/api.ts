@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadTask, LeadUpdateInput, MoveLeadStageInput, PageParam, Tag, TaskInput, TaskStatus } from './types'
+import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam, Tag } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -94,31 +94,6 @@ export async function fetchLeadCustomFieldValues(leadId: string) {
 
 export async function updateLeadCustomFieldValues(leadId: string, values: Record<string, unknown>) {
   return (await client.patch<ApiResponse<'/api/custom-fields/lead-values/{lead_id}', 'patch'>>(`/api/custom-fields/lead-values/${encodeURIComponent(leadId)}`, { values })).data.values
-}
-
-export async function fetchTasks(leadId: string | undefined, assignedUserId: number | undefined, allUsers: boolean): Promise<LeadTask[]> {
-  return (await client.get<ApiResponse<'/api/tasks', 'get'>>('/api/tasks', {
-      params: { status, lead_id: leadId, assigned_user_id: assignedUserId, all_users: allUsers || undefined },
-    })).data
-}
-
-export async function createTask(input: TaskInput): Promise<LeadTask> {
-  return (await client.post<ApiResponse<'/api/tasks', 'post'>>('/api/tasks', input)).data
-}
-
-export async function updateTask({ id, ...values }: Partial<TaskInput> & { id: number; status?: TaskStatus }): Promise<LeadTask> {
-  return (await client.patch<ApiResponse<'/api/tasks/{task_id}', 'patch'>>(`/api/tasks/${id}`, values)).data
-}
-
-export async function completeAllTasks({ assignedUserId, allUsers }: { assignedUserId?: number; allUsers?: boolean }): Promise<{ completed: number }> {
-  return (
-      await client.post<ApiResponse<'/api/tasks/complete-all', 'post'>>('/api/tasks/complete-all', undefined, {
-        params: {
-          assigned_user_id: assignedUserId,
-          all_users: allUsers || undefined,
-        },
-      })
-    ).data
 }
 
 export async function fetchKanbanSnapshot(search: string): Promise<KanbanSnapshot> {

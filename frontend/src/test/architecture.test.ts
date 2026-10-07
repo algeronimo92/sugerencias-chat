@@ -62,9 +62,11 @@ const KNOWN_CYCLE_EDGES = [
   'ai -> chats',
   'ai -> leads',
   'ai -> media',
+  'ai -> tasks',
   'automations -> leads',
   'automations -> media',
   'automations -> platform',
+  'automations -> tasks',
   'automations -> templates',
   'chats -> ai',
   'chats -> automations',
@@ -79,9 +81,13 @@ const KNOWN_CYCLE_EDGES = [
   'media -> templates',
   'platform -> leads',
   'platform -> templates',
+  'tasks -> automations',
+  'tasks -> leads',
+  'tasks -> platform',
   'templates -> automations',
   'templates -> leads',
   'templates -> media',
+  'templates -> tasks',
 ]
 
 const MAX_COMPONENT_LINES = 400
@@ -104,8 +110,8 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/chats/components/TemplateSendDialog.tsx',
   'features/leads/components/KanbanBoard.tsx',
   'features/leads/components/LeadFormDialog.tsx',
-  'features/leads/components/TasksPage.tsx',
   'features/platform/components/PlatformApp.tsx',
+  'features/tasks/components/TasksPage.tsx',
   'features/templates/components/TemplatesPage.tsx',
 ]
 
@@ -129,7 +135,6 @@ const KNOWN_APP_INTERNAL_IMPORTS = [
   'app/routes.tsx -> features/chats/layoutContext.ts',
   'app/routes.tsx -> features/chats/useOpenChat.ts',
   'app/routes.tsx -> features/leads/components/DashboardPage.tsx',
-  'app/routes.tsx -> features/leads/components/TasksPage.tsx',
   'app/routes.tsx -> features/platform/components/CatalogsPage.tsx',
 ]
 

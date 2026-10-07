@@ -1,3 +1,6 @@
+/** Los valores de un objeto de constantes (`{ A: 'a', B: 'b' }` -> `'a' | 'b'`). */
+export type ValueOf<T> = T[keyof T]
+
 export type JsonPrimitive = string | number | boolean | null
 import type { ApiSchemas, Delivered } from './http/contract'
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]

@@ -1,5 +1,6 @@
 import type { ApiSchemas, Delivered } from '../../shared/http/contract'
-import type { LeadStage, TaskPriority, TaskType } from '../leads/types';
+import type { LeadStage } from '../leads/types';
+import type { TaskPriority, TaskType } from '../tasks/types'
 import type { AutomationActionTypeValue, AutomationExecutionStatusValue, AutomationRecipientValue, AutomationTriggerValue, FlowConditionTypeValue, FlowHandleValue, FlowNodeTypeValue, QuestionHandleValue, WaitAnyConditionKindValue } from "./domain/automationCatalog";
 import { AutomationActionType, FlowNodeType, WaitAnyConditionKind } from './domain/automationCatalog';
 

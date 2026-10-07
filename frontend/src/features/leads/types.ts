@@ -1,5 +1,4 @@
 import type { ApiSchemas } from '../../shared/http/contract'
-import type { TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue } from '../automations/public/automationCatalog';
 import type { JsonObject } from '../../shared/types'
 import type { MessageType } from '../whatsapp/types'
 
@@ -34,27 +33,6 @@ export interface LeadService {
   created_by_user_id?: number | null
   created_by_name?: string | null
   created_at?: string | null
-}
-
-export type TaskType = TaskTypeCatalogValue
-export type TaskStatus = TaskStatusCatalogValue
-export type TaskPriority = TaskPriorityCatalogValue
-
-export interface LeadTask {
-  id: number
-  lead_id: string
-  lead_name: string | null
-  title: string
-  description: string | null
-  task_type: TaskType
-  status: TaskStatus
-  priority: TaskPriority
-  due_at: string
-  remind_at: string | null
-  assigned_user_id: number
-  assigned_user_name: string
-  is_overdue: boolean
-  created_at: string
 }
 
 export interface DashboardMetricItem {
@@ -198,17 +176,6 @@ export interface CustomFieldDefinition {
   options: string[]
   position: number
   is_active: boolean
-}
-
-export interface TaskInput {
-  lead_id: string
-  title: string
-  description?: string | null
-  task_type: TaskType
-  priority: TaskPriority
-  due_at: string
-  remind_at?: string | null
-  assigned_user_id?: number
 }
 
 export interface KanbanPage {

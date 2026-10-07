@@ -12,7 +12,7 @@ TaskTypeValue,
 isTaskPriority,
 isTaskType,
 } from '../../automations/public/automationCatalog'
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import { useCreateTask, useTasks, useUpdateTask } from '../hooks/useTasks'
 import type { TaskPriority, TaskType } from '../types'
 
