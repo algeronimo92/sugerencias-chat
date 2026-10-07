@@ -9,8 +9,10 @@ vi.mock('../queries', () => ({
   useUpdateLead: () => ({ mutate: vi.fn(), isPending: false }),
   useMarkNoShow: () => ({ mutate: vi.fn(), isPending: false }),
 }))
-vi.mock('../hooks/useCustomFields', () => ({
+vi.mock('../../catalogs/public/useCustomFields', () => ({
   useCustomFields: () => ({ data: [] }),
+}))
+vi.mock('../hooks/useLeadCustomFieldValues', () => ({
   useLeadCustomFieldValues: () => ({ data: {} }),
   useUpdateLeadCustomFieldValues: () => ({ mutate: vi.fn(), isPending: false }),
 }))

@@ -7,13 +7,13 @@ import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { FALLBACK_COUNTRY_CODE, localMaxDigits, normalizePhone } from '../../../shared/utils/phone'
 import { useMe } from '../../auth/public/queries'
-import { useDuplicateLead, usePhoneConfig } from '../../chats/public/queries'
+import { useDuplicateLead, usePhoneConfig } from '../queries'
 import type { Chat, LeadUpdateInput } from '../types'
 import { useSellers } from '../../platform/public/useUsers'
-import { useCustomFields } from '../hooks/useCustomFields'
-import { useCreateLeadService, useLeadServices } from '../hooks/useLeadServices'
-import type { LeadService } from '../types'
-import { CustomFieldInput } from './CustomFieldInput'
+import { useCustomFields } from '../../catalogs/public/useCustomFields'
+import { useCreateLeadService, useLeadServices } from '../../catalogs/public/useLeadServices'
+import type { LeadService } from '../../catalogs/types'
+import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 
 interface Props {
   title: string

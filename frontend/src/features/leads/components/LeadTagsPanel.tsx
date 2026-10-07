@@ -5,7 +5,8 @@ import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import type { Chat } from '../types'
-import { useAssignTag, useCreateTag, useRemoveTag, useTags } from '../hooks/useLeadMeta'
+import { useAssignTag, useRemoveTag } from '../hooks/useLeadMeta'
+import { useCreateTag, useTags } from '../../catalogs/public/useTags'
 export function LeadTagsPanel({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
   const { data: tags = [] } = useTags()

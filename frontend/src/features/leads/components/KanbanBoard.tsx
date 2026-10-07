@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { Input, Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { avatarInitial, displayName, isBotAttended } from '../public/chat'
+import { avatarInitial, displayName, isBotAttended } from '../utils/chat'
 import { parseContent } from '../../whatsapp/public/message'
 import type { Chat } from '../types'
 import {
@@ -16,7 +16,7 @@ stageColorStyle,
 stageOptions,
 type LeadStageCatalog,
 } from '../domain/leadStageMeta'
-import { useTags } from '../hooks/useLeadMeta'
+import { useTags } from '../../catalogs/public/useTags'
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import {
 useBulkAssignTag,

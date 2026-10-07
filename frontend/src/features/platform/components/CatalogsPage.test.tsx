@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CatalogsPage } from './CatalogsPage'
 
-vi.mock('../../leads/components/ServicesManagementPanel', () => ({
+vi.mock('../../catalogs/components/ServicesManagementPanel', () => ({
   ServicesManagementPanel: () => <div>Panel de servicios</div>,
 }))
-vi.mock('../../leads/components/TagsManagementPanel', () => ({
+vi.mock('../../catalogs/components/TagsManagementPanel', () => ({
   TagsManagementPanel: () => <div>Panel de etiquetas</div>,
 }))
 vi.mock('../../templates/components/TemplateCategoriesManagementPanel', () => ({
@@ -16,7 +16,7 @@ vi.mock('../../templates/components/TemplateCategoriesManagementPanel', () => ({
 vi.mock('../../leads/components/LeadStagesManagementPanel', () => ({
   LeadStagesManagementPanel: () => <div>Panel de etapas</div>,
 }))
-vi.mock('../../leads/components/CustomFieldsManagementPanel', () => ({
+vi.mock('../../catalogs/components/CustomFieldsManagementPanel', () => ({
   CustomFieldsManagementPanel: () => <div>Panel de campos personalizados</div>,
 }))
 

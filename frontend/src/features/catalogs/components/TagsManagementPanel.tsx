@@ -5,7 +5,7 @@ import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCreateTag, useTags, useUpdateTag } from '../hooks/useLeadMeta'
+import { useCreateTag, useTags, useUpdateTag } from '../hooks/useTags'
 import type { Tag } from '../types'
 
 interface TagDraft {

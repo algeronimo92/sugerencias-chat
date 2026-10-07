@@ -25,7 +25,7 @@ import { EmptyState } from "../../../shared/ui/EmptyState";
 import { Select } from "../../../shared/ui/Input";
 import { Skeleton } from "../../../shared/ui/Skeleton";
 import { extractErrorMessage } from "../../../shared/utils/errors";
-import { useTags } from "../../leads/public/useLeadMeta";
+import { useTags } from "../../catalogs/public/useTags";
 import { useLeadStageCatalog } from "../../leads/public/useLeadStages";
 import type { LeadStage } from '../../leads/types';
 import { useSellers } from "../../platform/public/useUsers";

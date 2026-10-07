@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
 }))
 
-vi.mock('../hooks/useLeadMeta', () => ({
+vi.mock('../hooks/useTags', () => ({
   useTags: () => ({
     data: [
       { id: 1, name: 'VIP', color: '#16a34a', is_active: true, created_by_name: 'Lucía Ramos', created_at: '2026-08-10T12:00:00Z' },

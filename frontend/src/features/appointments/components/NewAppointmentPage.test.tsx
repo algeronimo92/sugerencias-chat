@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
 
 vi.mock('../../../shared/auth', () => ({ useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../../platform/hooks/useUsers', () => ({ useSellers: () => ({ data: [{ id: 1, name: 'Asesor' }] }) }))
-vi.mock('../../leads/hooks/useCustomFields', () => ({ useCustomFields: () => ({
+vi.mock('../../catalogs/public/useCustomFields', () => ({ useCustomFields: () => ({
   data: [{ id: 1, entity_type: 'appointment', key: 'autorizado', label: 'Autorizado', field_type: 'boolean', required: true, options: [], position: 0, is_active: true }],
   isLoading: false,
   isError: false,

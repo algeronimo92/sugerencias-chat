@@ -1,4 +1,4 @@
-import type { TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue } from '../automations/public/automationCatalog'
+import type { TaskPriorityCatalogValue, TaskStatusCatalogValue, TaskTypeCatalogValue } from './domain/taskCatalog'
 
 
 export type TaskType = TaskTypeCatalogValue

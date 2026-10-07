@@ -20,6 +20,8 @@ export const leadKeys = {
   activityAll: ['lead-activity'] as const,
   activity: (chatId: string | null) => ['lead-activity', chatId] as const,
   search: (term: string) => ['lead-search', term] as const,
+  /** Los valores de los campos personalizados de un lead. */
+  customFieldValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
 }
 
 export const kanbanKeys = {
@@ -31,20 +33,4 @@ export const stageKeys = {
   all: ['lead-stages'] as const,
   list: ['lead-stages', 'list'] as const,
   admin: ['lead-stages', 'admin'] as const,
-}
-
-export const tagKeys = {
-  all: ['tags'] as const,
-  list: (includeInactive: boolean) => ['tags', { includeInactive }] as const,
-}
-
-export const serviceKeys = {
-  all: ['lead-services'] as const,
-  list: (includeInactive: boolean) => ['lead-services', { includeInactive }] as const,
-}
-
-export const customFieldKeys = {
-  all: ['custom-fields'] as const,
-  list: (entityType: string, includeInactive: boolean) => ['custom-fields', entityType, { includeInactive }] as const,
-  leadValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
 }

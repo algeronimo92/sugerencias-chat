@@ -1,10 +1,10 @@
 import { Columns3, FolderTree, ListPlus, Sparkles, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { TemplateCategoriesManagementPanel } from '../../templates/public/TemplateCategoriesManagementPanel'
-import { CustomFieldsManagementPanel } from '../../leads/public/CustomFieldsManagementPanel'
+import { CustomFieldsManagementPanel } from '../../catalogs/public/CustomFieldsManagementPanel'
 import { LeadStagesManagementPanel } from '../../leads/public/LeadStagesManagementPanel'
-import { ServicesManagementPanel } from '../../leads/public/ServicesManagementPanel'
-import { TagsManagementPanel } from '../../leads/public/TagsManagementPanel'
+import { ServicesManagementPanel } from '../../catalogs/public/ServicesManagementPanel'
+import { TagsManagementPanel } from '../../catalogs/public/TagsManagementPanel'
 
 type CatalogTab = 'services' | 'tags' | 'template-categories' | 'stages' | 'custom-fields'
 

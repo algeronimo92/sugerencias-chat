@@ -17,10 +17,8 @@ import { STAT_TONE_ICON, type StatTone } from '../../../shared/ui/tones'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import {
-TASK_PRIORITY_LABELS,TASK_TYPE_OPTIONS,TaskPriorityValue,TaskStatusValue,TaskTypeValue,
-} from '../../automations/public/automationCatalog'
-import { isoDateOffset, todayISODate } from '../../automations/public/automationExecutions'
+import { TASK_PRIORITY_LABELS, TASK_TYPE_OPTIONS, TaskPriorityValue, TaskStatusValue, TaskTypeValue } from '../domain/taskCatalog'
+import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { useUsers } from '../../platform/public/useUsers'
 import { useCompleteAllTasks, useTasks, useUpdateTask } from '../hooks/useTasks'
 import type { LeadTask, TaskStatus, TaskType } from '../types'

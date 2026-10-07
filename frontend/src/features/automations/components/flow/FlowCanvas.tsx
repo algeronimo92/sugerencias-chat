@@ -20,7 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../../../whatsapp/public/message'
 import type { MessageTemplate } from '../../../templates/types'
 import { useLeadStageCatalog } from '../../../leads/public/useLeadStages'
-import type { Tag as TagRecord } from '../../../leads/types'
+import type { Tag as TagRecord } from '../../../catalogs/types'
 import type { MediaAsset } from '../../../media/types'
 import {
 AutomationActionType,FLOW_CONDITION_LABELS,FLOW_NODE_LABELS,

@@ -1,31 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { assignTag, createTag, fetchLeadActivity, removeTag, fetchTags, updateTag } from '../api'
-import { leadKeys, tagKeys } from '../keys'
-
-export function useTags(includeInactive = false, { enabled = true }: { enabled?: boolean } = {}) {
-  return useQuery({
-    queryKey: tagKeys.list(includeInactive),
-    queryFn: () => fetchTags(includeInactive),
-    enabled,
-    staleTime: 60_000,
-  })
-}
-
-export function useCreateTag() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: createTag,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: tagKeys.all }),
-  })
-}
-
-export function useUpdateTag() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: updateTag,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: tagKeys.all }),
-  })
-}
+import { assignTag, fetchLeadActivity, removeTag } from '../api'
+import { leadKeys } from '../keys'
 
 export function useAssignTag(chatId: string) {
   const queryClient = useQueryClient()

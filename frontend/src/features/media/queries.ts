@@ -3,7 +3,7 @@ import { queryClient } from '../../shared/queryClient'
 import { deleteMediaAsset, fetchMediaLibrary, renameMediaAsset, saveStickerToLibrary, uploadMediaAsset } from './api'
 import type { MediaAsset, MediaAssetKind } from './types'
 import { mediaKeys } from './keys'
-import { templateKeys } from '../chats/public/keys'
+import { templateKeys } from '../templates/public/keys'
 
 export type { MediaAssetUpload } from './types'
 

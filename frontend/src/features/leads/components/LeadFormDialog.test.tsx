@@ -14,7 +14,7 @@ vi.mock('../queries', () => ({
   useDuplicateLead: () => ({ data: null, isFetching: false }),
   usePhoneConfig: () => ({ data: { default_country_code: '51' } }),
 }))
-vi.mock('../hooks/useLeadServices', () => ({
+vi.mock('../../catalogs/public/useLeadServices', () => ({
   useLeadServices: () => ({
     data: [
       { id: 1, name: 'Botox' },
@@ -24,7 +24,7 @@ vi.mock('../hooks/useLeadServices', () => ({
   }),
   useCreateLeadService: () => ({ mutate: mocks.createService, isPending: false }),
 }))
-vi.mock('../hooks/useCustomFields', () => ({
+vi.mock('../../catalogs/public/useCustomFields', () => ({
   useCustomFields: () => ({
     data: [
       { id: 10, entity_type: 'lead', key: 'sede', label: 'Sede', field_type: 'text', required: true, options: [], position: 0, is_active: true },

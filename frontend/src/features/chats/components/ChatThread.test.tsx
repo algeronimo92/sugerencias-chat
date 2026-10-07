@@ -79,7 +79,7 @@ vi.mock('../hooks/useInternalNotes', async (importOriginal) => ({
   useInternalNotes: () => ({ data: [] }),
   useCreateInternalNote: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }))
-vi.mock('../../leads/hooks/useLeadMeta', () => ({ useLeadActivity: () => ({ data: [] }) }))
+vi.mock('../../leads/public/useLeadMeta', () => ({ useLeadActivity: () => ({ data: [] }) }))
 vi.mock('../../auth/queries', () => ({ useMe: () => ({ data: { id: 7, role: 'vendedor', name: 'Gerson' } }) }))
 vi.mock('../hooks/useCustomerServiceWindow', () => ({
   useCustomerServiceWindow: () => ({ data: null, isLoading: false }),

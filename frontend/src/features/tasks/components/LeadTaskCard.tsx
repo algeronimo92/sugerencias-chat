@@ -3,15 +3,7 @@ import { useState } from 'react'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import {
-TASK_PRIORITY_OPTIONS,
-TASK_TYPE_OPTIONS as TASK_TYPES,
-TaskPriorityValue,
-TaskStatusValue,
-TaskTypeValue,
-isTaskPriority,
-isTaskType,
-} from '../../automations/public/automationCatalog'
+import { TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskStatusValue, TaskTypeValue, isTaskPriority, isTaskType } from '../domain/taskCatalog'
 import type { Chat } from '../../leads/types'
 import { useCreateTask, useTasks, useUpdateTask } from '../hooks/useTasks'
 import type { TaskPriority, TaskType } from '../types'
