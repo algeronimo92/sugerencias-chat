@@ -8,7 +8,7 @@ import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
 import { invalidate, type RealtimeModule } from '../../realtime/bus'
 import type { MessageStatusUpdate } from '../../realtime/socketEvents'
-import { chatKeys, messageKeys, noteKeys, scheduledKeys } from './keys'
+import { messageKeys, noteKeys, scheduledKeys } from './keys'
 import type { MessagePage } from './types'
 import { parseContent } from '../whatsapp/public/message'
 import { leadKeys } from '../leads/public/keys'
@@ -50,7 +50,7 @@ export function createChatsRealtime(): RealtimeModule {
         // parchea el estado en la caché sin pedir nada.
         const isStatusOnly = reason === 'message_status'
 
-        if (!isStatusOnly) invalidate(queryClient, leadKeys.all, chatKeys.unreadCount)
+        if (!isStatusOnly) invalidate(queryClient, leadKeys.all, leadKeys.unreadCount)
         if (changedChatId) {
           applyMessageStatuses(queryClient, changedChatId, event.message_statuses)
           if (!isStatusOnly) invalidate(queryClient, leadKeys.detail(changedChatId))
@@ -78,6 +78,6 @@ export function createChatsRealtime(): RealtimeModule {
       ),
       internal_notes_updated: (event, { queryClient }) => invalidate(queryClient, noteKeys.chat(event.lead_id)),
     },
-    resync: [leadKeys.all, chatKeys.unreadCount, messageKeys.all, leadKeys.detailAll],
+    resync: [leadKeys.all, leadKeys.unreadCount, messageKeys.all, leadKeys.detailAll],
   }
 }

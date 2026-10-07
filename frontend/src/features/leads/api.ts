@@ -162,3 +162,7 @@ export async function fetchChat(chatId: string | null): Promise<Chat> {
 export async function fetchPhoneConfig(): Promise<{ default_country_code: string }> {
   return (await client.get<ApiResponse<'/api/chats/phone-config', 'get'>>('/api/chats/phone-config')).data
 }
+
+export async function fetchUnreadCount() {
+  return (await client.get<ApiResponse<'/api/chats/unread-count', 'get'>>('/api/chats/unread-count')).data.count
+}

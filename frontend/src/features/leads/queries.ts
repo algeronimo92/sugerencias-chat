@@ -1,8 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchLeadByPhone, fetchPhoneConfig, markNoShow, mergeLead, updateLead } from './api'
+import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchLeadByPhone, fetchPhoneConfig, fetchUnreadCount, markNoShow, mergeLead, updateLead } from './api'
 import type { ChatFilters, LeadUpdateInput, PageParam } from './types'
-import { chatKeys } from '../chats/public/keys'
 import { kanbanKeys, leadKeys } from './keys'
 
 
@@ -80,7 +79,7 @@ export function useCreateLead() {
     mutationFn: createLead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: leadKeys.unreadCount })
     },
   })
 }
@@ -115,7 +114,7 @@ export function useDeleteLead() {
     mutationFn: deleteLead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: leadKeys.unreadCount })
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
     },
   })
@@ -128,9 +127,19 @@ export function useMergeLead(chatId: string) {
     mutationFn: (otherId: string) => mergeLead(chatId, otherId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: leadKeys.unreadCount })
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
     },
+  })
+}
+
+export function useUnreadCount() {
+  const connected = useChatSocketConnected()
+  return useQuery({
+    queryKey: leadKeys.unreadCount,
+    queryFn: fetchUnreadCount,
+    staleTime: 10_000,
+    refetchInterval: connected ? false : 60_000,
   })
 }

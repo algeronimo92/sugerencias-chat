@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronUp, Copy, MessageSquare, Mic, Video } from 'lucide-react'
 import { useState } from 'react'
-import type { Sugerencia } from '../../chats/types'
+import type { Sugerencia } from '../../ai/types'
 import { AudioSuggestionDialog } from './AudioSuggestionDialog'
 
 const CANAL_ICON = {

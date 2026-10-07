@@ -1,4 +1,5 @@
 import type { ApiSchemas, Delivered } from '../../shared/http/contract'
+import type { LeadStage } from '../leads/types'
 export interface AIProfile {
   business_name: string | null
   business_description: string | null
@@ -42,4 +43,31 @@ export type LeadAnalysisResult = Delivered<ApiSchemas['LeadAnalysisResult']>
 export interface TtsResult {
   contentType: string
   dataBase64: string
+}
+
+export interface Sugerencia {
+  tactica: string
+  canal: string
+  texto: string | null
+  adjuntos: string[]
+  motivo_adjuntos: string
+  porque: string
+}
+
+export interface SuggestionResponse {
+  estado: LeadStage | null
+  tipo_objecion: string | null
+  senal_compra: boolean
+  alerta: string | null
+  confianza: string
+  analisis: string
+  sugerencias: Sugerencia[]
+}
+
+/** Estado de la sugerencia guardada de un lead — lectura barata que nunca
+ * dispara la generación. `stale`: el cliente escribió después de generarse. */
+export interface SuggestionStatus {
+  suggestion: SuggestionResponse | null
+  generated_at: string | null
+  stale: boolean
 }

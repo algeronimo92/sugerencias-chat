@@ -56,36 +56,26 @@ function reaches(start: string, forbidden: (path: string) => boolean, edges = gr
 // que pase de MAX_COMPONENT_LINES, hace fallar el test. Al resolver uno, se
 // quita de la lista (el test exige que no queden entradas sobrantes).
 
-/** Dependencias entre features que hoy forman parte de un ciclo. La fase 3
- * las elimina ordenando las features en capas. */
-const KNOWN_CYCLE_EDGES = [
-  'ai -> chats',
-  'ai -> leads',
-  'ai -> media',
-  'ai -> tasks',
-  'automations -> leads',
-  'automations -> media',
-  'automations -> platform',
-  'automations -> tasks',
-  'automations -> templates',
-  'chats -> ai',
-  'chats -> automations',
-  'chats -> leads',
-  'chats -> media',
-  'chats -> platform',
-  'chats -> templates',
-  'leads -> automations',
-  'leads -> chats',
-  'leads -> platform',
-  'media -> templates',
-  'platform -> leads',
-  'platform -> templates',
-  'tasks -> leads',
-  'tasks -> platform',
-  'templates -> leads',
-  'templates -> media',
-  'templates -> tasks',
-]
+/** Capas de las features. Una feature solo depende de features de capas
+ * inferiores: así no hay ciclos y queda claro quién compone a quién. Una
+ * feature nueva se ubica acá antes de importarla. */
+const FEATURE_LAYERS: Record<string, number> = {
+  auth: 0,
+  whatsapp: 1,
+  catalogs: 1,
+  media: 2,
+  platform: 2,
+  leads: 3,
+  tasks: 4,
+  templates: 5,
+  appointments: 5,
+  ai: 5,
+  automations: 6,
+  chats: 7,
+  dashboard: 8,
+  notifications: 8,
+  'issue-reports': 8,
+}
 
 const MAX_COMPONENT_LINES = 400
 
@@ -123,7 +113,7 @@ const KNOWN_APP_INTERNAL_IMPORTS = [
   'app/layout.tsx -> features/auth/queries.ts',
   'app/layout.tsx -> features/chats/hooks/useChatFiltersState.ts',
   'app/layout.tsx -> features/chats/layoutContext.ts',
-  'app/layout.tsx -> features/chats/queries.ts',
+  'app/layout.tsx -> features/leads/queries.ts',
   'app/layout.tsx -> features/notifications/components/NotificationCenter.tsx',
   'app/layout.tsx -> features/notifications/hooks/useNotifications.ts',
   'app/layout.tsx -> features/platform/components/SettingsDialog.tsx',
@@ -131,8 +121,6 @@ const KNOWN_APP_INTERNAL_IMPORTS = [
   'app/routes.tsx -> features/chats/components/ChatWorkspace.tsx',
   'app/routes.tsx -> features/chats/layoutContext.ts',
   'app/routes.tsx -> features/chats/useOpenChat.ts',
-  'app/routes.tsx -> features/dashboard/components/DashboardPage.tsx',
-  'app/routes.tsx -> features/platform/components/CatalogsPage.tsx',
 ]
 
 /** Punto de entrada de una feature para app/: su public/ o un archivo de
@@ -244,11 +232,13 @@ describe('feature architecture', () => {
     expect(routes).toContain('from "./providers"')
   })
 
-  it('does not add dependencies that close a cycle between features', () => {
-    const edges = featureEdges()
-    const reachesBack = (from: string, to: string) => reaches(from, path => path === to, new Map([...edges].map(([key, value]) => [key, [...value]])))
-    const cycleEdges = [...edges].flatMap(([owner, targets]) => [...targets].filter(target => reachesBack(target, owner)).map(target => `${owner} -> ${target}`))
-    expect(cycleEdges.sort()).toEqual(KNOWN_CYCLE_EDGES)
+  it('orders features in layers: each one depends only on lower layers', () => {
+    const owners = readdirSync(features, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
+    expect(owners).toEqual(Object.keys(FEATURE_LAYERS).sort())
+    const violations = [...featureEdges()].flatMap(([owner, targets]) => [...targets]
+      .filter(target => FEATURE_LAYERS[target] >= FEATURE_LAYERS[owner])
+      .map(target => `${owner} (${FEATURE_LAYERS[owner]}) -> ${target} (${FEATURE_LAYERS[target]})`))
+    expect(violations.sort()).toEqual([])
   })
 
   it(`keeps components under ${MAX_COMPONENT_LINES} lines`, () => {

@@ -13,7 +13,7 @@ import { NotificationCenter } from "../features/notifications/components/Notific
 import { Sidebar } from "./Sidebar";
 import { useLayout } from "../shared/hooks/useBreakpoint";
 import { useLogout, useMe } from "../features/auth/queries";
-import { useUnreadCount } from "../features/chats/queries";
+import { useUnreadCount } from '../features/leads/queries'
 import { useRealtimeConnection, type InternalMentionAlert } from "../realtime/useRealtime";
 import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from "../features/notifications/hooks/useNotifications";

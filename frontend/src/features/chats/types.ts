@@ -1,7 +1,5 @@
 
 import type { JsonObject } from "../../shared/types";
-import type { NotificationTypeValue } from '../automations/public/automationCatalog';
-import type { LeadStage } from '../leads/types';
 import type { Message, MessageType } from '../whatsapp/types'
 
 export interface InternalNoteMention {
@@ -19,24 +17,6 @@ export interface InternalNote {
   updated_at: string
   is_edited: boolean
   mentions: InternalNoteMention[]
-}
-
-export interface UserNotification {
-  id: number
-  notification_type: NotificationTypeValue
-  title: string
-  body: string
-  lead_id: string | null
-  source_id: string | null
-  metadata: JsonObject | null
-  read_at: string | null
-  created_at: string
-}
-
-export interface NotificationPage {
-  items: UserNotification[]
-  unread_count: number
-  has_more: boolean
 }
 
 export type ScheduledMessageStatus = 'scheduled' | 'processing' | 'queued' | 'sent' | 'failed' | 'cancelled'
@@ -59,33 +39,6 @@ export interface CustomerServiceWindow {
   last_customer_message_at: string | null
   expires_at: string | null
   seconds_remaining: number
-}
-
-export interface Sugerencia {
-  tactica: string
-  canal: string
-  texto: string | null
-  adjuntos: string[]
-  motivo_adjuntos: string
-  porque: string
-}
-
-export interface SuggestionResponse {
-  estado: LeadStage | null
-  tipo_objecion: string | null
-  senal_compra: boolean
-  alerta: string | null
-  confianza: string
-  analisis: string
-  sugerencias: Sugerencia[]
-}
-
-/** Estado de la sugerencia guardada de un lead — lectura barata que nunca
- * dispara la generación. `stale`: el cliente escribió después de generarse. */
-export interface SuggestionStatus {
-  suggestion: SuggestionResponse | null
-  generated_at: string | null
-  stale: boolean
 }
 
 export interface MessagePage {

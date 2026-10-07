@@ -43,7 +43,7 @@ const TemplatesPage = lazy(() =>
   })),
 );
 const DashboardPage = lazy(() =>
-  import("../features/dashboard/components/DashboardPage").then((module) => ({
+  import("../features/dashboard/page").then((module) => ({
     default: module.DashboardPage,
   })),
 );
@@ -63,7 +63,7 @@ const MyAutomationExecutionsPage = lazy(() =>
   })),
 );
 const CatalogsPage = lazy(() =>
-  import("../features/platform/components/CatalogsPage").then((module) => ({
+  import("./CatalogsPage").then((module) => ({
     default: module.CatalogsPage,
   })),
 );

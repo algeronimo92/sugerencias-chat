@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { NotificationPage } from "../chats/types";
+import type { NotificationPage } from './types'
 
 export async function fetchNotificationHistory(unreadOnly: boolean, limit: number, offset: number): Promise<NotificationPage> {
   return (await client.get<ApiResponse<'/api/notifications', 'get'>>('/api/notifications', {

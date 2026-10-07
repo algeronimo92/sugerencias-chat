@@ -1,7 +1,7 @@
 import { toSuggestionError } from './errors'
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { SuggestionResponse, SuggestionStatus } from "../chats/types";
+import type { SuggestionResponse, SuggestionStatus } from './types'
 import type { MediaAsset } from "../media/types";
 import type { AIProfile, AIUsage, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
 

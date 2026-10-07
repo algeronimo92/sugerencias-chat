@@ -1,11 +1,14 @@
 import { FolderOpen, Paperclip } from 'lucide-react'
 import { useState } from 'react'
 import { resolveMediaUrl } from '../../whatsapp/public/message'
-import type { TemplateAttachment } from '../../templates/types'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { MediaLibraryPicker } from './MediaLibraryPicker'
 
-export function AttachmentPreview({ attachment }: { attachment: TemplateAttachment | MediaAsset }) {
+/** Lo que hace falta para previsualizar un archivo: un asset de la librería o
+ *  el adjunto de otra feature que apunta a uno. */
+export type PreviewableMedia = Pick<MediaAsset, 'media_url' | 'content_type' | 'filename'>
+
+export function AttachmentPreview({ attachment }: { attachment: PreviewableMedia }) {
   const url = resolveMediaUrl(attachment.media_url) ?? ''
   if (attachment.content_type.startsWith('image/')) {
     return <img src={url} alt={attachment.filename} loading="lazy" className="h-16 w-16 rounded-lg border border-wa-border object-cover dark:border-wa-border-dark" />

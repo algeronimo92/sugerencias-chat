@@ -21,10 +21,6 @@ export async function markChatUnread(chatId: string): Promise<void> {
   await client.post<ApiResponse<'/api/chats/{chat_id}/unread', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/unread`)
 }
 
-export async function fetchUnreadCount() {
-  return (await client.get<ApiResponse<'/api/chats/unread-count', 'get'>>('/api/chats/unread-count')).data.count
-}
-
 export async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {
   const params: Record<string, string | number> = {}
   if (cursor) {

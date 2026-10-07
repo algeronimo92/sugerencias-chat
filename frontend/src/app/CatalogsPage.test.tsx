@@ -4,19 +4,19 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CatalogsPage } from './CatalogsPage'
 
-vi.mock('../../catalogs/components/ServicesManagementPanel', () => ({
+vi.mock('../features/catalogs/public/ServicesManagementPanel', () => ({
   ServicesManagementPanel: () => <div>Panel de servicios</div>,
 }))
-vi.mock('../../catalogs/components/TagsManagementPanel', () => ({
+vi.mock('../features/catalogs/public/TagsManagementPanel', () => ({
   TagsManagementPanel: () => <div>Panel de etiquetas</div>,
 }))
-vi.mock('../../templates/components/TemplateCategoriesManagementPanel', () => ({
+vi.mock('../features/templates/public/TemplateCategoriesManagementPanel', () => ({
   TemplateCategoriesManagementPanel: () => <div>Panel de categorías de plantillas</div>,
 }))
-vi.mock('../../leads/components/LeadStagesManagementPanel', () => ({
+vi.mock('../features/leads/public/LeadStagesManagementPanel', () => ({
   LeadStagesManagementPanel: () => <div>Panel de etapas</div>,
 }))
-vi.mock('../../catalogs/components/CustomFieldsManagementPanel', () => ({
+vi.mock('../features/catalogs/public/CustomFieldsManagementPanel', () => ({
   CustomFieldsManagementPanel: () => <div>Panel de campos personalizados</div>,
 }))
 

@@ -20,6 +20,8 @@ export const leadKeys = {
   activityAll: ['lead-activity'] as const,
   activity: (chatId: string | null) => ['lead-activity', chatId] as const,
   search: (term: string) => ['lead-search', term] as const,
+  /** Cuántos leads tienen mensajes sin leer (la pastilla global). */
+  unreadCount: ['unread-count'] as const,
   /** Los valores de los campos personalizados de un lead. */
   customFieldValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
 }

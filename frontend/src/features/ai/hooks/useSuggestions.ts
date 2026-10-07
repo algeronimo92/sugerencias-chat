@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { SuggestionStatus } from '../../chats/types'
+import type { SuggestionStatus } from '../types'
 import { generateSuggestions, analyzeLead, fetchSuggestionStatus } from '../api'
 import type { GenerateParams } from '../types'
 import { leadKeys } from '../../leads/public/keys'

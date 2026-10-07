@@ -3,7 +3,6 @@ import { queryClient } from '../../shared/queryClient'
 import { deleteMediaAsset, fetchMediaLibrary, renameMediaAsset, saveStickerToLibrary, uploadMediaAsset } from './api'
 import type { MediaAsset, MediaAssetKind } from './types'
 import { mediaKeys } from './keys'
-import { templateKeys } from '../templates/public/keys'
 
 export type { MediaAssetUpload } from './types'
 
@@ -33,10 +32,9 @@ export function useSaveStickerToLibrary() {
 export function useRenameMediaAsset() {
   return useMutation({
     mutationFn: renameMediaAsset,
-    onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
-      queryClient.invalidateQueries({ queryKey: templateKeys.all }),
-    ]),
+    // Si el archivo era adjunto de plantillas, el backend avisa
+    // templates_updated y las plantillas se refrescan solas.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
 }
 

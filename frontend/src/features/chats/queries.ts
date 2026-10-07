@@ -1,19 +1,7 @@
-import { useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { markChatRead, markChatUnread, fetchUnreadCount } from './api'
+import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { markChatRead, markChatUnread } from './api'
 import type { ChatsPage } from '../leads/types'
 import { leadKeys } from '../leads/public/keys'
-import { chatKeys } from './keys'
-
-export function useUnreadCount() {
-  const connected = useChatSocketConnected()
-  return useQuery({
-    queryKey: chatKeys.unreadCount,
-    queryFn: fetchUnreadCount,
-    staleTime: 10_000,
-    refetchInterval: connected ? false : 60_000,
-  })
-}
 
 /** Marca un chat como visto — resetea su unread_count. Se llama al abrirlo.
  *
@@ -42,7 +30,7 @@ export function useMarkChatRead() {
           }
         }
       )
-      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: leadKeys.unreadCount })
     },
   })
 }
@@ -54,7 +42,7 @@ export function useMarkChatUnread() {
     mutationFn: markChatUnread,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.unreadCount })
+      queryClient.invalidateQueries({ queryKey: leadKeys.unreadCount })
     },
   })
 }

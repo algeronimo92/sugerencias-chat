@@ -22,7 +22,8 @@ useSuggestionStatus,
 } from "../../ai/public/useSuggestions";
 import { useWhatsappStatus } from "../../platform/public/useWhatsapp";
 import { useLayoutContext } from "../layoutContext";
-import { useMarkChatRead, useMarkChatUnread, useUnreadCount } from "../queries";
+import { useMarkChatRead, useMarkChatUnread } from "../queries";
+import { useUnreadCount } from '../../leads/public/queries'
 import { useChat, useInfiniteChats } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
 import { useOpenChat } from "../useOpenChat";
@@ -33,7 +34,7 @@ import { ChatThread } from "./ChatThread";
 const ChatPeekDialog = lazy(() => import("./ChatPeekDialog").then(m => ({ default: m.ChatPeekDialog })));
 
 const SuggestionPanel = lazy(() =>
-  import("../../ai/public/SuggestionPanel").then((module) => ({
+  import("./SuggestionPanel").then((module) => ({
     default: module.SuggestionPanel,
   })),
 );

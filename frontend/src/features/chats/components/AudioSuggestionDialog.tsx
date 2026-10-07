@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendAudio } from '../../chats/public/useMessages'
-import { useGenerateSpeech } from '../hooks/useTts'
+import { useSendAudio } from '../hooks/useMessages'
+import { useGenerateSpeech } from '../../ai/public/useTts'
 
 interface Props {
   chatId: string

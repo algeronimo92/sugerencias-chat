@@ -7,11 +7,11 @@ import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
 ACTIVE_EXECUTION_STATUSES,AUTOMATION_TRIGGERS,AutomationExecutionStatus,automationStepLabel,
-} from '../../automations/public/automationCatalog'
+} from '../domain/automationCatalog'
 import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
-} from '../../automations/public/queries'
-import type { AutomationActionResult, AutomationExecution } from '../../automations/types'
+} from '../queries'
+import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
   chatId: string

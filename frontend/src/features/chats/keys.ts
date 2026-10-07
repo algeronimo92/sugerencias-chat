@@ -7,10 +7,6 @@
  */
 
 
-export const chatKeys = {
-  unreadCount: ['unread-count'] as const,
-}
-
 export const messageKeys = {
   all: ['messages'] as const,
   thread: (chatId: string | null) => ['messages', chatId] as const,

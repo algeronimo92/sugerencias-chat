@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
-import { LeadAutomationPanel } from '../../leads/public/LeadAutomationPanel'
+import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {

@@ -15,7 +15,7 @@ import type { PropsWithChildren } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LeadAutomationPanel } from './LeadAutomationPanel'
-import type { AutomationExecution } from '../../automations/types'
+import type { AutomationExecution } from '../types'
 
 const mutate = vi.fn()
 const pauseMutate = vi.fn()
@@ -23,14 +23,14 @@ const resumeMutate = vi.fn()
 const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 const NOW = new Date('2026-07-20T15:00:00Z')
 
-vi.mock('../../automations/queries', () => ({
+vi.mock('../queries', () => ({
   useAutomationExecutions: vi.fn(),
   useCancelExecution: () => ({ mutate, isPending: false, variables: undefined }),
   usePauseExecution: () => ({ mutate: pauseMutate, isPending: false }),
   useResumeExecution: () => ({ mutate: resumeMutate, isPending: false }),
 }))
 
-import { useAutomationExecutions } from '../../automations/public/queries'
+import { useAutomationExecutions } from '../queries'
 
 function execution(overrides: Partial<AutomationExecution>): AutomationExecution {
   return {

@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { NotificationCenter } from './NotificationCenter'
-import type { UserNotification } from '../../chats/types'
+import type { UserNotification } from '../types'
 
 const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
