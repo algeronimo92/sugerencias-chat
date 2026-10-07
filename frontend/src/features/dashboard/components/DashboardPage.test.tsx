@@ -15,15 +15,15 @@ vi.mock('../hooks/useDashboard', () => ({
 }))
 
 // Las etapas son las del negocio; acá alcanza con las que trae una cuenta nueva.
-vi.mock('../hooks/useLeadStages', async () => {
-  const { buildStageCatalog, DEFAULT_LEAD_STAGES } = await import('../domain/leadStageMeta')
+vi.mock('../../leads/public/useLeadStages', async () => {
+  const { buildStageCatalog, DEFAULT_LEAD_STAGES } = await import('../../leads/public/leadStageMeta')
   return { useLeadStageCatalog: () => ({ ...buildStageCatalog(DEFAULT_LEAD_STAGES), isLoading: false }) }
 })
 
 // Recharts mide el contenedor con ResponsiveContainer y en jsdom eso queda en 0,
 // así que el área nunca se dibuja; el doble mantiene el árbol montable.
-vi.mock('./dashboard/primitives', async () => {
-  const actual = await vi.importActual<typeof import('./dashboard/primitives')>('./dashboard/primitives')
+vi.mock('./primitives', async () => {
+  const actual = await vi.importActual<typeof import('./primitives')>('./primitives')
   return { ...actual, TrendChart: ({ label }: { label: string }) => <div>Serie: {label}</div> }
 })
 

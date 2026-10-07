@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { fetchAdminLeadStages, createLeadStage, deleteLeadStage, fetchLeadStages, reorderLeadStages, updateLeadStage } from '../api'
 import { buildStageCatalog, DEFAULT_LEAD_STAGES, type LeadStageCatalog } from '../domain/leadStageMeta'
-import { dashboardKeys, kanbanKeys, stageKeys } from '../keys'
+import { kanbanKeys, stageKeys } from '../keys'
 
 
 /** Etapas del negocio (activas e inactivas) en el orden del embudo. Cambian
@@ -39,9 +39,9 @@ function useInvalidateStages() {
   const queryClient = useQueryClient()
   return () => {
     void queryClient.invalidateQueries({ queryKey: stageKeys.all })
-    // El kanban y el dashboard ordenan y rotulan con las etapas.
+    // El kanban ordena y rotula con las etapas; el dashboard se entera por el
+    // aviso lead_stages_updated, que tambi�n llega a quien hizo el cambio.
     void queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
-    void queryClient.invalidateQueries({ queryKey: dashboardKeys.all })
   }
 }
 

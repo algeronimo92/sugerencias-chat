@@ -2,8 +2,8 @@ import {
   AlertCircle, CalendarCheck, CheckCircle2, Clock3, MessageCircleReply, MessagesSquare, Send, Tag,
   TrendingUp, Users,
 } from 'lucide-react'
-import type { ChatFilters } from '../../types'
-import type { DashboardMetrics } from '../../types'
+import type { ChatFilters } from '../../leads/types'
+import type { DashboardMetrics } from '../types'
 import { formatDuration, formatNumber } from './format'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
 

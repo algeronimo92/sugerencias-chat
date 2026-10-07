@@ -134,7 +134,7 @@ const KNOWN_APP_INTERNAL_IMPORTS = [
   'app/routes.tsx -> features/chats/components/ChatWorkspace.tsx',
   'app/routes.tsx -> features/chats/layoutContext.ts',
   'app/routes.tsx -> features/chats/useOpenChat.ts',
-  'app/routes.tsx -> features/leads/components/DashboardPage.tsx',
+  'app/routes.tsx -> features/dashboard/components/DashboardPage.tsx',
   'app/routes.tsx -> features/platform/components/CatalogsPage.tsx',
 ]
 

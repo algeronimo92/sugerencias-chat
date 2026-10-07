@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip } from 'recharts'
-import type { DashboardFunnelStep, DashboardMetricItem, DashboardPoint, DashboardTagRow } from '../../types'
+import type { DashboardFunnelStep, DashboardMetricItem, DashboardPoint, DashboardTagRow } from '../types'
 import { PLACEHOLDER_NAMES, formatDayLabel, formatNumber } from './format'
 
 interface MetricCardProps {

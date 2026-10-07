@@ -6,7 +6,7 @@
  * variantes.
  */
 
-import type { ChatFilters, DashboardScope } from './types'
+import type { ChatFilters } from './types'
 
 export const leadKeys = {
   /** El listado de leads (la bandeja de chats lo muestra). */
@@ -47,9 +47,4 @@ export const customFieldKeys = {
   all: ['custom-fields'] as const,
   list: (entityType: string, includeInactive: boolean) => ['custom-fields', entityType, { includeInactive }] as const,
   leadValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
-}
-
-export const dashboardKeys = {
-  all: ['dashboard'] as const,
-  metrics: (days: number, scope: DashboardScope | null) => ['dashboard', days, scope] as const,
 }

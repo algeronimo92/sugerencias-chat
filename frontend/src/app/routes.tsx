@@ -43,7 +43,7 @@ const TemplatesPage = lazy(() =>
   })),
 );
 const DashboardPage = lazy(() =>
-  import("../features/leads/components/DashboardPage").then((module) => ({
+  import("../features/dashboard/components/DashboardPage").then((module) => ({
     default: module.DashboardPage,
   })),
 );

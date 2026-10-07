@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
-import type { DashboardMetrics } from '../../types'
-import { AUTOMATION_TRIGGERS } from '../../../automations/public/automationCatalog'
+import type { DashboardMetrics } from '../types'
+import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
 import { formatNumber, formatShortDateTime } from './format'
 import { BarList, NoData, Panel, StatGrid, StackedBarList, TrendChart } from './primitives'
 import type { StackSegment } from './primitives'

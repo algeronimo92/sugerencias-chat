@@ -1,16 +1,16 @@
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import type { ChatFilters } from '../types'
+import type { ChatFilters } from '../../leads/types'
 import type { DashboardScope } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
-import { FlowsTab } from './dashboard/FlowsTab'
-import { PipelineTab } from './dashboard/PipelineTab'
-import { SummaryTab } from './dashboard/SummaryTab'
-import { TagsTab } from './dashboard/TagsTab'
-import { formatRelativeTime } from './dashboard/format'
+import { FlowsTab } from './FlowsTab'
+import { PipelineTab } from './PipelineTab'
+import { SummaryTab } from './SummaryTab'
+import { TagsTab } from './TagsTab'
+import { formatRelativeTime } from './format'
 
 const TABS = [
   { id: 'summary', label: 'Resumen' },

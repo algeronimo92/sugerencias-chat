@@ -1,5 +1,5 @@
-import type { ChatFilters } from '../../types'
-import type { DashboardMetrics } from '../../types'
+import type { ChatFilters } from '../../leads/types'
+import type { DashboardMetrics } from '../types'
 import { formatNumber } from './format'
 import { BarList, Panel, StatGrid, TagBarList, TrendChart } from './primitives'
 

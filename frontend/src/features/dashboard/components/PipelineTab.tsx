@@ -1,6 +1,6 @@
-import type { ChatFilters } from '../../types'
-import { useLeadStageCatalog } from '../../hooks/useLeadStages'
-import type { DashboardMetrics } from '../../types'
+import type { ChatFilters } from '../../leads/types'
+import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
+import type { DashboardMetrics } from '../types'
 import { formatNumber } from './format'
 import { BarList, FunnelList, Panel, StatGrid, TrendChart } from './primitives'
 

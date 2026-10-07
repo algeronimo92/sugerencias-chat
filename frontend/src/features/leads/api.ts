@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam, Tag } from './types'
+import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, CustomFieldDefinition, CustomFieldEntity, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam, Tag } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -129,16 +129,6 @@ export function bulkMoveStage({ chatIds, stage, razonPerdido }: BulkMoveStageInp
 
 export function bulkAssignTag({ chatIds, tagId }: BulkAssignTagInput) {
   return runBulk(chatIds, (chatId) => client.post<ApiResponse<'/api/chats/{chat_id}/tags/{tag_id}', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/tags/${tagId}`))
-}
-
-export async function fetchDashboard(days: number, scope: DashboardScope | null): Promise<DashboardMetrics> {
-  return (
-      await client.get<ApiResponse<'/api/dashboard', 'get'>>('/api/dashboard', {
-        // Sin scope el backend elige por rol: el vendedor ve lo suyo y el
-        // admin el total del equipo.
-        params: { days, ...(scope ? { scope } : {}) },
-      })
-    ).data
 }
 
 export async function searchLeads(search: string, signal?: AbortSignal) {
