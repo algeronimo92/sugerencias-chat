@@ -5,11 +5,11 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import type { PropsWithChildren } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import client from '../../../shared/http/client'
+import { apiFailure } from '../../../test/fakeApi'
 import { SuggestionError, useGenerateSuggestions } from './useSuggestions'
 
 function wrapper({ children }: PropsWithChildren) {
@@ -17,10 +17,7 @@ function wrapper({ children }: PropsWithChildren) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-function httpError(status: number, data: unknown) {
-  const response = { status, data, statusText: '', headers: {}, config: { headers: new AxiosHeaders() } } as AxiosResponse
-  return new AxiosError('Request failed with status code ' + status, 'ERR_BAD_RESPONSE', undefined, undefined, response)
-}
+const httpError = apiFailure
 
 async function generateAndFail(error: unknown): Promise<SuggestionError> {
   post.mockRejectedValueOnce(error)

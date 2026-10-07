@@ -8,14 +8,13 @@
  * router y la fase 6 los permisos: este test tiene que seguir pasando igual.
  */
 
-import { AxiosError } from 'axios'
 import { configure, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import client from '../shared/http/client'
 import { queryClient } from '../shared/queryClient'
-import { installFakeApi } from '../test/fakeApi'
+import { installFakeApi, networkError } from '../test/fakeApi'
 import { installFakeSocket } from '../test/fakeSocket'
 import App from './App'
 
@@ -56,7 +55,7 @@ describe('sesión', () => {
     let attempts = 0
     api.current.on('get', '/api/auth/me', () => {
       attempts += 1
-      if (attempts === 1) throw new AxiosError('Network Error', AxiosError.ERR_NETWORK)
+      if (attempts === 1) throw networkError()
       return { data: ADMIN }
     })
     at('/')
@@ -128,7 +127,7 @@ describe('sesión', () => {
   it('si cerrar sesión falla igual vuelve al login', async () => {
     api.current.on('get', '/api/auth/me', { data: SELLER })
     api.current.on('post', '/api/auth/logout', () => {
-      throw new AxiosError('Network Error', AxiosError.ERR_NETWORK)
+      throw networkError()
     })
     at('/')
     render(<App />)

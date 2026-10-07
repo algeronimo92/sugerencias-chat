@@ -17,7 +17,7 @@ import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
-isServiceWindowError,type AutomationExecutionStatusValue,
+isServiceWindowFailure,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
@@ -146,7 +146,7 @@ function pendingLabel(execution: AutomationExecution) {
 function rowSummary(execution: AutomationExecution) {
   if (ACTIVE_EXECUTION_STATUSES.includes(execution.status)) return pendingLabel(execution)
   if (execution.status === AutomationExecutionStatus.Failed) {
-    if (isServiceWindowError(execution.error)) return 'No salió: la ventana de 24 h estaba cerrada'
+    if (isServiceWindowFailure(execution)) return 'No salió: la ventana de 24 h estaba cerrada'
     return execution.error ?? 'El flujo se cortó antes de terminar'
   }
   if (execution.status === AutomationExecutionStatus.Skipped) return 'El flujo no aplicaba a este lead'
@@ -188,7 +188,7 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
   const failed = execution.status === AutomationExecutionStatus.Failed
   const leadLabel = execution.lead_name || execution.lead_id || 'Lead eliminado'
   const steps = execution.action_results ?? []
-  const serviceWindow = isServiceWindowError(execution.error)
+  const serviceWindow = isServiceWindowFailure(execution)
   const summary = rowSummary(execution)
 
   return (

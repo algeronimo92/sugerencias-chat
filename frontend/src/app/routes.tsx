@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
+import { lazy, Suspense, useState } from "react";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
 import { EMPTY_CHAT_FILTERS } from '../features/leads/types'
@@ -8,8 +8,11 @@ import { ChatWorkspace } from "../features/chats/page";
 import { useLayoutContext } from '../features/chats/public/layoutContext';
 import { useOpenChat } from '../features/chats/public/useOpenChat';
 import { useMe } from '../features/auth/public/queries';
+import { asApiError } from "../shared/http/errors";
+import { extractErrorMessage } from "../shared/utils/errors";
 import { MainLayout } from "./layout";
 import { AccountActionProviders, CrmProviders, DataProviders } from "./providers";
+import { RouteError } from "./RouteError";
 // Fuera del bundle del CRM: con sesión activa el login no se usa (y arrastra
 // zod y react-hook-form), y el panel de plataforma solo se abre en /platform.
 const LoginPage = lazy(() =>
@@ -82,9 +85,13 @@ const IssueReportsPage = lazy(() =>
     default: module.IssueReportsPage,
   })),
 );
-function RequireAdmin({ isAdmin }: { isAdmin: boolean }) {
+function useIsAdmin() {
+  return useMe().data?.role === "admin";
+}
+
+function RequireAdmin() {
   const layoutContext = useLayoutContext();
-  return isAdmin ? (
+  return useIsAdmin() ? (
     <Outlet context={layoutContext} />
   ) : (
     <Navigate to="/" replace />
@@ -106,7 +113,8 @@ function IssueReportsRoute() {
   return <IssueReportsPage onCreate={openIssueReport} />;
 }
 
-function DashboardRoute({ isAdmin }: { isAdmin: boolean }) {
+function DashboardRoute() {
+  const isAdmin = useIsAdmin();
   const navigate = useNavigate();
   const { chatFilters } = useLayoutContext();
   return (
@@ -128,10 +136,9 @@ function AuthGate() {
   const { data: me, error, isError, isLoading, isFetching, refetch } = useMe();
 
   if (isError) {
-    const detail =
-      error instanceof Error && error.message !== "Network Error"
-        ? error.message
-        : "No se pudo establecer conexión con el servidor.";
+    const detail = asApiError(error)?.isNetwork
+      ? "No se pudo establecer conexión con el servidor."
+      : extractErrorMessage(error);
 
     return (
       <BackendUnavailable
@@ -160,32 +167,40 @@ function AuthGate() {
     );
   }
 
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route element={<ChatWorkspace />}>
-            <Route index element={null} />
-            <Route path="chat/:chatId" element={null} />
-          </Route>
-          <Route path="kanban" element={<KanbanRoute />} />
-          <Route path="tasks" element={<TasksRoute />} />
-          <Route path="reports" element={<IssueReportsRoute />} />
-          <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
-          <Route path="citas/nueva" element={<NewAppointmentPage />} />
-          <Route path="dashboard" element={<DashboardRoute isAdmin={me.role === "admin"} />} />
-          <Route element={<RequireAdmin isAdmin={me.role === "admin"} />}>
-            <Route path="templates" element={<TemplatesPage />} />
-            <Route path="media-library" element={<MediaLibraryPage />} />
-            <Route path="automations" element={<AutomationsPage />} />
-            <Route path="catalogs" element={<CatalogsPage />} />
-            <Route path="ai-assistant" element={<AiAssistantPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  );
+  return <CrmRouter />;
+}
+
+/** Las rutas del CRM. Cada nivel tiene su `errorElement`: si una pantalla se
+ *  rompe, el aviso ocupa su lugar y el layout (barra lateral, chats) sigue. */
+const crmRoutes = createRoutesFromElements(
+  <Route element={<MainLayout />} errorElement={<RouteError />}>
+    <Route errorElement={<RouteError />}>
+      <Route element={<ChatWorkspace />}>
+        <Route index element={null} />
+        <Route path="chat/:chatId" element={null} />
+      </Route>
+      <Route path="kanban" element={<KanbanRoute />} />
+      <Route path="tasks" element={<TasksRoute />} />
+      <Route path="reports" element={<IssueReportsRoute />} />
+      <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
+      <Route path="citas/nueva" element={<NewAppointmentPage />} />
+      <Route path="dashboard" element={<DashboardRoute />} />
+      <Route element={<RequireAdmin />}>
+        <Route path="templates" element={<TemplatesPage />} />
+        <Route path="media-library" element={<MediaLibraryPage />} />
+        <Route path="automations" element={<AutomationsPage />} />
+        <Route path="catalogs" element={<CatalogsPage />} />
+        <Route path="ai-assistant" element={<AiAssistantPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Route>
+  </Route>,
+);
+
+function CrmRouter() {
+  // Uno por sesión: se crea al entrar y se descarta con el login.
+  const [router] = useState(() => createBrowserRouter(crmRoutes));
+  return <RouterProvider router={router} />;
 }
 
 export function AppRoutes() {

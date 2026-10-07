@@ -1,3 +1,4 @@
+import type { ApiSchemas } from '../../../shared/http/contract'
 import type { ValueOf } from '../../../shared/types'
 
 export const AutomationTrigger = {
@@ -110,17 +111,16 @@ export function automationStepLabel(type: string | null | undefined): string {
  *  backend en MAX_ROUND_ROBIN_OUTPUTS). */
 export const MAX_ROUND_ROBIN_OUTPUTS = 10
 
-/** Código con el que el backend marca la notificación de una ejecución que
- *  falló porque la ventana de atención de 24 h estaba cerrada (espejo de
- *  SERVICE_WINDOW_ERROR_CODE). Es lo único que habilita la autorización del
- *  admin para reintentarla ignorando la ventana. */
-export const SERVICE_WINDOW_ERROR_CODE = 'service_window_closed'
+/** Código con el que el backend marca una ejecución que falló porque la
+ *  ventana de atención de 24 h estaba cerrada (ExecutionErrorCode del
+ *  backend; la notificación del fallo lo repite en su metadata). Es lo único
+ *  que habilita la autorización del admin para reintentarla ignorando la
+ *  ventana. */
+export const SERVICE_WINDOW_ERROR_CODE = 'service_window_closed' satisfies ApiSchemas['ExecutionErrorCode']
 
-/** Un fallo de ejecución causado por la ventana cerrada. La notificación trae
- *  el código en su metadata; el historial de ejecuciones solo guarda el texto
- *  del error, así que ahí se reconoce por el mensaje del backend. */
-export function isServiceWindowError(error: string | null | undefined): boolean {
-  return !!error && error.includes('ventana de 24 horas está cerrada')
+/** Un fallo de ejecución causado por la ventana cerrada. */
+export function isServiceWindowFailure(execution: { error_code?: string | null }): boolean {
+  return execution.error_code === SERVICE_WINDOW_ERROR_CODE
 }
 
 export const WaitAnyConditionKind = {

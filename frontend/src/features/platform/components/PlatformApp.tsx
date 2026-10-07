@@ -9,7 +9,7 @@ import type { OperadorActual, Organization } from '../types';
  * negocio estas rutas devuelven 404 y acá se ve como "panel no disponible".
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
+import { asApiError } from "../../../shared/http/errors";
 import {
 Activity,
 AlertTriangle,
@@ -44,15 +44,15 @@ import { platformKeys } from '../keys'
 
 
 function mensajeDeError(error: unknown): string {
-  if (axios.isAxiosError(error)) {
+  const apiError = asApiError(error);
+  if (apiError) {
     // El 404 puede venir del middleware de tenancy ("Tenant not found") antes
     // de llegar al panel: desde el dominio de un negocio estas rutas no
     // existen, y ese detalle genérico no le dice nada a quien lo lee.
-    if (error.response?.status === 404) {
+    if (apiError.status === 404) {
       return "El panel solo está disponible en el dominio de la plataforma.";
     }
-    const detalle = error.response?.data?.detail;
-    if (typeof detalle === "string") return detalle;
+    if (apiError.detail) return apiError.detail;
   }
   return "No se pudo completar la operación.";
 }
@@ -1203,7 +1203,8 @@ export function PlatformApp() {
       } catch (error) {
         // 401 = todavía no entró. 404 = el panel no vive en este dominio, que
         // es la respuesta esperada desde el CRM de un negocio.
-        if (axios.isAxiosError(error) && [401, 404].includes(error.response?.status ?? 0)) {
+        const status = asApiError(error)?.status;
+        if (status === 401 || status === 404) {
           return null;
         }
         throw error;
@@ -1224,7 +1225,7 @@ export function PlatformApp() {
   }
   if (sesion.isError) {
     const detail =
-      axios.isAxiosError(sesion.error) && !sesion.error.response
+      asApiError(sesion.error)?.isNetwork
         ? "No se pudo establecer conexión con el servidor."
         : mensajeDeError(sesion.error);
     return (

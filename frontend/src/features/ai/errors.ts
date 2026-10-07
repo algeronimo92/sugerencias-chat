@@ -1,5 +1,4 @@
-import axios from 'axios'
-import { detailMessage } from '../../shared/utils/errors'
+import { asApiError } from '../../shared/http/errors'
 
 const NON_RETRYABLE_CODES = new Set([
   'ai_disabled',
@@ -23,23 +22,15 @@ export class SuggestionError extends Error {
 }
 
 export function toSuggestionError(err: unknown): SuggestionError {
-  if (!axios.isAxiosError<{ detail?: unknown }>(err)) {
-    return new SuggestionError(err instanceof Error ? err.message : 'Error desconocido', null)
-  }
-  if (!err.response) {
-    return new SuggestionError('Sin conexión con el servidor. Revisá tu internet e intentá de nuevo.', null)
-  }
+  const apiError = asApiError(err)
+  if (!apiError) return new SuggestionError(err instanceof Error ? err.message : 'Error desconocido', null)
+  if (apiError.isNetwork) return new SuggestionError(apiError.message, null)
   // El backend manda el motivo en `detail`, como texto o como { code, message }.
-  const detail = err.response.data?.detail
-  const code = detail && typeof detail === 'object' && typeof (detail as { code?: unknown }).code === 'string'
-    ? (detail as { code: string }).code
-    : null
-  const message = detailMessage(detail)
-  if (message) return new SuggestionError(message, code)
+  if (apiError.detail) return new SuggestionError(apiError.detail, apiError.code)
   // Sin detalle (un fallo inesperado del servidor o un proxy): nunca mostrar
   // "Request failed with status code 500".
   return new SuggestionError(
-    err.response.status >= 500
+    apiError.status !== null && apiError.status >= 500
       ? 'El asistente IA no está disponible en este momento. Intenta de nuevo en unos minutos.'
       : 'No se pudieron generar las sugerencias.',
     null,

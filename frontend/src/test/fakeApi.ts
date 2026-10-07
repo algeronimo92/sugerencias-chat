@@ -15,6 +15,7 @@ import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse, type I
 import { afterEach, beforeEach } from 'vitest'
 
 import client from '../shared/http/client'
+import { asApiError, type ApiError } from '../shared/http/errors'
 
 export type Method = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
@@ -90,6 +91,18 @@ export class FakeApi {
     }
     return response
   }
+}
+
+/** Para lanzar desde una respuesta declarada: el pedido no llegó al servidor. */
+export function networkError(): AxiosError {
+  return new AxiosError('Network Error', AxiosError.ERR_NETWORK)
+}
+
+/** El error que el cliente compartido entrega ante una respuesta `status`,
+ *  para los tests que reemplazan una función del cliente en vez de la red. */
+export function apiFailure(status: number, data: unknown = null): ApiError {
+  const response = { status, data, statusText: '', headers: new AxiosHeaders(), config: { headers: new AxiosHeaders() } } as AxiosResponse
+  return asApiError(new AxiosError(`Request failed with status code ${status}`, AxiosError.ERR_BAD_RESPONSE, undefined, null, response))!
 }
 
 /** Instala un backend falso nuevo en el cliente compartido antes de cada test

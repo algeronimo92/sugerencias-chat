@@ -19,7 +19,7 @@ import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { MediaAssetField } from '../../media/public/MediaAssetField'
 import { useMediaLibrary } from '../../media/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
-import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowError, type AutomationExecutionStatusValue } from '../domain/automationCatalog'
+import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure, type AutomationExecutionStatusValue } from '../domain/automationCatalog'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue, isTaskPriority, isTaskType } from '../../tasks/public/taskCatalog'
 import {
 useAutomationExecutions,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
@@ -427,7 +427,7 @@ export function AutomationsPage() {
                     </button>}
                     {/* Falló solo por la ventana de 24 h: el admin puede
                         autorizar que esta ejecución la ignore y salga igual. */}
-                    {!execution.rule_deleted && execution.status === AutomationExecutionStatus.Failed && isServiceWindowError(execution.error) && <button
+                    {!execution.rule_deleted && execution.status === AutomationExecutionStatus.Failed && isServiceWindowFailure(execution) && <button
                       type="button"
                       disabled={retryExecution.isPending}
                       onClick={() => { setError(null); retryExecution.mutate({ id: execution.id, ignoreServiceWindow: true }, { onSuccess: () => toast.success('Autorizada: se reintenta ignorando la ventana'), onError: reason => setError(extractErrorMessage(reason)) }) }}

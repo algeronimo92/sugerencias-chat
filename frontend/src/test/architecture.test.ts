@@ -240,6 +240,16 @@ describe('feature architecture', () => {
     expect(readers).toEqual(['shared/config.ts'])
   })
 
+  it('keeps axios inside shared/http: the rest of the app sees ApiError', () => {
+    const http = join(src, 'shared', 'http')
+    const testSupport = join(src, 'test')
+    const importers = sourceFiles(src)
+      .filter(path => !isInside(http, path) && !isInside(testSupport, path))
+      .filter(path => imports(readFileSync(path, 'utf8')).includes('axios'))
+      .map(path => relative(src, path).split(/[\\/]/).join('/'))
+    expect(importers).toEqual([])
+  })
+
   it('exposes API adapters as plain functions with domain names', () => {
     const violations = sourceFiles(features).filter(path => path.endsWith('api.ts')).flatMap(path => parse(path).statements.flatMap(node => {
       if (!ts.isFunctionDeclaration(node) || !node.name || !node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) return []

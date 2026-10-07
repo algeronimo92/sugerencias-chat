@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import client from '../../../shared/http/client'
+import { apiFailure } from '../../../test/fakeApi'
 import { LeadAnalysisAction } from './LeadAnalysisAction'
 
 let post: ReturnType<typeof vi.spyOn>
@@ -45,14 +45,7 @@ describe('LeadAnalysisAction', () => {
   })
 
   it('explica por qué no puede analizar cuando se agotó la cuota', async () => {
-    const response = {
-      status: 429,
-      data: { detail: { code: 'ai_quota_exceeded', message: 'Tu negocio ya usó las 50 sugerencias de IA incluidas este mes.' } },
-      statusText: '',
-      headers: {},
-      config: { headers: new AxiosHeaders() },
-    } as AxiosResponse
-    post.mockRejectedValueOnce(new AxiosError('Request failed', 'ERR_BAD_REQUEST', undefined, undefined, response))
+    post.mockRejectedValueOnce(apiFailure(429, { detail: { code: 'ai_quota_exceeded', message: 'Tu negocio ya usó las 50 sugerencias de IA incluidas este mes.' } }))
     const user = userEvent.setup()
     renderAction()
 
