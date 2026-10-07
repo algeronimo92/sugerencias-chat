@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignTag, bulkMoveStage } from './api'
 import type { LeadStage } from './types'
 import { kanbanKeys, leadKeys } from './keys'
-import { chatKeys } from '../chats/public/keys'
 
 export type { KanbanPage } from './types'
 
@@ -30,7 +29,7 @@ export function useMoveLeadStage() {
     mutationFn: moveLeadStage,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },
   })
@@ -44,7 +43,7 @@ export function useBulkMoveStage() {
     mutationFn: bulkMoveStage,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
-      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },
   })
@@ -55,7 +54,7 @@ export function useBulkAssignTag() {
   return useMutation({
     mutationFn: bulkAssignTag,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
     },

@@ -10,7 +10,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
 import { MessageBubble } from './MessageBubble'
 

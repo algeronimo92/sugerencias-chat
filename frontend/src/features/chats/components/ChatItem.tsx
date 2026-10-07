@@ -6,9 +6,9 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import { useDeleteLead, useMarkNoShow } from '../queries'
-import type { Chat } from '../types'
-import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
+import { useDeleteLead, useMarkNoShow } from '../../leads/public/queries'
+import type { Chat } from '../../leads/types'
+import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../../leads/public/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.

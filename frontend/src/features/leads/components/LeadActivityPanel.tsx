@@ -1,7 +1,7 @@
 import { ChevronDown, History, Loader2 } from 'lucide-react'
 import type { JsonObject, JsonValue } from '../../../shared/types'
 import { parseContent } from '../../whatsapp/public/message'
-import type { LeadActivity } from '../../chats/types'
+import type { LeadActivity } from '../types'
 import { useLeadActivity } from '../hooks/useLeadMeta'
 
 const EVENT_LABELS: Record<string, string> = {

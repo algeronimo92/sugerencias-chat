@@ -10,7 +10,7 @@ vi.mock('../../auth/queries', () => ({
   useMe: () => ({ data: { id: 7, role: 'vendedor', name: 'Gerson' } }),
 }))
 vi.mock('../../platform/hooks/useUsers', () => ({ useSellers: () => ({ data: [] }) }))
-vi.mock('../../chats/queries', () => ({
+vi.mock('../queries', () => ({
   useDuplicateLead: () => ({ data: null, isFetching: false }),
   usePhoneConfig: () => ({ data: { default_country_code: '51' } }),
 }))

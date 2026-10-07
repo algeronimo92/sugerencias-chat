@@ -1,4 +1,4 @@
-import type { ChatFilters } from '../../../chats/types'
+import type { ChatFilters } from '../../types'
 import { useLeadStageCatalog } from '../../hooks/useLeadStages'
 import type { DashboardMetrics } from '../../types'
 import { formatNumber } from './format'

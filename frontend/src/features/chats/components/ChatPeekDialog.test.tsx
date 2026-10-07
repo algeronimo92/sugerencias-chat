@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
 import { ChatPeekDialog } from './ChatPeekDialog'
 

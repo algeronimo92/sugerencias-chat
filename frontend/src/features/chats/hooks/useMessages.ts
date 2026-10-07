@@ -4,8 +4,9 @@ import { useChatSocketConnected } from '../../../realtime/useRealtime'
 import { fetchMessages, forwardMessages, pinMessage, fetchPinnedMessages, reactToMessage, sendInteractive, sendMessage, retryFailedMessage, discardFailedMessage, sendTemplate, unpinMessage, sendAudio, sendContacts, sendLocation, sendMedia, sendSticker } from '../api'
 import type { AudioPayload, ContactsPayload, ForwardPayload, ForwardResult, InteractivePayload, LocationPayload, MediaPayload, MessageCursor, MessagePage, OptimisticContext, OptimisticMessageDraft, ReactionPayload, SendTemplatePayload, StickerPayload, TextPayload } from '../types'
 import type { Message, MessageReaction, MessageType } from '../../whatsapp/types'
-import { chatKeys, messageKeys } from '../keys'
+import { messageKeys } from '../keys'
 import { templateKeys } from '../../templates/public/keys'
+import { leadKeys } from '../../leads/public/keys'
 
 // untilId no forma parte de la queryKey a propósito: los updates optimistas
 // de useSendMessage escriben sobre messageKeys.thread(chatId) exacto. Solo influye
@@ -376,7 +377,7 @@ export function useForwardMessages(chatId: string) {
   return useMutation<ForwardResult, Error, ForwardPayload>({
     mutationFn: (variables: ForwardPayload) => forwardMessages(chatId, variables),
     onSuccess: (_result, { targetChatIds }) => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      void queryClient.invalidateQueries({ queryKey: leadKeys.all })
       for (const target of targetChatIds) {
         void queryClient.invalidateQueries({ queryKey: messageKeys.thread(target) })
       }

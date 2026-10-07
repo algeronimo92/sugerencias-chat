@@ -14,7 +14,7 @@ import userEvent from '@testing-library/user-event'
 import type { PropsWithChildren } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
 import { ChatThread } from './ChatThread'
 

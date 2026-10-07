@@ -1,7 +1,7 @@
 const requestTails = new Map<string, Promise<void>>()
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
-import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, MessageCursor, MessagePage, NoteInput, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TextPayload } from "./types";
+import type { AudioPayload, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LocationPayload, MediaPayload, MessageCursor, MessagePage, NoteInput, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TextPayload } from "./types";
 import type { ContractMessage, Message, MessageAnalysis, MessageReaction } from '../whatsapp/types'
 
 /** De lo que entrega el contrato a lo que usa el hilo (ver `Message`). */
@@ -13,58 +13,6 @@ export function toMessage(message: ContractMessage): Message {
   }
 }
 
-export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
-  const params: Record<string, string> = {}
-  if (search) params.search = search
-  if (filters?.unreadOnly) params.unread_only = 'true'
-  if (filters?.stages.length) params.stages = filters.stages.join(',')
-  if (filters?.tagIds.length) params.tag_ids = filters.tagIds.join(',')
-  if (filters?.tagIds.length) params.tag_mode = filters.tagMode
-  if (filters?.service.trim()) params.service = filters.service.trim()
-  if (filters?.sellerId) params.seller_id = String(filters.sellerId)
-  if (filters?.origin.trim()) params.origin = filters.origin.trim()
-  if (filters?.lastSender) params.last_sender = filters.lastSender
-  if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
-  if (filters?.waitingTime) params.waiting_time = filters.waitingTime
-  if (filters?.automationPaused) params.automation_paused = 'true'
-  if (pageParam) {
-    params.cursor_id = String(pageParam.cursorId)
-    if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
-    if (search) params.cursor_rank = String(pageParam.cursorRank ?? 2)
-  }
-  const { data } = await client.get<ApiResponse<'/api/chats', 'get'>>('/api/chats', { params })
-  return data
-}
-
-export async function fetchLeadByPhone(digits: string): Promise<Chat | null> {
-  const { data } = await client.get<ApiResponse<'/api/chats', 'get'>>('/api/chats', { params: { search: digits } })
-  return data.items.find((chat) => (chat.phone ?? '').replace(/\D/g, '').endsWith(digits)) ?? null
-}
-
-export async function createLead(payload: LeadInput): Promise<Chat> {
-  const { data } = await client.post<ApiResponse<'/api/chats', 'post'>>('/api/chats', payload)
-  return data
-}
-
-export async function updateLead(chatId: string, payload: LeadUpdateInput): Promise<Chat> {
-  const { data } = await client.patch<ApiResponse<'/api/chats/{chat_id}', 'patch'>>(`/api/chats/${encodeURIComponent(chatId)}`, payload)
-  return data
-}
-
-export async function markNoShow(chatId: string): Promise<Chat> {
-  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/no-show', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/no-show`)
-  return data
-}
-
-export async function deleteLead(chatId: string): Promise<void> {
-  await client.delete<ApiResponse<'/api/chats/{chat_id}', 'delete'>>(`/api/chats/${encodeURIComponent(chatId)}`)
-}
-
-export async function mergeLead(chatId: string, otherId: string): Promise<Chat> {
-  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/merge', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/merge`, { other_id: otherId })
-  return data
-}
-
 export async function markChatRead(chatId: string): Promise<void> {
   await client.post<ApiResponse<'/api/chats/{chat_id}/read', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/read`)
 }
@@ -73,16 +21,8 @@ export async function markChatUnread(chatId: string): Promise<void> {
   await client.post<ApiResponse<'/api/chats/{chat_id}/unread', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/unread`)
 }
 
-export async function fetchChat(chatId: string | null): Promise<Chat> {
-  return (await client.get<ApiResponse<'/api/chats/{chat_id}', 'get'>>(`/api/chats/${encodeURIComponent(chatId as string)}`)).data
-}
-
 export async function fetchUnreadCount() {
   return (await client.get<ApiResponse<'/api/chats/unread-count', 'get'>>('/api/chats/unread-count')).data.count
-}
-
-export async function fetchPhoneConfig(): Promise<{ default_country_code: string }> {
-  return (await client.get<ApiResponse<'/api/chats/phone-config', 'get'>>('/api/chats/phone-config')).data
 }
 
 export async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {

@@ -1,6 +1,6 @@
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import type { ChatFilters } from '../../chats/types'
+import type { ChatFilters } from '../types'
 import type { DashboardScope } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { extractErrorMessage } from '../../../shared/utils/errors'

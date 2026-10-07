@@ -1,10 +1,9 @@
-import type { BulkActionResult } from './types'
+import client from '../../shared/http/client'
+import type { ApiResponse } from '../../shared/http/contract'
+import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadTask, LeadUpdateInput, MoveLeadStageInput, PageParam, Tag, TaskInput, TaskStatus } from './types'
+
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
-import client from "../../shared/http/client";
-import type { ApiResponse } from '../../shared/http/contract'
-import type { Chat, LeadActivity } from "../chats/types";
-import type { BulkAssignTagInput, BulkMoveStageInput, CustomFieldDefinition, CustomFieldEntity, DashboardMetrics, DashboardScope, KanbanPage, KanbanSnapshot, LeadService, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadTask, MoveLeadStageInput, Tag, TaskInput, TaskStatus } from "./types";
 
 export async function fetchLeadStages(): Promise<LeadStageDefinition[]> {
   return (await client.get<ApiResponse<'/api/lead-stages', 'get'>>('/api/lead-stages')).data
@@ -184,4 +183,64 @@ async function runBulk<T>(chatIds: string[], run: (chatId: string) => Promise<T>
   const failed: string[] = []
   results.forEach((result, i) => (result.status === 'fulfilled' ? succeeded : failed).push(chatIds[i]))
   return { succeeded, failed }
+}
+
+export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
+  const params: Record<string, string> = {}
+  if (search) params.search = search
+  if (filters?.unreadOnly) params.unread_only = 'true'
+  if (filters?.stages.length) params.stages = filters.stages.join(',')
+  if (filters?.tagIds.length) params.tag_ids = filters.tagIds.join(',')
+  if (filters?.tagIds.length) params.tag_mode = filters.tagMode
+  if (filters?.service.trim()) params.service = filters.service.trim()
+  if (filters?.sellerId) params.seller_id = String(filters.sellerId)
+  if (filters?.origin.trim()) params.origin = filters.origin.trim()
+  if (filters?.lastSender) params.last_sender = filters.lastSender
+  if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
+  if (filters?.waitingTime) params.waiting_time = filters.waitingTime
+  if (filters?.automationPaused) params.automation_paused = 'true'
+  if (pageParam) {
+    params.cursor_id = String(pageParam.cursorId)
+    if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
+    if (search) params.cursor_rank = String(pageParam.cursorRank ?? 2)
+  }
+  const { data } = await client.get<ApiResponse<'/api/chats', 'get'>>('/api/chats', { params })
+  return data
+}
+
+export async function fetchLeadByPhone(digits: string): Promise<Chat | null> {
+  const { data } = await client.get<ApiResponse<'/api/chats', 'get'>>('/api/chats', { params: { search: digits } })
+  return data.items.find((chat) => (chat.phone ?? '').replace(/\D/g, '').endsWith(digits)) ?? null
+}
+
+export async function createLead(payload: LeadInput): Promise<Chat> {
+  const { data } = await client.post<ApiResponse<'/api/chats', 'post'>>('/api/chats', payload)
+  return data
+}
+
+export async function updateLead(chatId: string, payload: LeadUpdateInput): Promise<Chat> {
+  const { data } = await client.patch<ApiResponse<'/api/chats/{chat_id}', 'patch'>>(`/api/chats/${encodeURIComponent(chatId)}`, payload)
+  return data
+}
+
+export async function markNoShow(chatId: string): Promise<Chat> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/no-show', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/no-show`)
+  return data
+}
+
+export async function deleteLead(chatId: string): Promise<void> {
+  await client.delete<ApiResponse<'/api/chats/{chat_id}', 'delete'>>(`/api/chats/${encodeURIComponent(chatId)}`)
+}
+
+export async function mergeLead(chatId: string, otherId: string): Promise<Chat> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/merge', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/merge`, { other_id: otherId })
+  return data
+}
+
+export async function fetchChat(chatId: string | null): Promise<Chat> {
+  return (await client.get<ApiResponse<'/api/chats/{chat_id}', 'get'>>(`/api/chats/${encodeURIComponent(chatId as string)}`)).data
+}
+
+export async function fetchPhoneConfig(): Promise<{ default_country_code: string }> {
+  return (await client.get<ApiResponse<'/api/chats/phone-config', 'get'>>('/api/chats/phone-config')).data
 }

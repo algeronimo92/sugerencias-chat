@@ -8,7 +8,8 @@ useCancelScheduledMessage,
 useCreateScheduledMessage,
 useScheduledMessages,
 } from '../hooks/useScheduledMessages'
-import type { Chat, ScheduledMessage, ScheduledMessageStatus } from '../types'
+import type { ScheduledMessage, ScheduledMessageStatus } from '../types'
+import type { Chat } from '../../leads/types'
 
 function defaultScheduledAt() {
   const date = new Date(Date.now() + 60 * 60 * 1000)

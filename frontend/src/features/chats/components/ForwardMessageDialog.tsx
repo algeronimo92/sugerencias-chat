@@ -5,10 +5,10 @@ import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useForwardMessages } from '../hooks/useMessages'
-import { useInfiniteChats } from '../queries'
-import type { Chat } from '../types'
-import { EMPTY_CHAT_FILTERS } from '../types'
-import { avatarInitial, displayName, displayPhone } from '../utils/chat'
+import { useInfiniteChats } from '../../leads/public/queries'
+import type { Chat } from '../../leads/types'
+import { EMPTY_CHAT_FILTERS } from '../../leads/types'
+import { avatarInitial, displayName, displayPhone } from '../../leads/public/chat'
 
 // Mismo tope que valida el backend: WhatsApp también limita a cuántos chats se
 // puede reenviar de una vez, para que no se use como lista de difusión.

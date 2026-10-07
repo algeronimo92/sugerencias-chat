@@ -8,8 +8,8 @@ dialogContentPositionClass,
 dialogOverlayClass,
 } from "../../../shared/ui/Dialog";
 import { extractErrorMessage } from "../../../shared/utils/errors";
-import { useCreateLead, useFindLeadByPhone } from "../queries";
-import type { LeadUpdateInput } from '../types';
+import { useCreateLead, useFindLeadByPhone } from '../../leads/public/queries'
+import type { LeadUpdateInput } from '../../leads/types'
 import type { SharedContact } from '../../whatsapp/public/message';
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.

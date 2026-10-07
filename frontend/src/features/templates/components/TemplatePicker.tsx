@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
-import type { Chat } from '../../chats/types'
+import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../types'
 import { renderTemplate } from '../utils/templates'
 

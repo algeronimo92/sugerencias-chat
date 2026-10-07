@@ -29,8 +29,8 @@ import { useTags } from "../../leads/public/useLeadMeta";
 import { useLeadStageCatalog } from "../../leads/public/useLeadStages";
 import type { LeadStage } from '../../leads/types';
 import { useSellers } from "../../platform/public/useUsers";
-import { useCreateLead } from "../queries";
-import type { Chat, ChatFilters, LeadUpdateInput } from '../types';
+import { useCreateLead } from '../../leads/public/queries'
+import type { Chat, ChatFilters, LeadUpdateInput } from '../../leads/types'
 import { ChatItem } from "./ChatItem";
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.

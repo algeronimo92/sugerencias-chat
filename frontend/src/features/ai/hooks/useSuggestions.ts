@@ -3,7 +3,6 @@ import type { SuggestionStatus } from '../../chats/types'
 import { generateSuggestions, analyzeLead, fetchSuggestionStatus } from '../api'
 import type { GenerateParams } from '../types'
 import { leadKeys } from '../../leads/public/keys'
-import { chatKeys } from '../../chats/public/keys'
 import { aiKeys } from '../keys'
 
 /** Motivos por los que reintentar no sirve: los resuelve la plataforma
@@ -47,7 +46,7 @@ export function useGenerateSuggestions() {
         stale: false,
       })
       // La sugerencia pudo cambiar la etapa del lead / registrar actividad.
-      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activity(variables.chat_id) })
       queryClient.invalidateQueries({ queryKey: aiKeys.usage })
     },
@@ -69,7 +68,7 @@ export function useAnalyzeLead() {
     mutationKey: aiKeys.analyzing,
     mutationFn: analyzeLead,
     onSuccess: (_data, chatId) => {
-      queryClient.invalidateQueries({ queryKey: chatKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activity(chatId) })
       queryClient.invalidateQueries({ queryKey: aiKeys.usage })
     },

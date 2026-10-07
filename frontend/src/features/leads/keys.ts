@@ -6,9 +6,17 @@
  * variantes.
  */
 
-import type { DashboardScope } from './types'
+import type { ChatFilters, DashboardScope } from './types'
 
 export const leadKeys = {
+  /** El listado de leads (la bandeja de chats lo muestra). */
+  all: ['chats'] as const,
+  lists: ['chats', 'list'] as const,
+  list: (search: string, filters: ChatFilters) => ['chats', 'list', search, filters] as const,
+  detailAll: ['chat'] as const,
+  detail: (chatId: string | null) => ['chat', chatId] as const,
+  phoneConfig: ['phone-config'] as const,
+  duplicate: (digits: string | null) => ['duplicate-lead', digits] as const,
   activityAll: ['lead-activity'] as const,
   activity: (chatId: string | null) => ['lead-activity', chatId] as const,
   search: (term: string) => ['lead-search', term] as const,

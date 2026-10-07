@@ -22,14 +22,9 @@ useSuggestionStatus,
 } from "../../ai/public/useSuggestions";
 import { useWhatsappStatus } from "../../platform/public/useWhatsapp";
 import { useLayoutContext } from "../layoutContext";
-import {
-useChat,
-useInfiniteChats,
-useMarkChatRead,
-useMarkChatUnread,
-useUnreadCount,
-} from "../queries";
-import type { Chat } from "../types";
+import { useMarkChatRead, useMarkChatUnread, useUnreadCount } from "../queries";
+import { useChat, useInfiniteChats } from '../../leads/public/queries'
+import type { Chat } from '../../leads/types'
 import { useOpenChat } from "../useOpenChat";
 import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";

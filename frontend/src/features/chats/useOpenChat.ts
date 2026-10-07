@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Chat } from './types'
+import type { Chat } from '../leads/types'
 
 export function useOpenChat() {
   const navigate = useNavigate()

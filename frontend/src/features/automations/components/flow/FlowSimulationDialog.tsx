@@ -1,7 +1,7 @@
 import { Beaker, Loader2, Play, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { extractErrorMessage } from '../../../../shared/utils/errors'
-import type { Chat } from '../../../chats/types'
+import type { Chat } from '../../../leads/types'
 import { useLeadSearch } from '../../../leads/public/useLeadSearch'
 import { useLeadStageCatalog } from '../../../leads/public/useLeadStages'
 import { FlowHandle } from '../../domain/automationCatalog'

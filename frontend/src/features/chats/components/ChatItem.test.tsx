@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import { ChatItem } from './ChatItem'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -11,8 +11,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 const markNoShowMutate = vi.fn()
 const deleteLeadMutate = vi.fn()
 
-vi.mock('../queries', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../queries')>()
+vi.mock('../../leads/public/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../leads/public/queries')>()
   return {
     ...actual,
     useMarkNoShow: () => ({ mutate: markNoShowMutate, isPending: false }),

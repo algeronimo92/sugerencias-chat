@@ -62,7 +62,6 @@ const KNOWN_CYCLE_EDGES = [
   'ai -> chats',
   'ai -> leads',
   'ai -> media',
-  'automations -> chats',
   'automations -> leads',
   'automations -> media',
   'automations -> platform',
@@ -81,7 +80,6 @@ const KNOWN_CYCLE_EDGES = [
   'platform -> leads',
   'platform -> templates',
   'templates -> automations',
-  'templates -> chats',
   'templates -> leads',
   'templates -> media',
 ]

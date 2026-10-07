@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Chat } from '../../chats/types'
+import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../types'
 import { renderOfficialTemplate, templateParameterIdentifiers } from './templates'
 

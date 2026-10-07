@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ChatFiltersState, ChatQuickFilter } from '../layoutContext'
-import type { ChatFilters } from '../types'
-import { EMPTY_CHAT_FILTERS } from '../types'
+import type { ChatFilters } from '../../leads/types'
+import { EMPTY_CHAT_FILTERS } from '../../leads/types'
 
 const SEARCH_DEBOUNCE_MS = 300
 

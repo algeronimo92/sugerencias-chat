@@ -2,10 +2,10 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Chat } from '../../chats/types'
+import type { Chat } from '../types'
 import { LeadInfo } from './LeadInfo'
 
-vi.mock('../../chats/queries', () => ({
+vi.mock('../queries', () => ({
   useUpdateLead: () => ({ mutate: vi.fn(), isPending: false }),
   useMarkNoShow: () => ({ mutate: vi.fn(), isPending: false }),
 }))

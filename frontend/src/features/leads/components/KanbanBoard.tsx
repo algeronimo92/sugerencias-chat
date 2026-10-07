@@ -5,9 +5,9 @@ import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { Input, Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { avatarInitial, displayName, isBotAttended } from '../../chats/public/chat'
+import { avatarInitial, displayName, isBotAttended } from '../public/chat'
 import { parseContent } from '../../whatsapp/public/message'
-import type { Chat } from '../../chats/types'
+import type { Chat } from '../types'
 import {
 STAGE_DOT_CLASS,
 STAGE_HEADER_CLASS,

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Chat } from '../types'
+import type { Chat } from '../../leads/types'
 import { ContactSendDialog } from './ContactSendDialog'
 
 const mocks = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const CONTACTS = [
   { chat_id: 'lead-luis', name: 'Luis Pérez', phone: '51922222222' },
 ] as Chat[]
 
-vi.mock('../queries', () => ({
+vi.mock('../../leads/public/queries', () => ({
   useInfiniteChats: () => ({
     data: { pages: [{ items: CONTACTS, has_more: false }] },
     isLoading: false,

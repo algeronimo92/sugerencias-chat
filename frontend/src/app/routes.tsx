@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
-import { EMPTY_CHAT_FILTERS } from "../features/chats/types";
+import { EMPTY_CHAT_FILTERS } from '../features/leads/types'
 import { BackendUnavailable } from "../shared/ui/BackendUnavailable";
 import { ChatWorkspace } from "../features/chats/components/ChatWorkspace";
 import { useLayoutContext } from "../features/chats/layoutContext";

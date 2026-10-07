@@ -4,10 +4,10 @@ import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { avatarInitial, displayName, displayPhone } from '../../chats/public/chat'
+import { avatarInitial, displayName, displayPhone } from '../public/chat'
 import { useInfiniteChats, useMergeLead } from '../../chats/public/queries'
-import type { Chat } from '../../chats/types'
-import { EMPTY_CHAT_FILTERS } from '../../chats/types'
+import type { Chat } from '../types'
+import { EMPTY_CHAT_FILTERS } from '../types'
 
 interface Props {
   /** Lead que se conserva: mantiene su etapa e identidad y recibe el

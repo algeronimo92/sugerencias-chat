@@ -6,17 +6,9 @@
  * variantes.
  */
 
-import type { ChatFilters } from './types'
 
 export const chatKeys = {
-  all: ['chats'] as const,
-  lists: ['chats', 'list'] as const,
-  list: (search: string, filters: ChatFilters) => ['chats', 'list', search, filters] as const,
-  detailAll: ['chat'] as const,
-  detail: (chatId: string | null) => ['chat', chatId] as const,
   unreadCount: ['unread-count'] as const,
-  phoneConfig: ['phone-config'] as const,
-  duplicate: (digits: string | null) => ['duplicate-lead', digits] as const,
 }
 
 export const messageKeys = {

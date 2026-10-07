@@ -5,10 +5,10 @@ import { toast } from 'sonner'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSendContacts, type ReplyTarget } from '../hooks/useMessages'
-import { useInfiniteChats } from '../queries'
-import type { Chat } from '../types'
-import { EMPTY_CHAT_FILTERS } from '../types'
-import { avatarInitial, displayName, displayPhone } from '../utils/chat'
+import { useInfiniteChats } from '../../leads/public/queries'
+import type { Chat } from '../../leads/types'
+import { EMPTY_CHAT_FILTERS } from '../../leads/types'
+import { avatarInitial, displayName, displayPhone } from '../../leads/public/chat'
 
 const MAX_CONTACTS = 20
 

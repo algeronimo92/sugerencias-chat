@@ -11,6 +11,7 @@ import type { MessageStatusUpdate } from '../../realtime/socketEvents'
 import { chatKeys, messageKeys, noteKeys, scheduledKeys } from './keys'
 import type { MessagePage } from './types'
 import { parseContent } from '../whatsapp/public/message'
+import { leadKeys } from '../leads/public/keys'
 
 function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates: MessageStatusUpdate[]) {
   if (!updates.length) return
@@ -49,10 +50,10 @@ export function createChatsRealtime(): RealtimeModule {
         // parchea el estado en la caché sin pedir nada.
         const isStatusOnly = reason === 'message_status'
 
-        if (!isStatusOnly) invalidate(queryClient, chatKeys.all, chatKeys.unreadCount)
+        if (!isStatusOnly) invalidate(queryClient, leadKeys.all, chatKeys.unreadCount)
         if (changedChatId) {
           applyMessageStatuses(queryClient, changedChatId, event.message_statuses)
-          if (!isStatusOnly) invalidate(queryClient, chatKeys.detail(changedChatId))
+          if (!isStatusOnly) invalidate(queryClient, leadKeys.detail(changedChatId))
           // Con un envío en vuelo el hilo lo resuelve el envío, no un refetch.
           if (!isStatusOnly && queryClient.isMutating({ mutationKey: messageKeys.sending(changedChatId) }) === 0) {
             invalidate(queryClient, messageKeys.thread(changedChatId))
@@ -77,6 +78,6 @@ export function createChatsRealtime(): RealtimeModule {
       ),
       internal_notes_updated: (event, { queryClient }) => invalidate(queryClient, noteKeys.chat(event.lead_id)),
     },
-    resync: [chatKeys.all, chatKeys.unreadCount, messageKeys.all, chatKeys.detailAll],
+    resync: [leadKeys.all, chatKeys.unreadCount, messageKeys.all, leadKeys.detailAll],
   }
 }
