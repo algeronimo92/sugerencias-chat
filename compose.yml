@@ -9,10 +9,9 @@ services:
       - ./db/.env
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
-    # Sólo loopback y en 5433 para no chocar con otro PostgreSQL instalado.
     # Los contenedores usan postgres:5432 por la red interna de Compose.
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -q"]
@@ -55,7 +54,13 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)",
+        ]
       interval: 15s
       timeout: 5s
       retries: 3
