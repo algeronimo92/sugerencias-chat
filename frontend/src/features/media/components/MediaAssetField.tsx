@@ -1,6 +1,6 @@
 import { FolderOpen, Paperclip } from 'lucide-react'
 import { useState } from 'react'
-import { resolveMediaUrl } from '../../chats/public/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 import type { TemplateAttachment } from '../../chats/types'
 import type { MediaAsset, MediaAssetKind } from '../types'
 import { MediaLibraryPicker } from './MediaLibraryPicker'

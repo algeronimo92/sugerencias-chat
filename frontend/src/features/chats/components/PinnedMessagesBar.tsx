@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Pin, X } from 'lucide-react'
-import type { Message } from '../types'
-import { quotePreview } from '../utils/message'
+import type { Message } from '../../whatsapp/types'
+import { quotePreview } from '../../whatsapp/public/message'
 
 /** Barra de mensajes fijados arriba del hilo, como en WhatsApp nativo — salvo
  * que esto es puramente del CRM: no hay forma de mandar un fijado hacia

@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { Input, labelClass, Select, Textarea } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { META_CONTRACT } from '../domain/metaContract'
+import { META_CONTRACT } from '../../whatsapp/public/metaContract'
 import {
 availableNativeInteractives,buildNativeInteractive,EMPTY_NATIVE_INTERACTIVE_FORM,NATIVE_INTERACTIVE_LABELS,
 type NativeInteractiveForm,

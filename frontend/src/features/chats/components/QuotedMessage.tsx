@@ -1,5 +1,5 @@
-import type { MessageType } from '../types'
-import { quotePreview } from '../utils/message'
+import type { MessageType } from '../../whatsapp/types'
+import { quotePreview } from '../../whatsapp/public/message'
 
 /** Recuadro del mensaje citado, como el que WhatsApp pone arriba de una
  * respuesta: barra de color, autor y una línea de vista previa. El color

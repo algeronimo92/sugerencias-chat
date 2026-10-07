@@ -5,7 +5,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useDeleteInternalNote, useUpdateInternalNote } from '../hooks/useInternalNotes'
 import type { InternalNote } from '../types'
-import { formatMessageTime } from '../utils/message'
+import { formatMessageTime } from '../../whatsapp/public/message'
 interface Props {
   chatId: string
   note: InternalNote

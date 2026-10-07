@@ -1,6 +1,6 @@
 import { ChevronDown, History, Loader2 } from 'lucide-react'
 import type { JsonObject, JsonValue } from '../../../shared/types'
-import { parseContent } from '../../chats/public/message'
+import { parseContent } from '../../whatsapp/public/message'
 import type { LeadActivity } from '../../chats/types'
 import { useLeadActivity } from '../hooks/useLeadMeta'
 

@@ -5,7 +5,7 @@ import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopov
 import { useMe } from '../../auth/public/queries'
 import { useMediaLibrary, useUploadMediaAsset } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
-import { resolveMediaUrl } from '../utils/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 
 // El picker es pesado: se carga al vuelo recién al abrir el panel.
 const EmojiPicker = lazy(() => import('emoji-picker-react'))

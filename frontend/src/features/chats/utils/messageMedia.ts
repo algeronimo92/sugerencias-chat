@@ -1,5 +1,5 @@
-import type { Message } from '../types'
-import { messageFilename, parseContent } from './message'
+import type { Message } from '../../whatsapp/types'
+import { messageFilename, parseContent } from '../../whatsapp/public/message'
 
 const DEFAULT_MEDIA_EXTENSIONS: Record<string, string> = {
   image: 'jpg',

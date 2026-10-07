@@ -5,7 +5,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { resolveMediaUrl } from '../../chats/public/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 import { useDeleteMediaAsset, useMediaLibrary, useRenameMediaAsset, useUploadMediaAsset } from '../queries'
 import type { MediaAsset, MediaAssetKind } from '../types'
 

@@ -6,14 +6,14 @@ import { useState, type ReactNode } from 'react'
 
 import { MapPreview } from '../../../shared/ui/MapPreview'
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
-import type { Message } from '../types'
+import type { Message } from '../../whatsapp/types'
 import {
 formatMoney,messageContacts,messageCoords,
 messageFilename,
 messageFlowReply,messageOrder,messageProducts,
 messageReply,messageSystemNotice,metaErrors,
 type MessageKind,type ParsedContent,
-} from '../utils/message'
+} from '../../whatsapp/public/message'
 import { messageMediaFilename } from '../utils/messageMedia'
 import { ChatVideoMessage } from './ChatVideoMessage'
 import { ContactCard } from './ContactCard'

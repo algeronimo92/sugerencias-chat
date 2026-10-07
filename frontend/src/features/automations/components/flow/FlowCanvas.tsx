@@ -17,7 +17,7 @@ Image as ImageIcon,MessageSquareText,Paperclip,
 SmilePlus,Tag,Trash2,UserRound,Video,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { resolveMediaUrl } from '../../../chats/public/message'
+import { resolveMediaUrl } from '../../../whatsapp/public/message'
 import type { MessageTemplate } from '../../../chats/types'
 import { useLeadStageCatalog } from '../../../leads/public/useLeadStages'
 import type { Tag as TagRecord } from '../../../leads/types'

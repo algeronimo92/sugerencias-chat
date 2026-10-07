@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Message } from '../types'
+import type { Message } from '../../whatsapp/types'
 import { albumMemberIds, groupAlbumMessages } from './mediaGroups'
 
 function message(id: number, overrides: Partial<Message> = {}): Message {

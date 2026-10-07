@@ -8,7 +8,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Message } from '../types'
+import type { Message } from '../../whatsapp/types'
 import { AlbumBubble } from './AlbumBubble'
 
 function message(id: number, overrides: Partial<Message> = {}): Message {

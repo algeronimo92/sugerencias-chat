@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Message } from '../types'
+import type { Message } from '../../whatsapp/types'
 import { mediaDownloadUrl } from '../../../shared/utils/media'
 import { messageMediaFilename } from './messageMedia'
 

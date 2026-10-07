@@ -1,6 +1,6 @@
 import { Check, CircleCheck, Download, Forward, Video } from 'lucide-react'
-import type { Message } from '../types'
-import { formatMessageTime, resolveMediaUrl } from '../utils/message'
+import type { Message } from '../../whatsapp/types'
+import { formatMessageTime, resolveMediaUrl } from '../../whatsapp/public/message'
 import type { OpenMedia } from './MessageBubble'
 import { MessageStatusTicks } from './MessageBubble'
 

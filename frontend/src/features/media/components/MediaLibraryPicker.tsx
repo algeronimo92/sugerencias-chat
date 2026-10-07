@@ -1,7 +1,7 @@
 import { Check, FileText, Film, FolderOpen, Images, Loader2, Music2, Search, X } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClassElevated, dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
-import { resolveMediaUrl } from '../../chats/public/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 import { useMediaLibrary } from '../queries'
 import type { MediaAsset, MediaAssetKind } from '../types'
 interface Props {

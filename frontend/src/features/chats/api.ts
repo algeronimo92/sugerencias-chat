@@ -2,7 +2,8 @@ const requestTails = new Map<string, Promise<void>>()
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
 import type { TemplateCategory } from "../leads/types";
-import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, ContractMessage, ContractMessageTemplate, Message, MessageAnalysis, MessageCursor, MessageReaction, MessagePage, MessageTemplate, ContractMetaTemplate, MetaTemplateComponent, MetaTemplateRaw, NoteInput, OfficialTemplateButton, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TemplateAttachment, TemplateCapabilities, TemplateInput, TemplateInteractiveConfig, TextPayload } from "./types";
+import type { AudioPayload, Chat, ChatFilters, ChatsPage, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LeadInput, LeadUpdateInput, LocationPayload, MediaPayload, ContractMessageTemplate, MessageCursor, MessagePage, MessageTemplate, ContractMetaTemplate, MetaTemplateComponent, MetaTemplateRaw, NoteInput, OfficialTemplateButton, PageParam, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TemplateAttachment, TemplateCapabilities, TemplateInput, TemplateInteractiveConfig, TextPayload } from "./types";
+import type { ContractMessage, Message, MessageAnalysis, MessageReaction } from '../whatsapp/types'
 
 /** De lo que entrega el contrato a lo que usa el hilo (ver `Message`). */
 export function toMessage(message: ContractMessage): Message {

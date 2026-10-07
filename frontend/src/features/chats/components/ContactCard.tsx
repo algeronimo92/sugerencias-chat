@@ -10,7 +10,7 @@ dialogOverlayClass,
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useCreateLead, useFindLeadByPhone } from "../queries";
 import type { LeadUpdateInput } from '../types';
-import type { SharedContact } from "../utils/message";
+import type { SharedContact } from '../../whatsapp/public/message';
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const LeadFormDialog = lazy(() => import("../../leads/public/LeadFormDialog").then(m => ({ default: m.LeadFormDialog })));

@@ -10,7 +10,7 @@ import { invalidate, type RealtimeModule } from '../../realtime/bus'
 import type { MessageStatusUpdate } from '../../realtime/socketEvents'
 import { chatKeys, messageKeys, noteKeys, scheduledKeys, templateKeys } from './keys'
 import type { MessagePage } from './types'
-import { parseContent } from './utils/message'
+import { parseContent } from '../whatsapp/public/message'
 
 function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates: MessageStatusUpdate[]) {
   if (!updates.length) return

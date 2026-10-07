@@ -10,7 +10,8 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Chat, Message } from '../types'
+import type { Chat } from '../types'
+import type { Message } from '../../whatsapp/types'
 import { MessageBubble } from './MessageBubble'
 
 const CHAT = { chat_id: 'lead-1', name: 'Ana Torres', phone: '51958334533' } as Chat

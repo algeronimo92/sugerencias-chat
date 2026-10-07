@@ -1,4 +1,4 @@
-import { parseRichText } from '../utils/message'
+import { parseRichText } from '../../whatsapp/public/message'
 
 interface Props {
   text: string

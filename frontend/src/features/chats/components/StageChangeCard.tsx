@@ -4,7 +4,7 @@ import { Button } from '../../../shared/ui/Button'
 import { STAGE_BADGE_CLASS, STAGE_DOT_CLASS, stageColorStyle } from '../../leads/public/leadStageMeta'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import type { LeadActivity } from '../types'
-import { formatMessageTime, parseContent } from '../utils/message'
+import { formatMessageTime, parseContent } from '../../whatsapp/public/message'
 // Metadata que guarda el backend junto al cambio de estado (ver
 // services/db_service.py:update_lead_stage): la foto del último mensaje del
 // cliente al momento del cambio y, si lo movió el agente IA, su análisis.

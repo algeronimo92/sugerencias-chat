@@ -22,7 +22,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { deferred, installFakeApi, type FakeReply } from '../../../test/fakeApi'
 import { createTestQueryClient, queryWrapper } from '../../../test/queryWrapper'
 import { toMessage } from '../api'
-import type { ContractMessage, Message, MessagePage, ReplyTarget } from '../types'
+import type { MessagePage, ReplyTarget } from '../types'
+import type { ContractMessage, Message } from '../../whatsapp/types'
 import {
   useReactToMessage,
   useSendAudio,

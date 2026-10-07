@@ -6,9 +6,10 @@ dialogContentPositionClassElevated,
 dialogOverlayClassElevated,
 } from '../../../shared/ui/Dialog'
 import { useMessages } from '../hooks/useMessages'
-import type { Chat, Message } from '../types'
+import type { Chat } from '../types'
+import type { Message } from '../../whatsapp/types'
 import { avatarInitial, displayName } from '../utils/chat'
-import { formatMessageTime, parseContent, resolveMediaUrl } from '../utils/message'
+import { formatMessageTime, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
 
 const MESSAGE_LIMIT = 12
 

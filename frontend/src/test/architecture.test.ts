@@ -106,6 +106,9 @@ const KNOWN_LARGE_COMPONENTS = [
 
 const CONTRACT_TYPES = new Set(['ApiResponse'])
 
+/** Features de solo modelo: tipos y reglas sin pedidos HTTP (no tienen api.ts). */
+const MODEL_ONLY_FEATURES = new Set(['whatsapp'])
+
 /** Piezas internas de features que app/ todavía importa directo. La fase 3
  * las publica como puntos de entrada; la lista solo puede achicarse. */
 const KNOWN_APP_INTERNAL_IMPORTS = [
@@ -225,7 +228,7 @@ describe('feature architecture', () => {
   it('keeps HTTP requests in feature API adapters, not hooks or components', () => {
     const violations = sourceFiles(features).filter(path => !path.endsWith('api.ts') && !path.includes('.test.')).filter(path => imports(readFileSync(path, 'utf8')).some(spec => spec.includes('shared/http/client')))
     expect(violations.map(path => relative(src, path))).toEqual([])
-    for (const owner of readdirSync(features)) if (existsSync(join(features, owner, 'types.ts'))) expect(existsSync(join(features, owner, 'api.ts'))).toBe(true)
+    for (const owner of readdirSync(features)) if (existsSync(join(features, owner, 'types.ts')) && !MODEL_ONLY_FEATURES.has(owner)) expect(existsSync(join(features, owner, 'api.ts'))).toBe(true)
   })
 
   it('separates application routes, layout, and providers', () => {

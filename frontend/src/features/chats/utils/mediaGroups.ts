@@ -1,4 +1,4 @@
-import type { Message } from '../types';
+import type { Message } from '../../whatsapp/types'
 
 /** Ventana entre fotos/videos consecutivos del mismo remitente para
  * agruparlos como un álbum cuando NO hay `album_id` explícito (ver abajo) —

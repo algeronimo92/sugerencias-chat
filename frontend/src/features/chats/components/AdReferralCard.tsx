@@ -1,5 +1,5 @@
 import { Megaphone } from 'lucide-react'
-import type { AdReferral } from '../utils/message'
+import type { AdReferral } from '../../whatsapp/public/message'
 
 /** Tarjeta del anuncio del que vino el lead (Click-to-WhatsApp de Meta), como
  * la que WhatsApp muestra sobre el primer mensaje: miniatura + título + un

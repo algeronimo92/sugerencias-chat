@@ -4,7 +4,7 @@ import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { dialogContentPositionClass, dialogOverlayClass, DialogPrimitive } from '../../../shared/ui/Dialog'
-import type { MessageReaction } from '../types'
+import type { MessageReaction } from '../../whatsapp/types'
 
 // Las seis reacciones rápidas de WhatsApp.
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']

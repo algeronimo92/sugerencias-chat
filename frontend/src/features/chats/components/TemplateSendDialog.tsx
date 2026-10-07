@@ -5,8 +5,9 @@ import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
 import { useTemplateCapabilities } from '../hooks/useTemplates'
-import type { Chat, MessageTemplate, MessageType, TemplateAttachment } from '../types'
-import { parseRichText, resolveMediaUrl } from '../utils/message'
+import type { Chat, MessageTemplate, TemplateAttachment } from '../types'
+import type { MessageType } from '../../whatsapp/types'
+import { parseRichText, resolveMediaUrl } from '../../whatsapp/public/message'
 import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate, templateParameterIdentifiers } from '../utils/templates'
 
 interface Props {

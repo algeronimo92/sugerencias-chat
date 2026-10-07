@@ -1,6 +1,6 @@
 import type { JsonObject } from '../../../shared/types'
 import type { TemplateCapabilities } from '../types'
-import { META_CONTRACT } from './metaContract'
+import { META_CONTRACT } from '../../whatsapp/public/metaContract'
 
 /** Interactivos de Meta que dependen de la cuenta conectada (catálogo, Flows
  * publicados, permiso de llamadas). Botones y listas salen de las plantillas

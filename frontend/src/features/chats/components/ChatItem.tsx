@@ -9,7 +9,7 @@ import { useMe } from '../../auth/public/queries'
 import { useDeleteLead, useMarkNoShow } from '../queries'
 import type { Chat } from '../types'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../utils/chat'
-import { parseContent, searchSnippet, splitOnMatch } from '../utils/message'
+import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const MergeLeadDialog = lazy(() => import('../../leads/public/MergeLeadDialog').then(m => ({ default: m.MergeLeadDialog })))
