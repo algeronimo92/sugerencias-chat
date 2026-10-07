@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Chat, MessageTemplate } from '../types'
+import type { Chat } from '../../chats/types'
+import type { MessageTemplate } from '../types'
 import { renderOfficialTemplate, templateParameterIdentifiers } from './templates'
 
 function chat(overrides: Partial<Chat> = {}): Chat {

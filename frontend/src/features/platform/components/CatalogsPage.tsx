@@ -1,6 +1,6 @@
 import { Columns3, FolderTree, ListPlus, Sparkles, Tags } from 'lucide-react'
 import { useState } from 'react'
-import { TemplateCategoriesManagementPanel } from '../../chats/public/TemplateCategoriesManagementPanel'
+import { TemplateCategoriesManagementPanel } from '../../templates/public/TemplateCategoriesManagementPanel'
 import { CustomFieldsManagementPanel } from '../../leads/public/CustomFieldsManagementPanel'
 import { LeadStagesManagementPanel } from '../../leads/public/LeadStagesManagementPanel'
 import { ServicesManagementPanel } from '../../leads/public/ServicesManagementPanel'

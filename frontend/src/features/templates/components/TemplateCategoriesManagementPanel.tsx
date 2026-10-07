@@ -5,7 +5,7 @@ import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import type { TemplateCategory } from '../../leads/types'
+import type { TemplateCategory } from '../types'
 import {
 useCreateTemplateCategory,
 useTemplateCategories,

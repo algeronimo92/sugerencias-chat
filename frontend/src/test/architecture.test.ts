@@ -66,17 +66,24 @@ const KNOWN_CYCLE_EDGES = [
   'automations -> leads',
   'automations -> media',
   'automations -> platform',
+  'automations -> templates',
   'chats -> ai',
   'chats -> automations',
   'chats -> leads',
   'chats -> media',
   'chats -> platform',
+  'chats -> templates',
   'leads -> automations',
   'leads -> chats',
   'leads -> platform',
   'media -> chats',
-  'platform -> chats',
+  'media -> templates',
   'platform -> leads',
+  'platform -> templates',
+  'templates -> automations',
+  'templates -> chats',
+  'templates -> leads',
+  'templates -> media',
 ]
 
 const MAX_COMPONENT_LINES = 400
@@ -97,11 +104,11 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/chats/components/MessageBody.tsx',
   'features/chats/components/MessageBubble.tsx',
   'features/chats/components/TemplateSendDialog.tsx',
-  'features/chats/components/TemplatesPage.tsx',
   'features/leads/components/KanbanBoard.tsx',
   'features/leads/components/LeadFormDialog.tsx',
   'features/leads/components/TasksPage.tsx',
   'features/platform/components/PlatformApp.tsx',
+  'features/templates/components/TemplatesPage.tsx',
 ]
 
 const CONTRACT_TYPES = new Set(['ApiResponse'])
@@ -121,7 +128,6 @@ const KNOWN_APP_INTERNAL_IMPORTS = [
   'app/layout.tsx -> features/platform/components/SettingsDialog.tsx',
   'app/routes.tsx -> features/auth/queries.ts',
   'app/routes.tsx -> features/chats/components/ChatWorkspace.tsx',
-  'app/routes.tsx -> features/chats/components/TemplatesPage.tsx',
   'app/routes.tsx -> features/chats/layoutContext.ts',
   'app/routes.tsx -> features/chats/useOpenChat.ts',
   'app/routes.tsx -> features/leads/components/DashboardPage.tsx',

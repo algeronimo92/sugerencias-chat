@@ -84,8 +84,8 @@ vi.mock('../../auth/queries', () => ({ useMe: () => ({ data: { id: 7, role: 'ven
 vi.mock('../hooks/useCustomerServiceWindow', () => ({
   useCustomerServiceWindow: () => ({ data: null, isLoading: false }),
 }))
-vi.mock('../hooks/useTemplates', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../hooks/useTemplates')>()),
+vi.mock('../../templates/public/useTemplates', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../templates/public/useTemplates')>()),
   useTemplates: () => ({ data: [] }),
   useRecordTemplateUse: () => ({ mutate: vi.fn() }),
   useToggleTemplateFavorite: () => ({ mutate: vi.fn() }),

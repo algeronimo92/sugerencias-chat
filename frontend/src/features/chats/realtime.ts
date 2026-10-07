@@ -8,7 +8,7 @@ import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
 import { invalidate, type RealtimeModule } from '../../realtime/bus'
 import type { MessageStatusUpdate } from '../../realtime/socketEvents'
-import { chatKeys, messageKeys, noteKeys, scheduledKeys, templateKeys } from './keys'
+import { chatKeys, messageKeys, noteKeys, scheduledKeys } from './keys'
 import type { MessagePage } from './types'
 import { parseContent } from '../whatsapp/public/message'
 
@@ -71,13 +71,12 @@ export function createChatsRealtime(): RealtimeModule {
           navigate(`/chat/${latest.chat_id}`)
         })
       },
-      templates_updated: (_event, { queryClient }) => invalidate(queryClient, templateKeys.all),
       scheduled_messages_updated: (event, { queryClient }) => invalidate(
         queryClient,
         event.chat_id ? scheduledKeys.chat(event.chat_id) : scheduledKeys.all,
       ),
       internal_notes_updated: (event, { queryClient }) => invalidate(queryClient, noteKeys.chat(event.lead_id)),
     },
-    resync: [chatKeys.all, chatKeys.unreadCount, messageKeys.all, chatKeys.detailAll, templateKeys.all],
+    resync: [chatKeys.all, chatKeys.unreadCount, messageKeys.all, chatKeys.detailAll],
   }
 }

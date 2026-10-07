@@ -11,7 +11,7 @@ availableNativeInteractives,buildNativeInteractive,EMPTY_NATIVE_INTERACTIVE_FORM
 type NativeInteractiveForm,
 } from '../domain/nativeInteractive'
 import { useSendInteractive, type ReplyTarget } from '../hooks/useMessages'
-import type { TemplateCapabilities } from '../types'
+import type { TemplateCapabilities } from '../../templates/types'
 
 interface Props {
   chatId: string

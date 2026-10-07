@@ -13,7 +13,8 @@ useSendMessage,useUnpinMessage,type ReplyTarget,
 } from '../hooks/useMessages'
 import { useThreadScroll } from '../hooks/useThreadScroll'
 import { useUpdateLead } from '../queries'
-import type { Chat, MessageTemplate } from '../types'
+import type { Chat } from '../types'
+import type { MessageTemplate } from '../../templates/types'
 import type { Message } from '../../whatsapp/types'
 import { avatarInitial, displayName } from '../utils/chat'
 import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
@@ -32,7 +33,7 @@ import { StageChangeCard } from './StageChangeCard'
 const ForwardMessageDialog = lazy(() => import('./ForwardMessageDialog').then(m => ({ default: m.ForwardMessageDialog })))
 const MediaLightbox = lazy(() => import('../../../shared/ui/MediaLightbox').then(m => ({ default: m.MediaLightbox })))
 const StickerPreviewDialog = lazy(() => import('../../media/public/StickerPreviewDialog').then(m => ({ default: m.StickerPreviewDialog })))
-const SaveAsTemplateDialog = lazy(() => import('./SaveAsTemplateDialog').then(m => ({ default: m.SaveAsTemplateDialog })))
+const SaveAsTemplateDialog = lazy(() => import('../../templates/public/SaveAsTemplateDialog').then(m => ({ default: m.SaveAsTemplateDialog })))
 const TemplateSendDialog = lazy(() => import('./TemplateSendDialog').then(m => ({ default: m.TemplateSendDialog })))
 
 interface Props {

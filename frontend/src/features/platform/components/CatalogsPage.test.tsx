@@ -10,7 +10,7 @@ vi.mock('../../leads/components/ServicesManagementPanel', () => ({
 vi.mock('../../leads/components/TagsManagementPanel', () => ({
   TagsManagementPanel: () => <div>Panel de etiquetas</div>,
 }))
-vi.mock('../../chats/components/TemplateCategoriesManagementPanel', () => ({
+vi.mock('../../templates/components/TemplateCategoriesManagementPanel', () => ({
   TemplateCategoriesManagementPanel: () => <div>Panel de categorías de plantillas</div>,
 }))
 vi.mock('../../leads/components/LeadStagesManagementPanel', () => ({

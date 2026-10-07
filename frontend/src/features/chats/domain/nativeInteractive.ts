@@ -1,5 +1,5 @@
 import type { JsonObject } from '../../../shared/types'
-import type { TemplateCapabilities } from '../types'
+import type { TemplateCapabilities } from '../../templates/types'
 import { META_CONTRACT } from '../../whatsapp/public/metaContract'
 
 /** Interactivos de Meta que dependen de la cuenta conectada (catálogo, Flows

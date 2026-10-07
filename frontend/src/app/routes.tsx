@@ -38,7 +38,7 @@ const TasksPage = lazy(() =>
   })),
 );
 const TemplatesPage = lazy(() =>
-  import("../features/chats/components/TemplatesPage").then((module) => ({
+  import("../features/templates/page").then((module) => ({
     default: module.TemplatesPage,
   })),
 );

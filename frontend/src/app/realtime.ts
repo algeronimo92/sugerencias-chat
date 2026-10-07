@@ -12,11 +12,13 @@ import { createIssueReportsRealtime } from '../features/issue-reports/public/rea
 import { createLeadsRealtime } from '../features/leads/public/realtime'
 import { createMediaRealtime } from '../features/media/public/realtime'
 import { createNotificationsRealtime } from '../features/notifications/public/realtime'
+import { createTemplatesRealtime } from '../features/templates/public/realtime'
 
 export function createAppRealtimeBus(): RealtimeBus {
   return createRealtimeBus([
     createChatsRealtime(),
     createLeadsRealtime(),
+    createTemplatesRealtime(),
     createAiRealtime(),
     createAutomationsRealtime(),
     createMediaRealtime(),

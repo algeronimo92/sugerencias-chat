@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
-import type { Chat, MessageTemplate } from '../types'
+import type { Chat } from '../../chats/types'
+import type { MessageTemplate } from '../types'
 import { renderTemplate } from '../utils/templates'
 
 interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) => void; onSaveHistory: (text: string) => void; onSendMultimedia: (template: MessageTemplate) => void }

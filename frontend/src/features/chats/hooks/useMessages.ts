@@ -4,7 +4,8 @@ import { useChatSocketConnected } from '../../../realtime/useRealtime'
 import { fetchMessages, forwardMessages, pinMessage, fetchPinnedMessages, reactToMessage, sendInteractive, sendMessage, retryFailedMessage, discardFailedMessage, sendTemplate, unpinMessage, sendAudio, sendContacts, sendLocation, sendMedia, sendSticker } from '../api'
 import type { AudioPayload, ContactsPayload, ForwardPayload, ForwardResult, InteractivePayload, LocationPayload, MediaPayload, MessageCursor, MessagePage, OptimisticContext, OptimisticMessageDraft, ReactionPayload, SendTemplatePayload, StickerPayload, TextPayload } from '../types'
 import type { Message, MessageReaction, MessageType } from '../../whatsapp/types'
-import { chatKeys, messageKeys, templateKeys } from '../keys'
+import { chatKeys, messageKeys } from '../keys'
+import { templateKeys } from '../../templates/public/keys'
 
 // untilId no forma parte de la queryKey a propósito: los updates optimistas
 // de useSendMessage escriben sobre messageKeys.thread(chatId) exacto. Solo influye

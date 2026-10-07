@@ -34,15 +34,6 @@ export interface LeadService {
   created_at?: string | null
 }
 
-export interface TemplateCategory {
-  id: number
-  name: string
-  is_active?: boolean
-  created_by_user_id?: number | null
-  created_by_name?: string | null
-  created_at?: string | null
-}
-
 export type TaskType = TaskTypeCatalogValue
 export type TaskStatus = TaskStatusCatalogValue
 export type TaskPriority = TaskPriorityCatalogValue

@@ -4,11 +4,12 @@ import { MediaLightbox } from '../../../shared/ui/MediaLightbox'
 import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
-import { useTemplateCapabilities } from '../hooks/useTemplates'
-import type { Chat, MessageTemplate, TemplateAttachment } from '../types'
+import { useTemplateCapabilities } from '../../templates/public/useTemplates'
+import type { Chat } from '../types'
+import type { MessageTemplate, TemplateAttachment } from '../../templates/types'
 import type { MessageType } from '../../whatsapp/types'
 import { parseRichText, resolveMediaUrl } from '../../whatsapp/public/message'
-import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate, templateParameterIdentifiers } from '../utils/templates'
+import { renderInteractiveConfig, renderOfficialParameterValues, renderOfficialTemplate, renderTemplate, templateParameterIdentifiers } from '../../templates/public/templates'
 
 interface Props {
   chat: Chat;
