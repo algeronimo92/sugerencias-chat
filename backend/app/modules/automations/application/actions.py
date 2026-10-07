@@ -29,6 +29,7 @@ from app.modules.conversations.ports.message_items import interactive_item, medi
 from app.modules.conversations.ports.message_media import mediatype_from_content_type
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR
 from app.modules.automations.domain.errors import StepFailed
+from app.modules.automations.domain.types import ExecutionErrorCode
 
 
 async def _action_create_task(action, chat, execution, rule, deps: AutomationDeps) -> dict:
@@ -157,7 +158,7 @@ async def require_service_window(chat: dict, execution, deps: AutomationDeps) ->
         return
     window = await deps.get_customer_service_window(chat["chat_id"])
     if not window or not window["is_open"]:
-        raise StepFailed(SERVICE_WINDOW_CLOSED_ERROR)
+        raise StepFailed(SERVICE_WINDOW_CLOSED_ERROR, execution_error=ExecutionErrorCode.SERVICE_WINDOW_CLOSED)
 
 
 async def _queued(chat: dict, deps: AutomationDeps) -> None:

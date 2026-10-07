@@ -1,4 +1,4 @@
-"""Genera ``frontend/src/features/chats/domain/metaContract.ts`` desde el contrato.
+"""Genera ``frontend/src/features/whatsapp/domain/metaContract.ts`` desde el contrato.
 
 Uso:
     python -m scripts.export_meta_contract            # escribe el archivo
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.integrations.meta.contract import load_contract_data
 
-TARGET = Path(__file__).resolve().parents[2] / "frontend" / "src" / "features" / "chats" / "domain" / "metaContract.ts"
+TARGET = Path(__file__).resolve().parents[2] / "frontend" / "src" / "features" / "whatsapp" / "domain" / "metaContract.ts"
 
 HEADER = """\
 // Generado por backend/scripts/export_meta_contract.py desde

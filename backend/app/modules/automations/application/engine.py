@@ -12,7 +12,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, ExecutionErrorCode, FlowNodeType
 
 from app.integrations.whatsapp.channel import SEND_FAILURES
 from app.modules.automations.application.actions import execute_action
@@ -65,8 +65,10 @@ async def _persist_visual_execution(
     error: str | None = None,
     scheduled_for: datetime | None = None,
     wait_any_state: dict | None = None,
+    error_code: ExecutionErrorCode | None = None,
 ) -> bool:
     values = {
+        "error_code": error_code,
         "status": status,
         "action_results": results,
         "flow_state": {
@@ -88,7 +90,9 @@ async def _persist_visual_execution(
     return await save_execution(execution_id, deps, **values)
 
 
-async def _failed(rule, execution, error: str, deps: AutomationDeps) -> None:
+async def _failed(
+    rule, execution, error: str, deps: AutomationDeps, error_code: ExecutionErrorCode | None = None,
+) -> None:
     await deps.publish(ExecutionFailed(
         execution_id=execution.id,
         rule_id=rule.id,
@@ -96,7 +100,13 @@ async def _failed(rule, execution, error: str, deps: AutomationDeps) -> None:
         rule_owner_id=rule.created_by_user_id,
         lead_id=execution.lead_id,
         error=error,
+        error_code=error_code,
     ))
+
+
+def _error_code(exc: Exception) -> ExecutionErrorCode | None:
+    """La causa tipada del fallo, si el paso la declaró."""
+    return exc.execution_error if isinstance(exc, StepFailed) else None
 
 
 async def _resolve_flow_definition(rule, state: dict, flow_version: int, deps: AutomationDeps) -> dict:
@@ -186,8 +196,9 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
             })
         await _persist_visual_execution(
             execution.id, AutomationExecutionStatus.FAILED, results, current_id, path, flow_version, deps, str(exc),
+            error_code=_error_code(exc),
         )
-        await _failed(rule, execution, str(exc), deps)
+        await _failed(rule, execution, str(exc), deps, _error_code(exc))
 
 
 async def _rate_limit_reached(rule, deps: AutomationDeps) -> bool:
@@ -287,8 +298,9 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
         await save_execution(
             execution_id, deps,
             status=AutomationExecutionStatus.FAILED, action_results=results, error=str(exc),
+            error_code=_error_code(exc),
         )
-        await _failed(rule, execution, str(exc), deps)
+        await _failed(rule, execution, str(exc), deps, _error_code(exc))
     else:
         await save_execution(
             execution_id, deps,

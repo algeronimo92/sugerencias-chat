@@ -1,7 +1,7 @@
 """Contrato de mensajes de Meta WhatsApp Cloud API.
 
 La fuente es ``contracts/meta_messages.json``: backend y frontend leen las
-mismas listas (el frontend a través de ``frontend/src/domain/metaContract.ts``,
+mismas listas (el frontend a través de ``frontend/src/features/whatsapp/domain/metaContract.ts``,
 generado con ``python -m scripts.export_meta_contract``).
 
 El registro sirve para validar lo que sale y para elegir cómo mostrar lo que

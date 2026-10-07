@@ -124,7 +124,7 @@ class InMemoryExecutionStore:
     async def requeue(self, execution_id, now, *, override_by_user_id):
         return self._transition(
             execution_id, {AutomationExecutionStatus.FAILED, AutomationExecutionStatus.SKIPPED},
-            status=AutomationExecutionStatus.SCHEDULED, scheduled_for=now, error=None, attempts=0,
+            status=AutomationExecutionStatus.SCHEDULED, scheduled_for=now, error=None, error_code=None, attempts=0,
             window_override_by_user_id=override_by_user_id,
         )
 
@@ -366,7 +366,7 @@ def execution(**overrides):
         "id": 100, "rule_id": 1, "lead_id": "4316bc30-f78c-57a2-8f98-bff9087678d6",
         "trigger_type": "manual", "status": AutomationExecutionStatus.SCHEDULED,
         "event_payload": {}, "flow_state": {}, "action_results": [], "started_by_user_id": None,
-        "window_override_by_user_id": None, "start_source": "system", "error": None,
+        "window_override_by_user_id": None, "start_source": "system", "error": None, "error_code": None,
         "finished_at": None, "event_key": None,
     }
     return SimpleNamespace(**{**defaults, **overrides})

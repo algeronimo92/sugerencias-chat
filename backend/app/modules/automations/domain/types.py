@@ -123,6 +123,14 @@ class ExecutionPauseScope(StrEnum):
     EXECUTION = "execution"
 
 
+class ExecutionErrorCode(StrEnum):
+    """Causa de un fallo de ejecución que la UI trata distinto. Va en su
+    propia columna para que nadie tenga que reconocerla leyendo el texto."""
+
+    # Mismo valor que SERVICE_WINDOW_ERROR_CODE de conversations.
+    SERVICE_WINDOW_CLOSED = "service_window_closed"
+
+
 class ExecutionStartSource(StrEnum):
     """Cómo arrancó una ejecución: un trigger del sistema, el botón "Iniciar
     flujo" del chat o la invocación desde otro flujo."""

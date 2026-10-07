@@ -17,7 +17,9 @@ from app.modules.notifications.ports.types import NotificationType
 from app.modules.automations import subscribers
 from app.modules.automations.application.actions import execute_action
 from app.modules.automations.application.management import retry_automation_execution
+from app.modules.automations.domain.errors import StepFailed
 from app.modules.automations.domain.events import AutomationsChanged, ExecutionFailed
+from app.modules.automations.domain.types import ExecutionErrorCode
 from app.modules.conversations.service_window import SERVICE_WINDOW_CLOSED_ERROR, SERVICE_WINDOW_ERROR_CODE
 from tests.automation_fakes import execution as stored_execution, rule as stored_rule
 from tests.conftest import make_chat, make_execution, make_rule
@@ -33,11 +35,12 @@ class TestGuard:
         closed = dataclasses.replace(
             deps_with_template(deps, template()), get_customer_service_window=_closed_window,
         )
-        with pytest.raises(ValueError, match="ventana de 24 horas"):
+        with pytest.raises(StepFailed, match="ventana de 24 horas") as raised:
             await execute_action(
                 {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5},
                 make_chat(), make_execution(), make_rule(), closed,
             )
+        assert raised.value.execution_error == ExecutionErrorCode.SERVICE_WINDOW_CLOSED
         assert outbox.enqueued == []
 
     async def test_la_ejecucion_autorizada_envia_igual(self, deps, outbox):
@@ -105,7 +108,10 @@ class TestNotification:
     """El aviso al admin sale del suscriptor de ExecutionFailed, después del
     commit: el motor solo publica que la ejecución falló."""
 
-    async def _notify(self, monkeypatch, error: str, *, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6"):
+    async def _notify(
+        self, monkeypatch, error: str, *, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
+        error_code: ExecutionErrorCode | None = None,
+    ):
         created: dict = {}
 
         async def create_notification(user_id, notification_type, title, body, lead, source_id, metadata):
@@ -119,12 +125,14 @@ class TestNotification:
         monkeypatch.setattr(subscribers, "manager", SimpleNamespace(send_to_user=send_to_user))
         await subscribers.notify_execution_failure(ExecutionFailed(
             execution_id=100, rule_id=1, rule_name="Hollywood peel", rule_owner_id=10,
-            lead_id=lead_id, error=error,
+            lead_id=lead_id, error=error, error_code=error_code,
         ))
         return created, send_push, send_to_user
 
     async def test_la_alerta_de_ventana_cerrada_es_su_propio_evento(self, monkeypatch):
-        created, _, send_to_user = await self._notify(monkeypatch, SERVICE_WINDOW_CLOSED_ERROR)
+        created, _, send_to_user = await self._notify(
+            monkeypatch, SERVICE_WINDOW_CLOSED_ERROR, error_code=ExecutionErrorCode.SERVICE_WINDOW_CLOSED,
+        )
         assert created["type"] == NotificationType.SERVICE_WINDOW_CLOSED
         # Se conserva por compatibilidad con notificaciones ya creadas antes
         # de que este caso tuviera su propio notification_type.
@@ -136,6 +144,11 @@ class TestNotification:
         created, _, _ = await self._notify(monkeypatch, "La plantilla no tiene contenido para enviar")
         assert created["type"] == NotificationType.AUTOMATION
         assert "error_code" not in created["metadata"]
+
+    async def test_la_causa_se_lee_del_codigo_no_del_texto(self, monkeypatch):
+        """El mismo texto sin el código es un fallo común: nadie compara textos."""
+        created, _, _ = await self._notify(monkeypatch, SERVICE_WINDOW_CLOSED_ERROR)
+        assert created["type"] == NotificationType.AUTOMATION
 
     async def test_manda_push_al_admin_que_creo_la_regla(self, monkeypatch):
         """Antes esto solo quedaba en la campanita: si el admin no tenía el

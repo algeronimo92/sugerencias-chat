@@ -3,7 +3,7 @@
 from typing import Any
 
 from pydantic import BaseModel, Field
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, ExecutionPauseScope, ExecutionStartSource
+from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, ExecutionErrorCode, ExecutionPauseScope, ExecutionStartSource
 
 
 class AutomationRuleCreate(BaseModel):
@@ -73,6 +73,8 @@ class AutomationExecutionItem(BaseModel):
     action_results: list[dict]
     flow_state: dict = Field(default_factory=dict)
     error: str | None = None
+    # Causa del fallo cuando la UI la trata distinto; el texto va en `error`.
+    error_code: ExecutionErrorCode | None = None
     created_at: str
     start_source: ExecutionStartSource = ExecutionStartSource.SYSTEM
     started_by_user_id: int | None = None

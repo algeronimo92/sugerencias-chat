@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.core.events import DomainEvent
+from app.modules.automations.domain.types import ExecutionErrorCode
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -41,6 +42,7 @@ class ExecutionFailed(DomainEvent):
     rule_owner_id: int | None
     lead_id: str | None
     error: str
+    error_code: ExecutionErrorCode | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

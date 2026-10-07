@@ -11,6 +11,7 @@ import functools
 import inspect
 
 from app.core.errors import Conflict, DomainError
+from app.modules.automations.domain.types import ExecutionErrorCode
 
 
 class InvalidAutomation(DomainError, ValueError):
@@ -24,6 +25,11 @@ class StepFailed(InvalidAutomation):
     """Un paso de la ejecución no pudo completarse."""
 
     code = "automation_step_failed"
+
+    def __init__(self, detail=None, *, execution_error: ExecutionErrorCode | None = None) -> None:
+        super().__init__(detail)
+        # Lo que la ejecución guarda en error_code (None = un fallo común).
+        self.execution_error = execution_error
 
 
 class AutomationConflict(Conflict, ValueError):

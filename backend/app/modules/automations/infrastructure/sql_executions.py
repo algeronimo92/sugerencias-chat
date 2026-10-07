@@ -225,6 +225,7 @@ class SqlExecutionStore:
                 started_at=None,
                 finished_at=None,
                 error=None,
+                error_code=None,
                 attempts=0,
                 window_override_by_user_id=override_by_user_id,
                 window_override_at=now if override_by_user_id is not None else None,

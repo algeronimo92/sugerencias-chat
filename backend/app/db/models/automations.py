@@ -118,6 +118,9 @@ class AutomationExecution(Base):
     action_results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     flow_state: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     error: Mapped[str | None] = mapped_column(Text)
+    # Causa tipada del fallo cuando la UI la trata distinto (ExecutionErrorCode);
+    # NULL en cualquier otro caso. `error` sigue siendo el texto para mostrar.
+    error_code: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Quién y cómo arrancó esta ejecución: 'system' para todos los triggers
     # automáticos de siempre, 'manual' cuando la inicia un vendedor con el
@@ -133,6 +136,7 @@ class AutomationExecution(Base):
 
     __table_args__ = (
         CheckConstraint("pause_scope IN ('lead', 'execution')", name="ck_automation_executions_pause_scope"),
+        CheckConstraint("error_code IN ('service_window_closed')", name="ck_automation_executions_error_code"),
         Index("uq_automation_execution_rule_event", rule_id, event_key, unique=True),
         Index("idx_automation_executions_due", status, scheduled_for),
         Index("idx_automation_executions_rule_created", rule_id, created_at.desc()),

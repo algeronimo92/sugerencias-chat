@@ -3390,6 +3390,7 @@ export interface components {
             };
             /** Error */
             error?: string | null;
+            error_code?: components["schemas"]["ExecutionErrorCode"] | null;
             /** Created At */
             created_at: string;
             /** @default system */
@@ -4111,6 +4112,13 @@ export interface components {
              */
             is_primary: boolean;
         };
+        /**
+         * ExecutionErrorCode
+         * @description Causa de un fallo de ejecución que la UI trata distinto. Va en su
+         *     propia columna para que nadie tenga que reconocerla leyendo el texto.
+         * @enum {string}
+         */
+        ExecutionErrorCode: "service_window_closed";
         /**
          * ExecutionPauseScope
          * @description Quién congeló una ejecución: el lead entero o solo esta ejecución.

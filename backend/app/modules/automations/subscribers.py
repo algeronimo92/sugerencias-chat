@@ -33,13 +33,13 @@ from app.modules.automations.domain.events import (
 from app.modules.automations.infrastructure import wakeup
 from app.modules.catalogs.public import ServiceRenamed, rename_service_references
 from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
-from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR, SERVICE_WINDOW_ERROR_CODE
+from app.modules.conversations.ports.service_window import SERVICE_WINDOW_ERROR_CODE
 from app.modules.conversations.public import ExternalMessageDetected, ProviderMessageStored
 from app.modules.leads.public import LeadCreated, LeadStageChanged, LeadUpdated
 from app.modules.notifications.ports.push_service import send_push_to_user
 from app.modules.notifications.ports.service import create_system_notification
 from app.realtime.ws_manager import manager
-from app.modules.automations.domain.types import AutomationTrigger
+from app.modules.automations.domain.types import AutomationTrigger, ExecutionErrorCode
 from app.modules.notifications.ports.types import NotificationType
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ async def deliver_notification(event: AutomationNotificationCreated) -> None:
 async def notify_execution_failure(event: ExecutionFailed) -> None:
     """Avisa al admin que creó la regla cuando una ejecución queda en failed —
     sin esto los fallos solo se descubren entrando al historial a mirar."""
-    is_service_window_error = event.error == SERVICE_WINDOW_CLOSED_ERROR
+    is_service_window_error = event.error_code == ExecutionErrorCode.SERVICE_WINDOW_CLOSED
     title = f"Automatización con error: {event.rule_name}"[:160]
     body = (event.error or "La ejecución falló")[:1000]
     try:
