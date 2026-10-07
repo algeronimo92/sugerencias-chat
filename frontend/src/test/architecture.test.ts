@@ -51,9 +51,8 @@ function reaches(start: string, forbidden: (path: string) => boolean, edges = gr
   }
 }
 
-// Medición inicial del refactor del frontend (fase 0). Estas listas solo
-// pueden achicarse: una dependencia nueva que cierre un ciclo, o un componente
-// que pase de MAX_COMPONENT_LINES, hace fallar el test. Al resolver uno, se
+// Las listas congeladas (KNOWN_*) solo pueden achicarse: un componente nuevo
+// que pase de MAX_COMPONENT_LINES hace fallar el test. Al resolver uno, se
 // quita de la lista (el test exige que no queden entradas sobrantes).
 
 /** Capas de las features. Una feature solo depende de features de capas
@@ -106,22 +105,6 @@ const CONTRACT_TYPES = new Set(['ApiResponse'])
 
 /** Features de solo modelo: tipos y reglas sin pedidos HTTP (no tienen api.ts). */
 const MODEL_ONLY_FEATURES = new Set(['whatsapp'])
-
-/** Piezas internas de features que app/ todavía importa directo. La fase 3
- * las publica como puntos de entrada; la lista solo puede achicarse. */
-const KNOWN_APP_INTERNAL_IMPORTS = [
-  'app/layout.tsx -> features/auth/queries.ts',
-  'app/layout.tsx -> features/chats/hooks/useChatFiltersState.ts',
-  'app/layout.tsx -> features/chats/layoutContext.ts',
-  'app/layout.tsx -> features/leads/queries.ts',
-  'app/layout.tsx -> features/notifications/components/NotificationCenter.tsx',
-  'app/layout.tsx -> features/notifications/hooks/useNotifications.ts',
-  'app/layout.tsx -> features/platform/components/SettingsDialog.tsx',
-  'app/routes.tsx -> features/auth/queries.ts',
-  'app/routes.tsx -> features/chats/components/ChatWorkspace.tsx',
-  'app/routes.tsx -> features/chats/layoutContext.ts',
-  'app/routes.tsx -> features/chats/useOpenChat.ts',
-]
 
 /** Punto de entrada de una feature para app/: su public/ o un archivo de
  * nivel superior que publica una pantalla, un diálogo o sus tipos. */
@@ -314,6 +297,6 @@ describe('feature architecture', () => {
         return parts[1] !== 'public' && !(parts.length === 2 && FEATURE_ENTRY_FILE.test(parts[1]))
       }).map(target => `${relative(src, path)} -> ${relative(src, target)}`.split(/[\\/]/).join('/')),
     )
-    expect([...new Set(violations)].sort()).toEqual(KNOWN_APP_INTERNAL_IMPORTS)
+    expect([...new Set(violations)].sort()).toEqual([])
   })
 })

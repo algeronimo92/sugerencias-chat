@@ -1,2 +1,2 @@
-/** Explicit consumer contract; implementation remains with its feature owner. */
-export { useMe } from '../queries'
+/** Contrato explícito para otras features: solo lo que usan desde afuera. */
+export { useLogout, useMe } from '../queries'

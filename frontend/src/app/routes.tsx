@@ -4,10 +4,10 @@ import { Loader2 } from "lucide-react";
 
 import { EMPTY_CHAT_FILTERS } from '../features/leads/types'
 import { BackendUnavailable } from "../shared/ui/BackendUnavailable";
-import { ChatWorkspace } from "../features/chats/components/ChatWorkspace";
-import { useLayoutContext } from "../features/chats/layoutContext";
-import { useOpenChat } from "../features/chats/useOpenChat";
-import { useMe } from "../features/auth/queries";
+import { ChatWorkspace } from "../features/chats/page";
+import { useLayoutContext } from '../features/chats/public/layoutContext';
+import { useOpenChat } from '../features/chats/public/useOpenChat';
+import { useMe } from '../features/auth/public/queries';
 import { MainLayout } from "./layout";
 import { AccountActionProviders, CrmProviders, DataProviders } from "./providers";
 // Fuera del bundle del CRM: con sesión activa el login no se usa (y arrastra

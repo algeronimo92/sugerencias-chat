@@ -6,22 +6,22 @@ import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, ShieldCheck, 
 import { useBrand } from "../shared/branding";
 import { BrandLogo } from "../shared/ui/BrandLogo";
 import { PageLoader } from "../shared/ui/PageLoader";
-import { type LayoutContext, type SettingsTab } from "../features/chats/layoutContext";
-import { useChatFiltersState } from "../features/chats/hooks/useChatFiltersState";
+import { type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
+import { useChatFiltersState } from '../features/chats/public/useChatFiltersState';
 import { MobileNavBar } from "./MobileNavBar";
-import { NotificationCenter } from "../features/notifications/components/NotificationCenter";
+import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
 import { useLayout } from "../shared/hooks/useBreakpoint";
-import { useLogout, useMe } from "../features/auth/queries";
-import { useUnreadCount } from '../features/leads/queries'
+import { useLogout, useMe } from '../features/auth/public/queries';
+import { useUnreadCount } from '../features/leads/public/queries'
 import { useRealtimeConnection, type InternalMentionAlert } from "../realtime/useRealtime";
 import { createAppRealtimeBus } from "./realtime";
-import { useNotifications } from "../features/notifications/hooks/useNotifications";
+import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
-  import("../features/platform/components/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
+  import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
 );
 const AccountSecurityDialog = lazy(() =>
   import("../features/auth/index").then((module) => ({ default: module.AccountSecurityDialog })),
