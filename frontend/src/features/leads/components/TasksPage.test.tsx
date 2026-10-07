@@ -7,7 +7,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TasksPage } from './TasksPage'
 import type { LeadTask } from '../types'
@@ -63,6 +63,14 @@ function mockQuery(value: Record<string, unknown>, update: Record<string, unknow
 }
 
 describe('TasksPage', () => {
+  // Las secciones dependen de la hora: "dentro de 2 horas" es hoy a mediodía
+  // pero mañana a las 23 h. Se fija el reloj (solo Date: userEvent sigue con
+  // sus timers reales).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 6, 12, 0, 0))
+  })
+
   it('ofrece una salida al chat cuando no hay ninguna tarea', () => {
     mockQuery({})
     render(<TasksPage onOpenChat={vi.fn()} />)
