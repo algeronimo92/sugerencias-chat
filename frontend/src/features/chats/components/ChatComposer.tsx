@@ -6,7 +6,9 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { compressImage } from '../../../shared/utils/media'
 import { FlowPicker } from '../../automations/public/FlowPicker'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
-import { useSendAudio, useSendLocation, useSendMedia, useSendSticker, type ReplyTarget } from '../hooks/useMessages'
+import type { OutboundOf } from '../domain/outbound'
+import type { ReplyTarget } from '../hooks/useMessages'
+import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useRecordTemplateUse, useTemplateCapabilities, useTemplates } from '../../templates/public/useTemplates'
 import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../../templates/types'
@@ -69,11 +71,10 @@ interface Props {
   onSwitchToNote: () => void
   onSaveTemplate: (content: string) => void
   onSendMultimediaTemplate: (template: MessageTemplate) => void
-  /** Vienen del padre y no de un useSendMessage propio: el hilo también
-   *  necesita retryMessage de esa misma instancia, y su `error` combina los
-   *  fallos de envío con los de reintento. Duplicar el hook separaría los dos. */
+  /** El envío de texto viene del hilo: su `error` (que se muestra sobre la
+   *  barra) combina los fallos de envío con los de reintento de un mensaje. */
   sendMessage: (
-    payload: { text: string; replyTo: ReplyTarget | null },
+    message: OutboundOf<'text'>,
     options?: { onError?: (error: Error) => void },
   ) => void
   sendError: Error | null
@@ -156,10 +157,9 @@ export function ChatComposer({
     el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [draft])
 
-  const { mutate: sendAudio } = useSendAudio(chat.chat_id)
-  const { mutate: sendMedia } = useSendMedia(chat.chat_id)
-  const { mutate: sendLocation } = useSendLocation(chat.chat_id)
-  const { mutate: sendSticker } = useSendSticker(chat.chat_id)
+  // Audio, adjuntos, ubicación y stickers muestran su error al lado de su
+  // botón: van por una instancia propia del comando, no por la del texto.
+  const { mutate: send } = useOutboundMessage(chat.chat_id)
   const { data: templates = [] } = useTemplates()
   const recordTemplateUse = useRecordTemplateUse()
 
@@ -223,7 +223,7 @@ export function ChatComposer({
     if (!text) return
     setDraft('')
     onReplyChange(null)
-    sendMessage({ text, replyTo }, {
+    sendMessage({ kind: 'text', text, replyTo }, {
       // Un rechazo del backend (ventana de 24 h cerrada, lead inexistente) no
       // deja burbuja de reintento: sin devolver el texto, lo que el vendedor
       // escribió desaparece junto con el error.
@@ -238,8 +238,8 @@ export function ChatComposer({
     const target = replyTo
     onReplyChange(null)
     const dataBase64 = await blobToBase64(blob)
-    sendAudio(
-      { contentType: blob.type || 'audio/webm', dataBase64, replyTo: target },
+    send(
+      { kind: 'audio', contentType: blob.type || 'audio/webm', dataBase64, replyTo: target },
       { onError: (err) => setAudioError(extractErrorMessage(err)) }
     )
   }
@@ -338,8 +338,8 @@ export function ChatComposer({
     // chocar con el límite de tamaño. El video no se puede recomprimir acá.
     const toSend = await compressImage(file)
     const dataBase64 = await blobToBase64(toSend)
-    sendMedia(
-      { contentType: toSend.type, dataBase64, filename: toSend.name, caption, replyTo: target, albumId },
+    send(
+      { kind: 'media', contentType: toSend.type, dataBase64, filename: toSend.name, caption, replyTo: target, albumId },
       { onError: (err) => setMediaError(extractErrorMessage(err)) }
     )
   }
@@ -432,7 +432,7 @@ export function ChatComposer({
     const location = pendingLocation
     setPendingLocation(null)
     onReplyChange(null)
-    sendLocation({ ...location, replyTo }, {
+    send({ kind: 'location', ...location, replyTo }, {
       onError: (err) => {
         setLocationError(extractErrorMessage(err))
       },
@@ -525,8 +525,8 @@ export function ChatComposer({
               onInsertEmoji={insertEmoji}
               onSelectSticker={(asset) => {
                 setStickerError(null)
-                sendSticker(
-                  { assetId: asset.id, mediaUrl: asset.media_url },
+                send(
+                  { kind: 'sticker', assetId: asset.id, mediaUrl: asset.media_url },
                   { onError: (err) => setStickerError(extractErrorMessage(err)) },
                 )
               }}

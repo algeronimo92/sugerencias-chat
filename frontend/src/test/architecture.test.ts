@@ -240,6 +240,16 @@ describe('feature architecture', () => {
     expect(readers).toEqual(['shared/config.ts'])
   })
 
+  it('sends chat messages through the single outbound command', () => {
+    // Un envío del hilo es una mutación con messageKeys.sending (el tiempo
+    // real no refetchea mientras haya una en vuelo); solo el comando la declara.
+    const declaresSendMutation = /mutationKey: messageKeys\.sending\([^)]*\),\s*\n/
+    const senders = productionFiles()
+      .filter(path => declaresSendMutation.test(readFileSync(path, 'utf8')))
+      .map(path => relative(src, path).split(/[\\/]/).join('/'))
+    expect(senders).toEqual(['features/chats/hooks/useOutboundMessage.ts'])
+  })
+
   it('keeps axios inside shared/http: the rest of the app sees ApiError', () => {
     const http = join(src, 'shared', 'http')
     const testSupport = join(src, 'test')

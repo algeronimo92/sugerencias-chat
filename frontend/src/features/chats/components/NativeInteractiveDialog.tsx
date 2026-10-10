@@ -10,7 +10,8 @@ import {
 availableNativeInteractives,buildNativeInteractive,EMPTY_NATIVE_INTERACTIVE_FORM,NATIVE_INTERACTIVE_LABELS,
 type NativeInteractiveForm,
 } from '../domain/nativeInteractive'
-import { useSendInteractive, type ReplyTarget } from '../hooks/useMessages'
+import type { ReplyTarget } from '../hooks/useMessages'
+import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import type { TemplateCapabilities } from '../../templates/types'
 
 interface Props {
@@ -34,7 +35,7 @@ export function NativeInteractiveDialog({ chatId, capabilities, replyTo, onSent,
     flow: capabilities.published_flows?.[0] ?? '',
   })
   const [showErrors, setShowErrors] = useState(false)
-  const { mutate: sendInteractive, isPending } = useSendInteractive(chatId)
+  const { mutate: sendInteractive, isPending } = useOutboundMessage(chatId)
   const { interactive, errors } = buildNativeInteractive(form, capabilities)
 
   function update(patch: Partial<NativeInteractiveForm>) {
@@ -48,7 +49,7 @@ export function NativeInteractiveDialog({ chatId, capabilities, replyTo, onSent,
       return
     }
     sendInteractive(
-      { interactive, replyTo },
+      { kind: 'interactive', interactive, replyTo },
       {
         onSuccess: () => {
           toast.success(`${NATIVE_INTERACTIVE_LABELS[form.kind]} enviado`)

@@ -24,8 +24,8 @@ vi.mock('../../leads/public/queries', () => ({
   }),
 }))
 
-vi.mock('../hooks/useMessages', () => ({
-  useSendContacts: () => ({ mutate: mocks.sendContacts, isPending: false }),
+vi.mock('../hooks/useOutboundMessage', () => ({
+  useOutboundMessage: () => ({ mutate: mocks.sendContacts, isPending: false }),
 }))
 
 describe('ContactSendDialog', () => {
@@ -55,6 +55,7 @@ describe('ContactSendDialog', () => {
 
     expect(mocks.sendContacts).toHaveBeenCalledOnce()
     expect(mocks.sendContacts.mock.calls[0][0]).toEqual({
+      kind: 'contacts',
       contacts: [
         { fullName: 'Ana Torres', phoneNumber: '51911111111' },
         { fullName: 'Luis Pérez', phoneNumber: '51922222222' },

@@ -24,17 +24,9 @@ import { createTestQueryClient, queryWrapper } from '../../../test/queryWrapper'
 import { toMessage } from '../api'
 import type { MessagePage, ReplyTarget } from '../types'
 import type { ContractMessage, Message } from '../../whatsapp/types'
-import {
-  useReactToMessage,
-  useSendAudio,
-  useSendContacts,
-  useSendInteractive,
-  useSendLocation,
-  useSendMedia,
-  useSendMessage,
-  useSendSticker,
-  useSendTemplate,
-} from './useMessages'
+import type { OutboundKind } from '../domain/outbound'
+import { useReactToMessage } from './useMessages'
+import { useFailedMessageActions, useOutboundMessage } from './useOutboundMessage'
 
 const CHAT = '9a3c2f14-1b7e-4c8d-a6f0-3e5d7b9c1a24'
 const BASE = `/api/chats/${CHAT}`
@@ -100,11 +92,17 @@ function render<T>(hook: () => T) {
   return renderHook(hook, { wrapper: queryWrapper(queryClient) }).result
 }
 
-/** Cada forma de envío: cómo se dispara, qué viaja y cómo se ve la burbuja. */
+/** Envía por el comando único un mensaje del tipo dado. */
+function sender(kind: OutboundKind) {
+  const outbound = render(() => useOutboundMessage(CHAT))
+  return (variables: unknown) => outbound.current.mutate({ kind, ...(variables as object) } as never)
+}
+
+/** Cada forma de envío: qué viaja y cómo se ve la burbuja. */
 interface SendCase {
   name: string
   path: string
-  send: () => (variables: never) => void
+  kind: OutboundKind
   variables: unknown
   body: unknown
   bubbles: Array<Partial<Message>>
@@ -117,7 +115,7 @@ const CASES: SendCase[] = [
   {
     name: 'texto',
     path: `${BASE}/messages`,
-    send: () => render(() => useSendMessage(CHAT)).current.mutate as never,
+    kind: 'text',
     variables: { text: 'Buenas tardes', replyTo: REPLY },
     body: { text: 'Buenas tardes', reply_to_message_id: 7 },
     bubbles: [{
@@ -129,7 +127,7 @@ const CASES: SendCase[] = [
   {
     name: 'audio',
     path: `${BASE}/audio`,
-    send: () => render(() => useSendAudio(CHAT)).current.mutate as never,
+    kind: 'audio',
     variables: { contentType: 'audio/ogg', dataBase64: 'T2dn', replyTo: null },
     body: { content_type: 'audio/ogg', data_base64: 'T2dn', reply_to_message_id: null },
     bubbles: [{ content: null, message_type: 'audio', media_url: 'data:audio/ogg;base64,T2dn' }],
@@ -138,7 +136,7 @@ const CASES: SendCase[] = [
   {
     name: 'imagen con epígrafe y álbum',
     path: `${BASE}/media`,
-    send: () => render(() => useSendMedia(CHAT)).current.mutate as never,
+    kind: 'media',
     variables: { contentType: 'image/png', dataBase64: 'iVBO', filename: 'foto.png', caption: 'Mira', albumId: 'album-1' },
     body: {
       content_type: 'image/png', data_base64: 'iVBO', filename: 'foto.png', caption: 'Mira',
@@ -150,7 +148,7 @@ const CASES: SendCase[] = [
   {
     name: 'documento',
     path: `${BASE}/media`,
-    send: () => render(() => useSendMedia(CHAT)).current.mutate as never,
+    kind: 'media',
     variables: { contentType: 'application/pdf', dataBase64: 'JVBE', filename: 'precios.pdf' },
     body: {
       content_type: 'application/pdf', data_base64: 'JVBE', filename: 'precios.pdf', caption: null,
@@ -162,7 +160,7 @@ const CASES: SendCase[] = [
   {
     name: 'plantilla',
     path: `${BASE}/templates/12`,
-    send: () => render(() => useSendTemplate(CHAT)).current.mutate as never,
+    kind: 'template',
     variables: {
       templateId: 12, text: 'Hola Ana', parameters: ['Ana'],
       optimisticMessages: [{ content: 'Hola Ana' }, { content: null, message_type: 'image', media_url: '/media/a.png' }],
@@ -174,7 +172,7 @@ const CASES: SendCase[] = [
   {
     name: 'sticker',
     path: `${BASE}/sticker`,
-    send: () => render(() => useSendSticker(CHAT)).current.mutate as never,
+    kind: 'sticker',
     variables: { assetId: 3, mediaUrl: '/media/sticker.webp' },
     body: { asset_id: 3 },
     bubbles: [{ content: null, message_type: 'sticker', media_url: '/media/sticker.webp' }],
@@ -183,7 +181,7 @@ const CASES: SendCase[] = [
   {
     name: 'ubicación',
     path: `${BASE}/location`,
-    send: () => render(() => useSendLocation(CHAT)).current.mutate as never,
+    kind: 'location',
     variables: { latitude: -12.05, longitude: -77.04, replyTo: REPLY },
     body: { latitude: -12.05, longitude: -77.04, reply_to_message_id: 7 },
     bubbles: [{
@@ -194,7 +192,7 @@ const CASES: SendCase[] = [
   {
     name: 'contactos',
     path: `${BASE}/contacts`,
-    send: () => render(() => useSendContacts(CHAT)).current.mutate as never,
+    kind: 'contacts',
     variables: { contacts: [{ fullName: 'Ana Torres', phoneNumber: '+51987654321' }] },
     body: { contacts: [{ full_name: 'Ana Torres', phone_number: '+51987654321' }], reply_to_message_id: null },
     bubbles: [{
@@ -206,7 +204,7 @@ const CASES: SendCase[] = [
   {
     name: 'interactivo',
     path: `${BASE}/interactive`,
-    send: () => render(() => useSendInteractive(CHAT)).current.mutate as never,
+    kind: 'interactive',
     variables: { interactive: { type: 'product', body: { text: 'Mira este producto' } } },
     body: { interactive: { type: 'product', body: { text: 'Mira este producto' } }, reply_to_message_id: null },
     bubbles: [{
@@ -221,9 +219,9 @@ describe.each(CASES)('envío de $name', sendCase => {
   it('muestra la burbuja antes de que el servidor conteste y la reemplaza por la real', async () => {
     const answer = deferred<FakeReply>()
     api.current.on('post', sendCase.path, () => answer.promise)
-    const mutate = sendCase.send()
+    const mutate = sender(sendCase.kind)
 
-    act(() => mutate(sendCase.variables as never))
+    act(() => mutate(sendCase.variables))
 
     await waitFor(() => expect(optimistic()).toHaveLength(sendCase.bubbles.length))
     optimistic().forEach((bubble, index) => {
@@ -245,9 +243,9 @@ describe.each(CASES)('envío de $name', sendCase => {
 
   it('quita la burbuja si el servidor rechaza el envío', async () => {
     api.current.on('post', sendCase.path, { status: 500, data: { detail: 'Fallo' } })
-    const mutate = sendCase.send()
+    const mutate = sender(sendCase.kind)
 
-    act(() => mutate(sendCase.variables as never))
+    act(() => mutate(sendCase.variables))
 
     await waitFor(() => expect(api.current.calls('post', sendCase.path)).toHaveLength(1))
     await waitFor(() => expect(optimistic()).toEqual([]))
@@ -260,8 +258,8 @@ describe('orden de los envíos', () => {
     const media = deferred<FakeReply>()
     api.current.on('post', `${BASE}/media`, () => media.promise)
     api.current.on('post', `${BASE}/messages`, { data: serverMessage({ id: 902, content: 'Te lo mando' }) })
-    const sendMedia = render(() => useSendMedia(CHAT)).current.mutate
-    const sendText = render(() => useSendMessage(CHAT)).current.mutate
+    const sendMedia = sender('media')
+    const sendText = sender('text')
 
     act(() => sendMedia({ contentType: 'image/jpeg', dataBase64: '/9j/' }))
     act(() => sendText({ text: 'Te lo mando' }))
@@ -295,7 +293,7 @@ describe('reintentar y descartar un envío fallido', () => {
   it('reintentar lo vuelve a la cola al instante y toma el mensaje del servidor', async () => {
     const answer = deferred<FakeReply>()
     api.current.on('post', `${BASE}/messages/640/retry`, () => answer.promise)
-    const result = render(() => useSendMessage(CHAT))
+    const result = render(() => useFailedMessageActions(CHAT))
 
     act(() => result.current.retryMessage(failed))
 
@@ -306,7 +304,7 @@ describe('reintentar y descartar un envío fallido', () => {
 
   it('si el reintento falla, vuelve a mostrarse como fallido', async () => {
     api.current.on('post', `${BASE}/messages/640/retry`, { status: 500 })
-    const result = render(() => useSendMessage(CHAT))
+    const result = render(() => useFailedMessageActions(CHAT))
 
     act(() => result.current.retryMessage(failed))
 
@@ -317,7 +315,7 @@ describe('reintentar y descartar un envío fallido', () => {
   it('descartar lo marca como descartado sin esperar al servidor', async () => {
     const answer = deferred<FakeReply>()
     api.current.on('post', `${BASE}/messages/640/discard`, () => answer.promise)
-    const result = render(() => useSendMessage(CHAT))
+    const result = render(() => useFailedMessageActions(CHAT))
 
     act(() => result.current.discardMessage(failed))
 
@@ -326,7 +324,7 @@ describe('reintentar y descartar un envío fallido', () => {
   })
 
   it('solo se reintenta o descarta lo que falló y ya existe en el servidor', async () => {
-    const result = render(() => useSendMessage(CHAT))
+    const result = render(() => useFailedMessageActions(CHAT))
 
     act(() => {
       result.current.retryMessage({ ...failed, outbox_status: 'sent' })

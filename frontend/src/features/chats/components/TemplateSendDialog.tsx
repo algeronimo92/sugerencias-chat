@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { MediaLightbox } from '../../../shared/ui/MediaLightbox'
 import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendTemplate, type OptimisticMessageDraft } from '../hooks/useMessages'
+import { useOutboundMessage } from '../hooks/useOutboundMessage'
+import type { OptimisticMessageDraft } from '../types'
 import { useTemplateCapabilities } from '../../templates/public/useTemplates'
 import type { Chat } from '../../leads/types'
 import type { MessageTemplate, TemplateAttachment } from '../../templates/types'
@@ -178,7 +179,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
     renderOfficialParameterValues(template, chat),
   );
   const [openMedia, setOpenMedia] = useState<OpenMedia | null>(null);
-  const send = useSendTemplate(chat.chat_id);
+  const send = useOutboundMessage(chat.chat_id);
   const { data: capabilities, isLoading: isLoadingCapabilities } =
     useTemplateCapabilities();
   const text = isOfficial
@@ -306,6 +307,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
           ];
     send.mutate(
       {
+        kind: 'template',
         templateId: template.id,
         text,
         parameters: isOfficial ? parameters : [],

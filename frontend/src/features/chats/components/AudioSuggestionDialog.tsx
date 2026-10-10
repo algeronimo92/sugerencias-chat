@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendAudio } from '../hooks/useMessages'
+import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useGenerateSpeech } from '../../ai/public/useTts'
 
 interface Props {
@@ -18,7 +18,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const { mutate: generateSpeech, isPending: isGenerating } = useGenerateSpeech()
-  const { mutate: sendAudio, isPending: isSending } = useSendAudio(chatId)
+  const { mutate: sendAudio, isPending: isSending } = useOutboundMessage(chatId)
 
   function handleTextChange(value: string) {
     setText(value)
@@ -39,7 +39,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
 
   function handleSend() {
     if (!audio) return
-    sendAudio(audio, {
+    sendAudio({ kind: 'audio', ...audio }, {
       onSuccess: onClose,
       onError: (err) => setError(extractErrorMessage(err)),
     })

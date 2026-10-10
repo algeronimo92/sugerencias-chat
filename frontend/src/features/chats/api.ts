@@ -1,7 +1,7 @@
-const requestTails = new Map<string, Promise<void>>()
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
 import type { AudioPayload, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LocationPayload, MediaPayload, MessageCursor, MessagePage, NoteInput, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TextPayload } from "./types";
+import type { OutboundMessage } from './domain/outbound'
 import type { ContractMessage, Message, MessageAnalysis, MessageReaction } from '../whatsapp/types'
 
 /** De lo que entrega el contrato a lo que usa el hilo (ver `Message`). */
@@ -35,7 +35,7 @@ export async function fetchMessages(chatId: string, cursor: MessageCursor, until
   return { ...data, items: data.items.map(toMessage) }
 }
 
-export async function sendAudio(chatId: string, { contentType, dataBase64, replyTo }: AudioPayload): Promise<Message> {
+async function sendAudio(chatId: string, { contentType, dataBase64, replyTo }: AudioPayload): Promise<Message> {
   const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/audio', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/audio`, {
     content_type: contentType,
     data_base64: dataBase64,
@@ -44,7 +44,7 @@ export async function sendAudio(chatId: string, { contentType, dataBase64, reply
   return toMessage(data)
 }
 
-export async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo, albumId }: MediaPayload): Promise<Message> {
+async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo, albumId }: MediaPayload): Promise<Message> {
   const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/media', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
     content_type: contentType,
     data_base64: dataBase64,
@@ -56,14 +56,14 @@ export async function sendMedia(chatId: string, { contentType, dataBase64, filen
   return toMessage(data)
 }
 
-export async function sendSticker(chatId: string, { assetId }: StickerPayload): Promise<Message> {
+async function sendSticker(chatId: string, { assetId }: StickerPayload): Promise<Message> {
   const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/sticker', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/sticker`, {
     asset_id: assetId,
   })
   return toMessage(data)
 }
 
-export async function sendLocation(chatId: string, { latitude, longitude, replyTo }: LocationPayload): Promise<Message> {
+async function sendLocation(chatId: string, { latitude, longitude, replyTo }: LocationPayload): Promise<Message> {
   const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/location', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/location`, {
     latitude,
     longitude,
@@ -72,7 +72,7 @@ export async function sendLocation(chatId: string, { latitude, longitude, replyT
   return toMessage(data)
 }
 
-export async function sendContacts(chatId: string, { contacts, replyTo }: ContactsPayload): Promise<Message> {
+async function sendContacts(chatId: string, { contacts, replyTo }: ContactsPayload): Promise<Message> {
   const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/contacts', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/contacts`, {
     contacts: contacts.map(contact => ({
       full_name: contact.fullName,
@@ -83,21 +83,17 @@ export async function sendContacts(chatId: string, { contacts, replyTo }: Contac
   return toMessage(data)
 }
 
-export function sendMessage(chatId: string, { text, replyTo }: TextPayload): Promise<Message> {
-  return orderedRequest(chatId, async () => {
-    const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
-      text,
-      reply_to_message_id: replyTo?.id ?? null,
-    })
-    return toMessage(data)
+async function sendMessage(chatId: string, { text, replyTo }: TextPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
+    text,
+    reply_to_message_id: replyTo?.id ?? null,
   })
+  return toMessage(data)
 }
 
-export function retryFailedMessage(chatId: string, message: Message): Promise<Message> {
-  return orderedRequest(chatId, async () => {
-    const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/retry', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/retry`)
-    return toMessage(data)
-  })
+export async function retryFailedMessage(chatId: string, message: Message): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/retry', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/retry`)
+  return toMessage(data)
 }
 
 export async function discardFailedMessage(chatId: string, message: Message): Promise<Message> {
@@ -105,11 +101,9 @@ export async function discardFailedMessage(chatId: string, message: Message): Pr
   return toMessage(data)
 }
 
-export function sendTemplate(chatId: string, { templateId, text, parameters = [] }: SendTemplatePayload): Promise<Message[]> {
-  return orderedRequest(chatId, async () => {
-    const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/templates/{template_id}', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })
-    return data.map(toMessage)
-  })
+async function sendTemplate(chatId: string, { templateId, text, parameters = [] }: SendTemplatePayload): Promise<Message[]> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/templates/{template_id}', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })
+  return data.map(toMessage)
 }
 
 export async function reactToMessage(chatId: string, { messageId, emoji }: ReactionPayload): Promise<Message> {
@@ -148,14 +142,12 @@ export async function forwardMessages(chatId: string, { messageIds, targetChatId
       )).data
 }
 
-export function sendInteractive(chatId: string, { interactive, replyTo }: InteractivePayload): Promise<Message> {
-  return orderedRequest(chatId, async () => {
-    const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/interactive', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/interactive`, {
-      interactive,
-      reply_to_message_id: replyTo?.id ?? null,
-    })
-    return toMessage(data)
+async function sendInteractive(chatId: string, { interactive, replyTo }: InteractivePayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/interactive', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/interactive`, {
+    interactive,
+    reply_to_message_id: replyTo?.id ?? null,
   })
+  return toMessage(data)
 }
 
 export async function fetchInternalNotes(chatId: string | null): Promise<InternalNote[]> {
@@ -205,16 +197,17 @@ export async function cancelScheduledMessage(scheduledId: number) {
   await client.delete<ApiResponse<'/api/scheduled-messages/{scheduled_id}', 'delete'>>(`/api/scheduled-messages/${scheduledId}`)
 }
 
-/** Los requests se serializan por chat, pero todas las burbujas aparecen de
- * inmediato. Así se conserva el orden de pulsación incluso si una carga de
- * archivo tarda más que el texto que se escribió después. */
-export function orderedRequest<T>(chatId: string, request: () => Promise<T>): Promise<T> {
-  const previous = requestTails.get(chatId) ?? Promise.resolve()
-  const current = previous.then(request)
-  const tail = current.then(() => undefined, () => undefined)
-  requestTails.set(chatId, tail)
-  void tail.finally(() => {
-    if (requestTails.get(chatId) === tail) requestTails.delete(chatId)
-  })
-  return current
+/** El pedido HTTP de cada tipo de mensaje saliente. Devuelve lo que el
+ *  servidor encoló: un mensaje, o varios en una plantilla con adjuntos. */
+export async function sendOutbound(chatId: string, message: OutboundMessage): Promise<Message[]> {
+  switch (message.kind) {
+    case 'text': return [await sendMessage(chatId, message)]
+    case 'audio': return [await sendAudio(chatId, message)]
+    case 'media': return [await sendMedia(chatId, message)]
+    case 'sticker': return [await sendSticker(chatId, message)]
+    case 'location': return [await sendLocation(chatId, message)]
+    case 'contacts': return [await sendContacts(chatId, message)]
+    case 'interactive': return [await sendInteractive(chatId, message)]
+    case 'template': return sendTemplate(chatId, message)
+  }
 }

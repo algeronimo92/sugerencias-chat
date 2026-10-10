@@ -6,8 +6,8 @@ import type { TemplateCapabilities } from '../../templates/types'
 import { NativeInteractiveDialog } from './NativeInteractiveDialog'
 
 const mutate = vi.fn()
-vi.mock('../hooks/useMessages', () => ({
-  useSendInteractive: () => ({ mutate, isPending: false }),
+vi.mock('../hooks/useOutboundMessage', () => ({
+  useOutboundMessage: () => ({ mutate, isPending: false }),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -57,6 +57,7 @@ describe('NativeInteractiveDialog', () => {
 
     expect(mutate).toHaveBeenCalledWith(
       {
+        kind: 'interactive',
         interactive: { type: 'product', action: { catalog_id: 'cat-1', product_retailer_id: 'SKU-9' } },
         replyTo: null,
       },

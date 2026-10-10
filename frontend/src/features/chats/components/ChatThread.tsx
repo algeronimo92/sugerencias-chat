@@ -9,8 +9,9 @@ import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
 usePinMessage,usePinnedMessages,useReactToMessage,
-useSendMessage,useUnpinMessage,type ReplyTarget,
+useUnpinMessage,type ReplyTarget,
 } from '../hooks/useMessages'
+import { useFailedMessageActions, useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useThreadScroll } from '../hooks/useThreadScroll'
 import { useUpdateLead } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
@@ -148,7 +149,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // lo que salga del compositor: texto, audio, adjuntos y ubicación.
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   const [failedMediaIds, setFailedMediaIds] = useState<Set<number>>(new Set())
-  const { mutate: sendMessage, retryMessage, discardMessage, error: sendError } = useSendMessage(chat.chat_id)
+  const { mutate: sendMessage, error: outboundError } = useOutboundMessage(chat.chat_id)
+  const { retryMessage, discardMessage, error: failedActionError } = useFailedMessageActions(chat.chat_id)
+  const sendError = outboundError ?? failedActionError
   const { mutate: reactToMessage } = useReactToMessage(chat.chat_id)
 
   // Selección múltiple estilo WhatsApp: se abre manteniendo apretada una

@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSendContacts, type ReplyTarget } from '../hooks/useMessages'
+import type { ReplyTarget } from '../hooks/useMessages'
+import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useInfiniteChats } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
 import { EMPTY_CHAT_FILTERS } from '../../leads/types'
@@ -27,7 +28,7 @@ export function ContactSendDialog({ chatId, targetName, replyTo, onSent, onClose
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selected, setSelected] = useState<Chat[]>([])
-  const { mutate: sendContacts, isPending } = useSendContacts(chatId)
+  const { mutate: sendContacts, isPending } = useOutboundMessage(chatId)
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -56,6 +57,7 @@ export function ContactSendDialog({ chatId, targetName, replyTo, onSent, onClose
     if (!selected.length || isPending) return
     sendContacts(
       {
+        kind: 'contacts',
         contacts: selected.map(contact => ({
           fullName: displayName(contact),
           phoneNumber: contact.phone as string,
