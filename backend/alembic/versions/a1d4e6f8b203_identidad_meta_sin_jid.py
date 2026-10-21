@@ -38,6 +38,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Triggers de backend/migrations/028_lead_telefono_consistency_triggers.sql:
+    # derivan leads.telefono de los JID que esta revisión retira. No los conoce
+    # Alembic (una base nueva no los tiene), pero en una instalada desde los SQL
+    # históricos el de identidades impide el DROP COLUMN jid y el de leads haría
+    # fallar cada INSERT/UPDATE al no existir remote_jid. leads.telefono pasa a
+    # escribirlo la aplicación con el wa_id de Meta.
+    op.execute("DROP TRIGGER IF EXISTS trg_whatsapp_identities_sync_telefono ON whatsapp_identities")
+    op.execute("DROP TRIGGER IF EXISTS trg_leads_derive_telefono ON leads")
+    op.execute("DROP FUNCTION IF EXISTS whatsapp_identities_sync_lead_telefono()")
+    op.execute("DROP FUNCTION IF EXISTS leads_derive_telefono_from_remote_jid()")
     op.execute(
         """
         CREATE TABLE archived_whatsapp_identities (
