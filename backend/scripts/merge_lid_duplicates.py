@@ -16,6 +16,11 @@ el teléfono, y con el teléfono, el lead que le corresponde. Los huérfanos a l
 que nunca se les escribió no traen esa pista y quedan sin pareja: aparecen en
 el listado como ``sin teléfono conocido``.
 
+Si Evolution sí conoce el teléfono pero ningún lead lo tiene, no hay con quién
+fusionar: el huérfano adopta ese teléfono como alias propio. Es la única
+equivalencia LID → teléfono que existe, y deja de existir al retirar Evolution;
+sin ella, el lead no se reconoce cuando la persona vuelve a escribir por Meta.
+
 El modo por defecto solo lista. La fusión simula salvo que se pase ``--apply``.
 
 Uso desde el contenedor del backend::
@@ -32,6 +37,7 @@ from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from db.models import Lead, WhatsAppIdentity, WspMessage
 from db.session import close_engine, get_sessionmaker
@@ -50,6 +56,7 @@ class Orphan:
     lead_id: str
     nombre: str | None
     lid_jid: str
+    instance: str
     mensajes: int
 
 
@@ -75,7 +82,13 @@ async def _orphans() -> list[Orphan]:
         .subquery()
     )
     stmt = (
-        select(Lead.id, Lead.nombre, WhatsAppIdentity.jid, func.coalesce(mensajes.c.total, 0))
+        select(
+            Lead.id,
+            Lead.nombre,
+            WhatsAppIdentity.jid,
+            WhatsAppIdentity.instance,
+            func.coalesce(mensajes.c.total, 0),
+        )
         .join(WhatsAppIdentity, WhatsAppIdentity.lead_id == Lead.id)
         .outerjoin(mensajes, mensajes.c.chat_id == Lead.id)
         .where(
@@ -86,7 +99,27 @@ async def _orphans() -> list[Orphan]:
     )
     async with get_sessionmaker()() as session:
         rows = (await session.execute(stmt)).all()
-    return [Orphan(lead_id, nombre, jid, total) for lead_id, nombre, jid, total in rows]
+    return [
+        Orphan(lead_id, nombre, jid, instance, total)
+        for lead_id, nombre, jid, instance, total in rows
+    ]
+
+
+async def _adopt_phone(orphan: Orphan, phone_jid: str, *, apply: bool) -> None:
+    """Registra el teléfono como alias del propio huérfano.
+
+    El trigger de ``whatsapp_identities`` deriva ``leads.telefono`` del JID.
+    """
+    if not apply:
+        return
+    async with get_sessionmaker()() as session:
+        session.add(WhatsAppIdentity(
+            instance=orphan.instance,
+            jid=phone_jid,
+            kind="phone",
+            lead_id=orphan.lead_id,
+        ))
+        await session.commit()
 
 
 async def _lead_for_phone(phone_jid: str) -> tuple[str | None, str | None, int]:
@@ -183,9 +216,13 @@ async def _candidates(orphans: list[Orphan], concurrency: int) -> list[Candidate
 
 def _print_listado(candidates: list[Candidate]) -> None:
     emparejados = [c for c in candidates if c.target_id]
-    sin_par = [c for c in candidates if not c.target_id]
+    adoptan = [c for c in candidates if c.phone_jid and not c.target_id]
+    sin_par = [c for c in candidates if not c.phone_jid]
 
-    print(f"huerfanos={len(candidates)} emparejados={len(emparejados)} sin_par={len(sin_par)}")
+    print(
+        f"huerfanos={len(candidates)} emparejados={len(emparejados)} "
+        f"adoptan_telefono={len(adoptan)} sin_par={len(sin_par)}"
+    )
     if emparejados:
         print("\nPares detectados (origen -> destino):")
         for c in emparejados:
@@ -196,13 +233,19 @@ def _print_listado(candidates: list[Candidate]) -> None:
             print(
                 f"    -> {c.target_id} ({c.target_phone}, {c.target_messages} msgs)"
             )
+    if adoptan:
+        print("\nTeléfono conocido sin lead telefónico (el huérfano lo adopta):")
+        for c in adoptan:
+            print(
+                f"  {c.orphan.lead_id} ({c.orphan.nombre or 'sin nombre'}, "
+                f"{c.orphan.mensajes} msgs) <- {c.phone_jid}"
+            )
     if sin_par:
         print("\nSin teléfono conocido (nunca se les escribió desde la app):")
         for c in sin_par:
-            estado = "sin lead telefónico" if c.phone_jid else "sin remoteJidAlt en Evolution"
             print(
                 f"  {c.orphan.lead_id} ({c.orphan.nombre or 'sin nombre'}, "
-                f"{c.orphan.mensajes} msgs) — {estado}"
+                f"{c.orphan.mensajes} msgs) — sin remoteJidAlt en Evolution"
             )
 
 
@@ -231,8 +274,24 @@ async def run(args: argparse.Namespace) -> int:
         return 0
 
     fusionados = 0
+    adoptados = 0
     fallidos = 0
+    # Un lead con LID en varias instancias aparece una vez por cada una.
+    ya_adoptado: set[str] = set()
     for candidate in candidates:
+        if candidate.phone_jid and not candidate.target_id:
+            if candidate.orphan.lead_id in ya_adoptado:
+                continue
+            try:
+                await _adopt_phone(candidate.orphan, candidate.phone_jid, apply=args.apply)
+            except IntegrityError as exc:
+                fallidos += 1
+                print(f"  ERROR {candidate.orphan.lead_id}: {exc.orig}")
+                continue
+            ya_adoptado.add(candidate.orphan.lead_id)
+            adoptados += 1
+            print(f"  {candidate.orphan.lead_id} <- {candidate.phone_jid}")
+            continue
         if not candidate.target_id:
             continue
         try:
@@ -246,7 +305,7 @@ async def run(args: argparse.Namespace) -> int:
         fusionados += 1
         print(f"  {report.summary()}")
     print(
-        f"fusionados={fusionados} fallidos={fallidos} "
+        f"fusionados={fusionados} adoptados={adoptados} fallidos={fallidos} "
         f"mode={'apply' if args.apply else 'dry-run'}"
     )
     return 0

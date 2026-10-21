@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.merge_lid_duplicates import _phone_from_records
+import scripts.merge_lid_duplicates as merge_script
+from scripts.merge_lid_duplicates import Candidate, Orphan, _phone_from_records
 from services.lead_merge import LeadMergeError, _fill_empty_fields, merge_leads
 
 LID_JID = "269685694173263@lid"
@@ -119,3 +120,96 @@ def test_a_bare_list_of_records_is_accepted():
     payload = [_record({"remoteJid": LID_JID, "remoteJidAlt": PHONE_JID})]
 
     assert _phone_from_records(payload) == PHONE_JID
+
+
+# --- Qué hace --fusionar --todos con cada huérfano -------------------------
+#
+# Con Evolution retirado, un LID ya no se puede traducir a teléfono: el que no
+# quede fusionado o con su teléfono adoptado antes del corte no se reconoce
+# cuando la persona vuelve a escribir.
+
+ORPHAN_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+TARGET_ID = "0c1f4d6e-2a39-4b7e-9e55-3f1d2c8a6b10"
+
+
+def _orphan(instance: str = "dermicapro") -> Orphan:
+    return Orphan(ORPHAN_ID, "Dani 🌷", LID_JID, instance, 12)
+
+
+async def _run_todos(monkeypatch, candidates: list[Candidate], *, apply: bool):
+    merged, adopted = [], []
+
+    async def fake_orphans():
+        return [c.orphan for c in candidates]
+
+    async def fake_candidates(orphans, concurrency):
+        return candidates
+
+    async def fake_merge(source, target, apply):
+        merged.append((source, target, apply))
+        return SimpleNamespace(summary=lambda: f"{source} -> {target}")
+
+    async def fake_adopt(orphan, phone_jid, *, apply):
+        adopted.append((orphan.lead_id, orphan.instance, phone_jid, apply))
+
+    monkeypatch.setattr(merge_script, "_orphans", fake_orphans)
+    monkeypatch.setattr(merge_script, "_candidates", fake_candidates)
+    monkeypatch.setattr(merge_script, "merge_leads", fake_merge)
+    monkeypatch.setattr(merge_script, "_adopt_phone", fake_adopt)
+
+    args = merge_script.build_parser().parse_args(
+        ["--fusionar", "--todos", *(["--apply"] if apply else [])]
+    )
+    await merge_script.run(args)
+    return merged, adopted
+
+
+@pytest.mark.asyncio
+async def test_a_known_phone_without_a_lead_is_adopted_by_the_orphan(monkeypatch):
+    merged, adopted = await _run_todos(
+        monkeypatch, [Candidate(_orphan(), PHONE_JID, None, None)], apply=True
+    )
+
+    assert merged == []
+    assert adopted == [(ORPHAN_ID, "dermicapro", PHONE_JID, True)]
+
+
+@pytest.mark.asyncio
+async def test_a_known_phone_with_a_lead_is_merged_not_adopted(monkeypatch):
+    merged, adopted = await _run_todos(
+        monkeypatch, [Candidate(_orphan(), PHONE_JID, TARGET_ID, "51997511558")], apply=True
+    )
+
+    assert merged == [(ORPHAN_ID, TARGET_ID, True)]
+    assert adopted == []
+
+
+@pytest.mark.asyncio
+async def test_an_orphan_without_a_known_phone_is_left_alone(monkeypatch):
+    merged, adopted = await _run_todos(
+        monkeypatch, [Candidate(_orphan(), None, None, None)], apply=True
+    )
+
+    assert merged == []
+    assert adopted == []
+
+
+@pytest.mark.asyncio
+async def test_a_lead_with_a_lid_in_two_instances_adopts_the_phone_once(monkeypatch):
+    candidates = [
+        Candidate(_orphan("dermicapro"), PHONE_JID, None, None),
+        Candidate(_orphan("dermicaproventas"), PHONE_JID, None, None),
+    ]
+
+    _, adopted = await _run_todos(monkeypatch, candidates, apply=True)
+
+    assert len(adopted) == 1
+
+
+@pytest.mark.asyncio
+async def test_without_apply_the_adoption_is_only_simulated(monkeypatch):
+    _, adopted = await _run_todos(
+        monkeypatch, [Candidate(_orphan(), PHONE_JID, None, None)], apply=False
+    )
+
+    assert adopted == [(ORPHAN_ID, "dermicapro", PHONE_JID, False)]
