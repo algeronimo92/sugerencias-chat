@@ -34,14 +34,27 @@ db_env() {
 POSTGRES_USER="$(db_env POSTGRES_USER)"
 POSTGRES_DB="$(db_env POSTGRES_DB)"
 
+pg_in_container() {
+  # pg_hba.conf exige scram tambien por el socket local. La contrasena se toma
+  # de la variable que el contenedor ya tiene, no se pasa por la linea de
+  # comandos del host (quedaria visible en `ps`).
+  $COMPOSE exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec "$@"' sh "$@"
+}
+
 cmd_backup() {
   local stamp file
   stamp="$(date +%Y%m%d-%H%M%S)"
   file="dermicapro-$stamp.dump"
 
   echo "Volcando $POSTGRES_DB ..."
-  $COMPOSE exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
-    > "$BACKUP_DIR/$file"
+  # La redireccion crea el archivo aunque pg_dump falle: sin borrarlo quedaria
+  # un .dump vacio que parece un backup.
+  if ! pg_in_container pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
+    > "$BACKUP_DIR/$file"; then
+    rm -f "$BACKUP_DIR/$file"
+    echo "ERROR: pg_dump fallo; no se guardo ningun backup." >&2
+    exit 1
+  fi
 
   local size
   size="$(du -h "$BACKUP_DIR/$file" | cut -f1)"
@@ -89,7 +102,7 @@ cmd_restore() {
 
   # --clean --if-exists deja la base en el estado del dump en vez de mezclar
   # con lo que hubiera.
-  $COMPOSE exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  pg_in_container pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
     --clean --if-exists --no-owner < "$file"
   echo "Restaurado. Revisar que la aplicacion arranca antes de dar por bueno."
 }
