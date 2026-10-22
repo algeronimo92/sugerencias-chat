@@ -1,0 +1,264 @@
+import type { ApiSchemas } from '../../../shared/http/contract'
+import type { ValueOf } from '../../../shared/types'
+
+export const AutomationTrigger = {
+  LeadCreated: 'lead_created',
+  ConversationStarted: 'conversation_started',
+  StageChanged: 'stage_changed',
+  MessageReceived: 'message_received',
+  SellerResponseOverdue: 'seller_response_overdue',
+  CustomerResponseOverdue: 'customer_response_overdue',
+  TaskDue: 'task_due',
+  Manual: 'manual',
+} as const
+export type AutomationTriggerValue = ValueOf<typeof AutomationTrigger>
+
+export const AUTOMATION_TRIGGERS = [
+  { value: AutomationTrigger.LeadCreated, label: 'Lead nuevo', description: 'Cuando se registra un contacto por primera vez.' },
+  { value: AutomationTrigger.ConversationStarted, label: 'Conversación nueva', description: 'Cuando un mensaje del cliente abre una conversación que estaba cerrada.' },
+  { value: AutomationTrigger.StageChanged, label: 'Cambio de etapa', description: 'Cuando una persona o el agente mueve el lead.' },
+  { value: AutomationTrigger.MessageReceived, label: 'Mensaje recibido', description: 'Cuando llega un nuevo mensaje del cliente.' },
+  { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
+  { value: AutomationTrigger.CustomerResponseOverdue, label: 'Cliente sin responder', description: 'El último mensaje es del vendedor y vence el tiempo configurado.' },
+  { value: AutomationTrigger.TaskDue, label: 'Tarea vencida', description: 'Cuando una tarea pendiente llega a su fecha límite.' },
+  { value: AutomationTrigger.Manual, label: 'Inicio manual (vendedor)', description: 'El vendedor lo dispara con el botón "Iniciar flujo" dentro del chat de un lead.' },
+] as const satisfies ReadonlyArray<{
+  value: AutomationTriggerValue
+  label: string
+  description: string
+}>
+
+export const RESPONSE_OVERDUE_TRIGGERS: ReadonlySet<AutomationTriggerValue> = new Set([
+  AutomationTrigger.SellerResponseOverdue,
+  AutomationTrigger.CustomerResponseOverdue,
+])
+
+export const AutomationActionType = {
+  CreateTask: 'create_task',
+  AssignSeller: 'assign_seller',
+  AddTag: 'add_tag',
+  RemoveTag: 'remove_tag',
+  ChangeStage: 'change_stage',
+  Notify: 'notify',
+  SendTemplate: 'send_template',
+  SendMessage: 'send_message',
+  ChangeService: 'change_service',
+  SetConversationState: 'set_conversation_state',
+  SendAudio: 'send_audio',
+  SendAttachment: 'send_attachment',
+  SendMedia: 'send_media',
+  ReactToLastCustomerMessage: 'react_to_last_customer_message',
+} as const
+export type AutomationActionTypeValue = ValueOf<typeof AutomationActionType>
+
+export const AUTOMATION_ACTION_LABELS = {
+  [AutomationActionType.CreateTask]: 'Crear tarea',
+  [AutomationActionType.AssignSeller]: 'Asignar vendedor',
+  [AutomationActionType.AddTag]: 'Agregar etiqueta',
+  [AutomationActionType.RemoveTag]: 'Quitar etiqueta',
+  [AutomationActionType.ChangeStage]: 'Cambiar etapa',
+  [AutomationActionType.Notify]: 'Notificar internamente',
+  [AutomationActionType.SendTemplate]: 'Enviar plantilla WhatsApp',
+  [AutomationActionType.SendMessage]: 'Enviar mensaje directo',
+  [AutomationActionType.ChangeService]: 'Cambiar/quitar servicio de interés',
+  [AutomationActionType.SetConversationState]: 'Cambiar estado de conversación',
+  [AutomationActionType.SendAudio]: 'Enviar audio',
+  [AutomationActionType.SendAttachment]: 'Enviar solo adjunto',
+  [AutomationActionType.SendMedia]: 'Enviar multimedia + caption',
+  [AutomationActionType.ReactToLastCustomerMessage]: 'Reaccionar al último mensaje del cliente',
+} satisfies Record<AutomationActionTypeValue, string>
+
+export const AUTOMATION_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const
+
+export const FlowNodeType = {
+  Trigger: 'trigger',
+  Condition: 'condition',
+  Action: 'action',
+  InvokeFlow: 'invoke_flow',
+  Wait: 'wait',
+  WaitAny: 'wait_any',
+  Question: 'question',
+  RoundRobin: 'round_robin',
+  End: 'end',
+} as const
+export type FlowNodeTypeValue = ValueOf<typeof FlowNodeType>
+
+export const FLOW_NODE_LABELS = {
+  [FlowNodeType.Trigger]: 'Disparador',
+  [FlowNodeType.Condition]: 'Condición',
+  [FlowNodeType.Action]: 'Acción',
+  [FlowNodeType.InvokeFlow]: 'Invocar flujo',
+  // `wait` se conserva únicamente para leer flujos antiguos. En el editor,
+  // ambos formatos se presentan como un único bloque Pausa (`wait_any`).
+  [FlowNodeType.Wait]: 'Pausa',
+  [FlowNodeType.WaitAny]: 'Pausa',
+  [FlowNodeType.Question]: 'Pregunta (botones)',
+  [FlowNodeType.RoundRobin]: 'Round robin',
+  [FlowNodeType.End]: 'Fin',
+} satisfies Record<FlowNodeTypeValue, string>
+
+/** Etiqueta de un paso de `action_results`. Una regla simple guarda ahí el
+ *  tipo de acción; un flujo visual, el tipo de nodo — el mismo campo lleva las
+ *  dos cosas, así que la búsqueda va contra los dos catálogos. */
+export function automationStepLabel(type: string | null | undefined): string {
+  if (!type) return 'Paso'
+  if (type in AUTOMATION_ACTION_LABELS) return AUTOMATION_ACTION_LABELS[type as AutomationActionTypeValue]
+  if (type in FLOW_NODE_LABELS) return FLOW_NODE_LABELS[type as FlowNodeTypeValue]
+  return type
+}
+
+/** Tope de salidas de un bloque Round robin (mismo valor que valida el
+ *  backend en MAX_ROUND_ROBIN_OUTPUTS). */
+export const MAX_ROUND_ROBIN_OUTPUTS = 10
+
+/** Código con el que el backend marca una ejecución que falló porque la
+ *  ventana de atención de 24 h estaba cerrada (ExecutionErrorCode del
+ *  backend; la notificación del fallo lo repite en su metadata). Es lo único
+ *  que habilita la autorización del admin para reintentarla ignorando la
+ *  ventana. */
+export const SERVICE_WINDOW_ERROR_CODE = 'service_window_closed' satisfies ApiSchemas['ExecutionErrorCode']
+
+/** Un fallo de ejecución causado por la ventana cerrada. */
+export function isServiceWindowFailure(execution: { error_code?: string | null }): boolean {
+  return execution.error_code === SERVICE_WINDOW_ERROR_CODE
+}
+
+export const WaitAnyConditionKind = {
+  Timer: 'timer',
+  Message: 'message',
+  BusinessHours: 'business_hours',
+  MediaPlayed: 'media_played',
+  MediaReceived: 'media_received',
+} as const
+export type WaitAnyConditionKindValue = ValueOf<typeof WaitAnyConditionKind>
+
+export const WAIT_ANY_CONDITION_LABELS = {
+  [WaitAnyConditionKind.Timer]: 'Temporizador',
+  [WaitAnyConditionKind.Message]: 'Hasta recibir mensaje',
+  [WaitAnyConditionKind.BusinessHours]: 'Excepto horas laborales',
+  [WaitAnyConditionKind.MediaPlayed]: 'Hasta que se reproduce lo enviado',
+  [WaitAnyConditionKind.MediaReceived]: 'Hasta que mande una foto o archivo',
+} satisfies Record<WaitAnyConditionKindValue, string>
+
+/** Handles fijos del nodo Pregunta que no dependen de los botones
+ *  configurados (a diferencia de btn_1..btn_n, que sí). */
+export const QuestionHandle = {
+  Other: 'other',
+  Timeout: 'timeout',
+  Media: 'media',
+} as const
+export type QuestionHandleValue = ValueOf<typeof QuestionHandle>
+
+export const QUESTION_HANDLE_LABELS = {
+  [QuestionHandle.Other]: 'Otra respuesta',
+  [QuestionHandle.Timeout]: 'Sin respuesta',
+  [QuestionHandle.Media]: 'Mandó una foto',
+} satisfies Record<QuestionHandleValue, string>
+
+export const FlowConditionType = {
+  StageEquals: 'stage_equals',
+  OriginContains: 'origin_contains',
+  ServiceContains: 'service_contains',
+  MessageContains: 'message_contains',
+  MessageEquals: 'message_equals',
+  MessageNotContains: 'message_not_contains',
+  MediaAnalysisContains: 'media_analysis_contains',
+  ReplyIdEquals: 'reply_id_equals',
+  MessageTypeEquals: 'message_type_equals',
+  SellerEquals: 'seller_equals',
+  TagPresent: 'tag_present',
+  WhatsAppWindowOpen: 'whatsapp_window_open',
+  BusinessHours: 'business_hours',
+} as const
+export type FlowConditionTypeValue = ValueOf<typeof FlowConditionType>
+
+export const FLOW_CONDITION_LABELS = {
+  [FlowConditionType.StageEquals]: 'Etapa es',
+  [FlowConditionType.OriginContains]: 'Origen contiene',
+  [FlowConditionType.ServiceContains]: 'Servicio contiene',
+  [FlowConditionType.MessageContains]: 'Mensaje contiene',
+  [FlowConditionType.MessageEquals]: 'Mensaje es igual a',
+  [FlowConditionType.MessageNotContains]: 'Mensaje no contiene',
+  [FlowConditionType.MediaAnalysisContains]: 'Descripción del archivo contiene',
+  [FlowConditionType.ReplyIdEquals]: 'La respuesta elegida es',
+  [FlowConditionType.MessageTypeEquals]: 'El mensaje es de tipo',
+  [FlowConditionType.SellerEquals]: 'Vendedor es',
+  [FlowConditionType.TagPresent]: 'Tiene etiqueta',
+  [FlowConditionType.WhatsAppWindowOpen]: 'Ventana WhatsApp abierta',
+  [FlowConditionType.BusinessHours]: 'Está en horario laboral',
+} satisfies Record<FlowConditionTypeValue, string>
+
+export const FlowHandle = {
+  Next: 'next',
+  Yes: 'yes',
+  No: 'no',
+} as const
+export type FlowHandleValue = ValueOf<typeof FlowHandle>
+
+export const AutomationBuilderMode = {
+  Simple: 'simple',
+  Visual: 'visual',
+} as const
+export type AutomationBuilderModeValue = ValueOf<typeof AutomationBuilderMode>
+
+export const AutomationExecutionStatus = {
+  Scheduled: 'scheduled',
+  Running: 'running',
+  // Congelada por la pausa del lead: no es terminal, conserva lo que le
+  // faltaba y retoma cuando el vendedor reanuda.
+  Paused: 'paused',
+  Completed: 'completed',
+  Failed: 'failed',
+  Skipped: 'skipped',
+} as const
+export type AutomationExecutionStatusValue = ValueOf<typeof AutomationExecutionStatus>
+
+/** Estados no terminales: el flujo sigue activo sobre el lead. */
+export const ACTIVE_EXECUTION_STATUSES: AutomationExecutionStatusValue[] = [
+  AutomationExecutionStatus.Scheduled,
+  AutomationExecutionStatus.Running,
+  AutomationExecutionStatus.Paused,
+]
+
+export const NotificationType = {
+  InternalNoteMention: 'internal_note_mention',
+  Automation: 'automation',
+  IssueReport: 'issue_report',
+  Appointment: 'appointment',
+  ServiceWindowClosed: 'service_window_closed',
+} as const
+export type NotificationTypeValue = ValueOf<typeof NotificationType>
+
+export const AutomationRecipient = {
+  Seller: 'seller',
+  Specific: 'specific',
+} as const
+export type AutomationRecipientValue = ValueOf<typeof AutomationRecipient>
+
+/** "2h 5min", "30s", "1h" — nunca vacío, para el título del nodo Esperar. */
+export function formatWaitDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const parts: string[] = []
+  if (hours) parts.push(`${hours}h`)
+  if (minutes) parts.push(`${minutes}min`)
+  if (seconds || parts.length === 0) parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
+
+export function isAutomationTrigger(value: string): value is AutomationTriggerValue {
+  return Object.values(AutomationTrigger).some(item => item === value)
+}
+
+export function isAutomationActionType(value: string): value is AutomationActionTypeValue {
+  return Object.values(AutomationActionType).some(item => item === value)
+}
+
+export function isFlowConditionType(value: string): value is FlowConditionTypeValue {
+  return Object.values(FlowConditionType).some(item => item === value)
+}
+
+export function assertNever(value: never): never {
+  throw new Error(`Valor de dominio no contemplado: ${JSON.stringify(value)}`)
+}

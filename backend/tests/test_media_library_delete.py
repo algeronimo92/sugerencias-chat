@@ -3,8 +3,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import media_library
-from services.media_storage import MediaStorageError
+from app.modules.media import library_api as media_library
+from app.integrations.storage.media_storage import MediaStorageError
+from app.realtime import ws_manager
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ async def test_delete_library_asset_removes_storage_before_database(monkeypatch)
 
     monkeypatch.setattr(media_library, "delete_media", fake_delete_media)
     monkeypatch.setattr(media_library, "delete_media_asset", fake_delete_asset)
-    monkeypatch.setattr(media_library.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await media_library.delete_library_asset(42, SimpleNamespace(role="admin"))
 
@@ -32,8 +33,21 @@ async def test_delete_library_asset_removes_storage_before_database(monkeypatch)
     assert events == [
         ("storage", "/media/example.jpg"),
         ("database", 42),
-        ("broadcast", {"type": "media_library_updated"}),
     ]
+
+
+@pytest.mark.asyncio
+async def test_deleting_an_asset_announces_it(monkeypatch, collected_events):
+    from unittest.mock import AsyncMock
+
+    from app.modules.media import media_library_repository, media_library_service
+    from app.modules.media.events import MediaLibraryChanged
+
+    monkeypatch.setattr(media_library_repository, "delete_media_asset", AsyncMock(side_effect=["/media/a.jpg", None]))
+
+    assert await media_library_service.delete_media_asset(42) == "/media/a.jpg"
+    assert await media_library_service.delete_media_asset(43) is None
+    assert collected_events == [MediaLibraryChanged()]
 
 
 @pytest.mark.asyncio

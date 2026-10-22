@@ -1,0 +1,213 @@
+import client from "../../shared/http/client";
+import { jsonAs, type ApiResponse } from '../../shared/http/contract'
+import type { AudioPayload, ContactsPayload, CustomerServiceWindow, ForwardPayload, ForwardResult, InteractivePayload, InternalNote, LocationPayload, MediaPayload, MessageCursor, MessagePage, NoteInput, ReactionPayload, ScheduledMessage, SendTemplatePayload, StickerPayload, TextPayload } from "./types";
+import type { OutboundMessage } from './domain/outbound'
+import type { ContractMessage, Message, MessageAnalysis, MessageReaction } from '../whatsapp/types'
+
+/** De lo que entrega el contrato a lo que usa el hilo (ver `Message`). */
+export function toMessage(message: ContractMessage): Message {
+  return {
+    ...message,
+    analysis: message.analysis === null ? null : jsonAs<MessageAnalysis>(message.analysis),
+    reactions: message.reactions === null ? null : message.reactions.map(reaction => jsonAs<MessageReaction>(reaction)),
+  }
+}
+
+export async function markChatRead(chatId: string): Promise<void> {
+  await client.post<ApiResponse<'/api/chats/{chat_id}/read', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/read`)
+}
+
+export async function markChatUnread(chatId: string): Promise<void> {
+  await client.post<ApiResponse<'/api/chats/{chat_id}/unread', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/unread`)
+}
+
+export async function fetchMessages(chatId: string, cursor: MessageCursor, untilId?: number | null): Promise<MessagePage> {
+  const params: Record<string, string | number> = {}
+  if (cursor) {
+    params.cursor_ts = cursor.cursorTs
+    params.cursor_id = cursor.cursorId
+  } else if (untilId) {
+    // Primera página al abrir desde un resultado de búsqueda por mensaje:
+    // el backend la agranda hasta incluir el mensaje matcheado.
+    params.until_id = untilId
+  }
+  const { data } = await client.get<ApiResponse<'/api/chats/{chat_id}/messages', 'get'>>(`/api/chats/${encodeURIComponent(chatId)}/messages`, { params })
+  return { ...data, items: data.items.map(toMessage) }
+}
+
+async function sendAudio(chatId: string, { contentType, dataBase64, replyTo }: AudioPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/audio', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/audio`, {
+    content_type: contentType,
+    data_base64: dataBase64,
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return toMessage(data)
+}
+
+async function sendMedia(chatId: string, { contentType, dataBase64, filename, caption, replyTo, albumId }: MediaPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/media', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/media`, {
+    content_type: contentType,
+    data_base64: dataBase64,
+    filename,
+    caption: caption || null,
+    reply_to_message_id: replyTo?.id ?? null,
+    album_id: albumId || null,
+  })
+  return toMessage(data)
+}
+
+async function sendSticker(chatId: string, { assetId }: StickerPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/sticker', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/sticker`, {
+    asset_id: assetId,
+  })
+  return toMessage(data)
+}
+
+async function sendLocation(chatId: string, { latitude, longitude, replyTo }: LocationPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/location', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/location`, {
+    latitude,
+    longitude,
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return toMessage(data)
+}
+
+async function sendContacts(chatId: string, { contacts, replyTo }: ContactsPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/contacts', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/contacts`, {
+    contacts: contacts.map(contact => ({
+      full_name: contact.fullName,
+      phone_number: contact.phoneNumber,
+    })),
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return toMessage(data)
+}
+
+async function sendMessage(chatId: string, { text, replyTo }: TextPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
+    text,
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return toMessage(data)
+}
+
+export async function retryFailedMessage(chatId: string, message: Message): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/retry', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/retry`)
+  return toMessage(data)
+}
+
+export async function discardFailedMessage(chatId: string, message: Message): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/discard', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/messages/${message.id}/discard`)
+  return toMessage(data)
+}
+
+async function sendTemplate(chatId: string, { templateId, text, parameters = [] }: SendTemplatePayload): Promise<Message[]> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/templates/{template_id}', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/templates/${templateId}`, { text, parameters })
+  return data.map(toMessage)
+}
+
+export async function reactToMessage(chatId: string, { messageId, emoji }: ReactionPayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/reaction', 'post'>>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/reaction`,
+    { emoji },
+  )
+  return toMessage(data)
+}
+
+export async function fetchPinnedMessages(chatId: string | null): Promise<Message[]> {
+  const { data } = await client.get<ApiResponse<'/api/chats/{chat_id}/pinned-messages', 'get'>>(
+    `/api/chats/${encodeURIComponent(chatId as string)}/pinned-messages`,
+  )
+  return data.items.map(toMessage)
+}
+
+export async function pinMessage(chatId: string, messageId: number): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/pin', 'post'>>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/pin`,
+  )
+  return toMessage(data)
+}
+
+export async function unpinMessage(chatId: string, messageId: number): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/unpin', 'post'>>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/unpin`,
+  )
+  return toMessage(data)
+}
+
+export async function forwardMessages(chatId: string, { messageIds, targetChatIds }: ForwardPayload): Promise<ForwardResult> {
+  return (await client.post<ApiResponse<'/api/chats/{chat_id}/messages/forward', 'post'>>(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/forward`,
+        { message_ids: messageIds, target_chat_ids: targetChatIds },
+      )).data
+}
+
+async function sendInteractive(chatId: string, { interactive, replyTo }: InteractivePayload): Promise<Message> {
+  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/interactive', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/interactive`, {
+    interactive,
+    reply_to_message_id: replyTo?.id ?? null,
+  })
+  return toMessage(data)
+}
+
+export async function fetchInternalNotes(chatId: string | null): Promise<InternalNote[]> {
+  return (await client.get<ApiResponse<'/api/chats/{chat_id}/notes', 'get'>>(`/api/chats/${encodeURIComponent(chatId as string)}/notes`)).data
+}
+
+export async function createInternalNote(chatId: string, input: NoteInput): Promise<InternalNote> {
+  return (await client.post<ApiResponse<'/api/chats/{chat_id}/notes', 'post'>>(
+      `/api/chats/${encodeURIComponent(chatId)}/notes`,
+      { content: input.content, mentioned_user_ids: input.mentionedUserIds },
+    )).data
+}
+
+export async function updateInternalNote(chatId: string, { id, ...input }: NoteInput & { id: number }): Promise<InternalNote> {
+  return (await client.patch<ApiResponse<'/api/chats/{chat_id}/notes/{note_id}', 'patch'>>(
+      `/api/chats/${encodeURIComponent(chatId)}/notes/${id}`,
+      { content: input.content, mentioned_user_ids: input.mentionedUserIds },
+    )).data
+}
+
+export async function deleteInternalNote(chatId: string, id: number) { await client.delete<ApiResponse<'/api/chats/{chat_id}/notes/{note_id}', 'delete'>>(`/api/chats/${encodeURIComponent(chatId)}/notes/${id}`) }
+
+export async function fetchCustomerServiceWindow(chatId: string | null): Promise<CustomerServiceWindow> {
+  return (await client.get<ApiResponse<'/api/chats/{chat_id}/service-window', 'get'>>(
+      `/api/chats/${encodeURIComponent(chatId as string)}/service-window`,
+    )).data
+}
+
+export async function fetchScheduledMessages(chatId: string): Promise<ScheduledMessage[]> {
+  return (
+      await client.get<ApiResponse<'/api/chats/{chat_id}/scheduled-messages', 'get'>>(
+        `/api/chats/${encodeURIComponent(chatId)}/scheduled-messages`,
+      )
+    ).data
+}
+
+export async function createScheduledMessage(chatId: string, { text, scheduledAt }: { text: string; scheduledAt: string }): Promise<ScheduledMessage> {
+  return (
+      await client.post<ApiResponse<'/api/chats/{chat_id}/scheduled-messages', 'post'>>(
+        `/api/chats/${encodeURIComponent(chatId)}/scheduled-messages`,
+        { text, scheduled_at: scheduledAt },
+      )
+    ).data
+}
+
+export async function cancelScheduledMessage(scheduledId: number) {
+  await client.delete<ApiResponse<'/api/scheduled-messages/{scheduled_id}', 'delete'>>(`/api/scheduled-messages/${scheduledId}`)
+}
+
+/** El pedido HTTP de cada tipo de mensaje saliente. Devuelve lo que el
+ *  servidor encoló: un mensaje, o varios en una plantilla con adjuntos. */
+export async function sendOutbound(chatId: string, message: OutboundMessage): Promise<Message[]> {
+  switch (message.kind) {
+    case 'text': return [await sendMessage(chatId, message)]
+    case 'audio': return [await sendAudio(chatId, message)]
+    case 'media': return [await sendMedia(chatId, message)]
+    case 'sticker': return [await sendSticker(chatId, message)]
+    case 'location': return [await sendLocation(chatId, message)]
+    case 'contacts': return [await sendContacts(chatId, message)]
+    case 'interactive': return [await sendInteractive(chatId, message)]
+    case 'template': return sendTemplate(chatId, message)
+  }
+}

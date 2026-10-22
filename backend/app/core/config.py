@@ -1,0 +1,196 @@
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    database_url: str
+    # Modo TLS de asyncpg hacia PostgreSQL. La base es externa, así que hoy
+    # las credenciales y el contenido de los mensajes cruzan Internet en claro.
+    #
+    # El default NO puede ser "require" todavía: el servidor actual rechaza el
+    # upgrade a SSL ("rejected SSL upgrade"), o sea que tiene ssl=off en su
+    # postgresql.conf. Exigirlo dejaría el backend sin arrancar. "prefer"
+    # intenta cifrar y cae a claro, así que empieza a cifrar solo en cuanto se
+    # habilite TLS en el servidor, sin tocar la aplicación.
+    #
+    # Cuando el servidor tenga TLS, subir esto a "require" (y a "verify-full"
+    # con la CA disponible). El arranque avisa por log si la conexión terminó
+    # sin cifrar — ver _log_database_encryption en main.py.
+    # Valores: disable | allow | prefer | require | verify-ca | verify-full
+    database_ssl: str = "prefer"
+    # La DB puede estar a cientos de milisegundos. Hacer SELECT 1 antes de
+    # cada checkout duplica el costo de todas las consultas; los despliegues
+    # que prefieran esa comprobación pueden volver a activarla por env.
+    database_pool_pre_ping: bool = False
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+    database_pool_recycle_seconds: int = 1800
+    # Se activa solo después de registrar dominios y schemas de control. El
+    # default mantiene instalaciones single-tenant existentes sobre public
+    # mientras completan el cutover.
+    multitenancy_enabled: bool = False
+    # Si la API corre también los workers de fondo. True mantiene la
+    # instalación de un solo proceso; en producción la API va con false y el
+    # servicio worker (`python -m app.worker`) los corre aparte.
+    run_workers: bool = True
+    # Puerto donde el proceso worker sirve sus métricas de Prometheus. 0 lo
+    # desactiva (desarrollo, tests).
+    worker_metrics_port: int = 0
+    # El bus de señales (LISTEN/NOTIFY) solo hace falta si hay más de un
+    # proceso: API sin workers, worker aparte o varias réplicas. Sin valor se
+    # decide solo (apagado en una instalación de un solo proceso); true lo
+    # fuerza, por ejemplo con varias réplicas que corren sus propios workers.
+    signal_bus_enabled: bool | None = None
+    # Hosts que sirven exclusivamente operaciones de plataforma. CSV evita que
+    # una variable de entorno requiera sintaxis JSON; en producción debe ser una
+    # lista explícita y mínima.
+    tenant_platform_hosts: str = "localhost,testserver"
+    n8n_webhook_url: str = ""
+    n8n_analyst_webhook_url: str = ""
+    # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
+    # webhook de n8n (dirección app -> n8n). Env var OUTBOUND_WEBHOOK_TOKEN a
+    # propósito, distinta de INBOUND_WEBHOOK_TOKEN (n8n -> backend, la
+    # dirección opuesta) para que no se confundan al configurarlas.
+    n8n_webhook_token: str = Field(default="", validation_alias="OUTBOUND_WEBHOOK_TOKEN")
+    inbound_webhook_token: str = ""
+    # Credenciales de la app de Meta (Tech Provider): son únicas para toda la
+    # instalación, no de un negocio. Se resuelven desde
+    # `public.platform_settings` con respaldo del entorno.
+    meta_app_id: str = ""
+    meta_config_id: str = ""
+    meta_verify_token: str = ""
+    meta_app_secret: str = ""
+    # Cliente OAuth de Google de la plataforma ("Conectar con Google" para
+    # Calendar). Uno solo para todos los negocios, con una única redirect URI
+    # registrada en Google Cloud; se resuelven igual que las de Meta.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""
+    # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
+    # en callbacks de jobs IA. Debe ser distinto de los tokens HTTP en
+    # despliegues multitenant; nunca contiene ni acepta nombres de schema.
+    ai_job_signing_secret: str = ""
+    # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
+    # el CRM). Distinto de n8n_webhook_url (sugerencias IA).
+    n8n_citas_webhook_url: str = ""
+    # URL de prueba ("Listen for test event" en el editor de n8n). Solo la
+    # usan los admins desde el toggle "modo prueba" del formulario.
+    n8n_citas_webhook_test_url: str = ""
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_stability: str = "0"
+    elevenlabs_style: str = "1"
+    elevenlabs_speed: str = "1.2"
+    elevenlabs_use_speaker_boost: str = "true"
+    # Código de país (sin +) que se antepone a teléfonos tipeados en formato
+    # local al crear/editar leads. Editable desde Configuración (app_settings).
+    default_country_code: str = "51"
+    # Reparte por turnos (round robin) los leads nuevos que llegan por WhatsApp
+    # entre los vendedores activos. Editable desde Configuración.
+    auto_assign_leads_enabled: str = "false"
+    # Horas sin ningún mensaje tras las cuales una conversación abierta se
+    # cierra sola. Vacío o 0 lo desactiva. Editable desde Configuración.
+    conversation_auto_close_hours: str = ""
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # Para orígenes con subdominio variable (ej. túneles rápidos de Cloudflare,
+    # hostname aleatorio en cada corrida) que no se pueden listar en
+    # cors_origins de antemano. None = desactivado; un string vacío matchearía
+    # cualquier origen (ver re.compile("").match), por eso no se usa "" como
+    # default acá.
+    cors_origin_regex: str | None = None
+
+    # Almacenamiento multimedia. "local" conserva el comportamiento anterior;
+    # "minio" usa un bucket privado y mantiene las URLs /media/<archivo>.
+    media_storage_backend: str = "local"
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = ""
+    minio_region: str = "us-east-1"
+    minio_secure: bool = True
+    minio_verify_tls: bool = True
+    minio_prefix: str = "dermicapro"
+    # Timeouts del cliente MinIO. El SDK es síncrono y sus llamadas corren en
+    # el threadpool de anyio, así que una conexión colgada retiene un hilo:
+    # sin timeout, suficientes descargas atascadas dejan sin servir todos los
+    # endpoints síncronos. El de lectura es por trozo, no total, para no
+    # cortar descargas grandes que sí avanzan.
+    minio_connect_timeout_seconds: float = 5.0
+    minio_read_timeout_seconds: float = 30.0
+    minio_pool_maxsize: int = 20
+
+    # Marca `Secure` de la cookie de sesión. None = deducirla del esquema real
+    # de la petición (incluyendo X-Forwarded-Proto de Traefik). Detrás del
+    # proxy, uvicorn ve http, así que sin este override la cookie salía sin
+    # `Secure` en producción. Poner COOKIE_SECURE=true la fuerza.
+    cookie_secure: bool | None = None
+
+    # Secreto maestro de la aplicación. Las sesiones opacas no se firman con
+    # él; se conserva como respaldo para derivar SETTINGS_ENCRYPTION_KEY.
+    secret_key: str
+    # Clave maestra opcional para cifrar secretos guardados en app_settings.
+    # Debe ser base64-url de 32 bytes. Si falta, se deriva de SECRET_KEY para
+    # poder migrar instalaciones existentes sin bloquear el arranque.
+    settings_encryption_key: str = ""
+    # Sesiones de navegador. Las persistentes se renuevan mientras haya uso,
+    # pero nunca superan el límite absoluto. Las no persistentes desaparecen
+    # al cerrar el navegador y tienen límites mucho más cortos en servidor.
+    session_idle_hours: int = 24 * 30
+    session_absolute_hours: int = 24 * 90
+    session_ephemeral_idle_hours: int = 12
+    session_ephemeral_absolute_hours: int = 24
+    session_rotation_hours: int = 24
+    session_previous_token_grace_seconds: int = 90
+    trusted_device_expire_hours: int = 24 * 90
+    pin_max_attempts: int = 5
+    pin_lock_minutes: int = 15
+    # Se conserva para que despliegues con la variable histórica sigan
+    # arrancando; las sesiones opacas ya no usan JWT ni este valor.
+    access_token_expire_hours: int = 24
+    auth_user_cache_ttl_seconds: float = 15.0
+
+    # Correo transaccional. Si SMTP_HOST o EMAIL_FROM_ADDRESS faltan, el
+    # proveedor queda deshabilitado: las invitaciones responden 503 sin crear
+    # usuarios y los avisos operativos se omiten sin afectar la operación.
+    email_provider: str = "smtp"
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    email_from_address: str = ""
+    email_from_name: str = ""
+    # URL canónica de una instalación single-tenant. En multitenancy se usa
+    # el hostname ya validado del TenantContext, nunca el Host enviado por el
+    # cliente, para evitar enlaces envenenados por Host header injection.
+    app_public_url: str = ""
+    app_public_scheme: str = "https"
+    invitation_expire_hours: int = Field(default=72, ge=1, le=720)
+    password_reset_expire_minutes: int = Field(default=60, ge=5, le=1440)
+    # Solo se usan para crear el primer admin cuando la tabla users está
+    # vacía (ver app/modules/auth/users_repository.py:seed_admin_if_needed). Una vez que
+    # existe algún usuario, estas dos variables ya no se leen más.
+    admin_email: str = ""
+    admin_password: str = ""
+
+    # Par de claves VAPID (EC P-256) para firmar los envíos de Web Push. Se
+    # generan una sola vez (CLI `vapid` de pywebpush o `web-push
+    # generate-vapid-keys`) y no cambian salvo rotación deliberada — rotarlas
+    # invalida todas las suscripciones existentes en los navegadores. Default
+    # vacío para no romper arranques que aún no las configuraron; el envío de
+    # push se desactiva solo (sin crashear) mientras falten.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:soporte@dermicapro.com"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        protected_namespaces=("model_",),
+    )
+
+
+settings = Settings()

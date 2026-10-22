@@ -28,6 +28,33 @@ services:
       start_period: 60s
     ports:
       - "8000:8000"
+    environment:
+      # Los workers de fondo corren en el servicio `worker`: la API atiende
+      # HTTP, WebSocket y los recordatorios de tareas (que dependen de sus
+      # propias conexiones). Ver app/runtime.py.
+      RUN_WORKERS: "false"
+
+  worker:
+    # Misma imagen que la API, otro proceso: chats, automatizaciones,
+    # outbox, programados y el inbox de Meta. Los avisos que emite llegan al
+    # navegador por LISTEN/NOTIFY, a través de la réplica de la API a la que
+    # esté conectado (app/db/signals.py).
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      # Sus métricas (envíos, colas) las sirve en este puerto; el nginx del
+      # frontend las expone a Prometheus en /worker-metrics.
+      WORKER_METRICS_PORT: "9000"
+    restart: unless-stopped
+    volumes:
+      - ./data/media:/app/media
+    networks:
+      - default
+      - data
+    stop_grace_period: 30s
 
   frontend:
     build:

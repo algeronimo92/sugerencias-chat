@@ -89,3 +89,15 @@ scrape_configs:
         labels: {color: blue, instance: sugerencias-chat-blue-backend-1}
       - targets: ["127.0.0.1:9082"]
         labels: {color: green, instance: sugerencias-chat-green-backend-1}
+
+  # El proceso worker (envíos de la outbox, colas, automatizaciones) mide en
+  # su propio registro: lo publica en :9000 y el nginx de cada color lo
+  # expone en /worker-metrics del mismo puerto de métricas.
+  - job_name: worker
+    metrics_path: /worker-metrics
+    fallback_scrape_protocol: PrometheusText0.0.4
+    static_configs:
+      - targets: ["127.0.0.1:9081"]
+        labels: {color: blue, instance: sugerencias-chat-blue-worker-1}
+      - targets: ["127.0.0.1:9082"]
+        labels: {color: green, instance: sugerencias-chat-green-worker-1}

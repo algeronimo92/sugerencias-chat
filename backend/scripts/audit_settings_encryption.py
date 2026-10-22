@@ -4,10 +4,10 @@ import asyncio
 
 from sqlalchemy import select
 
-from db.models import AppSetting
-from db.session import close_engine, get_sessionmaker
-from services.secret_cipher import SecretCipherError, decrypt_secret, is_encrypted
-from services.settings_service import SETTING_DEFS
+from app.db.models.settings import AppSetting
+from app.db.session import close_engine, get_sessionmaker
+from app.core.secret_cipher import SecretCipherError, decrypt_secret, is_encrypted
+from app.modules.platform.settings_service import SETTING_DEFS
 
 
 async def main() -> None:

@@ -1,0 +1,40 @@
+import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Send, Sparkles, Workflow } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+export type NavItem = {
+  path: string
+  label: string
+  icon: LucideIcon
+  adminOnly: boolean
+  /**
+   * En móvil solo las principales entran en la barra inferior; el resto vive
+   * detrás del botón "Más". Con cinco pestañas o más los objetivos táctiles
+   * quedan por debajo del mínimo cómodo para el pulgar.
+   */
+  primary: boolean
+}
+
+export const NAV_ITEMS: readonly NavItem[] = [
+  { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, primary: true },
+  { path: '/kanban', label: 'Kanban', icon: Columns3, adminOnly: false, primary: false },
+  { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, primary: true },
+  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, primary: false },
+  { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, primary: true },
+  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, adminOnly: false, primary: false },
+  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: false, primary: false },
+  { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, primary: false },
+  { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
+  { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false },
+  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false },
+  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, primary: false },
+]
+
+/** Los chats tienen su propia ruta de detalle, así que no basta con comparar. */
+export function isNavItemActive(item: NavItem, pathname: string): boolean {
+  if (item.path === '/') return pathname === '/' || pathname.startsWith('/chat/')
+  return pathname === item.path
+}
+
+export function visibleNavItems(isAdmin: boolean): NavItem[] {
+  return NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin)
+}

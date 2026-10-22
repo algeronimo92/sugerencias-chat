@@ -10,8 +10,11 @@ Dos decisiones importantes:
    declara. Sin el filtro de `include_object`, un `--autogenerate` propondría
    borrarlas. Comprobado contra el esquema real de producción: aparecerían
    `DROP TABLE n8n_chat_histories`, `DROP COLUMN leads.metadata`,
-   `leads.ultimo_mensaje_at`, `leads.ultimo_emisor`, `leads.tipo_objecion` y
-   `wsp_messages.created_at`, todas en uso por el flujo de n8n.
+   `leads.ultimo_emisor`, `leads.tipo_objecion` y `wsp_messages.created_at`,
+   todas en uso por el flujo de n8n. El filtro excluye la tabla `leads`
+   entera de la comparación, así que da igual si alguna de sus columnas
+   (como `ultimo_mensaje_at`) sí está mapeada en `db/models/`: mientras la
+   tabla siga en `EXTERNAL_TABLES`, autogenerate nunca la compara.
 """
 
 from __future__ import annotations
@@ -21,13 +24,14 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from config import settings
-from db.models import Base
-from db.session import _to_async_url
+from app.core.config import settings
+from app.db.models import Base
+from app.db.session import _to_async_url
+from app.tenancy.context import validate_schema_name
 
 config = context.config
 
@@ -39,13 +43,25 @@ target_metadata = Base.metadata
 # Tablas cuyo ciclo de vida no pertenece a esta aplicación. Se crean en la
 # migración base para que una instalación desde cero funcione, pero quedan
 # fuera de autogenerate: sus cambios se coordinan con n8n, no se deducen de
-# models.py.
+# db/models/.
 EXTERNAL_TABLES = {"leads", "wsp_messages"}
 
 # Tablas que sencillamente no son nuestras. Nunca deben aparecer en una
 # migración, ni para crearlas ni para borrarlas.
-FOREIGN_TABLE_PREFIXES = ("n8n_",)
+FOREIGN_TABLE_PREFIXES = ("n8n_", "archived_")
 FOREIGN_TABLE_MARKERS = ("_backup_",)
+
+# Alembic refleja las referencias entre tablas de public sin el prefijo
+# "public." por el search_path. El modelo debe conservarlo para resolver la
+# FK antes de que exista un tenant; filtrar solo estas cinco comparaciones
+# evita el falso remove/add. Su presencia real se comprueba en tests.
+PUBLIC_SAME_SCHEMA_FKS = {
+    ("organization_branding", "organization_id"),
+    ("organization_domains", "organization_id"),
+    ("platform_sessions", "platform_user_id"),
+    ("tenant_schema_versions", "organization_id"),
+    ("whatsapp_connections", "organization_id"),
+}
 
 
 def _is_foreign(name: str) -> bool:
@@ -55,6 +71,10 @@ def _is_foreign(name: str) -> bool:
 
 
 def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    if type_ == "foreign_key_constraint":
+        columns = tuple(column.name for column in obj.columns)
+        if len(columns) == 1 and (obj.table.name, columns[0]) in PUBLIC_SAME_SCHEMA_FKS:
+            return False
     if type_ == "table":
         if _is_foreign(name):
             return False
@@ -75,25 +95,56 @@ def include_object(obj, name, type_, reflected, compare_to) -> bool:
     return True
 
 
+def include_name(name, type_, parent_names) -> bool:
+    """No inspeccionar otros tenants al comparar el schema activo.
+
+    Con include_schemas=True Alembic conserva los FK a public.organizations
+    en lugar de interpretarlos como referencias a una tabla sin schema.
+    """
+    if type_ == "schema":
+        tenant_schema = config.attributes.get("tenant_schema")
+        return name in {None, "public", tenant_schema}
+    return True
+
+
 def _configure(connection: Connection) -> None:
+    tenant_schema = config.attributes.get("tenant_schema")
+    if not isinstance(tenant_schema, str):
+        tenant_schema = None
+    if tenant_schema:
+        tenant_schema = validate_schema_name(tenant_schema)
+        # El identificador ya pasó por una regex cerrada. SET LOCAL garantiza
+        # que esta conexión vuelva limpia al pool al terminar la transacción.
+        connection.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        include_schemas=True,
+        include_name=include_name,
         include_object=include_object,
         compare_type=True,
         compare_server_default=True,
+        version_table_schema=tenant_schema,
     )
 
 
 def run_migrations_offline() -> None:
+    tenant_schema = config.attributes.get("tenant_schema")
+    if not isinstance(tenant_schema, str):
+        tenant_schema = None
+    if tenant_schema:
+        tenant_schema = validate_schema_name(tenant_schema)
     context.configure(
         url=_to_async_url(settings.database_url),
         target_metadata=target_metadata,
         include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=tenant_schema,
     )
     with context.begin_transaction():
+        if tenant_schema:
+            context.execute(f'SET search_path TO "{tenant_schema}", public')
         context.run_migrations()
 
 

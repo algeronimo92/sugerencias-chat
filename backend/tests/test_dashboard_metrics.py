@@ -14,10 +14,17 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from routers import dashboard as dashboard_router
-from services import dashboard as dashboard_service
-from services.dashboard import activity, appointments, automations, leads, summary, tags
-from services.dashboard.context import SCOPE_MINE, SCOPE_TEAM, build_scope
+from app.modules.leads.dashboard import api as dashboard_router
+from app.modules.leads.dashboard import queries as dashboard_service
+from app.modules.leads.dashboard import (
+    activity_queries as activity,
+    appointments_queries as appointments,
+    automations_queries as automations,
+    leads_queries as leads,
+    summary_queries as summary,
+    tags_queries as tags,
+)
+from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, build_scope
 
 
 BLOCKS = (summary, leads, automations, tags, appointments, activity)

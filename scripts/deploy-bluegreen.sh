@@ -11,6 +11,13 @@
 # hubo interrupción. Si falla después, se vuelve a escribir el archivo con el
 # puerto anterior y el tráfico regresa en menos de un segundo.
 #
+# Workers durante la conmutación: el worker del color nuevo arranca junto con
+# su API y el del viejo sigue hasta el `down` final, así que por un rato hay
+# dos procesando las mismas colas. Es seguro: outbox, programados,
+# automatizaciones e inbox de Meta reclaman con SELECT ... FOR UPDATE SKIP
+# LOCKED, y las altas se deduplican por índices únicos (dedupe_key de la
+# outbox, (rule_id, event_key) de las automatizaciones, id del evento de Meta).
+#
 # Requisito de las migraciones: durante la ventana en que ambos colores están
 # vivos, el esquema tiene que servir a los dos. Por eso las migraciones deben
 # ser aditivas (expandir ahora, contraer en un despliegue posterior). Un DROP
@@ -74,6 +81,13 @@ write_active() {
   echo "Tráfico apuntando a $color (127.0.0.1:$port)"
 }
 
+worker_running() {
+  # El worker no sirve HTTP: alcanza con que su contenedor siga vivo. Si
+  # prepare() falla al arrancar, el proceso termina y compose lo reinicia en
+  # bucle; `--status running` no lo cuenta mientras está caído.
+  [ -n "$($(compose_for "$1") ps -q --status running worker 2>/dev/null)" ]
+}
+
 healthy() {
   local color="$1" port="${PORT[$1]}" compose attempt=0
   compose="$(compose_for "$color")"
@@ -81,7 +95,7 @@ healthy() {
     if $compose exec -T backend python -c \
          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)" \
          >/dev/null 2>&1 \
-       && curl -fsS -o /dev/null "http://127.0.0.1:$port/"; then
+       && curl -fsS -o /dev/null "http://127.0.0.1:$port/"        && worker_running "$color"; then
       return 0
     fi
     attempt=$((attempt + 1))
@@ -203,7 +217,7 @@ cmd_deploy() {
   if ! healthy "$target"; then
     echo "ERROR: $target no llegó a estar sano. No se conmuta." >&2
     echo "$active sigue sirviendo con normalidad. Logs del color fallido:" >&2
-    $compose_target logs --tail 40 backend >&2 || true
+    $compose_target logs --tail 40 backend worker >&2 || true
     $compose_target down || true
     exit 1
   fi

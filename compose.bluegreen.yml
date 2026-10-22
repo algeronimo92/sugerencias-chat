@@ -17,6 +17,10 @@ services:
     # Sin publicar: sólo lo alcanza el nginx de su mismo color, por la red
     # interna del proyecto. Es lo que evita que la API quede expuesta.
     ports: !override []
+    environment:
+      # Solo nginx llega al backend. Uvicorn puede usar el X-Forwarded-For
+      # saneado por Traefik para limitar el login por la IP real del cliente.
+      FORWARDED_ALLOW_IPS: "*"
 
   frontend:
     ports: !override

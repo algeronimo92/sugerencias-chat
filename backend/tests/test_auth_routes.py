@@ -4,11 +4,21 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers import auth
-from services.session_service import CreatedSession, PinLockedError, TrustedDeviceResult, new_token
+from app.modules.auth import api as auth
+from app.modules.platform import api as platform
+from app.modules.auth.session_service import CreatedSession, PinLockedError, TrustedDeviceResult, new_token
+from app.modules.auth.login_throttle import LoginThrottledError
+
+
+@pytest.fixture(autouse=True)
+def isolated_login_security(monkeypatch):
+    monkeypatch.setattr(auth, "reserve_login_attempt", AsyncMock())
+    monkeypatch.setattr(auth, "clear_account_attempts", AsyncMock())
+    monkeypatch.setattr(auth, "mfa_status", AsyncMock(return_value={"enabled": False, "recovery_codes_remaining": 0}))
 
 
 def _user():
@@ -81,6 +91,139 @@ def test_password_login_without_remembering_uses_browser_session_only(monkeypatc
     register.assert_not_awaited()
     forget.assert_awaited_once_with(7, old_device_token)
     assert create.await_args.kwargs["persistent"] is False
+
+
+def test_password_login_throttle_precedes_password_lookup(monkeypatch) -> None:
+    lookup = AsyncMock()
+    monkeypatch.setattr(auth, "get_user_by_email", lookup)
+    auth.reserve_login_attempt.side_effect = LoginThrottledError(900)
+
+    response = _client().post(
+        "/api/auth/login",
+        json={"email": "Vendedor@example.com", "password": "wrong"},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "900"
+    lookup.assert_not_awaited()
+
+
+def test_platform_login_is_limited_before_authentication(monkeypatch) -> None:
+    reserve = AsyncMock(side_effect=LoginThrottledError(900))
+    authenticate = AsyncMock()
+    monkeypatch.setattr(platform, "reserve_login_attempt", reserve)
+    monkeypatch.setattr(platform, "authenticate", authenticate)
+    app = FastAPI()
+    app.include_router(platform.router)
+
+    response = TestClient(app).post(
+        "/api/platform/auth/login", json={"email": "operator@example.com", "password": "wrong"}
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "900"
+    authenticate.assert_not_awaited()
+
+
+def test_admin_login_requires_second_factor_before_creating_session(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
+    create = AsyncMock()
+    register = AsyncMock()
+    monkeypatch.setattr(auth, "create_session", create)
+    monkeypatch.setattr(auth, "register_trusted_device", register)
+
+    response = _client().post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "secret", "remember_device": True},
+    )
+
+    assert response.status_code == 403
+    assert "access_token" not in response.cookies
+    create.assert_not_awaited()
+    register.assert_not_awaited()
+    auth.clear_account_attempts.assert_not_awaited()
+
+
+def test_admin_pin_does_not_bypass_second_factor(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    trusted = SimpleNamespace(token=new_token(), expires_at=datetime.now(timezone.utc) + timedelta(days=1), device_id="device")
+    monkeypatch.setattr(auth, "authenticate_pin", AsyncMock(return_value=(admin, trusted)))
+    auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
+    create = AsyncMock()
+    monkeypatch.setattr(auth, "create_session", create)
+
+    response = _client().post("/api/auth/pin/login", json={"pin": "1234"})
+
+    assert response.status_code == 403
+    create.assert_not_awaited()
+
+
+def test_admin_login_with_valid_code_creates_session_after_verification(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
+    verify = AsyncMock(return_value=True)
+    monkeypatch.setattr(auth, "verify_mfa", verify)
+    now = datetime.now(timezone.utc)
+    create = AsyncMock(return_value=CreatedSession(new_token(), "session-id", now + timedelta(hours=24), False))
+    monkeypatch.setattr(auth, "create_session", create)
+
+    response = _client().post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "secret", "remember_device": False, "mfa_code": "123456"},
+    )
+
+    assert response.status_code == 200
+    verify.assert_awaited_once_with(admin.id, "123456")
+    create.assert_awaited_once()
+    auth.clear_account_attempts.assert_awaited_once_with(admin.email)
+
+
+def test_admin_mfa_login_does_not_create_a_pin_trusted_device(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
+    monkeypatch.setattr(auth, "verify_mfa", AsyncMock(return_value=True))
+    register = AsyncMock()
+    monkeypatch.setattr(auth, "register_trusted_device", register)
+    now = datetime.now(timezone.utc)
+    monkeypatch.setattr(auth, "create_session", AsyncMock(return_value=CreatedSession(new_token(), "session-id", now + timedelta(days=90), True)))
+
+    response = _client().post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "secret", "remember_device": True, "mfa_code": "123456"},
+    )
+
+    assert response.status_code == 200
+    register.assert_not_awaited()
+    assert "trusted_device" not in response.cookies
+
+
+def test_activating_mfa_revokes_preexisting_sessions_and_pin_devices(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    app = FastAPI()
+    app.include_router(auth.router)
+    app.dependency_overrides[auth.get_current_user] = lambda: admin
+    monkeypatch.setattr(auth, "confirm_enrollment", AsyncMock(return_value=["AAAAA-BBBBB-CCCCC-DDDDD"]))
+    revoke = AsyncMock()
+    monkeypatch.setattr(auth, "revoke_all_for_user", revoke)
+
+    response = TestClient(app).post("/api/auth/mfa/confirm", json={"code": "123456"})
+
+    assert response.status_code == 200
+    assert response.json()["recovery_codes"] == ["AAAAA-BBBBB-CCCCC-DDDDD"]
+    revoke.assert_awaited_once_with(admin.id, include_devices=True)
+    assert 'access_token=""' in response.headers["set-cookie"]
 
 
 def test_pin_status_is_public_but_only_uses_http_only_device_cookie(monkeypatch) -> None:

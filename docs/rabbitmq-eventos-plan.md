@@ -214,7 +214,7 @@ consumir desde la cola hay que tenerla en el backend.
 - Fixtures con payloads **reales**, no inventados. Para conseguirlos, adelantar
   la cola `q.archive.raw` de la fase 5 y dejarla capturando unos días antes de
   escribir el parser.
-- Reutilizar lo que ya existe en vez de reimplementarlo: `parse_evolution_identity`
+- Reutilizar lo que ya existe en vez de reimplementarlo: `parse_message_identity`
   y `resolve_whatsapp_identity` (`services/whatsapp_identity_service.py`) ya
   resuelven LID contra teléfono, y `parse_message_status_events`
   (`services/message_status_service.py`) ya normaliza `MESSAGES_UPDATE`.

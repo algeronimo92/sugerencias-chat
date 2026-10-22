@@ -15,7 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.media_storage import (
+from app.integrations.storage.media_storage import (
     MEDIA_DIR,
     MediaStorageError,
     check_media_storage,

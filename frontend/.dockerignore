@@ -10,3 +10,7 @@ dist-ssr
 # La URL de la API se pasa como build arg desde compose (VITE_API_BASE_URL).
 .env*
 **/.env*
+
+# Temporary OpenAPI/type parity outputs are not application sources.
+.modular-*
+.phase7-*

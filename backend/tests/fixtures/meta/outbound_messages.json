@@ -1,0 +1,120 @@
+{
+  "_comment": "Cuerpos de POST /{phone_number_id}/messages con la forma del OpenAPI oficial de Meta (business-messaging-api_v23.0), sin messaging_product ni to: los agrega el dispatcher.",
+  "text": {"type": "text", "text": {"body": "Hola, ¿en qué te ayudo?", "preview_url": false}},
+  "image": {"type": "image", "image": {"id": "MEDIA_ID", "caption": "Nuestra sede"}},
+  "video": {"type": "video", "video": {"id": "MEDIA_ID", "caption": "Así es el tratamiento"}},
+  "audio": {"type": "audio", "audio": {"id": "MEDIA_ID", "voice": true}},
+  "document": {"type": "document", "document": {"id": "MEDIA_ID", "filename": "precios.pdf", "caption": "Lista de precios"}},
+  "sticker": {"type": "sticker", "sticker": {"id": "MEDIA_ID"}},
+  "location": {"type": "location", "location": {"latitude": -12.0464, "longitude": -77.0428, "name": "Sede Centro", "address": "Av. Siempre Viva 123"}},
+  "contacts": {
+    "type": "contacts",
+    "contacts": [
+      {
+        "name": {"formatted_name": "Ana Pérez", "first_name": "Ana", "last_name": "Pérez"},
+        "phones": [{"phone": "+51912345678", "type": "CELL", "wa_id": "51912345678"}]
+      }
+    ]
+  },
+  "reaction": {"type": "reaction", "reaction": {"message_id": "wamid.INBOUND1", "emoji": "❤️"}},
+  "template": {
+    "type": "template",
+    "template": {
+      "name": "recordatorio_cita",
+      "language": {"code": "es"},
+      "components": [{"type": "body", "parameters": [{"type": "text", "text": "Ana"}]}]
+    }
+  },
+  "interactive_button": {
+    "type": "interactive",
+    "interactive": {
+      "type": "button",
+      "header": {"type": "text", "text": "Reserva"},
+      "body": {"text": "¿Quieres agendar?"},
+      "footer": {"text": "Clínica Sur"},
+      "action": {
+        "buttons": [
+          {"type": "reply", "reply": {"id": "si", "title": "Sí"}},
+          {"type": "reply", "reply": {"id": "no", "title": "No"}}
+        ]
+      }
+    }
+  },
+  "interactive_list": {
+    "type": "interactive",
+    "interactive": {
+      "type": "list",
+      "header": {"type": "text", "text": "Servicios"},
+      "body": {"text": "Elige un servicio"},
+      "footer": {"text": "Clínica Sur"},
+      "action": {
+        "button": "Ver servicios",
+        "sections": [
+          {
+            "title": "Faciales",
+            "rows": [
+              {"id": "facial", "title": "Limpieza facial", "description": "60 minutos"},
+              {"id": "peeling", "title": "Peeling", "description": "45 minutos"}
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "interactive_product": {
+    "type": "interactive",
+    "interactive": {
+      "type": "product",
+      "body": {"text": "Te recomiendo este"},
+      "action": {"catalog_id": "1234567890", "product_retailer_id": "SKU-001"}
+    }
+  },
+  "interactive_product_list": {
+    "type": "interactive",
+    "interactive": {
+      "type": "product_list",
+      "header": {"type": "text", "text": "Cremas"},
+      "body": {"text": "Nuestras cremas"},
+      "action": {
+        "catalog_id": "1234567890",
+        "sections": [
+          {"title": "Hidratantes", "product_items": [{"product_retailer_id": "SKU-001"}, {"product_retailer_id": "SKU-002"}]}
+        ]
+      }
+    }
+  },
+  "interactive_catalog_message": {
+    "type": "interactive",
+    "interactive": {
+      "type": "catalog_message",
+      "body": {"text": "Mira nuestro catálogo"},
+      "action": {"name": "catalog_message", "parameters": {"thumbnail_product_retailer_id": "SKU-001"}}
+    }
+  },
+  "interactive_flow": {
+    "type": "interactive",
+    "interactive": {
+      "type": "flow",
+      "body": {"text": "Completa tu reserva"},
+      "action": {
+        "name": "flow",
+        "parameters": {
+          "flow_message_version": "3",
+          "flow_token": "reserva-42",
+          "flow_id": "987654321",
+          "flow_cta": "Reservar",
+          "flow_action": "navigate",
+          "flow_action_payload": {"screen": "RESERVA"}
+        }
+      }
+    }
+  },
+  "interactive_call_permission_request": {
+    "type": "interactive",
+    "interactive": {
+      "type": "call_permission_request",
+      "body": {"text": "¿Podemos llamarte?"},
+      "action": {"name": "call_permission_request"}
+    }
+  }
+}

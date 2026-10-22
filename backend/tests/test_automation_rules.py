@@ -5,18 +5,17 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from domain_types import FlowHandle, FlowNodeType
-from services.automation_rules import (
+from app.modules.automations.ports.types import FlowHandle, FlowNodeType
+from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
+from app.modules.automations.domain.replies import classify_customer_reply
+from app.modules.automations.domain.rules import (
     FLOW_COORDINATE_LIMIT,
-    classify_customer_reply,
     is_business_hours,
     matches_static_conditions,
     normalize_conditions,
-    normalize_edges,
     normalize_flow_position,
     render_variables,
     unknown_variables,
-    validate_graph_topology,
 )
 
 LIMA = ZoneInfo("America/Lima")
@@ -81,9 +80,14 @@ class TestNormalizeConditions:
         assert result["origin_contains"] is None
         assert result["seller_id"] is None
 
-    def test_rejects_unknown_stage(self):
+    def test_rejects_a_malformed_stage_key(self):
         with pytest.raises(ValueError, match="Etapa"):
-            normalize_conditions({"stage": "etapa_inventada"})
+            normalize_conditions({"stage": "Etapa Inventada"})
+
+    def test_accepts_a_custom_stage_key(self):
+        """Las etapas son de cada negocio: si la clave existe lo verifica
+        application.validation contra la base, no esta función pura."""
+        assert normalize_conditions({"stage": "cita_pagada"})["stage"] == "cita_pagada"
 
     def test_cooldown_is_clamped_to_supported_range(self):
         assert normalize_conditions({"cooldown_minutes": 999999})["cooldown_minutes"] == 43200
@@ -139,32 +143,26 @@ class TestMatchesStaticConditions:
 
 
 class TestClassifyCustomerReply:
-    @pytest.mark.parametrize("message_type", ["image", "video", "ptv", "document", "view_once"])
+    @pytest.mark.parametrize("message_type", ["image", "video", "document"])
     def test_media_types_are_media_received(self, message_type):
-        assert classify_customer_reply(message_type, None) == "media_received"
+        assert classify_customer_reply(message_type) == "media_received"
 
     def test_text_is_message(self):
-        assert classify_customer_reply("text", None) == "message"
+        assert classify_customer_reply("text") == "message"
 
     def test_sticker_is_message_not_media(self):
         # Nadie responde con un sticker a "mandame una foto de la zona": no
         # cuenta como el adjunto que el flujo está esperando.
-        assert classify_customer_reply("sticker", None) == "message"
+        assert classify_customer_reply("sticker") == "message"
 
-    @pytest.mark.parametrize("original_type", [
-        "albumMessage", "associatedChildMessage", "secretEncryptedMessage",
-    ])
-    def test_known_whatsapp_envelopes_are_ignored(self, original_type):
-        # El sobre de un álbum o una acción cifrada sobre un mensaje propio:
-        # no es una respuesta del cliente, hay que seguir esperando.
-        assert classify_customer_reply("unsupported", {"original_type": original_type}) is None
+    def test_a_system_notice_is_not_a_reply(self):
+        # Un cambio de número no es algo que el cliente respondió.
+        assert classify_customer_reply("system") is None
 
-    def test_unknown_unsupported_still_counts_as_a_message(self):
-        # Un tipo que todavía no sabemos leer es señal real, no ruido conocido.
-        assert classify_customer_reply("unsupported", {"original_type": "liveLocationMessage"}) == "message"
-
-    def test_unsupported_without_payload_counts_as_a_message(self):
-        assert classify_customer_reply("unsupported", None) == "message"
+    @pytest.mark.parametrize("message_type", ["unknown", "unsupported", "poll_v9", None])
+    def test_types_without_renderer_still_count_as_a_message(self, message_type):
+        # Un tipo que todavía no sabemos mostrar es señal real del cliente.
+        assert classify_customer_reply(message_type) == "message"
 
 
 class TestNormalizeEdges:
