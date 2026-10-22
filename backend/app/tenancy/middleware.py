@@ -23,6 +23,9 @@ DEFAULT_EXEMPT_PATHS = frozenset(
         "/openapi.json",
         "/api/media/upload",
         "/api/webhooks",
+        # Callback OAuth de Google: llega por una URL común y resuelve el
+        # negocio desde su state firmado.
+        "/api/integrations/google/callback",
     }
 )
 DEFAULT_EXEMPT_PREFIXES = ("/api/webhooks/",)

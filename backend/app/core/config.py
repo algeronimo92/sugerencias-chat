@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     meta_config_id: str = ""
     meta_verify_token: str = ""
     meta_app_secret: str = ""
+    # Cliente OAuth de Google de la plataforma ("Conectar con Google" para
+    # Calendar). Uno solo para todos los negocios, con una única redirect URI
+    # registrada en Google Cloud; se resuelven igual que las de Meta.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""
     # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
     # en callbacks de jobs IA. Debe ser distinto de los tokens HTTP en
     # despliegues multitenant; nunca contiene ni acepta nombres de schema.

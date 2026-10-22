@@ -40,6 +40,13 @@ PLATFORM_SETTING_DEFS = (
     PlatformSettingDef("n8n_webhook_url", "URL del workflow de sugerencias (n8n)", False),
     PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista (n8n)", False),
     PlatformSettingDef("n8n_webhook_token", "Token saliente backend → n8n", True),
+    PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar)", False),
+    PlatformSettingDef("google_oauth_client_secret", "Google OAuth Client Secret (Calendar)", True),
+    PlatformSettingDef(
+        "google_oauth_redirect_uri",
+        "Redirect URI de Google (…/api/integrations/google/callback)",
+        False,
+    ),
 )
 _DEFS_BY_KEY = {definition.key: definition for definition in PLATFORM_SETTING_DEFS}
 PLATFORM_KEYS = frozenset(_DEFS_BY_KEY)

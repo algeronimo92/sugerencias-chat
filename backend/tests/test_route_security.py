@@ -46,6 +46,10 @@ PUBLIC_ROUTES = {
     # HMAC del cuerpo crudo (ver app/integrations/meta_webhook/api.py).
     ("GET", "/api/webhooks/meta/whatsapp"),
     ("POST", "/api/webhooks/meta/whatsapp"),
+    # Vuelta de Google tras "Conectar con Google": llega sin sesión a una URL
+    # común. Solo actúa con un state firmado, vigente y cuyo nonce de un solo
+    # uso coincide con el guardado por el negocio (ver google_calendar_api.py).
+    ("GET", "/api/integrations/google/callback"),
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/metrics"),

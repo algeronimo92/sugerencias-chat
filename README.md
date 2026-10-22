@@ -28,11 +28,14 @@ operativos. Los enlaces de invitación y recuperación expiran y solo pueden
 usarse una vez.
 
 **Citas y Google Calendar:** las citas se guardan primero en PostgreSQL y no
-dependen de n8n. La sincronización con Google es opcional y se activa desde
-"Configuración → Google Calendar" con Calendar ID, OAuth Client ID, Client
-Secret y Refresh Token; los secretos se almacenan cifrados. Si Google o n8n
-fallan, la cita local se conserva y el historial muestra el estado de la
-integración.
+dependen de n8n. La sincronización con Google es opcional: el admin del negocio
+entra a "Configuración → Calendario", hace clic en **Conectar con Google** y
+elige el calendario. Usa un único cliente OAuth de la plataforma (Client ID,
+Client Secret y Redirect URI `…/api/integrations/google/callback`, cargados en
+el panel de plataforma o por `GOOGLE_OAUTH_*`); el refresh token de cada negocio
+se guarda cifrado. Si Google o n8n fallan, la cita local se conserva y el
+historial muestra el estado de la integración. Detalles y configuración de
+Google Cloud en `docs/plan-google-calendar-oauth.md`.
 
 El login ofrece **Recordar este dispositivo**. La sesión se renueva por actividad
 durante 30 días, tiene un máximo absoluto de 90 días y puede revocarse por

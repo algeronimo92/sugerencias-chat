@@ -39,7 +39,9 @@ function MetaEmbeddedSignupPanel() {
   const { data: metaConfig, isLoading: isLoadingMetaConfig } = useMetaPublicConfig();
   const metaAppId = metaConfig?.app_id || LEGACY_META_APP_ID;
   const metaConfigId = metaConfig?.config_id || LEGACY_META_CONFIG_ID;
-  const sdkReady = useFacebookSdk(metaAppId);
+  // El SDK se inicializa una sola vez por página: esperar al backend evita
+  // que quede atado al app id de respaldo mientras la consulta sigue en vuelo.
+  const sdkReady = useFacebookSdk(isLoadingMetaConfig ? undefined : metaAppId);
   const { data: whatsappStatus } = useWhatsappStatus();
   const isLinked = whatsappStatus?.state === "open";
   const { mutate: complete, isPending } = useCompleteMetaEmbeddedSignup();

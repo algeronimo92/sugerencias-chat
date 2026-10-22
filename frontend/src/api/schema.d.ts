@@ -1444,6 +1444,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/google-calendar/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Google Calendar Status */
+        get: operations["get_google_calendar_status_api_settings_google_calendar_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/google-calendar/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Google Authorize */
+        post: operations["post_google_authorize_api_settings_google_calendar_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/google-calendar/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Google Calendars */
+        get: operations["get_google_calendars_api_settings_google_calendar_calendars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/google-calendar/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Google Calendar */
+        put: operations["put_google_calendar_api_settings_google_calendar_calendar_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/google-calendar/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Google Disconnect */
+        post: operations["post_google_disconnect_api_settings_google_calendar_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/profile": {
         parameters: {
             query?: never;
@@ -4152,6 +4237,45 @@ export interface components {
             forwarded_messages: number;
             /** Skipped Messages */
             skipped_messages: number;
+        };
+        /** GoogleAuthorizeRequest */
+        GoogleAuthorizeRequest: {
+            /** Return Origin */
+            return_origin: string;
+        };
+        /** GoogleAuthorizeResponse */
+        GoogleAuthorizeResponse: {
+            /** Url */
+            url: string;
+        };
+        /** GoogleCalendarItem */
+        GoogleCalendarItem: {
+            /** Id */
+            id: string;
+            /** Summary */
+            summary: string;
+            /** Primary */
+            primary: boolean;
+        };
+        /** GoogleCalendarSelection */
+        GoogleCalendarSelection: {
+            /** Calendar Id */
+            calendar_id: string;
+        };
+        /** GoogleCalendarStatus */
+        GoogleCalendarStatus: {
+            /** Oauth Available */
+            oauth_available: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Account Email */
+            account_email?: string | null;
+            /** Calendar Id */
+            calendar_id?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Business Timezone */
+            business_timezone: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -8854,6 +8978,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_calendar_status_api_settings_google_calendar_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleCalendarStatus"];
+                };
+            };
+        };
+    };
+    post_google_authorize_api_settings_google_calendar_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAuthorizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_calendars_api_settings_google_calendar_calendars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleCalendarItem"][];
+                };
+            };
+        };
+    };
+    put_google_calendar_api_settings_google_calendar_calendar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleCalendarSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleCalendarStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_google_disconnect_api_settings_google_calendar_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleCalendarStatus"];
                 };
             };
         };

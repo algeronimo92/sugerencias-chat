@@ -15,6 +15,8 @@ export const settingsKeys = {
   all: ['settings'] as const,
   timezones: ['settings', 'timezones'] as const,
   metaPublicConfig: ['platform-meta-public-config'] as const,
+  googleCalendarStatus: ['settings', 'google-calendar', 'status'] as const,
+  googleCalendars: ['settings', 'google-calendar', 'calendars'] as const,
 }
 
 export const whatsappKeys = {

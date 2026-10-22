@@ -51,6 +51,10 @@ export interface MetaPublicConfig {
   config_id: string | null
 }
 
+/** Conexión del negocio con Google Calendar ("Conectar con Google"). */
+export type GoogleCalendarStatus = Delivered<ApiSchemas['GoogleCalendarStatus']>
+export type GoogleCalendarItem = Delivered<ApiSchemas['GoogleCalendarItem']>
+
 export interface MetaEmbeddedSignupPayload {
   code: string
   waba_id: string

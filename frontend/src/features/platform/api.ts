@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -54,6 +54,37 @@ export async function fetchMetaPublicConfig(): Promise<MetaPublicConfig> {
 export async function completeMetaEmbeddedSignup(payload: MetaEmbeddedSignupPayload): Promise<SettingItem[]> {
   const { data } = await client.post<ApiResponse<'/api/settings/meta/embedded-signup', 'post'>>('/api/settings/meta/embedded-signup', payload)
   return data
+}
+
+export async function fetchGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
+  return (
+      await client.get<ApiResponse<'/api/settings/google-calendar/status', 'get'>>('/api/settings/google-calendar/status')
+    ).data
+}
+
+/** URL de consentimiento de Google; el navegador se va ahí y vuelve al CRM. */
+export async function authorizeGoogleCalendar(returnOrigin: string): Promise<string> {
+  return (
+      await client.post<ApiResponse<'/api/settings/google-calendar/authorize', 'post'>>('/api/settings/google-calendar/authorize', { return_origin: returnOrigin })
+    ).data.url
+}
+
+export async function fetchGoogleCalendars(): Promise<GoogleCalendarItem[]> {
+  return (
+      await client.get<ApiResponse<'/api/settings/google-calendar/calendars', 'get'>>('/api/settings/google-calendar/calendars')
+    ).data
+}
+
+export async function selectGoogleCalendar(calendarId: string): Promise<GoogleCalendarStatus> {
+  return (
+      await client.put<ApiResponse<'/api/settings/google-calendar/calendar', 'put'>>('/api/settings/google-calendar/calendar', { calendar_id: calendarId })
+    ).data
+}
+
+export async function disconnectGoogleCalendar(): Promise<GoogleCalendarStatus> {
+  return (
+      await client.post<ApiResponse<'/api/settings/google-calendar/disconnect', 'post'>>('/api/settings/google-calendar/disconnect')
+    ).data
 }
 
 export async function fetchBusinessTimezones(): Promise<BusinessTimezoneItem[]> {

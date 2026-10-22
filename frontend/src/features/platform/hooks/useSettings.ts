@@ -48,8 +48,13 @@ export function useCompleteMetaEmbeddedSignup() {
     mutationFn: completeMetaEmbeddedSignup,
     onSuccess: (data) => {
       queryClient.setQueryData(settingsKeys.all, data)
-      // El estado de WhatsApp se deriva de las credenciales de Meta: sin esto
-      // el CTA de "conectá tu WhatsApp" sigue visible hasta el próximo refetch.
+    },
+    // También tras un error: el backend guarda las credenciales antes de
+    // responder, y un túnel o proxy puede cortar la respuesta aunque el
+    // vínculo ya haya quedado hecho. El estado de WhatsApp se deriva de esas
+    // credenciales: sin esto el CTA de "conectá tu WhatsApp" sigue visible.
+    onSettled: (_data, error) => {
+      if (error) queryClient.invalidateQueries({ queryKey: settingsKeys.all, exact: true })
       queryClient.invalidateQueries({ queryKey: whatsappKeys.status })
     },
   })

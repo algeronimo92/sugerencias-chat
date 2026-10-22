@@ -156,9 +156,15 @@ SETTING_DEFS: list[SettingDef] = [
         boolean=True,
     ),
     SettingDef("google_calendar_id", "ID del calendario", "calendar", "Google Calendar (opcional)", secret=False),
-    SettingDef("google_calendar_client_id", "OAuth Client ID", "calendar", "Google Calendar (opcional)", secret=True),
-    SettingDef("google_calendar_client_secret", "OAuth Client Secret", "calendar", "Google Calendar (opcional)", secret=True),
-    SettingDef("google_calendar_refresh_token", "OAuth Refresh Token", "calendar", "Google Calendar (opcional)", secret=True),
+    # El refresh token lo deja "Conectar con Google" (google_calendar_api.py).
+    # Client ID/Secret propios solo quedan para negocios que los cargaron a
+    # mano antes del cliente OAuth de la plataforma: tienen prioridad sobre él.
+    SettingDef("google_calendar_client_id", "OAuth Client ID", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
+    SettingDef("google_calendar_client_secret", "OAuth Client Secret", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
+    SettingDef("google_calendar_refresh_token", "OAuth Refresh Token", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
+    SettingDef("google_calendar_account_email", "Cuenta de Google conectada", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    # Un solo uso: el callback lo compara con el del state y lo borra.
+    SettingDef("google_calendar_oauth_nonce", "Nonce del flujo OAuth en curso", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
     SettingDef("business_timezone", "Zona horaria (IANA)", "calendar", "Google Calendar (opcional)", secret=False),
 ]
 # Ajustes por negocio que administra el operador de la plataforma y no el

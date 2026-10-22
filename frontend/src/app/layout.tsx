@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { AnimatePresence, m } from "motion/react";
 import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, ShieldCheck, Moon, Sun, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { useBrand } from "../shared/branding";
 import { BrandLogo } from "../shared/ui/BrandLogo";
@@ -18,6 +19,7 @@ import { useRealtimeConnection, type InternalMentionAlert } from "../realtime/us
 import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
+import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
 import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
@@ -77,6 +79,19 @@ export function MainLayout() {
     setSettingsInitialTab(tab);
     setIsSettingsOpen(true);
   }
+
+  // Vuelta de "Conectar con Google": el callback del backend redirige a
+  // /?settings=calendar&google=... Se avisa el resultado, se abre la pestaña y
+  // se limpia la URL para que recargar no repita el aviso.
+  useEffect(() => {
+    const result = readGoogleCalendarReturn(location.search);
+    if (!result) return;
+    if (result.ok) toast.success(result.message);
+    else toast.error(result.message);
+    openSettings("calendario");
+    navigate({ pathname: location.pathname, search: "" }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
   const { data: unreadCount = 0 } = useUnreadCount();
   const {
     permission: notificationPermission,

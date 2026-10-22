@@ -92,6 +92,30 @@ class MetaPublicConfig(BaseModel):
     app_id: str | None = None
     config_id: str | None = None
 
+class GoogleCalendarStatus(BaseModel):
+    # La plataforma tiene su cliente OAuth: se puede ofrecer "Conectar".
+    oauth_available: bool
+    connected: bool
+    account_email: str | None = None
+    calendar_id: str | None = None
+    enabled: bool
+    business_timezone: str
+
+class GoogleAuthorizeRequest(BaseModel):
+    # window.location.origin del CRM: adonde vuelve el callback de Google.
+    return_origin: str
+
+class GoogleAuthorizeResponse(BaseModel):
+    url: str
+
+class GoogleCalendarItem(BaseModel):
+    id: str
+    summary: str
+    primary: bool
+
+class GoogleCalendarSelection(BaseModel):
+    calendar_id: str
+
 class BusinessTimezoneItem(BaseModel):
     id: str
     label: str
