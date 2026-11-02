@@ -157,6 +157,25 @@ class FakeMessages:
             message["pinned_by_user_id"] = None
         return message
 
+    def _by_id(self, chat_id, message_id):
+        return next(
+            (m for m in self.stored.values() if m["id"] == message_id and m.get("chat_id") == chat_id), None,
+        )
+
+    async def apply_edit(self, chat_id, message_id, content, edited_at):
+        message = self._by_id(chat_id, message_id)
+        if message is None or message.get("deleted_at") or (message.get("edited_at") and message["edited_at"] >= edited_at):
+            return False
+        message.update(content=content, edited_at=edited_at)
+        return True
+
+    async def apply_revoke(self, chat_id, message_id, deleted_at):
+        message = self._by_id(chat_id, message_id)
+        if message is None or message.get("deleted_at"):
+            return False
+        message["deleted_at"] = deleted_at
+        return True
+
 
 class FakeScheduled:
     def __init__(self) -> None:

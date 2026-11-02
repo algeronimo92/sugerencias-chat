@@ -86,6 +86,14 @@ class MessageMediaReady(ConversationEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class ProviderMessageChanged(ConversationEvent):
+    """Un mensaje ya guardado se editó o se eliminó desde WhatsApp."""
+
+    message_id: int
+    change: str  # edited | deleted
+
+
+@dataclass(frozen=True, kw_only=True)
 class MessagePinChanged(ConversationEvent):
     message_id: int
 

@@ -213,3 +213,28 @@ class SqlMessageStore:
             row.pinned_by_user_id = None
             await current_session().flush()
         return serialize_message(row)
+
+    async def apply_edit(
+        self, chat_id: str, message_id: int, content: str | None, edited_at: datetime,
+    ) -> bool:
+        row = await _message(chat_id, message_id)
+        if row is None or row.deleted_at is not None:
+            return False
+        # Meta puede reentregar fuera de orden: gana la edición más reciente.
+        if row.edited_at is not None and row.edited_at >= edited_at:
+            return False
+        row.content = content
+        row.edited_at = edited_at
+        await current_session().flush()
+        return True
+
+    async def apply_revoke(self, chat_id: str, message_id: int, deleted_at: datetime) -> bool:
+        row = await _message(chat_id, message_id)
+        if row is None or row.deleted_at is not None:
+            return False
+        row.deleted_at = deleted_at
+        # Un mensaje eliminado no queda fijado, igual que en WhatsApp.
+        row.pinned_at = None
+        row.pinned_by_user_id = None
+        await current_session().flush()
+        return True

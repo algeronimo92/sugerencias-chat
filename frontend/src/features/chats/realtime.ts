@@ -59,7 +59,8 @@ export function createChatsRealtime(): RealtimeModule {
             invalidate(queryClient, messageKeys.thread(changedChatId))
           }
           if (reason === 'inbound_message') invalidate(queryClient, messageKeys.serviceWindow(changedChatId))
-          if (reason === 'message_pinned') invalidate(queryClient, messageKeys.pinned(changedChatId))
+          // Un mensaje fijado puede editarse o eliminarse desde WhatsApp.
+          if (reason === 'message_pinned' || reason === 'message_changed') invalidate(queryClient, messageKeys.pinned(changedChatId))
         } else {
           invalidate(queryClient, messageKeys.all, messageKeys.serviceWindowAll)
         }
