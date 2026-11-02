@@ -5,7 +5,7 @@ prompt: tiene que llegar en una sola línea, sin caracteres de control y con
 un largo acotado, sin importar qué se pegue en el input.
 """
 
-from models.schemas import SUGGESTION_INSTRUCTION_MAX_LENGTH, SuggestionRequest
+from app.modules.ai.schemas import SUGGESTION_INSTRUCTION_MAX_LENGTH, SuggestionRequest
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
 

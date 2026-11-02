@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from routers import tags
+from app.modules.catalogs import tags_api as tags
 
 
 @pytest.mark.asyncio

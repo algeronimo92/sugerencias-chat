@@ -15,12 +15,33 @@
 http:
   routers:
     sugerencias-chat:
-      rule: "Host(`dermicapro.cliniventas.com`)"
+      # Un `Host()` fijo servía a un solo negocio: con multitenancy, el
+      # subdominio de cada cliente ni llegaba al backend porque traefik
+      # respondía 404 antes. La regex está acotada al dominio base a
+      # propósito — abierta, traefik aceptaría cualquier Host y se lo pasaría
+      # al backend.
+      #
+      # Sintaxis de traefik 3.x: regex estándar de Go. El formato con llaves
+      # de la v2 (`{sub:[a-z]+}`) ya no se interpreta.
+      rule: "HostRegexp(`^[a-z0-9-]+\\.cliniventas\\.com$`)"
       entryPoints:
         - websecure
       service: sugerencias-chat
       tls:
         certResolver: letsencrypt
+        # Un único certificado wildcard para todos los negocios. Sin esto,
+        # traefik pide un certificado por subdominio la primera vez que lo ve:
+        # funciona, pero Let's Encrypt limita a 50 por dominio por semana, y
+        # como la regla acepta cualquier subdominio, alguien puede quemar esa
+        # cuota pidiendo hosts inventados.
+        #
+        # REQUISITO: el wildcard solo se emite por DNS-01. Mientras el resolver
+        # siga en httpchallenge (ver reverse-proxy.docker-compose.yml) esta
+        # sección no se puede cumplir y traefik vuelve a pedir por host.
+        domains:
+          - main: "cliniventas.com"
+            sans:
+              - "*.cliniventas.com"
 
   services:
     sugerencias-chat:

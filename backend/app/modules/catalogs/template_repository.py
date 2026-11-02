@@ -1,0 +1,229 @@
+"""Atomic domain persistence. No HTTP, realtime, or service imports."""
+from __future__ import annotations
+from datetime import datetime, timezone
+from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from app.modules.automations.ports.types import AutomationExecutionStatus
+from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
+from app.db.models.catalogs import MessageTemplate, TemplateAttachment, TemplateUserState
+from app.modules.catalogs.template_policies import _meta_managed_template_values, _references_template
+from app.db.uow import session_scope
+from app.modules.catalogs.template_queries import list_templates
+
+
+async def create_template(values: dict, user_id: int):
+    now = datetime.now(timezone.utc)
+    visibility = values.pop("visibility", "global")
+    async with session_scope() as session:
+        try:
+            result = await session.execute(insert(MessageTemplate).values(**values, visibility=visibility, created_by_user_id=user_id, created_at=now, updated_at=now).returning(MessageTemplate.id))
+            template_id = result.scalar_one(); await session.flush()
+        except IntegrityError:
+            raise ValueError("El atajo ya existe")
+    return next(item for item in await list_templates(user_id, True) if item["id"] == template_id)
+
+async def update_template(template_id: int, values: dict):
+    values["updated_at"] = datetime.now(timezone.utc)
+    async with session_scope() as session:
+        try:
+            result = await session.execute(update(MessageTemplate).where(MessageTemplate.id == template_id).values(**values))
+            await session.flush()
+        except IntegrityError:
+            raise ValueError("El atajo ya existe")
+    if not result.rowcount:
+        return None
+    async with session_scope() as session:
+        owner_id = await session.scalar(select(MessageTemplate.created_by_user_id).where(MessageTemplate.id == template_id))
+    return next((item for item in await list_templates(owner_id, True) if item["id"] == template_id), None)
+
+async def replace_official_template_from_meta(
+    meta_template_id: str,
+    remote: dict,
+) -> list[int]:
+    """Reemplaza toda la representacion administrada por Meta de forma idempotente."""
+
+    async with session_scope() as session:
+        rows = (
+            await session.execute(
+                select(
+                    MessageTemplate.id,
+                    MessageTemplate.official_header_media_asset_id,
+                ).where(
+                    MessageTemplate.template_type == "official",
+                    MessageTemplate.meta_template_id == meta_template_id,
+                )
+            )
+        ).all()
+        for template_id, header_media_asset_id in rows:
+            await session.execute(
+                update(MessageTemplate)
+                .where(MessageTemplate.id == template_id)
+                .values(**_meta_managed_template_values(remote, header_media_asset_id))
+            )
+        await session.flush()
+    return [template_id for template_id, _header_media_asset_id in rows]
+
+async def delete_template(template_id: int) -> dict | None:
+    """Elimina una plantilla solo cuando ninguna automatización vigente la necesita.
+
+    También revisa versiones visuales usadas por ejecuciones pendientes para no
+    convertir una espera ya programada en una ejecución rota. Devuelve la
+    metadata oficial de la plantilla borrada (para que el router pueda
+    limpiarla también del lado de Meta) o `None` si no existía."""
+    async with session_scope() as session:
+        template = (await session.execute(
+            select(MessageTemplate).where(MessageTemplate.id == template_id).with_for_update()
+        )).scalar_one_or_none()
+        if template is None:
+            return None
+
+        rules = (await session.execute(select(
+            AutomationRule.id,
+            AutomationRule.name,
+            AutomationRule.actions,
+            AutomationRule.flow_definition,
+            AutomationRule.published_flow_definition,
+        ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
+        blockers = {
+            row["id"]: row["name"]
+            for row in rules
+            if any(_references_template(value, template_id) for value in (
+                row["actions"], row["flow_definition"], row["published_flow_definition"],
+            ))
+        }
+
+        rule_names = {row["id"]: row["name"] for row in rules}
+        if rule_names:
+            pending = (await session.execute(select(
+                AutomationExecution.rule_id,
+                AutomationExecution.flow_state,
+            ).where(
+                AutomationExecution.rule_id.in_(list(rule_names)),
+                AutomationExecution.status.in_([
+                    AutomationExecutionStatus.SCHEDULED,
+                    AutomationExecutionStatus.RUNNING,
+                ]),
+            ))).mappings().all()
+            required_versions = {
+                (row["rule_id"], int((row["flow_state"] or {}).get("flow_version") or 0))
+                for row in pending
+                if (row["flow_state"] or {}).get("flow_version")
+            }
+            if required_versions:
+                versions = (await session.execute(select(
+                    AutomationFlowVersion.rule_id,
+                    AutomationFlowVersion.version,
+                    AutomationFlowVersion.definition,
+                ).where(
+                    AutomationFlowVersion.rule_id.in_({rule_id for rule_id, _ in required_versions})
+                ))).mappings().all()
+                for row in versions:
+                    if (
+                        (row["rule_id"], row["version"]) in required_versions
+                        and _references_template(row["definition"], template_id)
+                    ):
+                        blockers[row["rule_id"]] = rule_names[row["rule_id"]]
+
+        if blockers:
+            names = list(dict.fromkeys(blockers.values()))
+            visible = ", ".join(names[:3])
+            suffix = f" y {len(names) - 3} más" if len(names) > 3 else ""
+            raise ValueError(
+                f"La plantilla está usada por: {visible}{suffix}. "
+                "Edita o elimina esas automatizaciones antes de borrar la plantilla."
+            )
+
+        await session.execute(delete(MessageTemplate).where(MessageTemplate.id == template_id))
+        await session.flush()
+    return {
+        "template_type": template.template_type,
+        "official_name": template.official_name,
+        "meta_template_id": template.meta_template_id,
+        "imported_from_meta": template.imported_from_meta,
+    }
+
+async def _visible_template(session, template_id: int, user_id: int):
+    return await session.scalar(
+        select(MessageTemplate.id).where(
+            MessageTemplate.id == template_id,
+            MessageTemplate.is_active.is_(True),
+            or_(MessageTemplate.visibility == "global", MessageTemplate.created_by_user_id == user_id),
+        )
+    )
+
+async def set_template_favorite(template_id: int, user_id: int, is_favorite: bool) -> bool:
+    async with session_scope() as session:
+        if not await _visible_template(session, template_id, user_id):
+            return False
+        stmt = pg_insert(TemplateUserState).values(
+            user_id=user_id, template_id=template_id, is_favorite=is_favorite, use_count=0,
+        ).on_conflict_do_update(
+            index_elements=[TemplateUserState.user_id, TemplateUserState.template_id],
+            set_={"is_favorite": is_favorite},
+        )
+        await session.execute(stmt); await session.flush()
+    return True
+
+
+async def record_template_use(template_id: int, user_id: int) -> bool:
+    now = datetime.now(timezone.utc)
+    async with session_scope() as session:
+        if not await _visible_template(session, template_id, user_id):
+            return False
+        stmt = pg_insert(TemplateUserState).values(
+            user_id=user_id, template_id=template_id, is_favorite=False, last_used_at=now, use_count=1,
+        ).on_conflict_do_update(
+            index_elements=[TemplateUserState.user_id, TemplateUserState.template_id],
+            set_={"last_used_at": now, "use_count": TemplateUserState.use_count + 1},
+        )
+        await session.execute(stmt); await session.flush()
+    return True
+
+async def add_template_attachment(
+    template_id: int,
+    media_url: str,
+    content_type: str,
+    filename: str,
+    library_asset_id: int | None = None,
+) -> dict | None:
+    now = datetime.now(timezone.utc)
+    async with session_scope() as session:
+        exists = await session.get(MessageTemplate, template_id)
+        if not exists:
+            return None
+        if exists.template_type == "official" or exists.interactive_type != "none":
+            raise ValueError(
+                "Las plantillas oficiales o interactivas no usan adjuntos internos"
+            )
+        total = await session.scalar(
+            select(func.count(TemplateAttachment.id)).where(TemplateAttachment.template_id == template_id)
+        )
+        if total >= 10:
+            raise ValueError("Una plantilla admite como máximo 10 adjuntos")
+        position = await session.scalar(
+            select(func.coalesce(func.max(TemplateAttachment.position), -1) + 1)
+            .where(TemplateAttachment.template_id == template_id)
+        )
+        result = await session.execute(insert(TemplateAttachment).values(
+            template_id=template_id, media_url=media_url, content_type=content_type,
+            filename=filename, library_asset_id=library_asset_id,
+            position=position, created_at=now,
+        ).returning(TemplateAttachment.id))
+        attachment_id = result.scalar_one(); await session.flush()
+    return {
+        "id": attachment_id, "media_url": media_url, "content_type": content_type,
+        "filename": filename, "position": position, "library_asset_id": library_asset_id,
+    }
+
+async def remove_template_attachment(attachment_id: int) -> dict | None:
+    async with session_scope() as session:
+        row = (await session.execute(
+            select(TemplateAttachment.media_url, TemplateAttachment.library_asset_id)
+            .where(TemplateAttachment.id == attachment_id)
+        )).mappings().one_or_none()
+        if row is None:
+            return None
+        await session.execute(delete(TemplateAttachment).where(TemplateAttachment.id == attachment_id))
+        await session.flush()
+    return dict(row)

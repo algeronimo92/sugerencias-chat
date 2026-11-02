@@ -2,19 +2,14 @@
 
 Es la versión masiva del botón "Descartar" de la burbuja
 (``services.message_outbox.discard_failed_message``) y aplica exactamente el
-mismo cambio: el job pasa de ``failed`` a ``discarded`` y su mensaje de
-``FAILED`` a ``DISCARDED``. No borra nada — el mensaje nunca llegó al cliente y
-el historial lo sigue diciendo.
+mismo cambio: el job pasa de ``failed`` a ``discarded`` y el ``outbox_status``
+de su mensaje también. No borra nada — el mensaje nunca llegó al cliente y el
+historial lo sigue diciendo.
 
 Existe por el arrastre histórico: ``message_outbox`` no se purga y un job solo
 sale de ``failed`` por reintento manual, así que los fallos viejos que nadie
 reintentó se acumulan para siempre y mantienen ``outbox_failed`` por encima de
 cualquier umbral.
-
-IMPORTANTE: correr solo con el backend y el frontend nuevos ya desplegados. Una
-versión anterior del frontend no conoce el estado DISCARDED y cae a su rama por
-defecto, que pinta el tique gris de "Enviado" — justo lo contrario de lo que
-pasó con estos mensajes.
 
 Por defecto solo toca fallos con más de ``--older-than-hours`` horas (24) para
 no cerrar de un plumazo un incidente que todavía está pasando, y solo simula:
@@ -33,12 +28,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 
-from db.models import MessageOutbox, WspMessage
-from db.session import close_engine, get_sessionmaker
+from app.db.models.conversations import MessageOutbox, WspMessage
+from app.db.session import close_engine, get_sessionmaker
 
 DEFAULT_OLDER_THAN_HOURS = 24
-# Los last_error son largos (traceback de Evolution); para el resumen alcanza
-# el principio, que es lo que distingue una causa de otra.
+# Los last_error pueden ser largos; para el resumen alcanza el principio, que
+# es lo que distingue una causa de otra.
 ERROR_PREVIEW_CHARS = 80
 
 
@@ -53,7 +48,7 @@ async def _candidates(cutoff: datetime, limit: int | None) -> list[tuple[int, in
         .join(WspMessage, WspMessage.id == MessageOutbox.message_id)
         .where(
             MessageOutbox.status == "failed",
-            WspMessage.status == "FAILED",
+            WspMessage.outbox_status == "failed",
             MessageOutbox.updated_at < cutoff,
         )
         .order_by(MessageOutbox.id.asc())
@@ -74,8 +69,8 @@ async def _apply(job_ids: list[int], message_ids: list[int]) -> tuple[int, int]:
         )
         messages = await session.execute(
             update(WspMessage)
-            .where(WspMessage.id.in_(message_ids), WspMessage.status == "FAILED")
-            .values(status="DISCARDED")
+            .where(WspMessage.id.in_(message_ids), WspMessage.outbox_status == "failed")
+            .values(outbox_status="discarded")
         )
         # Una sola transacción: que no quede el job cerrado con la burbuja
         # todavía ofreciendo un reintento que ya no existe.

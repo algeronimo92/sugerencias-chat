@@ -1,9 +1,9 @@
 // defineConfig sale de vitest/config, no de vite: el de Vite no conoce la
 // clave `test` y tsc la rechaza como propiedad desconocida.
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import { VitePWA } from 'vite-plugin-pwa'
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   server: {
@@ -12,8 +12,31 @@ export default defineConfig({
     // túnel (Cloudflare, ngrok, etc.) devuelve 403 "Blocked request". Vacío
     // en desarrollo normal: solo se activa si se define la env var.
     allowedHosts: process.env.VITE_ALLOWED_HOSTS
-      ? process.env.VITE_ALLOWED_HOSTS.split(',')
+      ? process.env.VITE_ALLOWED_HOSTS.split(",")
       : undefined,
+    // El contenedor dev monta ./frontend desde Windows (compose.yml): los
+    // eventos de inotify de ese bind mount no cruzan Docker Desktop/WSL2, así
+    // que sin polling el watcher nunca se entera de que guardaste un archivo
+    // y el HMR queda muerto. Con polling sí lo detecta.
+    watch: { usePolling: true },
+    // El browser le habla siempre a este mismo origen (localhost:5173, o el
+    // túnel de Cloudflare) y Vite reenvía por dentro de la red de Docker al
+    // backend -- así la cookie de sesión es same-origin (VITE_API_BASE_URL
+    // vacío, ver compose.yml) sin importar por dónde se acceda. Sin esto,
+    // desde un túnel https la cookie que pone el login (http, otro host) no
+    // vuelve a mandarse en el siguiente pedido: SameSite=Lax la bloquea en
+    // cualquier fetch cross-site, y el cambio de esquema http->https ya
+    // cuenta como cross-site ("schemeful same-site").
+    // `changeOrigin: false` es obligatorio con multitenancy: el backend elige
+    // el schema del negocio a partir del Host (ver tenancy/middleware.py), y el
+    // default de Vite lo reescribe al del destino ("backend:8000"), que no es
+    // ningún tenant registrado -- toda la API respondía 404. Conservarlo hace
+    // que llegue el host real del navegador (ej. dermicapro.localhost:5173).
+    proxy: {
+      "/api": { target: "http://backend:8000", changeOrigin: false },
+      "/media": { target: "http://backend:8000", changeOrigin: false },
+      "/ws": { target: "ws://backend:8000", ws: true, changeOrigin: false },
+    },
   },
   plugins: [
     react(),
@@ -24,24 +47,24 @@ export default defineConfig({
     VitePWA({
       // 'prompt' y no 'autoUpdate': recargar solo mientras alguien escribe un
       // mensaje le borraría el borrador. El usuario decide cuándo aplicar.
-      registerType: 'prompt',
+      registerType: "prompt",
       // El manifest vive en public/manifest.webmanifest y ya está enlazado
       // desde index.html; el plugin solo se ocupa del service worker.
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         // Las rutas del CRM son del router de React, así que cualquier
         // navegación cae al shell. La denylist es crítica: sin ella el SW
         // respondería index.html a las llamadas de API y a los archivos
         // multimedia servidos por el backend.
-        navigateFallback: '/index.html',
+        navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/media\//, /^\/ws\//],
         cleanupOutdatedCaches: true,
         // Los listeners de `push` / `notificationclick` viven en un archivo
         // plano aparte (push-sw.js) e importados dentro del SW que genera
         // Workbox, en vez de migrar a `injectManifest` para no perder el
         // precacheo ni la denylist ya afinados acá arriba.
-        importScripts: ['push-sw.js'],
+        importScripts: ["push-sw.js"],
       },
       // El multimedia de los clientes es contenido privado: no se cachea en
       // el SW a propósito, queda solo en la caché HTTP del navegador.
@@ -51,11 +74,18 @@ export default defineConfig({
   test: {
     // jsdom y no el entorno node por defecto: los tests montan componentes y
     // hooks que necesitan DOM, localStorage y WebSocket.
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
     globals: true,
     // Storybook trae sus propios archivos *.stories.tsx; no son tests.
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     css: false,
+    // El default de 5s se queda corto en tests con varias interacciones
+    // reales de userEvent (escribir, subir archivo, abrir/cerrar diálogos)
+    // cuando la suite corre en paralelo bajo contención de CPU: no hay
+    // ningún bug detrás, el test solo necesita más margen para terminar.
+    // Los tests de caracterización que montan la app entera (src/app)
+    // sumaron carga: un test de un segundo llegó a tardar 13 s en la suite.
+    testTimeout: 30000,
   },
-})
+});

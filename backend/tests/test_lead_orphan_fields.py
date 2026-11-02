@@ -12,26 +12,27 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from db.models import Lead
-from models.schemas import Chat, LeadStageUpdate, LeadUpdate
-from routers import chats
-from services.db_service import _activity_safe
+from app.db.models.leads import Lead
+from app.modules.leads.schemas import Chat, LeadStageUpdate, LeadUpdate
+from app.modules.leads import api as chats
+from app.modules.leads.domain.lead import audit_safe as _activity_safe
+from app.modules.leads.updates import LEAD_FIELD_TO_COLUMN
 
 
-CHAT_ID = "51906471403@s.whatsapp.net"
+CHAT_ID = "ade6fb90-6b65-5edd-8d8a-8ff1cf733e69"
 ADMIN = SimpleNamespace(role="admin", id=1)
 
 
 @pytest.fixture
-def update_deps(monkeypatch):
-    updated = AsyncMock(return_value={"chat_id": CHAT_ID})
-    monkeypatch.setattr(chats, "update_lead", updated)
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    return updated
+def leads_api(in_memory_leads, monkeypatch):
+    """La API real sobre los comandos reales, con el repositorio en memoria."""
+    in_memory_leads.repository.seed(CHAT_ID, stage="calificado")
+    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"chat_id": CHAT_ID}))
+    return in_memory_leads.repository
 
 
 @pytest.mark.asyncio
-async def test_patch_lead_persists_the_four_editable_fields(update_deps):
+async def test_patch_lead_persists_the_four_editable_fields(leads_api):
     body = LeadUpdate(
         con_especialista=True,
         razon_perdido="Se fue con la competencia",
@@ -41,49 +42,39 @@ async def test_patch_lead_persists_the_four_editable_fields(update_deps):
 
     await chats.update_chat(CHAT_ID, body, ADMIN)
 
-    values = update_deps.await_args.args[1]
-    assert values["con_especialista"] is True
-    assert values["razon_perdido"] == "Se fue con la competencia"
+    assert leads_api.column(CHAT_ID, "con_especialista") is True
+    assert leads_api.column(CHAT_ID, "razon_perdido") == "Se fue con la competencia"
     # Pydantic ya los entrega tipados: asyncpg necesita los objetos, no strings.
-    assert values["fecha_recontacto"] == date(2026, 8, 1)
-    assert values["proxima_cita"] == datetime(2026, 8, 1, 15, 0, tzinfo=timezone.utc)
+    assert leads_api.column(CHAT_ID, "fecha_recontacto") == date(2026, 8, 1)
+    assert leads_api.column(CHAT_ID, "proxima_cita") == datetime(2026, 8, 1, 15, 0, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
-async def test_patch_lead_ignores_fields_not_sent(update_deps):
+async def test_patch_lead_ignores_fields_not_sent(leads_api):
     """exclude_unset: tocar el nombre no puede borrar la próxima cita."""
     await chats.update_chat(CHAT_ID, LeadUpdate(name="Ana"), ADMIN)
 
-    values = update_deps.await_args.args[1]
-    assert set(values) == {"nombre"}
-
-
-@pytest.fixture
-def stage_deps(monkeypatch):
-    update_stage = AsyncMock(return_value={"chat_id": CHAT_ID, "stage": "perdido"})
-    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"stage": "calificado"}))
-    monkeypatch.setattr(chats, "update_lead_stage", update_stage)
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(chats, "trigger_stage_changed", AsyncMock())
-    return update_stage
+    [record] = leads_api.audit(CHAT_ID)
+    assert set(record.new_value) == {"nombre"}
 
 
 @pytest.mark.asyncio
-async def test_move_to_lost_forwards_the_reason(stage_deps):
+async def test_move_to_lost_forwards_the_reason(leads_api):
     body = LeadStageUpdate(stage="perdido", razon_perdido="No contesta hace un mes")
 
     await chats.move_chat_stage(CHAT_ID, body, ADMIN)
 
-    assert stage_deps.await_args.kwargs["razon_perdido"] == "No contesta hace un mes"
+    assert leads_api.column(CHAT_ID, "razon_perdido") == "No contesta hace un mes"
 
 
 @pytest.mark.asyncio
-async def test_move_without_reason_is_allowed(stage_deps):
+async def test_move_without_reason_is_allowed(leads_api):
     """Los webhooks y las automatizaciones mueven a perdido sin razón: exigirla
     en el backend los rompería."""
     await chats.move_chat_stage(CHAT_ID, LeadStageUpdate(stage="perdido"), ADMIN)
 
-    assert stage_deps.await_args.kwargs["razon_perdido"] is None
+    assert leads_api.column(CHAT_ID, "estado") == "perdido"
+    assert leads_api.column(CHAT_ID, "razon_perdido") is None
 
 
 def test_activity_safe_serializes_dates_for_jsonb():
@@ -107,6 +98,7 @@ def test_chat_schema_exposes_the_orphan_fields():
     """El DTO es lo único que el frontend ve: si un campo no está acá, la ficha
     no puede mostrarlo por más que la columna exista."""
     for field in (
+        "username",
         "con_especialista",
         "razon_perdido",
         "fecha_recontacto",
@@ -119,7 +111,7 @@ def test_chat_schema_exposes_the_orphan_fields():
 
 
 def test_editable_fields_map_to_real_columns():
-    """_LEAD_FIELD_TO_COLUMN es el único gate del PATCH: un typo acá sería un
+    """LEAD_FIELD_TO_COLUMN es el único gate del PATCH: un typo acá sería un
     AttributeError recién dentro de update_lead."""
-    for column in chats._LEAD_FIELD_TO_COLUMN.values():
+    for column in LEAD_FIELD_TO_COLUMN.values():
         assert hasattr(Lead, column), f"Lead.{column} no existe"

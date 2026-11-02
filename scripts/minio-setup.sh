@@ -53,7 +53,10 @@ read_env() {
 ENDPOINT="${MINIO_ENDPOINT:-$(read_env MINIO_ENDPOINT)}"
 BUCKET="${MINIO_BUCKET:-$(read_env MINIO_BUCKET)}"
 SECURE="${MINIO_SECURE:-$(read_env MINIO_SECURE)}"
-APP_USER="${MINIO_APP_USER:-dermicapro-app}"
+# La identidad es la de la plataforma, no la de un negocio: un solo usuario
+# escribe el bucket compartido y los clientes se separan por carpeta
+# (tenants/<uuid>-<nombre>/...), no por credencial.
+APP_USER="${MINIO_APP_USER:-cliniventas-app}"
 
 : "${MINIO_ROOT_USER:?define MINIO_ROOT_USER (credencial root de MinIO)}"
 : "${MINIO_ROOT_PASSWORD:?define MINIO_ROOT_PASSWORD}"
@@ -67,6 +70,19 @@ URL="$SCHEME://$ENDPOINT"
 echo "Servidor : $URL"
 echo "Bucket   : $BUCKET"
 echo "Usuario  : $APP_USER"
+
+# Autenticacion primero, y ruidosa. La comprobacion de abajo descarta su error
+# (`2>&1`), asi que unas credenciales root invalidas se veian como "el usuario
+# no existe todavia" y el fallo real recien aparecia al crear el bucket, con un
+# mensaje que no menciona a root.
+if ! docker run --rm \
+  -e MC_HOST_target="$SCHEME://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@$ENDPOINT" \
+  --entrypoint mc minio/mc admin info target >/dev/null 2>&1; then
+  echo "ERROR: MinIO rechazo las credenciales root para $URL." >&2
+  echo "       Son las MINIO_ROOT_USER/MINIO_ROOT_PASSWORD del *servidor*," >&2
+  echo "       no el access key de la aplicacion." >&2
+  exit 1
+fi
 
 # Se consulta si el usuario ya existe ANTES de generar nada: el secreto solo
 # se toca cuando hay que crearlo o cuando se pide la rotacion explicitamente.
@@ -112,7 +128,10 @@ fi
 #
 # El ambito son las claves bajo el prefijo, no todo el bucket: las claves son
 # {prefijo}/{categoria}/{archivo} (ver _object_name_candidates).
-PREFIX="${MINIO_PREFIX:-$(read_env MINIO_PREFIX)}"
+# `${MINIO_PREFIX-...}` sin dos puntos: un prefijo vacio es una eleccion valida
+# (las claves ya empiezan por `tenants/<uuid>-<nombre>/`, que arma el backend) y
+# con `:-` se confundia con "no definido", cayendo al valor del .env.
+PREFIX="${MINIO_PREFIX-$(read_env MINIO_PREFIX)}"
 PREFIX="${PREFIX%/}"
 OBJECT_ARN="arn:aws:s3:::$BUCKET/*"
 [ -n "$PREFIX" ] && OBJECT_ARN="arn:aws:s3:::$BUCKET/$PREFIX/*"

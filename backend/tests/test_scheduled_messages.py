@@ -1,82 +1,78 @@
+"""Programar y cancelar mensajes desde la API."""
+
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
 
-from models.schemas import ScheduledMessageCreate
-from routers import scheduled_messages
-from services import scheduled_message_service
+from app.core.errors import NotFound
+from app.modules.conversations import scheduled_messages_api as scheduled_messages
+from app.modules.conversations.domain.events import ScheduledMessageChanged
+from app.modules.conversations.domain.scheduling import (
+    AlreadyDispatching,
+    CannotCancelOthersMessage,
+    ScheduleInThePast,
+)
+from app.modules.conversations.schemas import ScheduledMessageCreate
+from app.modules.conversations.ports.types import ScheduledMessageStatus
+
+LEAD_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
+SELLER = SimpleNamespace(id=4, role="seller")
 
 
-@pytest.mark.asyncio
-async def test_schedule_route_trims_text_and_broadcasts(monkeypatch):
+async def test_schedule_route_trims_text_and_announces_it(in_memory_conversations):
     future = datetime.now(timezone.utc) + timedelta(hours=1)
-    item = {
-        "id": 9,
-        "lead_id": "51999999999@s.whatsapp.net",
-        "text": "¿Pudiste realizar el pago?",
-        "scheduled_at": future.isoformat(),
-        "status": "scheduled",
-        "created_by_user_id": 4,
-        "created_by_user_name": "Vendedor",
-        "queued_message_id": None,
-        "error": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    create = AsyncMock(return_value=item)
-    broadcast = AsyncMock()
-    monkeypatch.setattr(scheduled_messages, "create_scheduled_message", create)
-    monkeypatch.setattr(scheduled_messages.manager, "broadcast", broadcast)
 
     result = await scheduled_messages.post_scheduled_message(
-        "51999999999@s.whatsapp.net",
-        ScheduledMessageCreate(text="  ¿Pudiste realizar el pago?  ", scheduled_at=future),
-        SimpleNamespace(id=4, role="seller"),
+        LEAD_ID, ScheduledMessageCreate(text="  ¿Pudiste realizar el pago?  ", scheduled_at=future), SELLER,
     )
 
-    assert result == item
-    create.assert_awaited_once_with(
-        "51999999999@s.whatsapp.net",
-        "¿Pudiste realizar el pago?",
-        future,
-        4,
-    )
-    broadcast.assert_awaited_once_with({
-        "type": "scheduled_messages_updated",
-        "chat_id": "51999999999@s.whatsapp.net",
-        "status": "scheduled",
-    })
+    assert result["text"] == "¿Pudiste realizar el pago?"
+    assert result["created_by_user_id"] == 4
+    [event] = in_memory_conversations.of(ScheduledMessageChanged)
+    assert (event.chat_id, event.status) == (LEAD_ID, ScheduledMessageStatus.SCHEDULED)
 
 
-@pytest.mark.asyncio
-async def test_past_schedule_is_rejected_before_touching_database():
-    with pytest.raises(ValueError, match="hora futura"):
-        await scheduled_message_service.create_scheduled_message(
-            "51999999999@s.whatsapp.net",
-            "Mensaje",
-            datetime.now(timezone.utc) - timedelta(minutes=1),
-            4,
-        )
-
-
-@pytest.mark.asyncio
-async def test_schedule_route_maps_invalid_time_to_400(monkeypatch):
-    monkeypatch.setattr(
-        scheduled_messages,
-        "create_scheduled_message",
-        AsyncMock(side_effect=ValueError("Elige una hora futura para programar el mensaje")),
-    )
-
-    with pytest.raises(HTTPException) as exc:
+async def test_a_past_time_is_rejected_before_touching_the_database(in_memory_conversations):
+    with pytest.raises(ScheduleInThePast) as exc:
         await scheduled_messages.post_scheduled_message(
-            "51999999999@s.whatsapp.net",
-            ScheduledMessageCreate(
-                text="Mensaje",
-                scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
-            ),
-            SimpleNamespace(id=4, role="seller"),
+            LEAD_ID,
+            ScheduledMessageCreate(text="Mensaje", scheduled_at=datetime.now(timezone.utc) - timedelta(minutes=1)),
+            SELLER,
         )
 
     assert exc.value.status_code == 400
+    assert "hora futura" in exc.value.detail
+    assert in_memory_conversations.scheduled.created == []
+
+
+async def test_only_its_author_or_an_admin_can_cancel(in_memory_conversations):
+    in_memory_conversations.scheduled.rows[3] = {
+        "id": 3, "lead_id": LEAD_ID, "text": "x", "status": ScheduledMessageStatus.SCHEDULED,
+        "created_by_user_id": 99,
+    }
+
+    with pytest.raises(CannotCancelOthersMessage) as exc:
+        await scheduled_messages.delete_scheduled_message(3, SELLER)
+    assert exc.value.status_code == 403
+
+    result = await scheduled_messages.delete_scheduled_message(3, SimpleNamespace(id=1, role="admin"))
+    assert result == {"status": "cancelled"}
+    assert in_memory_conversations.scheduled.rows[3]["status"] == ScheduledMessageStatus.CANCELLED
+
+
+async def test_a_message_already_on_its_way_cannot_be_cancelled(in_memory_conversations):
+    in_memory_conversations.scheduled.rows[3] = {
+        "id": 3, "lead_id": LEAD_ID, "text": "x", "status": ScheduledMessageStatus.QUEUED,
+        "created_by_user_id": 4,
+    }
+
+    with pytest.raises(AlreadyDispatching) as exc:
+        await scheduled_messages.delete_scheduled_message(3, SELLER)
+    assert exc.value.status_code == 409
+
+
+async def test_cancelling_a_missing_message_is_404(in_memory_conversations):
+    with pytest.raises(NotFound) as exc:
+        await scheduled_messages.delete_scheduled_message(404, SELLER)
+    assert exc.value.detail == "Mensaje programado no encontrado"

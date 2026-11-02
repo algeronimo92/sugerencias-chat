@@ -1,0 +1,98 @@
+"""Raíz de composición compartida por la API y los workers.
+
+Es el único lugar que conoce a la vez los puertos de la aplicación y sus
+implementaciones: conecta cada adaptador a su puerto y registra los
+suscriptores de eventos. Así ningún módulo depende de que otro lo haya
+importado antes, y la API y el proceso worker ven exactamente el mismo
+cableado.
+"""
+
+from __future__ import annotations
+
+import importlib
+
+from app.integrations.whatsapp.channels import current_channel
+from app.modules.ai.application.ports import AssistantPorts, provide_ai_provider, provide_assistant_ports
+from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, SqlAiJobs, SqlAssistantContext
+from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
+from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
+from app.modules.appointments.infrastructure.integrations import GoogleCalendar, N8nAppointmentSync
+from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlLeadMatcher
+from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
+from app.modules.automations.infrastructure.sql_executions import SqlExecutionStore
+from app.modules.automations.infrastructure.sql_references import SqlReferenceChecker
+from app.modules.automations.infrastructure.sql_rules import SqlRuleStore
+from app.modules.automations.infrastructure.sql_scheduling import SqlSchedulingStore
+from app.modules.conversations.application.ports import ConversationPorts, provide_conversation_ports
+from app.modules.conversations.chat_queries import get_customer_service_window
+from app.modules.conversations.infrastructure.meta_contract import MetaMessageContract
+from app.modules.conversations.infrastructure.sql_inbox import SqlInboxState
+from app.modules.conversations.infrastructure.sql_messages import SqlMessageStore
+from app.modules.conversations.infrastructure.sql_outbox import SqlOutboxStore
+from app.modules.conversations.infrastructure.sql_scheduled import SqlScheduledStore
+from app.modules.leads.application.ports import provide_lead_repository
+from app.modules.leads.infrastructure.repository import SqlLeadRepository
+from app.modules.tasks.task_reminder import provide_reminder_delivery
+from app.realtime.ws_manager import manager
+
+# Cada módulo que reacciona a eventos expone un ``subscribers.py``.
+SUBSCRIBER_MODULES: tuple[str, ...] = (
+    "app.realtime.subscribers",
+    "app.modules.catalogs.subscribers",
+    "app.modules.media.subscribers",
+    "app.modules.issue_reports.subscribers",
+    "app.modules.conversations.subscribers",
+    "app.modules.leads.subscribers",
+    "app.modules.automations.subscribers",
+    "app.modules.tasks.subscribers",
+    "app.modules.notifications.subscribers",
+)
+
+_configured = False
+
+
+def register_adapters() -> None:
+    provide_lead_repository(SqlLeadRepository())
+    provide_conversation_ports(ConversationPorts(
+        outbox=SqlOutboxStore(),
+        inbox=SqlInboxState(),
+        messages=SqlMessageStore(),
+        scheduled=SqlScheduledStore(),
+        contract=MetaMessageContract(),
+        service_window=get_customer_service_window,
+        channel=current_channel,
+    ))
+    provide_ai_provider(N8nAiProvider())
+    provide_assistant_ports(AssistantPorts(
+        access=PlatformAiAccess(),
+        jobs=SqlAiJobs(),
+        context=SqlAssistantContext(),
+    ))
+    provide_reminder_delivery(manager.send_to_user_here)
+    provide_appointment_ports(AppointmentPorts(
+        repository=SqlAppointmentRepository(),
+        calendar=GoogleCalendar(),
+        sync=N8nAppointmentSync(),
+        leads=SqlLeadMatcher(),
+    ))
+    provide_automation_ports(AutomationPorts(
+        executions=SqlExecutionStore(),
+        rules=SqlRuleStore(),
+        scheduling=SqlSchedulingStore(),
+        references=SqlReferenceChecker(),
+    ))
+
+
+def register_subscribers() -> None:
+    for name in SUBSCRIBER_MODULES:
+        importlib.import_module(name)
+
+
+def configure() -> None:
+    """Idempotente: la API, los workers y los tests pueden llamarla."""
+    global _configured
+    if _configured:
+        return
+    register_adapters()
+    register_subscribers()
+    _configured = True

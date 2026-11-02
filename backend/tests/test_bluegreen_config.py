@@ -7,6 +7,7 @@ conmutar, y de eso uno se entera tarde.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,7 +27,7 @@ def _compose_config(color_port: int) -> dict:
     # mínimo, docker no encuentra su configuración en Windows y estos tests se
     # saltaban en silencio — justo los que comprueban que el backend no queda
     # expuesto.
-    env = dict(os.environ, COLOR_PORT=str(color_port))
+    env = dict(os.environ, COLOR_PORT=str(color_port), METRICS_PORT=str(color_port + 1000))
     result = subprocess.run(
         ["docker", "compose",
          "-p", "test-bluegreen",
@@ -103,9 +104,9 @@ def test_frontend_is_bound_to_loopback_only() -> None:
     saltaría traefik — es decir, el TLS."""
     config = _compose_config(8081)
     ports = config["services"]["frontend"]["ports"]
-    assert len(ports) == 1
-    assert ports[0]["host_ip"] == "127.0.0.1"
-    assert ports[0]["published"] == "8081"
+    assert len(ports) == 2
+    assert all(port["host_ip"] == "127.0.0.1" for port in ports)
+    assert {port["target"]: port["published"] for port in ports} == {80: "8081", 9113: "9081"}
 
 
 @requires_docker
@@ -117,6 +118,16 @@ def test_docker_routing_is_disabled_for_colors() -> None:
     assert labels.get("traefik.enable") == "false"
 
 
+def _assert_tenant_routing(rule: str) -> None:
+    match = re.fullmatch(r"HostRegexp\(`([^`]+)`\)", rule)
+    assert match is not None, "el router debe cubrir subdominios tenant"
+    pattern = re.compile(match.group(1))
+    for host in ("dermicapro.cliniventas.com", "negocio-2.cliniventas.com"):
+        assert pattern.fullmatch(host), host
+    for host in ("cliniventas.com", "otro.example.com", "x.cliniventas.com.evil.com", "a.b.cliniventas.com"):
+        assert not pattern.fullmatch(host), host
+
+
 def test_active_file_is_valid_traefik_config() -> None:
     document = yaml.safe_load(ACTIVE.read_text(encoding="utf-8"))
     router = document["http"]["routers"]["sugerencias-chat"]
@@ -124,7 +135,7 @@ def test_active_file_is_valid_traefik_config() -> None:
 
     assert router["entryPoints"] == ["websecure"]
     assert router["tls"]["certResolver"] == "letsencrypt"
-    assert "dermicapro.cliniventas.com" in router["rule"]
+    _assert_tenant_routing(router["rule"])
     assert router["service"] == "sugerencias-chat"
 
     url = service["servers"][0]["url"]
@@ -152,6 +163,7 @@ def test_switching_preserves_the_routing_rule(tmp_path, color: str) -> None:
     """Conmutar de color no puede perder el Host ni el certResolver: sería un
     despliegue que deja el dominio sin certificado."""
     sandbox = _sandbox(tmp_path)
+    original_router = yaml.safe_load(ACTIVE.read_text(encoding="utf-8"))["http"]["routers"]["sugerencias-chat"]
 
     result = _run_bash(sandbox, f"write_active {color}")
     assert result.returncode == 0, result.stderr
@@ -162,7 +174,8 @@ def test_switching_preserves_the_routing_rule(tmp_path, color: str) -> None:
 
     assert url == f"http://127.0.0.1:{PORTS[color]}"
     assert router["tls"]["certResolver"] == "letsencrypt"
-    assert "dermicapro.cliniventas.com" in router["rule"]
+    assert router == original_router
+    _assert_tenant_routing(router["rule"])
 
 
 @requires_bash

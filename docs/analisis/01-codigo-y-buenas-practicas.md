@@ -8,7 +8,7 @@
 
 - **Dos ficheros concentran el 20 % del backend.** `automation_service.py` (2737
   líneas, 72 funciones de nivel superior) es en realidad siete módulos en uno, y
-  `db_service.py` (2001 líneas, 90 funciones) es un *God Object*. Todo lo demás de
+  `db_service.py` (2001 líneas, 90 funciones) es un _God Object_. Todo lo demás de
   este informe se refactoriza con dificultad mientras esos dos no se partan (B1.1,
   B1.2).
 - **La misma lógica está escrita tres veces y las copias ya divergieron.** El
@@ -47,52 +47,52 @@ la profundidad de anidamiento de cada función Python.
 
 ### Backend — ficheros más grandes (líneas)
 
-| Fichero | Líneas |
-|---|---|
-| `backend/services/automation_service.py` | 2737 |
-| `backend/services/db_service.py` | 2001 |
-| `backend/routers/chats.py` | 791 |
-| `backend/models/schemas.py` | 655 |
-| `backend/db/models.py` | 652 |
-| `backend/services/media_storage.py` | 563 |
-| `backend/services/evolution_service.py` | 527 |
-| `backend/services/message_outbox.py` | 523 |
-| `backend/routers/templates.py` | 437 |
-| `backend/services/productivity_service.py` | 430 |
+| Fichero                                    | Líneas |
+| ------------------------------------------ | ------ |
+| `backend/services/automation_service.py`   | 2737   |
+| `backend/services/db_service.py`           | 2001   |
+| `backend/routers/chats.py`                 | 791    |
+| `backend/models/schemas.py`                | 655    |
+| `backend/db/models.py`                     | 652    |
+| `backend/services/media_storage.py`        | 563    |
+| `backend/services/evolution_service.py`    | 527    |
+| `backend/services/message_outbox.py`       | 523    |
+| `backend/routers/templates.py`             | 437    |
+| `backend/services/productivity_service.py` | 430    |
 
 Total backend (sin tests ni alembic): ~23.3k líneas. Los dos primeros ficheros
 concentran el 20 % del código de la aplicación.
 
 ### Backend — funciones más largas / más anidadas
 
-| Función | Líneas | Anidamiento máx. | Ubicación |
-|---|---|---|---|
-| `_run_visual_execution` | 345 | 5 | `backend/services/automation_service.py:1899` |
-| `validate_automation_rule` | 186 | **11** | `backend/services/automation_service.py:489` |
-| `validate_visual_flow` | 134 | 7 | `backend/services/automation_service.py:863` |
-| `_resolve_once` | 120 | 4 | `backend/services/whatsapp_identity_service.py:137` |
-| `_compute_dashboard_metrics` | 116 | 1 | `backend/services/dashboard_service.py:31` |
-| `_validate_interactive_config` | 109 | 4 | `backend/routers/templates.py:81` |
-| `simulate_visual_flow` | 104 | 7 | `backend/services/automation_service.py:1389` |
-| `fetch_messages` | 103 | 3 | `backend/services/db_service.py:1331` |
-| `fetch_chats` | 102 | 4 | `backend/services/db_service.py:399` |
-| `send_template` | 88 | 2 | `backend/routers/chats.py:620` |
-| `validate_graph_topology` | 61 | 6 | `backend/services/automation_rules.py:153` |
+| Función                        | Líneas | Anidamiento máx. | Ubicación                                           |
+| ------------------------------ | ------ | ---------------- | --------------------------------------------------- |
+| `_run_visual_execution`        | 345    | 5                | `backend/services/automation_service.py:1899`       |
+| `validate_automation_rule`     | 186    | **11**           | `backend/services/automation_service.py:489`        |
+| `validate_visual_flow`         | 134    | 7                | `backend/services/automation_service.py:863`        |
+| `_resolve_once`                | 120    | 4                | `backend/services/whatsapp_identity_service.py:137` |
+| `_compute_dashboard_metrics`   | 116    | 1                | `backend/services/dashboard_service.py:31`          |
+| `_validate_interactive_config` | 109    | 4                | `backend/routers/templates.py:81`                   |
+| `simulate_visual_flow`         | 104    | 7                | `backend/services/automation_service.py:1389`       |
+| `fetch_messages`               | 103    | 3                | `backend/services/db_service.py:1331`               |
+| `fetch_chats`                  | 102    | 4                | `backend/services/db_service.py:399`                |
+| `send_template`                | 88     | 2                | `backend/routers/chats.py:620`                      |
+| `validate_graph_topology`      | 61     | 6                | `backend/services/automation_rules.py:153`          |
 
 ### Frontend — ficheros más grandes (líneas)
 
-| Fichero | Líneas |
-|---|---|
-| `frontend/src/components/TemplatesPage.tsx` | 838 |
-| `frontend/src/components/VisualFlowBuilder.tsx` | 789 |
-| `frontend/src/components/flow/FlowCanvas.tsx` | 771 |
-| `frontend/src/types/index.ts` | 693 |
-| `frontend/src/hooks/useChats.ts` | 657 |
-| `frontend/src/App.tsx` | 613 |
-| `frontend/src/components/ChatList.tsx` | 604 |
-| `frontend/src/utils/message.ts` | 518 |
-| `frontend/src/components/ChatComposer.tsx` | 513 |
-| `frontend/src/components/KanbanBoard.tsx` | 502 |
+| Fichero                                         | Líneas |
+| ----------------------------------------------- | ------ |
+| `frontend/src/components/TemplatesPage.tsx`     | 838    |
+| `frontend/src/components/VisualFlowBuilder.tsx` | 789    |
+| `frontend/src/components/flow/FlowCanvas.tsx`   | 771    |
+| `frontend/src/types/index.ts`                   | 693    |
+| `frontend/src/hooks/useChats.ts`                | 657    |
+| `frontend/src/App.tsx`                          | 613    |
+| `frontend/src/components/ChatList.tsx`          | 604    |
+| `frontend/src/utils/message.ts`                 | 518    |
+| `frontend/src/components/ChatComposer.tsx`      | 513    |
+| `frontend/src/components/KanbanBoard.tsx`       | 502    |
 
 ---
 
@@ -114,7 +114,7 @@ concentran el 20 % del código de la aplicación.
    `trigger_inbound_message:1280`).
 5. Los 12 handlers de acción (`_action_create_task:1508` … `_action_send_attachment:1745`).
 6. El intérprete del grafo (`_run_visual_execution:1899`, `_run_execution:2293`).
-7. El *scheduler*/reaper en segundo plano (`_discover_recent_inbound_messages:2408`,
+7. El _scheduler_/reaper en segundo plano (`_discover_recent_inbound_messages:2408`,
    `_discover_wait_any_replies:2461`, `_discover_timed_events:2527`,
    `_release_stale_executions:2614`, `backfill_automation_state:2647`,
    `watch_automations:2714`).
@@ -134,7 +134,7 @@ con el registro `ACTION_HANDLERS` como punto de extensión), `engine.py`
 `watch_automations`). Mantener `automation_service.py` como fachada de reexportación
 para no romper los ~15 imports existentes. **Esfuerzo: L.**
 
-#### [ALTO] B1.2 — `db_service.py` es un *God Object* de 2001 líneas con 90 funciones
+#### [ALTO] B1.2 — `db_service.py` es un _God Object_ de 2001 líneas con 90 funciones
 
 **Qué está mal.** `backend/services/db_service.py` mezcla siete agregados distintos:
 leads/chats (`fetch_chats:399`, `create_lead:854`, `rekey_lead_phone:955`),
@@ -191,8 +191,9 @@ consuma. Reduce la firma a `fetch_chats(filters: ChatFilters, page: CursorPage)`
 (TRIGGER `:1961`, CONDITION `:1975`, ACTION `:1998`, WAIT `:2015`, WAIT_ANY `:2035`,
 QUESTION `:2127`, END implícito `:2194`). El bloque
 `saved = await _persist_visual_execution(..., AutomationExecutionStatus.RUNNING, ...)`
-+ `if not saved: return  # cancelada externamente` está **copiado literalmente 5 veces**
-(`:1963`, `:1986`, `:2003`, `:2115`, `:2182`).
+
+- `if not saved: return  # cancelada externamente` está **copiado literalmente 5 veces**
+  (`:1963`, `:1986`, `:2003`, `:2115`, `:2182`).
 
 **Por qué importa.** Añadir un tipo de nodo obliga a tocar esta función y a recordar
 el patrón de persistencia; olvidarse del `if not saved` reintroduce el bug de
@@ -300,7 +301,7 @@ manejo de errores (p. ej. distinguir 429) obliga a editar cuatro sitios.
 que resuelva config, arme la URL, mida y traduzca errores; `_post`/`_get` quedan como
 envoltorios de una línea. **Esfuerzo: S.**
 
-#### [MEDIO] B2.4 — Cinco bucles *watcher* con el mismo esqueleto
+#### [MEDIO] B2.4 — Cinco bucles _watcher_ con el mismo esqueleto
 
 **Qué está mal.** `watch_chats` (`backend/services/chat_watcher.py:14`),
 `watch_task_reminders` (`backend/services/task_reminder.py:10`),
@@ -330,11 +331,11 @@ literal en `backend/routers/chats.py:95` (`DEFAULT_INTERACTIVE_FOOTER`),
 `backend/services/message_outbox.py:460,465,472,478,487`. El payload de broadcast
 `{"type": "chats_updated", "chat_id": …, "reason": …}` se construye a mano en 39 sitios
 (`grep -c chats_updated` = 39, con 70 llamadas a `manager.broadcast`), con el `reason`
-como *string* libre: `"stage_changed"`, `"lead_created"`, `"lead_updated"`,
+como _string_ libre: `"stage_changed"`, `"lead_created"`, `"lead_updated"`,
 `"tag_changed"`, `"outbound_queued"`, `"outbound_message"`, `"read"`, `"reaction"`,
 `"analysis"`, `"message_status"`, `"inbound_message"`, `"external_message"`.
 
-**Por qué importa.** El frontend hace *switch* sobre esos `reason`
+**Por qué importa.** El frontend hace _switch_ sobre esos `reason`
 (`frontend/src/hooks/useChats.ts`); un typo en el backend no falla en ningún test y
 degrada el refresco en silencio.
 
@@ -385,6 +386,7 @@ pero conviene añadir un test que fuerce una excepción no contemplada.
 #### [MEDIO] B3.3 — Estado global mutable de módulo en tres servicios
 
 **Qué está mal.**
+
 - `backend/services/evolution_service.py:18-19`: `_http_client` y `_capabilities_cache`
   globales. El caché de capacidades (TTL 300 s, `:144`) no tiene función de purga, así
   que un test que ejercite el fallback interactivo contamina a los siguientes.
@@ -447,6 +449,7 @@ de los routers. **Esfuerzo: S.**
 #### [MEDIO] B4.2 — Excepciones tragadas sin registro en rutas de datos
 
 **Qué está mal.**
+
 - `backend/services/media_storage.py:374-375` (`except Exception: continue` dentro del
   bucle de `image_dimensions`) y `:464-465` (`except Exception: return None` en
   `_mp4_dimensions`): si PIL o el parseo MP4 fallan siempre, el sistema deja de
@@ -537,7 +540,7 @@ ningún analizador puede propagar tipos y el IDE no ayuda.
 
 `backend/routers/webhooks.py:38` (`body: dict[str, Any] = Body(...)`) y `:306`
 (`body: dict[str, Any] | list[dict[str, Any]]`) aceptan cualquier cosa y delegan la
-validación a `parse_evolution_identity` / `parse_message_status_events`. Es defendible
+validación a `parse_message_identity` / `parse_message_status_events`. Es defendible
 (el formato de Evolution varía entre versiones) pero conviene documentar el contrato
 con un modelo Pydantic laxo + `model_config = ConfigDict(extra="allow")` para que
 FastAPI genere el esquema OpenAPI. **Esfuerzo: S.**
@@ -596,7 +599,7 @@ y que conviene preservar:
   aserciones de tipo reales son ~10 en todo el proyecto.
 - **Validación de datos externos en el borde.** `parseChatSocketEvent`
   (`frontend/src/hooks/useChats.ts:167-278`) valida campo a campo cada evento del
-  WebSocket con *type guards* en vez de castear. Es el patrón correcto.
+  WebSocket con _type guards_ en vez de castear. Es el patrón correcto.
 - **Un único helper de errores de red** (`frontend/src/utils/errors.ts`), importado
   por más de 20 componentes.
 
@@ -620,6 +623,7 @@ de admin está **duplicado**: en las rutas (`:592-595`,
 (`:402`, `:404`, `:406`, `isTemplates && me?.role === 'admin' ? …`).
 
 **Por qué importa.** Tres consecuencias medibles:
+
 1. Estando en `/dashboard` o `/templates`, `MainLayout` sigue ejecutando
    `useInfiniteChats(debouncedSearch, effectiveFilters)` (`:171`), `useChat` (`:184`),
    `useSuggestionStatus` (`:192`) y `useUnreadCount` (`:124`). Se piden y se mantienen
@@ -639,7 +643,7 @@ queda en un único `<AdminRoute>`. **Esfuerzo: L.**
 
 **Qué está mal.** `frontend/src/hooks/useChats.ts:292-540` hace, en un solo hook:
 (a) ciclo de vida del WebSocket con reconexión, ping y watchdog (`:317-357`,
-`:513-538`); (b) *parsing* y validación de 8 tipos de evento (delegado a
+`:513-538`); (b) _parsing_ y validación de 8 tipos de evento (delegado a
 `parseChatSocketEvent`, bien); (c) **la política completa de invalidación de caché**
 (`:359-511`), una cadena de 9 `if (payload.type === …)` — no un `switch`, así que
 TypeScript no puede comprobar exhaustividad y un tipo de evento nuevo compila y no
@@ -669,10 +673,11 @@ el diálogo de creación/edición y el editor interactivo.
 nombre) con estado de UI (`simulationOpen`, `versionsOpen`, `leadSearch`, `searching`).
 
 **Refactorización propuesta.** Para `TemplatesPage`: extraer `useTemplateForm()` (estado
-+ validación) y `TemplateFormDialog` como componente. Para `VisualFlowBuilder`: un
-`useReducer` para el documento del flujo (nodos/aristas/nombre, que cambian juntos) y
-dejar `useState` solo para lo efímero; los diálogos de simulación y versiones a
-componentes propios. **Esfuerzo: M** cada uno.
+
+- validación) y `TemplateFormDialog` como componente. Para `VisualFlowBuilder`: un
+  `useReducer` para el documento del flujo (nodos/aristas/nombre, que cambian juntos) y
+  dejar `useState` solo para lo efímero; los diálogos de simulación y versiones a
+  componentes propios. **Esfuerzo: M** cada uno.
 
 ### F2. Duplicación entre componentes
 
@@ -697,7 +702,7 @@ un campo a una acción exige tocar las tres y nada avisa si se olvida una; ya ho
 builder visual no valida `remind_minutes_before < due_minutes` y el otro sí.
 
 **Refactorización propuesta.** Un único `components/automation/ActionEditor.tsx`
-parametrizado por *layout* (compacto para el panel del builder, expandido para la
+parametrizado por _layout_ (compacto para el panel del builder, expandido para la
 página), y `defaultAction` movido a `frontend/src/domain/automationCatalog.ts` —donde
 ya vive el resto del catálogo. **Esfuerzo: M.**
 
@@ -788,7 +793,7 @@ supresión y con ella el riesgo de que un día la dependencia realmente falte.
 `noImplicitAny`, un parámetro sin anotar **es** `any` aunque no aparezca escrito; y sin
 `strictNullChecks`, los ~200 tipos `| null` de `frontend/src/types/index.ts` (693
 líneas) no obligan a comprobar nada — `chat.phone.replace(...)` compila con `phone`
-declarado `string | null`. El código está escrito *como si* fuera estricto (los type
+declarado `string | null`. El código está escrito _como si_ fuera estricto (los type
 guards de `parseChatSocketEvent` lo demuestran), así que activar `strict` debería
 producir sorprendentemente pocos errores, y cada uno de ellos será real.
 
@@ -834,13 +839,13 @@ Las pocas aserciones que existen están, precisamente, donde más duelen:
 
 **Qué está mal.** Medición sobre `frontend/src` (excluidos tests):
 
-| Fichero | Líneas > 300 chars | Peor línea |
-|---|---|---|
-| `frontend/src/components/AutomationsPage.tsx` | 31 | `:404` — **4167 caracteres** |
-| `frontend/src/components/VisualFlowBuilder.tsx` | 28 | `:556` — 3407 caracteres |
-| `frontend/src/components/TemplatesPage.tsx` | 22 | `:633` — 1941 caracteres |
-| `frontend/src/components/TemplateSendDialog.tsx` | 13 | `:323` — 815 caracteres |
-| `frontend/src/components/NotificationCenter.tsx` | 7 | — |
+| Fichero                                          | Líneas > 300 chars | Peor línea                   |
+| ------------------------------------------------ | ------------------ | ---------------------------- |
+| `frontend/src/components/AutomationsPage.tsx`    | 31                 | `:404` — **4167 caracteres** |
+| `frontend/src/components/VisualFlowBuilder.tsx`  | 28                 | `:556` — 3407 caracteres     |
+| `frontend/src/components/TemplatesPage.tsx`      | 22                 | `:633` — 1941 caracteres     |
+| `frontend/src/components/TemplateSendDialog.tsx` | 13                 | `:323` — 815 caracteres      |
+| `frontend/src/components/NotificationCenter.tsx` | 7                  | —                            |
 
 `VisualFlowBuilder.tsx:556` es **un diálogo modal completo** (búsqueda de lead,
 resultados, botón de simular y render de la ruta resultante) en una sola línea física.
@@ -899,18 +904,18 @@ dejar el repositorio limpio).
 
 ## Top 10 acciones priorizadas
 
-| # | Acción | Hallazgo | Impacto | Esfuerzo |
-|---|---|---|---|---|
-| 1 | Añadir `ruff` + `mypy` al backend y `"strict": true` al `tsconfig.app.json`, ambos en CI | F6.1, F4.1 | Alto — es la red que impide que reaparezcan la mitad de los hallazgos | M |
-| 2 | Corregir `_notify_execution_failure(rule, execution, str(exc))` para que reciba `deps` | B3.2 | Alto — bug real en la ruta de error del motor | S |
-| 3 | Unificar el renderizado de `{{variables}}`: `routers/chats.py` importa `render_variables` de `automation_rules` | B2.1, F2.5 | Alto — corrige `{{fecha_actual}}` desfasado un día por la noche | S |
-| 4 | Sustituir los `except Exception: raise HTTPException(500, str(e))` por un handler global con `logger.exception` | B4.1 | Alto — deja de filtrar internals y empieza a registrar los 500 | S |
-| 5 | Mover el `try/catch` de `useChatUpdates` a rodear solo `parseChatSocketEvent` y extraer la política de invalidación | F1.2, F3.1 | Alto — hoy cualquier error del tiempo real desaparece en silencio | M |
-| 6 | Extraer un único `ActionEditor` + `defaultAction` compartido entre `AutomationsPage` y `VisualFlowBuilder` | F2.1 | Alto — elimina la tercera definición de las 12 acciones | M |
-| 7 | Unificar la validación de plantillas interactivas en `services/interactive_templates.py` (backend) y consumir sus límites desde el cliente | B2.2, F5.2 | Alto — un solo contrato en vez de tres | M |
-| 8 | Partir `automation_service.py` en el paquete `services/automations/` (repository / validation / flows / actions / engine / scheduler) | B1.1, B1.4, B1.5, B6.1 | Alto — desbloquea todo lo demás sobre automatizaciones | L |
-| 9 | Partir `db_service.py` en `repositories/` por agregado y sacar `fetch_chats` a un `ChatFilters` tipado | B1.2, B1.3 | Alto — reduce el acoplamiento aferente del backend | L |
-| 10 | Formatear el frontend (ancho 120) en un commit aislado y crear `utils/datetime.ts` + `utils/files.ts` | F5.1, F2.2, F2.3 | Medio — hace revisable el 15 % del frontend que hoy no lo es | S |
+| #   | Acción                                                                                                                                     | Hallazgo               | Impacto                                                               | Esfuerzo |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------- | -------- |
+| 1   | Añadir `ruff` + `mypy` al backend y `"strict": true` al `tsconfig.app.json`, ambos en CI                                                   | F6.1, F4.1             | Alto — es la red que impide que reaparezcan la mitad de los hallazgos | M        |
+| 2   | Corregir `_notify_execution_failure(rule, execution, str(exc))` para que reciba `deps`                                                     | B3.2                   | Alto — bug real en la ruta de error del motor                         | S        |
+| 3   | Unificar el renderizado de `{{variables}}`: `routers/chats.py` importa `render_variables` de `automation_rules`                            | B2.1, F2.5             | Alto — corrige `{{fecha_actual}}` desfasado un día por la noche       | S        |
+| 4   | Sustituir los `except Exception: raise HTTPException(500, str(e))` por un handler global con `logger.exception`                            | B4.1                   | Alto — deja de filtrar internals y empieza a registrar los 500        | S        |
+| 5   | Mover el `try/catch` de `useChatUpdates` a rodear solo `parseChatSocketEvent` y extraer la política de invalidación                        | F1.2, F3.1             | Alto — hoy cualquier error del tiempo real desaparece en silencio     | M        |
+| 6   | Extraer un único `ActionEditor` + `defaultAction` compartido entre `AutomationsPage` y `VisualFlowBuilder`                                 | F2.1                   | Alto — elimina la tercera definición de las 12 acciones               | M        |
+| 7   | Unificar la validación de plantillas interactivas en `services/interactive_templates.py` (backend) y consumir sus límites desde el cliente | B2.2, F5.2             | Alto — un solo contrato en vez de tres                                | M        |
+| 8   | Partir `automation_service.py` en el paquete `services/automations/` (repository / validation / flows / actions / engine / scheduler)      | B1.1, B1.4, B1.5, B6.1 | Alto — desbloquea todo lo demás sobre automatizaciones                | L        |
+| 9   | Partir `db_service.py` en `repositories/` por agregado y sacar `fetch_chats` a un `ChatFilters` tipado                                     | B1.2, B1.3             | Alto — reduce el acoplamiento aferente del backend                    | L        |
+| 10  | Formatear el frontend (ancho 120) en un commit aislado y crear `utils/datetime.ts` + `utils/files.ts`                                      | F5.1, F2.2, F2.3       | Medio — hace revisable el 15 % del frontend que hoy no lo es          | S        |
 
 **Orden sugerido de ejecución:** 1 → 2, 3, 4 (arreglos de una línea, protegidos ya por
 el paso 1) → 10 (formateo, antes de tocar esos ficheros) → 5, 6, 7 → 8, 9.

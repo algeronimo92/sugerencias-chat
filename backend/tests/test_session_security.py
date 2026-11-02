@@ -1,13 +1,6 @@
 """Invariantes que no requieren una base real del nuevo login."""
 
-from services.session_service import (
-    describe_device,
-    hash_token,
-    new_token,
-    valid_login_pin,
-    valid_pin,
-    valid_token,
-)
+from app.modules.auth.session_service import describe_device, hash_token, new_token, valid_login_pin, valid_pin, valid_token
 
 
 def test_session_tokens_have_256_bits_and_are_accepted() -> None:

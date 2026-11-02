@@ -1,0 +1,92 @@
+{
+  "version": "2026-09-24",
+  "sources": {
+    "outbound": "https://github.com/facebook/openapi/blob/main/business-messaging-api_v23.0.yaml#L2042-L2068",
+    "outbound_interactive": "https://github.com/facebook/openapi/blob/main/business-messaging-api_v23.0.yaml#L2246-L2263",
+    "inbound": "https://www.postman.com/meta/whatsapp-business-platform/folder/1dtuocp/messages-object",
+    "statuses": "https://www.postman.com/meta/whatsapp-business-platform/folder/tduohwq/webhook-payload-reference"
+  },
+  "inbound": {
+    "root_types": [
+      "text",
+      "image",
+      "video",
+      "audio",
+      "document",
+      "sticker",
+      "location",
+      "contacts",
+      "reaction",
+      "interactive",
+      "button",
+      "order",
+      "system",
+      "unknown",
+      "unsupported"
+    ],
+    "subtypes": {
+      "interactive": ["button_reply", "list_reply", "nfm_reply"]
+    }
+  },
+  "outbound": {
+    "root_types": [
+      "text",
+      "image",
+      "video",
+      "audio",
+      "document",
+      "sticker",
+      "location",
+      "contacts",
+      "reaction",
+      "interactive",
+      "template"
+    ],
+    "subtypes": {
+      "interactive": [
+        "button",
+        "list",
+        "product",
+        "product_list",
+        "catalog_message",
+        "flow",
+        "call_permission_request"
+      ]
+    },
+    "capabilities": {
+      "interactive/product": "catalog",
+      "interactive/product_list": "catalog",
+      "interactive/catalog_message": "catalog",
+      "interactive/flow": "flow",
+      "interactive/call_permission_request": "call_permission",
+      "template": "approved_template"
+    },
+    "window_exempt_root_types": ["template"]
+  },
+  "subtype_fields": {
+    "interactive": "type",
+    "system": "type"
+  },
+  "media_root_types": ["image", "video", "audio", "document", "sticker"],
+  "statuses": ["sent", "delivered", "read", "failed"],
+  "limits": {
+    "text": 4096,
+    "caption": 1024,
+    "body": 1024,
+    "header_text": 60,
+    "footer": 60,
+    "button_title": 20,
+    "button_id": 256,
+    "max_buttons": 3,
+    "list_button": 20,
+    "section_title": 24,
+    "row_title": 24,
+    "row_description": 72,
+    "row_id": 200,
+    "max_sections": 10,
+    "max_rows": 10,
+    "max_product_sections": 10,
+    "max_products": 30,
+    "max_contacts": 20
+  }
+}

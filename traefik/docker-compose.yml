@@ -10,3 +10,5 @@ services:
 
   backend:
     ports: !override []
+    environment:
+      FORWARDED_ALLOW_IPS: "*"

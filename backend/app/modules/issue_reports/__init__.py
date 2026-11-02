@@ -1,0 +1,1 @@
+"""Issue reports business module."""

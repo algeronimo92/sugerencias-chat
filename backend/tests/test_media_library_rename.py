@@ -2,9 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.schemas import MediaAssetUpdate
-from routers import media_library
-from services import media_library_service
+from app.modules.media.schemas import MediaAssetUpdate
+from app.modules.media import library_api as media_library
+from app.modules.media import media_library_repository, media_library_service
+from tests.conftest import patch_session_scope
+from app.realtime import ws_manager
 
 
 @pytest.mark.parametrize(
@@ -44,17 +46,17 @@ async def test_rename_updates_library_and_linked_template_attachments(monkeypatc
             statements.append(statement)
             return FakeResult()
 
-        async def commit(self):
+        async def flush(self):
             nonlocal committed
             committed = True
 
     async def fake_get_asset(asset_id):
         return {"id": asset_id, "filename": "nuevo.jpg"}
 
-    monkeypatch.setattr(media_library_service, "get_sessionmaker", lambda: FakeSession)
-    monkeypatch.setattr(media_library_service, "get_media_asset", fake_get_asset)
+    patch_session_scope(monkeypatch, media_library_repository, lambda: FakeSession)
+    monkeypatch.setattr(media_library_repository, "get_media_asset", fake_get_asset)
 
-    result = await media_library_service.rename_media_asset(42, "nuevo.jpg")
+    result = await media_library_repository.rename_media_asset(42, "nuevo.jpg")
 
     assert result == {"id": 42, "filename": "nuevo.jpg"}
     assert committed
@@ -75,7 +77,7 @@ async def test_patch_rename_broadcasts_library_and_template_updates(monkeypatch)
         events.append(("broadcast", payload))
 
     monkeypatch.setattr(media_library, "rename_media_asset", fake_rename)
-    monkeypatch.setattr(media_library.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
 
     result = await media_library.patch_library_asset(
         42,
@@ -84,8 +86,20 @@ async def test_patch_rename_broadcasts_library_and_template_updates(monkeypatch)
     )
 
     assert result == {"id": 42, "filename": "nuevo.jpg"}
-    assert events == [
-        ("rename", 42, "nuevo.jpg"),
-        ("broadcast", {"type": "media_library_updated"}),
-        ("broadcast", {"type": "templates_updated"}),
-    ]
+    # El aviso a las dos pantallas lo registra el comando (abajo).
+    assert events == [("rename", 42, "nuevo.jpg")]
+
+
+@pytest.mark.asyncio
+async def test_renaming_announces_the_library_and_the_templates(monkeypatch, collected_events):
+    from unittest.mock import AsyncMock
+
+    from app.modules.media.events import MediaLibraryChanged
+
+    monkeypatch.setattr(
+        media_library_repository, "rename_media_asset", AsyncMock(return_value={"id": 42, "filename": "nuevo.jpg"}),
+    )
+
+    await media_library_service.rename_media_asset(42, "nuevo.jpg")
+
+    assert collected_events == [MediaLibraryChanged(templates_affected=True)]

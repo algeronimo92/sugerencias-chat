@@ -19,11 +19,22 @@ __pycache__
 # en el contenedor. Dejarla entrar hacía builds lentos y horneaba fotos de
 # pacientes en cada capa de imagen.
 media/
+!app/modules/media/
+!app/modules/media/**
 media-migration-report.json
 
 # Artefactos de test y herramientas: no aportan nada a la imagen de runtime.
 tests/
 .pytest_cache
+.pytest-*
 .ruff_cache
 htmlcov
 .coverage
+
+# Fixture de test que queda con permisos restringidos (simula acceso
+# denegado) y bloqueaba el envío del contexto de build en Windows.
+.test-tmp
+
+# Ephemeral local architecture validation, never runtime input.
+.modular-*
+**/.modular-*

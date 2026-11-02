@@ -13,74 +13,63 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from routers import chats, webhooks
+from app.modules.leads import api as chats
+from app.integrations.n8n import api as webhooks
+from app.integrations.n8n.webhook_schemas import LeadTouchWebhookBody
+from app.modules.leads.domain.errors import LeadNotFound
+from tests.conftest import patch_webhooks
 
 LEAD_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
-JID = "51987654321@s.whatsapp.net"
+WA_ID = "51987654321"
 ADMIN = SimpleNamespace(role="admin", id=1)
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_increments_and_broadcasts(monkeypatch):
-    monkeypatch.setattr(webhooks, "lead_id_for_jid", AsyncMock(return_value=LEAD_ID))
-    record_touch = AsyncMock(return_value=True)
-    monkeypatch.setattr(webhooks, "record_lead_touch", record_touch)
-    broadcast = AsyncMock()
-    monkeypatch.setattr(webhooks.manager, "broadcast", broadcast)
+async def test_lead_touch_counts_a_follow_up(in_memory_leads, monkeypatch):
+    in_memory_leads.repository.seed(LEAD_ID, toques_seguimiento=2)
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
 
-    result = await webhooks.lead_touch_webhook(webhooks.LeadTouchWebhookBody(jid=JID))
+    result = await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
-    record_touch.assert_awaited_once_with(LEAD_ID)
-    broadcast.assert_awaited_once_with(
-        {"type": "chats_updated", "chat_id": LEAD_ID, "reason": "lead_updated"}
-    )
     assert result == {"status": "ok", "chat_id": LEAD_ID}
+    assert in_memory_leads.repository.column(LEAD_ID, "toques_seguimiento") == 3
+    assert in_memory_leads.repository.column(LEAD_ID, "fecha_ultimo_toque") is not None
+    # El aviso a los paneles sale del suscriptor de LeadUpdated.
+    [event] = in_memory_leads.published
+    assert event.fields == ("toques_seguimiento", "fecha_ultimo_toque")
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_unknown_jid_returns_404(monkeypatch):
-    monkeypatch.setattr(webhooks, "lead_id_for_jid", AsyncMock(return_value=None))
-    record_touch = AsyncMock()
-    monkeypatch.setattr(webhooks, "record_lead_touch", record_touch)
+async def test_lead_touch_unknown_identifier_returns_404(in_memory_leads, monkeypatch):
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as exc:
-        await webhooks.lead_touch_webhook(webhooks.LeadTouchWebhookBody(jid=JID))
+        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
-    record_touch.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(monkeypatch):
+async def test_lead_touch_lead_deleted_between_lookup_and_update_returns_404(in_memory_leads, monkeypatch):
     """El alias seguía apuntando a un lead que ya no existe (fusión, borrado)."""
-    monkeypatch.setattr(webhooks, "lead_id_for_jid", AsyncMock(return_value=LEAD_ID))
-    monkeypatch.setattr(webhooks, "record_lead_touch", AsyncMock(return_value=False))
+    patch_webhooks(monkeypatch, "lead_id_for_identifier", AsyncMock(return_value=LEAD_ID))
 
     with pytest.raises(HTTPException) as exc:
-        await webhooks.lead_touch_webhook(webhooks.LeadTouchWebhookBody(jid=JID))
+        await webhooks.lead_touch_webhook(LeadTouchWebhookBody(identifier=WA_ID))
 
     assert exc.value.status_code == 404
+    assert exc.value.detail == "No hay un lead asociado a ese identificador"
 
 
-@pytest.mark.asyncio
-async def test_register_no_show_returns_updated_chat(monkeypatch):
-    mark_no_show = AsyncMock(return_value={"chat_id": LEAD_ID, "contador_noshow": 1})
-    monkeypatch.setattr(chats, "mark_lead_no_show", mark_no_show)
-    broadcast = AsyncMock()
-    monkeypatch.setattr(chats, "manager", SimpleNamespace(broadcast=broadcast))
+async def test_register_no_show_returns_updated_chat(in_memory_leads, monkeypatch):
+    in_memory_leads.repository.seed(LEAD_ID, contador_noshow=0)
+    monkeypatch.setattr(chats, "fetch_chat", AsyncMock(return_value={"chat_id": LEAD_ID, "contador_noshow": 1}))
 
     result = await chats.register_no_show(LEAD_ID, ADMIN)
 
-    mark_no_show.assert_awaited_once_with(LEAD_ID, ADMIN.id)
-    broadcast.assert_awaited_once()
+    assert in_memory_leads.repository.column(LEAD_ID, "contador_noshow") == 1
     assert result == {"chat_id": LEAD_ID, "contador_noshow": 1}
 
 
-@pytest.mark.asyncio
-async def test_register_no_show_missing_lead_returns_404(monkeypatch):
-    monkeypatch.setattr(chats, "mark_lead_no_show", AsyncMock(return_value=None))
-
-    with pytest.raises(HTTPException) as exc:
+async def test_register_no_show_missing_lead_returns_404(in_memory_leads):
+    with pytest.raises(LeadNotFound) as exc:
         await chats.register_no_show(LEAD_ID, ADMIN)
 
     assert exc.value.status_code == 404

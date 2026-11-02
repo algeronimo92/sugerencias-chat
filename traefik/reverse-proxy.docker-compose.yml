@@ -21,8 +21,30 @@ services:
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
+      # HTTP-01: emite un certificado por host, la primera vez que ese host
+      # aparece. Alcanza mientras haya un puñado de negocios, pero NO puede
+      # emitir wildcard —Let's Encrypt solo los da por DNS-01— y con la regla
+      # HostRegexp de dynamic/active.yml cualquiera puede disparar emisiones
+      # con subdominios inventados hasta agotar la cuota (50 por semana).
+      #
+      # Se desactiva al pasar a DNS-01: los dos desafíos no conviven en el
+      # mismo resolver.
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # DNS-01 con Hostinger, que es donde viven estos dominios. Un solo
+      # certificado `*.cliniventas.com` cubre a todos los negocios, presentes y
+      # futuros, sin emitir nada por request. El proveedor `hostinger` viene
+      # compilado en traefik 3.7.10 (lego >= 4.27).
+      #
+      # Para activarlo:
+      #   1. Generar un API token en hPanel y ponerlo en traefik/.env como
+      #      HOSTINGER_API_TOKEN=... (ese archivo ya se monta por env_file).
+      #   2. Comentar las dos líneas de httpchallenge de arriba y descomentar
+      #      las dos de abajo.
+      #   3. Vaciar el acme.json anterior para que los certificados por host no
+      #      convivan con el wildcard.
+      # - --certificatesresolvers.letsencrypt.acme.dnschallenge=true
+      # - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=hostinger
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --entrypoints.web.http.redirections.entrypoint.to=websecure

@@ -1,19 +1,24 @@
-import dataclasses
-from types import SimpleNamespace
+from datetime import datetime, timezone
 
 import pytest
 
-from domain_types import AutomationExecutionStatus, FlowConditionType
-from services.automation_service import (
-    _execution_message_context,
-    _matches_flow_condition,
-    _matches_flow_condition_node,
-    _normalize_flow_condition,
-    _normalize_flow_condition_node,
-    _run_visual_execution,
-    normalize_visual_draft,
-)
+from app.modules.automations.ports.types import AutomationExecutionStatus, FlowConditionType
+from app.modules.automations.application.engine import run_visual_execution
+from app.modules.automations.domain.conditions import match_condition_node, match_flow_condition
+from app.modules.automations.domain.execution import execution_message_context
+from app.modules.automations.domain.flow_definition import normalize_visual_draft
+from app.modules.automations.domain.validation import normalize_flow_condition, normalize_flow_condition_node
 from tests.conftest import make_chat, make_execution, make_rule
+
+NOW = datetime(2026, 7, 20, 15, 0, tzinfo=timezone.utc)
+
+
+def evaluate(data, chat, context):
+    return match_flow_condition(data, chat, context, now=NOW)
+
+
+def evaluate_node(data, chat, context):
+    return match_condition_node(data, chat, context, now=NOW)
 
 
 class TestNormalizeMessageCondition:
@@ -23,7 +28,7 @@ class TestNormalizeMessageCondition:
         FlowConditionType.MESSAGE_NOT_CONTAINS,
     ])
     def test_accepts_a_search_value(self, condition_type):
-        normalized, user_id, tag_id = _normalize_flow_condition({
+        normalized, user_id, tag_id = normalize_flow_condition({
             "condition_type": condition_type,
             "value": "  Hollywood Peel  ",
         }, 2)
@@ -34,7 +39,7 @@ class TestNormalizeMessageCondition:
     @pytest.mark.parametrize("value", ["", " ", "x" * 501])
     def test_rejects_blank_or_oversized_values(self, value):
         with pytest.raises(ValueError, match="500 caracteres"):
-            _normalize_flow_condition({
+            normalize_flow_condition({
                 "condition_type": FlowConditionType.MESSAGE_CONTAINS,
                 "value": value,
             }, 2)
@@ -42,7 +47,7 @@ class TestNormalizeMessageCondition:
 
 class TestNormalizeConditionGroups:
     def test_converts_a_legacy_condition_to_one_group(self):
-        normalized, users, tags = _normalize_flow_condition_node({
+        normalized, users, tags = normalize_flow_condition_node({
             "condition_type": FlowConditionType.MESSAGE_CONTAINS,
             "value": "Hollywood",
         }, 2)
@@ -55,7 +60,7 @@ class TestNormalizeConditionGroups:
         assert tags == set()
 
     def test_normalizes_and_collects_references_from_all_groups(self):
-        normalized, users, tags = _normalize_flow_condition_node({
+        normalized, users, tags = normalize_flow_condition_node({
             "condition_groups": [
                 {"id": "hollywood", "conditions": [
                     {"id": "message", "condition_type": "message_contains", "value": "Hollywood"},
@@ -72,7 +77,7 @@ class TestNormalizeConditionGroups:
 
     def test_rejects_empty_groups(self):
         with pytest.raises(ValueError, match="reglas AND"):
-            _normalize_flow_condition_node({
+            normalize_flow_condition_node({
                 "condition_groups": [{"id": "empty", "conditions": []}],
             }, 2)
 
@@ -109,33 +114,32 @@ class TestNormalizeConditionGroups:
 
 
 class TestMatchMessageCondition:
-    async def test_contains_ignores_case_accents_and_repeated_spaces(self, deps):
-        matches, _ = await _matches_flow_condition(
+    def test_contains_ignores_case_accents_and_repeated_spaces(self):
+        matches, _ = evaluate(
             {"condition_type": FlowConditionType.MESSAGE_CONTAINS, "value": "Hollywood peel"},
             make_chat(),
-            deps,
             {"content": "  QUIERO   HÓLLYWOOD PEEL, por favor "},
         )
         assert matches is True
 
-    async def test_equals_uses_the_normalized_complete_message(self, deps):
+    def test_equals_uses_the_normalized_complete_message(self):
         data = {"condition_type": FlowConditionType.MESSAGE_EQUALS, "value": "sí, deseo información"}
-        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": " SI,  deseo información "}))[0] is True
-        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Sí, deseo información adicional"}))[0] is False
+        assert (evaluate(data, make_chat(), {"content": " SI,  deseo información "}))[0] is True
+        assert (evaluate(data, make_chat(), {"content": "Sí, deseo información adicional"}))[0] is False
 
-    async def test_not_contains_inverts_the_contains_result(self, deps):
+    def test_not_contains_inverts_the_contains_result(self):
         data = {"condition_type": FlowConditionType.MESSAGE_NOT_CONTAINS, "value": "tatuaje"}
-        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Quiero HIFU"}))[0] is True
-        assert (await _matches_flow_condition(data, make_chat(), deps, {"content": "Borrado de tatuaje"}))[0] is False
+        assert (evaluate(data, make_chat(), {"content": "Quiero HIFU"}))[0] is True
+        assert (evaluate(data, make_chat(), {"content": "Borrado de tatuaje"}))[0] is False
 
     @pytest.mark.parametrize("condition_type", [
         FlowConditionType.MESSAGE_CONTAINS,
         FlowConditionType.MESSAGE_EQUALS,
         FlowConditionType.MESSAGE_NOT_CONTAINS,
     ])
-    async def test_missing_message_context_never_matches(self, deps, condition_type):
-        matches, detail = await _matches_flow_condition(
-            {"condition_type": condition_type, "value": "algo"}, make_chat(), deps, None,
+    async def test_missing_message_context_never_matches(self, condition_type):
+        matches, detail = evaluate(
+            {"condition_type": condition_type, "value": "algo"}, make_chat(), None,
         )
         assert matches is False
         assert "No hay" in detail
@@ -146,28 +150,28 @@ class TestMatchMediaAnalysisCondition:
     `analysis_summary` (la descripción que la IA generó del adjunto), no el
     texto que mandó el cliente."""
 
-    async def test_matches_when_the_ai_description_mentions_it(self, deps):
-        matches, detail = await _matches_flow_condition(
+    def test_matches_when_the_ai_description_mentions_it(self):
+        matches, detail = evaluate(
             {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante de pago"},
-            make_chat(), deps,
+            make_chat(),
             {"content": None, "analysis_summary": "La imagen es un COMPROBANTE DE PAGO de Yape por S/ 50.00"},
         )
         assert matches is True
 
-    async def test_does_not_match_a_different_description(self, deps):
-        matches, _ = await _matches_flow_condition(
+    def test_does_not_match_a_different_description(self):
+        matches, _ = evaluate(
             {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante de pago"},
-            make_chat(), deps,
+            make_chat(),
             {"content": None, "analysis_summary": "Primer plano del rostro de una persona, con pecas y ojeras"},
         )
         assert matches is False
 
-    async def test_a_plain_text_reply_never_matches_since_it_has_no_analysis(self, deps):
+    def test_a_plain_text_reply_never_matches_since_it_has_no_analysis(self):
         # Un texto no tiene analysis_summary: la rama Sí exige evidencia de
         # que era un adjunto, no ausencia de coincidencia en texto.
-        matches, detail = await _matches_flow_condition(
+        matches, detail = evaluate(
             {"condition_type": FlowConditionType.MEDIA_ANALYSIS_CONTAINS, "value": "comprobante"},
-            make_chat(), deps,
+            make_chat(),
             {"content": "ahorita te mando la captura", "analysis_summary": None},
         )
         assert matches is False
@@ -187,22 +191,22 @@ class TestMatchConditionGroups:
         ],
     }
 
-    async def test_all_conditions_inside_a_group_must_match(self, deps):
-        matches, branch, detail = await _matches_flow_condition_node(
-            self.GROUPED, make_chat(origen="Instagram"), deps, {"content": "Quiero Hollywood"},
+    def test_all_conditions_inside_a_group_must_match(self):
+        matches, branch, detail = evaluate_node(
+            self.GROUPED, make_chat(origen="Instagram"), {"content": "Quiero Hollywood"},
         )
         assert matches is False
         assert branch == "no"
         assert "Ninguno" in detail
 
-    async def test_groups_are_or_and_return_the_matching_output(self, deps):
-        matches, branch, _ = await _matches_flow_condition_node(
-            self.GROUPED, make_chat(origen="Instagram"), deps, {"content": "SEMANA DE LA MUJER"},
+    def test_groups_are_or_and_return_the_matching_output(self):
+        matches, branch, _ = evaluate_node(
+            self.GROUPED, make_chat(origen="Instagram"), {"content": "SEMANA DE LA MUJER"},
         )
         assert matches is True
         assert branch == "women_week"
 
-    async def test_first_matching_group_wins(self, deps):
+    def test_first_matching_group_wins(self):
         data = {"condition_groups": [
             {"id": "first", "conditions": [
                 {"id": "a", "condition_type": "message_contains", "value": "Hollywood"},
@@ -211,8 +215,8 @@ class TestMatchConditionGroups:
                 {"id": "b", "condition_type": "message_contains", "value": "Hollywood Peel"},
             ]},
         ]}
-        assert (await _matches_flow_condition_node(
-            data, make_chat(), deps, {"content": "Hollywood Peel"},
+        assert (evaluate_node(
+            data, make_chat(), {"content": "Hollywood Peel"},
         ))[1] == "first"
 
 
@@ -222,9 +226,9 @@ class TestMessageContext:
             event_payload={"message_id": "initial", "content": "mensaje inicial"},
             flow_state={"message_context": {"message_id": "reply", "content": "respuesta nueva"}},
         )
-        assert _execution_message_context(execution) == {
+        assert execution_message_context(execution) == {
             "message_id": "reply", "content": "respuesta nueva",
-            "message_type": None, "analysis_summary": None,
+            "message_type": None, "message_subtype": None, "reply_id": None, "analysis_summary": None,
         }
 
     def test_non_text_reply_clears_the_previous_text_context(self):
@@ -232,12 +236,12 @@ class TestMessageContext:
             event_payload={"message_id": "initial", "content": "mensaje inicial"},
             flow_state={"message_context": {"message_id": "reply", "content": None}},
         )
-        assert _execution_message_context(execution) == {
+        assert execution_message_context(execution) == {
             "message_id": "reply", "content": None,
-            "message_type": None, "analysis_summary": None,
+            "message_type": None, "message_subtype": None, "reply_id": None, "analysis_summary": None,
         }
 
-    async def test_visual_condition_routes_using_trigger_message(self, deps):
+    async def test_visual_condition_routes_using_trigger_message(self, deps, executions):
         definition = {
             "conditions": {},
             "nodes": [
@@ -254,36 +258,15 @@ class TestMessageContext:
                 {"source": "c", "target": "no", "source_handle": "no"},
             ],
         }
-        writes = []
-
-        class FakeSession:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *exc):
-                return False
-
-            async def execute(self, stmt):
-                writes.append(stmt.compile().params)
-                return SimpleNamespace(rowcount=1)
-
-            async def commit(self):
-                pass
-
         execution = make_execution(
             event_payload={"message_id": "WA-1", "content": "Quiero HOLLYWOOD PEEL"},
             flow_state={"definition": definition, "flow_version": 0, "current_node_id": None, "path": []},
         )
         rule = make_rule(builder_mode="visual", flow_version=0)
 
-        await _run_visual_execution(
-            execution,
-            rule,
-            make_chat(),
-            dataclasses.replace(deps, session_factory=lambda: FakeSession),
-        )
+        await run_visual_execution(execution, rule, make_chat(), deps)
 
-        final = writes[-1]
+        _execution_id, final = executions.saves[-1]
         assert final["status"] == AutomationExecutionStatus.COMPLETED
         result = next(item for item in final["action_results"] if item["type"] == "condition")
         assert result["branch"] == "yes"

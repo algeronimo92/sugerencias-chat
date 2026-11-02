@@ -8,9 +8,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from routers import media
-from routers.media import _requested_range
-from services import media_storage as storage
+from app.modules.media import api as media
+from app.modules.media import media_upload
+from app.modules.media.api import _requested_range
+from app.integrations.storage import media_storage as storage
 
 
 class FakeS3Error(Exception):
@@ -204,8 +205,8 @@ def test_audio_webm_gets_stable_extension(monkeypatch):
         saved.update(filename=filename, data=data, content_type=content_type)
         return f"/media/{filename}"
 
-    monkeypatch.setattr(media, "save_media_bytes", fake_save)
-    result = media.save_media_file(
+    monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
+    result = media_upload.save_media_file(
         "audio/webm;codecs=opus",
         base64.b64encode(b"webm-audio").decode("ascii"),
     )
