@@ -1,15 +1,18 @@
 """Corte de la instalación single-tenant al primer tenant.
 
-Las dos herramientas corren una sola vez y sobre producción: lo que falle acá
+Estas herramientas corren una sola vez y sobre producción: lo que falle acá
 no se nota hasta el día del corte, y ese día ya es tarde.
 """
 
+import base64
 from types import SimpleNamespace
 
 import pytest
 
+from app.core import secret_cipher
 from scripts.copy_legacy_media_to_tenant import copy_legacy_media, destination_for
 from scripts.move_public_to_tenant import CONTROL_PLANE_TABLES
+from scripts.rekey_settings import RekeyError, old_keys, rekey_value
 
 
 def test_platform_tables_stay_in_public() -> None:
@@ -65,77 +68,200 @@ class NotFound(Exception):
     code = "NoSuchKey"
 
 
+class FakeResponse:
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            chunk, self.data = self.data, b""
+        else:
+            chunk, self.data = self.data[:size], self.data[size:]
+        return chunk
+
+    def close(self):
+        pass
+
+    def release_conn(self):
+        pass
+
+
 class FakeMinio:
-    def __init__(self, objects: dict[str, int]):
-        self.objects = dict(objects)
+    """Un MinIO en memoria. `readable` son los buckets que esta credencial
+    puede usar, como las políticas de verdad."""
+
+    def __init__(self, objects: dict[tuple[str, str], bytes], readable: set[str]):
+        self.objects = objects
+        self.readable = readable
         self.copies: list[tuple[str, str]] = []
+        self.uploads: list[tuple[str, str, dict]] = []
+
+    def _check(self, bucket):
+        if bucket not in self.readable:
+            raise PermissionError(f"AccessDenied {bucket}")
 
     def list_objects(self, bucket, prefix=None, recursive=False):
         assert recursive
+        self._check(bucket)
         return [
-            SimpleNamespace(object_name=name, size=size)
-            for name, size in sorted(self.objects.items())
-            if prefix is None or name.startswith(prefix)
+            SimpleNamespace(object_name=name, size=len(data))
+            for (b, name), data in sorted(self.objects.items())
+            if b == bucket and (prefix is None or name.startswith(prefix))
         ]
 
     def stat_object(self, bucket, object_name):
-        if object_name not in self.objects:
+        self._check(bucket)
+        if (bucket, object_name) not in self.objects:
             raise NotFound()
-        return SimpleNamespace(size=self.objects[object_name])
+        return SimpleNamespace(
+            size=len(self.objects[(bucket, object_name)]),
+            content_type="image/jpeg",
+            metadata={"Content-Type": "image/jpeg", "x-amz-meta-sha256": "abc"},
+        )
+
+    def get_object(self, bucket, object_name):
+        self._check(bucket)
+        return FakeResponse(self.objects[(bucket, object_name)])
 
     def copy_object(self, bucket, destination, source):
+        self._check(source.bucket_name)
+        self._check(bucket)
         self.copies.append((source.object_name, destination))
-        self.objects[destination] = self.objects[source.object_name]
+        self.objects[(bucket, destination)] = self.objects[(source.bucket_name, source.object_name)]
+
+    def put_object(self, bucket, name, data, length, content_type, metadata):
+        self._check(bucket)
+        self.uploads.append((bucket, name, metadata))
+        self.objects[(bucket, name)] = data.read(length)
 
 
-def _legacy_bucket() -> FakeMinio:
-    return FakeMinio(
-        {
-            "dermicapro/images/a.jpg": 10,
-            "dermicapro/audio/b.ogg": 20,
-            "dermicapro/files/c.pdf": 30,
-            # Ya copiado en una pasada anterior.
-            f"{TENANT}/files/c.pdf": 30,
-        }
-    )
+NEW_TENANT = "tenants/25f386c1-e145-463b-b41f-dfd63103a8bf-dermicapro"
 
 
-def test_dry_run_copies_nothing() -> None:
-    client = _legacy_bucket()
+def _legacy_objects() -> dict[tuple[str, str], bytes]:
+    return {
+        ("wsp", "media/images/a.jpg"): b"x" * 10,
+        ("wsp", "media/audio/b.ogg"): b"y" * 20,
+        ("wsp", "media/files/c.pdf"): b"z" * 30,
+        # Ya copiado en una pasada anterior.
+        ("cliniventas", f"{NEW_TENANT}/files/c.pdf"): b"z" * 30,
+    }
 
-    resumen = copy_legacy_media(client, "wsp", "dermicapro", TENANT, apply=False)
 
+def _copy(source, dest, apply: bool, workers: int = 1) -> dict:
+    return copy_legacy_media(source, "wsp", "media", dest, "cliniventas", NEW_TENANT, apply, workers=workers)
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_same_credential_copies_inside_minio(workers: int) -> None:
+    """Variante A: la credencial nueva tiene lectura sobre el bucket viejo."""
+    client = FakeMinio(_legacy_objects(), readable={"wsp", "cliniventas"})
+
+    seco = _copy(client, client, apply=False, workers=workers)
     assert client.copies == []
-    assert resumen["por_copiar"] == 2
-    assert resumen["ya_estaban"] == 1
-    assert resumen["bytes"] == 30
+    assert (seco["por_copiar"], seco["ya_estaban"], seco["bytes"]) == (2, 1, 30)
+
+    primera = _copy(client, client, apply=True, workers=workers)
+    segunda = _copy(client, client, apply=True, workers=workers)
+
+    assert primera["copiados"] == 2 and not primera["errores"]
+    assert ("cliniventas", f"{NEW_TENANT}/images/a.jpg") in client.objects
+    # Copia, no mueve: la instalación anterior sigue encontrando todo.
+    assert ("wsp", "media/images/a.jpg") in client.objects
+    assert (segunda["copiados"], segunda["ya_estaban"]) == (0, 3)
 
 
-def test_apply_copies_keeps_originals_and_is_idempotent() -> None:
-    client = _legacy_bucket()
+def test_separate_credentials_stream_and_keep_metadata() -> None:
+    """Variante B: cada credencial ve solo su bucket."""
+    objects = _legacy_objects()
+    old = FakeMinio(objects, readable={"wsp"})
+    new = FakeMinio(objects, readable={"cliniventas"})
 
-    primera = copy_legacy_media(client, "wsp", "dermicapro", TENANT, apply=True)
-    segunda = copy_legacy_media(client, "wsp", "dermicapro", TENANT, apply=True)
+    resumen = _copy(old, new, apply=True, workers=2)
 
-    assert primera["copiados"] == 2
-    assert f"{TENANT}/images/a.jpg" in client.objects
-    assert f"{TENANT}/audio/b.ogg" in client.objects
-    # Copia, no mueve: el binario single-tenant sigue encontrando todo.
-    assert "dermicapro/images/a.jpg" in client.objects
-    assert segunda["copiados"] == 0
-    assert segunda["ya_estaban"] == 3
+    assert resumen["copiados"] == 2 and not resumen["errores"]
+    assert objects[("cliniventas", f"{NEW_TENANT}/audio/b.ogg")] == b"y" * 20
+    assert all(meta == {"sha256": "abc"} for _, _, meta in new.uploads)
+    assert new.copies == []
 
 
 def test_never_overwrites_a_different_tenant_object() -> None:
-    client = FakeMinio(
-        {
-            "dermicapro/images/a.jpg": 10,
-            f"{TENANT}/images/a.jpg": 99,
-        }
-    )
+    objects = {
+        ("wsp", "media/images/a.jpg"): b"x" * 10,
+        ("cliniventas", f"{NEW_TENANT}/images/a.jpg"): b"distinto" * 10,
+    }
+    client = FakeMinio(objects, readable={"wsp", "cliniventas"})
 
-    resumen = copy_legacy_media(client, "wsp", "dermicapro", TENANT, apply=True)
+    resumen = _copy(client, client, apply=True)
 
     assert client.copies == []
-    assert resumen["conflictos"] == [f"{TENANT}/images/a.jpg"]
-    assert client.objects[f"{TENANT}/images/a.jpg"] == 99
+    assert resumen["conflictos"] == [f"{NEW_TENANT}/images/a.jpg"]
+
+
+def test_copy_errors_are_reported_not_hidden() -> None:
+    """Variante A sin el permiso de lectura: cada objeto falla y se informa."""
+    client = FakeMinio(_legacy_objects(), readable={"wsp", "cliniventas"})
+
+    def denied(*args, **kwargs):
+        raise PermissionError("AccessDenied wsp")
+
+    client.copy_object = denied
+    resumen = _copy(client, client, apply=True)
+
+    assert resumen["copiados"] == 0
+    assert len(resumen["errores"]) == 2
+
+
+# --- re-cifrado ---------------------------------------------------------------
+
+OLD_KEY = base64.urlsafe_b64encode(b"o" * 32).decode()
+NEW_KEY = base64.urlsafe_b64encode(b"n" * 32).decode()
+
+
+def _encrypt_with(monkeypatch, key: str, setting: str, value: str, namespace: str) -> str:
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", key)
+    return secret_cipher.encrypt_secret(setting, value, namespace=namespace)
+
+
+def test_rekey_moves_old_ciphertext_to_the_new_key(monkeypatch) -> None:
+    viejo = _encrypt_with(monkeypatch, OLD_KEY, "n8n_webhook_token", "secreto", "app_settings")
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", NEW_KEY)
+    keys = old_keys({"OLD_SETTINGS_ENCRYPTION_KEY": OLD_KEY})
+
+    nuevo = rekey_value(viejo, "n8n_webhook_token", ("app_settings",), keys)
+
+    assert nuevo is not None and nuevo != viejo
+    assert secret_cipher.decrypt_secret("n8n_webhook_token", nuevo) == "secreto"
+    # Segunda pasada: ya está con la clave actual, no se toca.
+    assert rekey_value(nuevo, "n8n_webhook_token", ("app_settings",), keys) is None
+
+
+def test_rekey_reads_values_encrypted_with_the_old_secret_key(monkeypatch) -> None:
+    monkeypatch.setattr(secret_cipher.settings, "secret_key", "secret-viejo")
+    viejo = _encrypt_with(monkeypatch, "", "elevenlabs_api_key", "k", "app_settings")
+    monkeypatch.setattr(secret_cipher.settings, "secret_key", "secret-nuevo")
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", NEW_KEY)
+
+    nuevo = rekey_value(viejo, "elevenlabs_api_key", ("app_settings",), old_keys({"OLD_SECRET_KEY": "secret-viejo"}))
+
+    assert secret_cipher.decrypt_secret("elevenlabs_api_key", nuevo) == "k"
+
+
+def test_rekey_moves_totp_from_public_to_tenant_namespace(monkeypatch) -> None:
+    viejo = _encrypt_with(monkeypatch, OLD_KEY, "user:1", "JBSWY3DP", "admin_totp:public")
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", NEW_KEY)
+    tenant_ns = "admin_totp:tenant_25f386c1e145463bb41fdfd63103a8bf"
+    keys = old_keys({"OLD_SETTINGS_ENCRYPTION_KEY": OLD_KEY})
+
+    nuevo = rekey_value(viejo, "user:1", (tenant_ns, "admin_totp:public"), keys)
+
+    assert secret_cipher.decrypt_secret("user:1", nuevo, namespace=tenant_ns) == "JBSWY3DP"
+
+
+def test_rekey_refuses_what_no_key_opens(monkeypatch) -> None:
+    ajena = base64.urlsafe_b64encode(b"x" * 32).decode()
+    otro = _encrypt_with(monkeypatch, ajena, "k", "v", "app_settings")
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", NEW_KEY)
+
+    with pytest.raises(RekeyError):
+        rekey_value(otro, "k", ("app_settings",), old_keys({"OLD_SETTINGS_ENCRYPTION_KEY": OLD_KEY}))
