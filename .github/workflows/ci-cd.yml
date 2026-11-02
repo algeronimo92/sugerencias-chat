@@ -311,14 +311,25 @@ jobs:
             # está apagado —lo normal, porque el despliegue anterior lo bajó—
             # el dominio queda sin backend hasta que el script vuelve a
             # escribirlo. Pasó con dos pushes seguidos a main.
+            #
+            # Del archivo del servidor solo se conserva el color (puerto y
+            # comentario ACTIVE_COLOR). Copiarlo entero encima también pisaba
+            # las reglas y los dominios del repo: un cambio de enrutado nunca
+            # llegaba a producción.
             ACTIVE=traefik/dynamic/active.yml
+            conservar_color() {
+              sed -i \
+                -e "s|http://127\.0\.0\.1:[0-9]\+|$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$1" | head -1)|" \
+                -e "s|^# ACTIVE_COLOR: .*|$(grep -m1 '^# ACTIVE_COLOR:' "$1")|" \
+                "$ACTIVE"
+            }
             cp "$ACTIVE" /tmp/active.yml.deploy
 
             # El fetch ya se hizo arriba, para el guard de PostgreSQL.
             git reset --hard origin/main
             echo "Desplegando: $(git rev-parse HEAD)"
 
-            cp /tmp/active.yml.deploy "$ACTIVE"
+            conservar_color /tmp/active.yml.deploy
 
             # Qué va a recrear este despliegue, dicho antes de hacerlo.
             #
@@ -541,6 +552,6 @@ jobs:
               # atrás el código no mueva el tráfico.
               cp "$ACTIVE" /tmp/active.yml.serving
               git reset --hard "$PREVIOUS"
-              cp /tmp/active.yml.serving "$ACTIVE"
+              conservar_color /tmp/active.yml.serving
               exit 1
             fi
