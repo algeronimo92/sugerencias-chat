@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.conversations import WhatsAppMessageEvent, WspMessage
@@ -111,7 +111,11 @@ class SqlMessageStore:
             )
             .on_conflict_do_nothing(
                 index_elements=["wa_message_id", "value", "occurred_at"],
-                index_where=WhatsAppMessageEvent.kind == "status",
+                # Literal y no `kind == "status"`: esa comparación sale como
+                # `kind = $8` y PostgreSQL no puede probar que un parámetro
+                # implique el predicado del índice parcial, así que no lo
+                # encuentra y el INSERT entero falla.
+                index_where=text("kind = 'status'"),
             )
             .returning(WhatsAppMessageEvent.id)
         )).scalar_one_or_none()
