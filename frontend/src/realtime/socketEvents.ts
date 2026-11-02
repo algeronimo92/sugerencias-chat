@@ -30,6 +30,7 @@ export const CHATS_UPDATE_REASONS = [
   'outbound_message',
   'message_status',
   'message_pinned',
+  'message_changed',
   'reaction',
   'media_ready',
   'read',

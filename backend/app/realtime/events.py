@@ -25,6 +25,8 @@ class ChatsUpdateReason(StrEnum):
     OUTBOUND_MESSAGE = "outbound_message"
     MESSAGE_STATUS = "message_status"
     MESSAGE_PINNED = "message_pinned"
+    # Un mensaje se editó o se eliminó desde WhatsApp.
+    MESSAGE_CHANGED = "message_changed"
     REACTION = "reaction"
     # El adjunto de un mensaje entrante terminó de bajarse de Meta.
     MEDIA_READY = "media_ready"

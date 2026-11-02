@@ -75,6 +75,16 @@ class MessageStore(Protocol):
 
     async def unpin(self, chat_id: str, message_id: int) -> dict | None: ...
 
+    async def apply_edit(
+        self, chat_id: str, message_id: int, content: str | None, edited_at: datetime,
+    ) -> bool:
+        """True si el texto cambió; una edición vieja no pisa una más nueva."""
+        ...
+
+    async def apply_revoke(self, chat_id: str, message_id: int, deleted_at: datetime) -> bool:
+        """True si el mensaje recién quedó eliminado."""
+        ...
+
 
 class ScheduledStore(Protocol):
     async def create(self, lead_id: str, text: str, scheduled_at: datetime, user_id: int) -> dict | None:

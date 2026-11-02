@@ -15,6 +15,7 @@ from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.domain.events import (
     MessageMediaReady,
     MessageStatusChanged,
+    ProviderMessageChanged,
     ProviderMessageStored,
     ReactionChanged,
 )
@@ -120,6 +121,29 @@ async def record_provider_reaction(
         if updated is not None:
             collect(ReactionChanged(chat_id=chat_id))
     return recorded
+
+
+async def record_provider_edit(
+    chat_id: str, message_id: int, *, content: str | None, edited_at: datetime | None,
+) -> bool:
+    """Reescribe el texto de un mensaje que se editó en WhatsApp. Lo vigente
+    queda en ``content`` y ``edited_at`` habilita el "Editado" de la burbuja."""
+    async with unit_of_work():
+        changed = await conversation_ports().messages.apply_edit(
+            chat_id, message_id, content, edited_at or _now(),
+        )
+        if changed:
+            collect(ProviderMessageChanged(chat_id=chat_id, message_id=message_id, change="edited"))
+    return changed
+
+
+async def record_provider_revoke(chat_id: str, message_id: int, *, deleted_at: datetime | None) -> bool:
+    """Marca como eliminado para todos un mensaje borrado en WhatsApp."""
+    async with unit_of_work():
+        changed = await conversation_ports().messages.apply_revoke(chat_id, message_id, deleted_at or _now())
+        if changed:
+            collect(ProviderMessageChanged(chat_id=chat_id, message_id=message_id, change="deleted"))
+    return changed
 
 
 async def attach_media(chat_id: str, message_id: int, media_url: str) -> None:

@@ -25,11 +25,14 @@ from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
 from app.modules.conversations.ports.inbound import (
     attach_media,
     receive_provider_message,
+    record_provider_edit,
     record_provider_reaction,
+    record_provider_revoke,
     record_provider_status,
     set_message_payload,
 )
-from app.modules.conversations.ports.message_queries import chat_id_for_wa_message
+from app.modules.conversations.ports.message_queries import chat_id_for_wa_message, chat_wa_message_ids
+from app.integrations.meta.wamid import message_key
 from app.modules.media.ports.media_upload import (save_decoded_media)
 from app.integrations.meta.contract import contract, is_known_inbound, message_subtype
 from app.integrations.meta_webhook import metrics
@@ -54,6 +57,10 @@ TEMPLATE_FIELDS = frozenset({
     "template_category_update",
     "message_template_components_update",
 })
+# Raíces que cambian un mensaje ya enviado en vez de ser uno nuevo.
+MESSAGE_CHANGES = frozenset({"edit", "revoke"})
+
+
 class UnroutableChange(RuntimeError):
     """El número o la WABA del evento no pertenece a ningún negocio activo."""
 
@@ -168,6 +175,50 @@ async def _reaction(message: dict, chat_id: str | None, *, actor: str, webhook_e
         metrics.unmatched_messages.labels(kind="reaction").inc()
 
 
+async def _original_message_id(chat_id: str, original_wa_message_id: str) -> int | None:
+    """El mensaje del chat que nombra ``original_wa_message_id``.
+
+    Si lo mandó el CRM, el eco del celular lo nombra con otro ``wamid`` (con el
+    BSUID del contacto en vez de su número) que no coincide literal con el
+    guardado; ahí se reconoce por la clave del mensaje.
+    """
+    rows = await chat_wa_message_ids(chat_id)
+    for message_id, wa_message_id in rows:
+        if wa_message_id == original_wa_message_id:
+            return message_id
+    key = message_key(original_wa_message_id)
+    if key is None:
+        return None
+    matches = [message_id for message_id, wa_message_id in rows if message_key(wa_message_id) == key]
+    return matches[0] if len(matches) == 1 else None
+
+
+async def _edit_or_revoke(message: dict, chat_id: str) -> None:
+    """Edición o borrado hecho en WhatsApp: cambia el mensaje original en vez
+    de sumar uno nuevo al hilo."""
+    kind = message["type"]
+    change = message.get(kind) if isinstance(message.get(kind), dict) else {}
+    original = change.get("original_message_id")
+    if not isinstance(original, str) or not original:
+        logger.warning("%s de Meta sin original_message_id", kind)
+        return
+    target_chat_id = await chat_id_for_wa_message(original) or chat_id
+    message_id = await _original_message_id(target_chat_id, original)
+    if message_id is None:
+        # Un mensaje anterior a la integración: no hay nada que cambiar.
+        metrics.unmatched_messages.labels(kind=kind).inc()
+        logger.info("%s de Meta para un mensaje que el CRM no tiene: %s", kind, original)
+        return
+    occurred_at = _timestamp(message.get("timestamp"))
+    if kind == "edit":
+        edited = change.get("message") if isinstance(change.get("message"), dict) else {}
+        await record_provider_edit(
+            target_chat_id, message_id, content=project(edited).content, edited_at=occurred_at,
+        )
+    else:
+        await record_provider_revoke(target_chat_id, message_id, deleted_at=occurred_at)
+
+
 async def _learn_changed_number(message: dict, chat_id: str, phone_number_id: str) -> None:
     system = message.get("system") if isinstance(message.get("system"), dict) else {}
     if system.get("type") == "user_changed_number" and isinstance(system.get("new_wa_id"), str):
@@ -187,6 +238,9 @@ async def _conversation_message(
             message, resolved.chat_id, actor="customer" if inbound else "business",
             webhook_event_id=webhook_event_id,
         )
+        return
+    if message.get("type") in MESSAGE_CHANGES:
+        await _edit_or_revoke(message, resolved.chat_id)
         return
     if not isinstance(message.get("id"), str):
         logger.warning("Mensaje de Meta sin id: se descarta la proyección, el evento queda en el inbox")

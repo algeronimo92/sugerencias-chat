@@ -20,6 +20,7 @@ from app.modules.conversations.domain.events import (
     MessageSent,
     MessageStatusChanged,
     OutboundQueued,
+    ProviderMessageChanged,
     ProviderMessageStored,
     ReactionChanged,
     ScheduledMessageChanged,
@@ -115,6 +116,11 @@ async def reaction_changed(event: ReactionChanged) -> None:
 @subscribe(MessageMediaReady, phase=Phase.AFTER_COMMIT)
 async def media_ready(event: MessageMediaReady) -> None:
     await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "media_ready"})
+
+
+@subscribe(ProviderMessageChanged, phase=Phase.AFTER_COMMIT)
+async def provider_message_changed(event: ProviderMessageChanged) -> None:
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "message_changed"})
 
 
 @subscribe(MessagePinChanged, phase=Phase.AFTER_COMMIT)

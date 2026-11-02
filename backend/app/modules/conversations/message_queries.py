@@ -130,6 +130,21 @@ async def fetch_message_by_wa_id(wa_message_id: str) -> dict | None:
     return _message_notification_payload(row)
 
 
+async def chat_wa_message_ids(chat_id: str, limit: int = 2000) -> list[tuple[int, str]]:
+    """``(id, wa_message_id)`` de los mensajes del chat, más recientes primero.
+
+    Para quien tenga que reconocer un mensaje por algo más que su
+    ``wa_message_id`` literal (el mismo mensaje puede llegar con otro)."""
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(WspMessage.id, WspMessage.wa_message_id)
+            .where(WspMessage.chat_id == chat_id, WspMessage.wa_message_id.isnot(None))
+            .order_by(WspMessage.id.desc())
+            .limit(limit)
+        )).all()
+    return [(int(row.id), row.wa_message_id) for row in rows]
+
+
 async def chat_id_for_wa_message(wa_message_id: str) -> str | None:
     async with session_scope() as session:
         return await session.scalar(
