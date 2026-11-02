@@ -22,6 +22,12 @@ está en el destino con el mismo tamaño se salta, de modo que se puede correr
 antes del corte (para adelantar el grueso) y otra vez con las escrituras
 paradas (para lo que llegó mientras tanto).
 
+Con ``--delete-source`` mueve en vez de copiar: borra cada original cuya
+copia está verificada (mismo tamaño y, si los dos lo tienen, mismo sha256).
+Hace falta cuando los dos buckets viven en el mismo disco y no entra una
+segunda copia de todo. Es irreversible para la vuelta atrás: la instalación
+anterior deja de encontrar lo borrado.
+
 Uso:
     python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.localhost
     python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.localhost \
@@ -106,6 +112,22 @@ def _copy_one(source, source_bucket, dest, dest_bucket, object_name, destination
         raise media_storage.MediaStorageError(f"Falló la verificación de {destination}")
 
 
+def _sha256(stat) -> str | None:
+    return {k.lower(): v for k, v in _user_metadata(stat).items()}.get("sha256")
+
+
+def _copy_is_identical(source, source_bucket, object_name, dest, dest_bucket, destination) -> bool:
+    """La copia es la misma que el original, con lo que MinIO permite saber
+    sin descargar: tamaño y, si los dos lo tienen, el sha256 que el backend
+    guarda en los metadatos al subir."""
+    original = source.stat_object(source_bucket, object_name)
+    copia = dest.stat_object(dest_bucket, destination)
+    if original.size != copia.size:
+        return False
+    a, b = _sha256(original), _sha256(copia)
+    return a is None or b is None or a == b
+
+
 def copy_legacy_media(
     source,
     source_bucket: str,
@@ -115,8 +137,16 @@ def copy_legacy_media(
     tenant_prefix: str,
     apply: bool,
     workers: int = 1,
+    delete_source: bool = False,
 ) -> dict:
-    resumen = {"copiados": 0, "por_copiar": 0, "ya_estaban": 0, "bytes": 0, "conflictos": [], "errores": []}
+    """Copia lo que falta. Con ``delete_source`` además borra cada original
+    cuya copia está verificada: el espacio no crece, lo que importa cuando
+    los dos buckets viven en el mismo disco."""
+    resumen = {
+        "copiados": 0, "por_copiar": 0, "ya_estaban": 0, "bytes": 0,
+        "borrados": 0, "por_borrar": 0, "bytes_liberados": 0,
+        "conflictos": [], "errores": [],
+    }
     lock = threading.Lock()
     vistos = 0
 
@@ -125,6 +155,7 @@ def copy_legacy_media(
         destination = destination_for(item.object_name, legacy_prefix, tenant_prefix)
         if destination is None:
             return
+        borrar = None
         try:
             existing = _size_or_none(dest, dest_bucket, destination)
             if existing == item.size:
@@ -138,6 +169,18 @@ def copy_legacy_media(
             else:
                 _copy_one(source, source_bucket, dest, dest_bucket, item.object_name, destination, item.size)
                 estado = "copiados"
+            if delete_source and estado in {"ya_estaban", "copiados", "por_copiar"}:
+                if estado == "por_copiar":
+                    borrar = "por_borrar"
+                elif not _copy_is_identical(source, source_bucket, item.object_name, dest, dest_bucket, destination):
+                    # Mismo tamaño, distinto sha256: no es la misma copia y el
+                    # original no se toca.
+                    estado, borrar = "conflicto", None
+                elif apply:
+                    source.remove_object(source_bucket, item.object_name)
+                    borrar = "borrados"
+                else:
+                    borrar = "por_borrar"
         except Exception as exc:
             with lock:
                 resumen["errores"].append(f"{item.object_name}: {type(exc).__name__}: {exc}")
@@ -149,11 +192,15 @@ def copy_legacy_media(
                 resumen[estado] += 1
                 if estado in {"copiados", "por_copiar"}:
                     resumen["bytes"] += item.size
+            if borrar:
+                resumen[borrar] += 1
+                resumen["bytes_liberados"] += item.size
             vistos += 1
             if vistos % PROGRESS_EVERY == 0:
                 print(
                     f"  {vistos} revisados, {resumen['copiados']} copiados, "
-                    f"{resumen['bytes'] / 1e9:.1f} GB",
+                    f"{resumen['bytes'] / 1e9:.1f} GB"
+                    + (f", {resumen['borrados']} originales borrados" if delete_source else ""),
                     file=sys.stderr,
                     flush=True,
                 )
@@ -198,6 +245,14 @@ async def _main() -> int:
     parser.add_argument("--source-prefix", help="por defecto, el MINIO_PREFIX del .env")
     parser.add_argument("--workers", type=int, default=4, help="copias en paralelo (por defecto 4)")
     parser.add_argument("--apply", action="store_true", help="sin este flag solo informa lo que haría")
+    parser.add_argument(
+        "--delete-source",
+        action="store_true",
+        help=(
+            "borra cada original cuya copia está verificada (tamaño y sha256). "
+            "Irreversible: sin el original no hay vuelta a la instalación anterior"
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -226,7 +281,7 @@ async def _main() -> int:
         resumen = copy_legacy_media(
             source, source_bucket, legacy_prefix,
             dest, dest_bucket, tenant_prefix,
-            args.apply, workers=max(1, args.workers),
+            args.apply, workers=max(1, args.workers), delete_source=args.delete_source,
         )
         modo = "copia interna de MinIO" if source is dest else "descarga y subida (credenciales distintas)"
         print(json.dumps(
