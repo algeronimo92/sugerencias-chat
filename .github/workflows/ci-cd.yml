@@ -189,6 +189,16 @@ jobs:
   deploy:
     needs: [frontend-checks, backend-checks, migrations-check, api-types-check, docker-build-check, monitoring-checks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Un solo despliegue a la vez contra el servidor. Dos merges seguidos
+    # lanzaban dos deploys en paralelo: los dos elegían el mismo color libre y
+    # el segundo chocaba al crear sus contenedores con los del primero (pasó el
+    # 2026-11-02 con los PR 70 y 71). No se cancela el que está corriendo: a
+    # medio conmutar dejaría el tráfico en un color a medio levantar. El que
+    # espera hace `git reset --hard origin/main`, así que despliega lo último
+    # aunque GitHub descarte otro que estaba en cola.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
