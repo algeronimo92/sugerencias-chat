@@ -62,6 +62,13 @@ def _control_plane_tables() -> frozenset[str]:
 
 CONTROL_PLANE_TABLES = _control_plane_tables()
 
+# Tablas que existen en los dos lados: cada tenant tiene la suya y la
+# plataforma usa la de `public`. Se mueven con los datos del negocio y se
+# vuelven a crear vacías en `public`. `auth_login_throttles` es el límite de
+# intentos de login: el CRM lo usa dentro del tenant y el panel, que no tiene
+# tenant, en `public`. Sin la copia, el login del panel fallaba con 500.
+SHARED_TABLES = frozenset({"auth_login_throttles"})
+
 # Señales de que ese schema ya está en uso. No alcanza con "¿hay alguna fila?":
 # la propia cadena de migraciones siembra catálogos (categorías de plantillas,
 # por ejemplo), así que un tenant recién aprovisionado nunca está del todo
@@ -207,9 +214,20 @@ async def _main() -> int:
                         f"ALTER TABLE public.{quoted_table} SET SCHEMA {preparer.quote(schema)}"
                     )
                 )
+                if table in SHARED_TABLES:
+                    await connection.execute(
+                        text(
+                            f"CREATE TABLE public.{quoted_table} "
+                            f"(LIKE {preparer.quote(schema)}.{quoted_table} INCLUDING ALL)"
+                        )
+                    )
 
             verbo = "Movidas" if args.apply else "Se moverían"
             print(f"{verbo} {len(tables)} tablas ({total} filas) de public a {schema}.")
+            compartidas = sorted(SHARED_TABLES & set(tables))
+            if compartidas:
+                verbo = "Recreadas" if args.apply else "Se recrearían"
+                print(f"{verbo} vacías en public para la plataforma: {', '.join(compartidas)}.")
             if not args.apply:
                 print("Nada se modificó: repetir con --apply.")
         return 0
