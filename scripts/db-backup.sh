@@ -32,7 +32,29 @@ db_env() {
 }
 
 POSTGRES_USER="$(db_env POSTGRES_USER)"
-POSTGRES_DB="$(db_env POSTGRES_DB)"
+
+# La base a respaldar es la que usa la aplicación (DATABASE_URL de
+# backend/.env), no POSTGRES_DB: esa es solo la base con la que se inicializó
+# el contenedor. Después del corte a CliniVentas la app pasó a otra base y el
+# cron siguió respaldando la vieja, que ya nadie escribía. Sin backend/.env
+# (una instalación solo de base) se cae a POSTGRES_DB.
+app_database() {
+  local url
+  url="$(grep -E '^DATABASE_URL=' "$ROOT/backend/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"'')"
+  [[ "$url" =~ ^[a-z+]+://([^:@/]+)(:[^@]*)?@[^/]+/([^?]+) ]] || return 1
+  APP_USER="${BASH_REMATCH[1]}"
+  APP_DB="${BASH_REMATCH[3]}"
+}
+if app_database; then
+  POSTGRES_DB="$APP_DB"
+else
+  POSTGRES_DB="$(db_env POSTGRES_DB)"
+  APP_USER=""
+fi
+[[ "$POSTGRES_DB" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "ERROR: nombre de base no admitido: $POSTGRES_DB" >&2; exit 1; }
+# Los backups llevan el nombre de la base: un restore no puede confundirse de
+# base mirando el archivo. Los anteriores al cambio se llaman dermicapro-*.
+BACKUP_GLOBS=("$POSTGRES_DB-[0-9]*.dump" "dermicapro-[0-9]*.dump")
 
 pg_in_container() {
   # pg_hba.conf exige scram tambien por el socket local. La contrasena se toma
@@ -44,7 +66,7 @@ pg_in_container() {
 cmd_backup() {
   local stamp file
   stamp="$(date +%Y%m%d-%H%M%S)"
-  file="dermicapro-$stamp.dump"
+  file="$POSTGRES_DB-$stamp.dump"
 
   echo "Volcando $POSTGRES_DB ..."
   # La redireccion crea el archivo aunque pg_dump falle: sin borrarlo quedaria
@@ -73,16 +95,16 @@ cmd_backup() {
 
   # Poda por antiguedad. -mtime cuenta dias completos.
   local removed
-  removed="$(find "$BACKUP_DIR" -name 'dermicapro-*.dump' -mtime "+$KEEP_DAYS" -print -delete | wc -l)"
+  removed="$(find "$BACKUP_DIR" \( -name "${BACKUP_GLOBS[0]}" -o -name "${BACKUP_GLOBS[1]}" \) -mtime "+$KEEP_DAYS" -print -delete | wc -l)"
   [ "$removed" -gt 0 ] && echo "  purgados $removed backups de mas de $KEEP_DAYS dias"
 
-  echo "  backups guardados: $(find "$BACKUP_DIR" -name 'dermicapro-*.dump' | wc -l)"
+  echo "  backups guardados: $(find "$BACKUP_DIR" \( -name "${BACKUP_GLOBS[0]}" -o -name "${BACKUP_GLOBS[1]}" \) | wc -l)"
 }
 
 cmd_verify() {
   local file="${1:-}"
   if [ -z "$file" ]; then
-    file="$(find "$BACKUP_DIR" -name 'dermicapro-*.dump' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)"
+    file="$(find "$BACKUP_DIR" -name "${BACKUP_GLOBS[0]}" -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)"
   fi
   # pg_restore --list lee el indice del dump: si esta truncado o corrupto,
   # falla aqui en vez de el dia que haga falta restaurarlo.
@@ -101,9 +123,12 @@ cmd_restore() {
   [ "$answer" = "restaurar" ] || { echo "Cancelado."; exit 1; }
 
   # --clean --if-exists deja la base en el estado del dump en vez de mezclar
-  # con lo que hubiera.
+  # con lo que hubiera. --role deja lo restaurado a nombre del usuario de la
+  # app: restaurado como el superusuario, la app no podría ni migrar.
+  local role=()
+  [ -n "$APP_USER" ] && [ "$APP_USER" != "$POSTGRES_USER" ] && role=(--role="$APP_USER")
   pg_in_container pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-    --clean --if-exists --no-owner < "$file"
+    --clean --if-exists --no-owner "${role[@]}" < "$file"
   echo "Restaurado. Revisar que la aplicacion arranca antes de dar por bueno."
 }
 
