@@ -69,13 +69,16 @@ producción, y si el corte se cancela no hay nada que deshacer en `wsp`.
 Las credenciales no se cruzan entre buckets, así que cada una lee o escribe
 el suyo y los bytes pasan por el VPS, en streaming (no ocupan disco). Mientras
 no haya corte, la base que sabe cuál es la carpeta del negocio es la vieja,
-por eso esta pasada usa el `DATABASE_URL` viejo. Son horas: correrlo dentro de
-`tmux` para que una caída del SSH no lo corte (se reanuda solo, saltando lo ya
-copiado).
+por eso esta pasada usa el `DATABASE_URL` viejo, con una función propia: lo
+que va después de la imagen es el comando del contenedor, así que la opción
+`-e DATABASE_URL` tiene que ir antes, dentro de la función. Son horas: correrlo
+dentro de `tmux` (las funciones se definen de nuevo ahí) para que una caída
+del SSH no lo corte; se reanuda solo, saltando lo ya copiado.
 
 ```bash
+herramienta_bd_vieja() { docker run --rm --network dermicapro-data --env-file backend/.env -e DATABASE_URL -e SOURCE_MINIO_ACCESS_KEY -e SOURCE_MINIO_SECRET_KEY -v /root/corte/backend/scripts:/app/scripts:ro sugerencias-chat-green-backend "$@"; }
 export DATABASE_URL="$(viejo DATABASE_URL)" SOURCE_MINIO_ACCESS_KEY="$(viejo MINIO_ACCESS_KEY)" SOURCE_MINIO_SECRET_KEY="$(viejo MINIO_SECRET_KEY)"
-herramienta -e DATABASE_URL python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.cliniventas.com --source-bucket wsp --source-prefix media --workers 8 --apply
+herramienta_bd_vieja python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.cliniventas.com --source-bucket wsp --source-prefix media --workers 8 --apply 2>&1 | tee /root/copia-media.log
 unset DATABASE_URL SOURCE_MINIO_ACCESS_KEY SOURCE_MINIO_SECRET_KEY
 ```
 
