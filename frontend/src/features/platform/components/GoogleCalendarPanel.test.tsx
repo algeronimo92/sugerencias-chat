@@ -5,17 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../../../shared/http/errors'
 import { readGoogleCalendarReturn } from '../public/googleCalendarReturn'
+import type { GoogleCalendarStatus } from '../types'
 import { GoogleCalendarPanel } from './GoogleCalendarPanel'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }))
 
 vi.mock('../../../shared/http/client', () => ({ default: api }))
 
-const disconnected = {
+const disconnected: GoogleCalendarStatus = {
   oauth_available: true, connected: false, account_email: null, calendar_id: null,
   enabled: false, business_timezone: 'America/Lima',
 }
-const connected = {
+const connected: GoogleCalendarStatus = {
   ...disconnected, connected: true, account_email: 'dueno@gmail.com', calendar_id: 'dueno@gmail.com', enabled: true,
 }
 const calendars = [
@@ -23,7 +24,7 @@ const calendars = [
   { id: 'agenda@group.calendar.google.com', summary: 'Agenda', primary: false },
 ]
 
-function respond({ status, calendarsError }: { status: typeof disconnected; calendarsError?: unknown }) {
+function respond({ status, calendarsError }: { status: GoogleCalendarStatus; calendarsError?: unknown }) {
   api.get.mockImplementation((url: string) => {
     if (url === '/api/settings/google-calendar/status') return Promise.resolve({ data: status })
     if (url === '/api/settings/google-calendar/calendars') {
