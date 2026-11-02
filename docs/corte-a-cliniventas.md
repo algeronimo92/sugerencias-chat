@@ -58,22 +58,20 @@ herramienta() { docker run --rm --network dermicapro-data --env-file backend/.en
 
 ### Adelantar la multimedia (~126 GB)
 
-Se puede correr con la app en marcha, todas las veces que haga falta: copia lo
-que falta y se salta lo que ya está. Mientras no haya corte, la base que sabe
-cuál es la carpeta del negocio es la vieja, por eso esta pasada usa el
-`DATABASE_URL` viejo.
+Opcional y recomendado. La copia definitiva es el paso 6, después del
+deploy, pero hasta que termine los adjuntos viejos dan 404 en el CRM: con
+multitenancy el backend solo los busca en el bucket nuevo. Adelantarla con la
+app en marcha deja para el paso 6 solo lo que llegó entretanto.
 
-**Variante A (recomendada):** dar a la credencial nueva permiso de lectura
-sobre `wsp` en la consola de MinIO. La copia la hace MinIO por dentro.
+Es seguro hacerlo antes: solo copia, no borra ni cambia nada de lo que usa
+producción, y si el corte se cancela no hay nada que deshacer en `wsp`.
 
-```bash
-export DATABASE_URL="$(viejo DATABASE_URL)"
-herramienta -e DATABASE_URL python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.cliniventas.com --source-bucket wsp --source-prefix media --workers 8 --apply
-unset DATABASE_URL
-```
-
-**Variante B:** sin tocar permisos, cada credencial con su bucket. Los bytes
-pasan por el VPS.
+Las credenciales no se cruzan entre buckets, así que cada una lee o escribe
+el suyo y los bytes pasan por el VPS, en streaming (no ocupan disco). Mientras
+no haya corte, la base que sabe cuál es la carpeta del negocio es la vieja,
+por eso esta pasada usa el `DATABASE_URL` viejo. Son horas: correrlo dentro de
+`tmux` para que una caída del SSH no lo corte (se reanuda solo, saltando lo ya
+copiado).
 
 ```bash
 export DATABASE_URL="$(viejo DATABASE_URL)" SOURCE_MINIO_ACCESS_KEY="$(viejo MINIO_ACCESS_KEY)" SOURCE_MINIO_SECRET_KEY="$(viejo MINIO_SECRET_KEY)"
@@ -84,7 +82,7 @@ unset DATABASE_URL SOURCE_MINIO_ACCESS_KEY SOURCE_MINIO_SECRET_KEY
 ### Ensayo de la base
 
 Copia con la app en marcha, para ver que restaura y cuadra. Después se borra en
-el paso 3 con `--replace`:
+el paso 2 con `--replace`:
 
 ```bash
 REPO_ROOT=/root/sugerencias-chat bash /root/corte/scripts/db-clone.sh --allow-live
@@ -131,18 +129,7 @@ unset OLD_SETTINGS_ENCRYPTION_KEY OLD_SECRET_KEY
 Hoy son 5 valores: 4 en `app_settings` y 1 en `platform_settings`. Si alguno no
 abre con ninguna clave, aborta sin escribir.
 
-## 5. Última pasada de multimedia
-
-Igual que en la preparación, pero ya con la base nueva (sin el
-`DATABASE_URL` viejo). Debe copiar solo lo que llegó desde la pasada anterior:
-
-```bash
-export SOURCE_MINIO_ACCESS_KEY="$(viejo MINIO_ACCESS_KEY)" SOURCE_MINIO_SECRET_KEY="$(viejo MINIO_SECRET_KEY)"   # solo variante B
-herramienta python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.cliniventas.com --source-bucket wsp --source-prefix media --workers 8 --apply
-unset SOURCE_MINIO_ACCESS_KEY SOURCE_MINIO_SECRET_KEY
-```
-
-## 6. Desplegar con el `.env` nuevo
+## 5. Desplegar con el `.env` nuevo
 
 ```bash
 ./scripts/deploy-bluegreen.sh
@@ -152,9 +139,25 @@ Levanta el otro color con el `.env` nuevo, migra, comprueba salud y el camino
 completo por Traefik, y recién entonces conmuta. Si falla, no conmuta: volver
 atrás con el paso 7.
 
-Comprobar: `https://dermicapro.cliniventas.com` muestra los leads,
-los adjuntos viejos abren y `https://admin.cliniventas.com/platform` deja
-entrar (requiere el registro DNS A de `admin`).
+Comprobar: `https://dermicapro.cliniventas.com` muestra los leads y
+`https://admin.cliniventas.com/platform` deja entrar (requiere el registro DNS
+A de `admin`). Los adjuntos viejos solo abren si se adelantó la copia; si no,
+abren a medida que avanza el paso 6.
+
+## 6. Copiar la multimedia
+
+Una vez que el paso 5 quedó bien. Ya con la base nueva, así que sin el
+`DATABASE_URL` viejo. Si se adelantó la copia, solo pasa lo que llegó desde
+entonces; si no, los ~126 GB, en `tmux`:
+
+```bash
+export SOURCE_MINIO_ACCESS_KEY="$(viejo MINIO_ACCESS_KEY)" SOURCE_MINIO_SECRET_KEY="$(viejo MINIO_SECRET_KEY)"
+herramienta python -m scripts.copy_legacy_media_to_tenant --hostname dermicapro.cliniventas.com --source-bucket wsp --source-prefix media --workers 8 --apply
+unset SOURCE_MINIO_ACCESS_KEY SOURCE_MINIO_SECRET_KEY
+```
+
+Termina con un resumen en JSON. `errores` y `conflictos` tienen que ser 0; si
+no, lista los primeros 20 y se puede volver a correr: retoma donde quedó.
 
 Después:
 
@@ -162,17 +165,19 @@ Después:
 - n8n: los tokens `INBOUND_WEBHOOK_TOKEN` / `OUTBOUND_WEBHOOK_TOKEN` nuevos.
 - Los usuarios vuelven a iniciar sesión (cambió `SECRET_KEY`).
 - `git worktree remove /root/corte`.
+- El bucket `wsp` y `dermicapro_db` se quedan hasta estar seguros de no
+  necesitar la vuelta atrás.
 
 ## 7. Vuelta atrás
 
-Antes del paso 6: nada se tocó del lado viejo. Volver a arrancar el color que
+Antes del paso 5: nada se tocó del lado viejo. Volver a arrancar el color que
 servía:
 
 ```bash
 docker start sugerencias-chat-green-backend-1 sugerencias-chat-green-worker-1
 ```
 
-Después del paso 6: restaurar el `.env` viejo y desplegar con él. Apunta otra
+Después del paso 5: restaurar el `.env` viejo y desplegar con él. Apunta otra
 vez a `dermicapro_db` y a `wsp`, que siguen intactos:
 
 ```bash
