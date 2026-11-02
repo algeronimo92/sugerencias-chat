@@ -160,7 +160,7 @@ n8n corre en un servidor distinto y Hostinger no ofrece red privada entre VPS. L
 
 ```bash
 scripts/db-backup.sh              # crea y verifica un backup, poda los antiguos
-scripts/db-backup.sh --restore db/backups/dermicapro-AAAAMMDD-HHMMSS.dump
+scripts/db-backup.sh --restore db/backups/cliniventas_db-AAAAMMDD-HHMMSS.dump
 ```
 
 A diario por cron:
