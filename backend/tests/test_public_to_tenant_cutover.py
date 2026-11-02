@@ -12,7 +12,7 @@ import pytest
 
 from app.core import secret_cipher
 from scripts.copy_legacy_media_to_tenant import copy_legacy_media, destination_for
-from scripts.move_public_to_tenant import CONTROL_PLANE_TABLES
+from scripts.move_public_to_tenant import CONTROL_PLANE_TABLES, SHARED_TABLES
 from scripts.rekey_settings import RekeyError, old_keys, rekey_value
 
 
@@ -33,6 +33,15 @@ def test_platform_tables_stay_in_public() -> None:
         "n8n_chat_histories",
     ):
         assert table in CONTROL_PLANE_TABLES, table
+
+
+def test_platform_login_throttle_survives_the_cutover() -> None:
+    """El panel limita los intentos de login en public.auth_login_throttles.
+    La tabla se mueve con el negocio (el CRM la usa en el tenant), así que el
+    corte tiene que volver a crearla vacía en public."""
+    assert "auth_login_throttles" in SHARED_TABLES
+    assert "auth_login_throttles" not in CONTROL_PLANE_TABLES
+    assert not SHARED_TABLES & CONTROL_PLANE_TABLES
 
 
 def test_business_tables_move_to_the_tenant() -> None:
