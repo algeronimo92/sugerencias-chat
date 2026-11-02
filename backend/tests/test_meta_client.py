@@ -144,17 +144,73 @@ async def test_send_message_adds_the_envelope_with_the_exact_wa_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_to_a_user_id_only_lead_fails_explicitly(monkeypatch):
-    """Un contacto que solo se conoce por su user_id no tiene número al que
-    este envío pueda apuntar: falla claro, no con un error genérico."""
+async def test_send_to_a_user_id_only_lead_goes_by_recipient(monkeypatch):
+    """Un contacto con nombre de usuario que no compartió su número se conoce
+    solo por su BSUID: va en ``recipient``, tal cual llegó, y sin ``to``."""
     _mock_config(monkeypatch)
     monkeypatch.setattr(
         meta_service, "resolve_whatsapp_destination",
         AsyncMock(return_value=Destination(wa_id=None, user_id="PE.1084026510784249")),
     )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({"messages": [{"id": "wamid.BSUID"}]}),
+    ])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+    message = {"type": "text", "text": {"body": "hola"}}
 
-    with pytest.raises(meta_service.MetaApiError, match="user_id"):
-        await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
+    result = await meta_service.send_message("lead-1", message)
+
+    body = fake_client.calls[0]["json"]
+    assert body == {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "recipient": "PE.1084026510784249",
+        **message,
+    }
+    assert "to" not in body
+    assert result["response"]["messages"][0]["id"] == "wamid.BSUID"
+
+
+@pytest.mark.asyncio
+async def test_send_prefers_the_phone_when_both_identifiers_are_known(monkeypatch):
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value=Destination(wa_id="51906471403", user_id="PE.1")),
+    )
+    fake_client = _FakeGraphClient([_FakeGraphResponse({"messages": [{"id": "wamid.X"}]})])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
+
+    body = fake_client.calls[0]["json"]
+    assert body["to"] == "51906471403"
+    assert "recipient" not in body
+
+
+@pytest.mark.asyncio
+async def test_message_type_that_needs_a_phone_explains_why(monkeypatch):
+    """Las plantillas de autenticación no van por BSUID (código 131062): el
+    vendedor tiene que ver la causa, no un "probá de nuevo"."""
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value=Destination(wa_id=None, user_id="PE.1")),
+    )
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse(
+            {"error": {
+                "message": "Business-scoped User ID (BSUID) recipients are not supported for this message.",
+                "type": "OAuthException", "code": 131062,
+            }},
+            is_error=True, status_code=400,
+        ),
+    ])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    with pytest.raises(meta_service.RecipientNeedsPhoneError) as excinfo:
+        await meta_service.send_message("lead-1", {"type": "template", "template": {"name": "otp"}})
+    assert "número" in describe_send_failure(excinfo.value, "enviar el mensaje")
 
 
 @pytest.mark.asyncio

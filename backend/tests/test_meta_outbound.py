@@ -208,6 +208,38 @@ def test_sent_body_matches_the_stored_one_apart_from_envelope_and_ids():
     assert message_outbox._payload_matches(stored_template, sent_template)
 
 
+def test_a_bsuid_destination_is_part_of_the_envelope():
+    stored = {"type": "text", "text": {"body": "hola"}}
+    sent = {
+        "messaging_product": "whatsapp", "recipient_type": "individual", "recipient": "PE.1",
+        "type": "text", "text": {"body": "hola"},
+    }
+    assert message_outbox._payload_matches(stored, sent)
+
+
+@pytest.mark.parametrize(("reported", "learned"), [
+    ("51987654322", "51987654322"),
+    # En un envío por BSUID Meta puede devolver el BSUID: no es un número.
+    ("PE.1407771384675176", None),
+    ("51987654321", None),
+])
+async def test_only_a_new_phone_reported_by_meta_is_learned(monkeypatch, reported, learned):
+    from unittest.mock import AsyncMock
+
+    from app.integrations.whatsapp.channel import SendReceipt
+
+    add_alias = AsyncMock()
+    monkeypatch.setattr(message_outbox, "add_identity_alias", add_alias)
+    receipt = SendReceipt("wamid.X", {"to": "51987654321"}, recipient_wa_id=reported)
+
+    await message_outbox._learn_recipient({"chat_id": "lead-1"}, receipt)
+
+    if learned is None:
+        add_alias.assert_not_awaited()
+    else:
+        add_alias.assert_awaited_once_with("lead-1", "", message_outbox.WA_ID, learned)
+
+
 async def test_capabilities_expose_catalog_and_published_flows(monkeypatch):
     from app.integrations.whatsapp import capabilities as whatsapp_capabilities
 
