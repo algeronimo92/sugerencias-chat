@@ -8,7 +8,7 @@ define el `backend/.env` nuevo, que es el que manda:
 | Base | `dermicapro_db`, rol `dermicapro` (superusuario) | `cliniventas_db`, rol `cliniventas` (sin privilegios) |
 | Datos del negocio | schema `public` | schema del tenant DermicaPro |
 | Multimedia | bucket `wsp`, prefijo `media/` | bucket `cliniventas`, `tenants/<carpeta del negocio>/` |
-| Cifrado | `SETTINGS_ENCRYPTION_KEY` / `SECRET_KEY` viejas | las del `.env` nuevo |
+| Cifrado, sesiones, tokens de n8n | `SETTINGS_ENCRYPTION_KEY`, `SECRET_KEY`, webhooks | sin cambios: el `.env` nuevo conserva los valores |
 | Modo | `MULTITENANCY_ENABLED=false` | `true`, panel en `admin.cliniventas.com` |
 
 Nada de lo viejo se borra: `dermicapro_db` y el bucket `wsp` quedan como vuelta
@@ -117,17 +117,20 @@ herramienta python -m scripts.move_public_to_tenant --hostname dermicapro.cliniv
 La primera pasada lista las tablas y las filas; `platform_users`,
 `platform_sessions` y `organization_branding` no deben aparecer.
 
-## 4. Re-cifrar los secretos
+## 4. Comprobar el cifrado
+
+El `.env` nuevo conserva `SETTINGS_ENCRYPTION_KEY` y `SECRET_KEY`, así que no
+hay nada que re-cifrar. Esta pasada solo lo confirma con los datos ya en el
+tenant: tiene que terminar en `Se re-cifrarían 0 valores`.
 
 ```bash
 export OLD_SETTINGS_ENCRYPTION_KEY="$(viejo SETTINGS_ENCRYPTION_KEY)" OLD_SECRET_KEY="$(viejo SECRET_KEY)"
 herramienta python -m scripts.rekey_settings
-herramienta python -m scripts.rekey_settings --apply
 unset OLD_SETTINGS_ENCRYPTION_KEY OLD_SECRET_KEY
 ```
 
-Hoy son 5 valores: 4 en `app_settings` y 1 en `platform_settings`. Si alguno no
-abre con ninguna clave, aborta sin escribir.
+Si algún día cambia la clave, la misma herramienta con `--apply` re-cifra lo
+que haga falta, y aborta sin escribir si algún valor no abre con ninguna clave.
 
 ## 5. Desplegar con el `.env` nuevo
 
@@ -162,8 +165,6 @@ no, lista los primeros 20 y se puede volver a correr: retoma donde quedó.
 Después:
 
 - `monitoring/.env`: `POSTGRES_EXPORTER_DSN` a `cliniventas_db`.
-- n8n: los tokens `INBOUND_WEBHOOK_TOKEN` / `OUTBOUND_WEBHOOK_TOKEN` nuevos.
-- Los usuarios vuelven a iniciar sesión (cambió `SECRET_KEY`).
 - `git worktree remove /root/corte`.
 - El bucket `wsp` y `dermicapro_db` se quedan hasta estar seguros de no
   necesitar la vuelta atrás.

@@ -17,7 +17,8 @@ en el schema de cada organización. El TOTP lleva el schema en el AAD: lo que
 se cifró en ``public`` y llegó al tenant con el corte se re-cifra con el
 namespace del tenant.
 
-Es idempotente: lo que ya abre con la clave actual se deja como está. Sin
+Es idempotente: lo que ya abre con la clave actual se deja como está, y el
+texto plano no se toca (no todo en ``app_settings`` es secreto). Sin
 ``--apply`` solo informa, y si algo no abre con ninguna clave aborta sin
 escribir nada.
 
@@ -79,15 +80,20 @@ def old_keys(environ: dict[str, str]) -> list[bytes]:
 
 
 def rekey_value(value: str, setting_key: str, namespaces: tuple[str, ...], keys: list[bytes]) -> str | None:
-    """Devuelve el ciphertext nuevo, o None si ya está con la clave actual.
+    """Devuelve el ciphertext nuevo, o None si no hay nada que cambiar.
 
     ``namespaces[0]`` es el bueno; los siguientes son los que pudo tener antes
-    (el TOTP cifrado en public). Texto plano se cifra tal cual: es lo que hace
-    también la migración automática del backend.
+    (el TOTP cifrado en public).
+
+    El texto plano se deja como está. En ``app_settings`` conviven secretos y
+    ajustes comunes (país por defecto, horas de cierre...), y solo el backend
+    sabe cuáles son secretos: cifrarlos todos acá rompería la lectura de los
+    que no lo son. Los secretos que quedaron en plano los cifra la migración
+    automática del backend al arrancar.
     """
     target_namespace = namespaces[0]
     if not secret_cipher.is_encrypted(value):
-        return secret_cipher.encrypt_secret(setting_key, value, namespace=target_namespace)
+        return None
     current = secret_cipher._primary_key()
     try:
         secret_cipher._decrypt_with(current, setting_key, value, target_namespace)
@@ -175,7 +181,7 @@ async def _main() -> int:
         await close_engine()
 
     verbo = "Re-cifrados" if args.apply else "Se re-cifrarían"
-    print(f"{verbo} {len(pendientes)} valores; {al_dia} ya estaban con la clave actual.")
+    print(f"{verbo} {len(pendientes)} valores; {al_dia} sin cambios (ya con la clave actual o en texto plano).")
     if pendientes and not args.apply:
         print("Nada se modificó: repetir con --apply.")
     return 0
