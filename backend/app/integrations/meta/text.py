@@ -19,6 +19,13 @@ MEDIA_LABELS = {
     "sticker": "sticker",
 }
 
+# Tipos que Meta suele declarar en ``unsupported``.
+UNSUPPORTED_TYPE_LABELS = {
+    "interactive": "interactivo",
+    "poll": "de encuesta",
+    "event": "de evento",
+}
+
 
 def _object(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
@@ -99,6 +106,16 @@ def message_text(
         return f"Tocó el botón de la plantilla: {_text(button.get('text'))} (payload {button.get('payload')})"
     if message_type == "template":
         return content or f"Plantilla {_object(message.get('template')).get('name')}"
+    if message_type == "unsupported" and _text(message.get("to")):
+        # Eco de algo que el negocio mandó desde la app (coexistencia): salió
+        # bien, pero Meta no comparte el contenido. Leerlo como un error haría
+        # creer a la IA que el cliente no recibió nada.
+        kind = _text(_object(message.get("unsupported")).get("type"))
+        label = UNSUPPORTED_TYPE_LABELS.get(kind, kind)
+        return (
+            f"[mensaje {label + ' ' if label else ''}enviado por el negocio desde el celular; "
+            "WhatsApp no comparte su contenido]"
+        )
     if message_type in {"unknown", "unsupported"}:
         errors = message.get("errors") or []
         title = _text(_object(errors[0]).get("title")) if errors else ""

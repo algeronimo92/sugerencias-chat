@@ -41,6 +41,23 @@ def test_locations_contacts_and_unsupported_are_readable_without_inventing():
     assert message_text("image", None, "Así está mi piel", inbound_message("image")) == "[imagen] Así está mi piel"
 
 
+def test_an_unsupported_echo_from_the_phone_is_not_read_as_an_error():
+    """Coexistencia: un interactivo mandado desde la app llega como eco sin
+    contenido. Salió bien; la IA no debe leerlo como un fallo."""
+    echo = {
+        "id": "wamid.ECHO", "from": "51900000000", "to": "51911111111", "type": "unsupported",
+        "errors": [{"code": 131051, "title": "Message type unknown"}],
+        "unsupported": {"type": "interactive", "raw_type": "interactive"},
+    }
+    assert message_text("unsupported", None, None, echo) == (
+        "[mensaje interactivo enviado por el negocio desde el celular; WhatsApp no comparte su contenido]"
+    )
+    no_type = {key: value for key, value in echo.items() if key != "unsupported"}
+    assert message_text("unsupported", None, None, no_type) == (
+        "[mensaje enviado por el negocio desde el celular; WhatsApp no comparte su contenido]"
+    )
+
+
 @pytest.mark.parametrize(("name", "expected"), [
     ("button", "OpcionA"),
     ("interactive_button_reply", "agendar"),

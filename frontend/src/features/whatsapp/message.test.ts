@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDayLabel, formatMoney, groupByDay, isKnownMessageType, messageAdReferral, messageContacts,
   messageCoords, messageFlowReply, messageOrder, messageProducts, messageReply, messageSystemNotice,
-  metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, splitOnMatch,
+  messageUnsupported, metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, splitOnMatch,
   TEMPLATE_FALLBACK_TEXT,
 } from './message'
 
@@ -44,6 +44,24 @@ describe('parseContent', () => {
     expect(parseContent({ content: null, message_type: 'unsupported' }))
       .toMatchObject({ known: true, label: 'No soportado por WhatsApp' })
     expect(isKnownMessageType('unknown', null)).toBe(true)
+  })
+
+  it('un unsupported que es eco del celular dice qué se mandó, no que falló', () => {
+    const echo = {
+      id: 'wamid.ECHO', from: '51900000000', to: '51911111111', type: 'unsupported',
+      errors: [{ code: 131051, title: 'Message type unknown' }],
+      unsupported: { type: 'interactive', raw_type: 'interactive' },
+    }
+    const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: echo })
+    expect(parsed.text).toBe('Mensaje interactivo enviado desde el celular')
+    expect(messageUnsupported(parsed.meta)).toEqual({ type: 'interactive', typeLabel: 'interactivo', fromPhone: true })
+  })
+
+  it('un unsupported que mandó el cliente sigue siendo un aviso de error', () => {
+    const inbound = { from: '51911111111', type: 'unsupported', errors: [{ code: 131051 }] }
+    const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: inbound })
+    expect(parsed.text).toBe('')
+    expect(messageUnsupported(parsed.meta).fromPhone).toBe(false)
   })
 
   it('arma el interactivo de botones desde la estructura de Meta', () => {

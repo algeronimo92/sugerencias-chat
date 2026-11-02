@@ -255,6 +255,11 @@ export function parseContent(input: ParseInput): ParsedContent {
     text = rawText || asString(asObject(meta.button).text);
   } else if (kind === "system") {
     text = rawText || asString(asObject(meta.system).body);
+  } else if (kind === "unsupported") {
+    // La lista de chats y las citas muestran este texto: "No soportado"
+    // a secas hace pensar en un envío fallido.
+    const unsupported = messageUnsupported(meta);
+    if (unsupported.fromPhone) text = rawText || unsupportedFromPhoneText(unsupported.typeLabel);
   }
 
   return {
@@ -484,6 +489,30 @@ export function messageProducts(parsed: Pick<ParsedContent, "kind" | "subtype" |
 export function messageSystemNotice(meta: JsonObject): { body: string; type: string } {
   const system = asObject(meta.system);
   return { body: asString(system.body), type: asString(system.type) };
+}
+
+// Nombre en castellano de los tipos que Meta suele declarar en `unsupported`.
+const UNSUPPORTED_TYPE_LABELS: Record<string, string> = {
+  interactive: "interactivo",
+  poll: "de encuesta",
+  event: "de evento",
+};
+
+/** Mensaje que Meta informa sin contenido (`unsupported`). `fromPhone` es
+ * el eco de algo que el negocio mandó desde la app de WhatsApp Business
+ * (coexistencia): solo esos traen `to`. Meta avisa que salió y de qué tipo
+ * era, pero no comparte su contenido. */
+export function messageUnsupported(meta: JsonObject): { type: string; typeLabel: string; fromPhone: boolean } {
+  const type = asString(asObject(meta.unsupported).type);
+  return {
+    type,
+    typeLabel: UNSUPPORTED_TYPE_LABELS[type] ?? type,
+    fromPhone: Boolean(asString(meta.to)),
+  };
+}
+
+function unsupportedFromPhoneText(typeLabel: string): string {
+  return typeLabel ? `Mensaje ${typeLabel} enviado desde el celular` : "Mensaje enviado desde el celular";
 }
 
 /** Errores que Meta informó para el mensaje o para su entrega. */

@@ -11,7 +11,7 @@ import {
 formatMoney,messageContacts,messageCoords,
 messageFilename,
 messageFlowReply,messageOrder,messageProducts,
-messageReply,messageSystemNotice,metaErrors,
+messageReply,messageSystemNotice,messageUnsupported,metaErrors,
 type MessageKind,type ParsedContent,
 } from '../../whatsapp/public/message'
 import { messageMediaFilename } from '../utils/messageMedia'
@@ -473,6 +473,22 @@ function SystemBody({ parsed }: MessageBodyContext) {
  * contrato todavía no conoce: se nombra el tipo literal y se muestran los
  * errores y el texto disponibles, nunca se descarta el mensaje. */
 function UnrenderedBody({ parsed }: MessageBodyContext) {
+  const unsupported = parsed.kind === 'unsupported' ? messageUnsupported(parsed.meta) : null
+  if (unsupported?.fromPhone) {
+    // No es un fallo: salió bien desde el celular y el cliente lo recibió.
+    // El código de error de Meta (131051) solo confundiría.
+    return (
+      <div className="space-y-0.5">
+        <p className="flex items-center gap-1.5 text-sm italic text-wa-muted dark:text-wa-text-dark/70">
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {parsed.text}
+        </p>
+        <p className="text-xs text-wa-muted dark:text-wa-text-dark/70">
+          WhatsApp no comparte su contenido con el CRM.
+        </p>
+      </div>
+    )
+  }
   const errors = metaErrors(parsed.meta)
   return (
     <div className="space-y-1">
