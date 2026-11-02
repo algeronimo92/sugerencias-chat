@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
 from app.db.uow import session_scope
+from app.modules.conversations.chat_queries import _has_unread_messages_condition, _visible_lead_condition
 
 
 async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
@@ -28,14 +29,16 @@ async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
 
 
 async def fetch_total_unread_chat_count() -> int:
-    """Total de chats con al menos un mensaje de cliente aún no visto."""
+    """Total de chats con al menos un mensaje de cliente aún no visto.
+
+    Solo los que la lista puede mostrar: mismo criterio de visibilidad y de
+    "no leído" que el filtro de la bandeja. Un chat de otro número (una
+    instancia vieja) nunca se puede abrir para marcarlo como visto, y sumarlo
+    dejaba el contador en "+99" con el filtro vacío.
+    """
     stmt = (
-        select(func.count(func.distinct(WspMessage.chat_id)))
-        .join(Lead, Lead.id == WspMessage.chat_id)
-        .where(
-            WspMessage.sender == "cliente",
-            or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
-        )
+        select(func.count(Lead.id))
+        .where(await _visible_lead_condition(), _has_unread_messages_condition())
     )
     async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one()
