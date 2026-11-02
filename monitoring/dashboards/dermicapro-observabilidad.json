@@ -62,7 +62,7 @@
       "id": 5, "type": "stat", "title": "Conexiones a Postgres",
       "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "pg_stat_database_numbackends{datname=\"dermicapro_db\"}", "refId": "A" }],
+      "targets": [{ "expr": "pg_stat_database_numbackends{datname=\"cliniventas_db\"}", "refId": "A" }],
       "fieldConfig": { "defaults": {
         "unit": "short", "noValue": "sin dato",
         "thresholds": { "mode": "absolute", "steps": [
