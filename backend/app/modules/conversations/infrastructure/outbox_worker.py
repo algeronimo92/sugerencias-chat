@@ -137,7 +137,7 @@ async def build_final_message(job_payload: dict) -> dict:
 def _payload_matches(stored: dict, sent: dict) -> bool:
     """El cuerpo enviado debe ser el guardado más lo que se completa al enviar:
     el sobre (destinatario), el id del adjunto y el encabezado de la plantilla."""
-    envelope = {"messaging_product", "recipient_type", "to"}
+    envelope = {"messaging_product", "recipient_type", "to", "recipient"}
     sent_message = {key: value for key, value in sent.items() if key not in envelope}
     root = sent_message.get("type")
     nested = sent_message.get(root)
@@ -180,11 +180,16 @@ async def _mark_failed(job: dict, exc: Exception, outcome: SendOutcome) -> None:
 
 async def _learn_recipient(job: dict, receipt: SendReceipt) -> None:
     """Si Meta informa otro ``wa_id`` para el destinatario (por ejemplo, un
-    número con formato local que Meta normaliza), se suma como alias."""
+    número con formato local que Meta normaliza), se suma como alias.
+
+    Solo números: en un envío por BSUID Meta puede devolver el mismo BSUID, y
+    guardarlo como ``wa_id`` haría que el próximo envío lo mande en ``to``.
+    """
     to = receipt.sent_body.get("to")
-    if receipt.recipient_wa_id and receipt.recipient_wa_id != to:
+    wa_id = receipt.recipient_wa_id
+    if wa_id and wa_id.isdigit() and wa_id != to:
         with contextlib.suppress(Exception):
-            await add_identity_alias(job["chat_id"], "", WA_ID, receipt.recipient_wa_id)
+            await add_identity_alias(job["chat_id"], "", WA_ID, wa_id)
 
 
 async def _process_job(job: dict) -> None:

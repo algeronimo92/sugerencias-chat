@@ -23,6 +23,7 @@ GRAPH_API_VERSION = "v26.0"
 _META_ERROR_CODE_WINDOW_CLOSED = 131047  # ventana de 24h del contacto cerrada
 _META_ERROR_CODE_SCHEMA_VIOLATION = 100  # ej. botón no-reply fuera de plantilla
 _META_ERROR_CODE_AUTH = 190  # token vencido o inválido
+_META_ERROR_CODE_BSUID_UNSUPPORTED = 131062  # tipo de mensaje que exige número
 
 
 class MetaApiError(ChannelError):
@@ -37,6 +38,15 @@ class MetaApiError(ChannelError):
 class WhatsAppWindowClosedError(MetaApiError):
     """Meta rechazó un envío libre porque la ventana de 24h del contacto ya
     cerró (código 131047). Sólo una plantilla aprobada puede reabrirla."""
+
+    def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
+        super().__init__(message, error=error, status_code=status_code)
+        self.user_message = message
+
+
+class RecipientNeedsPhoneError(MetaApiError):
+    """Meta no acepta este mensaje para un contacto identificado solo por su
+    BSUID (código 131062): las plantillas de autenticación exigen número."""
 
     def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
         super().__init__(message, error=error, status_code=status_code)
@@ -85,7 +95,13 @@ def _raise_meta_error(response: httpx.Response) -> None:
         raise MetaInvalidTokenException(
             "Token invalido o vencido, genera uno nuevo", error=error, status_code=response.status_code
             )
-    
+    if code == _META_ERROR_CODE_BSUID_UNSUPPORTED:
+        raise RecipientNeedsPhoneError(
+            "Este contacto escribe con nombre de usuario y no compartió su número; "
+            "WhatsApp no permite enviarle este tipo de mensaje sin número.",
+            error=error, status_code=response.status_code,
+        )
+
     raise MetaApiError(
         f"Meta Graph API respondió {response.status_code}: {message} (código {code})",
         error=error, status_code=response.status_code,
@@ -272,20 +288,23 @@ async def _request(
     return response.json()
 
 
-async def _recipient(chat_id: str) -> str:
-    """``wa_id`` exacto del lead para el campo ``to``.
+async def _recipient(chat_id: str) -> dict[str, str]:
+    """Campo de destino del lead: ``to`` con su ``wa_id`` o ``recipient`` con
+    su BSUID.
 
-    Un contacto conocido solo por su ``user_id`` (nombre de usuario activo,
-    sin teléfono informado) no tiene un destino al que este envío pueda
-    apuntar: falla explícito en vez de mandar algo que Meta rechazaría.
+    Un contacto con nombre de usuario puede escribir sin mostrar su número y
+    solo se lo conoce por el ``user_id`` (BSUID) que manda Meta. Desde julio de
+    2026 la Cloud API acepta ese id en ``recipient``. Si hay número se sigue
+    usando ``to``: es lo que Meta prioriza si llegan los dos, y las plantillas
+    de autenticación solo van por número.
     """
     destination = await resolve_whatsapp_destination(chat_id)
     if destination.wa_id:
-        return destination.wa_id
-    raise MetaApiError(
-        f"El lead {chat_id} solo tiene user_id de WhatsApp, sin wa_id; "
-        "Meta no permite enviarle por número todavía."
-    )
+        return {"to": destination.wa_id}
+    if destination.user_id:
+        # Tal cual llegó: el prefijo de país y el punto son parte del id.
+        return {"recipient": destination.user_id}
+    raise MetaApiError(f"El lead {chat_id} no tiene wa_id ni user_id de WhatsApp")
 
 
 async def send_message(chat_id: str, message: dict) -> dict:
@@ -297,7 +316,7 @@ async def send_message(chat_id: str, message: dict) -> dict:
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
-        "to": await _recipient(chat_id),
+        **await _recipient(chat_id),
         **message,
     }
     url = _graph_url(f"{phone_number_id}/messages")
