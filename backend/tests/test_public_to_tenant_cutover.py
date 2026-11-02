@@ -258,6 +258,14 @@ def test_rekey_moves_totp_from_public_to_tenant_namespace(monkeypatch) -> None:
     assert secret_cipher.decrypt_secret("user:1", nuevo, namespace=tenant_ns) == "JBSWY3DP"
 
 
+def test_rekey_leaves_plain_settings_alone(monkeypatch) -> None:
+    """app_settings mezcla secretos con ajustes comunes; el texto plano no se
+    cifra porque el script no sabe cuáles son secretos."""
+    monkeypatch.setattr(secret_cipher.settings, "settings_encryption_key", NEW_KEY)
+
+    assert rekey_value("51", "default_country_code", ("app_settings",), []) is None
+
+
 def test_rekey_refuses_what_no_key_opens(monkeypatch) -> None:
     ajena = base64.urlsafe_b64encode(b"x" * 32).decode()
     otro = _encrypt_with(monkeypatch, ajena, "k", "v", "app_settings")
