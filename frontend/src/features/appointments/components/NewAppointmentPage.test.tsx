@@ -13,6 +13,10 @@ vi.mock('../../catalogs/public/useCustomFields', () => ({ useCustomFields: () =>
   isLoading: false,
   isError: false,
 }) }))
+vi.mock('../../catalogs/public/useLeadServices', () => ({
+  useLeadServices: () => ({ data: [{ id: 7, name: 'Consulta' }], isLoading: false }),
+  useCreateLeadService: () => ({ isPending: false, mutate: vi.fn() }),
+}))
 vi.mock('../queries', () => ({
   useCreateAppointment: () => ({ isPending: false, mutate: mocks.mutate }),
 }))
@@ -49,7 +53,8 @@ describe('NewAppointmentPage: comprobante por cámara', () => {
 
     fireEvent.change(screen.getByLabelText('Nombre completo *'), { target: { value: 'Ana' } })
     fireEvent.change(screen.getByLabelText('Teléfono *'), { target: { value: '987654321' } })
-    fireEvent.change(screen.getByLabelText('Servicio o motivo *'), { target: { value: 'Consulta' } })
+    await user.type(screen.getByRole('combobox', { name: 'Servicio o motivo *' }), 'consul')
+    await user.click(screen.getByRole('option', { name: 'Consulta' }))
     await user.click(screen.getByLabelText('Responsable *'))
     await user.click(screen.getByRole('option', { name: 'Asesor' }))
     fireEvent.change(screen.getByLabelText('Fecha *'), { target: { value: '2026-10-01' } })
@@ -58,6 +63,7 @@ describe('NewAppointmentPage: comprobante por cámara', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar cita' }))
 
     expect(mocks.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      tratamiento: 'Consulta',
       customFields: { autorizado: false },
     }), expect.any(Object))
   })

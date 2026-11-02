@@ -16,6 +16,7 @@ import { useSellers } from '../../platform/public/useUsers'
 import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../queries'
 import { AppointmentCalendar } from './AppointmentCalendar'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
+import { ServiceCombobox } from './ServiceCombobox'
 
 const tabClass = (active: boolean) =>
   `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong ${active ? 'bg-wa-panel text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted hover:bg-wa-hover dark:hover:bg-wa-hover-dark'}`
@@ -178,7 +179,8 @@ export function NewAppointmentPage() {
 
                 <div className="space-y-5">
                   <FormSection icon={CalendarClock} title="Reserva" description="Servicio, responsable y horario">
-                    <Field label="Servicio o motivo" required><Input value={form.servicio} onChange={event => update('servicio', event.target.value)} placeholder="Ej. Consulta, demo, mantenimiento" disabled={busy} className={fieldClass} /></Field>
+                    {/* Fuera de <label>: un clic en la lista no debe reenviarse al campo. */}
+                    <div><label htmlFor="appointment-service" className={labelClass}>Servicio o motivo *</label><ServiceCombobox id="appointment-service" value={form.servicio} onChange={value => update('servicio', value)} disabled={busy} className={fieldClass} /></div>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Responsable" required><Select value={form.vendedor} onValueChange={value => update('vendedor', value)} disabled={busy} className={fieldClass}><option value="">Selecciona</option>{sellers.map(seller => <option key={seller.id} value={seller.name}>{seller.name}</option>)}</Select></Field><Field label="Duración (minutos)" required><Input type="number" min={5} max={1440} step={5} value={form.durationMinutes} onChange={event => update('durationMinutes', event.target.value)} disabled={busy} className={fieldClass} /></Field></div>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Fecha" required><Input type="date" value={form.fecha} onChange={event => update('fecha', event.target.value)} disabled={busy} className={fieldClass} /></Field><Field label="Hora" required><Select value={form.hora} onValueChange={value => update('hora', value)} disabled={busy} className={fieldClass}><option value="">Selecciona</option>{HOURS.map(hour => <option key={hour} value={hour}>{hour}</option>)}</Select></Field></div>
                     <div className="mt-4"><Field label="Notas"><Textarea value={form.detalle} onChange={event => update('detalle', event.target.value)} rows={3} disabled={busy} className={`${fieldClass} h-auto`} /></Field></div>
