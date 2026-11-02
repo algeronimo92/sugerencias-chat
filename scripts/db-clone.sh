@@ -38,6 +38,19 @@ env_value() {
   grep -E "^$2=" "$1" | head -1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/'
 }
 
+# Un .env editado en Windows llega con CRLF: cada valor termina en un \r
+# invisible que docker pasa tal cual al contenedor. El nombre de la base o la
+# contraseña dejan de coincidir y el error no dice por qué. Se corta acá, con
+# la causa, en vez de limpiarlo en silencio: el backend leería el mismo archivo.
+for env_file in "$ROOT/db/.env" "$ROOT/backend/.env"; do
+  # tr y no grep: el grep de Git Bash descarta el \r al leer y no lo vería.
+  if [ "$(tr -dc '\r' < "$env_file" | wc -c)" -gt 0 ]; then
+    echo "ERROR: ${env_file#"$ROOT"/} tiene fines de línea de Windows (CRLF)." >&2
+    echo "Convertirlo antes de seguir: sed -i 's/\\r\$//' ${env_file#"$ROOT"/}" >&2
+    exit 1
+  fi
+done
+
 urldecode() {
   local value="${1//+/ }"
   printf '%b' "${value//%/\\x}"
