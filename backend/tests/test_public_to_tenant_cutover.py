@@ -5,6 +5,7 @@ no se nota hasta el día del corte, y ese día ya es tarde.
 """
 
 import base64
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -95,6 +96,10 @@ class FakeMinio:
         self.readable = readable
         self.copies: list[tuple[str, str]] = []
         self.uploads: list[tuple[str, str, dict]] = []
+        self.removed: list[tuple[str, str]] = []
+        # sha256 que se informa en vez del real, para simular una copia que
+        # tiene el mismo tamaño pero otro contenido.
+        self.sha_override: dict[tuple[str, str], str] = {}
 
     def _check(self, bucket):
         if bucket not in self.readable:
@@ -113,11 +118,18 @@ class FakeMinio:
         self._check(bucket)
         if (bucket, object_name) not in self.objects:
             raise NotFound()
+        data = self.objects[(bucket, object_name)]
+        sha = self.sha_override.get((bucket, object_name), hashlib.sha256(data).hexdigest())
         return SimpleNamespace(
-            size=len(self.objects[(bucket, object_name)]),
+            size=len(data),
             content_type="image/jpeg",
-            metadata={"Content-Type": "image/jpeg", "x-amz-meta-sha256": "abc"},
+            metadata={"Content-Type": "image/jpeg", "x-amz-meta-sha256": sha},
         )
+
+    def remove_object(self, bucket, object_name):
+        self._check(bucket)
+        self.removed.append((bucket, object_name))
+        del self.objects[(bucket, object_name)]
 
     def get_object(self, bucket, object_name):
         self._check(bucket)
@@ -181,7 +193,7 @@ def test_separate_credentials_stream_and_keep_metadata() -> None:
 
     assert resumen["copiados"] == 2 and not resumen["errores"]
     assert objects[("cliniventas", f"{NEW_TENANT}/audio/b.ogg")] == b"y" * 20
-    assert all(meta == {"sha256": "abc"} for _, _, meta in new.uploads)
+    assert all(meta == {"sha256": hashlib.sha256(objects[(b, n)]).hexdigest()} for b, n, meta in new.uploads)
     assert new.copies == []
 
 
@@ -210,6 +222,73 @@ def test_copy_errors_are_reported_not_hidden() -> None:
 
     assert resumen["copiados"] == 0
     assert len(resumen["errores"]) == 2
+
+
+def _move(source, dest, apply: bool, workers: int = 1) -> dict:
+    return copy_legacy_media(
+        source, "wsp", "media", dest, "cliniventas", NEW_TENANT, apply, workers=workers, delete_source=True,
+    )
+
+
+def test_delete_source_dry_run_deletes_nothing() -> None:
+    objects = _legacy_objects()
+    old = FakeMinio(objects, readable={"wsp"})
+    new = FakeMinio(objects, readable={"cliniventas"})
+
+    resumen = _move(old, new, apply=False)
+
+    assert old.removed == []
+    # c.pdf ya está copiado; a.jpg y b.ogg se borrarían después de copiarse.
+    assert (resumen["por_borrar"], resumen["bytes_liberados"]) == (3, 60)
+    assert ("wsp", "media/files/c.pdf") in objects
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_delete_source_moves_everything_verified(workers: int) -> None:
+    """Lo ya copiado se borra del origen, y lo que falta se copia y se borra:
+    el espacio total no crece."""
+    objects = _legacy_objects()
+    old = FakeMinio(objects, readable={"wsp"})
+    new = FakeMinio(objects, readable={"cliniventas"})
+
+    resumen = _move(old, new, apply=True, workers=workers)
+
+    assert not resumen["errores"] and not resumen["conflictos"]
+    assert (resumen["copiados"], resumen["ya_estaban"], resumen["borrados"]) == (2, 1, 3)
+    assert not any(bucket == "wsp" for bucket, _ in objects)
+    assert objects[("cliniventas", f"{NEW_TENANT}/images/a.jpg")] == b"x" * 10
+
+
+def test_delete_source_keeps_the_original_when_sha_differs() -> None:
+    """Mismo tamaño pero otro sha256: no es la misma copia y no se borra."""
+    objects = _legacy_objects()
+    old = FakeMinio(objects, readable={"wsp"})
+    new = FakeMinio(objects, readable={"cliniventas"})
+    new.sha_override[("cliniventas", f"{NEW_TENANT}/files/c.pdf")] = "otro"
+
+    resumen = _move(old, new, apply=True)
+
+    assert ("wsp", "media/files/c.pdf") in objects
+    assert resumen["conflictos"] == [f"{NEW_TENANT}/files/c.pdf"]
+    assert resumen["borrados"] == 2
+
+
+def test_delete_source_keeps_the_original_when_the_copy_fails() -> None:
+    objects = _legacy_objects()
+    old = FakeMinio(objects, readable={"wsp"})
+    new = FakeMinio(objects, readable={"cliniventas"})
+
+    def disco_lleno(*args, **kwargs):
+        raise RuntimeError("XMinioStorageFull")
+
+    new.put_object = disco_lleno
+    resumen = _move(old, new, apply=True)
+
+    assert len(resumen["errores"]) == 2
+    assert ("wsp", "media/images/a.jpg") in objects
+    assert ("wsp", "media/audio/b.ogg") in objects
+    # Lo que sí estaba copiado se libera igual: es lo que hace sitio.
+    assert old.removed == [("wsp", "media/files/c.pdf")]
 
 
 # --- re-cifrado ---------------------------------------------------------------
