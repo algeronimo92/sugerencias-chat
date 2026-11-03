@@ -33,6 +33,29 @@ class AppointmentRequest:
     comprobante_filename: str | None = None
     test_mode: bool = False
 
+    @property
+    def effective_dni(self) -> str:
+        """El DNI de la cita. Un negocio puede pedirlo como campo
+        personalizado ``dni`` en vez del campo fijo: entonces vale ese."""
+        if self.dni.strip():
+            return self.dni
+        value = self.custom_fields.get(CUSTOM_DNI_KEY)
+        return "" if value is None else str(value).strip()
+
+    @property
+    def effective_adelanto(self) -> float:
+        """El adelanto de la cita, con la misma regla que el DNI: si el campo
+        fijo no trae monto, vale el del campo personalizado ``adelanto``."""
+        if self.adelanto:
+            return self.adelanto
+        value = self.custom_fields.get(CUSTOM_ADELANTO_KEY)
+        if value is None or isinstance(value, bool):
+            return 0
+        try:
+            return max(float(value), 0)
+        except (TypeError, ValueError):
+            return 0
+
     def record(self, *, created_by_user_id: int, lead_id: str | None) -> dict:
         """Los valores con los que se guarda la cita, antes de cualquier
         integración."""
@@ -40,14 +63,14 @@ class AppointmentRequest:
             "created_by_user_id": created_by_user_id,
             "lead_id": lead_id,
             "nombre_completo": self.nombre_completo,
-            "dni": self.dni,
+            "dni": self.effective_dni,
             "telefono": self.telefono,
             "tratamiento": self.tratamiento,
             "detalle": self.detalle,
             "fecha": self.fecha,
             "hora": self.hora,
             "vendedor": self.vendedor,
-            "adelanto": self.adelanto,
+            "adelanto": self.effective_adelanto,
             "duration_minutes": self.duration_minutes,
             "custom_fields": self.custom_fields,
             "comprobante_filename": self.comprobante_filename,
@@ -61,16 +84,37 @@ class AppointmentRequest:
 
     def n8n_form(self) -> dict:
         """El formulario que espera el workflow de citas de n8n (los nombres
-        de campo son los del Form Trigger original)."""
-        return {
-            "Nombre completo": self.nombre_completo, "DNI": self.dni,
+        de campo son los del Form Trigger original). Cada campo personalizado
+        viaja además como un campo propio con su clave, para que el workflow
+        lo lea sin tener que parsear ``CamposPersonalizados``."""
+        form = {
+            "Nombre completo": self.nombre_completo, "DNI": self.effective_dni,
             "Telefono": self.telefono, "Tratamiento": self.tratamiento,
             "Detalle": self.detalle, "Fecha": self.fecha, "Hora": self.hora,
-            "Vendedor": self.vendedor, "Adelanto": str(self.adelanto),
+            "Vendedor": self.vendedor, "Adelanto": str(self.effective_adelanto),
             "DuracionMinutos": str(self.duration_minutes),
             "CamposPersonalizados": json.dumps(self.custom_fields, ensure_ascii=False),
             "formMode": "test" if self.test_mode else "production",
         }
+        for key, value in self.custom_fields.items():
+            if key not in form:
+                form[key] = _form_value(value)
+        return form
+
+
+CUSTOM_DNI_KEY = "dni"
+CUSTOM_ADELANTO_KEY = "adelanto"
+
+
+def _form_value(value: Any) -> str:
+    """Un valor de campo personalizado como texto de formulario."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 
 SKIPPED_CALENDAR = {"status": "skipped", "event_id": None, "event_link": None, "error": None}
