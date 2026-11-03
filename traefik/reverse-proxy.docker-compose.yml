@@ -36,12 +36,25 @@ services:
       # falta vaciarlo para el cambio.
       - --certificatesresolvers.letsencrypt.acme.dnschallenge=true
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=hostinger
+      # Antes de avisarle a Let's Encrypt, lego comprueba que el TXT del
+      # desafío ya se ve. Con network_mode: host preguntaba al resolver local
+      # del VPS (127.0.0.53), que no lo vio en el minuto que lego espera por
+      # defecto, y la emisión fallaba. Se pregunta a resolvers públicos, que
+      # es lo más parecido a lo que consulta Let's Encrypt, y la espera sube
+      # con HOSTINGER_PROPAGATION_TIMEOUT (abajo).
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
     env_file:
       - .env
+    environment:
+      # Segundos que lego espera a que el TXT del desafío se vea en los
+      # resolvers, y cada cuánto vuelve a mirar. El DNS de Hostinger tarda más
+      # que el minuto por defecto.
+      - HOSTINGER_PROPAGATION_TIMEOUT=600
+      - HOSTINGER_POLLING_INTERVAL=15
     volumes:
       - traefik-letsencrypt:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
