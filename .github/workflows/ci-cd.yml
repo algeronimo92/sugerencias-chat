@@ -314,6 +314,21 @@ jobs:
               echo "PostgreSQL $PG_VIVO, sin cambio de versión mayor."
             fi
 
+            # Con el resolver en DNS-01, traefik pide el wildcard a Hostinger
+            # usando HOSTINGER_API_TOKEN. Sin token arranca igual, pero no
+            # emite nada: cada negocio nuevo cae en el certificado por defecto
+            # y, cuando venzan los certificados por host, también los de hoy.
+            # Como el resto de comprobaciones, mira el commit entrante sin
+            # traerlo al árbol de trabajo.
+            if git show origin/main:traefik/reverse-proxy.docker-compose.yml \
+                | grep -qE '^[[:space:]]*-[[:space:]]*--certificatesresolvers\.letsencrypt\.acme\.dnschallenge=true' \
+              && ! grep -qE '^[[:space:]]*HOSTINGER_API_TOKEN[[:space:]]*=[[:space:]]*[^[:space:]]' traefik/.env; then
+              echo "ERROR: traefik usa DNS-01 pero traefik/.env no tiene HOSTINGER_API_TOKEN." >&2
+              echo "Sin él no se emite el certificado *.cliniventas.com. Generar un" >&2
+              echo "token en hPanel y agregarlo en el servidor a traefik/.env." >&2
+              exit 1
+            fi
+
             # traefik/dynamic/active.yml está versionado, pero en el servidor
             # es estado de ejecución: es el interruptor que dice qué color
             # sirve ahora. Un `git reset --hard` lo devuelve al color que
