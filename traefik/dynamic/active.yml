@@ -29,23 +29,21 @@ http:
       service: sugerencias-chat
       tls:
         certResolver: letsencrypt
-        # Un certificado por host, listado a mano. Traefik no puede deducir
-        # qué dominios certificar a partir de una HostRegexp: sin esta lista
-        # no pide ninguno y sirve su certificado por defecto.
+        # Traefik no puede deducir qué dominios certificar a partir de una
+        # HostRegexp: sin esta lista no pide ninguno y sirve su certificado por
+        # defecto.
         #
-        # Mientras el resolver siga en httpchallenge (ver
-        # reverse-proxy.docker-compose.yml) no puede haber un wildcard acá:
-        # Let's Encrypt solo lo emite por DNS-01, y el pedido fallaba en cada
-        # arranque. Tampoco va el dominio raíz: cliniventas.com es la landing y
-        # apunta al hosting de Hostinger, no a este servidor.
+        # Un único wildcard, emitido por DNS-01 (ver
+        # reverse-proxy.docker-compose.yml), cubre el CRM de cada negocio y el
+        # panel de plataforma: un negocio nuevo no se agrega acá. Cubre un solo
+        # nivel, igual que la regla de arriba. No va el dominio raíz:
+        # cliniventas.com es la landing y apunta al hosting de Hostinger, no a
+        # este servidor.
         #
-        # Cada host necesita su registro A hacia el VPS antes de agregarse.
-        # Al pasar a DNS-01, esta lista se reemplaza por `*.cliniventas.com`.
+        # El DNS ya tiene un registro `*` hacia el VPS, así que un subdominio
+        # nuevo resuelve sin pasar por hPanel.
         domains:
-          # CRM del primer negocio.
-          - main: "dermicapro.cliniventas.com"
-          # Panel de plataforma (TENANT_PLATFORM_HOSTS al activar multitenancy).
-          - main: "admin.cliniventas.com"
+          - main: "*.cliniventas.com"
 
   services:
     sugerencias-chat:

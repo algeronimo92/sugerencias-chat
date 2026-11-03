@@ -144,26 +144,45 @@ def test_active_file_is_valid_traefik_config() -> None:
 
 def test_certificate_domains_can_be_issued() -> None:
     """Traefik no deduce dominios de una HostRegexp: certifica los que lista
-    tls.domains. Con HTTP-01 no puede haber wildcard (Let's Encrypt lo niega en
-    cada arranque) ni hosts que el router no sirva, como el dominio raíz, que
-    es la landing y vive en otro servidor."""
+    tls.domains. Un wildcard solo se emite por DNS-01 (con HTTP-01 Let's
+    Encrypt lo niega en cada arranque), y ningún host certificado puede quedar
+    fuera del router, como el dominio raíz, que es la landing y vive en otro
+    servidor."""
     document = yaml.safe_load(ACTIVE.read_text(encoding="utf-8"))
     router = document["http"]["routers"]["sugerencias-chat"]
     pattern = re.compile(re.fullmatch(r"HostRegexp\(`([^`]+)`\)", router["rule"]).group(1))
     reverse_proxy = (ROOT / "traefik" / "reverse-proxy.docker-compose.yml").read_text(encoding="utf-8")
-    http_challenge = "- --certificatesresolvers.letsencrypt.acme.httpchallenge=true" in reverse_proxy
+    dns_challenge = "- --certificatesresolvers.letsencrypt.acme.dnschallenge=true" in reverse_proxy
 
     hosts = [
         host
         for entry in router["tls"]["domains"]
         for host in (entry["main"], *entry.get("sans", []))
     ]
-    assert "dermicapro.cliniventas.com" in hosts
-    assert "admin.cliniventas.com" in hosts
+
+    def covered(host: str) -> bool:
+        # Un wildcard cubre exactamente un nivel, como la regla del router.
+        return any(
+            name == host or (name.startswith("*.") and host.split(".", 1)[1] == name[2:])
+            for name in hosts
+        )
+
+    for host in ("dermicapro.cliniventas.com", "admin.cliniventas.com"):
+        assert covered(host), f"{host}: ningún certificado lo cubre"
     for host in hosts:
-        if http_challenge:
-            assert "*" not in host, f"{host}: un wildcard solo se emite por DNS-01"
-            assert pattern.fullmatch(host), f"{host}: el router no lo sirve"
+        if "*" in host:
+            assert dns_challenge, f"{host}: un wildcard solo se emite por DNS-01"
+            # Un nombre concreto en lugar del `*` tiene que ser un host del router.
+            host = host.replace("*", "negocio", 1)
+        assert pattern.fullmatch(host), f"{host}: el router no lo sirve"
+
+
+def test_wildcard_covers_new_businesses() -> None:
+    """Dar de alta un negocio no pide tocar el repo: el certificado ya cubre
+    cualquier subdominio que el router acepte."""
+    document = yaml.safe_load(ACTIVE.read_text(encoding="utf-8"))
+    mains = [entry["main"] for entry in document["http"]["routers"]["sugerencias-chat"]["tls"]["domains"]]
+    assert "*.cliniventas.com" in mains
 
 
 def test_active_file_points_at_a_known_color() -> None:
