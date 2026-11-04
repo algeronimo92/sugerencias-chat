@@ -473,7 +473,7 @@ Los mensajes se registran primero con `outbox_status = queued` junto con una
 fila durable en `message_outbox`. El request HTTP responde sin esperar a Meta;
 un worker integrado los envía en segundo plano, conserva el orden por chat y
 hace hasta tres intentos antes de marcar el envío como `failed`. Esto no
-requiere RabbitMQ para el volumen actual y evita perder trabajos si el backend
+requiere un broker aparte para el volumen actual y evita perder trabajos si el backend
 se reinicia. La migración manual equivalente está en
 `backend/migrations/017_message_outbox.sql`.
 

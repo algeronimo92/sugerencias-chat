@@ -538,9 +538,9 @@ interno lleva `organization_id` en su sobre de transporte aunque las tablas tena
 no tengan esa columna, porque el bus vive fuera de sus schemas. El consumidor usa
 ese ID para seleccionar destinatarios y, si necesita DB, resolver el schema.
 
-Para varias réplicas, RabbitMQ necesita fanout por réplica para eventos de UI; una
-cola de consumidores competidores entrega cada evento a una sola réplica. Un bus
-en memoria no alcanza. Los avisos locales `_wake`/`_wakeup` son optimizaciones:
+Para varias réplicas, los eventos de UI necesitan fanout a todas (hoy lo hace
+`pg_notify` en `app/db/signals.py`); una cola de consumidores competidores entrega
+cada evento a una sola réplica. Un bus en memoria no alcanza. Los avisos locales `_wake`/`_wakeup` son optimizaciones:
 polling o cola durable debe recuperar trabajo perdido.
 
 Las claves React Query deben incluir la identidad del negocio o vaciarse totalmente
