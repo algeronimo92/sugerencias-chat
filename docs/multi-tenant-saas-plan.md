@@ -1,7 +1,12 @@
 # Plan de arquitectura y migración a SaaS multi-tenant por esquema
 
 > Revisión: **2026-09-17**.
-> Estado: plan corregido contra el proyecto actual; todavía no implementado.
+> Estado (2026-11-04): **implementado y en producción**. El corte se ejecutó según
+> [corte-a-cliniventas.md](corte-a-cliniventas.md) (PRs #59–#65) y el alta de negocios
+> no pide tocar el repo desde #73. Este documento es el diseño original y se conserva
+> como referencia; lo que falta para un SaaS comercial (billing, planes, límites por
+> tenant, RAG y prompts por tenant) está en
+> [analisis/11-auditoria-senior-2026-11-04.md](analisis/11-auditoria-senior-2026-11-04.md) §2.3.
 > Decisión de arquitectura: **un schema PostgreSQL por negocio**. El subdominio
 > identifica la instancia web del negocio y se resuelve a un schema interno.
 > Ejemplo: `clinica-lima.cliniventas.com` → organización registrada →

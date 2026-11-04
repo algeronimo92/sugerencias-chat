@@ -21,6 +21,14 @@ services:
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
+      # Traefik 3 corta a los 60 s toda petición cuyo cuerpo no terminó de
+      # llegar (readTimeout). Las subidas a la biblioteca y al chat viajan en
+      # base64 dentro del JSON, así que un video de pocos MB desde una conexión
+      # lenta pasa ese minuto: traefik cerraba la conexión, nginx respondía
+      # 400 sin cuerpo y el backend ni se enteraba. Diez minutos alcanzan para
+      # los 25 MB del límite con una subida de ~0.5 Mbps; el resto de nginx ya
+      # espera hasta una hora (frontend/nginx.conf).
+      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
       # DNS-01 con Hostinger, que es donde viven estos dominios. Un solo
       # certificado `*.cliniventas.com` cubre a todos los negocios, presentes y
       # futuros: dar de alta una empresa ya no pide tocar este repo. El
