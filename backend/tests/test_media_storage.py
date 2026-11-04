@@ -132,6 +132,108 @@ def test_transcode_audio_to_ogg_opus_raises_when_ffmpeg_missing(monkeypatch):
         storage.transcode_audio_to_ogg_opus(b"not-really-audio")
 
 
+def _ffmpeg_video(*codec_args: str) -> bytes:
+    """Un segundo de video de prueba (con audio) codificado como se pida."""
+    import os
+
+    # Ver test_transcode_audio_to_ogg_opus_converts_webm_recording: en Windows
+    # ffmpeg no escribe sobre un archivo que Python tenga abierto.
+    path = tempfile.mktemp(suffix=".mp4")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y",
+             "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+             *codec_args, "-shortest", path],
+            capture_output=True, check=True,
+        )
+        with open(path, "rb") as handle:
+            return handle.read()
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+requires_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="requiere ffmpeg y ffprobe instalados",
+)
+
+
+@requires_ffmpeg
+def test_vp9_inside_mp4_is_converted_to_h264():
+    """Regresión: un .mp4 con video VP9 salía tal cual por pesar poco, y Meta
+    lo descartaba después del envío con 131053 "No video stream found"."""
+    vp9 = _ffmpeg_video("-c:v", "libvpx-vp9", "-c:a", "aac")
+    assert storage.video_is_whatsapp_compatible(vp9) is False
+
+    converted = storage.compress_video(vp9)
+
+    assert storage.video_is_whatsapp_compatible(converted) is True
+
+
+@requires_ffmpeg
+def test_h264_aac_mp4_is_whatsapp_compatible():
+    h264 = _ffmpeg_video("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac")
+    assert storage.video_is_whatsapp_compatible(h264) is True
+
+
+def test_video_compatibility_is_unknown_without_ffprobe(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    assert storage.video_is_whatsapp_compatible(b"not-really-video") is None
+
+
+@pytest.mark.parametrize(
+    ("content_type", "compatible", "converts"),
+    [
+        ("video/mp4", False, True),       # VP9/HEVC disfrazado de .mp4
+        ("video/mp4", True, False),       # ya sirve: no se toca
+        ("video/mp4", None, False),       # no se pudo leer: no se convierte a ciegas
+        ("video/quicktime", True, True),  # .mov: Meta no acepta el contenedor
+        ("video/webm", None, True),
+    ],
+)
+def test_upload_converts_videos_whatsapp_cannot_play(content_type, compatible, converts, monkeypatch):
+    saved = {}
+
+    def fake_save(filename, data, content_type):
+        saved.update(filename=filename, data=data, content_type=content_type)
+        return f"/media/{filename}"
+
+    monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
+    monkeypatch.setattr(media_upload, "video_is_whatsapp_compatible", lambda _raw: compatible)
+    monkeypatch.setattr(media_upload, "compress_video", lambda _raw: b"h264-video")
+
+    url = media_upload.save_decoded_media(content_type, b"original-video", "clip.mov")
+
+    if converts:
+        assert saved["data"] == b"h264-video"
+        assert saved["content_type"] == "video/mp4"
+        assert url.endswith(".mp4")
+    else:
+        assert saved["data"] == b"original-video"
+        assert saved["content_type"] == content_type
+
+
+def test_upload_keeps_original_video_when_conversion_fails(monkeypatch):
+    saved = {}
+
+    def fake_save(filename, data, content_type):
+        saved.update(data=data, content_type=content_type)
+        return f"/media/{filename}"
+
+    def failing_compress(_raw):
+        raise storage.VideoCompressionError("boom")
+
+    monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
+    monkeypatch.setattr(media_upload, "video_is_whatsapp_compatible", lambda _raw: False)
+    monkeypatch.setattr(media_upload, "compress_video", failing_compress)
+
+    media_upload.save_decoded_media("video/mp4", b"original-video", "clip.mp4")
+
+    assert saved == {"data": b"original-video", "content_type": "video/mp4"}
+
+
 def test_local_backend_preserves_existing_url_contract(media_dir, monkeypatch):
     monkeypatch.setattr(storage.settings, "media_storage_backend", "local")
     url = storage.save_media_bytes("abc.jpg", b"0123456789", "image/jpeg")

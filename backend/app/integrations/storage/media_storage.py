@@ -354,10 +354,82 @@ class VideoCompressionError(RuntimeError):
     pass
 
 
+# Lo único que Meta Cloud API procesa como video: H.264 en 4:2:0 y, si hay
+# audio, una sola pista AAC. Otro códec dentro de un .mp4 (VP9, HEVC, AV1)
+# Meta lo acepta al enviar y lo descarta minutos después con el error 131053
+# "No video stream found in given video file": el mensaje sale del CRM y
+# nunca llega.
+WHATSAPP_VIDEO_CODECS = {"h264"}
+WHATSAPP_VIDEO_PIX_FMTS = {"yuv420p", "yuvj420p"}
+WHATSAPP_AUDIO_CODECS = {"aac"}
+
+
+def video_is_whatsapp_compatible(data: bytes) -> bool | None:
+    """Dice si los códecs del video son los que WhatsApp reproduce.
+
+    Devuelve None cuando no se puede saber (sin ffprobe, archivo que ffprobe no
+    entiende o que tarda demasiado): el llamador decide, y convertir a ciegas
+    un archivo que ni siquiera se pudo leer tampoco va a salir bien."""
+    import json
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("ffprobe") is None:
+        return None
+
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".src", delete=False) as handle:
+            handle.write(data)
+            path = handle.name
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "stream=codec_type,codec_name,pix_fmt",
+                    "-of", "json", path,
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        if result.returncode != 0:
+            return None
+        try:
+            streams = json.loads(result.stdout or b"{}").get("streams") or []
+        except ValueError:
+            return None
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    video = [s for s in streams if s.get("codec_type") == "video"]
+    audio = [s for s in streams if s.get("codec_type") == "audio"]
+    if not video:
+        return None
+    if len(video) != 1 or len(audio) > 1:
+        return False
+    if video[0].get("codec_name") not in WHATSAPP_VIDEO_CODECS:
+        return False
+    if video[0].get("pix_fmt") not in WHATSAPP_VIDEO_PIX_FMTS:
+        return False
+    return not audio or audio[0].get("codec_name") in WHATSAPP_AUDIO_CODECS
+
+
 def compress_video(data: bytes) -> bytes:
     """Recomprime un video con ffmpeg para que entre en el límite de tamaño,
     como hace WhatsApp: H.264, lado máximo 1280px, CRF 28, audio AAC 128k y
     faststart (MP4). Devuelve los bytes del MP4.
+
+    Sirve también para convertir un video que WhatsApp no reproduce (VP9,
+    HEVC, .mov, .webm): la salida es siempre H.264 4:2:0 con a lo sumo una
+    pista AAC, lo que pide ``video_is_whatsapp_compatible``.
 
     Lanza VideoCompressionError si ffmpeg no está disponible o falla; el llamador
     decide qué hacer (típicamente, dejar que el archivo original caiga en el
@@ -386,7 +458,13 @@ def compress_video(data: bytes) -> bytes:
                     "-vf",
                     "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,"
                     "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                    # Primera pista de video y, si existe, primera de audio:
+                    # WhatsApp rechaza los archivos con varias pistas.
+                    "-map", "0:v:0", "-map", "0:a:0?",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                    # libx264 conserva 4:2:2/4:4:4 si la fuente los trae, y
+                    # esos perfiles tampoco los reproduce WhatsApp.
+                    "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "128k",
                     "-movflags", "+faststart",
                     out_path,
