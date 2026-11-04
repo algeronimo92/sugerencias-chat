@@ -2,6 +2,11 @@
 
 Rama: `feat/eventos-rabbitmq`
 
+> **Sin objeto (2026-11-04).** El paso que describe —mover la persistencia al
+> backend— se hizo por otra vía: webhook nativo de Meta con `public.webhook_inbox`
+> y un worker propio (`backend/app/integrations/meta_webhook/`), sin broker. Se
+> conserva como histórico; la nota original sigue debajo.
+>
 > **No es lo que se está construyendo hoy.** Lo implementado es
 > [rabbitmq-ingesta-n8n-plan.md](rabbitmq-ingesta-n8n-plan.md): la cola se pone
 > delante de n8n, que sigue siendo quien normaliza y persiste. Este documento

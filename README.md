@@ -139,6 +139,8 @@ DATABASE_URL=postgresql+asyncpg://<user>:<password>@<IP-del-servidor>:5432/<db>
 DATABASE_SSL=require
 ```
 
+Con esa configuración Alembic se niega a ejecutar migraciones (`upgrade`, `stamp`, `python -m scripts.migrate`): el host no es local. `alembic check` y `migrate --check` sí funcionan. Si de verdad hay que migrar producción desde fuera del servidor, exportar `ALEMBIC_ALLOW_REMOTE=1`.
+
 Comprobar que la sesión va cifrada, ya dentro de `psql`:
 
 ```sql
@@ -218,9 +220,10 @@ docker compose up -d --build
 
 Usa `compose.yml` (no el `.prod.yml`), con hot-reload y puertos locales:
 
-- frontend: `http://localhost:5174`;
+- frontend: `http://localhost:5173` (con multitenancy activa, entrar por
+  `http://dermicapro.localhost:5173`: `localhost` a secas es host de plataforma);
 - backend: `http://localhost:8000`;
-- PostgreSQL: `127.0.0.1:5433` para herramientas del host, y
+- PostgreSQL: `127.0.0.1:5432` para herramientas del host, y
   `postgres:5432` para el backend.
 
 La base local guarda sus datos en el volumen `sugerencias-chat_pgdata-local` y

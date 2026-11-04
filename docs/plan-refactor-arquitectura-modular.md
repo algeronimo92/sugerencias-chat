@@ -1,6 +1,6 @@
 # Plan de refactorización hacia un monolito modular
 
-Estado: completado en su totalidad y verificado localmente el 2 de octubre de 2026, fases 0 a 7. Se cerraron también los acoplamientos de transición y `test_bluegreen_config.py`. Alcance: organización de backend y frontend, conservando el comportamiento y la topología de despliegue. No se realizó commit, PR ni despliegue; la ejecución remota de CI ocurrirá al publicar el cambio.
+Estado: completado en su totalidad y verificado localmente el 2 de octubre de 2026, fases 0 a 7. Se cerraron también los acoplamientos de transición y `test_bluegreen_config.py`. Alcance: organización de backend y frontend, conservando el comportamiento y la topología de despliegue. Publicado y desplegado en el PR #55 (`16acd32`).
 
 ## 1. Objetivo y criterio de éxito
 

@@ -1,7 +1,7 @@
 # Plan de refactorización: integración nativa con Meta Cloud API
 
-**Estado:** propuesto  
-**Fecha:** 2026-09-24  
+**Estado:** ejecutado — webhook directo de Meta en `523fa93` y decomiso de Evolution en `6e6f63b` (2026-09-16); la recepción vive en `backend/app/integrations/meta_webhook/` y el envío en `backend/app/integrations/meta/`. Se conserva como registro del diseño.  
+**Fecha del plan:** 2026-09-24  
 **Alcance:** recepción, persistencia, envío, identidad, estados, frontend, IA, automatizaciones, migraciones y retiro total de Evolution/Baileys.
 
 ## 1. Objetivo
