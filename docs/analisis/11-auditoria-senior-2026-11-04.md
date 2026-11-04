@@ -162,10 +162,10 @@ Inbox de Meta sin métricas (F1) · token cross-tenant por header (S1) · `EXTER
 
 | Archivo | Dice | Realidad |
 |---|---|---|
-| [`../multi-tenant-saas-plan.md`](../multi-tenant-saas-plan.md) | "todavía no implementado" (2026-09-17) | En producción desde el corte (#59–#65); 13 suites de aislamiento. Nota de estado añadida el 2026-11-04 (también en los tres docs siguientes) |
+| [`../multi-tenant-saas-plan.md`](../multi-tenant-saas-plan.md) | "todavía no implementado" (2026-09-17) | En producción desde el corte (#59–#65); 13 suites de aislamiento. Nota de estado añadida el 2026-11-04 (también en el doc siguiente) |
 | [`../refactor-integracion-meta-cloud-api-nativa.md`](../refactor-integracion-meta-cloud-api-nativa.md) | "Estado: propuesto" (2026-09-24) | Ejecutado: `523fa93` webhook directo de Meta, `6e6f63b` decomiso de Evolution (2026-09-16) |
-| [`../rabbitmq-ingesta-n8n-plan.md`](../rabbitmq-ingesta-n8n-plan.md) | "Estado: desplegado" | Describe Evolution → RabbitMQ → n8n, un flujo que ya no existe |
-| [`../rabbitmq-eventos-plan.md`](../rabbitmq-eventos-plan.md) | "No es lo que se está construyendo hoy" | El paso que proponía se hizo por otra vía; el plan quedó sin objeto |
+| `rabbitmq-ingesta-n8n-plan.md` | "Estado: desplegado" | Describe Evolution → RabbitMQ → n8n, un flujo que ya no existe — **borrado al retirar RabbitMQ (#78)** |
+| `rabbitmq-eventos-plan.md` | "No es lo que se está construyendo hoy" | El paso que proponía se hizo por otra vía; el plan quedó sin objeto — **borrado al retirar RabbitMQ (#78)** |
 | [`../../README.md`](../../README.md) (sección "Desarrollo local") | frontend `5174`, PostgreSQL `5433` | `compose.yml`: frontend `5173`, PostgreSQL `127.0.0.1:5432` — **corregido el 2026-11-04** |
 | `.claude/agents/app-expert.md` | `backend/routers/`, `services/`, `frontend/src/components/` | Árboles retirados; `test_layering.py:106` prohíbe que vuelvan |
 | `frontend/README.md` | Boilerplate de Vite | Reemplazado el 2026-11-04 por un README con comandos y punteros |

@@ -1,410 +1,1482 @@
 {
   "uid": "dermicapro-observabilidad",
   "title": "DermicaPro CRM - Observabilidad",
-  "tags": ["dermicapro", "crm"],
+  "tags": [
+    "dermicapro",
+    "crm"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 2,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
-    { "id": 1, "type": "row", "title": "Estado del sistema", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
     {
-      "id": 2, "type": "stat", "title": "Backend blue",
-      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "up{job=\"backend\",color=\"blue\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": {
-        "unit": "short", "noValue": "sin dato",
-        "mappings": [
-          { "type": "value", "options": { "0": { "text": "Caído" }, "1": { "text": "Activo" } } }
-        ],
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] }
-      }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+      "id": 1,
+      "type": "row",
+      "title": "Estado del sistema",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
     },
     {
-      "id": 3, "type": "stat", "title": "Backend green",
-      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "up{job=\"backend\",color=\"green\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": {
-        "unit": "short", "noValue": "sin dato",
-        "mappings": [
-          { "type": "value", "options": { "0": { "text": "Caído" }, "1": { "text": "Activo" } } }
-        ],
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] }
-      }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+      "id": 2,
+      "type": "stat",
+      "title": "Backend blue",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"backend\",color=\"blue\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Caído"
+                },
+                "1": {
+                  "text": "Activo"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
     },
     {
-      "id": 4, "type": "stat", "title": "PostgreSQL",
-      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "pg_up", "refId": "A" }],
-      "fieldConfig": { "defaults": {
-        "unit": "short", "noValue": "sin dato",
-        "mappings": [
-          { "type": "value", "options": { "0": { "text": "Caído" }, "1": { "text": "Activo" } } }
-        ],
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] }
-      }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+      "id": 3,
+      "type": "stat",
+      "title": "Backend green",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"backend\",color=\"green\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Caído"
+                },
+                "1": {
+                  "text": "Activo"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
     },
     {
-      "id": 5, "type": "stat", "title": "Conexiones a Postgres",
-      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "pg_stat_database_numbackends{datname=\"cliniventas_db\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": {
-        "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 85 }
-        ] }
-      }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "id": 4,
+      "type": "stat",
+      "title": "PostgreSQL",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "pg_up",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Caído"
+                },
+                "1": {
+                  "text": "Activo"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
     },
-
-    { "id": 10, "type": "row", "title": "Cola de mensajes (message_outbox)", "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
     {
-      "id": 11, "type": "stat", "title": "Pendientes",
-      "gridPos": { "x": 0, "y": 6, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "outbox_pending", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "id": 5,
+      "type": "stat",
+      "title": "Conexiones a Postgres",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "pg_stat_database_numbackends{datname=\"cliniventas_db\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
     },
     {
-      "id": 12, "type": "stat", "title": "Procesando",
-      "gridPos": { "x": 6, "y": 6, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "outbox_processing", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "id": 10,
+      "type": "row",
+      "title": "Cola de mensajes (message_outbox)",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
     },
     {
-      "id": 13, "type": "stat", "title": "Fallidos (última hora / total)",
+      "id": 11,
+      "type": "stat",
+      "title": "Pendientes",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "outbox_pending",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Procesando",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "outbox_processing",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Fallidos (última hora / total)",
       "description": "Alerta OutboxFallosRecientes dispara con > 3 en la última hora. El total es acumulado: nada purga message_outbox y un job solo sale de failed por reintento manual, así que no baja solo y no sirve como umbral.",
-      "gridPos": { "x": 12, "y": 6, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "outbox_failed_last_hour", "refId": "A", "legendFormat": "última hora" },
-        { "expr": "outbox_failed", "refId": "B", "legendFormat": "total" }
+        {
+          "expr": "outbox_failed_last_hour",
+          "refId": "A",
+          "legendFormat": "última hora"
+        },
+        {
+          "expr": "outbox_failed",
+          "refId": "B",
+          "legendFormat": "total"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null }
-        ] } }, "overrides": [
-        { "matcher": { "id": "byFrameRefID", "options": "A" },
-          "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null }, { "color": "red", "value": 4 }
-          ] } }] }
-      ] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 4
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
     },
     {
-      "id": 14, "type": "stat", "title": "Antigüedad del pendiente más viejo",
+      "id": 14,
+      "type": "stat",
+      "title": "Antigüedad del pendiente más viejo",
       "description": "Alerta OutboxAtascado dispara con > 120s",
-      "gridPos": { "x": 18, "y": 6, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "outbox_oldest_pending_age_seconds", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "s", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 120 }
-        ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 15, "type": "timeseries", "title": "Outbox: pendientes vs. fallidos en el tiempo",
-      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "outbox_pending", "refId": "A", "legendFormat": "pendientes" },
-        { "expr": "outbox_processing", "refId": "B", "legendFormat": "procesando" },
-        { "expr": "outbox_failed", "refId": "C", "legendFormat": "fallidos (total)" },
-        { "expr": "outbox_failed_last_hour", "refId": "D", "legendFormat": "fallidos (última hora)" },
-        { "expr": "outbox_discarded", "refId": "E", "legendFormat": "descartados" }
+        {
+          "expr": "outbox_oldest_pending_age_seconds",
+          "refId": "A"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 120
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
     },
-
-    { "id": 20, "type": "row", "title": "Automatizaciones", "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
     {
-      "id": 21, "type": "stat", "title": "Programadas y vencidas",
-      "gridPos": { "x": 0, "y": 19, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "automation_scheduled_due", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "id": 15,
+      "type": "timeseries",
+      "title": "Outbox: pendientes vs. fallidos en el tiempo",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "outbox_pending",
+          "refId": "A",
+          "legendFormat": "pendientes"
+        },
+        {
+          "expr": "outbox_processing",
+          "refId": "B",
+          "legendFormat": "procesando"
+        },
+        {
+          "expr": "outbox_failed",
+          "refId": "C",
+          "legendFormat": "fallidos (total)"
+        },
+        {
+          "expr": "outbox_failed_last_hour",
+          "refId": "D",
+          "legendFormat": "fallidos (última hora)"
+        },
+        {
+          "expr": "outbox_discarded",
+          "refId": "E",
+          "legendFormat": "descartados"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
-      "id": 22, "type": "stat", "title": "En ejecución",
-      "gridPos": { "x": 8, "y": 19, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "automation_running", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+      "id": 20,
+      "type": "row",
+      "title": "Automatizaciones",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
     },
     {
-      "id": 23, "type": "stat", "title": "Fallidas (última hora)",
+      "id": 21,
+      "type": "stat",
+      "title": "Programadas y vencidas",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "automation_scheduled_due",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "En ejecución",
+      "gridPos": {
+        "x": 8,
+        "y": 19,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "automation_running",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "Fallidas (última hora)",
       "description": "Alerta AutomatizacionesFallando dispara con > 5",
-      "gridPos": { "x": 16, "y": 19, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "automation_failed_last_hour", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 6 }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-
-    { "id": 30, "type": "row", "title": "Mensajes programados y tareas", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 31, "type": "stat", "title": "Programados vencidos sin procesar",
-      "description": "Alerta MensajesProgramadosParados dispara con > 0 sostenido",
-      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "scheduled_messages_due_unprocessed", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 32, "type": "stat", "title": "Tareas de lead vencidas",
-      "gridPos": { "x": 8, "y": 24, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "lead_tasks_pending_overdue", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 20 }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 33, "type": "stat", "title": "Conexiones WebSocket activas",
-      "gridPos": { "x": 16, "y": 24, "w": 8, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "ws_local_connections", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-
-    { "id": 40, "type": "row", "title": "HTTP (backend)", "gridPos": { "x": 0, "y": 28, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 41, "type": "timeseries", "title": "Requests por segundo, por status",
-      "gridPos": { "x": 0, "y": 29, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum by (status) (rate(http_requests_total[5m]))", "refId": "A", "legendFormat": "{{status}}" }],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [
-        { "matcher": { "id": "byRegexp", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
-        { "matcher": { "id": "byRegexp", "options": "4xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
-        { "matcher": { "id": "byRegexp", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
-      ] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 42, "type": "timeseries", "title": "Latencia p95 por ruta (top 8)",
-      "gridPos": { "x": 12, "y": 29, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "topk(8, histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m]))))", "refId": "A", "legendFormat": "{{handler}}" }],
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-
-    { "id": 50, "type": "row", "title": "Infraestructura (host)", "gridPos": { "x": 0, "y": 37, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 51, "type": "timeseries", "title": "CPU usada (%)",
-      "gridPos": { "x": 0, "y": 38, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "refId": "A", "legendFormat": "CPU" }],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 10 },
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 52, "type": "timeseries", "title": "Memoria usada (%)",
-      "gridPos": { "x": 8, "y": 38, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "refId": "A", "legendFormat": "Memoria" }],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 10 },
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 53, "type": "timeseries", "title": "Disco usado (%) — /",
-      "gridPos": { "x": 16, "y": 38, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100)", "refId": "A", "legendFormat": "Disco" }],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 10 },
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-
-    { "id": 60, "type": "row", "title": "Infraestructura (contenedores de la app)", "gridPos": { "x": 0, "y": 46, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 61, "type": "timeseries", "title": "CPU por contenedor (blue/green)",
-      "description": "cAdvisor v0.55.1 — v0.49.1 no identificaba estos contenedores en Docker 29 (id sin name/image)",
-      "gridPos": { "x": 0, "y": 47, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"sugerencias-chat-.*-(backend|frontend)-1\"}[5m])) * 100", "refId": "A", "legendFormat": "{{name}}" }],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 62, "type": "timeseries", "title": "Memoria por contenedor (blue/green)",
-      "gridPos": { "x": 12, "y": 47, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "container_memory_usage_bytes{name=~\"sugerencias-chat-.*-(backend|frontend)-1\"}", "refId": "A", "legendFormat": "{{name}}" }],
-      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-
-    { "id": 70, "type": "row", "title": "RabbitMQ (ingesta WhatsApp)", "gridPos": { "x": 0, "y": 55, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 71, "type": "stat", "title": "Broker",
-      "description": "Alerta RabbitMQCaido dispara con up == 0 sostenido 2m",
-      "gridPos": { "x": 0, "y": 56, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "up{job=\"rabbitmq\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": {
-        "unit": "short", "noValue": "sin dato",
-        "mappings": [
-          { "type": "value", "options": { "0": { "text": "Caído" }, "1": { "text": "Activo" } } }
-        ],
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] }
-      }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
-    },
-    {
-      "id": 72, "type": "stat", "title": "Mensajes en DLQ (q.wsp.dlq)",
-      "description": "Alerta DlqConMensajes dispara con > 0 sostenido 5m",
-      "gridPos": { "x": 6, "y": 56, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq_queue_messages{vhost=\"dermicapro\", queue=\"q.wsp.dlq\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null }, { "color": "red", "value": 1 }
-        ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 73, "type": "stat", "title": "Consumidores — q.wsp.inbound",
-      "description": "Alerta IngestaSinConsumidor dispara con == 0 sostenido 5m",
-      "gridPos": { "x": 12, "y": 56, "w": 3, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq_queue_consumers{vhost=\"dermicapro\", queue=\"q.wsp.inbound\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 74, "type": "stat", "title": "Consumidores — q.wsp.status",
-      "description": "Alerta IngestaSinConsumidor dispara con == 0 sostenido 5m",
-      "gridPos": { "x": 15, "y": 56, "w": 3, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq_queue_consumers{vhost=\"dermicapro\", queue=\"q.wsp.status\"}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "red", "value": null }, { "color": "green", "value": 1 }
-        ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 75, "type": "stat", "title": "Conexiones al broker",
-      "gridPos": { "x": 18, "y": 56, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq_connections", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "noValue": "sin dato",
-        "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
-    },
-    {
-      "id": 76, "type": "timeseries", "title": "Profundidad de colas en el tiempo",
-      "description": "Alerta IngestaAcumulandose dispara con > 100 en inbound/status sostenido 10m",
-      "gridPos": { "x": 0, "y": 60, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq_queue_messages{vhost=\"dermicapro\"}", "refId": "A", "legendFormat": "{{queue}}" }],
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 77, "type": "timeseries", "title": "Tasa de publicación por cola (mensajes/s)",
-      "description": "Misma métrica que usa IngestaSinMensajes para detectar silencio de Evolution en horario laboral",
-      "gridPos": { "x": 12, "y": 60, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum by (queue) (rate(rabbitmq_detailed_queue_exchange_messages_published_total{vhost=\"dermicapro\"}[5m]))", "refId": "A", "legendFormat": "{{queue}}" }],
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-
-    { "id": 80, "type": "row", "title": "Logs (Loki)", "gridPos": { "x": 0, "y": 68, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-
-    {
-      "id": 81, "type": "logs", "title": "Logs en vivo — backend (blue/green)",
-      "description": "JSON estructurado (backend/logging_config.py): timestamp, level, logger, message, request_id, exception. El parser `| json` habilita el detector de nivel de Grafana (colorea por level) y expone los campos como \"detected fields\" filtrables desde el panel.",
-      "gridPos": { "x": 0, "y": 69, "w": 24, "h": 10 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "targets": [{ "expr": "{container=~\".*backend.*\"} | json", "refId": "A" }],
-      "options": {
-        "showTime": true, "showLabels": false, "showCommonLabels": false,
-        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
-        "dedupStrategy": "none", "sortOrder": "Descending"
-      }
-    },
-    {
-      "id": 82, "type": "logs", "title": "Errores del backend (level=ERROR/CRITICAL)",
-      "description": "Filtra por el campo level del JSON, no por texto — sin falsos positivos de palabras como \"error\" dentro de un mensaje normal.",
-      "gridPos": { "x": 0, "y": 79, "w": 24, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "targets": [{ "expr": "{container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\"", "refId": "A" }],
-      "options": {
-        "showTime": true, "showLabels": true, "showCommonLabels": false,
-        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
-        "dedupStrategy": "none", "sortOrder": "Descending"
-      }
-    },
-    {
-      "id": 84, "type": "logs", "title": "Errores en otros contenedores (postgres/rabbitmq/frontend)",
-      "description": "Estos contenedores no emiten JSON estructurado (solo el backend lo hace), así que se busca por texto sobre la línea cruda.",
-      "gridPos": { "x": 0, "y": 87, "w": 24, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "targets": [{ "expr": "{container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`", "refId": "A" }],
-      "options": {
-        "showTime": true, "showLabels": true, "showCommonLabels": false,
-        "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true,
-        "dedupStrategy": "none", "sortOrder": "Descending"
-      }
-    },
-    {
-      "id": 83, "type": "timeseries", "title": "Tasa de errores por contenedor (líneas/min)",
-      "gridPos": { "x": 0, "y": 95, "w": 24, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 16,
+        "y": 19,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "sum by (container) (count_over_time(({container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\")[1m]))", "refId": "A", "legendFormat": "{{container}}" },
-        { "expr": "sum by (container) (count_over_time(({container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`)[1m]))", "refId": "B", "legendFormat": "{{container}}" }
+        {
+          "expr": "automation_failed_last_hour",
+          "refId": "A"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 6
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Mensajes programados y tareas",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "Programados vencidos sin procesar",
+      "description": "Alerta MensajesProgramadosParados dispara con > 0 sostenido",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "scheduled_messages_due_unprocessed",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Tareas de lead vencidas",
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "lead_tasks_pending_overdue",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 20
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "Conexiones WebSocket activas",
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "ws_local_connections",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "sin dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "HTTP (backend)",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Requests por segundo, por status",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(http_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "5xx"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "4xx"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "2xx"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Latencia p95 por ruta (top 8)",
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(8, histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m]))))",
+          "refId": "A",
+          "legendFormat": "{{handler}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 50,
+      "type": "row",
+      "title": "Infraestructura (host)",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 51,
+      "type": "timeseries",
+      "title": "CPU usada (%)",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "refId": "A",
+          "legendFormat": "CPU"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 52,
+      "type": "timeseries",
+      "title": "Memoria usada (%)",
+      "gridPos": {
+        "x": 8,
+        "y": 38,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "refId": "A",
+          "legendFormat": "Memoria"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 53,
+      "type": "timeseries",
+      "title": "Disco usado (%) — /",
+      "gridPos": {
+        "x": 16,
+        "y": 38,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100)",
+          "refId": "A",
+          "legendFormat": "Disco"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 60,
+      "type": "row",
+      "title": "Infraestructura (contenedores de la app)",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 61,
+      "type": "timeseries",
+      "title": "CPU por contenedor (blue/green)",
+      "description": "cAdvisor v0.55.1 — v0.49.1 no identificaba estos contenedores en Docker 29 (id sin name/image)",
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"sugerencias-chat-.*-(backend|frontend)-1\"}[5m])) * 100",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 62,
+      "type": "timeseries",
+      "title": "Memoria por contenedor (blue/green)",
+      "gridPos": {
+        "x": 12,
+        "y": 47,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{name=~\"sugerencias-chat-.*-(backend|frontend)-1\"}",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 80,
+      "type": "row",
+      "title": "Logs (Loki)",
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 81,
+      "type": "logs",
+      "title": "Logs en vivo — backend (blue/green)",
+      "description": "JSON estructurado (backend/logging_config.py): timestamp, level, logger, message, request_id, exception. El parser `| json` habilita el detector de nivel de Grafana (colorea por level) y expone los campos como \"detected fields\" filtrables desde el panel.",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=~\".*backend.*\"} | json",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 82,
+      "type": "logs",
+      "title": "Errores del backend (level=ERROR/CRITICAL)",
+      "description": "Filtra por el campo level del JSON, no por texto — sin falsos positivos de palabras como \"error\" dentro de un mensaje normal.",
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 84,
+      "type": "logs",
+      "title": "Errores en otros contenedores (postgres/frontend)",
+      "description": "Estos contenedores no emiten JSON estructurado (solo el backend lo hace), así que se busca por texto sobre la línea cruda.",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 83,
+      "type": "timeseries",
+      "title": "Tasa de errores por contenedor (líneas/min)",
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "sum by (container) (count_over_time(({container=~\".*backend.*\"} | json | level=~\"ERROR|CRITICAL\")[1m]))",
+          "refId": "A",
+          "legendFormat": "{{container}}"
+        },
+        {
+          "expr": "sum by (container) (count_over_time(({container!~\".*backend.*\"} |~ `(?i)error|exception|traceback`)[1m]))",
+          "refId": "B",
+          "legendFormat": "{{container}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ]
 }

@@ -1,7 +1,6 @@
 traefik/.env
 backend/.env
 db/.env
-mq/.env
 monitoring/.env
 # Copias a mano de los .env de arriba (backend/.env.bak-incident y demás):
 # tienen las mismas credenciales que el original, pero como cada .env está

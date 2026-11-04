@@ -445,6 +445,6 @@ y cada fase cierra con un commit y la suite en verde.
 ### 10.3 Pendiente fuera de esta rama
 
 - El stack de RabbitMQ (`compose.mq.yml`, `mq/`, el bloque de despliegue en
-  CI y su monitoreo) existía para la ingesta de Evolution y ya no recibe
-  mensajes. Se retira en un cambio aparte para no mezclarlo con el refactor.
+  CI y su monitoreo) existía para la ingesta de Evolution y ya no recibía
+  mensajes. Retirado el 2026-11-04.
 - Los documentos fechados de `docs/analisis` quedan como registro histórico.
