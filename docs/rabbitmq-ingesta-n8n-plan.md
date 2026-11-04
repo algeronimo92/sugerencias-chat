@@ -1,6 +1,11 @@
 # Ingesta de WhatsApp por RabbitMQ, con n8n como consumidor
 
-Estado: **desplegado**. Los pasos manuales están al final; las secciones 5 y 6 de
+Estado (2026-11-04): **retirado**. Describe el flujo Evolution API → RabbitMQ → n8n;
+Evolution se decomisó el 2026-09-16 (`6e6f63b`) y el backend recibe los eventos de
+Meta directamente ([refactor-integracion-meta-cloud-api-nativa.md](refactor-integracion-meta-cloud-api-nativa.md)).
+El broker sigue definido en `compose.mq.yml` sin ningún consumidor y está pendiente
+de borrar ([analisis/11](analisis/11-auditoria-senior-2026-11-04.md), hallazgo F2).
+Se conserva como histórico. Los pasos manuales están al final; las secciones 5 y 6 de
 "Las decisiones que importan" salieron de lo que falló al ponerlo en producción.
 
 ## Qué resuelve

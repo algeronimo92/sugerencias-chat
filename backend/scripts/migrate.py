@@ -17,6 +17,10 @@ Resuelve dos problemas que el arranque de la aplicación tenía:
 Uso:
     python -m scripts.migrate            # aplica lo pendiente
     python -m scripts.migrate --check    # sólo informa, no modifica nada
+
+La URL sale de `settings` (backend/.env o el entorno). Si el host no es local,
+alembic/env.py se niega a escribir salvo con ALEMBIC_ALLOW_REMOTE=1; `--check`
+no escribe y por eso no lo pide.
 """
 
 from __future__ import annotations

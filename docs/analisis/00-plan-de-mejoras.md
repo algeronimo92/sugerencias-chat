@@ -2,6 +2,9 @@
 
 Fecha: 2026-08-05. Rama analizada: `feat/remove-unkown-types`.
 
+> Superado: las prioridades vigentes están en [09](09-auditoria-integral-2026-09-14.md)
+> y [11](11-auditoria-senior-2026-11-04.md). Se conserva por trazabilidad.
+
 Este documento no aporta hallazgos propios: consolida y prioriza los de los informes
 `01` a `08` de esta misma carpeta, resuelve solapamientos entre ellos y propone un
 orden de ejecución. Cada acción enlaza con el informe que la sustenta.

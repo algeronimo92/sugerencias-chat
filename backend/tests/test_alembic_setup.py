@@ -121,3 +121,54 @@ def test_startup_no_longer_runs_ddl() -> None:
     )
     for forbidden in ("create_all", "ALTER TABLE", "CREATE INDEX", "CREATE EXTENSION"):
         assert forbidden not in code, f"el arranque volvió a ejecutar DDL: {forbidden}"
+
+
+@pytest.mark.parametrize(
+    "host, local",
+    [
+        (None, True),                      # socket Unix
+        ("localhost", True),
+        ("127.0.0.1", True),
+        ("127.0.0.2", True),
+        ("::1", True),
+        ("[::1]", True),
+        ("postgres", True),                # servicio de Compose (dev y producción)
+        ("dermicapro.localhost", True),
+        ("179.198.97.243", False),         # IP pública
+        ("10.0.0.5", False),               # túnel WireGuard: también es producción
+        ("db.cliniventas.com", False),
+        ("2001:db8::1", False),
+    ],
+)
+def test_which_database_hosts_count_as_local(env_module, host, local) -> None:
+    assert env_module.is_local_database_host(host) is local
+
+
+REMOTE = "postgresql+asyncpg://u:p@179.198.97.243:5432/dermicapro_db"
+LOCAL = "postgresql+asyncpg://u:p@postgres:5432/cliniventas_db"
+
+
+def test_writing_to_a_remote_database_is_refused_by_default(env_module) -> None:
+    """backend/.env puede apuntar a producción para ver datos reales; un
+    `alembic upgrade` sin querer no debe migrarla desde una laptop."""
+    with pytest.raises(RuntimeError, match="179.198.97.243"):
+        env_module.refuse_remote_database(REMOTE, "upgrade", None)
+    with pytest.raises(RuntimeError):
+        env_module.refuse_remote_database(REMOTE, None, None)  # scripts/migrate.py
+
+
+@pytest.mark.parametrize("command", sorted(("check", "current", "revision")))
+def test_read_only_commands_may_look_at_a_remote_database(env_module, command) -> None:
+    """Comparar el esquema de producción sin escribirlo sigue sin pedir nada."""
+    env_module.refuse_remote_database(REMOTE, command, None)
+
+
+def test_remote_writes_need_an_explicit_opt_in(env_module) -> None:
+    env_module.refuse_remote_database(REMOTE, "upgrade", "1")
+    with pytest.raises(RuntimeError):
+        env_module.refuse_remote_database(REMOTE, "upgrade", "0")
+
+
+def test_local_databases_never_ask(env_module) -> None:
+    env_module.refuse_remote_database(LOCAL, "upgrade", None)
+    env_module.refuse_remote_database("postgresql+asyncpg://u:p@localhost/db", "stamp", None)
