@@ -15,6 +15,18 @@ Dos decisiones importantes:
    entera de la comparación, así que da igual si alguna de sus columnas
    (como `ultimo_mensaje_at`) sí está mapeada en `db/models/`: mientras la
    tabla siga en `EXTERNAL_TABLES`, autogenerate nunca la compara.
+
+3. **No se ejecuta DDL contra un host remoto sin pedirlo.** La decisión 1
+   tiene un reverso: `settings` lee `backend/.env`, y en una máquina de
+   desarrollo ese archivo puede apuntar a la base en servicio para ver datos
+   reales. Con eso, `alembic upgrade head` o `python -m scripts.migrate` sin
+   un `DATABASE_URL` explícito migrarían producción desde una laptop. Antes
+   de escribir se mira el host: loopback, `*.localhost` o un nombre de
+   servicio de Compose (sin puntos, como el `postgres` de producción y de
+   desarrollo) pasan; cualquier otro —una IP pública, un dominio, la IP de un
+   túnel— exige `ALEMBIC_ALLOW_REMOTE=1`. Leer no pide nada: `alembic check`,
+   `current` y `revision --autogenerate` siguen sirviendo para comparar el
+   esquema de producción sin tocarlo.
 """
 
 from __future__ import annotations
@@ -25,7 +37,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool, text
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
@@ -107,6 +119,58 @@ def include_name(name, type_, parent_names) -> bool:
     return True
 
 
+# Comandos de Alembic que solo leen la base: comparar, mostrar la revisión o
+# proponer una migración. Todo lo demás (upgrade, downgrade, stamp) escribe.
+READ_ONLY_COMMANDS = frozenset({"check", "current", "revision"})
+
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def is_local_database_host(host: str | None) -> bool:
+    """¿Es el Postgres de esta máquina o de este Compose?
+
+    Un socket Unix (sin host), loopback, ``*.localhost`` o un nombre sin
+    puntos (el servicio ``postgres`` de compose.yml y de compose.prod.yml, el
+    ``localhost`` de CI) cuentan como locales. Una IP que no sea loopback o
+    cualquier nombre con puntos es otra máquina, aunque sea privada: la IP de
+    un túnel WireGuard también es producción.
+    """
+    if not host:
+        return True
+    name = host.strip("[]").lower()
+    if name in LOCAL_HOSTS or name.endswith(".localhost") or name.startswith("127."):
+        return True
+    return "." not in name and ":" not in name
+
+
+def _alembic_command_name() -> str | None:
+    """Nombre del comando de la CLI, o None cuando se invoca por código."""
+    cmd = getattr(getattr(config, "cmd_opts", None), "cmd", None)
+    if not cmd:
+        return None
+    return getattr(cmd[0], "__name__", None)
+
+
+def refuse_remote_database(url: str, command: str | None, allow: str | None) -> None:
+    """Levanta RuntimeError si se va a escribir en un host que no es local.
+
+    ``allow`` es el valor de ``ALEMBIC_ALLOW_REMOTE``; "1" deja pasar. Se
+    recibe por parámetro, igual que ``command``, para que la regla sea pura y
+    se pruebe sin tocar el entorno.
+    """
+    if command in READ_ONLY_COMMANDS or allow == "1":
+        return
+    host = make_url(url).host
+    if is_local_database_host(host):
+        return
+    raise RuntimeError(
+        f"Alembic iba a escribir en {host!r}, que no es una base local. "
+        "DATABASE_URL sale de backend/.env (o del entorno); si de verdad hay que "
+        "migrar esa base, exportar ALEMBIC_ALLOW_REMOTE=1. Para comparar sin "
+        "escribir, `alembic check` no necesita permiso."
+    )
+
+
 def _configure(connection: Connection) -> None:
     tenant_schema = config.attributes.get("tenant_schema")
     if not isinstance(tenant_schema, str):
@@ -173,6 +237,11 @@ else:
     # tomado) y llama a Alembic desde dentro del bucle de eventos. En ese caso
     # se reutiliza esa conexión: abrir otra aquí crearía un segundo bucle y
     # además dejaría el lock en una sesión distinta de la que hace el DDL.
+    # Antes de cualquiera de las dos ramas: la conexión inyectada ya está
+    # abierta, pero el DDL todavía no empezó y es lo único que se frena.
+    refuse_remote_database(
+        settings.database_url, _alembic_command_name(), os.environ.get("ALEMBIC_ALLOW_REMOTE")
+    )
     existing = config.attributes.get("connection")
     if existing is not None:
         _run(existing)
