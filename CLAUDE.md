@@ -29,7 +29,6 @@ Fuente completa: [docs/arquitectura-modular.md](docs/arquitectura-modular.md).
 | `scripts/` · `backend/scripts/` | Operación del VPS (deploy, backup, TLS) · `python -m scripts.<x>` (dry-run salvo `--apply`) | |
 | `compose.yml` · `compose.db.yml` + `compose.prod.yml` + `compose.bluegreen.yml` | Desarrollo · producción (la base vive aparte, una vez por servidor) | [README.md](README.md) (despliegue) |
 | `compose.monitoring.yml` · `monitoring/` · `traefik/` | Prometheus, Loki, Alertmanager, Grafana · proxy y certificados | |
-| `compose.mq.yml` · `mq/` | RabbitMQ **huérfano** (el backend no lo usa; pendiente de borrar) | auditoría 11, F2 |
 | `docs/analisis/NN-*.md` | Auditorías y planes, numerados | |
 
 Para agregar una funcionalidad: [docs/guia-nueva-funcionalidad.md](docs/guia-nueva-funcionalidad.md).
@@ -110,8 +109,8 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
   leer `backend/app/tenancy/middleware.py` y `tenancy/dependencies.py` antes de añadir rutas ahí.
 - Nunca construir un `search_path` o nombre de schema desde input: `TENANT_SCHEMA_RE` en `app/tenancy/context.py`.
 - Varios `docs/*.md` tienen cabeceras de estado falsas (`multi-tenant-saas-plan` dice "no implementado" y está en
-  producción; `refactor-integracion-meta-cloud-api-nativa` dice "propuesto" y está hecho; los `rabbitmq-*`
-  describen un pipeline retirado). Lista en la auditoría 11 §3.4. Ante la duda, manda el código.
+  producción; `refactor-integracion-meta-cloud-api-nativa` dice "propuesto" y está hecho). Las cabeceras ya
+  llevan nota de estado; la lista está en la auditoría 11 §3.4. Ante la duda, manda el código.
 
 ## Agentes
 

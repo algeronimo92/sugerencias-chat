@@ -164,8 +164,8 @@ Inbox de Meta sin métricas (F1) · token cross-tenant por header (S1) · `EXTER
 |---|---|---|
 | [`../multi-tenant-saas-plan.md`](../multi-tenant-saas-plan.md) | "todavía no implementado" (2026-09-17) | En producción desde el corte (#59–#65); 13 suites de aislamiento. Nota de estado añadida el 2026-11-04 (también en los tres docs siguientes) |
 | [`../refactor-integracion-meta-cloud-api-nativa.md`](../refactor-integracion-meta-cloud-api-nativa.md) | "Estado: propuesto" (2026-09-24) | Ejecutado: `523fa93` webhook directo de Meta, `6e6f63b` decomiso de Evolution (2026-09-16) |
-| [`../rabbitmq-ingesta-n8n-plan.md`](../rabbitmq-ingesta-n8n-plan.md) | "Estado: desplegado" | Describe Evolution → RabbitMQ → n8n, un flujo que ya no existe |
-| [`../rabbitmq-eventos-plan.md`](../rabbitmq-eventos-plan.md) | "No es lo que se está construyendo hoy" | El paso que proponía se hizo por otra vía; el plan quedó sin objeto |
+| `docs/rabbitmq-ingesta-n8n-plan.md` | "Estado: desplegado" | Describía Evolution → RabbitMQ → n8n, un flujo que ya no existe. Borrado el 2026-11-04 junto con el stack; queda en el historial de git |
+| `docs/rabbitmq-eventos-plan.md` | "No es lo que se está construyendo hoy" | El paso que proponía se hizo por otra vía. Borrado el 2026-11-04 |
 | [`../../README.md`](../../README.md) (sección "Desarrollo local") | frontend `5174`, PostgreSQL `5433` | `compose.yml`: frontend `5173`, PostgreSQL `127.0.0.1:5432` — **corregido el 2026-11-04** |
 | `.claude/agents/app-expert.md` | `backend/routers/`, `services/`, `frontend/src/components/` | Árboles retirados; `test_layering.py:106` prohíbe que vuelvan |
 | `frontend/README.md` | Boilerplate de Vite | Reemplazado el 2026-11-04 por un README con comandos y punteros |
@@ -250,7 +250,7 @@ Ver 2.3 y N1. `control.py:50-54` es todo el modelo de entitlements.
 *Escenario:* vence el `access_token` de Meta de un negocio; `_import_media` falla; a los 10 intentos el mensaje del paciente desaparece del CRM sin señal alguna. El equipo se entera cuando el cliente se queja — el problema que `queue_metrics.py:3-5` llama "la carencia más subestimada del sistema" y que se resolvió para la salida pero no para la entrada.
 *Arreglo:* gauges `webhook_inbox_pending`, `webhook_inbox_failed`, `webhook_inbox_exhausted`, `webhook_inbox_oldest_pending_age_seconds` en un tick global; alertas sobre `exhausted > 0` y edad > 5 min.
 
-**F2 · RabbitMQ es infraestructura muerta que el deploy toca y cuyas alertas disparan en falso desde septiembre — S**
+**F2 · RabbitMQ es infraestructura muerta que el deploy toca y cuyas alertas disparan en falso desde septiembre — S — resuelto el 2026-11-04**
 0 referencias a `rabbit|amqp|aio_pika` en `backend/app` y `requirements.txt`. `mq/definitions.json:15,62` sigue declarando `evolution_exchange` y `q.wsp.inbound`; último commit a `mq/`: 2026-08-13, un mes antes de retirar Evolution. `ci-cd.yml:420-448` hace `up -d` + `provision.sh` en cada despliegue. `monitoring/prometheus/alert-rules.yml:80` (`IngestaSinConsumidor`, `severity: critical`, `rabbitmq_queue_consumers == 0`) es verdadera de forma permanente desde que n8n dejó de consumir; igual `IngestaSinMensajes` (`:110`), `IngestaAcumulandose`, `DlqConMensajes`, `RabbitMQCaido`.
 *Por qué importa:* ~7 semanas de críticos falsos cada 3 h → cuando `PostgresCaido` dispare de verdad se perderá en el ruido. Y cada deploy añade un servicio que nadie usa a la ruta crítica.
 *Arreglo:* borrar `mq/`, `compose.mq.yml`, las cinco alertas y sus tests, el job de Prometheus y el bloque de CI; `docker compose -f compose.mq.yml down -v` en el servidor.
@@ -365,7 +365,7 @@ Ordenada por riesgo que elimina, no por esfuerzo.
 |---|---|---|
 | E2 | Segundo receptor de Alertmanager (SMTP ya configurado) para `critical` + alerta `Watchdog` a un dead-man's-switch externo | S |
 | E1a | Cron de `rclone`/`restic` nocturno de `db/backups/` a un bucket externo cifrado; gauge y alerta de "último backup verificado" | S–M |
-| F2 | Borrar `mq/`, `compose.mq.yml`, cinco alertas y su test, job de Prometheus y bloque de CI; `down -v` en el servidor | S |
+| F2 | ~~Borrar `mq/`, `compose.mq.yml`, cinco alertas y su test, job de Prometheus y bloque de CI; `down -v` en el servidor~~ Hecho el 2026-11-04; el deploy apaga el contenedor heredado | S |
 | S3 | `bcrypt` a `asyncio.to_thread` en los seis call sites | S |
 | F1 | Gauges y alertas de `webhook_inbox` | S |
 | S2 | Purga de `failed` exhaustos (con dead-letter) y cifrado de `payload` | S |
