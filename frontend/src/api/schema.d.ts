@@ -1673,6 +1673,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/onboarding/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Restore Onboarding */
+        post: operations["post_restore_onboarding_api_onboarding_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -9515,6 +9532,26 @@ export interface operations {
         };
     };
     post_dismiss_onboarding_api_onboarding_dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
+                };
+            };
+        };
+    };
+    post_restore_onboarding_api_onboarding_restore_post: {
         parameters: {
             query?: never;
             header?: never;

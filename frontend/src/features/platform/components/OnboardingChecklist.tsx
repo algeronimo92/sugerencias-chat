@@ -1,5 +1,6 @@
 import { CheckCircle2, ChevronDown, Circle, ListChecks, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { useDismissOnboarding, useOnboarding, type OnboardingStepKey } from '../hooks/useOnboarding'
 
@@ -59,7 +60,7 @@ interface Props {
 
 /** Barra de primeros pasos del negocio. Cada paso sale de los datos reales
  *  (GET /api/onboarding); se oculta cuando todo está hecho o el admin la
- *  descarta, que vale para todo el negocio. */
+ *  descarta (vale para todo el negocio); OnboardingReopenButton la recupera. */
 export function OnboardingChecklist({ enabled, pathname, onOpenSettings, onNavigate }: Props) {
   const { data, refetch } = useOnboarding(enabled)
   const { mutate: dismiss, isPending: dismissing } = useDismissOnboarding()
@@ -120,10 +121,14 @@ export function OnboardingChecklist({ enabled, pathname, onOpenSettings, onNavig
         </button>
         <button
           type="button"
-          onClick={() => dismiss()}
+          onClick={() => dismiss(undefined, {
+            onSuccess: () => toast('Primeros pasos ocultos', {
+              description: 'Puedes volver a verlos desde el ícono de lista en la barra superior.',
+            }),
+          })}
           disabled={dismissing}
-          aria-label="No volver a mostrar los primeros pasos"
-          title="No volver a mostrar"
+          aria-label="Ocultar los primeros pasos"
+          title="Ocultar"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-wa-hover hover:text-wa-text disabled:opacity-50 dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"
         >
           <X className="h-4 w-4" />

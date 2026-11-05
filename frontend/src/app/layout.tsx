@@ -21,7 +21,7 @@ import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
-import { OnboardingChecklist } from '../features/platform/public/OnboardingChecklist';
+import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
 import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
@@ -162,6 +162,10 @@ export function MainLayout() {
             </span>
           </button>
         )}
+        <OnboardingReopenButton
+          enabled={me?.role === "admin"}
+          className={headerIconButtonClass}
+        />
         {me?.role === "admin" && (
           <Tooltip content="Configuración">
             <button

@@ -207,6 +207,10 @@ export async function dismissOnboarding(): Promise<OnboardingStatus> {
   return (await client.post<ApiResponse<'/api/onboarding/dismiss', 'post'>>('/api/onboarding/dismiss')).data
 }
 
+export async function restoreOnboarding(): Promise<OnboardingStatus> {
+  return (await client.post<ApiResponse<'/api/onboarding/restore', 'post'>>('/api/onboarding/restore')).data
+}
+
 export async function applyStarterPack(organizationId: string): Promise<StarterPackResult> {
   return (
     await client.post<ApiResponse<'/api/platform/organizations/{organization_id}/starter-pack', 'post'>>(

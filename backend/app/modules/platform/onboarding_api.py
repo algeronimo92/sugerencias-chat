@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.modules.platform.onboarding import dismiss_onboarding, onboarding_status
+from app.modules.platform.onboarding import dismiss_onboarding, onboarding_status, restore_onboarding
 from app.modules.platform.schemas import OnboardingStatus
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
@@ -16,3 +16,8 @@ async def get_onboarding():
 @router.post("/dismiss", response_model=OnboardingStatus)
 async def post_dismiss_onboarding():
     return await dismiss_onboarding()
+
+
+@router.post("/restore", response_model=OnboardingStatus)
+async def post_restore_onboarding():
+    return await restore_onboarding()
