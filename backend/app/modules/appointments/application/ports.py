@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.modules.appointments.domain.appointment import SyncResult
+from app.modules.appointments.domain.calendar_event import EventContent
 
 
 class AppointmentRepository(Protocol):
@@ -20,8 +21,9 @@ class AppointmentRepository(Protocol):
 
 
 class CalendarProvider(Protocol):
-    async def create_event(self, appointment: dict, field_labels: dict[str, str]) -> dict:
-        """``{status, event_id, event_link, error}``; ``status`` es
+    async def create_event(self, appointment: dict, content: EventContent) -> dict:
+        """El evento de la cita con el título y la descripción ya armados.
+        ``{status, event_id, event_link, error}``; ``status`` es
         ``synced``, ``not_configured`` o ``error``. Nunca levanta."""
 
 

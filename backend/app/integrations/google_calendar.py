@@ -213,12 +213,14 @@ async def revoke(refresh_token: str) -> bool:
     return not response.is_error
 
 
-async def create_google_event(appointment: dict, field_labels: dict[str, str]) -> dict:
+async def create_google_event(appointment: dict, *, title: str, description: str) -> dict:
     """Crea un evento mediante OAuth refresh token.
 
-    Las credenciales vienen de app_settings, donde settings_service las cifra.
-    Si la integración está apagada o incompleta, la cita local sigue siendo el
-    resultado válido y se devuelve ``not_configured``.
+    El título y la descripción llegan armados con la plantilla del negocio
+    (appointments/domain/calendar_event.py). Las credenciales vienen de
+    app_settings, donde settings_service las cifra. Si la integración está
+    apagada o incompleta, la cita local sigue siendo el resultado válido y se
+    devuelve ``not_configured``.
     """
     config = await calendar_configuration()
     required = (
@@ -246,17 +248,6 @@ async def create_google_event(appointment: dict, field_labels: dict[str, str]) -
 
     start = datetime.fromisoformat(f"{appointment['fecha']}T{appointment['hora']}").replace(tzinfo=timezone)
     end = start + timedelta(minutes=appointment.get("duration_minutes", 60))
-    custom_lines = [
-        f"{field_labels.get(key, key)}: {value}"
-        for key, value in (appointment.get("custom_fields") or {}).items()
-    ]
-    description_lines = [
-        appointment.get("detalle") or "",
-        f"Contacto: {appointment['nombre_completo']}",
-        f"Teléfono: {appointment['telefono']}",
-        f"Responsable: {appointment['vendedor']}",
-        *custom_lines,
-    ]
     event = {
         "summary": appointment["tratamiento"],
         "description": "\n".join(line for line in description_lines if line),

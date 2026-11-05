@@ -49,10 +49,12 @@ class FakeCalendar:
         "status": "not_configured", "event_id": None, "event_link": None, "error": None,
     })
     calls: list[dict] = field(default_factory=list)
+    contents: list = field(default_factory=list)
     order: list[str] | None = None
 
-    async def create_event(self, appointment: dict, field_labels: dict[str, str]) -> dict:
+    async def create_event(self, appointment: dict, content) -> dict:
         self.calls.append(appointment)
+        self.contents.append(content)
         if self.order is not None:
             self.order.append("calendar")
         return dict(self.result)

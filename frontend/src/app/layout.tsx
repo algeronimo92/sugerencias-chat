@@ -27,6 +27,9 @@ import { Tooltip } from "../shared/ui/Tooltip";
 const SettingsDialog = lazy(() =>
   import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
 );
+const CalendarEventTemplateEditor = lazy(() =>
+  import("../features/appointments/public/CalendarEventTemplateEditor").then((module) => ({ default: module.CalendarEventTemplateEditor })),
+);
 const AccountSecurityDialog = lazy(() =>
   import("../features/auth/index").then((module) => ({ default: module.AccountSecurityDialog })),
 );
@@ -251,6 +254,11 @@ export function MainLayout() {
           <SettingsDialog
             onClose={() => setIsSettingsOpen(false)}
             initialTab={settingsInitialTab}
+            calendarEventEditor={(
+              <Suspense fallback={null}>
+                <CalendarEventTemplateEditor />
+              </Suspense>
+            )}
           />
         </Suspense>
       )}

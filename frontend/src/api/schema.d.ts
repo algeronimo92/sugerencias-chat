@@ -2417,6 +2417,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/calendar-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Calendar Template */
+        get: operations["get_calendar_template_api_appointments_calendar_template_get"];
+        /** Put Calendar Template */
+        put: operations["put_calendar_template_api_appointments_calendar_template_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/sync-calendar": {
         parameters: {
             query?: never;
@@ -3784,6 +3802,39 @@ export interface components {
             label: string;
             /** Offset Minutes */
             offset_minutes: number;
+        };
+        /** CalendarEventField */
+        CalendarEventField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Custom */
+            custom: boolean;
+        };
+        /**
+         * CalendarEventTemplate
+         * @description Plantilla del evento de Google Calendar. Los marcadores ``{campo}``
+         *     nombran uno de ``fields``; el resto es texto libre.
+         */
+        CalendarEventTemplate: {
+            /** Title Template */
+            title_template: string;
+            /** Description Template */
+            description_template: string;
+            /** Default Title Template */
+            default_title_template: string;
+            /** Default Description Template */
+            default_description_template: string;
+            /** Fields */
+            fields: components["schemas"]["CalendarEventField"][];
+        };
+        /** CalendarEventTemplateUpdate */
+        CalendarEventTemplateUpdate: {
+            /** Title Template */
+            title_template: string;
+            /** Description Template */
+            description_template: string;
         };
         /** Chat */
         Chat: {
@@ -11267,6 +11318,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppointmentCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calendar_template_api_appointments_calendar_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventTemplate"];
+                };
+            };
+        };
+    };
+    put_calendar_template_api_appointments_calendar_template_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventTemplate"];
                 };
             };
             /** @description Validation Error */

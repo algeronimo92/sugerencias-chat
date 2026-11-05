@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CreateAppointmentInput } from './types';
+import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -32,4 +32,17 @@ export async function syncAppointmentCalendar(appointmentId: number): Promise<Ap
   return (
       await client.post<ApiResponse<'/api/appointments/{appointment_id}/sync-calendar', 'post'>>(`/api/appointments/${appointmentId}/sync-calendar`)
     ).data
+}
+
+export async function fetchCalendarEventTemplate(): Promise<CalendarEventTemplate> {
+  return (await client.get<ApiResponse<'/api/appointments/calendar-template', 'get'>>('/api/appointments/calendar-template')).data
+}
+
+export async function saveCalendarEventTemplate(values: { title: string; description: string }): Promise<CalendarEventTemplate> {
+  return (
+    await client.put<ApiResponse<'/api/appointments/calendar-template', 'put'>>('/api/appointments/calendar-template', {
+      title_template: values.title,
+      description_template: values.description,
+    })
+  ).data
 }

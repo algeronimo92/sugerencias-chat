@@ -175,6 +175,11 @@ SETTING_DEFS: list[SettingDef] = [
     # Un solo uso: el callback lo compara con el del state y lo borra.
     SettingDef("google_calendar_oauth_nonce", "Nonce del flujo OAuth en curso", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
     SettingDef("business_timezone", "Zona horaria (IANA)", "calendar", "Google Calendar (opcional)", secret=False),
+    # Qué dice el evento de cada cita; vacío es el formato de siempre. Se
+    # editan desde el armador de la pestaña Calendario, que valida los campos
+    # (appointments/application/calendar_template.py).
+    SettingDef("google_calendar_title_template", "Título del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    SettingDef("google_calendar_description_template", "Descripción del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
     # El admin cerró la tarjeta de primeros pasos. Es del negocio y no de cada
     # admin: si uno ya lo dejó configurado, al siguiente no le sirve verla.
     SettingDef(
