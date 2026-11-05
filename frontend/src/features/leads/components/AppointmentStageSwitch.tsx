@@ -1,4 +1,5 @@
 import { CalendarCheck } from 'lucide-react'
+import { useId } from 'react'
 
 interface Props {
   stageName: string
@@ -15,9 +16,11 @@ interface Props {
  * lead en el embudo; nunca lo devuelve a una etapa anterior.
  */
 export function AppointmentStageSwitch({ stageName, checked, available, disabled, onChange }: Props) {
+  const id = useId()
   return (
-    <label className={`inline-flex min-h-9 items-center gap-2 text-xs ${available ? 'text-wa-text dark:text-wa-text-dark' : 'text-wa-muted dark:text-wa-muted-dark'}`}>
+    <div className={`inline-flex min-h-9 items-center gap-2 text-xs ${available ? 'text-wa-text dark:text-wa-text-dark' : 'text-wa-muted dark:text-wa-muted-dark'}`}>
       <button
+        id={id}
         type="button"
         role="switch"
         aria-checked={checked}
@@ -29,7 +32,7 @@ export function AppointmentStageSwitch({ stageName, checked, available, disabled
         <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </button>
       <CalendarCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span>{available ? 'Mover aquí al agendar una cita' : 'Actívala para usarla al agendar citas'}</span>
-    </label>
+      <label htmlFor={id}>{available ? 'Mover aquí al agendar una cita' : 'Actívala para usarla al agendar citas'}</label>
+    </div>
   )
 }

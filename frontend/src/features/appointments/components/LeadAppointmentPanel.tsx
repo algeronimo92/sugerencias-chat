@@ -1,13 +1,9 @@
 import { ArrowLeft, CalendarPlus, Info, Loader2, Save, UserRoundCheck, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useMe } from '../../../shared/auth'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { dialogOverlayClass, DialogPrimitive } from '../../../shared/ui/Dialog'
-import { useCustomFields } from '../../catalogs/public/useCustomFields'
-import { useSellers } from '../../platform/public/useUsers'
-import { leadCorrections, leadUpdatesFor, prefillFromLead, type LeadCorrection, type LeadSnapshot } from '../domain/leadPrefill'
-import { loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
+import type { LeadCorrection, LeadSnapshot } from '../domain/leadPrefill'
+import { useLeadAppointment, type LeadAppointmentState } from '../hooks/useLeadAppointment'
 import { AppointmentFormFields } from './AppointmentFormFields'
 
 interface Props {
@@ -17,8 +13,7 @@ interface Props {
   onClose: () => void
 }
 
-// Un borrador por lead: el de un cliente no aparece al agendar a otro.
-const leadDraftKey = (leadId: string) => `nueva-cita-lead-draft:${leadId}`
+const iconButtonClass = 'rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
 
 /**
  * Agendar desde la ficha del lead, en un panel que se desliza desde la
@@ -26,111 +21,72 @@ const leadDraftKey = (leadId: string) => `nueva-cita-lead-draft:${leadId}`
  * cliente. En móvil ocupa toda la pantalla.
  */
 export function LeadAppointmentPanel({ lead, leadReady, onClose }: Props) {
-  const draftKey = leadDraftKey(lead.id)
-  const state = useAppointmentForm(draftKey)
-  const { load } = state
-  const { data: me } = useMe()
-  const { data: sellers = [], isLoading: sellersLoading } = useSellers()
-  const { data: leadFields = [] } = useCustomFields('lead')
-  const [confirmed, setConfirmed] = useState(false)
-  const [corrections, setCorrections] = useState<LeadCorrection[] | null>(null)
-  const [chosen, setChosen] = useState<Set<string>>(new Set())
-  const [prefilled, setPrefilled] = useState<ReadonlySet<string>>(new Set())
-  const loaded = useRef(false)
-
-  const ready = leadReady && !sellersLoading && !state.customFieldsLoading
-  const prefill = useMemo(
-    () => (ready ? prefillFromLead(lead, state.definitions, sellers, me?.name ?? null) : null),
-    [ready, lead, state.definitions, sellers, me?.name],
-  )
-
-  useEffect(() => {
-    if (!prefill || loaded.current) return
-    loaded.current = true
-    setPrefilled(prefill.prefilled)
-    // Un borrador de este mismo lead manda: el vendedor ya había empezado.
-    const draft = loadAppointmentDraft(draftKey)
-    if (draft) load({ ...draft.form, telefono: prefill.form.telefono }, draft.customFields)
-    else load(prefill.form, prefill.customFields)
-  }, [prefill, draftKey, load])
-
-  const needsConfirmation = prefilled.size > 0
-  const canSave = ready && (!needsConfirmation || confirmed) && !state.busy && !state.customFieldsError
-
-  function save(leadUpdates: ReturnType<typeof leadUpdatesFor>) {
-    void state.submit({ leadId: lead.id, leadUpdates, onSuccess: onClose })
-  }
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    const problem = state.validate()
-    if (problem) { state.setError(problem); return }
-    if (corrections === null) {
-      const found = leadCorrections(lead, state.form, state.customFields, leadFields)
-      if (found.length > 0) {
-        setCorrections(found)
-        setChosen(new Set(found.map(correction => correction.key)))
-        return
-      }
-    }
-    save(corrections ? leadUpdatesFor(corrections, chosen) : null)
-  }
-
-  function toggle(key: string, checked: boolean) {
-    setChosen(current => {
-      const next = new Set(current)
-      if (checked) next.add(key)
-      else next.delete(key)
-      return next
-    })
-  }
+  const flow = useLeadAppointment(lead, leadReady, onClose)
+  const busy = flow.state.busy
 
   return (
-    <DialogPrimitive.Root open onOpenChange={open => { if (!open && !state.busy) onClose() }}>
+    <DialogPrimitive.Root open onOpenChange={open => { if (!open && !busy) onClose() }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className={dialogOverlayClass} />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           className="fixed inset-y-0 right-0 z-[51] flex w-full flex-col bg-wa-app text-wa-text shadow-2xl outline-none sm:w-[min(32rem,100vw)] sm:border-l sm:border-wa-border dark:bg-wa-app-dark dark:text-wa-text-dark dark:sm:border-wa-border-dark"
         >
-          <header className="flex items-center gap-3 border-b border-wa-border bg-wa-panel px-4 py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-            {corrections !== null
-              ? <button type="button" aria-label="Volver al formulario" className="rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark" onClick={() => setCorrections(null)} disabled={state.busy}><ArrowLeft className="h-4 w-4" /></button>
-              : <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><CalendarPlus className="h-4 w-4" /></span>}
-            <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="font-semibold">{corrections !== null ? 'Actualizar el lead' : 'Agendar cita'}</DialogPrimitive.Title>
-              <p className="truncate text-xs text-wa-muted">{lead.name || lead.phone || 'Lead sin nombre'}</p>
-            </div>
-            <DialogPrimitive.Close asChild><button type="button" aria-label="Cerrar" className="rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark" disabled={state.busy}><X className="h-4 w-4" /></button></DialogPrimitive.Close>
-          </header>
-
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <PanelHeader lead={lead} flow={flow} />
+          <form onSubmit={flow.handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-              {state.error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/20 dark:text-red-300"><Info className="mr-2 inline h-4 w-4" />{state.error}</div>}
-              {!ready ? <p className="flex items-center gap-2 text-sm text-wa-muted"><Loader2 className="h-4 w-4 animate-spin" />Cargando los datos del lead…</p>
-                : corrections !== null ? <CorrectionsStep corrections={corrections} chosen={chosen} onToggle={toggle} disabled={state.busy} />
-                : <AppointmentFormFields state={state} prefilled={prefilled} phoneLocked={Boolean(lead.phone)} compact />}
+              {flow.state.error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/20 dark:text-red-300"><Info className="mr-2 inline h-4 w-4" />{flow.state.error}</div>}
+              <PanelBody lead={lead} flow={flow} />
             </div>
-
-            <footer className="space-y-3 border-t border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-              {corrections === null && needsConfirmation && ready && (
-                <label className="flex items-start gap-2.5 text-sm">
-                  <Checkbox className="mt-0.5" checked={confirmed} onCheckedChange={setConfirmed} disabled={state.busy} />
-                  <span>Confirmo que los datos tomados del lead son correctos</span>
-                </label>
-              )}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                {corrections === null && <Button type="button" variant="secondary" onClick={() => state.saveDraft()} disabled={state.busy || !ready}><Save className="h-4 w-4" />Guardar borrador</Button>}
-                <Button type="submit" disabled={!canSave}>
-                  {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-                  {state.busy ? 'Guardando…' : 'Guardar cita'}
-                </Button>
-              </div>
-            </footer>
+            <PanelFooter flow={flow} />
           </form>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  )
+}
+
+function PanelHeader({ lead, flow }: { lead: LeadSnapshot; flow: LeadAppointmentState }) {
+  const reviewing = flow.corrections !== null
+  return (
+    <header className="flex items-center gap-3 border-b border-wa-border bg-wa-panel px-4 py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      {reviewing
+        ? <button type="button" aria-label="Volver al formulario" className={iconButtonClass} onClick={flow.backToForm} disabled={flow.state.busy}><ArrowLeft className="h-4 w-4" /></button>
+        : <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><CalendarPlus className="h-4 w-4" /></span>}
+      <div className="min-w-0 flex-1">
+        <DialogPrimitive.Title className="font-semibold">{reviewing ? 'Actualizar el lead' : 'Agendar cita'}</DialogPrimitive.Title>
+        <p className="truncate text-xs text-wa-muted">{lead.name || lead.phone || 'Lead sin nombre'}</p>
+      </div>
+      <DialogPrimitive.Close asChild><button type="button" aria-label="Cerrar" className={iconButtonClass} disabled={flow.state.busy}><X className="h-4 w-4" /></button></DialogPrimitive.Close>
+    </header>
+  )
+}
+
+function PanelBody({ lead, flow }: { lead: LeadSnapshot; flow: LeadAppointmentState }) {
+  if (!flow.ready) return <p className="flex items-center gap-2 text-sm text-wa-muted"><Loader2 className="h-4 w-4 animate-spin" />Cargando los datos del lead…</p>
+  if (flow.corrections !== null) return <CorrectionsStep corrections={flow.corrections} chosen={flow.chosen} onToggle={flow.toggle} disabled={flow.state.busy} />
+  return <AppointmentFormFields state={flow.state} prefilled={flow.prefilled} phoneLocked={Boolean(lead.phone)} compact />
+}
+
+function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
+  const { state } = flow
+  const editing = flow.corrections === null
+  return (
+    <footer className="space-y-3 border-t border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      {editing && flow.needsConfirmation && flow.ready && (
+        <label className="flex items-start gap-2.5 text-sm">
+          <Checkbox className="mt-0.5" checked={flow.confirmed} onCheckedChange={flow.setConfirmed} disabled={state.busy} />
+          <span>Confirmo que los datos tomados del lead son correctos</span>
+        </label>
+      )}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        {editing && <Button type="button" variant="secondary" onClick={() => state.saveDraft()} disabled={state.busy || !flow.ready}><Save className="h-4 w-4" />Guardar borrador</Button>}
+        <Button type="submit" disabled={!flow.canSave}>
+          {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
+          {state.busy ? 'Guardando…' : 'Guardar cita'}
+        </Button>
+      </div>
+    </footer>
   )
 }
 

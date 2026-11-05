@@ -13,6 +13,8 @@ const labelClass = 'mb-1.5 flex items-center gap-2 text-sm font-medium text-wa-t
 const attachmentButtonClass = 'flex min-h-20 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-wa-border bg-wa-field/40 px-3 py-3 text-sm font-medium disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-field-dark/40'
 const HOURS = Array.from({ length: 24 }, (_, hour) => [`${String(hour).padStart(2, '0')}:00`, `${String(hour).padStart(2, '0')}:30`]).flat()
 
+type FromLead = (key: string) => boolean
+
 interface Props {
   state: AppointmentFormState
   /** Claves que vinieron del lead: se rotulan para que el vendedor las revise. */
@@ -24,33 +26,62 @@ interface Props {
 }
 
 export function AppointmentFormFields({ state, prefilled, phoneLocked = false, compact = false }: Props) {
-  const { data: sellers = [] } = useSellers()
-  const [isCameraOpen, setIsCameraOpen] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
-  const cameraFallbackRef = useRef<HTMLInputElement>(null)
-  const { form, busy, update } = state
-  const fromLead = (key: string) => prefilled?.has(key) ?? false
-  const sellerNames = sellers.map(seller => seller.name)
-  // Un responsable del borrador que ya no está en el equipo sigue visible
-  // hasta que el vendedor elija otro, en vez de vaciarse sin aviso.
-  if (form.vendedor && !sellerNames.includes(form.vendedor)) sellerNames.push(form.vendedor)
+  const fromLead: FromLead = key => prefilled?.has(key) ?? false
+  const contact = <ContactSection state={state} fromLead={fromLead} phoneLocked={phoneLocked} />
+  const business = <BusinessFieldsSection state={state} fromLead={fromLead} compact={compact} />
+  const booking = <BookingSection state={state} fromLead={fromLead} compact={compact} />
+  const attachment = <AttachmentSection state={state} />
+  if (compact) return <div className="space-y-4">{contact}{booking}{business}{attachment}</div>
+  return <div className="grid items-start gap-5 lg:grid-cols-2"><div className="space-y-5">{contact}{business}</div><div className="space-y-5">{booking}{attachment}</div></div>
+}
 
-  const contact = (
+function ContactSection({ state, fromLead, phoneLocked }: { state: AppointmentFormState; fromLead: FromLead; phoneLocked: boolean }) {
+  const { form, busy, update } = state
+  return (
     <FormSection icon={UserRound} title="Contacto" description="Datos mínimos para identificar la reserva">
       <Field label="Nombre completo" required fromLead={fromLead('nombreCompleto')}><Input value={form.nombreCompleto} onChange={event => update('nombreCompleto', event.target.value)} disabled={busy} className={fieldClass} /></Field>
       <div className="mt-4"><Field label="Teléfono" required fromLead={fromLead('telefono')}><Input type="tel" value={form.telefono} onChange={event => update('telefono', event.target.value)} disabled={busy} readOnly={phoneLocked} className={`${fieldClass} ${phoneLocked ? 'cursor-not-allowed opacity-80' : ''}`} /></Field></div>
       {phoneLocked && <p className="mt-1.5 text-xs text-wa-muted">Es el número del lead; la cita queda en su ficha.</p>}
     </FormSection>
   )
-  const business = (
+}
+
+function BusinessFieldsSection({ state, fromLead, compact }: { state: AppointmentFormState; fromLead: FromLead; compact: boolean }) {
+  return (
     <FormSection icon={SlidersHorizontal} title="Datos del negocio" description="Campos que un administrador configuró para sus reservas">
-      {state.customFieldsLoading ? <p className="text-sm text-wa-muted">Cargando campos…</p>
-        : state.customFieldsError ? <p className="text-sm text-red-600 dark:text-red-400">No se pudieron cargar los campos. <button type="button" className="font-semibold underline" onClick={() => state.refetchCustomFields()}>Reintentar</button></p>
-        : state.definitions.length === 0 ? <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p>
-        : <div className={`grid gap-4 ${compact ? '' : 'sm:grid-cols-2'}`}>{state.definitions.map(field => <Field key={field.id} label={field.label} required={field.required} fromLead={fromLead(customKey(field.key))}><CustomFieldInput field={field} value={state.customFields[field.key]} onChange={value => state.setCustomField(field.key, value)} disabled={busy} className={fieldClass} /></Field>)}</div>}
+      <BusinessFieldsBody state={state} fromLead={fromLead} compact={compact} />
     </FormSection>
   )
-  const booking = (
+}
+
+function BusinessFieldsBody({ state, fromLead, compact }: { state: AppointmentFormState; fromLead: FromLead; compact: boolean }) {
+  if (state.customFieldsLoading) return <p className="text-sm text-wa-muted">Cargando campos…</p>
+  if (state.customFieldsError) return <p className="text-sm text-red-600 dark:text-red-400">No se pudieron cargar los campos. <button type="button" className="font-semibold underline" onClick={() => state.refetchCustomFields()}>Reintentar</button></p>
+  if (state.definitions.length === 0) return <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p>
+  return (
+    <div className={`grid gap-4 ${compact ? '' : 'sm:grid-cols-2'}`}>
+      {state.definitions.map(field => (
+        <Field key={field.id} label={field.label} required={field.required} fromLead={fromLead(customKey(field.key))}>
+          <CustomFieldInput field={field} value={state.customFields[field.key]} onChange={value => state.setCustomField(field.key, value)} disabled={state.busy} className={fieldClass} />
+        </Field>
+      ))}
+    </div>
+  )
+}
+
+/** Los vendedores activos, más el responsable actual si ya no está en el
+ *  equipo: un borrador viejo lo muestra hasta que se elija otro, en vez de
+ *  vaciarse sin aviso. */
+function useSellerNames(current: string): string[] {
+  const { data: sellers = [] } = useSellers()
+  const names = sellers.map(seller => seller.name)
+  return current && !names.includes(current) ? [...names, current] : names
+}
+
+function BookingSection({ state, fromLead, compact }: { state: AppointmentFormState; fromLead: FromLead; compact: boolean }) {
+  const { form, busy, update } = state
+  const sellerNames = useSellerNames(form.vendedor)
+  return (
     <FormSection icon={CalendarClock} title="Reserva" description="Servicio, responsable y horario">
       {/* Fuera de <label>: un clic en la lista no debe reenviarse al campo. */}
       <div><label htmlFor="appointment-service" className={labelClass}>Servicio o motivo *{fromLead('servicio') && <LeadMark />}</label><ServiceCombobox id="appointment-service" value={form.servicio} onChange={value => update('servicio', value)} disabled={busy} className={fieldClass} /></div>
@@ -60,21 +91,27 @@ export function AppointmentFormFields({ state, prefilled, phoneLocked = false, c
       {!compact && <p className="mt-4 flex gap-2 rounded-lg bg-wa-field px-3 py-2 text-sm text-wa-muted dark:bg-wa-field-dark"><MessageCircle className="mt-0.5 h-4 w-4 shrink-0" />La reserva se guarda aquí aunque una integración externa no esté configurada.</p>}
     </FormSection>
   )
-  const attachmentSection = (
-    <FormSection icon={FileUp} title="Adjunto" description="Archivo de referencia opcional">
-      {state.attachment ? <div className="flex items-center justify-between rounded-lg bg-wa-field px-3 py-2 text-sm dark:bg-wa-field-dark"><span className="min-w-0 truncate">{state.attachment.name}</span><button type="button" aria-label={`Quitar adjunto ${state.attachment.name}`} onClick={state.removeAttachment}><X className="h-4 w-4" /></button></div> : <div className="grid grid-cols-2 gap-2"><button type="button" className={attachmentButtonClass} onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" />Subir archivo</button><button type="button" className={attachmentButtonClass} onClick={() => typeof navigator.mediaDevices?.getUserMedia === 'function' ? setIsCameraOpen(true) : cameraFallbackRef.current?.click()}><Camera className="h-4 w-4" />Tomar foto</button></div>}
-      {state.fileError && <p role="alert" className="mt-2 text-sm text-red-600">{state.fileError}</p>}
-      <input ref={fileRef} type="file" className="hidden" accept="image/jpeg,image/png,application/pdf" onChange={state.handleFile} /><input ref={cameraFallbackRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={state.handleFile} />
-    </FormSection>
-  )
+}
+
+function AttachmentSection({ state }: { state: AppointmentFormState }) {
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const cameraFallbackRef = useRef<HTMLInputElement>(null)
+
+  function openCamera() {
+    if (typeof navigator.mediaDevices?.getUserMedia === 'function') setIsCameraOpen(true)
+    else cameraFallbackRef.current?.click()
+  }
 
   return (
-    <>
-      {compact
-        ? <div className="space-y-4">{contact}{booking}{business}{attachmentSection}</div>
-        : <div className="grid items-start gap-5 lg:grid-cols-2"><div className="space-y-5">{contact}{business}</div><div className="space-y-5">{booking}{attachmentSection}</div></div>}
+    <FormSection icon={FileUp} title="Adjunto" description="Archivo de referencia opcional">
+      {state.attachment
+        ? <div className="flex items-center justify-between rounded-lg bg-wa-field px-3 py-2 text-sm dark:bg-wa-field-dark"><span className="min-w-0 truncate">{state.attachment.name}</span><button type="button" aria-label={`Quitar adjunto ${state.attachment.name}`} onClick={state.removeAttachment}><X className="h-4 w-4" /></button></div>
+        : <div className="grid grid-cols-2 gap-2"><button type="button" className={attachmentButtonClass} onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" />Subir archivo</button><button type="button" className={attachmentButtonClass} onClick={openCamera}><Camera className="h-4 w-4" />Tomar foto</button></div>}
+      {state.fileError && <p role="alert" className="mt-2 text-sm text-red-600">{state.fileError}</p>}
+      <input ref={fileRef} type="file" className="hidden" accept="image/jpeg,image/png,application/pdf" onChange={state.handleFile} /><input ref={cameraFallbackRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={state.handleFile} />
       {isCameraOpen && <CameraCaptureDialog title="Foto del adjunto" filenamePrefix="cita" cover="viewport" onCapture={file => { setIsCameraOpen(false); state.acceptFile(file) }} onClose={() => setIsCameraOpen(false)} />}
-    </>
+    </FormSection>
   )
 }
 
