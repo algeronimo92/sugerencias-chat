@@ -47,6 +47,10 @@ services:
       # scripts/move_public_to_tenant.py): se entra por dermicapro.localhost,
       # no por localhost, que queda reservado como host de plataforma.
       - MULTITENANCY_ENABLED=true
+      # backend/.env trae los hosts de producción (admin.cliniventas.com): sin
+      # esto, en local ningún host es de plataforma y /api/platform/* responde
+      # 404 "Tenant not found" también en admin.localhost:5173.
+      - TENANT_PLATFORM_HOSTS=localhost,admin.localhost
     ports:
       - "8000:8000"
     restart: unless-stopped
