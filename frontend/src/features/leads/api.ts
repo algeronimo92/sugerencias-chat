@@ -17,7 +17,7 @@ export async function createLeadStage(values: LeadStageInput): Promise<LeadStage
   return (await client.post<ApiResponse<'/api/lead-stages', 'post'>>('/api/lead-stages', values)).data
 }
 
-export async function updateLeadStage({ key, ...values }: Partial<LeadStageInput> & { key: LeadStage; is_active?: boolean }): Promise<LeadStageDefinition> {
+export async function updateLeadStage({ key, ...values }: Partial<LeadStageInput> & { key: LeadStage; is_active?: boolean; on_appointment?: boolean }): Promise<LeadStageDefinition> {
   return (await client.patch<ApiResponse<'/api/lead-stages/{key}', 'patch'>>(`/api/lead-stages/${encodeURIComponent(key)}`, values)).data
 }
 

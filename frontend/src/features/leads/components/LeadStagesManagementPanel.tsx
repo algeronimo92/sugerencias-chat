@@ -21,6 +21,7 @@ useReorderLeadStages,
 useUpdateLeadStage,
 } from '../hooks/useLeadStages'
 import type { LeadStageAdminDefinition, LeadStageKind } from '../types'
+import { AppointmentStageSwitch } from './AppointmentStageSwitch'
 
 interface StageDraft {
   name: string
@@ -166,6 +167,14 @@ export function LeadStagesManagementPanel() {
     setError(null)
     updateStage.mutate({ key: stage.key, is_active: nextActive }, {
       onSuccess: () => toast.success(nextActive ? 'Etapa activada' : 'Etapa desactivada'),
+      onError: err => setError(extractErrorMessage(err)),
+    })
+  }
+
+  function handleAppointmentStage(stage: LeadStageAdminDefinition, onAppointment: boolean) {
+    setError(null)
+    updateStage.mutate({ key: stage.key, on_appointment: onAppointment }, {
+      onSuccess: () => toast.success(onAppointment ? `Al agendar una cita, el lead pasará a ${stage.name}` : 'Agendar una cita ya no mueve al lead de etapa'),
       onError: err => setError(extractErrorMessage(err)),
     })
   }
@@ -323,6 +332,7 @@ export function LeadStagesManagementPanel() {
                       className="h-10 w-full bg-white dark:bg-wa-panel-dark"
                     />
                     <ColorPicker label={`Color de ${stage.name}`} value={draft.color} onChange={color => setDraft(stage, { color })} />
+                    <AppointmentStageSwitch stageName={stage.name} checked={stage.on_appointment} available={stage.is_active} disabled={pending} onChange={value => handleAppointmentStage(stage, value)} />
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-wa-muted dark:text-wa-muted-dark">
                       <span style={stageColorStyle(draft.color)} className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${STAGE_BADGE_CLASS}`}>{draft.name.trim() || stage.name}</span>
                       <span>{stage.lead_count} {stage.lead_count === 1 ? 'lead' : 'leads'}</span>
