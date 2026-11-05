@@ -9,8 +9,10 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from app.db.models.leads import Lead, LeadActivity, LeadStage
-from app.db.uow import session_scope
+from app.db.models.auth import User
+from app.db.models.leads import Lead, LeadActivity, LeadNote, LeadStage
+from app.db.uow import session_scope, unit_of_work
+from app.modules.appointments.infrastructure.repository import SqlAppointmentLeads
 from app.modules.leads.public import Actor, register_appointment
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
 from app.modules.leads.stages import update_lead_stage_definition
@@ -66,3 +68,35 @@ async def test_booking_from_the_lead_updates_it_in_one_transaction(tenant):
         assert lead.proxima_cita == STARTS_AT
         assert lead.nombre == "Ana Pérez"
         assert events[-3:] == ["lead_updated", "appointment_scheduled", "stage_changed"]
+
+
+async def test_booking_from_the_lead_leaves_an_internal_note_by_who_booked(tenant):
+    with tenant_context(tenant):
+        lead_id = str(uuid4())
+        await ensure_lead_stub(lead_id, None, None)
+        async with session_scope() as session:
+            seller = User(
+                email="marta@test", name="Marta", password_hash="x", role="vendedor",
+                is_active=True, created_at=STARTS_AT,
+            )
+            session.add(seller)
+            await session.flush()
+            seller_id = seller.id
+
+        async with unit_of_work():
+            await SqlAppointmentLeads().register(
+                lead_id, actor_user_id=seller_id, appointment=APPOINTMENT, starts_at=STARTS_AT,
+                updates={}, custom_fields={}, note="Cita agendada: Limpieza",
+            )
+
+        async with session_scope() as session:
+            notes = (await session.execute(
+                select(LeadNote.author_user_id, LeadNote.content).where(LeadNote.lead_id == lead_id)
+            )).all()
+            events = list((await session.execute(
+                select(LeadActivity.event_type).where(LeadActivity.lead_id == lead_id).order_by(LeadActivity.id)
+            )).scalars())
+
+        assert notes == [(seller_id, "Cita agendada: Limpieza")]
+        assert "appointment_scheduled" in events
+        assert "internal_note_created" in events

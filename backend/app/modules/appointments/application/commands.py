@@ -14,6 +14,7 @@ from app.modules.appointments.domain.appointment import (
     AppointmentRequest,
     LeadLink,
     announcement,
+    lead_note,
     outcome,
 )
 from app.modules.appointments.domain.errors import (
@@ -69,7 +70,7 @@ async def create_appointment(
 ) -> dict:
     """Con ``lead`` la cita se agendó desde la ficha: va atada a ese lead y,
     salvo en modo prueba, el lead se entera en la misma transacción (próxima
-    cita, actividad, etapa y los datos que el vendedor corrigió). Sin él, el
+    cita, actividad, nota interna, etapa y los datos que el vendedor corrigió). Sin él, el
     lead se adivina por teléfono y no se toca."""
     ports = appointment_ports()
     if lead is not None:
@@ -87,6 +88,7 @@ async def create_appointment(
                 lead.lead_id, actor_user_id=created_by_user_id, appointment=appointment,
                 starts_at=request.starts_at(await business_timezone()),
                 updates=lead.updates, custom_fields=lead.custom_fields,
+                note=lead_note(appointment),
             )
 
     calendar = (

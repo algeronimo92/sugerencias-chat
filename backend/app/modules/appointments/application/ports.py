@@ -44,9 +44,11 @@ class AppointmentLeads(Protocol):
     async def register(
         self, lead_id: str, *, actor_user_id: int, appointment: dict,
         starts_at: datetime | None, updates: dict[str, Any], custom_fields: dict[str, Any],
+        note: str,
     ) -> None:
         """Le cuenta al lead que se le agendó la cita, dentro de la
-        transacción en curso (ver ``leads.register_appointment``)."""
+        transacción en curso (ver ``leads.register_appointment``), y le deja
+        ``note`` como nota interna a nombre de quien agendó."""
 
 
 @dataclass(frozen=True)
