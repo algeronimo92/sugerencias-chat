@@ -1,5 +1,5 @@
 import { Check, Loader2, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -12,6 +12,9 @@ import { WhatsappPanel } from './WhatsappPanel'
 interface Props {
   onClose: () => void
   initialTab?: Tab
+  /** El armador del evento de Calendar es de citas, una feature de capa
+   *  superior: llega armado desde app/ en vez de importarse acá. */
+  calendarEventEditor?: ReactNode
 }
 
 type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
@@ -46,7 +49,7 @@ function groupItems(items: SettingItem[]): { group: string; groupLabel: string; 
   return groups
 }
 
-export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
+export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEditor }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const { data: allSettings, isLoading, error } = useSettings(tab === 'claves')
   const data = useMemo(() => allSettings?.filter((item) => item.group !== CALENDAR_GROUP), [allSettings])
@@ -171,7 +174,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
 
           {tab === 'whatsapp' && <WhatsappPanel onGoToClaves={() => setTab('claves')} />}
 
-          {tab === 'calendario' && <GoogleCalendarPanel />}
+          {tab === 'calendario' && <GoogleCalendarPanel eventEditor={calendarEventEditor} />}
 
           {tab === 'claves' && isLoading && (
             <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Cargando configuración...</p>

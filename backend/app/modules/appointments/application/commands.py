@@ -22,14 +22,10 @@ from app.modules.appointments.domain.errors import (
     TestAppointmentNotSynced,
 )
 from app.modules.appointments.domain.events import AppointmentCreated
-from app.modules.catalogs.ports.custom_fields import list_definitions
+from app.modules.appointments.application.calendar_template import event_content
 from app.modules.platform.public import effective_country_code
 
 logger = logging.getLogger(__name__)
-
-
-async def _field_labels() -> dict[str, str]:
-    return {item["key"]: item["label"] for item in await list_definitions("appointment")}
 
 
 async def resolve_lead_for_phone(telefono: str) -> str | None:
@@ -76,7 +72,7 @@ async def create_appointment(
 
     calendar = (
         SKIPPED_CALENDAR if request.test_mode
-        else await ports.calendar.create_event(appointment, await _field_labels())
+        else await ports.calendar.create_event(appointment, await event_content(appointment))
     )
     appointment = await ports.repository.record_integrations(
         appointment["id"], event_link=calendar["event_link"],
@@ -117,7 +113,7 @@ async def sync_calendar(appointment_id: int) -> dict:
     if appointment["calendar_sync_status"] == "synced" and appointment["calendar_event_id"]:
         return appointment
 
-    result = await ports.calendar.create_event(appointment, await _field_labels())
+    result = await ports.calendar.create_event(appointment, await event_content(appointment))
     updated = await ports.repository.record_integrations(
         appointment_id,
         event_link=result["event_link"],

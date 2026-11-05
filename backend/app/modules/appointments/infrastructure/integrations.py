@@ -8,14 +8,15 @@ import httpx
 from app.integrations.google_calendar import create_google_event
 from app.integrations.n8n.client import post_form
 from app.modules.appointments.domain.appointment import SyncResult
+from app.modules.appointments.domain.calendar_event import EventContent
 from app.modules.platform.ports.settings_service import get_effective
 
 REQUEST_TIMEOUT_SECONDS = 60.0
 
 
 class GoogleCalendar:
-    async def create_event(self, appointment: dict, field_labels: dict[str, str]) -> dict:
-        return await create_google_event(appointment, field_labels)
+    async def create_event(self, appointment: dict, content: EventContent) -> dict:
+        return await create_google_event(appointment, title=content.title, description=content.description)
 
 
 class N8nAppointmentSync:

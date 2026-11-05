@@ -27,6 +27,10 @@ export interface CreateAppointmentInput {
  * de n8n (por ejemplo `citaDuplicada`). */
 export type AppointmentResult = Delivered<ApiSchemas['AppointmentCreated']>
 
+/** Plantilla del título y la descripción del evento de Google Calendar. */
+export type CalendarEventTemplate = Delivered<ApiSchemas['CalendarEventTemplate']>
+export type CalendarEventField = Delivered<ApiSchemas['CalendarEventField']>
+
 export interface AppointmentListItem {
   id: number
   created_by_user_id: number

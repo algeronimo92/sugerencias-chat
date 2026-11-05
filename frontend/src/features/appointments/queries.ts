@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAppointments, createAppointment, syncAppointmentCalendar } from './api'
+import { fetchAppointments, createAppointment, fetchCalendarEventTemplate, saveCalendarEventTemplate, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
 
 export type { AppointmentAttachmentInput } from './types'
@@ -31,5 +31,19 @@ export function useSyncAppointmentCalendar() {
   return useMutation({
     mutationFn: syncAppointmentCalendar,
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+export function useCalendarEventTemplate() {
+  return useQuery({
+    queryKey: appointmentKeys.calendarTemplate,
+    queryFn: fetchCalendarEventTemplate,
+  })
+}
+
+export function useSaveCalendarEventTemplate() {
+  return useMutation({
+    mutationFn: saveCalendarEventTemplate,
+    onSuccess: (template) => queryClient.setQueryData(appointmentKeys.calendarTemplate, template),
   })
 }

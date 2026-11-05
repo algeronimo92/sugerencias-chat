@@ -1,4 +1,5 @@
-import { AlertTriangle, CalendarCheck2, Link2, Loader2, Unlink } from 'lucide-react'
+import { AlertTriangle, CalendarCheck2, ChevronDown, Link2, Loader2, Unlink } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Select, labelClass } from '../../../shared/ui/Input'
@@ -24,7 +25,7 @@ const errorClass = 'text-xs text-red-500 dark:text-red-400'
 // "Conectar con Google": el negocio autoriza su cuenta con el cliente OAuth de
 // la plataforma y elige el calendario de una lista. Reemplaza pegar Calendar
 // ID, Client ID, Client Secret y Refresh Token a mano.
-export function GoogleCalendarPanel() {
+export function GoogleCalendarPanel({ eventEditor }: { eventEditor?: ReactNode }) {
   const { data: status, isLoading, error: statusError } = useGoogleCalendarStatus()
   const connect = useConnectGoogleCalendar()
 
@@ -67,16 +68,25 @@ export function GoogleCalendarPanel() {
     )
   }
 
-  return <ConnectedCalendar status={status} onReconnect={() => connect.mutate()} reconnecting={connect.isPending} />
+  return (
+    <ConnectedCalendar
+      status={status}
+      onReconnect={() => connect.mutate()}
+      reconnecting={connect.isPending}
+      eventEditor={eventEditor}
+    />
+  )
 }
 
 interface ConnectedProps {
   status: NonNullable<ReturnType<typeof useGoogleCalendarStatus>['data']>
   onReconnect: () => void
   reconnecting: boolean
+  eventEditor?: ReactNode
 }
 
-function ConnectedCalendar({ status, onReconnect, reconnecting }: ConnectedProps) {
+function ConnectedCalendar({ status, onReconnect, reconnecting, eventEditor }: ConnectedProps) {
+  const [editingEvent, setEditingEvent] = useState(false)
   const calendars = useGoogleCalendars(true)
   const select = useSelectGoogleCalendar()
   const disconnect = useDisconnectGoogleCalendar()
@@ -158,6 +168,27 @@ function ConnectedCalendar({ status, onReconnect, reconnecting }: ConnectedProps
         Crear un evento en Google por cada cita nueva
       </label>
       {save.isError && <p className={errorClass}>{extractErrorMessage(save.error)}</p>}
+
+      {eventEditor && (
+        <div className="border-t border-wa-border pt-3 dark:border-wa-border-dark">
+          <button
+            type="button"
+            onClick={() => setEditingEvent((open) => !open)}
+            aria-expanded={editingEvent}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <span>
+              <span className="block text-xs font-medium text-wa-text dark:text-wa-text-dark">Qué se ve en el evento</span>
+              <span className={hintClass}>Elige y ordena los datos de la cita que van en el título y la descripción.</span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-wa-muted transition-transform ${editingEvent ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+          {editingEvent && <div className="mt-3">{eventEditor}</div>}
+        </div>
+      )}
 
       <div className="flex justify-end border-t border-wa-border pt-3 dark:border-wa-border-dark">
         <Button variant="ghost" size="sm" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>

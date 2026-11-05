@@ -74,3 +74,27 @@ class AppointmentCreated(BaseModel):
     eventLink: str | None = None
     calendarSyncStatus: str
     integrationErrors: list[str]
+
+
+class CalendarEventField(BaseModel):
+    key: str
+    label: str
+    custom: bool
+
+
+class CalendarEventTemplate(BaseModel):
+    """Plantilla del evento de Google Calendar. Los marcadores ``{campo}``
+    nombran uno de ``fields``; el resto es texto libre."""
+
+    title_template: str
+    description_template: str
+    default_title_template: str
+    default_description_template: str
+    fields: list[CalendarEventField]
+
+
+class CalendarEventTemplateUpdate(BaseModel):
+    # Los topes reales los aplica el dominio con un mensaje en español; estos
+    # solo cortan un cuerpo absurdo antes de llegar ahí.
+    title_template: str = Field(max_length=1000)
+    description_template: str = Field(max_length=10000)
