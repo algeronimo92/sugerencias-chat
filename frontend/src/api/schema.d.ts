@@ -554,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/organizations/{organization_id}/starter-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Organization Starter Pack */
+        post: operations["post_organization_starter_pack_api_platform_organizations__organization_id__starter_pack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/integrations": {
         parameters: {
             query?: never;
@@ -1616,6 +1633,40 @@ export interface paths {
         get: operations["whatsapp_status_api_whatsapp_status_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding */
+        get: operations["get_onboarding_api_onboarding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Dismiss Onboarding */
+        post: operations["post_dismiss_onboarding_api_onboarding_dismiss_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5189,6 +5240,11 @@ export interface components {
             settings?: {
                 [key: string]: string;
             };
+            /**
+             * Starter Pack
+             * @default true
+             */
+            starter_pack: boolean;
         };
         /** NotificationItem */
         NotificationItem: {
@@ -5229,6 +5285,31 @@ export interface components {
          * @enum {string}
          */
         NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed";
+        /** OnboardingStatus */
+        OnboardingStatus: {
+            /** Steps */
+            steps: components["schemas"]["OnboardingStep"][];
+            /** Completed */
+            completed: number;
+            /** Total */
+            total: number;
+            /** All Done */
+            all_done: boolean;
+            /** Dismissed */
+            dismissed: boolean;
+        };
+        /** OnboardingStep */
+        OnboardingStep: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "whatsapp" | "team" | "services" | "google_calendar" | "templates";
+            /** Done */
+            done: boolean;
+            /** Optional */
+            optional: boolean;
+        };
         /** OperatorItem */
         OperatorItem: {
             /** Id */
@@ -5565,6 +5646,22 @@ export interface components {
             configured: boolean;
             /** Value */
             value?: string | null;
+        };
+        /**
+         * StarterPackResult
+         * @description Cuántas filas agregó el paquete inicial; todo en cero = ya lo tenía.
+         */
+        StarterPackResult: {
+            /** Tags */
+            tags: number;
+            /** Categories */
+            categories: number;
+            /** Templates */
+            templates: number;
+            /** Automations */
+            automations: number;
+            /** Needs Admin */
+            needs_admin: number;
         };
         /** StickerRequest */
         StickerRequest: {
@@ -7143,6 +7240,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationAIItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organization_starter_pack_api_platform_organizations__organization_id__starter_pack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarterPackResult"];
                 };
             };
             /** @description Validation Error */
@@ -9362,6 +9490,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhatsappStatusItem"];
+                };
+            };
+        };
+    };
+    get_onboarding_api_onboarding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
+                };
+            };
+        };
+    };
+    post_dismiss_onboarding_api_onboarding_dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
                 };
             };
         };

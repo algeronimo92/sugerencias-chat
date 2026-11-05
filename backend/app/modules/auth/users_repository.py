@@ -116,3 +116,23 @@ async def seed_admin_if_needed(email: str, password_hash: str) -> None:
     except EmailAlreadyExistsError:
         # Otro proceso lo sembró entre la cuenta y el alta.
         return
+
+
+async def team_summary() -> dict:
+    """Cuántas personas tiene el equipo (contando invitaciones pendientes, que
+    son usuarios inactivos) y el primer admin activo.
+
+    El checklist de primeros pasos da por invitado al equipo apenas hay
+    alguien más que el admin que abrió la cuenta, y el paquete inicial firma
+    sus plantillas y automatizaciones con ese primer admin."""
+    async with session_scope() as session:
+        total = (await session.execute(select(func.count(User.id)))).scalar_one()
+        first_admin_id = (
+            await session.execute(
+                select(User.id)
+                .where(User.role == "admin", User.is_active == true())
+                .order_by(User.created_at.asc(), User.id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return {"users": int(total), "first_admin_id": first_admin_id}

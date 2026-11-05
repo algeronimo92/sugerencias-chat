@@ -8,6 +8,7 @@ de transición declarados por las revisiones.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -242,6 +243,33 @@ async def _initialize_tenant(
             await seed_admin_if_needed(admin_email.strip().lower(), admin_password_hash)
 
 
+async def _is_first_activation(context: TenantContext) -> bool:
+    """Si el negocio nunca estuvo activo. Un alta que falló a mitad y se
+    reintenta sigue siendo la primera; un negocio que ya operó (DermicaPro) y
+    pasa por acá para ponerse al día con las migraciones, no."""
+
+    async with control_session() as session:
+        organization = await session.get(Organization, str(context.organization_id))
+    return organization is not None and organization.activated_at is None
+
+
+StarterPack = Callable[[], Awaitable[object]]
+
+
+async def _seed_starter_pack(context: TenantContext, starter_pack: StarterPack) -> None:
+    """El paquete es una comodidad del alta, no una condición para operar: si
+    falla, el negocio se activa igual y el operador lo reaplica desde el
+    panel (POST /api/platform/organizations/{id}/starter-pack)."""
+
+    try:
+        with tenant_context(context):
+            await starter_pack()
+    except Exception:
+        logger.exception(
+            "No se pudo sembrar el paquete inicial del tenant %s", context.organization_id
+        )
+
+
 class WhatsAppConnectionConflictError(TenantProvisioningError):
     """Ese número ya rutea hacia otro negocio."""
 
@@ -460,8 +488,15 @@ async def provision_tenant(
     initial_settings: dict[str, str] | None = None,
     admin_email: str | None = None,
     admin_password_hash: str | None = None,
+    starter_pack: StarterPack | None = None,
 ) -> TenantContext:
-    """Crea o reanuda un tenant y solo lo activa al alcanzar Alembic head."""
+    """Crea o reanuda un tenant y solo lo activa al alcanzar Alembic head.
+
+    ``starter_pack`` siembra el paquete inicial dentro del tenant, pero solo en
+    la primera activación: reanudar o migrar un negocio que ya operó no le
+    agrega nada. Lo pasa quien da el alta (panel o script) para que tenancy no
+    dependa del contenido del paquete, que es de ``platform``.
+    """
 
     normalized_hostname = normalize_hostname(hostname)
     if not name.strip():
@@ -483,6 +518,8 @@ async def provision_tenant(
             admin_email=admin_email,
             admin_password_hash=admin_password_hash,
         )
+        if starter_pack is not None and await _is_first_activation(context):
+            await _seed_starter_pack(context, starter_pack)
         await _mark_active(context)
     except Exception as exc:
         await _mark_failed(context, exc)

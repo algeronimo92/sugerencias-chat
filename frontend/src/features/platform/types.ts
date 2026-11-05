@@ -92,3 +92,8 @@ export type MarcaGuardada = {
   version: number;
   contrast_with_white: number;
 };
+
+export type OnboardingStatus = Delivered<ApiSchemas['OnboardingStatus']>;
+export type OnboardingStep = Delivered<ApiSchemas['OnboardingStep']>;
+export type OnboardingStepKey = OnboardingStep['key'];
+export type StarterPackResult = Delivered<ApiSchemas['StarterPackResult']>;

@@ -166,6 +166,17 @@ SETTING_DEFS: list[SettingDef] = [
     # Un solo uso: el callback lo compara con el del state y lo borra.
     SettingDef("google_calendar_oauth_nonce", "Nonce del flujo OAuth en curso", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
     SettingDef("business_timezone", "Zona horaria (IANA)", "calendar", "Google Calendar (opcional)", secret=False),
+    # El admin cerró la tarjeta de primeros pasos. Es del negocio y no de cada
+    # admin: si uno ya lo dejó configurado, al siguiente no le sirve verla.
+    SettingDef(
+        "onboarding_checklist_dismissed",
+        "Primeros pasos descartados",
+        "onboarding",
+        "Primeros pasos",
+        secret=False,
+        boolean=True,
+        hidden=True,
+    ),
 ]
 # Ajustes por negocio que administra el operador de la plataforma y no el
 # propio negocio (ver app/modules/platform/api.py).
