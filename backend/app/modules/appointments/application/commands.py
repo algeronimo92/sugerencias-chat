@@ -12,10 +12,12 @@ from app.modules.appointments.domain.appointment import (
     PHONE_TAIL_DIGITS,
     SKIPPED_CALENDAR,
     AppointmentRequest,
+    LeadLink,
     announcement,
     outcome,
 )
 from app.modules.appointments.domain.errors import (
+    AppointmentLeadNotFound,
     AppointmentNotFound,
     CalendarNotConfigured,
     CalendarSyncFailed,
@@ -23,7 +25,7 @@ from app.modules.appointments.domain.errors import (
 )
 from app.modules.appointments.domain.events import AppointmentCreated
 from app.modules.appointments.application.calendar_template import event_content
-from app.modules.platform.public import effective_country_code
+from app.modules.platform.public import business_timezone, effective_country_code
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +65,29 @@ async def create_appointment(
     *,
     created_by_user_id: int,
     files: dict | None,
+    lead: LeadLink | None = None,
 ) -> dict:
+    """Con ``lead`` la cita se agendó desde la ficha: va atada a ese lead y,
+    salvo en modo prueba, el lead se entera en la misma transacción (próxima
+    cita, actividad, etapa y los datos que el vendedor corrigió). Sin él, el
+    lead se adivina por teléfono y no se toca."""
     ports = appointment_ports()
-    appointment = await ports.repository.add(request.record(
-        created_by_user_id=created_by_user_id,
-        lead_id=await resolve_lead_for_phone(request.telefono),
-    ))
+    if lead is not None:
+        if not await ports.leads.exists(lead.lead_id):
+            raise AppointmentLeadNotFound()
+        lead_id = lead.lead_id
+    else:
+        lead_id = await resolve_lead_for_phone(request.telefono)
+    async with unit_of_work():
+        appointment = await ports.repository.add(request.record(
+            created_by_user_id=created_by_user_id, lead_id=lead_id,
+        ))
+        if lead is not None and not request.test_mode:
+            await ports.leads.register(
+                lead.lead_id, actor_user_id=created_by_user_id, appointment=appointment,
+                starts_at=request.starts_at(await business_timezone()),
+                updates=lead.updates, custom_fields=lead.custom_fields,
+            )
 
     calendar = (
         SKIPPED_CALENDAR if request.test_mode

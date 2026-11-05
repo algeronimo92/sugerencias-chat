@@ -14,7 +14,7 @@ import {
 } from './leadStageMeta'
 
 function stage(key: string, position: number, overrides: Partial<LeadStageDefinition> = {}): LeadStageDefinition {
-  return { key, name: key, color: '#0ea5e9', kind: 'open', position, is_active: true, description: null, is_system: false, ...overrides }
+  return { key, name: key, color: '#0ea5e9', kind: 'open', position, is_active: true, description: null, is_system: false, on_appointment: false, ...overrides }
 }
 
 describe('catálogo de etapas', () => {

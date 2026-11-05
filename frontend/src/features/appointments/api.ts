@@ -25,6 +25,8 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
         filename: input.comprobante.filename,
       },
       test_mode: input.testMode,
+      lead_id: input.leadId ?? null,
+      lead_updates: input.leadUpdates ?? null,
     })).data
 }
 

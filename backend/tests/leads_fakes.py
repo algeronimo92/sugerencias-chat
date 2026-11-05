@@ -22,11 +22,12 @@ from app.modules.leads.domain.stage import StageRule
 from app.modules.leads.ports.types import LeadStageKind
 
 DEFAULT_STAGES = {
-    "nuevo": StageRule("nuevo", LeadStageKind.OPEN, True),
-    "calificado": StageRule("calificado", LeadStageKind.OPEN, True),
-    "cliente_activo": StageRule("cliente_activo", LeadStageKind.WON, True),
-    "perdido": StageRule("perdido", LeadStageKind.LOST, True),
-    "archivada": StageRule("archivada", LeadStageKind.OPEN, False),
+    "nuevo": StageRule("nuevo", LeadStageKind.OPEN, True, 0),
+    "calificado": StageRule("calificado", LeadStageKind.OPEN, True, 1),
+    "agendado": StageRule("agendado", LeadStageKind.OPEN, True, 2),
+    "cliente_activo": StageRule("cliente_activo", LeadStageKind.WON, True, 3),
+    "perdido": StageRule("perdido", LeadStageKind.LOST, True, 4),
+    "archivada": StageRule("archivada", LeadStageKind.OPEN, False, 5),
 }
 
 
@@ -48,6 +49,7 @@ class InMemoryLeadRepository:
         self.open_conversations: set[str] = set()
         self.merged: list[tuple[str, str]] = []
         self.renamed: list[tuple[str, str]] = []
+        self.on_appointment: str | None = None
 
     def seed(self, lead_id: str = "lead-1", *, stage: str = "nuevo", **columns: Any) -> str:
         columns.setdefault("telefono", "51999")
@@ -104,6 +106,9 @@ class InMemoryLeadRepository:
 
     async def stage_rules(self, keys):
         return {key: self.stages[key] for key in keys if key in self.stages}
+
+    async def appointment_stage(self):
+        return self.on_appointment
 
     async def seller_name(self, seller_id):
         return self.sellers.get(seller_id)

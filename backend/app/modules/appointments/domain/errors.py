@@ -26,3 +26,9 @@ class CalendarSyncFailed(DomainError):
 
     status_code = 502
     code = "calendar_sync_failed"
+
+
+class AppointmentLeadNotFound(NotFound):
+    """El lead de la cita ya no existe"""
+
+    code = "appointment_lead_not_found"

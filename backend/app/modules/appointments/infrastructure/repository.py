@@ -11,6 +11,7 @@ from app.db.models.appointments import Appointment
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
+from app.modules.leads.public import Actor, register_appointment
 from app.modules.appointments.queries import _query, _serialize
 
 _INTEGRATION_FIELDS = (
@@ -50,7 +51,7 @@ class SqlAppointmentRepository:
         return _serialize(row)
 
 
-class SqlLeadMatcher:
+class SqlAppointmentLeads:
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return await lead_id_for_identifier(e164)
 
@@ -61,3 +62,14 @@ class SqlLeadMatcher:
                 select(Lead.id).where(Lead.telefono.is_not(None), lead_tail == tail).limit(2)
             )).scalars().all()
         return matches[0] if len(matches) == 1 else None
+
+    async def exists(self, lead_id: str) -> bool:
+        async with session_scope() as session:
+            return await session.scalar(select(Lead.id).where(Lead.id == lead_id)) is not None
+
+    async def register(self, lead_id: str, *, actor_user_id: int, appointment: dict, starts_at,
+                       updates: dict, custom_fields: dict) -> None:
+        await register_appointment(
+            lead_id, actor=Actor.user(actor_user_id), appointment=appointment,
+            starts_at=starts_at, updates=updates, custom_fields=custom_fields,
+        )

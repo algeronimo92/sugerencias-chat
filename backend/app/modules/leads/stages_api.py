@@ -48,7 +48,7 @@ async def put_lead_stage_order(body: LeadStageOrder, _admin: User = Depends(requ
 @router.patch("/{key}", response_model=LeadStageItem)
 async def patch_lead_stage(key: LeadStageKey, body: LeadStagePatch, _admin: User = Depends(require_admin)):
     values = body.model_dump(exclude_unset=True)
-    for field in ("name", "color", "kind", "is_active"):
+    for field in ("name", "color", "kind", "is_active", "on_appointment"):
         if field in values and values[field] is None:
             raise HTTPException(status_code=400, detail=f"{field} no puede ser null")
     if "name" in values:

@@ -19,6 +19,8 @@ class StageRule:
     key: str
     kind: str
     is_active: bool
+    # Lugar en el embudo; None cuando quien la armó no lo necesitaba.
+    position: int | None = None
 
     @property
     def is_lost(self) -> bool:
@@ -38,3 +40,24 @@ def require_destination(rules: dict[str, StageRule], key: str) -> StageRule:
     if not rule.is_active:
         raise InvalidLeadStageError(key, inactive=True)
     return rule
+
+
+def moves_on_appointment(current: StageRule | None, target: StageRule | None) -> bool:
+    """¿Agendar una cita mueve el lead de ``current`` a ``target``?
+
+    Solo hacia adelante en el embudo: reagendar a un lead que ya pagó o ya es
+    cliente no lo devuelve a "agendado". Un lead perdido que agenda sí vuelve,
+    esté donde esté la etapa de perdidos. Un destino desactivado no se usa:
+    la cita igual se guarda.
+    """
+    if target is None or not target.is_active:
+        return False
+    if current is None:
+        return True
+    if current.key == target.key:
+        return False
+    if current.is_lost:
+        return True
+    if current.position is None or target.position is None:
+        return False
+    return target.position > current.position

@@ -26,7 +26,7 @@ from app.modules.leads.domain.events import (
     LeadUpdated,
 )
 from app.modules.leads.domain.lead import ActivityRecord, Actor, FieldChanges, Lead, audit_safe
-from app.modules.leads.domain.stage import require_destination
+from app.modules.leads.domain.stage import moves_on_appointment, require_destination
 from app.modules.automations.ports.types import AutomationTrigger
 
 
@@ -174,6 +174,60 @@ async def change_phone(lead_id: str, phone: str, *, actor: Actor) -> None:
             lead_id=lead_id, actor=actor, fields=("telefono",), event_type="lead_updated",
             values={"telefono": phone},
         ))
+
+
+# Lo que agendar una cita puede corregir del lead cuando el vendedor lo pide.
+APPOINTMENT_LEAD_FIELDS = frozenset({"nombre", "servicio_interes"})
+
+
+async def register_appointment(
+    lead_id: str,
+    *,
+    actor: Actor,
+    appointment: dict[str, Any],
+    starts_at: datetime | None,
+    updates: dict[str, Any] | None = None,
+    custom_fields: dict[str, Any] | None = None,
+) -> None:
+    """Se agendó una cita para el lead desde su ficha.
+
+    En una transacción: corrige los datos que el vendedor pidió llevar al
+    lead, fija la próxima cita, deja la cita en la actividad y mueve el lead a
+    la etapa que el negocio marcó (solo hacia adelante, ver
+    ``moves_on_appointment``). ``custom_fields`` se suma a los del lead sin
+    borrar los demás; ya llega normalizado.
+    """
+    updates = {key: value for key, value in (updates or {}).items() if key in APPOINTMENT_LEAD_FIELDS}
+    repository = lead_repository()
+    async with unit_of_work():
+        values = dict(updates)
+        if starts_at is not None:
+            values["proxima_cita"] = starts_at
+        lead = await _locked(lead_id, (*values, *(("custom_fields",) if custom_fields else ())))
+        if custom_fields:
+            values["custom_fields"] = {**(lead.values.get("custom_fields") or {}), **custom_fields}
+        metadata = {"source": "appointment", "appointment_id": appointment["id"]}
+        changes = lead.update(values, actor=actor, now=_now(), metadata=metadata)
+        lead.activities.append(ActivityRecord(
+            "appointment_scheduled", actor,
+            new_value={
+                "fecha": appointment["fecha"], "hora": appointment["hora"],
+                "servicio": appointment["tratamiento"], "responsable": appointment["vendedor"],
+            },
+            metadata=metadata,
+        ))
+        await repository.save(lead)
+        if changes is not None:
+            collect(LeadUpdated(
+                lead_id=lead_id, actor=actor, fields=changes.fields, event_type=changes.event_type,
+                values=audit_safe(changes.new),
+            ))
+
+        target = await repository.appointment_stage()
+        if target is not None:
+            rules = await repository.stage_rules({lead.stage, target})
+            if moves_on_appointment(rules.get(lead.stage), rules.get(target)):
+                await change_stage(lead_id, target, actor=actor, metadata=metadata)
 
 
 async def register_no_show(lead_id: str, *, actor: Actor) -> int:

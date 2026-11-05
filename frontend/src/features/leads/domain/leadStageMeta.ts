@@ -53,7 +53,7 @@ export const LEAD_STAGE_COLORS: readonly { value: string; label: string }[] = [
 const FALLBACK_COLOR = '#6b7280'
 
 function seed(key: string, name: string, color: string, kind: LeadStageKind, position: number): LeadStageDefinition {
-  return { key, name, color, kind, position, is_active: true, description: null, is_system: key === INITIAL_LEAD_STAGE }
+  return { key, name, color, kind, position, is_active: true, description: null, is_system: key === INITIAL_LEAD_STAGE, on_appointment: false }
 }
 
 /** Las etapas con las que nace todo negocio (migración d9e2a4c7f1b5). Sirven
@@ -91,6 +91,7 @@ function unknownStage(key: LeadStage): LeadStageDefinition {
     is_active: false,
     description: null,
     is_system: false,
+    on_appointment: false,
   }
 }
 
