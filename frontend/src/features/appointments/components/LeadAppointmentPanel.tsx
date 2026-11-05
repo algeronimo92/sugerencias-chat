@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarPlus, Info, Loader2, Save, UserRoundCheck, X } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Check, Info, Loader2, UserRoundCheck, X } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { DialogPrimitive } from '../../../shared/ui/Dialog'
@@ -82,14 +82,26 @@ function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
           <span>Confirmo que los datos tomados del lead son correctos</span>
         </label>
       )}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        {editing && <Button type="button" variant="secondary" onClick={() => state.saveDraft()} disabled={state.busy || !flow.ready}><Save className="h-4 w-4" />Guardar borrador</Button>}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+        {editing && state.hasDraft && <DraftStatus disabled={state.busy} onDiscard={flow.discardDraft} />}
         <Button type="submit" disabled={!flow.canSave}>
           {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
           {state.busy ? 'Guardando…' : 'Guardar cita'}
         </Button>
       </div>
     </footer>
+  )
+}
+
+/** El borrador se guarda solo; esto avisa que existe y permite volver a los
+ *  datos del lead. */
+function DraftStatus({ disabled, onDiscard }: { disabled: boolean; onDiscard: () => void }) {
+  return (
+    <p className="flex items-center justify-center gap-1.5 text-xs text-wa-muted sm:mr-auto">
+      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      Borrador guardado
+      <button type="button" className="font-semibold underline" onClick={onDiscard} disabled={disabled}>Descartar</button>
+    </p>
   )
 }
 
