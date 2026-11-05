@@ -7,6 +7,7 @@ import { compressImage } from '../../../shared/utils/media'
 import { FlowPicker } from '../../automations/public/FlowPicker'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
 import type { OutboundOf } from '../domain/outbound'
+import { useChatDraft } from '../draftStore'
 import type { ReplyTarget } from '../hooks/useMessages'
 import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useRecordTemplateUse, useTemplateCapabilities, useTemplates } from '../../templates/public/useTemplates'
@@ -96,7 +97,7 @@ export function ChatComposer({
   sendMessage,
   sendError,
 }: Props) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useChatDraft(chat.chat_id)
   const [slashIndex, setSlashIndex] = useState(0)
   const [slashDismissed, setSlashDismissed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -195,10 +196,10 @@ export function ChatComposer({
     textareaRef.current?.focus()
   }
 
-  // El draft y los errores de envío son por chat: al cambiar de lead no debe
-  // quedar pegado el texto ni el error del chat anterior.
+  // Los errores de envío son por chat: al cambiar de lead no debe quedar
+  // pegado el error del anterior. El borrador también es por chat, pero se
+  // conserva (draftStore) para retomarlo al volver.
   useEffect(() => {
-    setDraft('')
     setAudioError(null)
     setMediaError(null)
     setLocationError(null)

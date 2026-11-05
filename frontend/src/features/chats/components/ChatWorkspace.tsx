@@ -27,6 +27,7 @@ import { useUnreadCount } from '../../leads/public/queries'
 import { useChat, useInfiniteChats } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
 import { useOpenChat } from "../useOpenChat";
+import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts";
 import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";
 
@@ -171,6 +172,7 @@ export function ChatWorkspace() {
 
   // Consulta directa por clave primaria, independiente de la búsqueda de la lista.
   const { data: selectedChat = null } = useChat(chatId ?? null);
+  useChatNavigationShortcuts(chats, chatId ?? null, handleSelectChat);
 
   // Sugerencias a demanda: al abrir un chat solo se LEE lo ya generado
   // (gratis, sin IA). Generar es siempre una acción explícita del vendedor.

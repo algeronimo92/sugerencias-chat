@@ -554,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/organizations/{organization_id}/starter-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Organization Starter Pack */
+        post: operations["post_organization_starter_pack_api_platform_organizations__organization_id__starter_pack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/integrations": {
         parameters: {
             query?: never;
@@ -1622,6 +1639,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding */
+        get: operations["get_onboarding_api_onboarding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Dismiss Onboarding */
+        post: operations["post_dismiss_onboarding_api_onboarding_dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Restore Onboarding */
+        post: operations["post_restore_onboarding_api_onboarding_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -2343,6 +2411,24 @@ export interface paths {
         put?: never;
         /** Post Appointment */
         post: operations["post_appointment_api_appointments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/calendar-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Calendar Template */
+        get: operations["get_calendar_template_api_appointments_calendar_template_get"];
+        /** Put Calendar Template */
+        put: operations["put_calendar_template_api_appointments_calendar_template_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3344,6 +3430,9 @@ export interface components {
              * @default false
              */
             test_mode: boolean;
+            /** Lead Id */
+            lead_id?: string | null;
+            lead_updates?: components["schemas"]["AppointmentLeadUpdates"] | null;
         };
         /**
          * AppointmentCreated
@@ -3431,6 +3520,17 @@ export interface components {
             calendar_sync_error?: string | null;
             /** Created At */
             created_at: string;
+        };
+        /** AppointmentLeadUpdates */
+        AppointmentLeadUpdates: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Servicio Interes */
+            servicio_interes?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * AutomationBuilderMode
@@ -3716,6 +3816,39 @@ export interface components {
             label: string;
             /** Offset Minutes */
             offset_minutes: number;
+        };
+        /** CalendarEventField */
+        CalendarEventField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Custom */
+            custom: boolean;
+        };
+        /**
+         * CalendarEventTemplate
+         * @description Plantilla del evento de Google Calendar. Los marcadores ``{campo}``
+         *     nombran uno de ``fields``; el resto es texto libre.
+         */
+        CalendarEventTemplate: {
+            /** Title Template */
+            title_template: string;
+            /** Description Template */
+            description_template: string;
+            /** Default Title Template */
+            default_title_template: string;
+            /** Default Description Template */
+            default_description_template: string;
+            /** Fields */
+            fields: components["schemas"]["CalendarEventField"][];
+        };
+        /** CalendarEventTemplateUpdate */
+        CalendarEventTemplateUpdate: {
+            /** Title Template */
+            title_template: string;
+            /** Description Template */
+            description_template: string;
         };
         /** Chat */
         Chat: {
@@ -4820,6 +4953,11 @@ export interface components {
              */
             is_system: boolean;
             /**
+             * On Appointment
+             * @default false
+             */
+            on_appointment: boolean;
+            /**
              * Lead Count
              * @default 0
              */
@@ -4867,6 +5005,11 @@ export interface components {
              * @default false
              */
             is_system: boolean;
+            /**
+             * On Appointment
+             * @default false
+             */
+            on_appointment: boolean;
         };
         /** LeadStageOrder */
         LeadStageOrder: {
@@ -4885,6 +5028,8 @@ export interface components {
             is_active?: boolean | null;
             /** Description */
             description?: string | null;
+            /** On Appointment */
+            on_appointment?: boolean | null;
         };
         /** LeadStageUpdate */
         LeadStageUpdate: {
@@ -5189,6 +5334,11 @@ export interface components {
             settings?: {
                 [key: string]: string;
             };
+            /**
+             * Starter Pack
+             * @default true
+             */
+            starter_pack: boolean;
         };
         /** NotificationItem */
         NotificationItem: {
@@ -5229,6 +5379,31 @@ export interface components {
          * @enum {string}
          */
         NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed";
+        /** OnboardingStatus */
+        OnboardingStatus: {
+            /** Steps */
+            steps: components["schemas"]["OnboardingStep"][];
+            /** Completed */
+            completed: number;
+            /** Total */
+            total: number;
+            /** All Done */
+            all_done: boolean;
+            /** Dismissed */
+            dismissed: boolean;
+        };
+        /** OnboardingStep */
+        OnboardingStep: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "whatsapp" | "team" | "services" | "google_calendar" | "templates";
+            /** Done */
+            done: boolean;
+            /** Optional */
+            optional: boolean;
+        };
         /** OperatorItem */
         OperatorItem: {
             /** Id */
@@ -5565,6 +5740,22 @@ export interface components {
             configured: boolean;
             /** Value */
             value?: string | null;
+        };
+        /**
+         * StarterPackResult
+         * @description Cuántas filas agregó el paquete inicial; todo en cero = ya lo tenía.
+         */
+        StarterPackResult: {
+            /** Tags */
+            tags: number;
+            /** Categories */
+            categories: number;
+            /** Templates */
+            templates: number;
+            /** Automations */
+            automations: number;
+            /** Needs Admin */
+            needs_admin: number;
         };
         /** StickerRequest */
         StickerRequest: {
@@ -7143,6 +7334,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationAIItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organization_starter_pack_api_platform_organizations__organization_id__starter_pack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarterPackResult"];
                 };
             };
             /** @description Validation Error */
@@ -9366,6 +9588,66 @@ export interface operations {
             };
         };
     };
+    get_onboarding_api_onboarding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
+                };
+            };
+        };
+    };
+    post_dismiss_onboarding_api_onboarding_dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
+                };
+            };
+        };
+    };
+    post_restore_onboarding_api_onboarding_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatus"];
+                };
+            };
+        };
+    };
     get_tags_api_tags_get: {
         parameters: {
             query?: never;
@@ -11062,6 +11344,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppointmentCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calendar_template_api_appointments_calendar_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventTemplate"];
+                };
+            };
+        };
+    };
+    put_calendar_template_api_appointments_calendar_template_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventTemplate"];
                 };
             };
             /** @description Validation Error */

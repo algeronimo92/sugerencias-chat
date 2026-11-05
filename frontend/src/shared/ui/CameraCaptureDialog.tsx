@@ -166,7 +166,9 @@ export function CameraCaptureDialog({
     )
   }
 
-  const layerClass = cover === 'viewport' ? 'fixed inset-0 z-50' : 'absolute inset-0 z-42'
+  // 'viewport' se abre desde el panel de cita del lead (z-[88]): por debajo
+  // quedaría tapada y la cámara parecería no abrir.
+  const layerClass = cover === 'viewport' ? 'fixed inset-0 z-[95]' : 'absolute inset-0 z-42'
 
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose() }}>

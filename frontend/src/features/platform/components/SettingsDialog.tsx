@@ -1,16 +1,20 @@
 import { Check, Loader2, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import type { SettingItem } from '../types'
+import { AutoAssignSellers } from './AutoAssignSellers'
 import { GoogleCalendarPanel } from './GoogleCalendarPanel'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
 interface Props {
   onClose: () => void
   initialTab?: Tab
+  /** El armador del evento de Calendar es de citas, una feature de capa
+   *  superior: llega armado desde app/ en vez de importarse acá. */
+  calendarEventEditor?: ReactNode
 }
 
 type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
@@ -19,6 +23,11 @@ type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
 // no se muestran ni se reenvían desde Claves, donde un "Guardar" con el
 // borrador viejo pisaría el calendario recién elegido.
 const CALENDAR_GROUP = 'calendar'
+
+// La exclusión del reparto se guarda como ids, pero se edita como una lista
+// de vendedores y solo tiene sentido con el reparto encendido.
+const AUTO_ASSIGN_KEY = 'auto_assign_leads_enabled'
+const AUTO_ASSIGN_EXCLUDED_KEY = 'auto_assign_excluded_user_ids'
 
 const TAB_CLASS = (active: boolean) =>
   `px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -40,7 +49,7 @@ function groupItems(items: SettingItem[]): { group: string; groupLabel: string; 
   return groups
 }
 
-export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
+export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEditor }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const { data: allSettings, isLoading, error } = useSettings(tab === 'claves')
   const data = useMemo(() => allSettings?.filter((item) => item.group !== CALENDAR_GROUP), [allSettings])
@@ -165,7 +174,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
 
           {tab === 'whatsapp' && <WhatsappPanel onGoToClaves={() => setTab('claves')} />}
 
-          {tab === 'calendario' && <GoogleCalendarPanel />}
+          {tab === 'calendario' && <GoogleCalendarPanel eventEditor={calendarEventEditor} />}
 
           {tab === 'claves' && isLoading && (
             <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Cargando configuración...</p>
@@ -183,7 +192,15 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               </h3>
               <div className="space-y-2.5">
                 {g.items.map((item) => (
-                  item.boolean ? (
+                  item.key === AUTO_ASSIGN_EXCLUDED_KEY ? (
+                    (draft[AUTO_ASSIGN_KEY] ?? '') === 'true' && (
+                      <AutoAssignSellers
+                        key={item.key}
+                        value={draft[item.key] ?? ''}
+                        onChange={(value) => setField(item.key, value)}
+                      />
+                    )
+                  ) : item.boolean ? (
                     <label key={item.key} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                       <Checkbox
                         checked={(draft[item.key] ?? '') === 'true'}

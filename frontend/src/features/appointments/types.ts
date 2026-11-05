@@ -1,5 +1,6 @@
 import type { ApiSchemas, Delivered } from '../../shared/http/contract'
 import type { AppointmentStatus } from "./constants";
+import type { LeadUpdatesInput } from './domain/leadPrefill'
 
 export interface AppointmentAttachmentInput {
   contentType: string
@@ -21,11 +22,19 @@ export interface CreateAppointmentInput {
   customFields: Record<string, unknown>
   comprobante: AppointmentAttachmentInput | null
   testMode: boolean
+  /** Agendada desde la ficha del lead: va atada a él sin buscar por teléfono. */
+  leadId?: string | null
+  /** Lo que el vendedor corrigió y pidió llevar también al lead. */
+  leadUpdates?: LeadUpdatesInput | null
 }
 
 /** Resultado de registrar una cita; trae además lo que devolvió el workflow
  * de n8n (por ejemplo `citaDuplicada`). */
 export type AppointmentResult = Delivered<ApiSchemas['AppointmentCreated']>
+
+/** Plantilla del título y la descripción del evento de Google Calendar. */
+export type CalendarEventTemplate = Delivered<ApiSchemas['CalendarEventTemplate']>
+export type CalendarEventField = Delivered<ApiSchemas['CalendarEventField']>
 
 export interface AppointmentListItem {
   id: number

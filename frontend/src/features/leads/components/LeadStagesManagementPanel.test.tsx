@@ -24,7 +24,7 @@ vi.mock('../hooks/useLeadStages', () => ({
 function stage(key: string, name: string, position: number, overrides: Partial<LeadStageAdminDefinition> = {}): LeadStageAdminDefinition {
   return {
     key, name, position, color: '#0ea5e9', kind: 'open', is_active: true,
-    description: null, is_system: key === 'nuevo', lead_count: 0, ...overrides,
+    description: null, is_system: key === 'nuevo', on_appointment: false, lead_count: 0, ...overrides,
   }
 }
 
@@ -82,6 +82,17 @@ describe('LeadStagesManagementPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar Calificado' }))
 
     expect(mocks.update).toHaveBeenCalledWith({ key: 'calificado', name: 'Interesado' }, expect.anything())
+  })
+
+  it('marca la etapa a la que pasa el lead al agendar una cita', async () => {
+    mocks.stages = [...mocks.stages, stage('archivada', 'Archivada', 3, { is_active: false })]
+    render(<LeadStagesManagementPanel />)
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Mover a Cita pagada al agendar una cita' }))
+
+    expect(mocks.update).toHaveBeenCalledWith({ key: 'cita_pagada', on_appointment: true }, expect.anything())
+    // Una etapa desactivada no puede ser destino.
+    expect(screen.getByRole('switch', { name: 'Mover a Archivada al agendar una cita' })).toBeDisabled()
   })
 
   it('protege la etapa inicial y no ofrece borrar una etapa con leads', () => {

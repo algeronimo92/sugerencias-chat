@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.appointments import api as appointments
-from app.modules.appointments.application import commands
+from app.modules.appointments.application import calendar_template, commands
 from app.modules.appointments.domain.appointment import SyncResult
 from app.modules.appointments.domain.errors import CalendarNotConfigured
 from app.modules.appointments.domain.events import AppointmentCreated
@@ -34,7 +34,10 @@ def dependencies(monkeypatch, in_memory_appointments):
     monkeypatch.setattr(appointments, "effective_country_code", AsyncMock(return_value="51"))
     monkeypatch.setattr(commands, "effective_country_code", AsyncMock(return_value="51"))
     monkeypatch.setattr(appointments, "normalize_values", AsyncMock(side_effect=lambda _e, values, **_k: values))
-    monkeypatch.setattr(commands, "list_definitions", AsyncMock(return_value=[]))
+    monkeypatch.setattr(calendar_template, "list_definitions", AsyncMock(return_value=[]))
+    monkeypatch.setattr(calendar_template, "get_effective_many", AsyncMock(return_value={
+        calendar_template.TITLE_KEY: "", calendar_template.DESCRIPTION_KEY: "",
+    }))
     return in_memory_appointments
 
 

@@ -49,10 +49,12 @@ class FakeCalendar:
         "status": "not_configured", "event_id": None, "event_link": None, "error": None,
     })
     calls: list[dict] = field(default_factory=list)
+    contents: list = field(default_factory=list)
     order: list[str] | None = None
 
-    async def create_event(self, appointment: dict, field_labels: dict[str, str]) -> dict:
+    async def create_event(self, appointment: dict, content) -> dict:
         self.calls.append(appointment)
+        self.contents.append(content)
         if self.order is not None:
             self.order.append("calendar")
         return dict(self.result)
@@ -76,6 +78,8 @@ class FakeLeads:
     identities: dict[str, str] = field(default_factory=dict)
     tails: dict[str, str] = field(default_factory=dict)
     tail_lookups: list[str] = field(default_factory=list)
+    existing: set[str] = field(default_factory=set)
+    registered: list[dict] = field(default_factory=list)
 
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return self.identities.get(e164)
@@ -83,6 +87,12 @@ class FakeLeads:
     async def by_phone_tail(self, tail: str) -> str | None:
         self.tail_lookups.append(tail)
         return self.tails.get(tail)
+
+    async def exists(self, lead_id: str) -> bool:
+        return lead_id in self.existing
+
+    async def register(self, lead_id: str, **values) -> None:
+        self.registered.append({"lead_id": lead_id, **values})
 
 
 @dataclass

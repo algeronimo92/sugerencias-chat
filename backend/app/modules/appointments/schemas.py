@@ -10,6 +10,12 @@ class AppointmentAttachment(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
 
 
+class AppointmentLeadUpdates(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=200)
+    servicio_interes: str | None = Field(default=None, min_length=1, max_length=120)
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
+
+
 class AppointmentCreate(BaseModel):
     nombre_completo: str = Field(min_length=1, max_length=200)
     dni: str = Field(default="", max_length=20)
@@ -30,6 +36,14 @@ class AppointmentCreate(BaseModel):
     # formMode="test" en vez de "production" en el payload a n8n, igual que
     # hacía el Form Trigger nativo al probarse desde su URL de test.
     test_mode: bool = False
+    # Agendada desde la ficha del lead: se ata a él sin buscar por teléfono.
+    lead_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    )
+    # Lo que el vendedor corrigió en la cita y pidió llevar también al lead.
+    # Solo vale con ``lead_id``.
+    lead_updates: AppointmentLeadUpdates | None = None
 
 
 class AppointmentItem(BaseModel):
@@ -74,3 +88,27 @@ class AppointmentCreated(BaseModel):
     eventLink: str | None = None
     calendarSyncStatus: str
     integrationErrors: list[str]
+
+
+class CalendarEventField(BaseModel):
+    key: str
+    label: str
+    custom: bool
+
+
+class CalendarEventTemplate(BaseModel):
+    """Plantilla del evento de Google Calendar. Los marcadores ``{campo}``
+    nombran uno de ``fields``; el resto es texto libre."""
+
+    title_template: str
+    description_template: str
+    default_title_template: str
+    default_description_template: str
+    fields: list[CalendarEventField]
+
+
+class CalendarEventTemplateUpdate(BaseModel):
+    # Los topes reales los aplica el dominio con un mensaje en español; estos
+    # solo cortan un cuerpo absurdo antes de llegar ahí.
+    title_template: str = Field(max_length=1000)
+    description_template: str = Field(max_length=10000)

@@ -14,6 +14,7 @@ import json
 
 from app.db.session import close_engine
 from app.modules.auth.auth_service import hash_password
+from app.modules.platform.starter_pack import apply_starter_pack
 from app.tenancy.provisioning import provision_tenant
 
 
@@ -26,6 +27,11 @@ async def _main() -> int:
     parser.add_argument("--waba-id")
     parser.add_argument("--admin-email")
     parser.add_argument("--admin-password")
+    parser.add_argument(
+        "--sin-paquete",
+        action="store_true",
+        help="no sembrar el paquete inicial (etiquetas, plantillas y automatizaciones)",
+    )
     parser.add_argument(
         "--setting",
         action="append",
@@ -57,6 +63,7 @@ async def _main() -> int:
             admin_password_hash=(
                 hash_password(args.admin_password) if args.admin_password else None
             ),
+            starter_pack=None if args.sin_paquete else apply_starter_pack,
         )
         print(
             json.dumps(

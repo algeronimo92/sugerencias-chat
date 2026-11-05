@@ -6,7 +6,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList)
+from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList)
 
 import base64
 import binascii
@@ -21,12 +21,14 @@ from app.modules.platform import branding as branding_service
 from app.modules.ai.public import AIEntitlement
 from app.modules.platform.platform_organizations import (
     OrganizationNotFoundError,
+    apply_organization_starter_pack,
     organization_ai,
     organization_integrations,
     update_organization_ai,
     update_organization_integrations,
 )
 from app.modules.platform.platform_organizations import list_organizations as listar_organizaciones
+from app.modules.platform.starter_pack import apply_starter_pack
 from app.modules.platform.platform_settings import list_platform_settings, update_platform_settings
 from app.modules.platform.platform_auth import (
     PLATFORM_COOKIE_NAME,
@@ -139,6 +141,7 @@ async def create_organization(body: NewOrganizationBody) -> dict:
             admin_password_hash=hash_password(body.admin_password)
             if body.admin_password
             else None,
+            starter_pack=apply_starter_pack if body.starter_pack else None,
         )
     except TenantProvisioningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -217,6 +220,18 @@ async def put_organization_ai(organization_id: UUID, body: OrganizationAIBody):
             organization_id,
             AIEntitlement(enabled=body.enabled, monthly_quota=body.monthly_quota),
         )
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/starter-pack",
+    dependencies=protected,
+    response_model=StarterPackResult,
+)
+async def post_organization_starter_pack(organization_id: UUID):
+    try:
+        return await apply_organization_starter_pack(organization_id)
     except OrganizationNotFoundError as exc:
         raise _organization_not_found() from exc
 

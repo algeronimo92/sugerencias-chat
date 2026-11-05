@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAppointments, createAppointment, syncAppointmentCalendar } from './api'
+import { fetchAppointments, createAppointment, fetchCalendarEventTemplate, saveCalendarEventTemplate, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
+import { leadKeys } from '../leads/public/keys'
 
 export type { AppointmentAttachmentInput } from './types'
 
@@ -24,6 +25,16 @@ export function useCreateAppointment() {
     // También se invalida en error: el backend registra el intento en el
     // historial aunque n8n lo haya rechazado, para poder revisar fallos.
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+    // Agendada desde la ficha: el lead cambió (próxima cita, etapa, actividad
+    // y lo que el vendedor corrigió). El tiempo real también avisa, pero el
+    // que agendó no debería esperar a ese aviso para ver su propio cambio.
+    onSuccess: (_result, input) => {
+      if (!input.leadId) return
+      void queryClient.invalidateQueries({ queryKey: leadKeys.detail(input.leadId) })
+      void queryClient.invalidateQueries({ queryKey: leadKeys.activity(input.leadId) })
+      void queryClient.invalidateQueries({ queryKey: leadKeys.customFieldValues(input.leadId) })
+      void queryClient.invalidateQueries({ queryKey: leadKeys.lists })
+    },
   })
 }
 
@@ -31,5 +42,19 @@ export function useSyncAppointmentCalendar() {
   return useMutation({
     mutationFn: syncAppointmentCalendar,
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+export function useCalendarEventTemplate() {
+  return useQuery({
+    queryKey: appointmentKeys.calendarTemplate,
+    queryFn: fetchCalendarEventTemplate,
+  })
+}
+
+export function useSaveCalendarEventTemplate() {
+  return useMutation({
+    mutationFn: saveCalendarEventTemplate,
+    onSuccess: (template) => queryClient.setQueryData(appointmentKeys.calendarTemplate, template),
   })
 }

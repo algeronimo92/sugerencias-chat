@@ -22,6 +22,7 @@ STAGE_COLUMNS = (
     LeadStage.kind,
     LeadStage.is_active,
     LeadStage.description,
+    LeadStage.on_appointment,
 )
 
 

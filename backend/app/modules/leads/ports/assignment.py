@@ -1,7 +1,8 @@
 """Consumer contract: only the operations used outside this capability."""
 
 from app.modules.leads.assignment import (
-    pick_next_vendedor_id,
+    assign_next_seller,
+    parse_excluded_ids,
 )
 
-__all__ = ['pick_next_vendedor_id']
+__all__ = ['assign_next_seller', 'parse_excluded_ids']

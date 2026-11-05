@@ -8,4 +8,7 @@
 
 export const appointmentKeys = {
   all: ['appointments'] as const,
+  // Fuera de `all`: refrescar el historial de citas no tiene por qué releer
+  // la plantilla del evento.
+  calendarTemplate: ['appointment-calendar-template'] as const,
 }

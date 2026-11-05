@@ -16,6 +16,7 @@ const EVENT_LABELS: Record<string, string> = {
   internal_note_created: 'Nota interna creada',
   internal_note_updated: 'Nota interna modificada',
   internal_note_deleted: 'Nota interna eliminada',
+  appointment_scheduled: 'Cita agendada',
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -36,6 +37,12 @@ const FIELD_LABELS: Record<string, string> = {
   proxima_cita: 'Próxima cita',
   content: 'Nota',
   tag: 'Etiqueta',
+  custom_fields: 'Campos del negocio',
+  // Detalle de una cita agendada (appointment_scheduled).
+  fecha: 'Fecha',
+  hora: 'Hora',
+  servicio: 'Servicio',
+  responsable: 'Responsable',
 }
 
 const HIDDEN_FIELDS = new Set(['vendedor_id'])

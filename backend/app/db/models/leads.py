@@ -214,10 +214,20 @@ class LeadStage(Base):
     # Criterio del negocio para usar la etapa. Lo recibe el analista IA, que
     # no conoce las etapas propias de cada negocio.
     description: Mapped[str | None] = mapped_column(Text)
+    # La etapa a la que pasa un lead al agendarle una cita desde su ficha. A
+    # lo sumo una por negocio (índice parcial abajo); ver
+    # leads.application.commands.register_appointment.
+    on_appointment: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        Index(
+            "uq_lead_stages_on_appointment",
+            on_appointment,
+            unique=True,
+            postgresql_where=text("on_appointment"),
+        ),
         CheckConstraint("key ~ '^[a-z][a-z0-9_]{0,39}$'", name="lead_stages_key_check"),
         CheckConstraint("color ~ '^#[0-9a-f]{6}$'", name="lead_stages_color_check"),
         CheckConstraint("kind IN ('open', 'won', 'lost')", name="lead_stages_kind_check"),
@@ -305,3 +315,17 @@ class LeadNoteMention(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("idx_lead_note_mentions_user", user_id, created_at.desc()),)
+
+
+class LeadAssignmentTurn(Base):
+    """Cuándo le tocó por última vez un lead del reparto automático a cada
+    vendedor. Medirlo por ``leads.created_at`` no servía: esa hora se fija
+    antes de esperar el turno, así que con varias altas a la vez el orden de
+    creación no era el de asignación y el reparto salía desparejo."""
+
+    __tablename__ = "lead_assignment_turns"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

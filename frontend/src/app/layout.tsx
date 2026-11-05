@@ -12,6 +12,7 @@ import { useChatFiltersState } from '../features/chats/public/useChatFiltersStat
 import { MobileNavBar } from "./MobileNavBar";
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
+import { CommandPalette } from "./CommandPalette";
 import { useLayout } from "../shared/hooks/useBreakpoint";
 import { useLogout, useMe } from '../features/auth/public/queries';
 import { useUnreadCount } from '../features/leads/public/queries'
@@ -20,10 +21,14 @@ import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
+import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
 import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
   import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
+);
+const CalendarEventTemplateEditor = lazy(() =>
+  import("../features/appointments/public/CalendarEventTemplateEditor").then((module) => ({ default: module.CalendarEventTemplateEditor })),
 );
 const AccountSecurityDialog = lazy(() =>
   import("../features/auth/index").then((module) => ({ default: module.AccountSecurityDialog })),
@@ -160,6 +165,10 @@ export function MainLayout() {
             </span>
           </button>
         )}
+        <OnboardingReopenButton
+          enabled={me?.role === "admin"}
+          className={headerIconButtonClass}
+        />
         {me?.role === "admin" && (
           <Tooltip content="Configuración">
             <button
@@ -231,11 +240,25 @@ export function MainLayout() {
         </Tooltip>
       </div>
 
+      {/* Primeros pasos del negocio: solo admins y, en móvil, fuera de un
+          chat, donde el espacio vertical es del composer. */}
+      <OnboardingChecklist
+        enabled={me?.role === "admin" && !(isMobile && chatId)}
+        pathname={location.pathname}
+        onOpenSettings={openSettings}
+        onNavigate={(path) => navigate(path)}
+      />
+
       {isSettingsOpen && (
         <Suspense fallback={null}>
           <SettingsDialog
             onClose={() => setIsSettingsOpen(false)}
             initialTab={settingsInitialTab}
+            calendarEventEditor={(
+              <Suspense fallback={null}>
+                <CalendarEventTemplateEditor />
+              </Suspense>
+            )}
           />
         </Suspense>
       )}
@@ -307,6 +330,11 @@ export function MainLayout() {
           </Suspense>
         </div>
       </div>
+
+      <CommandPalette
+        isAdmin={me?.role === "admin"}
+        onOpenSettings={me?.role === "admin" ? () => openSettings("claves") : undefined}
+      />
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
           ahí el espacio es para el composer y se vuelve con la flecha. */}

@@ -18,8 +18,8 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.leads import Lead, WhatsAppIdentity
-from app.modules.leads.ports.assignment import (pick_next_vendedor_id)
-from app.modules.platform.ports.settings_service import (get_effective)
+from app.modules.leads.ports.assignment import assign_next_seller, parse_excluded_ids
+from app.modules.platform.ports.settings_service import get_effective_many
 from app.integrations.whatsapp.connection import ANY_CONNECTION
 from app.db.uow import session_scope, unit_of_work
 
@@ -132,7 +132,13 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
     now = datetime.now(timezone.utc)
     # Se lee antes de abrir la transacción: no tiene sentido tener tomado el
     # lock del contacto mientras se consulta la configuración.
-    auto_assign = create and (await get_effective("auto_assign_leads_enabled")) == "true"
+    excluded: frozenset[int] | None = None
+    if create:
+        assignment = await get_effective_many(
+            ("auto_assign_leads_enabled", "auto_assign_excluded_user_ids")
+        )
+        if assignment["auto_assign_leads_enabled"] == "true":
+            excluded = parse_excluded_ids(assignment["auto_assign_excluded_user_ids"])
     # Unidad de trabajo y no una sesión suelta: el reparto de vendedor lee en
     # esta misma transacción, la que tiene tomados los locks.
     async with unit_of_work() as uow:
@@ -162,20 +168,10 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
         else:
             if not create:
                 return None
-            vendedor_id = None
-            if auto_assign:
-                # Serializa la asignación entre leads nuevos concurrentes.
-                await session.execute(
-                    select(func.pg_advisory_xact_lock(
-                        func.hashtextextended("lead_round_robin_assignment", 0)
-                    ))
-                )
-                vendedor_id = await pick_next_vendedor_id()
             lead = Lead(
                 telefono=identity.wa_id,
                 nombre=identity.profile_name,
                 nombre_usuario=_display_username(identity.username),
-                vendedor_id=vendedor_id,
                 created_at=now,
                 updated_at=now,
             )
@@ -211,6 +207,12 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
                 existing.phone_number_id = identity.phone_number_id
                 existing.updated_at = now
         await session.flush()
+
+        # Solo leads que nacen acá, del primer mensaje: los creados a mano y
+        # los que ya tienen vendedor no se tocan. Va al final, después del
+        # último flush del ORM, para que nada pise la asignación.
+        if lead_created and excluded is not None:
+            await assign_next_seller(chat_id, excluded=excluded)
 
         return ResolvedIdentity(chat_id=chat_id, lead_created=lead_created)
 

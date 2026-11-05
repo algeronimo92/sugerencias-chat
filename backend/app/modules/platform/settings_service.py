@@ -115,11 +115,20 @@ SETTING_DEFS: list[SettingDef] = [
     ),
     SettingDef(
         "auto_assign_leads_enabled",
-        "Asignar leads de WhatsApp por turnos (round robin)",
+        "Repartir leads nuevos automáticamente entre los vendedores, por turnos",
         "leads",
         "Leads (CRM)",
         secret=False,
         boolean=True,
+    ),
+    # Ids separados por coma. La UI lo muestra como una lista de vendedores
+    # con casillas, no como texto (ver SettingsDialog).
+    SettingDef(
+        "auto_assign_excluded_user_ids",
+        "Vendedores que no reciben leads del reparto",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
     ),
     SettingDef(
         "conversation_auto_close_hours",
@@ -166,6 +175,22 @@ SETTING_DEFS: list[SettingDef] = [
     # Un solo uso: el callback lo compara con el del state y lo borra.
     SettingDef("google_calendar_oauth_nonce", "Nonce del flujo OAuth en curso", "calendar", "Google Calendar (opcional)", secret=True, hidden=True),
     SettingDef("business_timezone", "Zona horaria (IANA)", "calendar", "Google Calendar (opcional)", secret=False),
+    # Qué dice el evento de cada cita; vacío es el formato de siempre. Se
+    # editan desde el armador de la pestaña Calendario, que valida los campos
+    # (appointments/application/calendar_template.py).
+    SettingDef("google_calendar_title_template", "Título del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    SettingDef("google_calendar_description_template", "Descripción del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    # El admin cerró la tarjeta de primeros pasos. Es del negocio y no de cada
+    # admin: si uno ya lo dejó configurado, al siguiente no le sirve verla.
+    SettingDef(
+        "onboarding_checklist_dismissed",
+        "Primeros pasos descartados",
+        "onboarding",
+        "Primeros pasos",
+        secret=False,
+        boolean=True,
+        hidden=True,
+    ),
 ]
 # Ajustes por negocio que administra el operador de la plataforma y no el
 # propio negocio (ver app/modules/platform/api.py).
@@ -236,6 +261,14 @@ def validate_business_timezone(value: str) -> str:
     if normalized != "UTC" and not normalized.startswith(_BUSINESS_TIMEZONE_PREFIXES):
         raise ValueError("Selecciona una zona horaria geográfica")
     return normalized
+
+
+def normalize_user_ids(value: str) -> str:
+    """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not all(part.isdigit() for part in parts):
+        raise ValueError("La lista de vendedores excluidos solo admite ids numéricos")
+    return ",".join(str(i) for i in sorted({int(part) for part in parts}))
 
 
 async def _raw_db_values() -> dict[str, str | None]:
@@ -367,6 +400,15 @@ async def update_settings(values: dict[str, str]) -> None:
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]
+        )
+    if "auto_assign_leads_enabled" in values:
+        enabled = values["auto_assign_leads_enabled"].strip().lower()
+        if enabled not in {"", "true", "false"}:
+            raise ValueError("El reparto automático debe ser true o false")
+        values["auto_assign_leads_enabled"] = enabled
+    if "auto_assign_excluded_user_ids" in values:
+        values["auto_assign_excluded_user_ids"] = normalize_user_ids(
+            values["auto_assign_excluded_user_ids"]
         )
     if "google_calendar_enabled" in values:
         enabled = values["google_calendar_enabled"].strip().lower()
