@@ -10,6 +10,7 @@ import { useDeleteLead, useMarkNoShow } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../../leads/public/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
+import { useChatDraft } from '../draftStore'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const MergeLeadDialog = lazy(() => import('../../leads/public/MergeLeadDialog').then(m => ({ default: m.MergeLeadDialog })))
@@ -181,6 +182,10 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   // deja visible al inicio del preview y el split lo resalta en negrita.
   const previewText = isMessageMatch ? searchSnippet(rawPreviewText, search) : rawPreviewText
   const matchParts = isMessageMatch ? splitOnMatch(previewText, search) : null
+  // Como WhatsApp: un chat con texto a medio escribir lo avisa en la lista,
+  // salvo el abierto (su borrador ya está a la vista en el compositor).
+  const [draft] = useChatDraft(chat.chat_id)
+  const draftPreview = !isSelected && !isMessageMatch ? draft.trim().split('\n')[0] : ''
 
   // El tiempo transcurrido se recalcula en cada render con Date.now(); no
   // hace falta un timer propio porque la lista ya refresca sola (websocket
@@ -268,8 +273,13 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
         </div>
         <div className="flex items-baseline justify-between gap-2 mt-0.5">
           <p className="text-[13px] text-wa-muted dark:text-wa-muted-dark truncate flex items-center gap-1 min-w-0">
-            {Icon && <Icon className="w-3.5 h-3.5 text-wa-muted dark:text-wa-muted-dark shrink-0" />}
-            {matchParts ? (
+            {!draftPreview && Icon && <Icon className="w-3.5 h-3.5 text-wa-muted dark:text-wa-muted-dark shrink-0" />}
+            {draftPreview ? (
+              <span className="truncate">
+                <span className="font-medium text-wa-primary">Borrador: </span>
+                {draftPreview}
+              </span>
+            ) : matchParts ? (
               <span className="truncate">
                 {matchParts[0]}
                 <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{matchParts[1]}</strong>

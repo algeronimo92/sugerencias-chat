@@ -12,6 +12,7 @@ import { useChatFiltersState } from '../features/chats/public/useChatFiltersStat
 import { MobileNavBar } from "./MobileNavBar";
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
+import { CommandPalette } from "./CommandPalette";
 import { useLayout } from "../shared/hooks/useBreakpoint";
 import { useLogout, useMe } from '../features/auth/public/queries';
 import { useUnreadCount } from '../features/leads/public/queries'
@@ -317,6 +318,11 @@ export function MainLayout() {
           </Suspense>
         </div>
       </div>
+
+      <CommandPalette
+        isAdmin={me?.role === "admin"}
+        onOpenSettings={me?.role === "admin" ? () => openSettings("claves") : undefined}
+      />
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
           ahí el espacio es para el composer y se vuelve con la flecha. */}

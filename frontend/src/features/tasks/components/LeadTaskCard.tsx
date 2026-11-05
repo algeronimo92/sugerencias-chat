@@ -1,9 +1,11 @@
 import { CalendarClock, Check, Loader2, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskStatusValue, TaskTypeValue, isTaskPriority, isTaskType } from '../domain/taskCatalog'
+import { QUICK_FOLLOW_UPS, quickFollowUpDue, type QuickFollowUp } from '../domain/quickFollowUps'
 import type { Chat } from '../../leads/types'
 import { useCreateTask, useTasks, useUpdateTask } from '../hooks/useTasks'
 import type { TaskPriority, TaskType } from '../types'
@@ -46,9 +48,43 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
     )
   }
 
-  function handleComplete(id: number) {
+  function handleQuickFollowUp(option: QuickFollowUp) {
     setError(null)
-    update({ id, status: TaskStatusValue.Completed }, { onError: (err) => setError(extractErrorMessage(err)) })
+    const due = quickFollowUpDue(option.id).toISOString()
+    create(
+      {
+        lead_id: chat.chat_id,
+        title: 'Seguimiento por WhatsApp',
+        task_type: TaskTypeValue.WhatsApp,
+        priority: TaskPriorityValue.Normal,
+        due_at: due,
+        remind_at: due,
+      },
+      {
+        onSuccess: (task) => toast.success(`Te recordaremos el ${new Date(task.due_at).toLocaleString('es-PE', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, {
+          action: {
+            label: 'Deshacer',
+            onClick: () => update({ id: task.id, status: TaskStatusValue.Canceled }, { onError: (err) => toast.error(extractErrorMessage(err)) }),
+          },
+        }),
+        onError: (err) => setError(extractErrorMessage(err)),
+      },
+    )
+  }
+
+  // Deshacer en vez de confirmar, igual que en TasksPage: completar es reversible.
+  function handleComplete(id: number, title: string) {
+    setError(null)
+    update({ id, status: TaskStatusValue.Completed }, {
+      onSuccess: () => toast.success('Tarea completada', {
+        description: title,
+        action: {
+          label: 'Deshacer',
+          onClick: () => update({ id, status: TaskStatusValue.Pending }, { onError: (err) => toast.error(extractErrorMessage(err)) }),
+        },
+      }),
+      onError: (err) => setError(extractErrorMessage(err)),
+    })
   }
 
   return (
@@ -81,7 +117,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           </div>
           <button
             type="button"
-            onClick={() => handleComplete(next.id)}
+            onClick={() => handleComplete(next.id, next.title)}
             disabled={isCompleting}
             aria-label={`Marcar como completada: ${next.title}`}
             title="Marcar tarea como completada"
@@ -93,6 +129,22 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
       ) : (
         <p className="text-xs text-wa-muted">No hay tareas pendientes programadas.</p>
       )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label="Recordar seguimiento">
+        <span className="mr-0.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">Recordar:</span>
+        {QUICK_FOLLOW_UPS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => handleQuickFollowUp(option)}
+            disabled={isCreating}
+            title={`Crear un seguimiento por WhatsApp ${option.label.toLowerCase()}`}
+            className="rounded-full border border-wa-border px-2 py-0.5 text-[11px] font-medium text-wa-text hover:border-wa-primary hover:text-wa-primary-strong disabled:opacity-40 dark:border-wa-border-dark dark:text-wa-text-dark"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
 
       {open && (
         <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-wa-border pt-3 dark:border-wa-border-dark">

@@ -59,7 +59,13 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
             {tag.name}
             <button
               type="button"
-              onClick={() => removeTag.mutate(tag.id, { onSuccess: () => toast.success('Etiqueta eliminada del lead'), onError: (err) => setError(extractErrorMessage(err)) })}
+              onClick={() => removeTag.mutate(tag.id, {
+                onSuccess: () => toast.success('Etiqueta quitada del lead', {
+                  description: tag.name,
+                  action: { label: 'Deshacer', onClick: () => assign(tag.id, { onError: (err) => toast.error(extractErrorMessage(err)) }) },
+                }),
+                onError: (err) => setError(extractErrorMessage(err)),
+              })}
               disabled={removeTag.isPending}
               aria-label={isRemoving ? `Quitando ${tag.name}` : `Quitar ${tag.name}`}
               aria-busy={isRemoving}

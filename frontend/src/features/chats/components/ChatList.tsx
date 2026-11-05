@@ -32,6 +32,7 @@ import { useSellers } from "../../platform/public/useUsers";
 import { useCreateLead } from '../../leads/public/queries'
 import type { Chat, ChatFilters, LeadUpdateInput } from '../../leads/types'
 import { ChatItem } from "./ChatItem";
+import { ChatViewChips } from "./ChatViewChips";
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const LeadFormDialog = lazy(() =>
@@ -501,6 +502,11 @@ export function ChatList({
             Mis leads
           </button>
         </div>
+        <ChatViewChips
+          filters={advancedFilters}
+          onChange={onAdvancedFiltersChange}
+          canSave={activeAdvancedFilterCount > 0}
+        />
         <button
           type="button"
           onClick={() => setShowFilters((value) => !value)}

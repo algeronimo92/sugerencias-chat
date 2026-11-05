@@ -337,6 +337,19 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     moveLead(
       { chatId: chat.chat_id, stage, razonPerdido },
       {
+        // Un arrastre que cae en la columna equivocada se corrige con un click,
+        // sin volver a buscar la tarjeta. Si venía de "perdido" se le devuelve
+        // la razón que tenía, para no pedirla otra vez.
+        onSuccess: () => toast.success(`Movido a ${catalog.label(stage)}`, {
+          description: displayName(chat),
+          action: {
+            label: 'Deshacer',
+            onClick: () => moveLead(
+              { chatId: chat.chat_id, stage: chat.stage, razonPerdido: catalog.isLost(chat.stage) ? chat.razon_perdido : undefined },
+              { onError: (error) => toast.error(`No se pudo deshacer. ${extractErrorMessage(error)}`) },
+            ),
+          },
+        }),
         onError: (error) => toast.error(`No se pudo cambiar la etapa. ${extractErrorMessage(error)}`),
         onSettled: () => {
           setMovingIds((current) => {
