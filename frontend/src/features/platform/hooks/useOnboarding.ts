@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { dismissOnboarding, fetchOnboarding } from '../api'
+import { dismissOnboarding, fetchOnboarding, restoreOnboarding } from '../api'
 import { settingsKeys } from '../keys'
 
 export type { OnboardingStatus, OnboardingStepKey } from '../types'
@@ -21,6 +21,14 @@ export function useDismissOnboarding() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: dismissOnboarding,
+    onSuccess: (status) => queryClient.setQueryData(settingsKeys.onboarding, status),
+  })
+}
+
+export function useRestoreOnboarding() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: restoreOnboarding,
     onSuccess: (status) => queryClient.setQueryData(settingsKeys.onboarding, status),
   })
 }

@@ -45,3 +45,10 @@ async def onboarding_status() -> dict:
 async def dismiss_onboarding() -> dict:
     await update_settings({DISMISSED_KEY: "true"})
     return await onboarding_status()
+
+
+async def restore_onboarding() -> dict:
+    """Vuelve a mostrar la tarjeta. Cerrarla no tenía vuelta atrás y el admin
+    que la cerraba por error se quedaba sin el atajo a los pasos pendientes."""
+    await update_settings({DISMISSED_KEY: "false"})
+    return await onboarding_status()

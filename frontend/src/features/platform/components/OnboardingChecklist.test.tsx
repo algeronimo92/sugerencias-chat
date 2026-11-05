@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OnboardingStatus } from '../types'
 import { OnboardingChecklist } from './OnboardingChecklist'
+import { OnboardingReopenButton } from './OnboardingReopenButton'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 
@@ -90,10 +91,35 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup()
     renderChecklist()
 
-    await user.click(await screen.findByRole('button', { name: 'No volver a mostrar los primeros pasos' }))
+    await user.click(await screen.findByRole('button', { name: 'Ocultar los primeros pasos' }))
 
     expect(api.post).toHaveBeenCalledWith('/api/onboarding/dismiss')
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Primeros pasos' })).not.toBeInTheDocument())
+  })
+
+  it('después de ocultarla, el ícono de la barra la vuelve a mostrar', async () => {
+    api.get.mockResolvedValue({ data: pending })
+    api.post.mockImplementation(async (url: string) => ({
+      data: { ...pending, dismissed: url === '/api/onboarding/dismiss' },
+    }))
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <OnboardingReopenButton enabled className="" />
+        <OnboardingChecklist enabled pathname="/" onOpenSettings={vi.fn()} onNavigate={vi.fn()} />
+      </QueryClientProvider>,
+    )
+
+    // Con la tarjeta a la vista el ícono no hace falta.
+    await screen.findByRole('region', { name: 'Primeros pasos' })
+    expect(screen.queryByRole('button', { name: /Mostrar los primeros pasos/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Ocultar los primeros pasos' }))
+    await user.click(await screen.findByRole('button', { name: 'Mostrar los primeros pasos (1 de 4 listos)' }))
+
+    expect(api.post).toHaveBeenLastCalledWith('/api/onboarding/restore')
+    expect(await screen.findByRole('region', { name: 'Primeros pasos' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Mostrar los primeros pasos/ })).not.toBeInTheDocument()
   })
 
   it('no consulta nada para quien no es admin', () => {

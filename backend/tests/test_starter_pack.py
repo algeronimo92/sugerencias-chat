@@ -256,6 +256,21 @@ async def test_dismiss_is_stored_as_a_business_setting(monkeypatch) -> None:
     assert status["dismissed"] is True
 
 
+async def test_restore_shows_the_checklist_again(monkeypatch) -> None:
+    stored: dict[str, str] = {"onboarding_checklist_dismissed": "true"}
+    _fake_onboarding(monkeypatch, settings=stored, users=1, priced=0, customized=False)
+
+    async def update(values):
+        stored.update(values)
+
+    monkeypatch.setattr(onboarding, "update_settings", update)
+
+    status = await onboarding.restore_onboarding()
+
+    assert stored == {"onboarding_checklist_dismissed": "false"}
+    assert status["dismissed"] is False
+
+
 def test_dismiss_key_is_a_known_hidden_setting() -> None:
     from app.modules.platform.settings_service import SETTING_DEFS
 
