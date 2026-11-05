@@ -115,11 +115,20 @@ SETTING_DEFS: list[SettingDef] = [
     ),
     SettingDef(
         "auto_assign_leads_enabled",
-        "Asignar leads de WhatsApp por turnos (round robin)",
+        "Repartir leads nuevos automáticamente entre los vendedores, por turnos",
         "leads",
         "Leads (CRM)",
         secret=False,
         boolean=True,
+    ),
+    # Ids separados por coma. La UI lo muestra como una lista de vendedores
+    # con casillas, no como texto (ver SettingsDialog).
+    SettingDef(
+        "auto_assign_excluded_user_ids",
+        "Vendedores que no reciben leads del reparto",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
     ),
     SettingDef(
         "conversation_auto_close_hours",
@@ -247,6 +256,14 @@ def validate_business_timezone(value: str) -> str:
     if normalized != "UTC" and not normalized.startswith(_BUSINESS_TIMEZONE_PREFIXES):
         raise ValueError("Selecciona una zona horaria geográfica")
     return normalized
+
+
+def normalize_user_ids(value: str) -> str:
+    """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not all(part.isdigit() for part in parts):
+        raise ValueError("La lista de vendedores excluidos solo admite ids numéricos")
+    return ",".join(str(i) for i in sorted({int(part) for part in parts}))
 
 
 async def _raw_db_values() -> dict[str, str | None]:
@@ -378,6 +395,15 @@ async def update_settings(values: dict[str, str]) -> None:
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]
+        )
+    if "auto_assign_leads_enabled" in values:
+        enabled = values["auto_assign_leads_enabled"].strip().lower()
+        if enabled not in {"", "true", "false"}:
+            raise ValueError("El reparto automático debe ser true o false")
+        values["auto_assign_leads_enabled"] = enabled
+    if "auto_assign_excluded_user_ids" in values:
+        values["auto_assign_excluded_user_ids"] = normalize_user_ids(
+            values["auto_assign_excluded_user_ids"]
         )
     if "google_calendar_enabled" in values:
         enabled = values["google_calendar_enabled"].strip().lower()

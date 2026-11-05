@@ -5,6 +5,7 @@ import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayCla
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import type { SettingItem } from '../types'
+import { AutoAssignSellers } from './AutoAssignSellers'
 import { GoogleCalendarPanel } from './GoogleCalendarPanel'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
@@ -19,6 +20,11 @@ type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
 // no se muestran ni se reenvían desde Claves, donde un "Guardar" con el
 // borrador viejo pisaría el calendario recién elegido.
 const CALENDAR_GROUP = 'calendar'
+
+// La exclusión del reparto se guarda como ids, pero se edita como una lista
+// de vendedores y solo tiene sentido con el reparto encendido.
+const AUTO_ASSIGN_KEY = 'auto_assign_leads_enabled'
+const AUTO_ASSIGN_EXCLUDED_KEY = 'auto_assign_excluded_user_ids'
 
 const TAB_CLASS = (active: boolean) =>
   `px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -183,7 +189,15 @@ export function SettingsDialog({ onClose, initialTab = 'claves' }: Props) {
               </h3>
               <div className="space-y-2.5">
                 {g.items.map((item) => (
-                  item.boolean ? (
+                  item.key === AUTO_ASSIGN_EXCLUDED_KEY ? (
+                    (draft[AUTO_ASSIGN_KEY] ?? '') === 'true' && (
+                      <AutoAssignSellers
+                        key={item.key}
+                        value={draft[item.key] ?? ''}
+                        onChange={(value) => setField(item.key, value)}
+                      />
+                    )
+                  ) : item.boolean ? (
                     <label key={item.key} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                       <Checkbox
                         checked={(draft[item.key] ?? '') === 'true'}
