@@ -25,6 +25,8 @@ import type { CalendarEventTemplate } from '../types'
 import { EventTemplateZone, type MoveDirection } from './EventTemplateZone'
 
 const sectionLabel = 'text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark'
+// Neutro a propósito: el acento queda solo para foco y destino del arrastre.
+const paletteClass = 'inline-flex h-7 cursor-grab items-center gap-1 rounded-md border border-wa-border px-2 text-xs text-wa-text outline-none transition-colors hover:bg-wa-hover focus-visible:ring-2 focus-visible:ring-wa-primary/60 active:cursor-grabbing dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-hover-dark'
 
 /** Arma el título y la descripción del evento de Google Calendar con los
  *  campos de la cita, arrastrando piezas o tocándolas para sumarlas a la
@@ -52,10 +54,6 @@ function TemplateEditor({ template }: { template: CalendarEventTemplate }) {
   const save = useSaveCalendarEventTemplate()
   const knownKeys = useMemo(() => new Set(template.fields.map((field) => field.key)), [template.fields])
   const fieldLabels = useMemo(() => new Map(template.fields.map((field) => [field.key, field.label])), [template.fields])
-  const customKeys = useMemo(
-    () => new Set(template.fields.filter((field) => field.custom).map((field) => field.key)),
-    [template.fields],
-  )
   const [draft, setDraft] = useState<TemplateDraft>(
     () => parseTemplate(template.title_template, template.description_template, knownKeys),
   )
@@ -129,7 +127,6 @@ function TemplateEditor({ template }: { template: CalendarEventTemplate }) {
   const zoneProps = (zone: ZoneId, pieces: Piece[]) => ({
     pieces,
     fieldLabels,
-    customKeys,
     focusId,
     active: activeZone === zone,
     dropIndex: dropAt?.zone === zone ? dropAt.index : null,
@@ -155,37 +152,41 @@ function TemplateEditor({ template }: { template: CalendarEventTemplate }) {
           Arrastra un campo a una línea, o tócalo para sumarlo a la línea marcada. Las líneas cuyos campos quedan vacíos
           no aparecen en el evento.
         </p>
-        <div className="flex flex-wrap gap-1">
-          {template.fields.map((field) => (
-            <button
-              key={field.key}
-              type="button"
-              draggable
-              onDragStart={(event) => startDrag({ piece: fieldPiece(field.key) })(event)}
-              onDragEnd={endDrag}
-              onClick={() => addToActive(fieldPiece(field.key))}
-              className={
-                field.custom
-                  ? 'inline-flex h-7 cursor-grab items-center rounded-md border border-amber-300 bg-amber-50 px-2 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-                  : 'inline-flex h-7 cursor-grab items-center rounded-md border border-wa-primary/40 bg-wa-primary/10 px-2 text-xs font-medium text-wa-primary-deep hover:bg-wa-primary/20 dark:text-wa-primary'
-              }
-            >
-              <Plus className="mr-0.5 h-3 w-3" aria-hidden="true" />
-              {field.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            draggable
-            onDragStart={(event) => startDrag({ piece: textPiece('texto') })(event)}
-            onDragEnd={endDrag}
-            onClick={() => addToActive(textPiece())}
-            className="inline-flex h-7 cursor-grab items-center rounded-md border border-wa-border bg-white px-2 text-xs font-medium text-wa-text hover:bg-wa-hover dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-          >
-            <Type className="mr-1 h-3 w-3" aria-hidden="true" />
-            Texto libre
-          </button>
-        </div>
+        {[
+          { label: 'De la cita', fields: template.fields.filter((field) => !field.custom), withText: true },
+          { label: 'Personalizados', fields: template.fields.filter((field) => field.custom), withText: false },
+        ].filter((group) => group.fields.length > 0).map((group) => (
+          <div key={group.label} className="flex flex-wrap items-center gap-1">
+            <span className="w-full text-[11px] text-wa-muted dark:text-wa-muted-dark">{group.label}</span>
+            {group.fields.map((field) => (
+              <button
+                key={field.key}
+                type="button"
+                draggable
+                onDragStart={(event) => startDrag({ piece: fieldPiece(field.key) })(event)}
+                onDragEnd={endDrag}
+                onClick={() => addToActive(fieldPiece(field.key))}
+                className={paletteClass}
+              >
+                <Plus className="h-3 w-3 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+                {field.label}
+              </button>
+            ))}
+            {group.withText && (
+              <button
+                type="button"
+                draggable
+                onDragStart={(event) => startDrag({ piece: textPiece('texto') })(event)}
+                onDragEnd={endDrag}
+                onClick={() => addToActive(textPiece())}
+                className={paletteClass}
+              >
+                <Type className="h-3 w-3 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+                Texto libre
+              </button>
+            )}
+          </div>
+        ))}
       </div>
 
       <div className="space-y-1.5">
@@ -231,7 +232,7 @@ function TemplateEditor({ template }: { template: CalendarEventTemplate }) {
         <p className={sectionLabel}>Así se verá (con una cita de ejemplo)</p>
         <div className="rounded-xl border border-wa-border bg-white p-3 dark:border-wa-border-dark dark:bg-wa-head-dark">
           <div className="flex items-start gap-2.5">
-            <span className="mt-1 h-3 w-3 shrink-0 rounded-sm bg-sky-500" aria-hidden="true" />
+            <span className="mt-1 h-3 w-3 shrink-0 rounded-sm bg-wa-accent" aria-hidden="true" />
             <div className="min-w-0">
               <p className="break-words text-sm font-medium text-wa-text dark:text-wa-text-dark">{preview.title}</p>
               <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">Miércoles, 21 de octubre · 10:00 – 11:00</p>

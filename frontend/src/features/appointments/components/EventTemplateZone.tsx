@@ -9,7 +9,6 @@ interface Props {
   label: string
   pieces: Piece[]
   fieldLabels: Map<string, string>
-  customKeys: Set<string>
   /** Índice donde caería lo que se está arrastrando, si es en esta zona. */
   dropIndex: number | null
   active: boolean
@@ -37,7 +36,7 @@ function DropMarker() {
 /** Una línea del armador: recibe piezas arrastradas y deja reordenarlas.
  *  Con teclado, Alt + flechas mueve la pieza enfocada y Supr la quita. */
 export function EventTemplateZone({
-  label, pieces, fieldLabels, customKeys, dropIndex, active, focusId, placeholder, actions,
+  label, pieces, fieldLabels, dropIndex, active, focusId, placeholder, actions,
   onActivate, onDragStartPiece, onDragOverIndex, onDrop, onDragEnd, onRemove, onTextChange, onMove,
 }: Props) {
   const overPiece = (index: number) => (event: DragEvent<HTMLElement>) => {
@@ -78,11 +77,12 @@ export function EventTemplateZone({
           onDrop(dropIndex ?? pieces.length)
         }}
         className={cn(
-          'flex min-h-9 flex-1 flex-wrap items-center gap-1 rounded-lg border border-dashed px-1.5 py-1 transition-colors',
-          active
-            ? 'border-wa-primary/70 bg-wa-primary/5'
-            : 'border-wa-border bg-wa-hover/40 dark:border-wa-border-dark dark:bg-wa-head-dark/40',
-          dropIndex !== null && 'border-wa-primary bg-wa-primary/10',
+          'flex min-h-9 flex-1 flex-wrap items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors',
+          dropIndex !== null
+            ? 'border-wa-primary/60'
+            : active
+              ? 'border-wa-muted/50 dark:border-wa-muted-dark/50'
+              : 'border-wa-border dark:border-wa-border-dark',
         )}
       >
         {pieces.length === 0 && dropIndex === null && (
@@ -90,7 +90,6 @@ export function EventTemplateZone({
         )}
         {pieces.map((piece, index) => {
           const isText = piece.kind === 'text'
-          const isCustom = !isText && customKeys.has(piece.key)
           const name = isText ? `Texto "${piece.text}"` : fieldLabels.get(piece.key) ?? piece.key
           return (
             <span key={piece.id} className="contents">
@@ -105,16 +104,16 @@ export function EventTemplateZone({
                 onDrop={dropOnPiece}
                 onKeyDown={isText ? undefined : keyDown(index, false)}
                 className={cn(
-                  'group inline-flex h-7 cursor-grab items-center gap-0.5 rounded-md border pl-0.5 pr-1 text-xs outline-none active:cursor-grabbing',
+                  'group inline-flex h-7 cursor-grab items-center gap-0.5 rounded-md pl-0.5 pr-1 text-xs outline-none active:cursor-grabbing',
                   'focus-visible:ring-2 focus-visible:ring-wa-primary/60',
+                  // El campo es un bloque; el texto libre se lee como lo que
+                  // es: texto escrito entre bloques.
                   isText
-                    ? 'border-wa-border bg-white text-wa-text dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark'
-                    : isCustom
-                      ? 'border-amber-300 bg-amber-50 font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-                      : 'border-wa-primary/40 bg-wa-primary/10 font-medium text-wa-primary-deep dark:text-wa-primary',
+                    ? 'text-wa-muted dark:text-wa-muted-dark'
+                    : 'bg-wa-field font-medium text-wa-text dark:bg-wa-field-dark dark:text-wa-text-dark',
                 )}
               >
-                <GripVertical className="h-3 w-3 shrink-0 opacity-50" aria-hidden="true" />
+                <GripVertical className="h-3 w-3 shrink-0 opacity-40" aria-hidden="true" />
                 {isText ? (
                   <input
                     value={piece.text}
@@ -125,7 +124,7 @@ export function EventTemplateZone({
                     size={Math.max(piece.text.length, 3)}
                     aria-label="Texto libre"
                     placeholder="texto"
-                    className="min-w-0 bg-transparent px-0.5 outline-none placeholder:text-wa-muted"
+                    className="min-w-0 border-b border-dashed border-wa-border bg-transparent px-0.5 text-wa-text outline-none placeholder:text-wa-muted focus:border-wa-muted dark:border-wa-border-dark dark:text-wa-text-dark"
                   />
                 ) : (
                   <span className="px-0.5">{name}</span>
@@ -138,7 +137,7 @@ export function EventTemplateZone({
                     onRemove(index)
                   }}
                   aria-label={`Quitar ${name}`}
-                  className="rounded p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                  className="rounded p-0.5 text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
                 >
                   <X className="h-3 w-3" aria-hidden="true" />
                 </button>

@@ -175,7 +175,7 @@ function ConnectedCalendar({ status, onReconnect, reconnecting, eventEditor }: C
             type="button"
             onClick={() => setEditingEvent((open) => !open)}
             aria-expanded={editingEvent}
-            className="flex w-full items-center justify-between gap-2 text-left"
+            className="flex w-full items-center justify-between gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60"
           >
             <span>
               <span className="block text-xs font-medium text-wa-text dark:text-wa-text-dark">Qué se ve en el evento</span>

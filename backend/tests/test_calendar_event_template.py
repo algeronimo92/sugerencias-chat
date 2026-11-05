@@ -88,6 +88,7 @@ def stored(monkeypatch):
 
     monkeypatch.setattr(calendar_template, "list_definitions", AsyncMock(return_value=[
         {"key": "sede", "label": "Sede"},
+        {"key": "dni", "label": "DNI"},
     ]))
     monkeypatch.setattr(calendar_template, "get_effective_many", AsyncMock(side_effect=lambda _keys: dict(values)))
     monkeypatch.setattr(calendar_template, "update_settings", AsyncMock(side_effect=update))
@@ -100,6 +101,8 @@ async def test_template_lists_builtin_and_custom_fields(stored):
     keys = [item["key"] for item in result["fields"]]
     assert keys[0] == "tratamiento"
     assert "custom.sede" in keys and keys[-1] == "campos_personalizados"
+    # El DNI personalizado ya llega en el campo fijo: no se ofrece dos veces.
+    assert "custom.dni" not in keys and keys.count("dni") == 1
     assert result["title_template"] == result["default_title_template"] == "{tratamiento}"
 
 
