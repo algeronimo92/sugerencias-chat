@@ -12,6 +12,7 @@ import { LeadInfo } from '../../leads/public/LeadInfo'
 import { LeadTagsPanel } from '../../leads/public/LeadTagsPanel'
 import { LeadTaskCard } from '../../tasks/public/LeadTaskCard'
 import { LeadAnalysisAction } from '../../ai/public/LeadAnalysisAction'
+import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { SuggestionCard } from './SuggestionCard'
 import { SuggestionInstructionBox } from '../../ai/public/SuggestionInstructionBox'
 interface Props {
@@ -252,6 +253,7 @@ export function SuggestionPanel({
           <div className="space-y-3">
             <LeadAnalysisAction chatId={chat.chat_id} />
             <LeadInfo chat={chat} />
+            <LeadAppointmentAction chat={chat} />
             <LeadTaskCard chat={chat} />
             <ScheduledMessageCard chat={chat} />
             <LeadTagsPanel chat={chat} />
