@@ -1,4 +1,4 @@
-import { useCallback, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCustomFields } from '../../catalogs/public/useCustomFields'
@@ -10,6 +10,8 @@ export type AppointmentFormValues = typeof EMPTY_APPOINTMENT_FORM
 
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_BYTES = 10 * 1024 * 1024
+// Pausa al escribir antes de guardar el borrador: no se escribe en cada tecla.
+const DRAFT_DELAY_MS = 600
 
 interface Draft { form: AppointmentFormValues; customFields: Record<string, unknown> }
 
@@ -36,6 +38,43 @@ export function appointmentResultMessage(result: AppointmentResult): { text: str
   return { text: result.message ?? 'Cita guardada correctamente.', tone: 'success' }
 }
 
+function writeDraft(key: string, draft: Draft): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(draft))
+    return true
+  } catch {
+    // Sin almacenamiento (modo privado, cuota llena): el formulario sigue
+    // funcionando, solo que no sobrevive a cerrar la pestaña.
+    return false
+  }
+}
+
+function removeDraft(key: string) {
+  try { localStorage.removeItem(key) } catch { /* sin almacenamiento: nada que borrar */ }
+}
+
+/**
+ * Guarda el borrador solo, poco después de cada cambio hecho por el usuario.
+ * Lo que entra por ``load`` (prellenado del lead o borrador restaurado) no
+ * cuenta como cambio: abrir el panel no deja un borrador que nadie escribió.
+ * Al desmontar (cerrar el panel o cambiar de vista) guarda lo pendiente.
+ */
+function useDraftAutosave(key: string, draft: Draft, dirty: boolean, onSaved: () => void) {
+  const latest = useRef({ key, draft, dirty })
+  latest.current = { key, draft, dirty }
+
+  useEffect(() => {
+    if (!dirty) return
+    const timer = setTimeout(() => { if (writeDraft(key, draft)) onSaved() }, DRAFT_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [key, draft, dirty, onSaved])
+
+  useEffect(() => () => {
+    const pending = latest.current
+    if (pending.dirty) writeDraft(pending.key, pending.draft)
+  }, [])
+}
+
 export interface SubmitOptions {
   testMode?: boolean
   leadId?: string | null
@@ -58,21 +97,40 @@ export function useAppointmentForm(draftKey: string) {
   const [fileError, setFileError] = useState<string | null>(null)
   const [result, setResult] = useState<AppointmentResult | null>(null)
   const createAppointment = useCreateAppointment()
+  // ``dirty``: hay cambios del usuario sin pasar al borrador. ``hasDraft``:
+  // existe un borrador guardado de este formulario (restaurado o escrito).
+  const [dirty, setDirty] = useState(false)
+  const [hasDraft, setHasDraft] = useState(false)
+  const markSaved = useCallback(() => { setDirty(false); setHasDraft(true) }, [])
+  const draft = useMemo(() => ({ form, customFields }), [form, customFields])
+  useDraftAutosave(draftKey, draft, dirty, markSaved)
 
   function update<K extends keyof AppointmentFormValues>(key: K, value: AppointmentFormValues[K]) {
     setForm(current => ({ ...current, [key]: value }))
     setResult(null)
+    setDirty(true)
   }
 
   function setCustomField(key: string, value: unknown) {
     setCustomFields(current => ({ ...current, [key]: value }))
+    setDirty(true)
   }
 
-  /** Reemplaza todo el contenido (borrador restaurado o prellenado del lead). */
-  const load = useCallback((values: Partial<AppointmentFormValues>, custom: Record<string, unknown> = {}) => {
+  /** Reemplaza todo el contenido (borrador restaurado o prellenado del lead).
+   *  No es un cambio del usuario: no se guarda como borrador. */
+  const load = useCallback((values: Partial<AppointmentFormValues>, custom: Record<string, unknown> = {}, fromDraft = false) => {
     setForm({ ...EMPTY_APPOINTMENT_FORM, ...values })
     setCustomFields(custom)
+    setDirty(false)
+    setHasDraft(fromDraft)
   }, [])
+
+  /** Borra el borrador guardado; el contenido en pantalla lo decide quien llama. */
+  const discardDraft = useCallback(() => {
+    removeDraft(draftKey)
+    setDirty(false)
+    setHasDraft(false)
+  }, [draftKey])
 
   function acceptFile(file: File) {
     setFileError(null)
@@ -89,18 +147,7 @@ export function useAppointmentForm(draftKey: string) {
 
   function reset() {
     setForm(EMPTY_APPOINTMENT_FORM); setCustomFields({}); setAttachment(null); setFileError(null)
-    try { localStorage.removeItem(draftKey) } catch { /* sin almacenamiento: nada que borrar */ }
-  }
-
-  function saveDraft(): boolean {
-    try {
-      localStorage.setItem(draftKey, JSON.stringify({ form, customFields }))
-      toast.success('Borrador guardado')
-      return true
-    } catch {
-      toast.error('No se pudo guardar el borrador.')
-      return false
-    }
+    discardDraft()
   }
 
   /** El motivo por el que todavía no se puede guardar, o null. */
@@ -148,7 +195,7 @@ export function useAppointmentForm(draftKey: string) {
     refetchCustomFields: customFieldsQuery.refetch,
     busy: createAppointment.isPending,
     update, setCustomField, load, acceptFile, handleFile, removeAttachment: () => setAttachment(null),
-    reset, saveDraft, validate, submit, setError,
+    reset, hasDraft, discardDraft, validate, submit, setError,
   }
 }
 
