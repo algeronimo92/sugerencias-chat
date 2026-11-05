@@ -51,14 +51,13 @@ function readCollapsed(): boolean {
 function useCollapsed() {
   const [collapsed, setCollapsed] = useState(readCollapsed)
   function toggle() {
-    setCollapsed(current => {
-      try {
-        localStorage.setItem(COLLAPSED_KEY, current ? '0' : '1')
-      } catch {
-        // localStorage bloqueado: el plegado vale solo para esta visita.
-      }
-      return !current
-    })
+    const next = !collapsed
+    setCollapsed(next)
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
+    } catch {
+      // localStorage bloqueado: el plegado vale solo para esta visita.
+    }
   }
   return [collapsed, toggle] as const
 }

@@ -61,7 +61,9 @@ function removeDraft(key: string) {
  */
 function useDraftAutosave(key: string, draft: Draft, dirty: boolean, onSaved: () => void) {
   const latest = useRef({ key, draft, dirty })
-  latest.current = { key, draft, dirty }
+  // En un efecto y no durante el render: React puede descartar un render, y
+  // el guardado al desmontar leería un estado que nunca llegó a pantalla.
+  useEffect(() => { latest.current = { key, draft, dirty } }, [key, draft, dirty])
 
   useEffect(() => {
     if (!dirty) return
