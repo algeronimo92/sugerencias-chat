@@ -44,11 +44,16 @@ async def event_content(appointment: dict) -> EventContent:
 async def get_template() -> dict:
     definitions = await _custom_definitions()
     stored = await _stored()
+    # Un negocio puede pedir el DNI o el adelanto como campo personalizado
+    # (``dni``, ``adelanto``): la cita ya guarda ese valor en el campo fijo
+    # (AppointmentRequest.effective_dni), así que ofrecer los dos repetiría
+    # la misma pieza con el mismo nombre.
     fields = [
         {"key": key, "label": label, "custom": False} for key, label in BUILTIN_FIELDS.items()
     ] + [
         {"key": f"{CUSTOM_PREFIX}{item['key']}", "label": item["label"], "custom": True}
         for item in definitions
+        if item["key"] not in BUILTIN_FIELDS
     ]
     if definitions:
         fields.append({"key": ALL_CUSTOM_FIELDS, "label": "Todos los campos personalizados", "custom": True})
