@@ -20,6 +20,7 @@ import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
+import { OnboardingChecklist } from '../features/platform/public/OnboardingChecklist';
 import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
@@ -230,6 +231,15 @@ export function MainLayout() {
           </button>
         </Tooltip>
       </div>
+
+      {/* Primeros pasos del negocio: solo admins y, en móvil, fuera de un
+          chat, donde el espacio vertical es del composer. */}
+      <OnboardingChecklist
+        enabled={me?.role === "admin" && !(isMobile && chatId)}
+        pathname={location.pathname}
+        onOpenSettings={openSettings}
+        onNavigate={(path) => navigate(path)}
+      />
 
       {isSettingsOpen && (
         <Suspense fallback={null}>

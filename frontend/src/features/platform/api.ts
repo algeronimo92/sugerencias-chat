@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, UpdateUserPayload, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -197,4 +197,20 @@ function leerComoBase64(archivo: File): Promise<string> {
     lector.onerror = () => reject(new Error("No se pudo leer el archivo."));
     lector.readAsDataURL(archivo);
   });
+}
+
+export async function fetchOnboarding(): Promise<OnboardingStatus> {
+  return (await client.get<ApiResponse<'/api/onboarding', 'get'>>('/api/onboarding')).data
+}
+
+export async function dismissOnboarding(): Promise<OnboardingStatus> {
+  return (await client.post<ApiResponse<'/api/onboarding/dismiss', 'post'>>('/api/onboarding/dismiss')).data
+}
+
+export async function applyStarterPack(organizationId: string): Promise<StarterPackResult> {
+  return (
+    await client.post<ApiResponse<'/api/platform/organizations/{organization_id}/starter-pack', 'post'>>(
+      `/api/platform/organizations/${organizationId}/starter-pack`,
+    )
+  ).data
 }

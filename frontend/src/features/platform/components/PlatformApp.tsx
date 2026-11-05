@@ -41,6 +41,7 @@ import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from "../../../shared/ui/Dialog";
 import { Input } from "../../../shared/ui/Input";
 import { platformKeys } from '../keys'
+import { StarterPackAction } from './StarterPackAction'
 
 
 function mensajeDeError(error: unknown): string {
@@ -942,6 +943,7 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
               Pendiente de actualización
             </span>
           )}
+          <StarterPackAction organizacion={organizacion} />
           {suspendido ? botonEstado : <ConfirmDialog title={`Suspender ${organizacion.name}`} description="Se cerrarán las sesiones activas y el negocio dejará de estar disponible hasta que lo reactives." confirmLabel="Suspender negocio" onConfirm={() => cambiarEstado.mutate()} disabled={cambiarEstado.isPending}>{botonEstado}</ConfirmDialog>}
         </div>
       </div>
