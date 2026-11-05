@@ -1,7 +1,7 @@
 import { ArrowLeft, CalendarPlus, Info, Loader2, Save, UserRoundCheck, X } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
-import { dialogOverlayClass, DialogPrimitive } from '../../../shared/ui/Dialog'
+import { DialogPrimitive } from '../../../shared/ui/Dialog'
 import type { LeadCorrection, LeadSnapshot } from '../domain/leadPrefill'
 import { useLeadAppointment, type LeadAppointmentState } from '../hooks/useLeadAppointment'
 import { AppointmentFormFields } from './AppointmentFormFields'
@@ -13,7 +13,8 @@ interface Props {
   onClose: () => void
 }
 
-const iconButtonClass = 'rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
+const overlayClass = 'fixed inset-0 z-[87] bg-black/50 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out'
+const iconButtonClass ='rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
 
 /**
  * Agendar desde la ficha del lead, en un panel que se desliza desde la
@@ -27,10 +28,12 @@ export function LeadAppointmentPanel({ lead, leadReady, onClose }: Props) {
   return (
     <DialogPrimitive.Root open onOpenChange={open => { if (!open && !busy) onClose() }}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className={dialogOverlayClass} />
+        {/* En móvil se abre desde el cajón de sugerencias (z-76) y debe
+            taparlo, igual que a la barra inferior y su hoja "Más" (z-86). */}
+        <DialogPrimitive.Overlay className={overlayClass} />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-[51] flex w-full flex-col bg-wa-app text-wa-text shadow-2xl outline-none sm:w-[min(32rem,100vw)] sm:border-l sm:border-wa-border dark:bg-wa-app-dark dark:text-wa-text-dark dark:sm:border-wa-border-dark"
+          className="fixed inset-y-0 right-0 z-[88] flex w-full flex-col pt-safe bg-wa-app text-wa-text shadow-2xl outline-none sm:w-[min(32rem,100vw)] sm:border-l sm:border-wa-border dark:bg-wa-app-dark dark:text-wa-text-dark dark:sm:border-wa-border-dark"
         >
           <PanelHeader lead={lead} flow={flow} />
           <form onSubmit={flow.handleSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -72,7 +75,7 @@ function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
   const { state } = flow
   const editing = flow.corrections === null
   return (
-    <footer className="space-y-3 border-t border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+    <footer className="space-y-3 border-t border-wa-border bg-wa-panel px-4 pt-4 pb-safe-3dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {editing && flow.needsConfirmation && flow.ready && (
         <label className="flex items-start gap-2.5 text-sm">
           <Checkbox className="mt-0.5" checked={flow.confirmed} onCheckedChange={flow.setConfirmed} disabled={state.busy} />
