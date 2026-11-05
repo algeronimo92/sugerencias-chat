@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +34,9 @@ async function fillSchedule(user: ReturnType<typeof userEvent.setup>) {
 
 describe('LeadAppointmentPanel', () => {
   afterEach(() => {
+    // Desmontar primero: al cerrarse, el panel guarda lo pendiente como
+    // borrador, y si eso pasa después de limpiar, se cuela al test siguiente.
+    cleanup()
     localStorage.clear()
     mocks.mutate.mockReset()
   })
