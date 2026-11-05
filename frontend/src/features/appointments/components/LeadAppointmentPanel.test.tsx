@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +34,9 @@ async function fillSchedule(user: ReturnType<typeof userEvent.setup>) {
 
 describe('LeadAppointmentPanel', () => {
   afterEach(() => {
+    // Desmontar primero: al cerrarse, el panel guarda lo pendiente como
+    // borrador, y si eso pasa después de limpiar, se cuela al test siguiente.
+    cleanup()
     localStorage.clear()
     mocks.mutate.mockReset()
   })
@@ -61,6 +64,40 @@ describe('LeadAppointmentPanel', () => {
       tratamiento: 'Limpieza', vendedor: 'Luis', fecha: '2026-11-12', hora: '10:00',
       customFields: { dni: '40404040' },
     })
+  })
+
+  it('guarda el borrador solo y permite volver a los datos del lead', async () => {
+    const user = userEvent.setup()
+    const draftKey = `nueva-cita-lead-draft:${LEAD.id}`
+    const { unmount } = render(<LeadAppointmentPanel lead={LEAD} leadReady onClose={vi.fn()} />)
+
+    // Abrir el panel con lo del lead no deja borrador: nadie escribió nada.
+    expect(screen.queryByText('Borrador guardado')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Guardar borrador' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^Notas/), { target: { value: 'Viene con su hija' } })
+    await waitFor(() => expect(screen.getByText('Borrador guardado')).toBeInTheDocument())
+    expect(JSON.parse(localStorage.getItem(draftKey) ?? '{}').form.detalle).toBe('Viene con su hija')
+
+    // Al volver a abrirlo, sigue donde lo dejó.
+    unmount()
+    render(<LeadAppointmentPanel lead={LEAD} leadReady onClose={vi.fn()} />)
+    expect(screen.getByLabelText(/^Notas/)).toHaveValue('Viene con su hija')
+
+    await user.click(screen.getByRole('button', { name: 'Descartar' }))
+    expect(screen.getByLabelText(/^Notas/)).toHaveValue('')
+    expect(screen.getByLabelText(/^Nombre completo/)).toHaveValue('Ana')
+    expect(localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('no pierde lo escrito si se cierra antes de que se guarde', () => {
+    const draftKey = `nueva-cita-lead-draft:${LEAD.id}`
+    const { unmount } = render(<LeadAppointmentPanel lead={LEAD} leadReady onClose={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText(/^Notas/), { target: { value: 'Llamar antes' } })
+    unmount()
+
+    expect(JSON.parse(localStorage.getItem(draftKey) ?? '{}').form.detalle).toBe('Llamar antes')
   })
 
   it('ofrece llevar al lead lo que el vendedor corrigió', async () => {

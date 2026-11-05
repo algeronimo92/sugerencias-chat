@@ -38,7 +38,7 @@ export function useLeadAppointment(lead: LeadSnapshot, leadReady: boolean, onSav
     setPrefilled(prefill.prefilled)
     // Un borrador de este mismo lead manda: el vendedor ya había empezado.
     const draft = loadAppointmentDraft(draftKey)
-    if (draft) load({ ...draft.form, telefono: prefill.form.telefono }, draft.customFields)
+    if (draft) load({ ...draft.form, telefono: prefill.form.telefono }, draft.customFields, true)
     else load(prefill.form, prefill.customFields)
   }, [prefill, draftKey, load])
 
@@ -61,6 +61,13 @@ export function useLeadAppointment(lead: LeadSnapshot, leadReady: boolean, onSav
     void state.submit({ leadId: lead.id, leadUpdates, onSuccess: onSaved })
   }
 
+  /** Vuelve a los datos del lead y olvida lo escrito antes. */
+  function discardDraft() {
+    state.discardDraft()
+    if (prefill) load(prefill.form, prefill.customFields)
+    setConfirmed(false)
+  }
+
   function toggle(key: string, checked: boolean) {
     setChosen(current => {
       const next = new Set(current)
@@ -72,7 +79,7 @@ export function useLeadAppointment(lead: LeadSnapshot, leadReady: boolean, onSav
 
   return {
     state, ready, prefilled, needsConfirmation, confirmed, setConfirmed, canSave,
-    corrections, chosen, toggle, backToForm: () => setCorrections(null), handleSubmit,
+    corrections, chosen, toggle, backToForm: () => setCorrections(null), handleSubmit, discardDraft,
   }
 }
 

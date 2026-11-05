@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, tzinfo
+from datetime import date, datetime, tzinfo
 from typing import Any
 
 # Cola del número que se compara contra los leads cuando el teléfono no es una
@@ -190,3 +190,28 @@ def announcement(appointment: dict) -> tuple[str, str]:
         f"Nueva cita: {appointment['nombre_completo']}",
         f"{appointment['tratamiento']} · {appointment['fecha']} {appointment['hora']}",
     )
+
+
+# Tope de las notas internas (``conversations``): un detalle muy largo se
+# corta en vez de impedir que la cita se guarde.
+LEAD_NOTE_MAX_LENGTH = 5000
+
+
+def lead_note(appointment: dict) -> str:
+    """Nota interna que queda en el lead al agendarle una cita desde su
+    ficha: el equipo la ve junto a las demás notas, sin abrir la agenda."""
+    fecha = appointment.get("fecha") or ""
+    try:
+        fecha = date.fromisoformat(fecha).strftime("%d/%m/%Y")
+    except ValueError:
+        pass
+    when = f"{fecha} a las {appointment.get('hora') or ''}".strip()
+    if appointment.get("duration_minutes"):
+        when += f" ({appointment['duration_minutes']} min)"
+    lines = [f"Cita agendada: {appointment.get('tratamiento') or 'Sin servicio'}", f"Fecha: {when}"]
+    if appointment.get("vendedor"):
+        lines.append(f"Responsable: {appointment['vendedor']}")
+    detalle = (appointment.get("detalle") or "").strip()
+    if detalle:
+        lines.append(f"Notas: {detalle}")
+    return "\n".join(lines)[:LEAD_NOTE_MAX_LENGTH]

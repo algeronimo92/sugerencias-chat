@@ -33,7 +33,7 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
   return (
     <div className="bg-white dark:bg-wa-head-dark rounded-xl border border-wa-primary/30 dark:border-wa-primary/25 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between px-4 py-3 bg-wa-primary/5 dark:bg-wa-primary/10 border-b border-wa-primary/15 dark:border-wa-primary/20">
+      <div className="flex items-center justify-between px-3 py-2 bg-wa-primary/5 dark:bg-wa-primary/10 border-b border-wa-primary/15 dark:border-wa-primary/20">
         <div className="flex items-center gap-2 min-w-0">
           <CanalIcon className="w-4 h-4 text-wa-primary" />
           <span className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide">
@@ -65,7 +65,7 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
         )}
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-3 space-y-2">
         {/* Táctica */}
         <p className="text-xs font-semibold text-wa-primary-strong dark:text-wa-primary uppercase tracking-wide">
           {sugerencia.tactica}

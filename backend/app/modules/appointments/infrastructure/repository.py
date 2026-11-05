@@ -11,6 +11,7 @@ from app.db.models.appointments import Appointment
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
+from app.modules.conversations.public import NoteAuthor, create_note
 from app.modules.leads.public import Actor, register_appointment
 from app.modules.appointments.queries import _query, _serialize
 
@@ -68,8 +69,10 @@ class SqlAppointmentLeads:
             return await session.scalar(select(Lead.id).where(Lead.id == lead_id)) is not None
 
     async def register(self, lead_id: str, *, actor_user_id: int, appointment: dict, starts_at,
-                       updates: dict, custom_fields: dict) -> None:
+                       updates: dict, custom_fields: dict, note: str) -> None:
         await register_appointment(
             lead_id, actor=Actor.user(actor_user_id), appointment=appointment,
             starts_at=starts_at, updates=updates, custom_fields=custom_fields,
         )
+        # Sin menciones, el nombre del autor no se usa (solo arma el aviso).
+        await create_note(lead_id, note, [], NoteAuthor(id=actor_user_id, name=""))
