@@ -249,8 +249,8 @@ async def create_google_event(appointment: dict, *, title: str, description: str
     start = datetime.fromisoformat(f"{appointment['fecha']}T{appointment['hora']}").replace(tzinfo=timezone)
     end = start + timedelta(minutes=appointment.get("duration_minutes", 60))
     event = {
-        "summary": appointment["tratamiento"],
-        "description": "\n".join(line for line in description_lines if line),
+        "summary": title,
+        "description": description,
         "start": {"dateTime": start.isoformat(), "timeZone": timezone_name},
         "end": {"dateTime": end.isoformat(), "timeZone": timezone_name},
         "extendedProperties": {"private": {"crmAppointmentId": str(appointment["id"]) }},

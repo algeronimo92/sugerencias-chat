@@ -1,6 +1,7 @@
 """'Conectar con Google': el state firmado, el callback que guarda la
 conexión en el negocio y la desconexión, con Google y los ajustes en memoria."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -251,3 +252,39 @@ async def test_revoked_authorization_asks_to_reconnect():
 
     assert exc.value.code == "reconnect"
     assert "reconecta" in str(exc.value)
+
+
+async def test_event_uses_the_business_title_and_description(monkeypatch):
+    # #86 dejó create_google_event leyendo una variable que ya no existía:
+    # toda cita con Google Calendar activo respondía 500.
+    sent: dict = {}
+
+    def handler(request):
+        if request.url.host == "oauth2.googleapis.com":
+            return google.httpx.Response(200, json={"access_token": "tok"})
+        sent.update(json.loads(request.content))
+        return google.httpx.Response(200, json={"id": "ev-1", "htmlLink": "https://cal/ev-1"})
+
+    real_client = google.httpx.AsyncClient
+    monkeypatch.setattr(
+        google.httpx, "AsyncClient",
+        lambda **kwargs: real_client(transport=google.httpx.MockTransport(handler)),
+    )
+    monkeypatch.setattr(google, "calendar_configuration", AsyncMock(return_value={
+        "google_calendar_enabled": "true",
+        "google_calendar_id": "agenda@group.calendar.google.com",
+        "google_calendar_client_id": "cid",
+        "google_calendar_client_secret": "secret",
+        "google_calendar_refresh_token": "refresh",
+        "business_timezone": "America/Lima",
+    }))
+
+    result = await google.create_google_event(
+        {"id": 7, "fecha": "2026-11-10", "hora": "10:00", "tratamiento": "Limpieza"},
+        title="Limpieza - Ana",
+        description="Tel: 999",
+    )
+
+    assert result["status"] == "synced"
+    assert sent["summary"] == "Limpieza - Ana"
+    assert sent["description"] == "Tel: 999"
