@@ -118,10 +118,19 @@ class SqlLeadRepository:
             return {}
         rows = (
             await current_session().execute(
-                select(LeadStage.key, LeadStage.kind, LeadStage.is_active).where(LeadStage.key.in_(wanted))
+                select(LeadStage.key, LeadStage.kind, LeadStage.is_active, LeadStage.position)
+                .where(LeadStage.key.in_(wanted))
             )
         ).all()
-        return {key: StageRule(key, kind, bool(is_active)) for key, kind, is_active in rows}
+        return {
+            key: StageRule(key, kind, bool(is_active), position)
+            for key, kind, is_active, position in rows
+        }
+
+    async def appointment_stage(self) -> str | None:
+        return await current_session().scalar(
+            select(LeadStage.key).where(LeadStage.on_appointment.is_(True))
+        )
 
     async def seller_name(self, seller_id: int) -> str | None:
         seller = await current_session().get(User, seller_id)

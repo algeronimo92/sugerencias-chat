@@ -120,6 +120,8 @@ class LeadStageItem(BaseModel):
     description: str | None = None
     # La etapa inicial: no se puede borrar, desactivar ni volver no abierta.
     is_system: bool = False
+    # A esta etapa pasa el lead al agendarle una cita. A lo sumo una.
+    on_appointment: bool = False
 
 
 class LeadStageAdminItem(LeadStageItem):
@@ -139,6 +141,8 @@ class LeadStagePatch(BaseModel):
     kind: LeadStageKindValue | None = None
     is_active: bool | None = None
     description: str | None = Field(default=None, max_length=500)
+    # Marcarla desmarca la que estaba: el negocio elige una sola.
+    on_appointment: bool | None = None
 
 
 class LeadStageOrder(BaseModel):

@@ -17,7 +17,7 @@ from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, S
 from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
 from app.modules.appointments.infrastructure.integrations import GoogleCalendar, N8nAppointmentSync
-from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlLeadMatcher
+from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlAppointmentLeads
 from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
 from app.modules.automations.infrastructure.sql_executions import SqlExecutionStore
 from app.modules.automations.infrastructure.sql_references import SqlReferenceChecker
@@ -73,7 +73,7 @@ def register_adapters() -> None:
         repository=SqlAppointmentRepository(),
         calendar=GoogleCalendar(),
         sync=N8nAppointmentSync(),
-        leads=SqlLeadMatcher(),
+        leads=SqlAppointmentLeads(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

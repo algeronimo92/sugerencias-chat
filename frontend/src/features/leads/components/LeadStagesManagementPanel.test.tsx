@@ -24,7 +24,7 @@ vi.mock('../hooks/useLeadStages', () => ({
 function stage(key: string, name: string, position: number, overrides: Partial<LeadStageAdminDefinition> = {}): LeadStageAdminDefinition {
   return {
     key, name, position, color: '#0ea5e9', kind: 'open', is_active: true,
-    description: null, is_system: key === 'nuevo', lead_count: 0, ...overrides,
+    description: null, is_system: key === 'nuevo', on_appointment: false, lead_count: 0, ...overrides,
   }
 }
 

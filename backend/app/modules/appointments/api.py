@@ -6,7 +6,7 @@ import base64
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.appointments.application import calendar_template, commands
-from app.modules.appointments.domain.appointment import AppointmentRequest
+from app.modules.appointments.domain.appointment import AppointmentRequest, LeadLink
 from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.modules.auth.public import User
@@ -88,6 +88,7 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
     except CustomFieldError as exc:
         raise HTTPException(422, str(exc)) from exc
 
+    lead = await _lead_link(body)
     files = _attachment(body)
     request = AppointmentRequest(
         nombre_completo=body.nombre_completo, telefono=body.telefono, tratamiento=body.tratamiento,
@@ -96,4 +97,24 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
         comprobante_filename=body.comprobante.filename if body.comprobante else None,
         test_mode=body.test_mode,
     )
-    return await commands.create_appointment(request, created_by_user_id=user.id, files=files)
+    return await commands.create_appointment(request, created_by_user_id=user.id, files=files, lead=lead)
+
+
+async def _lead_link(body: AppointmentCreate) -> LeadLink | None:
+    if body.lead_id is None:
+        if body.lead_updates is not None:
+            raise HTTPException(400, "Los cambios al lead requieren el lead de la cita")
+        return None
+    changes = body.lead_updates
+    if changes is None:
+        return LeadLink(body.lead_id)
+    try:
+        custom_fields = await normalize_values("lead", changes.custom_fields, require_required=False)
+    except CustomFieldError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    updates = {
+        key: value.strip()
+        for key, value in (("nombre", changes.nombre), ("servicio_interes", changes.servicio_interes))
+        if value is not None and value.strip()
+    }
+    return LeadLink(body.lead_id, updates=updates, custom_fields=custom_fields)

@@ -184,7 +184,20 @@ async def update_lead_stage_definition(key: str, values: dict) -> dict:
             )
             if clash is not None:
                 raise LeadStageConflictError("Ya existe una etapa con ese nombre")
-        for field in ("name", "color", "kind", "is_active", "description"):
+        if values.get("on_appointment") and not values.get("is_active", stage.is_active):
+            raise LeadStageConflictError("Activa la etapa antes de usarla al agendar citas")
+        if values.get("on_appointment") and not stage.on_appointment:
+            # Una sola marcada por negocio (índice parcial): se suelta la
+            # anterior antes de marcar esta.
+            await session.execute(
+                update(LeadStage).where(LeadStage.on_appointment.is_(True)).values(on_appointment=False)
+            )
+            await session.flush()
+        if values.get("is_active") is False:
+            # Una etapa desactivada no se ofrece como destino: agendar no
+            # podría mover a ella.
+            values = {**values, "on_appointment": False}
+        for field in ("name", "color", "kind", "is_active", "description", "on_appointment"):
             if field in values:
                 setattr(stage, field, values[field])
         stage.updated_at = datetime.now(timezone.utc)

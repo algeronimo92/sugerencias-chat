@@ -3430,6 +3430,9 @@ export interface components {
              * @default false
              */
             test_mode: boolean;
+            /** Lead Id */
+            lead_id?: string | null;
+            lead_updates?: components["schemas"]["AppointmentLeadUpdates"] | null;
         };
         /**
          * AppointmentCreated
@@ -3517,6 +3520,17 @@ export interface components {
             calendar_sync_error?: string | null;
             /** Created At */
             created_at: string;
+        };
+        /** AppointmentLeadUpdates */
+        AppointmentLeadUpdates: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Servicio Interes */
+            servicio_interes?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * AutomationBuilderMode
@@ -4939,6 +4953,11 @@ export interface components {
              */
             is_system: boolean;
             /**
+             * On Appointment
+             * @default false
+             */
+            on_appointment: boolean;
+            /**
              * Lead Count
              * @default 0
              */
@@ -4986,6 +5005,11 @@ export interface components {
              * @default false
              */
             is_system: boolean;
+            /**
+             * On Appointment
+             * @default false
+             */
+            on_appointment: boolean;
         };
         /** LeadStageOrder */
         LeadStageOrder: {
@@ -5004,6 +5028,8 @@ export interface components {
             is_active?: boolean | null;
             /** Description */
             description?: string | null;
+            /** On Appointment */
+            on_appointment?: boolean | null;
         };
         /** LeadStageUpdate */
         LeadStageUpdate: {

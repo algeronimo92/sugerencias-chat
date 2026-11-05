@@ -4,7 +4,8 @@ sincronizador de n8n y cómo se encuentra el lead de un teléfono."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from datetime import datetime
+from typing import Any, Protocol
 
 from app.modules.appointments.domain.appointment import SyncResult
 from app.modules.appointments.domain.calendar_event import EventContent
@@ -31,12 +32,21 @@ class AppointmentSync(Protocol):
     async def submit(self, *, test_mode: bool, form: dict, files: dict | None) -> SyncResult: ...
 
 
-class LeadMatcher(Protocol):
+class AppointmentLeads(Protocol):
     async def by_whatsapp_identity(self, e164: str) -> str | None: ...
 
     async def by_phone_tail(self, tail: str) -> str | None:
         """El único lead cuyo teléfono termina en ``tail``; None si no hay
         ninguno o hay más de uno."""
+
+    async def exists(self, lead_id: str) -> bool: ...
+
+    async def register(
+        self, lead_id: str, *, actor_user_id: int, appointment: dict,
+        starts_at: datetime | None, updates: dict[str, Any], custom_fields: dict[str, Any],
+    ) -> None:
+        """Le cuenta al lead que se le agendó la cita, dentro de la
+        transacción en curso (ver ``leads.register_appointment``)."""
 
 
 @dataclass(frozen=True)
@@ -44,7 +54,7 @@ class AppointmentPorts:
     repository: AppointmentRepository
     calendar: CalendarProvider
     sync: AppointmentSync
-    leads: LeadMatcher
+    leads: AppointmentLeads
 
 
 _ports: AppointmentPorts | None = None

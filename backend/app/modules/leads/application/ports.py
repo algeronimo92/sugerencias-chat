@@ -30,6 +30,9 @@ class LeadRepository(Protocol):
 
     async def stage_rules(self, keys: Iterable[str]) -> dict[str, StageRule]: ...
 
+    async def appointment_stage(self) -> str | None:
+        """La etapa que el negocio marcó para cuando se agenda una cita."""
+
     async def seller_name(self, seller_id: int) -> str | None:
         """Nombre del vendedor activo, o ``None`` si no existe o está inactivo."""
 
