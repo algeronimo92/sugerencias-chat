@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.modules.appointments import api as appointments
 from app.modules.appointments.application import calendar_template, commands
+from app.modules.appointments.domain.appointment import LEAD_NOTE_MAX_LENGTH, lead_note
 from app.modules.appointments.domain.errors import AppointmentLeadNotFound
 from app.modules.appointments.schemas import AppointmentCreate
 from tests.appointment_fakes import in_memory_appointments  # noqa: F401
@@ -60,6 +61,9 @@ async def test_the_appointment_is_tied_to_the_lead_it_was_booked_from(world):
     assert registered["appointment"]["id"] == result["appointment"]["id"]
     assert registered["starts_at"] == datetime(2026, 11, 12, 10, 30, tzinfo=LIMA)
     assert (registered["updates"], registered["custom_fields"]) == ({}, {})
+    assert registered["note"] == (
+        "Cita agendada: Consulta\nFecha: 12/11/2026 a las 10:30 (60 min)\nResponsable: Antonella"
+    )
 
 
 async def test_carries_the_corrections_to_the_lead(world):
@@ -106,3 +110,18 @@ async def test_without_a_lead_it_still_matches_by_phone(world):
 def test_the_lead_id_must_be_a_uuid():
     with pytest.raises(ValueError):
         _body(lead_id="no-es-un-uuid")
+
+
+def test_the_lead_note_skips_what_the_appointment_does_not_have():
+    note = lead_note({
+        "tratamiento": "Limpieza", "fecha": "2026-11-12", "hora": "09:00",
+        "duration_minutes": None, "vendedor": "", "detalle": "  Trae sus exámenes ",
+    })
+
+    assert note == "Cita agendada: Limpieza\nFecha: 12/11/2026 a las 09:00\nNotas: Trae sus exámenes"
+
+
+def test_a_very_long_detail_does_not_block_the_note():
+    note = lead_note({"tratamiento": "Limpieza", "fecha": "2026-11-12", "hora": "09:00", "detalle": "x" * 6000})
+
+    assert len(note) == LEAD_NOTE_MAX_LENGTH
