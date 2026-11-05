@@ -19,6 +19,9 @@ class NewOrganizationBody(BaseModel):
     admin_email: str | None = Field(default=None, max_length=254)
     admin_password: str | None = Field(default=None, min_length=8)
     settings: dict[str, str] = Field(default_factory=dict)
+    # Siembra el paquete "Clínica estética" (etiquetas, plantillas con atajo y
+    # automatizaciones desactivadas). Es lo que se espera de un alta normal.
+    starter_pack: bool = True
 
 class PlatformSettingItem(BaseModel):
     key: str
@@ -160,3 +163,32 @@ class WhatsappStatusItem(BaseModel):
     # faltan las credenciales.
     state: Literal["open", "not_configured"]
     instance: str | None = None
+
+
+class StarterPackResult(BaseModel):
+    """Cuántas filas agregó el paquete inicial; todo en cero = ya lo tenía."""
+
+    tags: int
+    categories: int
+    templates: int
+    automations: int
+    # 1 si el negocio no tiene admin activo: plantillas y reglas quedaron
+    # sin sembrar porque exigen autor.
+    needs_admin: int
+
+
+OnboardingStepKey = Literal["whatsapp", "team", "services", "google_calendar", "templates"]
+
+
+class OnboardingStep(BaseModel):
+    key: OnboardingStepKey
+    done: bool
+    optional: bool
+
+
+class OnboardingStatus(BaseModel):
+    steps: list[OnboardingStep]
+    completed: int
+    total: int
+    all_done: bool
+    dismissed: bool

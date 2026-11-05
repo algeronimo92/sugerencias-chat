@@ -52,6 +52,7 @@ from app.modules.platform import google_calendar_api as google_calendar
 from app.modules.catalogs import templates_api as templates
 from app.modules.ai import tts_api as tts
 from app.modules.platform import whatsapp_api as whatsapp
+from app.modules.platform import onboarding_api as onboarding
 from app.modules.auth.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, require_admin, verify_webhook_token, websocket_origin_allowed
 from app.realtime.ws_manager import manager
 from app.core.request_metrics import begin_request_metrics, finish_request_metrics
@@ -156,6 +157,7 @@ app.include_router(google_calendar.router, dependencies=[Depends(require_admin)]
 app.include_router(google_calendar.callback_router)
 app.include_router(ai_assistant.router, dependencies=[Depends(require_admin)])
 app.include_router(whatsapp.router, dependencies=[Depends(require_admin)])
+app.include_router(onboarding.router, dependencies=[Depends(require_admin)])
 app.include_router(tags.router)
 app.include_router(lead_services.router)
 app.include_router(lead_stages.router)

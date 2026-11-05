@@ -19,6 +19,7 @@ from app.modules.platform.settings_service import (
     get_effective_many,
     update_settings,
 )
+from app.modules.platform.starter_pack import apply_starter_pack
 from app.tenancy.context import TenantContext, tenant_context
 from app.tenancy.provisioning import tenant_migration_head
 
@@ -171,3 +172,17 @@ async def update_organization_integrations(
     with tenant_context(context):
         await update_settings({key: value.strip() for key, value in values.items()})
     return await organization_integrations(organization_id)
+
+
+async def apply_organization_starter_pack(organization_id: UUID) -> dict[str, int]:
+    """Aplica a demanda el paquete inicial a un negocio ya creado.
+
+    Es aditivo: solo agrega lo que falta y no modifica nada de lo que el
+    negocio ya cargó, así que sirve para un negocio dado de alta sin paquete
+    (o sin admin, que deja plantillas y reglas pendientes) y repetirlo no
+    tiene efecto.
+    """
+
+    context = await organization_context(organization_id)
+    with tenant_context(context):
+        return await apply_starter_pack()
