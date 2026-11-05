@@ -72,9 +72,19 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
     )
   }
 
-  function handleComplete(id: number) {
+  // Deshacer en vez de confirmar, igual que en TasksPage: completar es reversible.
+  function handleComplete(id: number, title: string) {
     setError(null)
-    update({ id, status: TaskStatusValue.Completed }, { onError: (err) => setError(extractErrorMessage(err)) })
+    update({ id, status: TaskStatusValue.Completed }, {
+      onSuccess: () => toast.success('Tarea completada', {
+        description: title,
+        action: {
+          label: 'Deshacer',
+          onClick: () => update({ id, status: TaskStatusValue.Pending }, { onError: (err) => toast.error(extractErrorMessage(err)) }),
+        },
+      }),
+      onError: (err) => setError(extractErrorMessage(err)),
+    })
   }
 
   return (
@@ -107,7 +117,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           </div>
           <button
             type="button"
-            onClick={() => handleComplete(next.id)}
+            onClick={() => handleComplete(next.id, next.title)}
             disabled={isCompleting}
             aria-label={`Marcar como completada: ${next.title}`}
             title="Marcar tarea como completada"
