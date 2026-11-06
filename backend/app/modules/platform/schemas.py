@@ -223,3 +223,33 @@ class OnboardingStatus(BaseModel):
     total: int
     all_done: bool
     dismissed: bool
+
+
+class EmailSettingsStatus(BaseModel):
+    # El negocio cargó su propio SMTP y las invitaciones salen de ahí.
+    configured: bool
+    # Sin SMTP propio, la plataforma igual puede enviar en su nombre.
+    platform_available: bool
+    host: str
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str
+    password_configured: bool
+    from_address: str
+    from_name: str
+
+
+class EmailSettingsUpdate(BaseModel):
+    host: str = Field(min_length=1, max_length=253)
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str = Field(default="", max_length=254)
+    # null conserva la contraseña guardada; nunca se devuelve.
+    password: str | None = Field(default=None, max_length=512)
+    from_address: str = Field(min_length=3, max_length=254)
+    from_name: str = Field(default="", max_length=100)
+
+
+class EmailTestResult(BaseModel):
+    recipient: str
+    source: Literal["tenant", "platform"]

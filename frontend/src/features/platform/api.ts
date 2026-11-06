@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -95,6 +95,22 @@ export async function disconnectGoogleCalendar(): Promise<GoogleCalendarStatus> 
   return (
       await client.post<ApiResponse<'/api/settings/google-calendar/disconnect', 'post'>>('/api/settings/google-calendar/disconnect')
     ).data
+}
+
+export async function fetchEmailSettings(): Promise<EmailSettingsStatus> {
+  return (await client.get<ApiResponse<'/api/settings/email', 'get'>>('/api/settings/email')).data
+}
+
+export async function saveEmailSettings(payload: EmailSettingsPayload): Promise<EmailSettingsStatus> {
+  return (await client.put<ApiResponse<'/api/settings/email', 'put'>>('/api/settings/email', payload)).data
+}
+
+export async function clearEmailSettings(): Promise<EmailSettingsStatus> {
+  return (await client.delete<ApiResponse<'/api/settings/email', 'delete'>>('/api/settings/email')).data
+}
+
+export async function sendEmailTest(): Promise<EmailTestResult> {
+  return (await client.post<ApiResponse<'/api/settings/email/test', 'post'>>('/api/settings/email/test')).data
 }
 
 export async function fetchBusinessTimezones(): Promise<BusinessTimezoneItem[]> {

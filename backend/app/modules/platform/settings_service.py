@@ -180,6 +180,18 @@ SETTING_DEFS: list[SettingDef] = [
     # (appointments/application/calendar_template.py).
     SettingDef("google_calendar_title_template", "Título del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
     SettingDef("google_calendar_description_template", "Descripción del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
+    # editan solo por app/modules/platform/email_settings.py, que valida el
+    # conjunto: un host suelto sin remitente no sirve. Los nombres no
+    # coinciden con los de app.core.config a propósito: ``_env_default``
+    # haría heredar (y mostrar al negocio) el SMTP de la plataforma.
+    SettingDef("mail_smtp_host", "Servidor SMTP", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_smtp_port", "Puerto", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_smtp_security", "Seguridad", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_smtp_username", "Usuario", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_smtp_password", "Contraseña", "email", "Correo de envío", secret=True, hidden=True),
+    SettingDef("mail_from_address", "Correo remitente", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_from_name", "Nombre del remitente", "email", "Correo de envío", secret=False, hidden=True),
     # El admin cerró la tarjeta de primeros pasos. Es del negocio y no de cada
     # admin: si uno ya lo dejó configurado, al siguiente no le sirve verla.
     SettingDef(

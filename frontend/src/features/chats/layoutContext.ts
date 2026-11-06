@@ -2,7 +2,7 @@ import { useOutletContext } from 'react-router-dom'
 import type { ChatFilters } from '../leads/types'
 
 export type ChatQuickFilter = 'all' | 'unread' | 'mine'
-export type SettingsTab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
+export type SettingsTab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios' | 'correo'
 
 export interface ChatFiltersState {
   search: string

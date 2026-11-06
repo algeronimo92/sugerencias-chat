@@ -6,6 +6,7 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings, useSettings } from '../hooks/useSettings'
 import type { SettingItem } from '../types'
 import { AutoAssignSellers } from './AutoAssignSellers'
+import { EmailPanel } from './EmailPanel'
 import { GoogleCalendarPanel } from './GoogleCalendarPanel'
 import { UsersPanel } from './UsersPanel'
 import { WhatsappPanel } from './WhatsappPanel'
@@ -17,7 +18,7 @@ interface Props {
   calendarEventEditor?: ReactNode
 }
 
-type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios'
+type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios' | 'correo'
 
 // Google Calendar tiene su propia pestaña (GoogleCalendarPanel): sus ajustes
 // no se muestran ni se reenvían desde Claves, donde un "Guardar" con el
@@ -166,11 +167,16 @@ export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEd
             <button type="button" onClick={() => setTab('usuarios')} className={`${TAB_CLASS(tab === 'usuarios')} shrink-0`}>
               Usuarios
             </button>
+            <button type="button" onClick={() => setTab('correo')} className={`${TAB_CLASS(tab === 'correo')} shrink-0`}>
+              Correo
+            </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           {tab === 'usuarios' && <UsersPanel />}
+
+          {tab === 'correo' && <EmailPanel />}
 
           {tab === 'whatsapp' && <WhatsappPanel onGoToClaves={() => setTab('claves')} />}
 

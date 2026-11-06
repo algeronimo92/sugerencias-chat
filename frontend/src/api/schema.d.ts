@@ -1546,6 +1546,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Email Settings */
+        get: operations["get_email_settings_api_settings_email_get"];
+        /** Put Email Settings */
+        put: operations["put_email_settings_api_settings_email_put"];
+        post?: never;
+        /** Delete Email Settings */
+        delete: operations["delete_email_settings_api_settings_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Email Test */
+        post: operations["post_email_test_api_settings_email_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/profile": {
         parameters: {
             query?: never;
@@ -4378,6 +4414,66 @@ export interface components {
              * @default false
              */
             is_primary: boolean;
+        };
+        /** EmailSettingsStatus */
+        EmailSettingsStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Platform Available */
+            platform_available: boolean;
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /** Username */
+            username: string;
+            /** Password Configured */
+            password_configured: boolean;
+            /** From Address */
+            from_address: string;
+            /** From Name */
+            from_name: string;
+        };
+        /** EmailSettingsUpdate */
+        EmailSettingsUpdate: {
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+            /** Password */
+            password?: string | null;
+            /** From Address */
+            from_address: string;
+            /**
+             * From Name
+             * @default
+             */
+            from_name: string;
+        };
+        /** EmailTestResult */
+        EmailTestResult: {
+            /** Recipient */
+            recipient: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "tenant" | "platform";
         };
         /**
          * ExecutionErrorCode
@@ -9422,6 +9518,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleCalendarStatus"];
+                };
+            };
+        };
+    };
+    get_email_settings_api_settings_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+        };
+    };
+    put_email_settings_api_settings_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_email_settings_api_settings_email_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+        };
+    };
+    post_email_test_api_settings_email_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
                 };
             };
         };

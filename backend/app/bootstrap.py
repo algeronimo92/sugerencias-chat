@@ -49,6 +49,7 @@ from app.modules.notifications import push_api as push
 from app.modules.conversations import scheduled_messages_api as scheduled_messages
 from app.modules.platform import settings_api as settings_router
 from app.modules.platform import google_calendar_api as google_calendar
+from app.modules.platform import email_settings_api as email_settings
 from app.modules.catalogs import templates_api as templates
 from app.modules.ai import tts_api as tts
 from app.modules.platform import whatsapp_api as whatsapp
@@ -152,6 +153,7 @@ app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
 app.include_router(tts.router, dependencies=[Depends(get_current_user)])
 app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
 app.include_router(google_calendar.router, dependencies=[Depends(require_admin)])
+app.include_router(email_settings.router, dependencies=[Depends(require_admin)])
 # Vuelta de Google tras "Conectar con Google": una URL para todos los
 # negocios, sin sesión; el negocio sale del state firmado.
 app.include_router(google_calendar.callback_router)
