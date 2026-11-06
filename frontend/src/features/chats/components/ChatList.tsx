@@ -42,7 +42,7 @@ const LeadFormDialog = lazy(() =>
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
 const segmentClass = (active: boolean) =>
-  `flex-1 rounded-lg px-3 py-2 text-xs font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
+  `flex-1 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
     active
       ? "bg-white text-wa-primary-strong shadow-sm ring-1 ring-black/[0.03] dark:bg-wa-active-dark dark:text-wa-primary dark:ring-white/[0.04]"
       : "text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
@@ -407,22 +407,18 @@ export function ChatList({
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-none border border-wa-border bg-white shadow-sm md:rounded-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {/* Header */}
-      <div className="border-b border-wa-border p-4 dark:border-wa-border-dark">
-        <div className="mb-4 flex shrink-0 items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-[-0.025em] text-wa-text dark:text-white">
-                Conversaciones
-              </h1>
-              {!isLoading && (
-                <span className="rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-bold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
-                  {chats.length}
-                </span>
-              )}
-            </div>
-            <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-              Gestiona y responde a tus leads
-            </p>
+      <div className="border-b border-wa-border px-3 pb-2.5 pt-3 dark:border-wa-border-dark">
+        {/* Cabecera compacta: la lista es lo que importa, no el encabezado. */}
+        <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-base font-bold tracking-[-0.02em] text-wa-text dark:text-white">
+              Conversaciones
+            </h1>
+            {!isLoading && (
+              <span className="rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-bold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
+                {chats.length}
+              </span>
+            )}
           </div>
           <Button
             variant="primary"
@@ -432,22 +428,24 @@ export function ChatList({
               setIsCreating(true);
             }}
             aria-label="Nuevo lead"
-            className="h-9 shrink-0 rounded-xl px-3"
+            title="Nuevo lead"
+            className="h-8 shrink-0 rounded-lg px-2.5"
           >
             <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
             Nuevo
           </Button>
         </div>
-        {/* Búsqueda en píldora gris, como WhatsApp */}
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" />
+        {/* Búsqueda y filtros avanzados en una sola fila */}
+        <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" />
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Buscar por nombre, teléfono o mensaje"
+            placeholder="Buscar nombre, teléfono o mensaje"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-11 w-full rounded-xl border border-wa-border bg-wa-field/70 pl-10 pr-10 text-sm text-wa-text outline-none transition-all placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
+            className="h-9 w-full rounded-lg border border-wa-border bg-wa-field/70 pl-9 pr-9 text-sm text-wa-text outline-none transition-all placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
           />
           {/* Vaciar la búsqueda: en el teléfono borrar a mano lo escrito es
               incómodo y el teclado tapa media pantalla. Solo aparece con algo
@@ -467,8 +465,28 @@ export function ChatList({
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters((value) => !value)}
+          aria-label="Filtros avanzados"
+          aria-expanded={showFilters}
+          title="Filtros avanzados"
+          className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
+            showFilters || activeAdvancedFilterCount > 0
+              ? "border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary"
+              : "border-wa-border text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark"
+          }`}
+        >
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+          {activeAdvancedFilterCount > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
+              {activeAdvancedFilterCount}
+            </span>
+          )}
+        </button>
+        </div>
         <div
-          className="mt-3 flex rounded-xl bg-wa-field p-1 dark:bg-wa-field-dark"
+          className="mt-2 flex rounded-lg bg-wa-field p-0.5 dark:bg-wa-field-dark"
           role="group"
           aria-label="Filtrar leads"
         >
@@ -507,26 +525,8 @@ export function ChatList({
           onChange={onAdvancedFiltersChange}
           canSave={activeAdvancedFilterCount > 0}
         />
-        <button
-          type="button"
-          onClick={() => setShowFilters((value) => !value)}
-          className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
-            showFilters || activeAdvancedFilterCount > 0
-              ? "border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary"
-              : "border-wa-border text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark"
-          }`}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros avanzados
-          {activeAdvancedFilterCount > 0 && (
-            <span className="min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
-              {activeAdvancedFilterCount}
-            </span>
-          )}
-        </button>
-
         {showFilters && (
-          <div className="mt-2.5 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
+          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
                 Etapas
