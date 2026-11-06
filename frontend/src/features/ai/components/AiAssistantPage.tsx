@@ -15,8 +15,6 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Input, Textarea, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useMediaLibrary } from '../../media/public/queries'
-import type { MediaAsset } from '../../media/types'
 import {
 useAiProfile,
 useAiUsage,
@@ -25,9 +23,10 @@ useKnowledgeDocument,
 useKnowledgeDocuments,
 useSaveAiProfile,
 useSaveKnowledgeDocument,
-useSetAiResourceDescription,
 } from '../queries'
 import type { AIProfile } from '../types'
+import { AiResourcesPanel } from './AiResourcesPanel'
+import { panelClass, tabClass } from './styles'
 
 type Tab = 'profile' | 'knowledge' | 'resources'
 
@@ -36,15 +35,6 @@ const TABS: readonly { key: Tab; label: string; icon: typeof Sparkles }[] = [
   { key: 'knowledge', label: 'Conocimiento', icon: BookText },
   { key: 'resources', label: 'Adjuntos', icon: FolderOpen },
 ]
-
-const tabClass = (active: boolean) =>
-  `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-wa-primary/60 sm:min-h-9 ${
-    active
-      ? 'bg-wa-primary/12 text-wa-primary-strong dark:bg-wa-primary/20 dark:text-wa-primary'
-      : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
-  }`
-
-const panelClass = 'rounded-xl border border-wa-border bg-white p-4 sm:p-5 dark:border-wa-border-dark dark:bg-wa-panel-dark'
 
 // Mismos topes que valida el backend (services/ai_assistant_service.py).
 const PROFILE_FIELDS: readonly {
@@ -314,72 +304,6 @@ function KnowledgePanel() {
   )
 }
 
-function ResourceRow({ asset }: { asset: MediaAsset }) {
-  const [description, setDescription] = useState(asset.ai_description ?? '')
-  const save = useSetAiResourceDescription()
-  const changed = description.trim() !== (asset.ai_description ?? '')
-
-  useEffect(() => setDescription(asset.ai_description ?? ''), [asset.ai_description])
-
-  return (
-    <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center">
-      <div className="min-w-0 sm:w-56">
-        <p className="truncate text-sm font-medium text-wa-text dark:text-wa-text-dark" title={asset.filename}>{asset.filename}</p>
-        <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-          {asset.ai_description ? 'El asistente puede proponerlo' : 'Oculto para el asistente'}
-        </p>
-      </div>
-      <Input
-        value={description}
-        onChange={event => setDescription(event.target.value)}
-        maxLength={500}
-        placeholder="Cuándo conviene enviarlo, ej. Promo de octubre de limpieza facial"
-        aria-label={`Descripción para el asistente de ${asset.filename}`}
-        className="flex-1"
-      />
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={!changed || save.isPending}
-        onClick={() => save.mutate({ id: asset.id, description }, {
-          onSuccess: () => toast.success(description.trim() ? 'Adjunto disponible para el asistente' : 'Adjunto oculto para el asistente'),
-          onError: err => toast.error(extractErrorMessage(err)),
-        })}
-      >
-        {save.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-        Guardar
-      </Button>
-    </li>
-  )
-}
-
-function ResourcesPanel() {
-  const { data: assets = [], isLoading, error } = useMediaLibrary()
-  const described = assets.filter(asset => asset.ai_description).length
-
-  return (
-    <div className={panelClass}>
-      <p className="text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-        Describe los archivos de tu biblioteca que el asistente puede sugerir adjuntar (flyers, catálogos, videos). Sin descripción no los ve. Para subir archivos nuevos ve a{' '}
-        <Link to="/media-library" className="font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary">Archivos</Link>.
-      </p>
-      {isLoading && <p className="mt-4 text-sm text-wa-muted dark:text-wa-muted-dark">Cargando archivos…</p>}
-      {error && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{extractErrorMessage(error)}</p>}
-      {!isLoading && !error && assets.length === 0 && (
-        <EmptyState icon={FolderOpen} title="La biblioteca está vacía" description="Sube archivos en la sección Archivos para poder ofrecérselos al asistente." />
-      )}
-      {assets.length > 0 && (
-        <>
-          <p className="mt-4 text-xs font-medium text-wa-muted dark:text-wa-muted-dark">{described} de {assets.length} archivos disponibles para el asistente</p>
-          <ul className="mt-1 divide-y divide-wa-border dark:divide-wa-border-dark">
-            {assets.map(asset => <ResourceRow key={asset.id} asset={asset} />)}
-          </ul>
-        </>
-      )}
-    </div>
-  )
-}
-
 export function AiAssistantPage() {
   const [tab, setTab] = useState<Tab>('profile')
 
@@ -407,7 +331,7 @@ export function AiAssistantPage() {
         </header>
 
         <section aria-label={TABS.find(item => item.key === tab)?.label} className="mt-5">
-          {tab === 'profile' ? <ProfilePanel /> : tab === 'knowledge' ? <KnowledgePanel /> : <ResourcesPanel />}
+          {tab === 'profile' ? <ProfilePanel /> : tab === 'knowledge' ? <KnowledgePanel /> : <AiResourcesPanel />}
         </section>
       </main>
     </div>

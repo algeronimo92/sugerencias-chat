@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription } from './api'
 import { mediaKeys } from '../media/public/keys'
+import type { MediaAsset } from '../media/types'
 import { aiKeys } from './keys'
 
 
@@ -70,6 +71,19 @@ export function useSetAiResourceDescription() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: setAiResourceDescription,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
+    // Optimista: la etiqueta "Visible / Oculto" cambia al instante en vez de
+    // esperar el refetch de la biblioteca (mismo patrón que useDeleteMediaAsset).
+    onMutate: async ({ id, description }) => {
+      await queryClient.cancelQueries({ queryKey: mediaKeys.all })
+      const previous = queryClient.getQueriesData<MediaAsset[]>({ queryKey: mediaKeys.all })
+      queryClient.setQueriesData<MediaAsset[]>({ queryKey: mediaKeys.all }, current =>
+        current?.map(asset => (asset.id === id ? { ...asset, ai_description: description.trim() || null } : asset)),
+      )
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
 }
