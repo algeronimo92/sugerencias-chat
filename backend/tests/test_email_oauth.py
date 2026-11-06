@@ -250,3 +250,21 @@ async def test_oauth_nonce_is_single_use(monkeypatch) -> None:
     assert await email_settings.consume_oauth_nonce("otro") is None
     assert await email_settings.consume_oauth_nonce("n1") == "microsoft"
     assert await email_settings.consume_oauth_nonce("n1") is None
+
+
+def test_oauth_callbacks_are_not_blocked_by_the_tenant_host_check() -> None:
+    # El proveedor vuelve a una URL común, que no es el dominio de ningún
+    # negocio: sin la exención el middleware responde "Tenant not found"
+    # antes de leer el state (pasó al probar Zoho y Gmail por ngrok).
+    import main
+    from fastapi.routing import APIRoute
+    from app.tenancy.middleware import DEFAULT_EXEMPT_PATHS
+
+    callbacks = {
+        route.path
+        for route in main.app.routes
+        if isinstance(route, APIRoute) and route.path.startswith("/api/integrations/") and route.path.endswith("/callback")
+    }
+
+    assert email_settings_api.CALLBACK_PATH in callbacks
+    assert callbacks <= DEFAULT_EXEMPT_PATHS
