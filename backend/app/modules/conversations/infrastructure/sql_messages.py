@@ -16,11 +16,12 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models.conversations import WhatsAppMessageEvent, WspMessage
+from app.db.models.conversations import WhatsAppEntryPointWindow, WhatsAppMessageEvent, WspMessage
 from app.db.uow import current_session
 from app.modules.conversations.domain.delivery import strongest_meta_status
 from app.modules.conversations.domain.errors import PinLimitReached
 from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES, merge_reactions
+from app.modules.conversations.domain.service_window import free_entry_point_expiry
 from app.modules.conversations.message_serialization import serialize_message
 
 
@@ -29,6 +30,29 @@ async def _message(chat_id: str, message_id: int) -> WspMessage | None:
         select(WspMessage).where(WspMessage.id == message_id, WspMessage.chat_id == chat_id)
     )).scalar_one_or_none()
 
+
+
+async def _record_entry_point_window(chat_id: str, wa_message_id: str, status: dict) -> None:
+    """Guarda el vencimiento de la ventana gratis por anuncio si este estado lo
+    trae. Se queda con el más lejano: los estados llegan fuera de orden y uno
+    viejo no puede acortar una ventana que Meta ya extendió."""
+    expires_at = free_entry_point_expiry(status)
+    if expires_at is None:
+        return
+    stmt = pg_insert(WhatsAppEntryPointWindow).values(
+        chat_id=chat_id, expires_at=expires_at, wa_message_id=wa_message_id,
+    )
+    await current_session().execute(
+        stmt.on_conflict_do_update(
+            index_elements=[WhatsAppEntryPointWindow.chat_id],
+            set_={
+                "expires_at": stmt.excluded.expires_at,
+                "wa_message_id": stmt.excluded.wa_message_id,
+                "updated_at": func.now(),
+            },
+            where=WhatsAppEntryPointWindow.expires_at < stmt.excluded.expires_at,
+        )
+    )
 
 class SqlMessageStore:
     async def insert_provider_message(
@@ -121,6 +145,7 @@ class SqlMessageStore:
         )).scalar_one_or_none()
         if inserted is None or message is None:
             return None
+        await _record_entry_point_window(message.chat_id, wa_message_id, status)
         events = (await session.execute(
             select(WhatsAppMessageEvent.value, WhatsAppMessageEvent.provider_payload)
             .where(WhatsAppMessageEvent.kind == "status", WhatsAppMessageEvent.wa_message_id == wa_message_id)

@@ -39,6 +39,13 @@ export interface CustomerServiceWindow {
   last_customer_message_at: string | null
   expires_at: string | null
   seconds_remaining: number
+  /** Ventana gratis por anuncio de Meta: no cobra mensajes, pero el texto
+   *  libre sigue atado a la ventana de 24 h. */
+  free_entry_point_open: boolean
+  free_entry_point_expires_at: string | null
+  /** Llegó por un anuncio y nadie respondió: responder antes de esta hora
+   *  abre la ventana gratis. */
+  ad_reply_deadline: string | null
 }
 
 export interface MessagePage {

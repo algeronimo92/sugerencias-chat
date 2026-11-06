@@ -245,6 +245,17 @@ html.dark {
   background-clip: content-box;
 }
 
+/* Tiras que se desplazan de costado (vistas rápidas de la lista de chats):
+   sin barra visible. Va fuera de @layer a propósito: la regla global de
+   arriba tampoco tiene capa y le gana a cualquier utilidad de Tailwind. */
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 /* "Colita" de las burbujas: solo el primer mensaje de un grupo la lleva.
    El triángulo hereda el color de fondo de la burbuja vía las variables. */
 .bubble-tail-out,

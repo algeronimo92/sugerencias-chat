@@ -6,11 +6,11 @@ from sqlalchemy import and_, case, exists, false, func, or_, select, true
 from app.db.models.leads import Lead, LeadTagAssignment, WhatsAppIdentity
 from app.db.models.catalogs import LeadTag
 from app.db.models.auth import User
-from app.db.models.conversations import WspMessage
+from app.db.models.conversations import WhatsAppEntryPointWindow, WspMessage
 from app.db.uow import session_scope
 from app.integrations.whatsapp.connection import connection_scope
 from app.modules.conversations.chat_rows import CHATS_PAGE_SIZE, _row_to_chat, _tags_by_lead
-from app.modules.conversations.domain.service_window import CUSTOMER_SERVICE_WINDOW
+from app.modules.conversations.domain.service_window import AD_REPLY_WINDOW, CUSTOMER_SERVICE_WINDOW
 from app.core.time_format import iso_utc_micros as _fmt_ts, parse_iso_utc_micros as _parse_ts
 
 
@@ -443,32 +443,78 @@ async def fetch_chat(chat_id: str) -> dict | None:
 
 
 async def get_customer_service_window(chat_id: str) -> dict | None:
+    """Las dos ventanas de Meta para un chat, que miden cosas distintas.
+
+    - Atención (24 h desde el último mensaje del cliente): decide si se puede
+      mandar texto libre o solo plantillas.
+    - Gratis por anuncio (Free Entry Point, hasta 7 días): decide si Meta
+      cobra. No habilita texto libre pasadas las 24 h.
+    """
+    customer = and_(WspMessage.chat_id == Lead.id, WspMessage.sender == "cliente")
     last_customer_message = (
+        select(func.max(WspMessage.sent_at)).where(customer).correlate(Lead).scalar_subquery()
+    )
+    # El primer mensaje de quien toca un anuncio Click-to-WhatsApp trae
+    # ``referral`` (ver el procesador del webhook).
+    last_ad_message = (
         select(func.max(WspMessage.sent_at))
-        .where(
-            WspMessage.chat_id == Lead.id,
-            WspMessage.sender == "cliente",
-        )
+        .where(customer, WspMessage.provider_payload.has_key("referral"))
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+    entry_point_expires = (
+        select(WhatsAppEntryPointWindow.expires_at)
+        .where(WhatsAppEntryPointWindow.chat_id == Lead.id)
         .correlate(Lead)
         .scalar_subquery()
     )
     async with session_scope() as session:
         row = (await session.execute(
-            select(Lead.id, last_customer_message.label("last_customer_message_at"))
+            select(
+                Lead.id,
+                last_customer_message.label("last_customer_message_at"),
+                last_ad_message.label("last_ad_message_at"),
+                entry_point_expires.label("free_entry_point_expires_at"),
+            )
             .where(Lead.id == chat_id)
         )).mappings().one_or_none()
-    if row is None:
-        return None
-    last_customer_message_at = row["last_customer_message_at"]
+        if row is None:
+            return None
+        ad_at = row["last_ad_message_at"]
+        # Ya se le respondió después del anuncio: si Meta abrió la ventana,
+        # el webhook de ese envío la informa; si no la abrió (clic desde
+        # WhatsApp Web o respuesta tardía), no hay nada que ofrecer.
+        replied_after_ad = bool(ad_at) and bool(await session.scalar(
+            select(exists().where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.sender != "cliente",
+                WspMessage.sent_at > ad_at,
+                WspMessage.meta_status.in_(("sent", "delivered", "read")),
+            ))
+        ))
 
     now = datetime.now(timezone.utc)
+    last_customer_message_at = row["last_customer_message_at"]
     expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
     seconds_remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
+
+    entry_point_expires_at = row["free_entry_point_expires_at"]
+    entry_point_open = bool(entry_point_expires_at and entry_point_expires_at > now)
+    ad_reply_deadline = ad_at + AD_REPLY_WINDOW if ad_at else None
+    offer_open = (
+        ad_reply_deadline is not None
+        and ad_reply_deadline > now
+        and not replied_after_ad
+        and not entry_point_open
+    )
     return {
         "is_open": seconds_remaining > 0,
         "last_customer_message_at": _fmt_ts(last_customer_message_at),
         "expires_at": _fmt_ts(expires_at),
         "seconds_remaining": seconds_remaining,
+        "free_entry_point_open": entry_point_open,
+        "free_entry_point_expires_at": _fmt_ts(entry_point_expires_at) if entry_point_open else None,
+        "ad_reply_deadline": _fmt_ts(ad_reply_deadline) if offer_open else None,
     }
 
 

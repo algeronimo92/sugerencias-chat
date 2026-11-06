@@ -57,7 +57,16 @@ export function ChatViewChips({ filters, onChange, canSave }: Props) {
   }
 
   return (
-    <div className="mt-2.5 -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Vistas rápidas">
+    <div
+      // Sin barra de scroll (ocupaba una fila): el borde desvanecido avisa
+      // que hay más vistas y la rueda del mouse las recorre de costado.
+      className="mt-2 -mx-1 flex gap-1.5 overflow-x-auto px-1 scrollbar-hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]"
+      onWheel={(event) => {
+        if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY
+      }}
+      role="group"
+      aria-label="Vistas rápidas"
+    >
       {views.map((view) => (
         <span key={view.id} className={chipClass(activeId === view.id)}>
           <button type="button" onClick={() => toggle(view)} aria-pressed={activeId === view.id} className="outline-none">
