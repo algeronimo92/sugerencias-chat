@@ -1639,6 +1639,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Costs
+         * @description Lo que Meta informó que cobró en el mes (copia que mantiene el worker).
+         */
+        get: operations["whatsapp_costs_api_whatsapp_costs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/whatsapp/costs/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Whatsapp Costs
+         * @description Pide a Meta los días pendientes ahora, sin esperar al worker.
+         */
+        post: operations["sync_whatsapp_costs_api_whatsapp_costs_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -4079,6 +4119,15 @@ export interface components {
              * @default 0
              */
             seconds_remaining: number;
+            /**
+             * Free Entry Point Open
+             * @default false
+             */
+            free_entry_point_open: boolean;
+            /** Free Entry Point Expires At */
+            free_entry_point_expires_at?: string | null;
+            /** Ad Reply Deadline */
+            ad_reply_deadline?: string | null;
         };
         /** DashboardActivity */
         DashboardActivity: {
@@ -6353,6 +6402,53 @@ export interface components {
         VapidPublicKeyResponse: {
             /** Public Key */
             public_key: string;
+        };
+        /** WhatsappCostBreakdownItem */
+        WhatsappCostBreakdownItem: {
+            /** Pricing Category */
+            pricing_category: string;
+            /** Pricing Type */
+            pricing_type: string;
+            /** Volume */
+            volume: number;
+            /** Cost */
+            cost: number;
+        };
+        /** WhatsappCostDay */
+        WhatsappCostDay: {
+            /** Day */
+            day: string;
+            /** Volume */
+            volume: number;
+            /** Cost */
+            cost: number;
+        };
+        /**
+         * WhatsappCostsSummary
+         * @description Lo que Meta informó que cobró en el mes, en la moneda de la WABA. Meta
+         *     advierte que la cifra es aproximada; la factura es la fuente final.
+         */
+        WhatsappCostsSummary: {
+            /** Month */
+            month: string;
+            /** Currency */
+            currency?: string | null;
+            /** Total Cost */
+            total_cost: number;
+            /** Billed Messages */
+            billed_messages: number;
+            /** Free Messages */
+            free_messages: number;
+            /** Free Service Used */
+            free_service_used: number;
+            /** Free Service Limit */
+            free_service_limit: number;
+            /** Breakdown */
+            breakdown: components["schemas"]["WhatsappCostBreakdownItem"][];
+            /** Days */
+            days: components["schemas"]["WhatsappCostDay"][];
+            /** Last Synced At */
+            last_synced_at?: string | null;
         };
         /** WhatsappStatusItem */
         WhatsappStatusItem: {
@@ -9584,6 +9680,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhatsappStatusItem"];
+                };
+            };
+        };
+    };
+    whatsapp_costs_api_whatsapp_costs_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCostsSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_whatsapp_costs_api_whatsapp_costs_sync_post: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCostsSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

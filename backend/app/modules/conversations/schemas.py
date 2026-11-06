@@ -119,6 +119,14 @@ class CustomerServiceWindow(BaseModel):
     last_customer_message_at: str | None = None
     expires_at: str | None = None
     seconds_remaining: int = 0
+    # Ventana gratis por anuncio de Meta (Free Entry Point): mientras está
+    # abierta no se cobra ningún mensaje, pero el texto libre sigue atado a
+    # la ventana de 24 h de arriba.
+    free_entry_point_open: bool = False
+    free_entry_point_expires_at: str | None = None
+    # El cliente llegó por un anuncio y todavía no se le respondió: si se le
+    # responde antes de esta hora, Meta abre la ventana gratis.
+    ad_reply_deadline: str | None = None
 
 
 class SendMessageRequest(BaseModel):

@@ -197,6 +197,28 @@ class WhatsAppMessageEvent(Base):
     )
 
 
+
+class WhatsAppEntryPointWindow(Base):
+    """Ventana gratis por anuncio (Free Entry Point) de cada chat.
+
+    Meta no la expone por consulta: avisa su vencimiento en el webhook de
+    estado de cada mensaje enviado dentro de ella. Se guarda el último
+    vencimiento informado para no recorrer los eventos de estado (que no
+    tienen índice por chat) cada vez que se abre una conversación.
+    """
+
+    __tablename__ = "whatsapp_entry_point_windows"
+
+    chat_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Mensaje cuyo estado informó el vencimiento vigente, para auditarlo.
+    wa_message_id: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
 class MessageOutbox(Base):
     """Trabajo durable para enviar mensajes sin bloquear el request HTTP."""
 

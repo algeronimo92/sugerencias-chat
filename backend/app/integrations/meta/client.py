@@ -556,3 +556,32 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
         for wa_message_id in wa_message_ids
     ))
     return {"results": list(results)}
+
+
+# Con TIER, PRICING_CATEGORY y COUNTRY Meta detalla el tramo de volumen de
+# cada punto; sin COUNTRY el tramo no aparece.
+_PRICING_DIMENSIONS = '["PRICING_CATEGORY","PRICING_TYPE","COUNTRY","TIER"]'
+
+
+async def fetch_pricing_analytics(start: datetime, end: datetime) -> dict:
+    """Lo que Meta cobró a la WABA del negocio entre ``start`` y ``end``, por
+    día, categoría, tipo de precio, país y tramo.
+
+    Devuelve ``{"currency": str | None, "data_points": [...]}`` con los puntos
+    tal como los manda Meta (``start``, ``end``, ``volume``, ``cost``,
+    ``country``, ``pricing_category``, ``pricing_type``, ``tier``). ``cost`` va
+    en la moneda de la WABA y Meta lo da por aproximado.
+    """
+    token, _phone_number_id, waba_id = await _config()
+    analytics = (
+        f"pricing_analytics.start({int(start.timestamp())}).end({int(end.timestamp())})"
+        f".granularity(DAILY).dimensions({_PRICING_DIMENSIONS})"
+    )
+    body = await _request(
+        "GET", _graph_url(waba_id), token,
+        params={"fields": f"currency,{analytics}"}, timeout=30.0,
+    )
+    points: list[dict] = []
+    for block in ((body.get("pricing_analytics") or {}).get("data") or []):
+        points.extend(point for point in (block.get("data_points") or []) if isinstance(point, dict))
+    return {"currency": body.get("currency"), "data_points": points}

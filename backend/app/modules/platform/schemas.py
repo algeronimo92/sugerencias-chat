@@ -165,6 +165,37 @@ class WhatsappStatusItem(BaseModel):
     instance: str | None = None
 
 
+class WhatsappCostBreakdownItem(BaseModel):
+    # Valores literales de Meta (MARKETING, UTILITY, SERVICE, AUTHENTICATION…
+    # y REGULAR, FREE_CUSTOMER_SERVICE, FREE_ENTRY_POINT).
+    pricing_category: str
+    pricing_type: str
+    volume: int
+    cost: float
+
+
+class WhatsappCostDay(BaseModel):
+    day: str
+    volume: int
+    cost: float
+
+
+class WhatsappCostsSummary(BaseModel):
+    """Lo que Meta informó que cobró en el mes, en la moneda de la WABA. Meta
+    advierte que la cifra es aproximada; la factura es la fuente final."""
+
+    month: str
+    currency: str | None = None
+    total_cost: float
+    billed_messages: int
+    free_messages: int
+    free_service_used: int
+    free_service_limit: int
+    breakdown: list[WhatsappCostBreakdownItem]
+    days: list[WhatsappCostDay]
+    last_synced_at: str | None = None
+
+
 class StarterPackResult(BaseModel):
     """Cuántas filas agregó el paquete inicial; todo en cero = ya lo tenía."""
 

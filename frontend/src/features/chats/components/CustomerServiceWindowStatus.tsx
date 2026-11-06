@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock3, LockKeyhole, MessageCircle } from 'lucide-react'
+import { AlertTriangle, BadgePercent, Clock3, LockKeyhole, Megaphone, MessageCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CustomerServiceWindow } from '../types'
 
@@ -16,6 +16,8 @@ function useRemainingSeconds(expiresAt: string | null | undefined) {
 }
 
 function formatRemaining(seconds: number) {
+  const days = Math.floor(seconds / 86400)
+  if (days > 0) return `${days}d ${Math.floor((seconds % 86400) / 3600)}h`
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
@@ -34,6 +36,7 @@ function formatExpiry(expiresAt: string) {
 
 export function CustomerServiceWindowBadge({ data, isLoading }: { data?: CustomerServiceWindow; isLoading: boolean }) {
   const remaining = useRemainingSeconds(data?.expires_at)
+  const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
   if (isLoading && !data) {
     return <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">Comprobando plazo de respuesta…</span>
   }
@@ -47,6 +50,19 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-wa-field px-2 py-1 text-[10px] font-medium text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark"
       >
         <MessageCircle className="h-3 w-3 shrink-0" /> Todavía no te escribió
+      </span>
+    )
+  }
+  if (!isOpen && freeEntryRemaining > 0) {
+    return (
+      <span
+        title={`Venció la ventana de 24 h: para escribirle usá una plantilla aprobada. Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data?.free_entry_point_expires_at as string)}, ni siquiera los de marketing.`}
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+      >
+        <BadgePercent className="h-3 w-3 shrink-0" />
+        <span>
+          Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>
+        </span>
       </span>
     )
   }
@@ -64,7 +80,7 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const warning = remaining <= 6 * 3600
   return (
     <span
-      title={`Ventana de 24 h de WhatsApp: podés responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.`}
+      title={`Ventana de 24 h de WhatsApp: podés responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.${freeEntryRemaining > 0 ? ` Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data.free_entry_point_expires_at as string)}.` : ''}`}
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-medium ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/40 dark:text-wa-primary'}`}
     >
       {urgent ? <AlertTriangle className="h-3 w-3 shrink-0" /> : <Clock3 className="h-3 w-3 shrink-0" />}
@@ -77,7 +93,38 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
 
 export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWindow }) {
   const remaining = useRemainingSeconds(data?.expires_at)
+  const adReplyRemaining = useRemainingSeconds(data?.ad_reply_deadline)
+  const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
   const isOpen = !!data?.is_open && remaining > 0
+  // Va antes que el resto: responder a tiempo es lo que abre la ventana
+  // gratis, y pasado el plazo ya no se puede recuperar.
+  if (data && adReplyRemaining > 0) {
+    return (
+      <div className="flex gap-2 border-t border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+        <Megaphone className="mt-0.5 h-4 w-4 shrink-0" />
+        <p>
+          <span className="font-semibold">Llegó por un anuncio.</span> Si le respondés en los próximos{' '}
+          <span className="font-semibold tabular-nums">{formatRemaining(adReplyRemaining)}</span>, Meta no cobra ningún
+          mensaje a este cliente durante hasta 7 días (solo si tocó el anuncio desde el celular).
+        </p>
+      </div>
+    )
+  }
+  if (data && !isOpen && freeEntryRemaining > 0) {
+    return (
+      <div className="flex gap-2 border-t border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+        <BadgePercent className="mt-0.5 h-4 w-4 shrink-0" />
+        <div>
+          <p className="font-semibold">Venció la ventana de 24 h, pero las plantillas son gratis</p>
+          <p className="mt-0.5 text-[11px] opacity-80">
+            WhatsApp solo acepta plantillas aprobadas hasta que el cliente vuelva a escribir. Como llegó por un anuncio,
+            Meta no cobra ningún mensaje hasta el {formatExpiry(data.free_entry_point_expires_at as string)}, ni siquiera
+            los de marketing.
+          </p>
+        </div>
+      </div>
+    )
+  }
   if (!data || (isOpen && remaining > 2 * 3600)) return null
   if (data.last_customer_message_at == null) {
     return (
