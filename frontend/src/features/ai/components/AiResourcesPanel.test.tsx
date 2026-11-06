@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,7 @@ function asset(partial: Partial<MediaAsset> & Pick<MediaAsset, 'id' | 'filename'
 const flyer = asset({ id: 1, filename: 'promo-octubre.jpg', content_type: 'image/jpeg', ai_description: 'Promo de octubre de limpieza facial', created_at: '2026-10-01T10:00:00Z' })
 const video = asset({ id: 2, filename: 'VID-20251003-WA0012.mp4', content_type: 'video/mp4', created_at: '2026-10-03T10:00:00Z' })
 const pdf = asset({ id: 3, filename: 'catalogo.pdf', content_type: 'application/pdf', created_at: '2026-09-20T10:00:00Z' })
+const voice = asset({ id: 4, filename: 'nota-de-voz.m4a', content_type: 'audio/mp4', created_at: '2026-09-10T10:00:00Z' })
 
 /** La primera pintura con la suite entera en marcha puede pasar del segundo
  *  que espera findAllByRole por defecto; se espera al nombre del video. */
@@ -48,7 +49,7 @@ describe('AiResourcesPanel', () => {
     for (const method of Object.values(api)) method.mockReset()
     // La biblioteca refleja lo que se guardó: al refrescar tras el PATCH, el
     // backend real devuelve la descripción nueva.
-    let library = [flyer, video, pdf]
+    let library = [flyer, video, pdf, voice]
     api.get.mockImplementation((url: string) => {
       if (url === '/api/media-library') return Promise.resolve({ data: library })
       return Promise.reject(new Error(`GET inesperado ${url}`))
@@ -79,17 +80,40 @@ describe('AiResourcesPanel', () => {
     expect(rows[2]).toHaveTextContent('PDF')
   })
 
+  it('un audio se escucha en la fila, sin abrir otra pestaña', async () => {
+    renderPanel()
+
+    const rows = await waitForRows()
+    const player = within(rows[3]).getByRole('group', { name: 'Audio nota-de-voz.m4a' })
+    expect(within(player).getByRole('button', { name: 'Reproducir audio' })).toBeInTheDocument()
+    expect(within(player).getByRole('link', { name: 'Descargar nota-de-voz.m4a' })).toBeInTheDocument()
+    expect(within(rows[3]).queryByRole('link', { name: /otra pestaña/ })).not.toBeInTheDocument()
+    expect(within(rows[3]).queryByRole('button', { name: /^Ver / })).not.toBeInTheDocument()
+  })
+
+  it('si el audio no carga, lo dice y deja reintentar', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    const rows = await waitForRows()
+    fireEvent.error(rows[3].querySelector('audio')!)
+
+    expect(within(rows[3]).getByRole('alert')).toHaveTextContent('No se pudo cargar el audio')
+    await user.click(within(rows[3]).getByRole('button', { name: 'Reintentar' }))
+    expect(within(rows[3]).getByRole('group', { name: 'Audio nota-de-voz.m4a' })).toBeInTheDocument()
+  })
+
   it('filtra los archivos sin describir y muestra los contadores', async () => {
     const user = userEvent.setup()
     renderPanel()
 
     const pending = await screen.findByRole('button', { name: /Sin describir/ })
-    expect(pending).toHaveTextContent('2')
+    expect(pending).toHaveTextContent('3')
     expect(screen.getByRole('button', { name: /Visibles/ })).toHaveTextContent('1')
 
     await user.click(pending)
     const rows = screen.getAllByRole('listitem')
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     expect(screen.queryByText('promo-octubre.jpg')).not.toBeInTheDocument()
   })
 

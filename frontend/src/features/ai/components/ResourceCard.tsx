@@ -1,17 +1,20 @@
 /**
  * Una fila de la pestaña "Adjuntos": miniatura, estado y el campo "Cuándo
- * enviarlo".
+ * enviarlo". Imagen y video se abren en el visor; un audio se escucha aquí
+ * mismo, para describirlo mientras suena; un documento se abre en otra
+ * pestaña.
  *
  * La regla del backend es una sola: un archivo con descripción es visible
  * para el asistente; sin descripción, no existe para él. Por eso el estado se
  * muestra como etiqueta derivada del texto guardado y no como interruptor
  * aparte, que necesitaría un campo nuevo en la API.
  */
-import { Check, Eye, EyeOff, Loader2, Pencil } from 'lucide-react'
+import { AlertCircle, Check, Eye, EyeOff, Loader2, Pencil } from 'lucide-react'
 import { lazy, Suspense, useId, useRef, useState } from 'react'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { Textarea, labelClass } from '../../../shared/ui/Input'
+import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { resolveMediaUrl } from '../../../shared/utils/mediaUrl'
 import { MEDIA_KIND_LABELS, MediaAssetThumbnail, formatMediaSize, mediaAssetKind } from '../../media/public/MediaAssetThumbnail'
@@ -41,6 +44,31 @@ function ResourceHeader({ asset, kind, dirty }: { asset: MediaAsset; kind: Media
       </div>
       <p className="mt-1 truncate text-sm font-medium text-wa-text dark:text-wa-text-dark" title={asset.filename}>{asset.filename}</p>
     </div>
+  )
+}
+
+/** Un audio se escucha en la fila; si no carga, se dice y se puede reintentar. */
+function ResourceAudio({ asset }: { asset: MediaAsset }) {
+  const [attempt, setAttempt] = useState(0)
+  const [failed, setFailed] = useState(false)
+  const url = resolveMediaUrl(asset.media_url) ?? ''
+  if (failed) {
+    return (
+      <div role="alert" className="col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-red-600 dark:text-red-300 sm:col-span-1">
+        <span className="flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />No se pudo cargar el audio. Revisa tu conexión o vuelve a subir el archivo.</span>
+        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={() => { setFailed(false); setAttempt(n => n + 1) }}>Reintentar</Button>
+      </div>
+    )
+  }
+  return (
+    <AudioPlayer
+      key={attempt}
+      src={url}
+      className="col-span-2 sm:col-span-1"
+      ariaLabel={`Audio ${asset.filename}`}
+      downloadName={asset.filename}
+      onError={() => setFailed(true)}
+    />
   )
 }
 
@@ -100,10 +128,11 @@ export function ResourceCard({ asset }: { asset: MediaAsset }) {
         ref={thumbnailRef}
         asset={asset}
         onOpen={canPreview ? () => setPreviewOpen(true) : undefined}
-        href={canPreview ? undefined : url}
-        className="h-20 w-20 sm:row-span-2 sm:h-24 sm:w-32"
+        href={kind === 'document' ? url : undefined}
+        className={kind === 'audio' ? 'h-20 w-20 sm:row-span-3 sm:h-24 sm:w-32' : 'h-20 w-20 sm:row-span-2 sm:h-24 sm:w-32'}
       />
       <ResourceHeader asset={asset} kind={kind} dirty={draftState.dirty} />
+      {kind === 'audio' && <ResourceAudio asset={asset} />}
       <DescriptionField {...draftState} />
       {previewOpen && (
         <Suspense fallback={null}>

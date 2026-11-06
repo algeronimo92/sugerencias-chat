@@ -81,3 +81,10 @@ class ResizeObserverMock implements ResizeObserver {
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = ResizeObserverMock
 }
+
+// jsdom declara play/pause/load en los elementos de audio y video pero cada
+// llamada imprime "Not implemented" como error. Los reproductores los llaman
+// al reproducir y al desmontarse; aquí no suena nada, solo no deben romper.
+HTMLMediaElement.prototype.play = () => Promise.resolve()
+HTMLMediaElement.prototype.pause = () => {}
+HTMLMediaElement.prototype.load = () => {}
