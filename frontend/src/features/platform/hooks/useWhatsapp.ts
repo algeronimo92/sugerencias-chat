@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchStatus } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchStatus, fetchWhatsappCosts, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -22,5 +22,27 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
           return state === 'open' || state === 'not_configured' ? false : 3000
         }
       : false,
+  })
+}
+
+/** Lo que Meta informó que cobró en el mes. Lo copia un worker cada pocas
+ *  horas: no hay evento en tiempo real, así que no se reconsulta solo. */
+export function useWhatsappCosts(month: string, enabled = true) {
+  return useQuery({
+    queryKey: whatsappKeys.costs(month),
+    queryFn: () => fetchWhatsappCosts(month),
+    enabled,
+  })
+}
+
+export function useSyncWhatsappCosts(month: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => syncWhatsappCosts(month),
+    onSuccess: (data) => {
+      queryClient.setQueryData(whatsappKeys.costs(month), data)
+      // Otros meses pueden haber cambiado con la misma sincronización.
+      void queryClient.invalidateQueries({ queryKey: whatsappKeys.costsAll, refetchType: 'none' })
+    },
   })
 }

@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -33,6 +33,16 @@ export async function resendInvitation(id: number): Promise<AppUser> {
 
 export async function fetchStatus(): Promise<WhatsappStatus> {
   const { data } = await client.get<ApiResponse<'/api/whatsapp/status', 'get'>>('/api/whatsapp/status')
+  return data
+}
+
+export async function fetchWhatsappCosts(month: string): Promise<WhatsappCostsSummary> {
+  const { data } = await client.get<ApiResponse<'/api/whatsapp/costs', 'get'>>('/api/whatsapp/costs', { params: { month } })
+  return data
+}
+
+export async function syncWhatsappCosts(month: string): Promise<WhatsappCostsSummary> {
+  const { data } = await client.post<ApiResponse<'/api/whatsapp/costs/sync', 'post'>>('/api/whatsapp/costs/sync', null, { params: { month } })
   return data
 }
 

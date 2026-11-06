@@ -58,7 +58,11 @@ export function createChatsRealtime(): RealtimeModule {
           if (!isStatusOnly && queryClient.isMutating({ mutationKey: messageKeys.sending(changedChatId) }) === 0) {
             invalidate(queryClient, messageKeys.thread(changedChatId))
           }
-          if (reason === 'inbound_message') invalidate(queryClient, messageKeys.serviceWindow(changedChatId))
+          // El primer `sent` de una respuesta a un cliente que llegó por
+          // anuncio trae la ventana gratis de Meta (y cierra el aviso de
+          // "respondé a tiempo").
+          const sentNow = event.message_statuses?.some(status => status.meta_status === 'sent')
+          if (reason === 'inbound_message' || sentNow) invalidate(queryClient, messageKeys.serviceWindow(changedChatId))
           // Un mensaje fijado puede editarse o eliminarse desde WhatsApp.
           if (reason === 'message_pinned' || reason === 'message_changed') invalidate(queryClient, messageKeys.pinned(changedChatId))
         } else {

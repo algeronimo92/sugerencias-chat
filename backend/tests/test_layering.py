@@ -181,8 +181,9 @@ META_ALLOWED = {
     # Completa el embedded signup (intercambia el code, resuelve el
     # phone_number_id): conexión/onboarding de la cuenta, no envío.
     "app/modules/platform/settings_api.py",
-    # Solo consulta is_configured() para decidir el estado a mostrar en la UI
-    # ("open"/"not_configured"); no manda mensajes.
+    # Consulta is_configured() para el estado de la UI y le pasa a la
+    # sincronización de costos el lector de pricing_analytics de la WABA.
+    # Administración de la cuenta: no manda mensajes.
     "app/modules/platform/whatsapp_api.py",
 }
 

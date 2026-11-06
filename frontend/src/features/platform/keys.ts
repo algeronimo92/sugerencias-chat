@@ -24,6 +24,8 @@ export const settingsKeys = {
 
 export const whatsappKeys = {
   status: ['whatsapp', 'status'] as const,
+  costsAll: ['whatsapp', 'costs'] as const,
+  costs: (month: string) => ['whatsapp', 'costs', month] as const,
 }
 
 /** Panel de plataforma: su propia sesión y sus propios datos. */

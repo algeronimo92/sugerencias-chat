@@ -33,6 +33,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.db.session import close_engine, get_engine
 from app.db.signals import run_bus
+from app.integrations.meta import client as meta_client
 from app.integrations.meta.client import close_meta_client
 from app.integrations.meta_webhook.worker import watch_meta_webhook_inbox
 from app.integrations.n8n.client import close_n8n_client
@@ -51,6 +52,8 @@ from app.modules.conversations.chat_watcher import POLL_INTERVAL_SECONDS, chat_w
 from app.modules.conversations.infrastructure.outbox_worker import forget_outbox, outbox_tick, wait_for_outbox_work
 from app.modules.conversations.infrastructure.scheduled_worker import POLL_SECONDS as SCHEDULED_POLL_SECONDS
 from app.modules.conversations.infrastructure.scheduled_worker import forget_scheduled, scheduled_tick
+from app.modules.platform.meta_costs import SYNC_INTERVAL_SECONDS as META_COSTS_SYNC_SECONDS
+from app.modules.platform.meta_costs import sync_meta_costs
 from app.modules.platform.platform_settings import migrate_legacy_platform_settings, platform_setting
 from app.modules.platform.settings_service import migrate_settings_encryption
 from app.modules.tasks.task_reminder import deliver_due_reminders
@@ -393,6 +396,17 @@ async def prepare(*, maintenance: bool) -> None:
     await _check_media_persistence()
 
 
+async def meta_costs_tick() -> None:
+    """Copia lo que Meta cobró al negocio. Sin WhatsApp conectado no hay a
+    quién preguntar; un rechazo de Meta se reintenta en la próxima pasada."""
+    if not await meta_client.is_configured():
+        return
+    try:
+        await sync_meta_costs(meta_client.fetch_pricing_analytics)
+    except meta_client.MetaApiError as exc:
+        logger.warning("No se pudieron sincronizar los costos de Meta: %s", exc)
+
+
 # Lo que depende de este proceso: sus conexiones WebSocket y su /metrics.
 API_LOOPS = (
     TenantLoop("task-reminders", deliver_due_reminders, sleeping(30.0)),
@@ -405,6 +419,7 @@ BACKGROUND_LOOPS = (
     TenantLoop("automations", automations_tick, wait_for_automation_work, forget_automations),
     TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work, forget_outbox),
     TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
+    TenantLoop("meta-costs", meta_costs_tick, sleeping(META_COSTS_SYNC_SECONDS)),
 )
 
 

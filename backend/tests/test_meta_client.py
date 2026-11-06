@@ -427,3 +427,32 @@ def test_mediatype_from_content_type_defaults_to_document():
     assert mediatype_from_content_type("image/png") == "image"
 
 
+
+
+async def test_pricing_analytics_asks_the_waba_for_currency_and_daily_points(monkeypatch):
+    from datetime import datetime, timezone
+
+    _mock_config(monkeypatch)
+    fake_client = _FakeGraphClient([
+        _FakeGraphResponse({
+            "currency": "USD",
+            "pricing_analytics": {"data": [{"data_points": [
+                {"start": 1762318800, "end": 1762405200, "country": "PE", "pricing_type": "REGULAR",
+                 "pricing_category": "MARKETING", "volume": 3, "cost": 0.21, "tier": "0:MAX"},
+            ]}]},
+            "id": "WABA1",
+        }),
+    ])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    result = await meta_service.fetch_pricing_analytics(
+        datetime(2026, 11, 1, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc),
+    )
+
+    call = fake_client.calls[0]
+    assert call["url"].endswith("/WABA1")
+    fields = call["params"]["fields"]
+    assert fields.startswith("currency,pricing_analytics.start(1793491200).end(1793923200)")
+    assert ".granularity(DAILY)" in fields
+    assert result["currency"] == "USD"
+    assert result["data_points"][0]["cost"] == 0.21

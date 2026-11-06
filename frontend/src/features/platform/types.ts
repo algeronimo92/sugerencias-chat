@@ -32,6 +32,7 @@ export interface UpdateUserPayload {
  * las credenciales. */
 export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
 export type WhatsappState = WhatsappStatus['state']
+export type WhatsappCostsSummary = Delivered<ApiSchemas['WhatsappCostsSummary']>
 
 export interface StatusOptions {
   enabled?: boolean
