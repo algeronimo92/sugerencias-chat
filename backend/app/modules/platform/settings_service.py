@@ -192,6 +192,16 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("mail_smtp_password", "Contraseña", "email", "Correo de envío", secret=True, hidden=True),
     SettingDef("mail_from_address", "Correo remitente", "email", "Correo de envío", secret=False, hidden=True),
     SettingDef("mail_from_name", "Nombre del remitente", "email", "Correo de envío", secret=False, hidden=True),
+    # "Conectar con Google/Microsoft/Zoho": lo deja el callback OAuth
+    # (email_settings_api.py). Gana sobre el SMTP propio.
+    SettingDef("mail_oauth_provider", "Proveedor conectado", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_oauth_refresh_token", "Refresh token", "email", "Correo de envío", secret=True, hidden=True),
+    SettingDef("mail_oauth_account_email", "Cuenta conectada", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_oauth_accounts_server", "Centro de datos (Zoho)", "email", "Correo de envío", secret=False, hidden=True),
+    SettingDef("mail_oauth_account_id", "Buzón (Zoho)", "email", "Correo de envío", secret=False, hidden=True),
+    # Un solo uso: el callback lo compara con el del state y lo borra.
+    SettingDef("mail_oauth_nonce", "Nonce del flujo OAuth en curso", "email", "Correo de envío", secret=True, hidden=True),
+    SettingDef("mail_oauth_pending_provider", "Proveedor del flujo en curso", "email", "Correo de envío", secret=False, hidden=True),
     # El admin cerró la tarjeta de primeros pasos. Es del negocio y no de cada
     # admin: si uno ya lo dejó configurado, al siguiente no le sirve verla.
     SettingDef(

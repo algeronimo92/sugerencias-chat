@@ -16,7 +16,12 @@ from urllib.parse import urlsplit
 
 from app.core.config import settings
 from app.modules.platform.ports.branding import (DEFAULT_BRANDING, OrganizationNotFound, get_branding)
-from app.modules.platform.ports.mail_settings import get_tenant_mail_config
+from app.integrations import email_oauth
+from app.modules.platform.ports.mail_settings import (
+    get_tenant_mail_config,
+    get_tenant_mail_oauth,
+    store_rotated_refresh_token,
+)
 from app.tenancy.context import get_current_tenant
 
 
@@ -91,10 +96,39 @@ async def tenant_transport() -> SmtpTransport | None:
     )
 
 
-async def resolve_transport() -> SmtpTransport | None:
-    """El correo del negocio si lo cargó; si no, el de la plataforma."""
+@dataclass(frozen=True)
+class OAuthTransport:
+    """Cuenta del negocio conectada con "Conectar con…": se envía por la API
+    del proveedor, sin SMTP ni contraseña."""
 
-    return await tenant_transport() or platform_transport()
+    connection: email_oauth.Connection
+    source: str = "tenant"
+
+
+Transport = SmtpTransport | OAuthTransport
+
+
+async def tenant_oauth_transport() -> OAuthTransport | None:
+    if get_current_tenant() is None:
+        return None
+    oauth = await get_tenant_mail_oauth()
+    if oauth is None:
+        return None
+    return OAuthTransport(
+        email_oauth.Connection(
+            provider=oauth.provider,
+            refresh_token=oauth.refresh_token,
+            account_email=oauth.account_email,
+            accounts_server=oauth.accounts_server,
+            account_id=oauth.account_id,
+        )
+    )
+
+
+async def resolve_transport() -> Transport | None:
+    """La cuenta conectada del negocio, su SMTP, o el de la plataforma."""
+
+    return await tenant_oauth_transport() or await tenant_transport() or platform_transport()
 
 
 async def email_is_configured() -> bool:
@@ -245,7 +279,7 @@ async def send_email(
     subject: str,
     text_body: str,
     html_body: str,
-    transport: SmtpTransport | None = None,
+    transport: Transport | None = None,
 ) -> None:
     transport = transport or await resolve_transport()
     if transport is None:
@@ -253,15 +287,21 @@ async def send_email(
     clean_recipients = sorted({address.strip().lower() for address in recipients if address.strip()})
     if not clean_recipients:
         return
-    from_name = transport.from_name
-    if transport.source == "tenant" and not from_name:
-        from_name = await current_brand_name()
+    if isinstance(transport, OAuthTransport):
+        from_name, from_address = await current_brand_name(), transport.connection.account_email
+    else:
+        from_name, from_address = transport.from_name, transport.from_address
+        if transport.source == "tenant" and not from_name:
+            from_name = await current_brand_name()
     message = EmailMessage()
-    message["From"] = formataddr((from_name, transport.from_address))
+    message["From"] = formataddr((from_name, from_address))
     message["To"] = ", ".join(clean_recipients)
     message["Subject"] = subject
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
+    if isinstance(transport, OAuthTransport):
+        await _send_with_oauth(transport, message, clean_recipients, subject, html_body)
+        return
     try:
         await asyncio.to_thread(_smtp_send, message, transport)
     except (OSError, smtplib.SMTPException, EmailDeliveryError) as exc:
@@ -273,7 +313,23 @@ async def send_email(
         raise EmailDeliveryError(_delivery_reason(exc)) from exc
 
 
-async def send_test_email(*, recipient: str) -> SmtpTransport:
+async def _send_with_oauth(
+    transport: OAuthTransport, message: EmailMessage, recipients: list[str], subject: str, html_body: str
+) -> None:
+    try:
+        rotated = await email_oauth.send_message(
+            transport.connection, message, recipients=recipients, subject=subject, html_body=html_body
+        )
+    except email_oauth.EmailOAuthError as exc:
+        logger.warning(
+            "No se pudo entregar correo por %s: %s", transport.connection.provider, exc.code
+        )
+        raise EmailDeliveryError(str(exc)) from exc
+    if rotated:
+        await store_rotated_refresh_token(rotated)
+
+
+async def send_test_email(*, recipient: str) -> Transport:
     """Manda una prueba con el mismo transporte que usarían las invitaciones."""
 
     transport = await resolve_transport()

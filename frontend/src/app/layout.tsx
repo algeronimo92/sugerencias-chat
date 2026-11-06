@@ -21,6 +21,7 @@ import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
+import { readEmailConnectReturn } from '../features/platform/public/emailConnectReturn';
 import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
 import { Tooltip } from "../shared/ui/Tooltip";
 
@@ -89,11 +90,14 @@ export function MainLayout() {
   // /?settings=calendar&google=... Se avisa el resultado, se abre la pestaña y
   // se limpia la URL para que recargar no repita el aviso.
   useEffect(() => {
-    const result = readGoogleCalendarReturn(location.search);
+    // Lo mismo con "Conectar con…" del correo (/?settings=email&email=...).
+    const calendar = readGoogleCalendarReturn(location.search);
+    const email = calendar ? null : readEmailConnectReturn(location.search);
+    const result = calendar ?? email;
     if (!result) return;
     if (result.ok) toast.success(result.message);
     else toast.error(result.message);
-    openSettings("calendario");
+    openSettings(calendar ? "calendario" : "correo");
     navigate({ pathname: location.pathname, search: "" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);

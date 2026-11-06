@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -119,6 +120,7 @@ async def test_tenant_smtp_wins_over_the_platform(monkeypatch) -> None:
         return config
 
     monkeypatch.setattr(email_service, "get_current_tenant", lambda: CONTEXT)
+    monkeypatch.setattr(email_service, "get_tenant_mail_oauth", AsyncMock(return_value=None))
     monkeypatch.setattr(email_service, "get_tenant_mail_config", tenant_config)
 
     transport = await email_service.resolve_transport()
@@ -135,6 +137,7 @@ async def test_without_tenant_smtp_the_platform_still_sends(monkeypatch) -> None
         return None
 
     monkeypatch.setattr(email_service, "get_current_tenant", lambda: CONTEXT)
+    monkeypatch.setattr(email_service, "get_tenant_mail_oauth", AsyncMock(return_value=None))
     monkeypatch.setattr(email_service, "get_tenant_mail_config", no_config)
 
     transport = await email_service.resolve_transport()

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { readEmailConnectReturn } from '../public/emailConnectReturn'
 import type { EmailSettingsStatus } from '../types'
 import { EmailPanel } from './EmailPanel'
 
@@ -11,12 +12,17 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delet
 vi.mock('../../../shared/http/client', () => ({ default: api }))
 
 const empty: EmailSettingsStatus = {
-  configured: false, platform_available: true, host: '', port: 587, security: 'starttls',
-  username: '', password_configured: false, from_address: '', from_name: '',
+  configured: false, mode: null, oauth_provider: null, oauth_account_email: null,
+  oauth_available: ['google', 'microsoft', 'zoho'], platform_available: true,
+  host: '', port: 587, security: 'starttls', username: '', password_configured: false,
+  from_address: '', from_name: '',
 }
-const configured: EmailSettingsStatus = {
-  ...empty, configured: true, host: 'smtp.gmail.com', username: 'ventas@acme.com',
-  password_configured: true, from_address: 'ventas@acme.com', from_name: 'Acme',
+const smtp: EmailSettingsStatus = {
+  ...empty, configured: true, mode: 'smtp', host: 'smtp.hostinger.com', port: 465, security: 'ssl',
+  username: 'ventas@acme.com', password_configured: true, from_address: 'ventas@acme.com', from_name: 'Acme',
+}
+const oauth: EmailSettingsStatus = {
+  ...empty, configured: true, mode: 'oauth', oauth_provider: 'zoho', oauth_account_email: 'ventas@acme.com',
 }
 
 function renderPanel(status: EmailSettingsStatus) {
@@ -35,43 +41,69 @@ describe('EmailPanel', () => {
     api.post.mockReset()
   })
 
-  it('un negocio sin correo propio ve que hoy envía la plataforma y carga Gmail con lo mínimo', async () => {
+  it('ofrece conectar cada proveedor habilitado y manda al consentimiento', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign, origin: 'https://acme.example.com' })
     renderPanel(empty)
-    expect(await screen.findByText(/correo de la plataforma/)).toBeInTheDocument()
-    api.put.mockResolvedValue({ data: configured })
+    api.post.mockResolvedValue({ data: { url: 'https://accounts.zoho.com/oauth/v2/auth?x' } })
 
-    await userEvent.type(screen.getByLabelText('Correo remitente'), 'ventas@acme.com')
-    await userEvent.type(screen.getByLabelText('Contraseña de aplicación'), 'app-pass')
+    expect(await screen.findByText(/correo de la plataforma/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Conectar con Zoho/ }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://accounts.zoho.com/oauth/v2/auth?x'))
+    expect(api.post).toHaveBeenCalledWith('/api/settings/email/connect', {
+      provider: 'zoho', return_origin: 'https://acme.example.com',
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it('solo muestra los proveedores que la plataforma habilitó', async () => {
+    renderPanel({ ...empty, oauth_available: ['google'] })
+
+    expect(await screen.findByRole('button', { name: /Conectar con Google/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Conectar con Microsoft/ })).not.toBeInTheDocument()
+  })
+
+  it('con una cuenta conectada muestra desde dónde sale y permite desconectar', async () => {
+    renderPanel(oauth)
+    api.post.mockResolvedValue({ data: empty })
+
+    expect(await screen.findByText('Conectado con Zoho')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Desconectar/ }))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/settings/email/disconnect'))
+  })
+
+  it('el SMTP queda como alternativa y guarda sin tocar la contraseña (null)', async () => {
+    renderPanel(smtp)
+    api.put.mockResolvedValue({ data: smtp })
+
+    expect(await screen.findByText('Se envía desde ventas@acme.com.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     await waitFor(() => expect(api.put).toHaveBeenCalled())
     expect(api.put.mock.calls[0]).toEqual(['/api/settings/email', {
-      host: 'smtp.gmail.com', port: 587, security: 'starttls',
-      // Sin usuario aparte, se autentica con el mismo correo remitente.
-      username: 'ventas@acme.com', password: 'app-pass',
-      from_address: 'ventas@acme.com', from_name: '',
+      host: 'smtp.hostinger.com', port: 465, security: 'ssl', username: 'ventas@acme.com',
+      password: null, from_address: 'ventas@acme.com', from_name: 'Acme',
     }])
-    expect(await screen.findByText('Guardado')).toBeInTheDocument()
-  })
-
-  it('guardar sin tocar la contraseña la conserva (manda null, no vacío)', async () => {
-    renderPanel(configured)
-    expect(await screen.findByText('Se envía desde ventas@acme.com.')).toBeInTheDocument()
-    api.put.mockResolvedValue({ data: configured })
-
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
-
-    await waitFor(() => expect(api.put).toHaveBeenCalled())
-    expect(api.put.mock.calls[0][1].password).toBeNull()
   })
 
   it('la prueba avisa a quién se envió', async () => {
-    renderPanel(configured)
+    renderPanel(oauth)
     api.post.mockResolvedValue({ data: { recipient: 'admin@acme.com', source: 'tenant' } })
 
     await userEvent.click(await screen.findByRole('button', { name: 'Enviar prueba' }))
 
     expect(await screen.findByText(/Enviado a admin@acme.com/)).toBeInTheDocument()
-    expect(api.post).toHaveBeenCalledWith('/api/settings/email/test')
+  })
+})
+
+describe('readEmailConnectReturn', () => {
+  it('traduce el resultado del callback', () => {
+    expect(readEmailConnectReturn('?settings=email&email=connected&provider=microsoft')).toEqual({
+      ok: true, message: 'Correo conectado con Microsoft',
+    })
+    expect(readEmailConnectReturn('?settings=email&email=error&provider=zoho&reason=no_mailbox')?.ok).toBe(false)
+    expect(readEmailConnectReturn('?settings=calendar&google=connected')).toBeNull()
   })
 })

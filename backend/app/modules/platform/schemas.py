@@ -225,10 +225,19 @@ class OnboardingStatus(BaseModel):
     dismissed: bool
 
 
+EmailOAuthProvider = Literal["google", "microsoft", "zoho"]
+
+
 class EmailSettingsStatus(BaseModel):
-    # El negocio cargó su propio SMTP y las invitaciones salen de ahí.
+    # El negocio tiene correo propio (cuenta conectada o SMTP) y las
+    # invitaciones salen de ahí.
     configured: bool
-    # Sin SMTP propio, la plataforma igual puede enviar en su nombre.
+    mode: Literal["oauth", "smtp"] | None = None
+    oauth_provider: EmailOAuthProvider | None = None
+    oauth_account_email: str | None = None
+    # Proveedores con "Conectar con…" habilitado por la plataforma.
+    oauth_available: list[EmailOAuthProvider]
+    # Sin correo propio, la plataforma igual puede enviar en su nombre.
     platform_available: bool
     host: str
     port: int
@@ -248,6 +257,12 @@ class EmailSettingsUpdate(BaseModel):
     password: str | None = Field(default=None, max_length=512)
     from_address: str = Field(min_length=3, max_length=254)
     from_name: str = Field(default="", max_length=100)
+
+
+class EmailConnectRequest(BaseModel):
+    provider: EmailOAuthProvider
+    # window.location.origin del CRM: adonde vuelve el callback.
+    return_origin: str
 
 
 class EmailTestResult(BaseModel):

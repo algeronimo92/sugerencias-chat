@@ -40,13 +40,25 @@ PLATFORM_SETTING_DEFS = (
     PlatformSettingDef("n8n_webhook_url", "URL del workflow de sugerencias (n8n)", False),
     PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista (n8n)", False),
     PlatformSettingDef("n8n_webhook_token", "Token saliente backend → n8n", True),
-    PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar)", False),
-    PlatformSettingDef("google_oauth_client_secret", "Google OAuth Client Secret (Calendar)", True),
+    PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar y Gmail)", False),
+    PlatformSettingDef("google_oauth_client_secret", "Google OAuth Client Secret (Calendar y Gmail)", True),
     PlatformSettingDef(
         "google_oauth_redirect_uri",
         "Redirect URI de Google (…/api/integrations/google/callback)",
         False,
     ),
+    # "Conectar con…" de la pestaña Correo. Una sola URL de vuelta para los
+    # tres proveedores: hay que registrarla en la app de cada uno (en Google,
+    # además de la de Calendar).
+    PlatformSettingDef(
+        "email_oauth_redirect_uri",
+        "Redirect URI del correo (…/api/integrations/email/callback)",
+        False,
+    ),
+    PlatformSettingDef("microsoft_oauth_client_id", "Microsoft OAuth Client ID (correo)", False),
+    PlatformSettingDef("microsoft_oauth_client_secret", "Microsoft OAuth Client Secret (correo)", True),
+    PlatformSettingDef("zoho_oauth_client_id", "Zoho OAuth Client ID (correo)", False),
+    PlatformSettingDef("zoho_oauth_client_secret", "Zoho OAuth Client Secret (correo)", True),
 )
 _DEFS_BY_KEY = {definition.key: definition for definition in PLATFORM_SETTING_DEFS}
 PLATFORM_KEYS = frozenset(_DEFS_BY_KEY)

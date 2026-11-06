@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
     google_oauth_redirect_uri: str = ""
+    # "Conectar con…" del correo de cada negocio (respaldo de despliegue; el
+    # valor vivo se carga en el panel de plataforma).
+    email_oauth_redirect_uri: str = ""
+    microsoft_oauth_client_id: str = ""
+    microsoft_oauth_client_secret: str = ""
+    zoho_oauth_client_id: str = ""
+    zoho_oauth_client_secret: str = ""
     # Firma el contexto opaco que el backend entrega a n8n y que n8n devuelve
     # en callbacks de jobs IA. Debe ser distinto de los tokens HTTP en
     # despliegues multitenant; nunca contiene ni acepta nombres de schema.

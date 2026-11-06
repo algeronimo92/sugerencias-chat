@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -107,6 +107,20 @@ export async function saveEmailSettings(payload: EmailSettingsPayload): Promise<
 
 export async function clearEmailSettings(): Promise<EmailSettingsStatus> {
   return (await client.delete<ApiResponse<'/api/settings/email', 'delete'>>('/api/settings/email')).data
+}
+
+/** URL de consentimiento del proveedor; el navegador se va ahí y vuelve al CRM. */
+export async function connectEmail(provider: EmailOAuthProvider, returnOrigin: string): Promise<string> {
+  return (
+    await client.post<ApiResponse<'/api/settings/email/connect', 'post'>>('/api/settings/email/connect', {
+      provider,
+      return_origin: returnOrigin,
+    })
+  ).data.url
+}
+
+export async function disconnectEmail(): Promise<EmailSettingsStatus> {
+  return (await client.post<ApiResponse<'/api/settings/email/disconnect', 'post'>>('/api/settings/email/disconnect')).data
 }
 
 export async function sendEmailTest(): Promise<EmailTestResult> {

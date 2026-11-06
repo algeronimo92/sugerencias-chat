@@ -1,14 +1,18 @@
 """Correo de envío propio de cada negocio (SMTP).
 
 Hasta ahora todos los negocios mandaban sus invitaciones desde el SMTP único
-de la plataforma (``SMTP_*`` del .env). Cada negocio puede cargar el suyo;
-si no lo hace, se sigue usando el de la plataforma (ver
-app/integrations/email_service.resolve_transport).
+de la plataforma (``SMTP_*`` del .env). Cada negocio puede conectar su cuenta
+con un clic (OAuth: Google, Microsoft o Zoho) o cargar un SMTP; si no hace
+ninguna de las dos, se sigue usando el de la plataforma (ver
+app/integrations/email_service.resolve_transport). Las dos formas propias
+son excluyentes: guardar una borra la otra, para que nunca haya dudas de
+desde dónde sale el correo.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hmac
 import ipaddress
 import re
 
@@ -21,7 +25,7 @@ USERNAME_KEY = "mail_smtp_username"
 PASSWORD_KEY = "mail_smtp_password"
 FROM_ADDRESS_KEY = "mail_from_address"
 FROM_NAME_KEY = "mail_from_name"
-EMAIL_KEYS = (
+SMTP_KEYS = (
     HOST_KEY,
     PORT_KEY,
     SECURITY_KEY,
@@ -30,6 +34,22 @@ EMAIL_KEYS = (
     FROM_ADDRESS_KEY,
     FROM_NAME_KEY,
 )
+OAUTH_PROVIDER_KEY = "mail_oauth_provider"
+OAUTH_REFRESH_KEY = "mail_oauth_refresh_token"
+OAUTH_EMAIL_KEY = "mail_oauth_account_email"
+OAUTH_SERVER_KEY = "mail_oauth_accounts_server"
+OAUTH_ACCOUNT_ID_KEY = "mail_oauth_account_id"
+OAUTH_NONCE_KEY = "mail_oauth_nonce"
+OAUTH_PENDING_KEY = "mail_oauth_pending_provider"
+OAUTH_KEYS = (
+    OAUTH_PROVIDER_KEY,
+    OAUTH_REFRESH_KEY,
+    OAUTH_EMAIL_KEY,
+    OAUTH_SERVER_KEY,
+    OAUTH_ACCOUNT_ID_KEY,
+)
+EMAIL_KEYS = SMTP_KEYS + OAUTH_KEYS + (OAUTH_NONCE_KEY, OAUTH_PENDING_KEY)
+OAUTH_PROVIDERS = ("google", "microsoft", "zoho")
 
 # Solo puertos de envío de correo: el host lo escribe el negocio y el backend
 # se conecta desde adentro del servidor; con cualquier puerto, "probar
@@ -61,6 +81,15 @@ class TenantMailConfig:
     from_name: str
 
 
+@dataclass(frozen=True)
+class TenantMailOAuth:
+    provider: str
+    refresh_token: str
+    account_email: str
+    accounts_server: str
+    account_id: str
+
+
 def _parse_port(raw: str) -> int:
     try:
         return int(raw) if raw else DEFAULT_PORT
@@ -88,11 +117,78 @@ async def get_tenant_mail_config() -> TenantMailConfig | None:
     )
 
 
+async def get_tenant_mail_oauth() -> TenantMailOAuth | None:
+    """La cuenta conectada por OAuth del negocio activo, si la hay."""
+
+    values = await get_effective_many(OAUTH_KEYS)
+    provider = values[OAUTH_PROVIDER_KEY].strip()
+    if provider not in OAUTH_PROVIDERS or not values[OAUTH_REFRESH_KEY]:
+        return None
+    return TenantMailOAuth(
+        provider=provider,
+        refresh_token=values[OAUTH_REFRESH_KEY],
+        account_email=values[OAUTH_EMAIL_KEY].strip(),
+        accounts_server=values[OAUTH_SERVER_KEY].strip(),
+        account_id=values[OAUTH_ACCOUNT_ID_KEY].strip(),
+    )
+
+
+async def start_oauth(provider: str, nonce: str) -> None:
+    if provider not in OAUTH_PROVIDERS:
+        raise EmailSettingsError("Proveedor de correo desconocido")
+    # Un flujo nuevo invalida el anterior que haya quedado a medias.
+    await update_settings({OAUTH_NONCE_KEY: nonce, OAUTH_PENDING_KEY: provider})
+
+
+async def consume_oauth_nonce(nonce: str) -> str | None:
+    """Proveedor del flujo en curso si el nonce coincide; sirve una sola vez."""
+
+    values = await get_effective_many((OAUTH_NONCE_KEY, OAUTH_PENDING_KEY))
+    stored = values[OAUTH_NONCE_KEY]
+    if not stored or not hmac.compare_digest(stored, nonce):
+        return None
+    await update_settings({OAUTH_NONCE_KEY: "", OAUTH_PENDING_KEY: ""})
+    provider = values[OAUTH_PENDING_KEY].strip()
+    return provider if provider in OAUTH_PROVIDERS else None
+
+
+async def store_oauth_connection(
+    *, provider: str, refresh_token: str, account_email: str, accounts_server: str = "", account_id: str = ""
+) -> None:
+    await update_settings(
+        {key: "" for key in SMTP_KEYS}
+        | {
+            OAUTH_PROVIDER_KEY: provider,
+            OAUTH_REFRESH_KEY: refresh_token,
+            OAUTH_EMAIL_KEY: account_email,
+            OAUTH_SERVER_KEY: accounts_server,
+            OAUTH_ACCOUNT_ID_KEY: account_id,
+        }
+    )
+
+
+async def store_rotated_refresh_token(refresh_token: str) -> None:
+    # Microsoft entrega uno nuevo en cada renovación: el viejo deja de
+    # servir tarde o temprano, así que se reemplaza en el acto.
+    await update_settings({OAUTH_REFRESH_KEY: refresh_token})
+
+
+async def clear_oauth_connection() -> dict:
+    await update_settings({key: "" for key in OAUTH_KEYS})
+    return await read_email_settings()
+
+
 async def read_email_settings() -> dict:
     values = await get_effective_many(EMAIL_KEYS)
     security = values[SECURITY_KEY].strip()
+    provider = values[OAUTH_PROVIDER_KEY].strip()
+    oauth_connected = provider in OAUTH_PROVIDERS and bool(values[OAUTH_REFRESH_KEY])
+    smtp_configured = bool(values[HOST_KEY].strip() and values[FROM_ADDRESS_KEY].strip())
     return {
-        "configured": bool(values[HOST_KEY].strip() and values[FROM_ADDRESS_KEY].strip()),
+        "configured": oauth_connected or smtp_configured,
+        "mode": "oauth" if oauth_connected else ("smtp" if smtp_configured else None),
+        "oauth_provider": provider if oauth_connected else None,
+        "oauth_account_email": values[OAUTH_EMAIL_KEY].strip() if oauth_connected else None,
         "host": values[HOST_KEY].strip(),
         "port": _parse_port(values[PORT_KEY].strip()),
         "security": security if security in SECURITY_OPTIONS else "starttls",
@@ -175,6 +271,8 @@ async def save_email_settings(
     }
     if password is not None:
         values[PASSWORD_KEY] = password
+    # SMTP propio y cuenta conectada son excluyentes.
+    values |= {key: "" for key in OAUTH_KEYS}
     await update_settings(values)
     return await read_email_settings()
 
