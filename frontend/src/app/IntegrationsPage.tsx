@@ -60,7 +60,7 @@ export function IntegrationsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Integraciones</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Conecta WhatsApp, tu calendario, la lista de precios, el asistente IA y su voz.
+            Conecta WhatsApp, tu calendario, la lista de precios, las sugerencias con IA y la voz de los audios.
           </p>
           <p aria-live="polite" className="mt-1 text-sm text-wa-muted dark:text-wa-muted-dark">{summary}</p>
         </header>

@@ -192,7 +192,7 @@ function CopilotError({ message, retryable, onRetry }: { message: string; retrya
           {/* Las claves del copiloto las carga el admin del negocio: el aviso
               lleva directo a donde se resuelve. */}
           {message.includes('Integraciones') && (
-            <>{' '}<Link to="/integraciones#ia" className="font-semibold underline">Ir a Integraciones</Link></>
+            <>{' '}<Link to="/integraciones#ia-sugerencias" className="font-semibold underline">Ir a Integraciones</Link></>
           )}
         </p>
       </div>

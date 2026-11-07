@@ -124,8 +124,8 @@ async def platform_ready(operation: str) -> bool:
         if not await business_ai_ready():
             raise AIUnavailableError(
                 "ai_not_configured",
-                "Asistente IA no conectado: carga la clave de tu proveedor de IA en "
-                "Integraciones para generar sugerencias.",
+                "Las sugerencias con IA no están conectadas: carga la clave de tu "
+                "proveedor en Integraciones › Sugerencias con IA.",
                 503,
             )
         return True
@@ -135,8 +135,8 @@ async def platform_ready(operation: str) -> bool:
 async def business_ai_ready() -> bool:
     """En modo nativo, el negocio tiene al menos una clave para el modelo
     principal o el secundario."""
-    values = await get_effective_many(("ai_primary_model", "ai_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
-    for spec in (values["ai_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_fallback_model"].strip() or DEFAULT_FALLBACK):
+    values = await get_effective_many(("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
+    for spec in (values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK):
         try:
             provider, _ = parse_model_spec(spec)
         except ValueError:

@@ -11,7 +11,7 @@ from app.modules.ai.ai_access import business_ai_ready
 from app.modules.ai.infrastructure.routing_provider import suggestions_mode
 from app.modules.platform.ports.settings_service import get_effective_many
 
-_KEYS = ("ai_primary_model", "ai_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
+_KEYS = ("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
 
 
 async def providers_status() -> dict:
@@ -26,8 +26,8 @@ async def providers_status() -> dict:
             }
             for name, meta in PROVIDERS.items()
         ],
-        "primary_model": values["ai_primary_model"].strip() or DEFAULT_PRIMARY,
-        "fallback_model": values["ai_fallback_model"].strip() or DEFAULT_FALLBACK,
+        "primary_model": values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY,
+        "fallback_model": values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK,
         "suggestions_mode": await suggestions_mode(),
         "ready": await business_ai_ready(),
     }

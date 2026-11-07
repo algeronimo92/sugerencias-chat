@@ -49,7 +49,7 @@ KNOWLEDGE_MAX_CHARS = 9000
 # Últimos mensajes del cliente que alimentan la consulta de conocimiento.
 QUERY_CUSTOMER_MESSAGES = 3
 
-SETTING_KEYS = ("ai_primary_model", "ai_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
+SETTING_KEYS = ("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
 
 
 class NativeSuggestionError(Exception):
@@ -285,8 +285,8 @@ def _trim_knowledge(chunks: list[dict]) -> list[dict]:
 async def _models_for_tenant() -> list[tuple[str, str]]:
     """``[(spec, api_key)]`` en orden: principal y, si tiene clave, secundario."""
     values = await get_effective_many(SETTING_KEYS)
-    primary = values["ai_primary_model"].strip() or DEFAULT_PRIMARY
-    fallback = values["ai_fallback_model"].strip() or DEFAULT_FALLBACK
+    primary = values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY
+    fallback = values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK
     chain = []
     for spec in (primary, fallback):
         if spec in [s for s, _ in chain]:

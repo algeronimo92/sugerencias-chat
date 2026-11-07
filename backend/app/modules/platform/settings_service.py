@@ -119,16 +119,19 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
     ),
     SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
-    # El copiloto de sugerencias puede correr dentro del CRM con las claves del
-    # propio negocio (ver app/modules/ai/infrastructure/native_provider.py).
+    # Claves de IA del propio negocio, una por proveedor. Hoy solo las usan
+    # las sugerencias; si otra función de IA las necesita, las comparte.
+    SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    SettingDef("ai_openai_api_key", "API key de OpenAI", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    # Solo las sugerencias de respuesta del copiloto (ver
+    # app/modules/ai/infrastructure/native_provider.py): el análisis del lead
+    # y otras funciones de IA tienen su propia configuración. El nombre lo
+    # dice para que una función nueva no herede estos modelos sin querer.
     # ``ai_suggestions_mode``: ``n8n`` (hoy) o ``native``; lo cambia el admin
-    # desde la tarjeta "Asistente IA" de Integraciones cuando sus claves pasan
-    # la prueba de conexión.
-    SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "Asistente IA (modelos propios)", secret=True),
-    SettingDef("ai_openai_api_key", "API key de OpenAI", "ai", "Asistente IA (modelos propios)", secret=True),
-    SettingDef("ai_primary_model", "Modelo principal", "ai", "Asistente IA (modelos propios)", secret=False),
-    SettingDef("ai_fallback_model", "Modelo secundario (si el principal falla)", "ai", "Asistente IA (modelos propios)", secret=False),
-    SettingDef("ai_suggestions_mode", "Generar sugerencias desde el CRM", "ai", "Asistente IA (modelos propios)", secret=False, hidden=True),
+    # desde la tarjeta "Sugerencias con IA" de Integraciones.
+    SettingDef("ai_suggestions_primary_model", "Sugerencias: modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    SettingDef("ai_suggestions_fallback_model", "Sugerencias: modelo secundario (si el principal falla)", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    SettingDef("ai_suggestions_mode", "Sugerencias: generar desde el CRM con mis claves", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
@@ -443,7 +446,7 @@ async def update_settings(values: dict[str, str]) -> None:
     values = dict(values)
     if "erp_catalog_url" in values:
         values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
-    for key in ("ai_primary_model", "ai_fallback_model"):
+    for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
         if values.get(key):
             values[key] = validate_ai_model(values[key])
     if "ai_suggestions_mode" in values:

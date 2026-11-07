@@ -76,7 +76,7 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list]):
         clients[spec] = FakeClient(provider, model, chain[spec])
         return clients[spec]
 
-    defaults = {"ai_primary_model": "", "ai_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
+    defaults = {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
     values = {**defaults, **settings}
 
     async def effective_many(keys):
@@ -170,7 +170,7 @@ async def test_invalid_json_gets_one_retry_then_the_fallback_model(monkeypatch):
 async def test_primary_outage_falls_back_and_total_failure_is_reported(monkeypatch):
     provider, clients, *_ = _world(
         monkeypatch,
-        {"ai_primary_model": "openai:gpt-5.5", "ai_fallback_model": "gemini:gemini-2.5-flash", "ai_gemini_api_key": "g", "ai_openai_api_key": "o"},
+        {"ai_suggestions_primary_model": "openai:gpt-5.5", "ai_suggestions_fallback_model": "gemini:gemini-2.5-flash", "ai_gemini_api_key": "g", "ai_openai_api_key": "o"},
         {"openai:gpt-5.5": [LlmError("OpenAI respondió 503", status=503)], "gemini:gemini-2.5-flash": [GOOD]},
     )
     assert (await _suggest(provider)).confianza == "alta"
@@ -229,15 +229,15 @@ async def test_native_mode_requires_a_business_key(monkeypatch):
     monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value=""))
 
     async def no_keys(_keys):
-        return {"ai_primary_model": "", "ai_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
+        return {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
 
     monkeypatch.setattr(ai_access, "get_effective_many", no_keys)
     with pytest.raises(ai_access.AIUnavailableError) as error:
         await ai_access.platform_ready("rag")
-    assert error.value.code == "ai_not_configured" and "Integraciones" in error.value.message
+    assert error.value.code == "ai_not_configured" and "Sugerencias con IA" in error.value.message
 
     async def with_key(_keys):
-        return {"ai_primary_model": "", "ai_fallback_model": "", "ai_gemini_api_key": "g", "ai_openai_api_key": ""}
+        return {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "g", "ai_openai_api_key": ""}
 
     monkeypatch.setattr(ai_access, "get_effective_many", with_key)
     assert await ai_access.platform_ready("rag") is True

@@ -107,9 +107,11 @@ function modelLabel(spec: string, providers: Provider[]): string {
 }
 
 /**
- * Copiloto de sugerencias con las claves del propio negocio. Mientras no se
- * active, las sugerencias siguen saliendo del servicio de la plataforma
- * (n8n); el analista de leads sigue allí en cualquier caso.
+ * Configuración de IA de las sugerencias de respuesta (el copiloto del chat),
+ * no de toda la IA del CRM: el análisis del lead y la voz tienen la suya.
+ * Mientras no se active, las sugerencias siguen saliendo del servicio de la
+ * plataforma (n8n). Las claves son por proveedor y del negocio: si otra
+ * función de IA llega a usarlas, se comparten.
  */
 export function AiIntegrationCard() {
   const { data: status, isLoading, isError } = useAiProviders()
@@ -118,7 +120,7 @@ export function AiIntegrationCard() {
 
   if (isLoading || !status) {
     return (
-      <IntegrationCard id="ia" icon={Sparkles} title="Asistente IA" description="Cargando…" state={isError ? 'error' : 'unconfigured'} />
+      <IntegrationCard id="ia-sugerencias" icon={Sparkles} title="Sugerencias con IA" description="Cargando…" state={isError ? 'error' : 'unconfigured'} />
     )
   }
 
@@ -145,10 +147,10 @@ export function AiIntegrationCard() {
 
   return (
     <IntegrationCard
-      id="ia"
+      id="ia-sugerencias"
       icon={Sparkles}
-      title="Asistente IA"
-      description="El copiloto de sugerencias con tus propias claves de Gemini u OpenAI. Si el modelo principal falla, responde el secundario."
+      title="Sugerencias con IA"
+      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo principal falla, responde el secundario. Otras funciones de IA se configuran aparte."
       state={state}
       stateLabel={stateLabel}
     >
@@ -163,14 +165,14 @@ export function AiIntegrationCard() {
           <div>
             <label htmlFor="ai-primary-model" className={labelClass}>Modelo principal</label>
             <Select id="ai-primary-model" aria-label="Modelo principal" value={status.primary_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_primary_model: value }, 'Modelo principal actualizado')}>
+              onValueChange={value => saveValues({ ai_suggestions_primary_model: value }, 'Modelo principal actualizado')}>
               {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
             </Select>
           </div>
           <div>
             <label htmlFor="ai-fallback-model" className={labelClass}>Modelo secundario (si el principal falla)</label>
             <Select id="ai-fallback-model" aria-label="Modelo secundario" value={status.fallback_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_fallback_model: value }, 'Modelo secundario actualizado')}>
+              onValueChange={value => saveValues({ ai_suggestions_fallback_model: value }, 'Modelo secundario actualizado')}>
               {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
             </Select>
           </div>
