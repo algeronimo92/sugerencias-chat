@@ -3305,6 +3305,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/media/{filename}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Media Thumbnail
+         * @description Versión reducida de una imagen (WebP, máximo 320 px) para las listas de la biblioteca.
+         */
+        get: operations["get_media_thumbnail_media__filename__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -13171,6 +13191,37 @@ export interface operations {
             header?: {
                 Range?: string | null;
             };
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_media_thumbnail_media__filename__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
             path: {
                 filename: string;
             };

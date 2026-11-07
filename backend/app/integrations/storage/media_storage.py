@@ -584,6 +584,95 @@ def image_dimensions(media_url: str) -> tuple[int, int] | None:
     return None
 
 
+# Miniaturas de la biblioteca: la lista de archivos mostraba cada imagen con
+# el original (PNGs de 1,7 MB), así que abrir "Adjuntos" con 30 archivos
+# bajaba decenas de MB. La miniatura se genera una sola vez, se guarda junto
+# al original en el mismo almacenamiento y cabe en un cuadro de 320 px: la
+# tarjeta la pinta a 128×96, así que sobra incluso en pantallas 2x.
+THUMBNAIL_BOX = (320, 320)
+THUMBNAIL_SUFFIX = ".thumb.webp"
+THUMBNAIL_CONTENT_TYPE = "image/webp"
+THUMBNAIL_QUALITY = 80
+
+
+class ThumbnailUnavailableError(MediaNotFoundError):
+    """El archivo existe pero no tiene miniatura: no es imagen o no se pudo leer."""
+
+
+@dataclass(frozen=True)
+class MediaThumbnail:
+    content_type: str
+    data: bytes
+
+
+def thumbnail_media_url(media_url: str) -> str:
+    """URL del derivado reducido de una imagen (``/media/<archivo>.thumb.webp``)."""
+    return f"/media/{_media_filename(media_url)}{THUMBNAIL_SUFFIX}"
+
+
+def is_thumbnail_url(media_url: str) -> bool:
+    return _media_filename(media_url).endswith(THUMBNAIL_SUFFIX)
+
+
+def _is_image(filename: str, content_type: str) -> bool:
+    if content_type.lower().startswith("image/"):
+        return True
+    # Los archivos locales se tipan por extensión y los antiguos de MinIO
+    # pueden venir como octet-stream: la extensión decide igual que al guardar.
+    return _media_category(filename) == "images"
+
+
+def render_image_thumbnail(data: bytes) -> bytes:
+    """Reduce una imagen al cuadro de miniatura y la devuelve como WebP.
+
+    Respeta la orientación EXIF (las fotos de celular vienen giradas por
+    metadato) y conserva la transparencia; de un GIF animado sale el primer
+    cuadro. Lanza ``ThumbnailUnavailableError`` si Pillow no entiende el
+    archivo."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    try:
+        with Image.open(BytesIO(data)) as img:
+            img = ImageOps.exif_transpose(img) or img
+            has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+            img = img.convert("RGBA" if has_alpha else "RGB")
+            img.thumbnail(THUMBNAIL_BOX)
+            buffer = BytesIO()
+            img.save(buffer, format="WEBP", quality=THUMBNAIL_QUALITY, method=4)
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
+        # DecompressionBombError: un PNG de 25 MB puede ser gigante en píxeles;
+        # mejor sin miniatura que tumbar el proceso por memoria.
+        raise ThumbnailUnavailableError(f"No se pudo generar la miniatura: {type(exc).__name__}") from exc
+    return buffer.getvalue()
+
+
+def get_or_create_thumbnail(media_url: str) -> MediaThumbnail:
+    """Devuelve la miniatura de una imagen, generándola y guardándola la
+    primera vez. Pedir la miniatura de una miniatura devuelve la misma.
+
+    Lanza ``MediaNotFoundError`` si el original no existe y
+    ``ThumbnailUnavailableError`` si no es una imagen o no se pudo reducir."""
+    if is_thumbnail_url(media_url):
+        return MediaThumbnail(THUMBNAIL_CONTENT_TYPE, read_media_bytes(media_url))
+
+    thumbnail_url = thumbnail_media_url(media_url)
+    try:
+        info = stat_media(thumbnail_url)
+    except MediaNotFoundError:
+        info = None
+    if info is not None:
+        return MediaThumbnail(THUMBNAIL_CONTENT_TYPE, b"".join(iter_media_stat(info, thumbnail_url, 0, info.size)))
+
+    original = stat_media(media_url)
+    if not _is_image(_media_filename(media_url), original.content_type):
+        raise ThumbnailUnavailableError(f"No es una imagen: {media_url}")
+    data = render_image_thumbnail(b"".join(iter_media_stat(original, media_url, 0, original.size)))
+    # Dos pedidos simultáneos pueden generarla a la vez: escriben el mismo
+    # contenido con el mismo nombre, así que no hace falta un lock.
+    save_media_bytes(_media_filename(thumbnail_url), data, THUMBNAIL_CONTENT_TYPE)
+    return MediaThumbnail(THUMBNAIL_CONTENT_TYPE, data)
+
+
 def _mp4_boxes(data: bytes, start: int, end: int):
     """Itera los boxes ISO BMFF de un rango: (tipo, inicio_payload, fin)."""
     pos = start
@@ -702,6 +791,13 @@ def save_media_bytes(filename: str, data: bytes, content_type: str) -> str:
 
 
 def delete_media(media_url: str) -> None:
+    """Borra el archivo y, si era una imagen con miniatura, también esa miniatura."""
+    _delete_stored(media_url)
+    if not is_thumbnail_url(media_url):
+        _delete_stored(thumbnail_media_url(media_url))
+
+
+def _delete_stored(media_url: str) -> None:
     if storage_backend() == "local":
         _local_path(media_url).unlink(missing_ok=True)
         return

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.integrations.storage.media_storage import (
     MediaNotFoundError,
     MediaStorageError,
+    get_or_create_thumbnail,
     iter_media_stat,
     stat_media,
 )
@@ -95,6 +96,32 @@ def get_media_file(
         status_code=status_code,
         headers=headers,
         media_type=info.content_type,
+    )
+
+
+@files_router.get("/media/{filename}/thumbnail")
+def get_media_thumbnail(filename: str):
+    """Versión reducida de una imagen (WebP, máximo 320 px) para las listas de la biblioteca."""
+    # Mismas reglas de acceso que el original (el router exige sesión) y sin
+    # rangos: una miniatura pesa unos KB y se entrega entera.
+    try:
+        thumbnail = get_or_create_thumbnail(f"/media/{filename}")
+    except MediaNotFoundError:
+        # Cubre también archivos que no son imagen: el frontend vuelve al
+        # original cuando no hay miniatura.
+        raise HTTPException(404, "Miniatura no disponible")
+    except MediaStorageError as exc:
+        raise HTTPException(503, str(exc))
+    return Response(
+        content=thumbnail.data,
+        media_type=thumbnail.content_type,
+        headers={
+            # Los nombres son UUID: el contenido de una URL nunca cambia, así
+            # que el navegador puede guardarla un día sin riesgo. Sigue siendo
+            # privada: es contenido de clientes y exige sesión.
+            "Cache-Control": "private, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

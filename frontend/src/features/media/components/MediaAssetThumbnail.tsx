@@ -8,7 +8,7 @@
 import { FileText, Film, Images, Music2, Play } from 'lucide-react'
 import { forwardRef, useState, type ReactNode } from 'react'
 import { cn } from '../../../shared/utils/cn'
-import { resolveMediaUrl } from '../../../shared/utils/mediaUrl'
+import { resolveMediaUrl, thumbnailUrl } from '../../../shared/utils/mediaUrl'
 import { formatMediaDuration, mediaAssetKind, mediaExtensionLabel } from '../domain/assets'
 import type { MediaAsset, MediaAssetKind } from '../types'
 
@@ -22,8 +22,21 @@ interface PreviewProps {
   onError: () => void
 }
 
+/**
+ * Pide la miniatura del backend (unos KB) en vez del original: una lista de
+ * 30 fotos bajaba decenas de MB. Si la miniatura falla (404 porque no se pudo
+ * generar, backend viejo) se reintenta con el original antes de darse por
+ * vencida.
+ */
 function ImagePreview({ asset, url, onError }: PreviewProps) {
-  return <img src={url} alt={asset.filename} loading="lazy" onError={onError} className="h-full w-full object-cover" />
+  const thumbnail = thumbnailUrl(asset.media_url)
+  const [useOriginal, setUseOriginal] = useState(thumbnail === null)
+  const src = useOriginal ? url : thumbnail ?? url
+  const handleError = () => {
+    if (useOriginal) onError()
+    else setUseOriginal(true)
+  }
+  return <img src={src} alt={asset.filename} loading="lazy" onError={handleError} className="h-full w-full object-cover" />
 }
 
 /** Primer cuadro del video con ícono de play y, cuando se conoce, su duración. */
