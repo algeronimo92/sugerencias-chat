@@ -68,11 +68,11 @@ describe('AiResourcesPanel', () => {
     // Lo más reciente primero: el video (3 de octubre) antes que el flyer (1 de octubre).
     expect(rows[0]).toHaveTextContent('VID-20251003-WA0012.mp4')
     expect(within(rows[0]).getByRole('button', { name: 'Ver VID-20251003-WA0012.mp4' })).toBeInTheDocument()
-    expect(rows[0]).toHaveTextContent('Oculto para el asistente')
+    expect(rows[0]).toHaveTextContent('Falta describirlo')
     expect(rows[0]).toHaveTextContent(/Video · 1[.,]2 MB/)
 
     expect(within(rows[1]).getByRole('img', { name: 'promo-octubre.jpg' })).toBeInTheDocument()
-    expect(rows[1]).toHaveTextContent('Visible para el asistente')
+    expect(rows[1]).toHaveTextContent('La IA puede sugerirlo')
 
     // Un PDF no tiene visor: se abre en otra pestaña.
     const link = within(rows[2]).getByRole('link', { name: 'Abrir catalogo.pdf en otra pestaña' })
@@ -107,9 +107,9 @@ describe('AiResourcesPanel', () => {
     const user = userEvent.setup()
     renderPanel()
 
-    const pending = await screen.findByRole('button', { name: /Sin describir/ })
+    const pending = await screen.findByRole('button', { name: /Por describir/ })
     expect(pending).toHaveTextContent('3')
-    expect(screen.getByRole('button', { name: /Visibles/ })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /Listos/ })).toHaveTextContent('1')
 
     await user.click(pending)
     const rows = screen.getAllByRole('listitem')
@@ -130,7 +130,7 @@ describe('AiResourcesPanel', () => {
 
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/ai/resources/2', { ai_description: 'Testimonio de una paciente de botox' }))
     expect(await within(rows[0]).findByText('Guardado')).toBeInTheDocument()
-    expect(rows[0]).toHaveTextContent('Visible para el asistente')
+    expect(rows[0]).toHaveTextContent('La IA puede sugerirlo')
   })
 
   it('no llama al backend si la descripción no cambió', async () => {

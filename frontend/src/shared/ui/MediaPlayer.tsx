@@ -72,14 +72,16 @@ function pauseOtherMedia(current: HTMLMediaElement) {
 }
 
 function AudioPlayButton({ isPlaying, isLoading, onClick, label }: { isPlaying: boolean; isLoading: boolean; onClick: () => void; label: string }) {
+  // Se puede pulsar aunque aún no haya metadatos: en Safari iOS no se
+  // precarga nada hasta que el usuario pide reproducir, y un botón
+  // deshabilitado mientras tanto dejaba el audio inservible.
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={isLoading}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white shadow-sm transition-colors hover:bg-wa-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-65"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white shadow-sm transition-colors hover:bg-wa-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 focus-visible:ring-offset-2"
     >
       {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
     </button>
