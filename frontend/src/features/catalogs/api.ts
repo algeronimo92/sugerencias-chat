@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, LeadService, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, LeadService, ServicePackage, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -29,10 +29,33 @@ export async function updateLeadService({ id, ...values }: {
       name?: string
       is_active?: boolean
       description?: string
-      price?: string | null
       price_notes?: string
     }): Promise<LeadService> {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
+}
+
+export interface ServicePackageInput {
+  name: string
+  sessions: number
+  price: string
+  notes?: string
+}
+
+export async function createServicePackage({ serviceId, ...values }: { serviceId: number } & ServicePackageInput): Promise<ServicePackage> {
+  return (await client.post<ApiResponse<'/api/services/{service_id}/packages', 'post'>>(`/api/services/${serviceId}/packages`, values)).data
+}
+
+export async function updateServicePackage({ serviceId, id, ...values }: {
+      serviceId: number
+      id: number
+      name?: string
+      sessions?: number
+      price?: string
+      notes?: string
+      position?: number
+      is_active?: boolean
+    }): Promise<ServicePackage> {
+  return (await client.patch<ApiResponse<'/api/services/{service_id}/packages/{package_id}', 'patch'>>(`/api/services/${serviceId}/packages/${id}`, values)).data
 }
 
 export async function fetchCustomFields(entityType: CustomFieldEntity, includeInactive: boolean): Promise<CustomFieldDefinition[]> {

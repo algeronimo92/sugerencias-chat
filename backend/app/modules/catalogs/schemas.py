@@ -19,13 +19,44 @@ class TagUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ServicePackageItem(BaseModel):
+    """Presentación vendible de un servicio (1 sesión, pack x3...)."""
+
+    id: int
+    service_id: int
+    name: str
+    sessions: int
+    price: Decimal
+    notes: str | None = None
+    position: int
+    is_active: bool = True
+
+
+class ServicePackageCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    sessions: int = Field(default=1, ge=1, le=1000)
+    # Precio total del paquete en la moneda del perfil del negocio.
+    price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=500)
+    position: int | None = Field(default=None, ge=0, le=10000)
+
+
+class ServicePackageUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    sessions: int | None = Field(default=None, ge=1, le=1000)
+    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=500)
+    position: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = None
+
+
 class LeadServiceItem(BaseModel):
     id: int
     name: str
     is_active: bool = True
     description: str | None = None
-    price: Decimal | None = None
     price_notes: str | None = None
+    packages: list[ServicePackageItem] = Field(default_factory=list)
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     created_at: str | None = None
@@ -38,10 +69,9 @@ class LeadServiceCreate(BaseModel):
 class LeadServiceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
-    # Catálogo que consulta el asistente IA. La moneda es la del perfil del
-    # negocio; ``price_notes`` cubre packs, promociones o rangos.
+    # Catálogo que consulta el asistente IA. El precio vive en los paquetes;
+    # ``price_notes`` queda para condiciones generales (promociones, vigencia).
     description: str | None = Field(default=None, max_length=1000)
-    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     price_notes: str | None = Field(default=None, max_length=500)
 
 

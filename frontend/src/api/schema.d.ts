@@ -1837,6 +1837,40 @@ export interface paths {
         patch: operations["patch_service_api_services__service_id__patch"];
         trace?: never;
     };
+    "/api/services/{service_id}/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Service Package */
+        post: operations["post_service_package_api_services__service_id__packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/{service_id}/packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Service Package */
+        patch: operations["patch_service_package_api_services__service_id__packages__package_id__patch"];
+        trace?: never;
+    };
     "/api/lead-stages": {
         parameters: {
             query?: never;
@@ -4973,10 +5007,10 @@ export interface components {
             is_active: boolean;
             /** Description */
             description?: string | null;
-            /** Price */
-            price?: string | null;
             /** Price Notes */
             price_notes?: string | null;
+            /** Packages */
+            packages?: components["schemas"]["ServicePackageItem"][];
             /** Created By User Id */
             created_by_user_id?: number | null;
             /** Created By Name */
@@ -4992,8 +5026,6 @@ export interface components {
             is_active?: boolean | null;
             /** Description */
             description?: string | null;
-            /** Price */
-            price?: number | string | null;
             /** Price Notes */
             price_notes?: string | null;
         };
@@ -5757,6 +5789,62 @@ export interface components {
             text?: string | null;
             /** Parameters */
             parameters?: string[];
+        };
+        /** ServicePackageCreate */
+        ServicePackageCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Sessions
+             * @default 1
+             */
+            sessions: number;
+            /** Price */
+            price: number | string;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position?: number | null;
+        };
+        /**
+         * ServicePackageItem
+         * @description Presentación vendible de un servicio (1 sesión, pack x3...).
+         */
+        ServicePackageItem: {
+            /** Id */
+            id: number;
+            /** Service Id */
+            service_id: number;
+            /** Name */
+            name: string;
+            /** Sessions */
+            sessions: number;
+            /** Price */
+            price: string;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /** ServicePackageUpdate */
+        ServicePackageUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Sessions */
+            sessions?: number | null;
+            /** Price */
+            price?: number | string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /**
          * SessionAuthMethod
@@ -10029,6 +10117,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadServiceItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_service_package_api_services__service_id__packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePackageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePackageItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_service_package_api_services__service_id__packages__package_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+                package_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePackageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePackageItem"];
                 };
             };
             /** @description Validation Error */

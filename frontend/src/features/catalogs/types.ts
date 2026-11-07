@@ -8,15 +8,31 @@ export interface Tag {
   created_at?: string | null
 }
 
+/**
+ * Presentación vendible de un servicio (1 sesión, pack x3...). El cliente llega
+ * con un problema; el vendedor cierra con el paquete que lo resuelve.
+ */
+export interface ServicePackage {
+  id: number
+  service_id: number
+  name: string
+  sessions: number
+  /** Precio total del paquete, decimal serializado como texto ("400.00"). */
+  price: string
+  notes?: string | null
+  position: number
+  is_active: boolean
+}
+
 export interface LeadService {
   id: number
   name: string
   is_active?: boolean
   /** Catálogo que consulta el asistente IA; la moneda es la del perfil del negocio. */
   description?: string | null
-  /** Decimal serializado como texto ("150.00"). */
-  price?: string | null
+  /** Condiciones generales (promociones, vigencia). El precio vive en los paquetes. */
   price_notes?: string | null
+  packages?: ServicePackage[]
   created_by_user_id?: number | null
   created_by_name?: string | null
   created_at?: string | null

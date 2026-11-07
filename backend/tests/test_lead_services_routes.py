@@ -3,9 +3,14 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.modules.catalogs.schemas import LeadServiceCreate, LeadServiceUpdate
+from app.modules.catalogs.schemas import (
+    LeadServiceCreate,
+    LeadServiceUpdate,
+    ServicePackageCreate,
+    ServicePackageUpdate,
+)
 from app.modules.catalogs import services_api as lead_services
-from app.modules.catalogs.errors import LeadServiceAlreadyExistsError
+from app.modules.catalogs.errors import LeadServiceAlreadyExistsError, ServicePackageAlreadyExistsError
 from app.modules.catalogs.public import rename_service_references as _rename_service_references
 
 
@@ -115,3 +120,100 @@ def test_rename_service_updates_only_structured_automation_references():
     assert renamed["conditions"]["service_contains"] == "Botox premium"
     assert renamed["nodes"][0]["data"]["action"]["service"] == "Botox premium"
     assert renamed["nodes"][1]["data"]["action"]["text"] == "Consulta por Botox"
+
+
+ADMIN = SimpleNamespace(id=1, role="admin")
+
+
+@pytest.mark.asyncio
+async def test_create_package_normalizes_name_and_keeps_price(monkeypatch):
+    received = None
+
+    async def fake_create(service_id, values):
+        nonlocal received
+        received = (service_id, values)
+        return {"id": 9, "service_id": service_id, "position": 0, "is_active": True, **values}
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    result = await lead_services.post_service_package(
+        4,
+        ServicePackageCreate(name="  Pack   x3 ", sessions=3, price="400", notes="  "),
+        ADMIN,
+    )
+
+    assert received == (4, {"name": "Pack x3", "sessions": 3, "price": 400, "notes": None, "position": None})
+    assert result["name"] == "Pack x3"
+
+
+@pytest.mark.asyncio
+async def test_create_package_for_missing_service_is_404(monkeypatch):
+    async def fake_create(_service_id, _values):
+        return None
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.post_service_package(99, ServicePackageCreate(name="x1", price="100"), ADMIN)
+
+    assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_package_reports_duplicate_name_within_service(monkeypatch):
+    async def fake_create(_service_id, _values):
+        raise ServicePackageAlreadyExistsError
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.post_service_package(4, ServicePackageCreate(name="Pack x3", price="400"), ADMIN)
+
+    assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_update_package_sends_only_changed_fields(monkeypatch):
+    received = None
+
+    async def fake_update(service_id, package_id, values):
+        nonlocal received
+        received = (service_id, package_id, values)
+        return {"id": package_id, "service_id": service_id, "name": "Pack x3", "sessions": 3,
+                "price": values["price"], "position": 1, "is_active": True}
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    await lead_services.patch_service_package(4, 9, ServicePackageUpdate(price="380"), ADMIN)
+
+    assert received == (4, 9, {"price": 380})
+
+
+@pytest.mark.asyncio
+async def test_update_package_cannot_drop_price(monkeypatch):
+    called = False
+
+    async def fake_update(*_args):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.patch_service_package(4, 9, ServicePackageUpdate(price=None), ADMIN)
+
+    assert error.value.status_code == 400
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_update_package_of_other_service_is_404(monkeypatch):
+    async def fake_update(_service_id, _package_id, _values):
+        return None
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.patch_service_package(4, 9, ServicePackageUpdate(is_active=False), ADMIN)
+
+    assert error.value.status_code == 404

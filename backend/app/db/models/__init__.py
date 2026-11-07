@@ -8,7 +8,7 @@ from app.db.models.conversations import WspMessage, WhatsAppMessageEvent, WhatsA
 from app.db.models.platform import WhatsAppPricingDaily
 from app.db.models.settings import AppSetting
 from app.db.models.auth import User, AuthLoginThrottle, AdminTotp, AdminTotpRecoveryCode, AuthActionToken, EmailNotificationLog, TrustedDevice, AuthSession
-from app.db.models.catalogs import LeadTag, LeadService, TemplateCategory, CustomFieldDefinition, MessageTemplate, TemplateUserState, TemplateAttachment
+from app.db.models.catalogs import LeadTag, LeadService, ServicePackage, TemplateCategory, CustomFieldDefinition, MessageTemplate, TemplateUserState, TemplateAttachment
 from app.db.models.notifications import UserNotification, PushSubscription
 from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
 from app.db.models.appointments import Appointment
@@ -52,6 +52,7 @@ __all__ = [
     'LeadStage',
     'LeadTag',
     'LeadService',
+    'ServicePackage',
     'TemplateCategory',
     'LeadTagAssignment',
     'LeadActivity',

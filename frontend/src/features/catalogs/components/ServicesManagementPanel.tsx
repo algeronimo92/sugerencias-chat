@@ -7,11 +7,11 @@ import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCreateLeadService, useLeadServices, useUpdateLeadService } from '../hooks/useLeadServices'
 import type { LeadService } from '../types'
+import { ServicePackagesEditor } from './ServicePackagesEditor'
 
-/** Campos editables de una fila; el precio viaja como texto hasta guardarlo. */
+/** Campos editables de una fila. El precio no está: vive en los paquetes. */
 interface ServiceDraft {
   name: string
-  price: string
   price_notes: string
   description: string
 }
@@ -19,18 +19,16 @@ interface ServiceDraft {
 function draftFrom(service: LeadService): ServiceDraft {
   return {
     name: service.name,
-    price: service.price ?? '',
     price_notes: service.price_notes ?? '',
     description: service.description ?? '',
   }
 }
 
-/** Solo lo que cambió: renombrar no debe reescribir el precio ni al revés. */
+/** Solo lo que cambió: renombrar no debe reescribir la descripción ni al revés. */
 function changedFields(service: LeadService, draft: ServiceDraft) {
   const original = draftFrom(service)
-  const changes: { name?: string; price?: string | null; price_notes?: string; description?: string } = {}
+  const changes: { name?: string; price_notes?: string; description?: string } = {}
   if (draft.name.trim() !== original.name) changes.name = draft.name.trim()
-  if (draft.price.trim() !== original.price) changes.price = draft.price.trim() || null
   if (draft.price_notes.trim() !== original.price_notes) changes.price_notes = draft.price_notes.trim()
   if (draft.description.trim() !== original.description) changes.description = draft.description.trim()
   return changes
@@ -86,15 +84,9 @@ export function ServicesManagementPanel() {
       setError('El nombre del servicio es obligatorio')
       return
     }
-    if (changes.price && !(Number(changes.price) >= 0)) {
-      setError('El precio debe ser un número mayor o igual a cero')
-      return
-    }
     setError(null)
     updateService.mutate({ id: service.id, ...changes }, {
       onSuccess: updated => {
-        // El backend normaliza el precio ("150" -> "150.00"): sin esto la
-        // fila seguiría marcada como modificada.
         setDrafts(current => ({ ...current, [service.id]: draftFrom(updated) }))
         toast.success('Servicio actualizado')
       },
@@ -115,7 +107,7 @@ export function ServicesManagementPanel() {
     <CatalogPanel
       icon={Sparkles}
       title="Administrar servicios"
-      description="Estos servicios aparecen al crear o editar un lead y en las automatizaciones. El asistente IA cotiza con su precio y descripción. Los inactivos permanecen en el historial."
+      description="Un servicio es el problema que el cliente quiere resolver; lo que se vende son sus paquetes (1 sesión, pack x3…). Los servicios aparecen al crear o editar un lead y en las automatizaciones; el asistente IA cotiza con los paquetes y la descripción. Los inactivos permanecen en el historial."
       items={services}
       getId={service => service.id}
       getName={service => service.name}
@@ -162,35 +154,23 @@ export function ServicesManagementPanel() {
             aria-label={`Nombre de ${service.name}`}
             className="w-full bg-white py-1.5 dark:bg-wa-panel-dark"
           />
-          <div className="mt-2 grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="0.01"
-              value={draftOf(service).price}
-              onChange={event => setDraftField(service, 'price', event.target.value)}
-              placeholder="Precio"
-              aria-label={`Precio de ${service.name}`}
-              className="bg-white py-1.5 dark:bg-wa-panel-dark"
-            />
-            <Input
-              value={draftOf(service).price_notes}
-              onChange={event => setDraftField(service, 'price_notes', event.target.value)}
-              maxLength={500}
-              placeholder="Packs o promociones (opcional)"
-              aria-label={`Notas de precio de ${service.name}`}
-              className="bg-white py-1.5 dark:bg-wa-panel-dark"
-            />
-          </div>
           <Input
             value={draftOf(service).description}
             onChange={event => setDraftField(service, 'description', event.target.value)}
             maxLength={1000}
-            placeholder="Qué es y para quién es (lo usa el asistente IA)"
+            placeholder="Qué problema resuelve y para quién es (lo usa el asistente IA)"
             aria-label={`Descripción de ${service.name}`}
             className="mt-2 w-full bg-white py-1.5 dark:bg-wa-panel-dark"
           />
+          <Input
+            value={draftOf(service).price_notes}
+            onChange={event => setDraftField(service, 'price_notes', event.target.value)}
+            maxLength={500}
+            placeholder="Condiciones: promociones, vigencia (opcional)"
+            aria-label={`Notas de precio de ${service.name}`}
+            className="mt-2 w-full bg-white py-1.5 dark:bg-wa-panel-dark"
+          />
+          <ServicePackagesEditor service={service} onError={setError} />
           <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
             Creado por {service.created_by_name ?? 'Sistema'}
             {service.created_at ? ` · ${new Date(service.created_at).toLocaleDateString('es-PE')}` : ''}

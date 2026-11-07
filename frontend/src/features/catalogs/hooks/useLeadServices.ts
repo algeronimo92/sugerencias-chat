@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, fetchLeadServices, updateLeadService } from '../api'
+import { createLeadService, createServicePackage, fetchLeadServices, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -22,6 +22,23 @@ export function useUpdateLeadService() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateLeadService,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
+  })
+}
+
+/** Los paquetes viajan dentro del servicio: cualquier cambio refresca la lista. */
+export function useCreateServicePackage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createServicePackage,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
+  })
+}
+
+export function useUpdateServicePackage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateServicePackage,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
   })
 }
