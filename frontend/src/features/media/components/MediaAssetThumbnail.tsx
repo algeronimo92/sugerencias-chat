@@ -32,7 +32,9 @@ function VideoPreview({ asset, url, onError }: PreviewProps) {
   return (
     <>
       <video
-        src={url}
+        // Safari no pinta ningún cuadro con preload="metadata" hasta que se
+        // reproduce; pedir el instante 0.001 lo obliga a mostrar el primero.
+        src={`${url}#t=0.001`}
         preload="metadata"
         muted
         playsInline
@@ -125,9 +127,10 @@ export const MediaAssetThumbnail = forwardRef<HTMLButtonElement, Props>(function
     className ?? 'h-24 w-32',
   )
 
-  // Sin vista previa no hay nada que ver en el visor: la miniatura deja de ser botón.
+  // Aunque la miniatura no cargue, el visor sigue abriéndose: ahí el
+  // reproductor completo avisa si el archivo de verdad no se puede ver.
   return (
-    <ThumbnailFrame ref={ref} filename={asset.filename} href={href} onOpen={showsMedia ? onOpen : undefined} className={frameClass}>
+    <ThumbnailFrame ref={ref} filename={asset.filename} href={href} onOpen={onOpen} className={frameClass}>
       {content}
     </ThumbnailFrame>
   )
