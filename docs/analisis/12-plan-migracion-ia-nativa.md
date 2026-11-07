@@ -52,15 +52,19 @@ No-objetivos (por ahora):
 
 ## 3. Decisiones de diseño
 
-1. **Proveedores de modelo**: Gemini principal y OpenAI de respaldo, como hoy. Se
-   abstraen tras un puerto `LlmClient` (`complete_structured(system, user, schema,
-   tools)`) con dos adaptadores en `app/integrations/llm/{gemini,openai}.py`. La
-   salida estructurada nativa de cada proveedor reemplaza al parser con autoarreglo;
-   si la respuesta no valida contra Pydantic, un único reintento con el error adjunto.
-2. **Claves a nivel plataforma** (`platform_settings`): `gemini_api_key`,
-   `openai_api_key`, `ai_native_default_model` y `ai_native_fallback_model`. Son de la
-   instalación, como la app de Meta. Con "Probar conexión" en el panel de plataforma,
-   igual que el ERP.
+1. **Proveedores seleccionables, principal y secundario**, como en el agente de n8n.
+   Un puerto `LlmClient` (`complete_structured(system, user, schema, tools)`) con un
+   adaptador por proveedor en `app/integrations/llm/{gemini,openai}.py` (ampliable a
+   otros). En el panel de plataforma se eligen el **proveedor y modelo principal** y
+   el **secundario**; el secundario entra solo cuando el principal falla (error de
+   red, cuota, respuesta inválida tras un reintento). Cada job guarda qué modelo
+   respondió. La salida estructurada nativa de cada proveedor reemplaza al parser con
+   autoarreglo del workflow.
+2. **Claves por API key, a nivel plataforma** (`platform_settings`, cifradas como
+   las de Meta): `gemini_api_key`, `openai_api_key`, más `ai_primary_model` y
+   `ai_fallback_model` (valores `proveedor:modelo`, p. ej. `gemini:gemini-2.5-flash`,
+   `openai:gpt-5.6-terra`). Con "Probar conexión" por proveedor en el panel, igual que
+   el ERP: una llamada mínima que confirma que la clave y el modelo responden.
 3. **Interruptor por negocio**: columna `organizations.ai_provider`
    (`'n8n' | 'native'`, default `'n8n'`), editable desde el panel de plataforma junto a
    `ai_enabled` y la cuota. `composition.py` conecta un `RoutingAiProvider` que lee la
@@ -83,6 +87,61 @@ No-objetivos (por ahora):
    `tokens_in`, `tokens_out` y `model` para medir costo por negocio desde el panel de
    plataforma (fase 4).
 
+## 3b. Conocimiento: dónde se sube y cómo se construye el RAG
+
+### Hoy
+
+- **Dónde se sube**: Asistente IA › pestaña *Conocimiento* (`features/ai`). Cada
+  documento tiene título y texto (hasta 100.000 caracteres); se escribe a mano o se
+  importa un `.txt`/`.md`. Máximo 200 documentos por negocio. Son generales: no se
+  asocian a un servicio.
+- **Cómo se indexa** (`knowledge_service.chunk_text`): al guardar, el texto se parte
+  por párrafos en fragmentos de ~1.200 caracteres con 150 de solapamiento (un párrafo
+  más largo se corta por oraciones). Los fragmentos van a `knowledge_chunks` con un
+  índice GIN de texto completo en español (`to_tsvector('spanish')`). Editar el
+  documento regenera todos sus fragmentos.
+- **Cómo se recupera** (`knowledge_search.search_knowledge_chunks`): la consulta que
+  formula el modelo se convierte con `websearch_to_tsquery('spanish')`; se rankean
+  los fragmentos por `ts_rank_cd` y se devuelven los 5 mejores con título y fuente.
+  Si no hay coincidencia léxica, cae a `ILIKE` sobre contenido y título.
+- **Qué más entra al prompt sin pasar por el RAG**: el perfil del negocio (qué
+  ofrece, ubicación, horarios, moneda, tono, reglas "siempre"/"nunca"), el catálogo con
+  paquetes, las compras del lead y los archivos de la biblioteca marcados como
+  adjuntables con su descripción.
+
+### Lo que cambia con el plan
+
+- **Dónde se sube** (fase 2):
+  - Catálogos › servicio › *Fichas y materiales*: documentos vinculados a ese
+    servicio (ficha clínica, protocolo, contraindicaciones, preguntas frecuentes,
+    objeciones típicas, guion de cierre). Es el lugar natural: quien carga precios
+    carga también lo que la IA debe saber del servicio.
+  - Asistente IA › Conocimiento sigue para lo transversal: políticas de pago y
+    cancelación, garantías, ubicación, promociones vigentes. Gana un selector
+    opcional de servicio y un tipo de documento (ficha, política, FAQ, guion).
+  - Formatos: `.txt`, `.md` y **PDF con texto extraíble** (sin OCR; un PDF escaneado
+    se rechaza con aviso). El ERP no trae descripciones, así que no hay sincronización
+    de fichas desde allí.
+- **Cómo se indexa**: mismo troceado; cada fragmento guarda en `metadata`
+  `service_id`, `service_name` y `document_type`, y el título del documento se
+  antepone al contenido del fragmento al indexar, para que una ficha "Hollywood Peel"
+  se encuentre aunque el párrafo no repita el nombre.
+- **Cómo se recupera** (fase 1 y 2), en este orden:
+  1. *Precarga*: antes de llamar al modelo, consulta armada con el servicio de
+     interés del lead más los últimos 3 mensajes del cliente. Primero fragmentos del
+     servicio de interés (hasta 4), luego el resto (hasta 4). Entra al prompt como
+     sección `<conocimiento>` con título y fuente de cada fragmento.
+  2. *Herramienta* `buscar_conocimiento(query, servicio?)`: el modelo la invoca si
+     necesita algo que no estaba precargado (máximo 3 llamadas por generación);
+     misma búsqueda léxica, misma prioridad por servicio.
+  3. *Presupuesto*: el prompt reserva un máximo de caracteres para conocimiento;
+     si se excede, se recortan los fragmentos de menor ranking, nunca el catálogo ni
+     el historial reciente.
+  4. *Trazabilidad*: el job guarda qué fragmentos entraron (ids) para auditar por qué
+     la IA dijo lo que dijo.
+- **Embeddings** quedan para la fase 5: el troceado y los metadatos ya quedan listos
+  para añadir una columna vectorial sin reindexar a mano.
+
 ## 4. Fases
 
 ### Fase 0 · Preparación (sin cambio funcional)
@@ -90,8 +149,9 @@ No-objetivos (por ahora):
 - Tests de caracterización del proveedor actual: grabar 5 conversaciones de prueba
   (fixtures) con la respuesta JSON esperada para comparar nativo contra n8n.
 - `LlmClient` y adaptadores Gemini/OpenAI con pruebas contra dobles HTTP.
-- Claves y modelos en `platform_settings` + "Probar conexión" (llamada mínima al
-  modelo). `PLATFORM_SETTING_DEFS` crece con cuatro entradas.
+- Claves por proveedor y selección de modelo principal y secundario en
+  `platform_settings` + "Probar conexión" por proveedor (llamada mínima al modelo).
+  `PLATFORM_SETTING_DEFS` crece con cuatro entradas.
 - Migración Alembic: `organizations.ai_provider` (plano de control) y
   `ai_jobs.model`, `tokens_in`, `tokens_out`, `prompt_version` (plano tenant).
 
@@ -118,7 +178,8 @@ Entregable: nada cambia para el usuario; la plataforma puede cargar claves y pro
 - Métrica mínima: duración y modelo por job, en el log estructurado.
 
 Entregable: con `ai_provider = native` un negocio recibe sugerencias sin n8n. Se
-activa primero en un negocio de prueba (clon de DermicaPro) y se comparan 20
+activa primero en un **clon de DermicaPro** (organización nueva con copia del
+catálogo, el conocimiento y 20 conversaciones representativas) y se comparan las
 generaciones contra n8n con las mismas conversaciones.
 
 ### Fase 2 · Conocimiento por servicio y PDF
@@ -127,9 +188,11 @@ generaciones contra n8n con las mismas conversaciones.
 - Catálogos › servicio: "Fichas y materiales" con los documentos vinculados y alta
   directa. Asistente IA › documentos: selector de servicio opcional.
 - Importar PDF (texto extraíble; sin OCR) además de `.txt`/`.md`; límite de 100.000
-  caracteres por documento ya existente.
-- Recuperación: la precarga filtra primero por el servicio de interés del lead y
-  completa con el resto; la herramienta admite `service` opcional.
+  caracteres por documento ya existente. Tipo de documento (ficha, política, FAQ,
+  guion) como metadato.
+- Recuperación según la sección 3b: precarga por servicio de interés, herramienta
+  con filtro opcional por servicio, presupuesto de caracteres y trazabilidad de
+  fragmentos en el job.
 - Prompt: "si el lead ya compró X, no lo cotices de nuevo; propone lo complementario".
 
 Entregable: el negocio sube por servicio lo que la IA debe saber; la calidad de las
@@ -188,12 +251,17 @@ con `ports/`; httpx solo en integraciones o archivos fuera de `domain/`/`applica
 | Catálogo grande en otro negocio | Si supera ~150 servicios, el catálogo pasa a herramienta con búsqueda por nombre (interruptor por tamaño, no por negocio) |
 | PDF con texto no extraíble | Se rechaza con mensaje claro; OCR fuera de alcance |
 
-## 7. Decisiones pendientes del dueño
+## 7. Decisiones tomadas y pendientes
 
-1. Confirmar proveedores y orden: Gemini principal, OpenAI respaldo (como hoy).
-2. Quién carga las claves de plataforma y cuándo (bloquean la fase 0).
-3. Negocio de prueba para la comparación de la fase 1 (propuesta: clon de DermicaPro).
-4. Si la fase 2 va antes que la 3. Recomendación: sí, porque mejora las sugerencias
+Tomadas (2026-11-07):
+1. Proveedor principal y secundario seleccionables desde el panel de plataforma, como
+   en n8n; el secundario entra solo si el principal falla.
+2. Claves por API key, cifradas a nivel plataforma, con prueba de conexión.
+3. La comparación de la fase 1 se hace sobre un clon de DermicaPro.
+
+Pendientes:
+1. Quién carga las claves y cuándo (bloquean la fase 0).
+2. Si la fase 2 va antes que la 3. Recomendación: sí, porque mejora las sugerencias
    que el equipo usa a diario; el analista hoy funciona y puede esperar.
 
 ## 8. Orden y tamaño
