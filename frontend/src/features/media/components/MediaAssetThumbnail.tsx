@@ -10,11 +10,89 @@ import { forwardRef, useState, type ReactNode } from 'react'
 import { cn } from '../../../shared/utils/cn'
 import { resolveMediaUrl } from '../../../shared/utils/mediaUrl'
 import { formatMediaDuration, mediaAssetKind, mediaExtensionLabel } from '../domain/assets'
-import type { MediaAsset } from '../types'
+import type { MediaAsset, MediaAssetKind } from '../types'
 
 const KIND_ICONS = { image: Images, video: Film, audio: Music2, document: FileText } as const
 
 const pillClass = 'pointer-events-none absolute rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-white'
+
+interface PreviewProps {
+  asset: MediaAsset
+  url: string
+  onError: () => void
+}
+
+function ImagePreview({ asset, url, onError }: PreviewProps) {
+  return <img src={url} alt={asset.filename} loading="lazy" onError={onError} className="h-full w-full object-cover" />
+}
+
+/** Primer cuadro del video con ícono de play y, cuando se conoce, su duración. */
+function VideoPreview({ asset, url, onError }: PreviewProps) {
+  const [duration, setDuration] = useState<number | null>(null)
+  return (
+    <>
+      <video
+        src={url}
+        preload="metadata"
+        muted
+        playsInline
+        aria-label={asset.filename}
+        onLoadedMetadata={event => setDuration(event.currentTarget.duration)}
+        onError={onError}
+        className="h-full w-full bg-black object-cover"
+      />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white"><Play className="ml-0.5 h-4 w-4" fill="currentColor" /></span>
+      </span>
+      {duration !== null && Number.isFinite(duration) && (
+        <span className={`${pillClass} bottom-1.5 right-1.5`}>{formatMediaDuration(duration)}</span>
+      )}
+    </>
+  )
+}
+
+/** Audio, documentos y cualquier vista previa que no cargó. */
+function KindPlaceholder({ asset, kind, failed }: { asset: MediaAsset; kind: MediaAssetKind; failed: boolean }) {
+  const Icon = KIND_ICONS[kind]
+  return (
+    <span className="flex h-full w-full flex-col items-center justify-center gap-1 text-wa-muted dark:text-wa-muted-dark">
+      <Icon className="h-8 w-8" strokeWidth={1.5} aria-hidden="true" />
+      {failed
+        ? <span className="text-[10px] font-semibold">Sin vista previa</span>
+        : <span className={`${pillClass} bottom-1.5 right-1.5`}>{mediaExtensionLabel(asset)}</span>}
+    </span>
+  )
+}
+
+interface FrameProps {
+  filename: string
+  onOpen?: () => void
+  href?: string
+  className: string
+  children: ReactNode
+}
+
+/** El marco decide cómo se abre el archivo: enlace, botón o nada. */
+const ThumbnailFrame = forwardRef<HTMLButtonElement, FrameProps>(function ThumbnailFrame(
+  { filename, onOpen, href, className, children },
+  ref,
+) {
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" aria-label={`Abrir ${filename} en otra pestaña`} className={className}>
+        {children}
+      </a>
+    )
+  }
+  if (onOpen) {
+    return (
+      <button ref={ref} type="button" onClick={onOpen} aria-label={`Ver ${filename}`} className={className}>
+        {children}
+      </button>
+    )
+  }
+  return <span className={className}>{children}</span>
+})
 
 interface Props {
   asset: MediaAsset
@@ -31,46 +109,15 @@ export const MediaAssetThumbnail = forwardRef<HTMLButtonElement, Props>(function
   ref,
 ) {
   const [failed, setFailed] = useState(false)
-  const [duration, setDuration] = useState<number | null>(null)
   const kind = mediaAssetKind(asset)
   const url = resolveMediaUrl(asset.media_url) ?? ''
-  const Icon = KIND_ICONS[kind]
   const showsMedia = (kind === 'image' || kind === 'video') && !failed
+  const fail = () => setFailed(true)
 
   let content: ReactNode
-  if (kind === 'image' && !failed) {
-    content = <img src={url} alt={asset.filename} loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
-  } else if (kind === 'video' && !failed) {
-    content = (
-      <>
-        <video
-          src={url}
-          preload="metadata"
-          muted
-          playsInline
-          aria-label={asset.filename}
-          onLoadedMetadata={event => setDuration(event.currentTarget.duration)}
-          onError={() => setFailed(true)}
-          className="h-full w-full bg-black object-cover"
-        />
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white"><Play className="ml-0.5 h-4 w-4" fill="currentColor" /></span>
-        </span>
-        {duration !== null && Number.isFinite(duration) && (
-          <span className={`${pillClass} bottom-1.5 right-1.5`}>{formatMediaDuration(duration)}</span>
-        )}
-      </>
-    )
-  } else {
-    content = (
-      <span className="flex h-full w-full flex-col items-center justify-center gap-1 text-wa-muted dark:text-wa-muted-dark">
-        <Icon className="h-8 w-8" strokeWidth={1.5} aria-hidden="true" />
-        {failed
-          ? <span className="text-[10px] font-semibold">Sin vista previa</span>
-          : <span className={`${pillClass} bottom-1.5 right-1.5`}>{mediaExtensionLabel(asset)}</span>}
-      </span>
-    )
-  }
+  if (!showsMedia) content = <KindPlaceholder asset={asset} kind={kind} failed={failed} />
+  else if (kind === 'image') content = <ImagePreview asset={asset} url={url} onError={fail} />
+  else content = <VideoPreview asset={asset} url={url} onError={fail} />
 
   const frameClass = cn(
     'relative block shrink-0 overflow-hidden rounded-lg bg-wa-field text-left outline-none dark:bg-wa-field-dark',
@@ -78,19 +125,10 @@ export const MediaAssetThumbnail = forwardRef<HTMLButtonElement, Props>(function
     className ?? 'h-24 w-32',
   )
 
-  if (href) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer" aria-label={`Abrir ${asset.filename} en otra pestaña`} className={frameClass}>
-        {content}
-      </a>
-    )
-  }
-  if (onOpen && showsMedia) {
-    return (
-      <button ref={ref} type="button" onClick={onOpen} aria-label={`Ver ${asset.filename}`} className={frameClass}>
-        {content}
-      </button>
-    )
-  }
-  return <span className={frameClass}>{content}</span>
+  // Sin vista previa no hay nada que ver en el visor: la miniatura deja de ser botón.
+  return (
+    <ThumbnailFrame ref={ref} filename={asset.filename} href={href} onOpen={showsMedia ? onOpen : undefined} className={frameClass}>
+      {content}
+    </ThumbnailFrame>
+  )
 })
