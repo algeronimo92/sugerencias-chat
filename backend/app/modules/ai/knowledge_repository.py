@@ -1,5 +1,6 @@
 """Atomic document/chunk persistence; receives validated text and prepared chunks."""
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from app.db.models.ai import KnowledgeChunk, KnowledgeDocument
 from app.modules.ai.errors import KnowledgeLimitError
 from app.db.uow import session_scope
@@ -9,6 +10,7 @@ def _summary(document: KnowledgeDocument, chunk_count: int) -> dict:
         "id": str(document.id),
         "title": document.title,
         "document_type": document.document_type,
+        "service_id": document.service_id,
         "characters": len(document.content or ""),
         "chunk_count": chunk_count,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
@@ -47,16 +49,27 @@ def _chunk_rows(document_id: str, chunks: list[str]) -> list[KnowledgeChunk]:
         for ordinal, chunk in enumerate(chunks)
     ]
 
-async def create_document(title: str, content: str, document_type: str | None, chunks: list[str], max_documents: int) -> dict:
+class UnknownServiceError(ValueError):
+    pass
+
+
+async def create_document(
+    title: str, content: str, document_type: str | None, chunks: list[str], max_documents: int,
+    *, service_id: int | None = None, source: str = "manual",
+) -> dict:
     async with session_scope() as session:
         existing = await session.scalar(select(func.count()).select_from(KnowledgeDocument))
         if (existing or 0) >= max_documents:
             raise KnowledgeLimitError(f"Se alcanzó el máximo de {max_documents} documentos")
         document = KnowledgeDocument(
-            title=title, content=content, document_type=document_type, source="manual"
+            title=title, content=content, document_type=document_type, source=source, service_id=service_id,
         )
         session.add(document)
-        await session.flush()
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError as exc:
+            raise UnknownServiceError("El servicio elegido no existe") from exc
         session.add_all(_chunk_rows(document.id, chunks))
         await session.flush()
         document_id = str(document.id)
@@ -64,14 +77,24 @@ async def create_document(title: str, content: str, document_type: str | None, c
     assert created is not None
     return created
 
-async def update_document(document_id: str, title: str, content: str, chunks: list[str]) -> dict | None:
+async def update_document(
+    document_id: str, title: str, content: str, chunks: list[str],
+    *, document_type: str | None = None, service_id: int | None = None,
+) -> dict | None:
     async with session_scope() as session:
         document = await session.get(KnowledgeDocument, document_id, with_for_update=True)
         if document is None:
             return None
         document.title = title
         document.content = content
+        document.document_type = document_type
+        document.service_id = service_id
         document.updated_at = func.now()
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError as exc:
+            raise UnknownServiceError("El servicio elegido no existe") from exc
         await session.execute(
             delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document_id)
         )

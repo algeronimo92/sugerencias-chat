@@ -12,10 +12,14 @@ export interface AIProfile {
   updated_at?: string | null
 }
 
+export type KnowledgeDocumentType = 'ficha' | 'politica' | 'faq' | 'guion' | 'otro'
+
 export interface KnowledgeDocumentSummary {
   id: string
   title: string
   document_type: string | null
+  /** Servicio del catálogo; null = conocimiento general. */
+  service_id: number | null
   characters: number
   chunk_count: number
   created_at: string
@@ -74,3 +78,5 @@ export interface SuggestionStatus {
 
 export type AiProvidersStatus = ApiSchemas['AiProvidersStatus']
 export type AiProviderTestResult = ApiSchemas['AiProviderTestResult']
+
+export type KnowledgePdfImport = ApiSchemas['KnowledgePdfImport']

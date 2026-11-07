@@ -6,7 +6,8 @@ biblioteca puede proponer el asistente como adjuntos. Solo administradores.
 """
 
 from __future__ import annotations
-from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, AiProvidersStatus, AiProviderTestRequest, AiProviderTestResult, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, AIResourceBody)
+from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, AiProvidersStatus, AiProviderTestRequest, AiProviderTestResult, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, KnowledgePdfImport, KnowledgePdfImportRequest, AIResourceBody)
+from app.modules.ai.knowledge_import import PdfImportError, import_pdf
 
 from uuid import UUID
 
@@ -60,10 +61,19 @@ async def read_knowledge_document(document_id: UUID):
     return document
 
 
+@router.post("/knowledge/import-pdf", response_model=KnowledgePdfImport)
+async def import_knowledge_pdf(body: KnowledgePdfImportRequest):
+    """Extrae el texto de un PDF para revisarlo antes de guardar; no guarda nada."""
+    try:
+        return await import_pdf(body.filename, body.data_base64)
+    except PdfImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/knowledge", response_model=KnowledgeDocumentItem, status_code=201)
 async def create_knowledge_document(body: KnowledgeDocumentBody):
     try:
-        return await create_document(body.title, body.content)
+        return await create_document(body.title, body.content, body.document_type, service_id=body.service_id)
     except KnowledgeLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -73,7 +83,9 @@ async def create_knowledge_document(body: KnowledgeDocumentBody):
 @router.put("/knowledge/{document_id}", response_model=KnowledgeDocumentItem)
 async def update_knowledge_document(document_id: UUID, body: KnowledgeDocumentBody):
     try:
-        document = await update_document(str(document_id), body.title, body.content)
+        document = await update_document(
+            str(document_id), body.title, body.content, document_type=body.document_type, service_id=body.service_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if document is None:

@@ -30,7 +30,7 @@ from app.integrations.llm.client import build_client
 from app.modules.ai.ai_assistant_service import fetch_tenant_config, list_ai_catalog, list_ai_resources
 from app.modules.ai.ai_context import fetch_analysis_context
 from app.modules.ai.ai_jobs import record_ai_job_metadata, record_ai_job_step, start_ai_job
-from app.modules.ai.knowledge_search import search_knowledge_chunks
+from app.modules.ai.knowledge_search import search_knowledge_chunks, service_knowledge_chunks
 from app.modules.ai.schemas import SuggestionResponse
 from app.modules.platform.ports.settings_service import get_effective_many
 
@@ -43,6 +43,8 @@ _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "copiloto.md
 MAX_MESSAGES = 80
 # Fragmentos de conocimiento por consulta y en total.
 KNOWLEDGE_TOP_K = 6
+# Fragmentos reservados a los documentos del servicio de interés del lead.
+SERVICE_TOP_K = 4
 KNOWLEDGE_MAX_CHARS = 9000
 # Últimos mensajes del cliente que alimentan la consulta de conocimiento.
 QUERY_CUSTOMER_MESSAGES = 3
@@ -125,19 +127,24 @@ def or_query(text: str) -> str:
     return " or ".join(words[:MAX_QUERY_WORDS])
 
 
-def knowledge_queries(lead: dict, messages: list[dict], instruction: str | None) -> list[str]:
-    """Qué buscar antes de llamar al modelo: primero el servicio de interés
-    solo (su ficha es lo más útil), después lo último que dijo el cliente y la
-    indicación del vendedor, cada una como búsqueda por cualquier palabra."""
-    # ``messages`` llega del más nuevo al más viejo: se da vuelta para que la
-    # consulta lea en el orden de la conversación.
+def conversation_query(messages: list[dict]) -> str:
+    """Lo último que dijo el cliente, como búsqueda por cualquier palabra.
+    ``messages`` llega del más nuevo al más viejo: se da vuelta para que la
+    consulta lea en el orden de la conversación."""
     customer = [
         str(m.get("content") or "").strip()
         for m in reversed(messages)
         if m.get("sender") == "cliente" and str(m.get("content") or "").strip()
     ][-QUERY_CUSTOMER_MESSAGES:]
+    return or_query(" ".join(customer))
+
+
+def knowledge_queries(lead: dict, messages: list[dict], instruction: str | None) -> list[str]:
+    """Qué buscar antes de llamar al modelo: primero el servicio de interés
+    solo (su ficha es lo más útil), después lo último que dijo el cliente y la
+    indicación del vendedor, cada una como búsqueda por cualquier palabra."""
     service = str(lead.get("servicio_interes") or "").strip()
-    queries = [service, or_query(" ".join(customer))]
+    queries = [service, conversation_query(messages)]
     if instruction and instruction.strip():
         queries.append(or_query(instruction))
     unique: list[str] = []
@@ -202,7 +209,11 @@ def build_user_prompt(
         for key in ("nombre", "estado", "tipo_objecion", "servicio_interes", "notas", "con_especialista", "contador_noshow", "proxima_cita")
     }
     knowledge_view = [
-        {"titulo": item["title"], **({"fuente": item["source"]} if item.get("source") else {}), "texto": item["content"]}
+        {
+            "titulo": item["title"],
+            **({"tipo": item["document_type"]} if item.get("document_type") else {}),
+            "texto": item["content"],
+        }
         for item in knowledge
     ]
     sections = [
@@ -223,6 +234,41 @@ def build_user_prompt(
         "Analiza y devuelve el JSON según el esquema de salida.",
     ]
     return "\n\n".join(sections)
+
+
+def service_id_for(lead: dict, catalog: list[dict]) -> int | None:
+    """El servicio de interés del lead es texto (lo comparten n8n y las
+    automatizaciones): se ubica en el catálogo por nombre."""
+    wanted = str(lead.get("servicio_interes") or "").strip().casefold()
+    if not wanted:
+        return None
+    for item in catalog:
+        if str(item.get("name") or "").strip().casefold() == wanted:
+            return item.get("id")
+    return None
+
+
+async def gather_knowledge(lead: dict, messages: list[dict], instruction: str | None, catalog: list[dict]) -> list[dict]:
+    """Primero lo del servicio que le interesa al lead (su ficha es lo más
+    útil y a veces la conversación todavía no dice nada buscable), después la
+    búsqueda general. Sin repetidos y dentro del presupuesto de caracteres."""
+    seen: set[str] = set()
+    knowledge: list[dict] = []
+
+    def add(chunks: list[dict]) -> None:
+        for chunk in chunks:
+            if chunk["id"] not in seen:
+                seen.add(chunk["id"])
+                knowledge.append(chunk)
+
+    service_id = service_id_for(lead, catalog)
+    if service_id is not None:
+        conversation = conversation_query(messages)
+        found = await search_knowledge_chunks(conversation, SERVICE_TOP_K, service_id) if conversation else []
+        add(found or await service_knowledge_chunks(service_id, SERVICE_TOP_K))
+    for query in knowledge_queries(lead, messages, instruction):
+        add(await search_knowledge_chunks(query, KNOWLEDGE_TOP_K))
+    return _trim_knowledge(knowledge)
 
 
 def _trim_knowledge(chunks: list[dict]) -> list[dict]:
@@ -277,14 +323,7 @@ class NativeAiProvider:
         catalog = await list_ai_catalog()
         resources = await list_ai_resources()
 
-        seen: set[str] = set()
-        knowledge: list[dict] = []
-        for query in knowledge_queries(lead, messages, instruction):
-            for chunk in await search_knowledge_chunks(query, KNOWLEDGE_TOP_K):
-                if chunk["id"] not in seen:
-                    seen.add(chunk["id"])
-                    knowledge.append(chunk)
-        knowledge = _trim_knowledge(knowledge)
+        knowledge = await gather_knowledge(lead, messages, instruction, catalog)
         await record_ai_job_step(job_id, "knowledge_searched")
 
         now = datetime.now(timezone.utc)

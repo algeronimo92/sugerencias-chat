@@ -1,6 +1,6 @@
 # 12 · Plan: sugerencias y analista IA nativos (migración desde n8n)
 
-Fecha: 2026-11-07. Estado: **fase 1 (copiloto de sugerencias) implementada**; el analista sigue en n8n por decisión del dueño.
+Fecha: 2026-11-07. Estado: **fases 1 (copiloto de sugerencias) y 2 (conocimiento por servicio y PDF) implementadas**; el analista sigue en n8n por decisión del dueño.
 Rama de trabajo: `claude/dazzling-rubin-h2elal` (ya contiene paquetes por servicio,
 sincronización con el ERP, compras del lead e Integraciones, que este plan usa).
 
@@ -289,6 +289,27 @@ Pruebas: `tests/test_llm_clients.py`, `tests/test_native_copilot.py`,
 Siguiente paso operativo: crear el clon de DermicaPro, cargar las claves reales,
 activar el modo nativo solo allí y comparar 20 conversaciones contra n8n.
 
+## 6c. Lo implementado en la fase 2 (2026-11-07)
+
+- `knowledge_documents.service_id` (FK a `lead_services`, `SET NULL`; migración
+  `e3f8a1c6d240`). Borrar un servicio deja sus documentos como generales.
+- Tipo de documento cerrado: ficha, política, preguntas frecuentes, guion, otro.
+- **Dónde se sube**: Asistente IA › Conocimiento, con selector de servicio y tipo, y
+  filtro por servicio. En Catálogos cada servicio muestra "N fichas para la IA" o
+  "Subir ficha para la IA", que abre el panel filtrado y crea el documento ya
+  vinculado (`/ai-assistant?tab=knowledge&servicio=ID`).
+- **PDF**: "Importar PDF, .txt o .md" extrae el texto en el backend (pypdfium2, ya
+  instalada) y lo deja en el editor para revisarlo antes de guardar. Hasta 10 MB y
+  200 páginas; un PDF escaneado se rechaza con aviso. El archivo viaja en base64
+  porque el backend no acepta subidas multipart.
+- **Búsqueda**: el título del documento también cuenta (una ficha "Hollywood Peel"
+  aparece aunque el párrafo no repita el nombre); filtro opcional por servicio; sin
+  consulta, los primeros fragmentos del servicio, fichas antes que FAQ.
+- **Copiloto**: precarga hasta 4 fragmentos del servicio de interés del lead (por lo
+  que dijo el cliente, o sus fichas si no hay coincidencias) y después la búsqueda
+  general; el prompt indica el tipo de cada fragmento.
+- La herramienta `rag-search` de n8n sigue igual (el filtro por servicio es opcional).
+
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):
@@ -301,7 +322,8 @@ Tomadas (2026-11-07):
 4. El analista sigue en n8n; la fase 3 queda fuera de alcance por ahora.
 
 Pendientes:
-1. Cuándo arrancar la fase 2 (conocimiento por servicio y PDF).
+1. Comparar en el clon de DermicaPro con claves reales y fichas cargadas.
+2. Fase 4 (costo por negocio en el panel de plataforma) cuando haya datos de uso.
 
 ## 8. Orden y tamaño
 

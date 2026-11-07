@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription } from './api'
+import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription, importKnowledgePdf } from './api'
 import { mediaKeys } from '../media/public/keys'
 import type { MediaAsset } from '../media/types'
 import { aiKeys } from './keys'
@@ -86,4 +86,8 @@ export function useSetAiResourceDescription() {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
   })
+}
+
+export function useImportKnowledgePdf() {
+  return useMutation({ mutationFn: importKnowledgePdf })
 }

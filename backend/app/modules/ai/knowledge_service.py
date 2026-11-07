@@ -97,14 +97,37 @@ async def get_document(document_id: str) -> dict | None:
     return await knowledge_repository.get_document(document_id)
 
 
-async def create_document(title: str, content: str, document_type: str | None = None) -> dict:
-    title, content = _validate(title, content)
-    return await knowledge_repository.create_document(title, content, document_type, chunk_text(content), MAX_DOCUMENTS)
+# Para qué sirve el documento: le dice al copiloto cómo usarlo y al admin
+# cómo ordenarlos. Sin valor = "otro".
+DOCUMENT_TYPES = ("ficha", "politica", "faq", "guion", "otro")
 
 
-async def update_document(document_id: str, title: str, content: str) -> dict | None:
+def _validate_type(document_type: str | None) -> str | None:
+    if document_type in (None, ""):
+        return None
+    if document_type not in DOCUMENT_TYPES:
+        raise ValueError("Tipo de documento desconocido")
+    return document_type
+
+
+async def create_document(
+    title: str, content: str, document_type: str | None = None, *, service_id: int | None = None, source: str = "manual",
+) -> dict:
     title, content = _validate(title, content)
-    return await knowledge_repository.update_document(document_id, title, content, chunk_text(content))
+    return await knowledge_repository.create_document(
+        title, content, _validate_type(document_type), chunk_text(content), MAX_DOCUMENTS,
+        service_id=service_id, source=source,
+    )
+
+
+async def update_document(
+    document_id: str, title: str, content: str, *, document_type: str | None = None, service_id: int | None = None,
+) -> dict | None:
+    title, content = _validate(title, content)
+    return await knowledge_repository.update_document(
+        document_id, title, content, chunk_text(content),
+        document_type=_validate_type(document_type), service_id=service_id,
+    )
 
 
 async def delete_document(document_id: str) -> bool:

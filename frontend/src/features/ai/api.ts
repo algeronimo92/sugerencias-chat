@@ -3,7 +3,7 @@ import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
 import type { SuggestionResponse, SuggestionStatus } from './types'
 import type { MediaAsset } from "../media/types";
-import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
+import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, KnowledgeDocumentType, KnowledgePdfImport, LeadAnalysisResult, TtsResult } from "./types";
 
 export async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {
@@ -55,10 +55,21 @@ export async function fetchKnowledgeDocument(id: string | null): Promise<Knowled
   return (await client.get<ApiResponse<'/api/ai/knowledge/{document_id}', 'get'>>(`/api/ai/knowledge/${id}`)).data
 }
 
-export async function saveKnowledgeDocument({ id, title, content }: { id: string | null; title: string; content: string }) {
+export async function saveKnowledgeDocument({ id, ...body }: {
+  id: string | null
+  title: string
+  content: string
+  document_type: KnowledgeDocumentType | null
+  service_id: number | null
+}) {
   return id
-        ? (await client.put<ApiResponse<'/api/ai/knowledge/{document_id}', 'put'>>(`/api/ai/knowledge/${id}`, { title, content })).data
-        : (await client.post<ApiResponse<'/api/ai/knowledge', 'post'>>('/api/ai/knowledge', { title, content })).data
+        ? (await client.put<ApiResponse<'/api/ai/knowledge/{document_id}', 'put'>>(`/api/ai/knowledge/${id}`, body)).data
+        : (await client.post<ApiResponse<'/api/ai/knowledge', 'post'>>('/api/ai/knowledge', body)).data
+}
+
+/** Extrae el texto de un PDF para revisarlo; no guarda nada. */
+export async function importKnowledgePdf({ filename, dataBase64 }: { filename: string; dataBase64: string }): Promise<KnowledgePdfImport> {
+  return (await client.post<ApiResponse<'/api/ai/knowledge/import-pdf', 'post'>>('/api/ai/knowledge/import-pdf', { filename, data_base64: dataBase64 })).data
 }
 
 export async function deleteKnowledgeDocument(id: string) { await client.delete<ApiResponse<'/api/ai/knowledge/{document_id}', 'delete'>>(`/api/ai/knowledge/${id}`) }

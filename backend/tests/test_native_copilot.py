@@ -90,11 +90,18 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list]):
     monkeypatch.setattr(native_provider, "list_ai_resources", AsyncMock(return_value=[{"id": 9, "nombre": "flyer.pdf", "url": "https://m/flyer.pdf", "descripcion": "Promo"}]))
     searched: list[str] = []
 
-    async def search(query, top_k):
-        searched.append(query)
+    async def search(query, top_k, service_id=None):
+        searched.append((query, service_id) if service_id else query)
+        if service_id:
+            return []
         return [{"id": "c1", "title": "Ficha Hollywood Peel", "source": None, "content": "Peeling con carbón activado, 3 sesiones recomendadas.", "metadata": {}, "score": 1.0}]
 
+    async def by_service(service_id, top_k):
+        searched.append(("servicio", service_id))
+        return [{"id": "s1", "title": "Ficha del servicio", "document_type": "ficha", "source": None, "content": "Contraindicado en embarazo.", "metadata": {}, "score": 0.0}]
+
     monkeypatch.setattr(native_provider, "search_knowledge_chunks", search)
+    monkeypatch.setattr(native_provider, "service_knowledge_chunks", by_service)
     steps: list[str] = []
     monkeypatch.setattr(native_provider, "record_ai_job_step", AsyncMock(side_effect=lambda job_id, step: steps.append(step) or True))
     metadata: dict = {}
@@ -129,10 +136,16 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     assert "no dar descuento" in prompt
     assert "DermicaPro" in prompt
     assert client.requests[0].system.startswith("# IDENTIDAD Y MISION")
-    assert searched == ["Hollywood Peel - Rostro", "quitar or manchas or cuesta or pack", "descuento"]
+    # Primero los documentos del servicio de interés (sin coincidencias con la
+    # conversación, sus fichas en orden), después la búsqueda general.
+    assert searched == [
+        ("quitar or manchas or cuesta or pack", 1), ("servicio", 1),
+        "Hollywood Peel - Rostro", "quitar or manchas or cuesta or pack", "descuento",
+    ]
+    assert "Contraindicado en embarazo" in prompt and '"tipo": "ficha"' in prompt
     assert steps == ["context_loaded", "knowledge_searched"]
     assert metadata["model"] == "gemini:gemini-2.5-flash"
-    assert metadata["knowledge_chunk_ids"] == ["c1"]
+    assert metadata["knowledge_chunk_ids"] == ["s1", "c1"]
     assert (metadata["tokens_in"], metadata["tokens_out"]) == (100, 20)
     assert metadata["prompt_version"] == native_provider.PROMPT_VERSION
 

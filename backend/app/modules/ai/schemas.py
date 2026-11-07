@@ -1,4 +1,5 @@
 """Contratos HTTP de ai."""
+from typing import Literal
 
 from datetime import datetime
 from pydantic import BaseModel, field_validator
@@ -98,14 +99,21 @@ class AIProfileBody(BaseModel):
 class AIProfileItem(AIProfileBody):
     updated_at: str | None = None
 
+KnowledgeDocumentType = Literal["ficha", "politica", "faq", "guion", "otro"]
+
+
 class KnowledgeDocumentBody(BaseModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     content: str = Field(min_length=1, max_length=MAX_CONTENT_LENGTH)
+    document_type: KnowledgeDocumentType | None = None
+    # Servicio del catálogo; sin valor es conocimiento general.
+    service_id: int | None = None
 
 class KnowledgeDocumentSummary(BaseModel):
     id: str
     title: str
     document_type: str | None = None
+    service_id: int | None = None
     characters: int
     chunk_count: int
     created_at: str
@@ -167,3 +175,19 @@ class AiProviderTestResult(BaseModel):
     model: str | None = None
     error: str | None = None
     latency_ms: int | None = None
+
+
+class KnowledgePdfImportRequest(BaseModel):
+    filename: str = Field(default="", max_length=255)
+    # El PDF en base64 (sin el prefijo ``data:``); hasta 10 MB.
+    data_base64: str = Field(min_length=1, max_length=14_500_000)
+
+
+class KnowledgePdfImport(BaseModel):
+    """Texto extraído para revisar antes de guardarlo como documento."""
+
+    title: str
+    content: str
+    pages: int
+    characters: int
+    truncated: bool

@@ -1,5 +1,5 @@
 import { Loader2, Plus, Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
@@ -35,7 +35,13 @@ function changedFields(service: LeadService, draft: ServiceDraft) {
   return changes
 }
 
-export function ServicesManagementPanel() {
+interface Props {
+  /** Lo que otras features agregan a cada servicio (p. ej. sus fichas para la
+   *  IA). Llega armado desde app/: catálogos no conoce a esas features. */
+  renderServiceExtras?: (service: LeadService) => ReactNode
+}
+
+export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
   const { data: services = [], isLoading, error: loadError, refetch } = useLeadServices(true)
   const createService = useCreateLeadService()
   const updateService = useUpdateLeadService()
@@ -177,6 +183,7 @@ export function ServicesManagementPanel() {
             className="mt-2 w-full bg-white py-1.5 dark:bg-wa-panel-dark"
           />
           <ServicePackagesEditor service={service} onError={setError} />
+          {renderServiceExtras?.(service)}
           <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
             {service.external_id ? 'Sincronizado desde el ERP' : `Creado por ${service.created_by_name ?? 'Sistema'}`}
             {service.created_at ? ` · ${new Date(service.created_at).toLocaleDateString('es-PE')}` : ''}

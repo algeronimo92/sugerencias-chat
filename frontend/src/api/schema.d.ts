@@ -1653,6 +1653,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/knowledge/import-pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Knowledge Pdf
+         * @description Extrae el texto de un PDF para revisarlo antes de guardar; no guarda nada.
+         */
+        post: operations["import_knowledge_pdf_api_ai_knowledge_import_pdf_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/resources/{asset_id}": {
         parameters: {
             query?: never;
@@ -5099,6 +5119,10 @@ export interface components {
             title: string;
             /** Content */
             content: string;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Id */
+            service_id?: number | null;
         };
         /** KnowledgeDocumentItem */
         KnowledgeDocumentItem: {
@@ -5108,6 +5132,8 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
+            /** Service Id */
+            service_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -5127,6 +5153,8 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
+            /** Service Id */
+            service_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -5135,6 +5163,32 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * KnowledgePdfImport
+         * @description Texto extraído para revisar antes de guardarlo como documento.
+         */
+        KnowledgePdfImport: {
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Pages */
+            pages: number;
+            /** Characters */
+            characters: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** KnowledgePdfImportRequest */
+        KnowledgePdfImportRequest: {
+            /**
+             * Filename
+             * @default
+             */
+            filename: string;
+            /** Data Base64 */
+            data_base64: string;
         };
         /** LeadActivityItem */
         LeadActivityItem: {
@@ -10196,6 +10250,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_knowledge_pdf_api_ai_knowledge_import_pdf_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgePdfImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePdfImport"];
                 };
             };
             /** @description Validation Error */

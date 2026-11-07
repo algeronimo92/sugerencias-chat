@@ -66,6 +66,10 @@ class KnowledgeDocument(Base):
     # Texto completo tal como lo cargó el negocio. Los chunks se derivan de acá
     # y se regeneran al editarlo; nunca se editan sueltos.
     content: Mapped[str | None] = mapped_column(Text)
+    # Servicio del catálogo al que pertenece (ficha, protocolo, objeciones de
+    # ese servicio). Sin valor es conocimiento general: políticas, garantías.
+    # El copiloto prioriza los documentos del servicio que le interesa al lead.
+    service_id: Mapped[int | None] = mapped_column(ForeignKey("lead_services.id", ondelete="SET NULL"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
     )
@@ -75,6 +79,8 @@ class KnowledgeDocument(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    __table_args__ = (Index("idx_knowledge_documents_service", "service_id"),)
 
 
 class AIProfile(Base):
