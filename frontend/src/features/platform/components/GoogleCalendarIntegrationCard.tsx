@@ -1,4 +1,4 @@
-import { CalendarCheck2 } from 'lucide-react'
+import { GoogleCalendarMark } from '../../../shared/ui/BrandMarks'
 import type { ReactNode } from 'react'
 import { IntegrationCard } from '../../../shared/ui/IntegrationCard'
 import { useGoogleCalendarStatus } from '../hooks/useGoogleCalendar'
@@ -12,7 +12,7 @@ export function GoogleCalendarIntegrationCard({ eventEditor }: { eventEditor?: R
   return (
     <IntegrationCard
       id="calendario"
-      icon={CalendarCheck2}
+      icon={GoogleCalendarMark}
       title="Google Calendar"
       description="Cada cita agendada aparece en el calendario del negocio, con el formato que elijas."
       state={state}

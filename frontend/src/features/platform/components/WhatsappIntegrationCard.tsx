@@ -1,4 +1,4 @@
-import { Smartphone } from 'lucide-react'
+import { WhatsAppMark } from '../../../shared/ui/BrandMarks'
 import { useMemo, useState } from 'react'
 import { IntegrationCard, IntegrationDisclosure } from '../../../shared/ui/IntegrationCard'
 import { useSettings } from '../hooks/useSettings'
@@ -19,7 +19,7 @@ export function WhatsappIntegrationCard({ highlight = false }: { highlight?: boo
   return (
     <IntegrationCard
       id="whatsapp"
-      icon={Smartphone}
+      icon={WhatsAppMark}
       title="WhatsApp"
       description="El número del negocio, vinculado con Meta Cloud API: por aquí entran y salen los chats."
       state={status ? (connected ? 'connected' : 'unconfigured') : 'unconfigured'}

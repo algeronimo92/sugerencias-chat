@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { Badge } from './Badge'
 
 /** Vocabulario único de estado de una integración: el color nunca viaja solo. */
@@ -27,7 +27,8 @@ export function IntegrationStatusBadge({ state, label }: { state: IntegrationSta
 interface Props {
   /** Ancla (`#whatsapp`) y base de los ids accesibles. */
   id: string
-  icon: LucideIcon
+  /** Un icono de lucide o una marca de `BrandMarks`: cualquier componente con `className`. */
+  icon: LucideIcon | ComponentType<{ className?: string }>
   title: string
   description: string
   state: IntegrationState
@@ -60,7 +61,7 @@ export function IntegrationCard({ id, icon: Icon, title, description, state, sta
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-wa-field dark:bg-wa-field-dark">
-            <Icon className="h-5 w-5 text-wa-primary-strong dark:text-wa-primary" aria-hidden="true" />
+            <Icon className="h-6 w-6 text-wa-text dark:text-wa-text-dark" />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

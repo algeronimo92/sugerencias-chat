@@ -1,4 +1,4 @@
-import { AudioLines } from 'lucide-react'
+import { ElevenLabsMark } from '../../../shared/ui/BrandMarks'
 import { useEffect, useMemo, useState } from 'react'
 import { IntegrationCard, IntegrationDisclosure } from '../../../shared/ui/IntegrationCard'
 import { useSettings } from '../hooks/useSettings'
@@ -21,7 +21,7 @@ export function ElevenLabsIntegrationCard() {
   return (
     <IntegrationCard
       id="voz"
-      icon={AudioLines}
+      icon={ElevenLabsMark}
       title="ElevenLabs"
       description="Convierte las sugerencias del asistente en audios con la voz del negocio."
       state={configured ? 'connected' : 'unconfigured'}
