@@ -27,17 +27,19 @@ const MediaLightbox = lazy(() => import('../../../shared/ui/MediaLightbox').then
 const DESCRIPTION_MAX = 500
 const COUNTER_FROM = 400
 
+// Dicen qué hacer o qué se gana, no cómo funciona el sistema: "Falta
+// describirlo" es la tarea, "La IA puede sugerirlo" el resultado.
 const STATUS = {
   dirty: { variant: 'warning', icon: Pencil, label: 'Sin guardar' },
-  visible: { variant: 'success', icon: Eye, label: 'Visible para el asistente' },
-  hidden: { variant: 'neutral', icon: EyeOff, label: 'Oculto para el asistente' },
+  visible: { variant: 'success', icon: Eye, label: 'La IA puede sugerirlo' },
+  hidden: { variant: 'neutral', icon: EyeOff, label: 'Falta describirlo' },
 } as const
 
 function ResourceHeader({ asset, kind, dirty }: { asset: MediaAsset; kind: MediaAssetKind; dirty: boolean }) {
   const status = dirty ? STATUS.dirty : isDescribed(asset) ? STATUS.visible : STATUS.hidden
   const StatusIcon = status.icon
   return (
-    <div className="min-w-0 self-center sm:self-start">
+    <div className="min-w-0 self-start">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Badge variant={status.variant} size="md"><StatusIcon className="h-3 w-3" aria-hidden="true" />{status.label}</Badge>
         <span className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{MEDIA_KIND_LABELS[kind]} · {formatMediaSize(asset.size_bytes)}</span>
@@ -64,7 +66,7 @@ function ResourceAudio({ asset }: { asset: MediaAsset }) {
     <AudioPlayer
       key={attempt}
       src={url}
-      className="col-span-2 sm:col-span-1"
+      className="col-span-2 w-full max-w-md sm:col-span-1"
       ariaLabel={`Audio ${asset.filename}`}
       downloadName={asset.filename}
       onError={() => setFailed(true)}
@@ -96,10 +98,10 @@ function DescriptionField({ draft, setDraft, saveState, error, textareaRef, comm
       <Textarea
         ref={textareaRef}
         id={fieldId}
-        rows={2}
+        rows={3}
         value={draft}
         maxLength={DESCRIPTION_MAX}
-        placeholder="Ej.: Promo de octubre de limpieza facial, para quien pregunta precios"
+        placeholder="Ej.: Cuando pregunten precios de limpieza facial, enviar la promo de octubre"
         onChange={event => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={onKeyDown}
@@ -123,13 +125,15 @@ export function ResourceCard({ asset }: { asset: MediaAsset }) {
   const url = resolveMediaUrl(asset.media_url) ?? ''
 
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 py-4 sm:gap-x-4">
+    <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 py-4 sm:gap-x-5 sm:py-5">
       <MediaAssetThumbnail
         ref={thumbnailRef}
         asset={asset}
         onOpen={canPreview ? () => setPreviewOpen(true) : undefined}
         href={kind === 'document' ? url : undefined}
-        className={kind === 'audio' ? 'h-20 w-20 sm:row-span-3 sm:h-24 sm:w-32' : 'h-20 w-20 sm:row-span-2 sm:h-24 sm:w-32'}
+        // Abarca las tres filas de texto (en audio, también el reproductor):
+        // así queda anclada arriba, como el avatar en WhatsApp, sin flotar.
+        className="h-20 w-20 self-start sm:row-span-3 sm:h-28 sm:w-40"
       />
       <ResourceHeader asset={asset} kind={kind} dirty={draftState.dirty} />
       {kind === 'audio' && <ResourceAudio asset={asset} />}

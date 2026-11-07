@@ -18,8 +18,8 @@ type Filter = 'all' | 'pending' | 'visible'
 
 const FILTERS: readonly { key: Filter; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'pending', label: 'Sin describir' },
-  { key: 'visible', label: 'Visibles' },
+  { key: 'pending', label: 'Por describir' },
+  { key: 'visible', label: 'Listos' },
 ]
 
 const chipClass = (active: boolean) =>
@@ -34,9 +34,9 @@ function LoadingRows() {
     <ul aria-hidden="true" className="mt-2 divide-y divide-wa-border dark:divide-wa-border-dark">
       {[0, 1, 2].map(index => (
         <li key={index} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 py-4">
-          <Skeleton className="h-20 w-20 sm:row-span-2 sm:h-24 sm:w-32" />
-          <Skeleton className="h-5 w-48 self-center sm:self-start" />
-          <Skeleton className="col-span-2 h-16 sm:col-span-1" />
+          <Skeleton className="h-20 w-20 sm:row-span-3 sm:h-28 sm:w-40" />
+          <Skeleton className="h-5 w-48 self-start" />
+          <Skeleton className="col-span-2 h-24 sm:col-span-1" />
         </li>
       ))}
     </ul>
@@ -58,12 +58,14 @@ export function AiResourcesPanel() {
   const visibleRows = filter === 'all' ? sorted : sorted.filter(asset => (filter === 'visible') === isDescribed(asset))
 
   return (
-    <div className={panelClass}>
-      <p className="text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-        Describe cuándo conviene enviar cada archivo. El asistente solo propone los que tienen descripción.
+    // Ancho acotado: un campo de texto a todo lo ancho de una pantalla grande
+    // pierde la medida de lectura y deja la miniatura flotando.
+    <div className={`${panelClass} mx-auto w-full max-w-3xl`}>
+      <p className="text-sm leading-6 text-wa-text dark:text-wa-text-dark">
+        La IA solo sugiere en el chat los archivos que tienen descripción. Escribe cuándo conviene enviar cada uno; los que dejes vacíos no los usará.
       </p>
       <p className="mt-1 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
-        Di para quién sirve y en qué momento; una o dos frases bastan. Para subir archivos nuevos ve a{' '}
+        Para subir archivos nuevos ve a{' '}
         <Link to="/media-library" className="font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary">Archivos</Link>.
       </p>
 
@@ -95,10 +97,10 @@ export function AiResourcesPanel() {
           {visibleRows.length === 0 ? (
             <EmptyState
               icon={Check}
-              title={filter === 'pending' ? 'Todo descrito' : 'Ningún archivo visible'}
+              title={filter === 'pending' ? 'Todo descrito' : 'Ninguno listo'}
               description={filter === 'pending'
-                ? 'Todos los archivos tienen descripción. El asistente ya puede proponerlos.'
-                : 'Escribe una descripción para que el asistente pueda proponer un archivo.'}
+                ? 'Todos los archivos tienen descripción. La IA ya puede sugerirlos.'
+                : 'Describe un archivo para que la IA pueda sugerirlo en los chats.'}
             />
           ) : (
             <ul className="mt-2 divide-y divide-wa-border dark:divide-wa-border-dark">
