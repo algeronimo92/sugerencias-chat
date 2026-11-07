@@ -54,6 +54,65 @@ describe('MediaAssetThumbnail', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
+  it('pulsa el ícono de imagen mientras la miniatura baja y lo quita al cargar', () => {
+    const { container } = render(<MediaAssetThumbnail asset={asset()} />)
+    const image = screen.getByRole('img', { name: 'promo.png' })
+    expect(container.querySelector('[data-state="loading"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-state="loading"] svg.lucide-images')).toBeInTheDocument()
+    expect(image).toHaveClass('opacity-0')
+
+    fireEvent.load(image)
+
+    expect(container.querySelector('[data-state="loading"]')).not.toBeInTheDocument()
+    expect(image).toHaveClass('opacity-100')
+  })
+
+  it('sigue mostrando el placeholder mientras reintenta con el original', () => {
+    const { container } = render(<MediaAssetThumbnail asset={asset()} />)
+    fireEvent.error(screen.getByRole('img', { name: 'promo.png' }))
+    expect(container.querySelector('[data-state="loading"]')).toBeInTheDocument()
+  })
+
+  it('pulsa el ícono de video hasta que llegan los metadatos, y recién ahí muestra play y duración', () => {
+    const { container } = render(<MediaAssetThumbnail asset={video} onOpen={vi.fn()} />)
+    const element = container.querySelector('video')!
+    expect(container.querySelector('[data-state="loading"] svg.lucide-film')).toBeInTheDocument()
+    expect(screen.queryByText('0:12')).not.toBeInTheDocument()
+
+    Object.defineProperty(element, 'duration', { value: 12, configurable: true })
+    fireEvent.loadedMetadata(element)
+
+    expect(container.querySelector('[data-state="loading"]')).not.toBeInTheDocument()
+    expect(element).toHaveClass('opacity-100')
+    expect(screen.getByText('0:12')).toBeInTheDocument()
+  })
+
+  it('audio y documentos sin miniatura muestran su ícono y extensión sin esperar nada', () => {
+    const { container, rerender } = render(<MediaAssetThumbnail asset={asset({ filename: 'nota.ogg', content_type: 'audio/ogg', media_url: '/media/nota.ogg' })} />)
+    expect(container.querySelector('[data-state="ready"] svg.lucide-music-2')).toBeInTheDocument()
+    expect(screen.getByText('OGG')).toBeInTheDocument()
+
+    rerender(<MediaAssetThumbnail asset={asset({ filename: 'informe.docx', content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', media_url: '/media/informe.docx' })} />)
+    expect(container.querySelector('[data-state="ready"] svg.lucide-file-text')).toBeInTheDocument()
+    expect(screen.getByText('DOCX')).toBeInTheDocument()
+    expect(container.querySelector('[data-state="loading"]')).not.toBeInTheDocument()
+  })
+
+  it('un PDF pide su primera página y, si no la hay, queda el ícono del documento sin marcarlo como error', () => {
+    const { container } = render(<MediaAssetThumbnail asset={asset({ filename: 'precios.pdf', content_type: 'application/pdf', media_url: '/media/precios.pdf' })} />)
+    const page = screen.getByRole('img', { name: 'precios.pdf' })
+    expect(page).toHaveAttribute('src', expect.stringMatching(/\/media\/precios\.pdf\/thumbnail$/))
+    expect(container.querySelector('[data-state="loading"] svg.lucide-file-text')).toBeInTheDocument()
+
+    fireEvent.error(page)
+
+    expect(container.querySelector('[data-state="ready"] svg.lucide-file-text')).toBeInTheDocument()
+    expect(screen.getByText('PDF')).toBeInTheDocument()
+    expect(screen.queryByText('Sin vista previa')).not.toBeInTheDocument()
+    // Nunca se intenta el original como imagen: un PDF no lo es.
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
   it('muestra el original directamente cuando no hay miniatura posible', () => {
     render(<MediaAssetThumbnail asset={asset({ media_url: 'data:image/png;base64,AAAA' })} />)
     expect(screen.getByRole('img', { name: 'promo.png' })).toHaveAttribute('src', 'data:image/png;base64,AAAA')

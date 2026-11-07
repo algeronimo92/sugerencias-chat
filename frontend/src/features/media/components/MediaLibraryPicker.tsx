@@ -1,9 +1,13 @@
 import { Check, FileText, Film, FolderOpen, Images, Loader2, Music2, Search, X } from 'lucide-react'
-import { useDeferredValue, useState } from 'react'
+import { useCallback, useDeferredValue, useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClassElevated, dialogOverlayClassElevated } from '../../../shared/ui/Dialog'
 import { resolveMediaUrl } from '../../whatsapp/public/message'
+import { useImageThumbnail } from '../hooks/useImageThumbnail'
+import { isPdfAsset } from '../domain/assets'
 import { useMediaLibrary } from '../queries'
 import type { MediaAsset, MediaAssetKind } from '../types'
+import { PreviewLoading } from './PreviewLoading'
+import { revealClass } from './revealClass'
 interface Props {
   selectedIds: Set<number>
   disabledIds: Set<number>
@@ -35,10 +39,15 @@ function AssetTile({ asset, selected, disabled, canSelect, onSelect }: {
   onSelect: (asset: MediaAsset) => void
 }) {
   const [previewFailed, setPreviewFailed] = useState(false)
+  const [previewLoaded, setPreviewLoaded] = useState(false)
+  const onLoad = useCallback(() => setPreviewLoaded(true), [])
+  const onFail = useCallback(() => setPreviewFailed(true), [])
   const url = resolveMediaUrl(asset.media_url) ?? ''
   const isImage = asset.content_type.startsWith('image/')
   const isVideo = asset.content_type.startsWith('video/')
   const isAudio = asset.content_type.startsWith('audio/')
+  const isPdf = !isImage && !isVideo && !isAudio && isPdfAsset(asset)
+  const image = useImageThumbnail(asset.media_url, { onLoad, onFail, fallbackToOriginal: !isPdf })
   const TypeIcon = isImage ? Images : isVideo ? Film : isAudio ? Music2 : FileText
   const typeLabel = isImage ? 'Imagen' : isVideo ? 'Video' : isAudio ? 'Audio' : 'Documento'
   const unavailable = !canSelect && !selected && !disabled
@@ -51,12 +60,16 @@ function AssetTile({ asset, selected, disabled, canSelect, onSelect }: {
     className={`group overflow-hidden rounded-2xl border text-left shadow-sm transition ${selected || disabled ? 'border-wa-primary bg-green-50/80 dark:bg-green-950/20' : 'border-wa-border bg-white/90 hover:-translate-y-0.5 hover:border-wa-primary hover:shadow-md dark:border-wa-border-dark dark:bg-wa-head-dark/90'} disabled:cursor-default disabled:hover:translate-y-0`}
   >
     <span className="relative block h-36 overflow-hidden bg-wa-hover dark:bg-wa-head-dark">
-      {(isImage || isVideo) && !previewFailed ? (
-        isImage
-          ? <img src={url} alt="" loading="lazy" onError={() => setPreviewFailed(true)} className="h-full w-full object-cover" />
-          : <video src={url} preload="metadata" onError={() => setPreviewFailed(true)} className="h-full w-full bg-black object-contain" />
+      {(isImage || isVideo || isPdf) && !previewFailed ? (
+        <>
+          {!previewLoaded && <PreviewLoading icon={TypeIcon} className="h-9 w-9" />}
+          {isVideo
+            ? <video src={url} preload="metadata" onLoadedMetadata={onLoad} onError={onFail} className={revealClass(previewLoaded, 'bg-black object-contain')} />
+            : <img ref={image.ref} src={image.src} alt="" loading="lazy" onLoad={image.onLoad} onError={image.onError} className={revealClass(previewLoaded, isPdf ? 'object-top' : undefined)} />}
+        </>
       ) : (
-        <span className="flex h-full flex-col items-center justify-center gap-2 text-wa-muted"><TypeIcon className="h-9 w-9 opacity-70" />{previewFailed && <span className="text-[11px] font-semibold">Vista previa no disponible</span>}</span>
+        // Un PDF sin miniatura no es un error: es un documento con su ícono.
+        <span className="flex h-full flex-col items-center justify-center gap-2 text-wa-muted"><TypeIcon className="h-9 w-9 opacity-70" />{previewFailed && !isPdf && <span className="text-[11px] font-semibold">Vista previa no disponible</span>}</span>
       )}
       <span className="absolute left-2.5 top-2.5 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white backdrop-blur">{typeLabel}</span>
       {(selected || disabled) && <span className="absolute right-2.5 top-2.5 grid h-7 w-7 place-items-center rounded-full bg-wa-primary-strong text-white"><Check className="h-4 w-4" /></span>}

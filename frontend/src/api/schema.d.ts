@@ -3314,7 +3314,7 @@ export interface paths {
         };
         /**
          * Get Media Thumbnail
-         * @description Versión reducida de una imagen (WebP, máximo 320 px) para las listas de la biblioteca.
+         * @description Versión reducida de una imagen o de la primera página de un PDF (WebP, máximo 640 px) para las listas de la biblioteca.
          */
         get: operations["get_media_thumbnail_media__filename__thumbnail_get"];
         put?: never;

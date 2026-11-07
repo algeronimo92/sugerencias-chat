@@ -15,6 +15,12 @@ export function mediaAssetKind(asset: Pick<MediaAsset, 'content_type'>): MediaAs
   return 'document'
 }
 
+/** Un PDF tiene miniatura (su primera página) y se abre en el visor; el
+ * resto de documentos solo se descargan o abren en otra pestaña. */
+export function isPdfAsset(asset: Pick<MediaAsset, 'filename' | 'content_type'>): boolean {
+  return asset.content_type === 'application/pdf' || /\.pdf$/i.test(asset.filename)
+}
+
 export function formatMediaSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
