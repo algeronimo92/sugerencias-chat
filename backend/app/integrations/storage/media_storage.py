@@ -362,53 +362,61 @@ class VideoCompressionError(RuntimeError):
 WHATSAPP_VIDEO_CODECS = {"h264"}
 WHATSAPP_VIDEO_PIX_FMTS = {"yuv420p", "yuvj420p"}
 WHATSAPP_AUDIO_CODECS = {"aac"}
+# Límite de Meta Cloud API para video (y audio). Un archivo mayor se rechaza
+# al subirlo al media endpoint, así que un video que lo supere nunca sale.
+WHATSAPP_VIDEO_MAX_BYTES = 16 * 1024 * 1024
+# A cuánto se apunta al recomprimir: debajo del límite con margen, porque un
+# encode con bitrate tope puede pasarse unos puntos del cálculo.
+VIDEO_TARGET_BYTES = int(WHATSAPP_VIDEO_MAX_BYTES * 0.93)
+# Techo de calidad: 1080p a 6 Mbps ya es mejor que lo que WhatsApp mismo
+# manda en "calidad HD"; gastar más no se nota en un celular.
+VIDEO_MAX_SIDE = 1920
+VIDEO_MAX_BITRATE = 6_000_000
+VIDEO_MAX_FPS = 30
+# Piso: por debajo de esto 1080p/720p se ven a bloques; antes de llegar ahí se
+# baja de resolución, y si ni a 480p entra en el límite, el video es
+# demasiado largo para WhatsApp.
+VIDEO_MIN_BITRATE = 250_000
+AUDIO_BITRATE = 128_000
+# Lado máximo según el bitrate de video disponible: mejor 720p nítido que
+# 1080p lleno de artefactos.
+VIDEO_RESOLUTION_LADDER = ((2_500_000, 1920), (1_200_000, 1280), (0, 854))
 
 
-def video_is_whatsapp_compatible(data: bytes) -> bool | None:
-    """Dice si los códecs del video son los que WhatsApp reproduce.
-
-    Devuelve None cuando no se puede saber (sin ffprobe, archivo que ffprobe no
-    entiende o que tarda demasiado): el llamador decide, y convertir a ciegas
-    un archivo que ni siquiera se pudo leer tampoco va a salir bien."""
+def _ffprobe_path(path: str) -> dict | None:
+    """Streams y formato de un archivo, o None si ffprobe no está, no lo
+    entiende o tarda demasiado."""
     import json
-    import os
     import shutil
     import subprocess
-    import tempfile
 
     if shutil.which("ffprobe") is None:
         return None
-
-    path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".src", delete=False) as handle:
-            handle.write(data)
-            path = handle.name
-        try:
-            result = subprocess.run(
-                [
-                    "ffprobe", "-v", "error",
-                    "-show_entries", "stream=codec_type,codec_name,pix_fmt",
-                    "-of", "json", path,
-                ],
-                capture_output=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            return None
-        if result.returncode != 0:
-            return None
-        try:
-            streams = json.loads(result.stdout or b"{}").get("streams") or []
-        except ValueError:
-            return None
-    finally:
-        if path:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries",
+                "format=duration,bit_rate:"
+                "stream=codec_type,codec_name,pix_fmt,width,height,avg_frame_rate",
+                "-of", "json", path,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        probe = json.loads(result.stdout or b"{}")
+    except ValueError:
+        return None
+    return probe if isinstance(probe, dict) else None
 
+
+def _probe_is_whatsapp_compatible(probe: dict) -> bool | None:
+    streams = probe.get("streams") or []
     video = [s for s in streams if s.get("codec_type") == "video"]
     audio = [s for s in streams if s.get("codec_type") == "audio"]
     if not video:
@@ -422,21 +430,148 @@ def video_is_whatsapp_compatible(data: bytes) -> bool | None:
     return not audio or audio[0].get("codec_name") in WHATSAPP_AUDIO_CODECS
 
 
-def compress_video(data: bytes) -> bytes:
-    """Recomprime un video con ffmpeg para que entre en el límite de tamaño,
-    como hace WhatsApp: H.264, lado máximo 1280px, CRF 28, audio AAC 128k y
-    faststart (MP4). Devuelve los bytes del MP4.
+def video_is_whatsapp_compatible(data: bytes) -> bool | None:
+    """Dice si los códecs del video son los que WhatsApp reproduce.
+
+    Devuelve None cuando no se puede saber (sin ffprobe, archivo que ffprobe no
+    entiende o que tarda demasiado): el llamador decide, y convertir a ciegas
+    un archivo que ni siquiera se pudo leer tampoco va a salir bien."""
+    import os
+    import tempfile
+
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".src", delete=False) as handle:
+            handle.write(data)
+            path = handle.name
+        probe = _ffprobe_path(path)
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    if probe is None:
+        return None
+    return _probe_is_whatsapp_compatible(probe)
+
+
+@dataclass(frozen=True)
+class VideoEncodePlan:
+    video_bitrate: int
+    audio_bitrate: int
+    max_side: int
+    fps: int | None  # None: se respeta el del original
+
+
+def _parse_fps(value: str | None) -> float | None:
+    if not value or "/" not in value:
+        return None
+    num, _, den = value.partition("/")
+    try:
+        return float(num) / float(den) if float(den) else None
+    except ValueError:
+        return None
+
+
+def plan_video_encode(
+    duration: float, longest_side: int, source_fps: float | None,
+    target_bytes: int = VIDEO_TARGET_BYTES,
+) -> VideoEncodePlan:
+    """Elige bitrate y resolución para que el video entre en ``target_bytes``
+    con la mejor calidad que ese presupuesto permite, como hace WhatsApp al
+    mandar un video largo: primero baja bitrate, después resolución.
+
+    Lanza VideoCompressionError si ni a la resolución más baja alcanza el
+    bitrate mínimo (video demasiado largo para el límite de WhatsApp)."""
+    if duration <= 0:
+        raise VideoCompressionError("no se pudo leer la duración del video")
+    # Unos puntos del archivo son contenedor (moov, índices), no video ni audio.
+    budget = target_bytes * 8 * 0.97 / duration
+    audio_bitrate = AUDIO_BITRATE
+    video_bitrate = budget - audio_bitrate
+    if video_bitrate < VIDEO_MIN_BITRATE * 2:
+        # Antes de sacrificar el video, el audio baja a calidad de voz.
+        audio_bitrate = 64_000
+        video_bitrate = budget - audio_bitrate
+    video_bitrate = min(int(video_bitrate), VIDEO_MAX_BITRATE)
+    if video_bitrate < VIDEO_MIN_BITRATE:
+        raise VideoCompressionError(
+            "el video es demasiado largo para que entre en el límite de WhatsApp"
+        )
+    max_side = VIDEO_MAX_SIDE
+    for threshold, side in VIDEO_RESOLUTION_LADDER:
+        if video_bitrate >= threshold:
+            max_side = side
+            break
+    max_side = min(max_side, longest_side) if longest_side else max_side
+    fps = VIDEO_MAX_FPS if source_fps and source_fps > VIDEO_MAX_FPS + 0.5 else None
+    return VideoEncodePlan(video_bitrate, audio_bitrate, max_side, fps)
+
+
+def _run_ffmpeg_encode(in_path: str, out_path: str, plan: VideoEncodePlan) -> None:
+    import os
+    import subprocess
+
+    filters = [
+        # Encaja el video en un cuadro de `max_side` conservando la proporción
+        # (sirve horizontal y vertical; nunca agranda) y fuerza dimensiones
+        # pares (libx264 las exige).
+        f"scale='min({plan.max_side},iw)':'min({plan.max_side},ih)':force_original_aspect_ratio=decrease",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+    ]
+    if plan.fps:
+        filters.append(f"fps={plan.fps}")
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", in_path,
+                "-vf", ",".join(filters),
+                # Primera pista de video y, si existe, primera de audio:
+                # WhatsApp rechaza los archivos con varias pistas. Sin
+                # metadatos ni capítulos del original (ffmpeg ya aplicó la
+                # rotación al cuadro al decodificar).
+                "-map", "0:v:0", "-map", "0:a:0?",
+                "-map_metadata", "-1", "-map_chapters", "-1",
+                # CRF con tope de bitrate: la calidad manda mientras el video
+                # entre en el presupuesto, y el tope (VBV) asegura que no se
+                # pase. `fast` es el punto medio entre lo que tarda un VPS y
+                # lo que comprime: `veryfast` gasta ~15% más bytes a la misma
+                # calidad.
+                "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                "-maxrate", str(plan.video_bitrate),
+                "-bufsize", str(plan.video_bitrate * 2),
+                # libx264 conserva 4:2:2/4:4:4 si la fuente los trae, y
+                # esos perfiles tampoco los reproduce WhatsApp.
+                "-pix_fmt", "yuv420p", "-profile:v", "high",
+                "-c:a", "aac", "-b:a", str(plan.audio_bitrate),
+                "-movflags", "+faststart",
+                out_path,
+            ],
+            capture_output=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        raise VideoCompressionError("ffmpeg tardó demasiado")
+    if result.returncode != 0 or not os.path.exists(out_path):
+        raise VideoCompressionError(result.stderr.decode("utf-8", "replace")[-500:])
+
+
+def compress_video(data: bytes, max_bytes: int = WHATSAPP_VIDEO_MAX_BYTES) -> bytes:
+    """Recomprime un video al formato que WhatsApp reproduce, con la mejor
+    calidad que entra en ``max_bytes`` (el límite de Meta): MP4 faststart,
+    H.264 High 4:2:0 hasta 1080p y 30 fps, audio AAC. El bitrate sale de la
+    duración (ver ``plan_video_encode``); si el resultado igual se pasa, se
+    reintenta con menos bitrate.
 
     Sirve también para convertir un video que WhatsApp no reproduce (VP9,
     HEVC, .mov, .webm): la salida es siempre H.264 4:2:0 con a lo sumo una
     pista AAC, lo que pide ``video_is_whatsapp_compatible``.
 
-    Lanza VideoCompressionError si ffmpeg no está disponible o falla; el llamador
-    decide qué hacer (típicamente, dejar que el archivo original caiga en el
-    límite de tamaño)."""
+    Lanza VideoCompressionError si ffmpeg no está disponible, falla, o el
+    video no entra en el límite ni bajando la calidad."""
     import os
     import shutil
-    import subprocess
     import tempfile
 
     if shutil.which("ffmpeg") is None:
@@ -448,36 +583,33 @@ def compress_video(data: bytes) -> bytes:
             fin.write(data)
             in_path = fin.name
         out_path = in_path + ".mp4"
+
+        probe = _ffprobe_path(in_path) or {}
+        fmt = probe.get("format") or {}
+        video = next((s for s in probe.get("streams") or [] if s.get("codec_type") == "video"), {})
         try:
-            result = subprocess.run(
-                [
-                    "ffmpeg", "-y", "-i", in_path,
-                    # Encaja el video en un cuadro de 1280px conservando la
-                    # proporción (sirve horizontal y vertical) y fuerza dimensiones
-                    # pares (libx264 las exige).
-                    "-vf",
-                    "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,"
-                    "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-                    # Primera pista de video y, si existe, primera de audio:
-                    # WhatsApp rechaza los archivos con varias pistas.
-                    "-map", "0:v:0", "-map", "0:a:0?",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-                    # libx264 conserva 4:2:2/4:4:4 si la fuente los trae, y
-                    # esos perfiles tampoco los reproduce WhatsApp.
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-movflags", "+faststart",
-                    out_path,
-                ],
-                capture_output=True,
-                timeout=300,
+            duration = float(fmt.get("duration") or 0)
+        except ValueError:
+            duration = 0.0
+        longest_side = max(int(video.get("width") or 0), int(video.get("height") or 0))
+        plan = plan_video_encode(
+            duration, longest_side, _parse_fps(video.get("avg_frame_rate")),
+            target_bytes=int(max_bytes * VIDEO_TARGET_BYTES / WHATSAPP_VIDEO_MAX_BYTES),
+        )
+
+        # Tres intentos: el primero con el presupuesto calculado y, si el
+        # archivo se pasa (escenas muy movidas llenan el VBV), dos más con
+        # un 20% menos cada vez.
+        for _attempt in range(3):
+            _run_ffmpeg_encode(in_path, out_path, plan)
+            if os.path.getsize(out_path) <= max_bytes:
+                with open(out_path, "rb") as handle:
+                    return handle.read()
+            plan = VideoEncodePlan(
+                max(int(plan.video_bitrate * 0.8), VIDEO_MIN_BITRATE),
+                plan.audio_bitrate, plan.max_side, plan.fps,
             )
-        except subprocess.TimeoutExpired:
-            raise VideoCompressionError("ffmpeg tardó demasiado")
-        if result.returncode != 0 or not os.path.exists(out_path):
-            raise VideoCompressionError(result.stderr.decode("utf-8", "replace")[-500:])
-        with open(out_path, "rb") as handle:
-            return handle.read()
+        raise VideoCompressionError("el video no entra en el límite de WhatsApp ni bajando la calidad")
     finally:
         for path in (in_path, out_path):
             if path:

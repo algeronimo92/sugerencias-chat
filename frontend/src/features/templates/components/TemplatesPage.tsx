@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { uploadSizeError } from '../../../shared/utils/media'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../../tasks/public/taskCatalog'
 import { stageOptions } from '../../leads/public/leadStageMeta'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
@@ -36,7 +37,6 @@ function resizeOfficialParameters(content: string, current: string[]) {
 }
 
 const ACCEPTED_ATTACHMENT_TYPES = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'mov', 'mp3', 'wav', 'ogg', 'm4a',
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip',
@@ -58,7 +58,8 @@ function rejectedReasonLabel(reason: string) {
 function validateAttachmentFile(file: File) {
   const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? '' : ''
   if (!file.size) return `${file.name}: el archivo está vacío.`
-  if (file.size > MAX_ATTACHMENT_BYTES) return `${file.name}: supera el máximo de 25 MB.`
+  const sizeError = uploadSizeError(file)
+  if (sizeError) return `${file.name}: ${sizeError}.`
   if (file.name.length > 255) return `${file.name}: el nombre admite máximo 255 caracteres.`
   if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) return `${file.name}: tipo de archivo no permitido.`
   return null
@@ -799,7 +800,7 @@ export function TemplatesPage() {
                   })}
                 </div>
               )}
-              <p className="mt-2 text-[11px] text-wa-muted">Máximo 25 MB por archivo. Se enviarán en el orden agregado.</p>
+              <p className="mt-2 text-[11px] text-wa-muted">Máximo 25 MB por archivo; los videos, hasta 100 MB, se convierten al formato de WhatsApp. Se enviarán en el orden agregado.</p>
             </div>}
             {libraryOpen && (
               <MediaLibraryPicker

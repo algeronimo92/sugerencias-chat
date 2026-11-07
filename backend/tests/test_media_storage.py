@@ -202,7 +202,7 @@ def test_upload_converts_videos_whatsapp_cannot_play(content_type, compatible, c
 
     monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
     monkeypatch.setattr(media_upload, "video_is_whatsapp_compatible", lambda _raw: compatible)
-    monkeypatch.setattr(media_upload, "compress_video", lambda _raw: b"h264-video")
+    monkeypatch.setattr(media_upload, "compress_video", lambda _raw, _max: b"h264-video")
 
     url = media_upload.save_decoded_media(content_type, b"original-video", "clip.mov")
 
@@ -215,6 +215,108 @@ def test_upload_converts_videos_whatsapp_cannot_play(content_type, compatible, c
         assert saved["content_type"] == content_type
 
 
+def test_upload_compresses_compatible_video_over_whatsapp_limit(monkeypatch):
+    """Un H.264 correcto de 20 MB antes se guardaba tal cual (el tope era
+    25 MB) y el envío fallaba recién en el worker: Meta rechaza videos de más
+    de 16 MB al subirlos."""
+    saved = {}
+    calls = []
+
+    def fake_save(filename, data, content_type):
+        saved.update(data=data, content_type=content_type)
+        return f"/media/{filename}"
+
+    def fake_compress(raw, max_bytes):
+        calls.append(max_bytes)
+        return b"h264-16mb"
+
+    monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
+    monkeypatch.setattr(media_upload, "video_is_whatsapp_compatible", lambda _raw: True)
+    monkeypatch.setattr(media_upload, "compress_video", fake_compress)
+
+    media_upload.save_decoded_media("video/mp4", b"x" * (20 * 1024 * 1024), "clip.mp4")
+
+    assert calls == [storage.WHATSAPP_VIDEO_MAX_BYTES]
+    assert saved == {"data": b"h264-16mb", "content_type": "video/mp4"}
+
+
+def test_upload_rejects_video_still_over_limit_after_conversion(monkeypatch):
+    monkeypatch.setattr(media_upload, "save_media_bytes", lambda *a: "/media/x.mp4")
+    monkeypatch.setattr(media_upload, "video_is_whatsapp_compatible", lambda _raw: True)
+    monkeypatch.setattr(media_upload, "compress_video", lambda raw, _max: raw)
+
+    with pytest.raises(ValueError, match="grande"):
+        media_upload.save_decoded_media("video/mp4", b"x" * (17 * 1024 * 1024), "clip.mp4")
+
+
+def test_upload_rejects_video_source_too_big_to_convert(monkeypatch):
+    """Los endpoints responden 413 cuando el motivo dice "grande"."""
+    monkeypatch.setattr(media_upload, "save_media_bytes", lambda *a: "/media/x.mp4")
+    monkeypatch.setattr(media_upload, "compress_video", lambda *a: pytest.fail("no debería convertir"))
+
+    with pytest.raises(ValueError, match="grande"):
+        media_upload.save_decoded_media("video/mp4", b"x" * (101 * 1024 * 1024), "clip.mp4")
+
+
+def test_other_media_keeps_the_general_limit(monkeypatch):
+    monkeypatch.setattr(media_upload, "save_media_bytes", lambda *a: "/media/x.pdf")
+    media_upload.save_decoded_media("application/pdf", b"x" * (20 * 1024 * 1024), "doc.pdf")
+    with pytest.raises(ValueError, match="grande"):
+        media_upload.save_decoded_media("application/pdf", b"x" * (26 * 1024 * 1024), "doc.pdf")
+
+
+def test_encode_plan_keeps_1080p_when_the_budget_allows():
+    # 30 s como el ejemplo: entra 1080p a casi 4 Mbps sin tocar el techo.
+    plan = storage.plan_video_encode(30.0, 1920, 29.97)
+    assert plan.max_side == 1920
+    assert plan.fps is None
+    assert plan.audio_bitrate == storage.AUDIO_BITRATE
+    assert 3_800_000 <= plan.video_bitrate <= 4_200_000
+
+
+def test_encode_plan_caps_bitrate_and_fps_for_short_clips():
+    plan = storage.plan_video_encode(5.0, 1920, 60.0)
+    assert plan.video_bitrate == storage.VIDEO_MAX_BITRATE
+    assert plan.fps == storage.VIDEO_MAX_FPS
+
+
+def test_encode_plan_steps_down_resolution_before_quality():
+    # 16 MB dan ~1,4 Mbps para 80 s y ~0,5 Mbps para 3 min: 720p y 480p.
+    eighty_seconds = storage.plan_video_encode(80.0, 1920, 30.0)
+    assert eighty_seconds.max_side == 1280
+    three_minutes = storage.plan_video_encode(180.0, 1920, 30.0)
+    assert three_minutes.max_side == 854
+    assert three_minutes.audio_bitrate == storage.AUDIO_BITRATE
+    five_minutes = storage.plan_video_encode(300.0, 1920, 30.0)
+    assert five_minutes.max_side == 854
+    assert five_minutes.audio_bitrate < storage.AUDIO_BITRATE
+    assert five_minutes.video_bitrate >= storage.VIDEO_MIN_BITRATE
+
+
+def test_encode_plan_never_upscales():
+    assert storage.plan_video_encode(10.0, 640, 30.0).max_side == 640
+
+
+def test_encode_plan_rejects_videos_too_long_for_whatsapp():
+    with pytest.raises(storage.VideoCompressionError, match="largo"):
+        storage.plan_video_encode(3600.0, 1920, 30.0)
+    with pytest.raises(storage.VideoCompressionError):
+        storage.plan_video_encode(0.0, 1920, 30.0)
+
+
+@requires_ffmpeg
+def test_compress_video_fits_a_small_limit_with_lower_quality():
+    """La recompresión apunta al límite que se le pide: un clip que no entra
+    en 60 KB a bitrate normal sale más chico, y sigue siendo H.264/AAC."""
+    h264 = _ffmpeg_video("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac")
+    limit = 60 * 1024
+
+    converted = storage.compress_video(h264, limit)
+
+    assert len(converted) <= limit
+    assert storage.video_is_whatsapp_compatible(converted) is True
+
+
 def test_upload_keeps_original_video_when_conversion_fails(monkeypatch):
     saved = {}
 
@@ -222,7 +324,7 @@ def test_upload_keeps_original_video_when_conversion_fails(monkeypatch):
         saved.update(data=data, content_type=content_type)
         return f"/media/{filename}"
 
-    def failing_compress(_raw):
+    def failing_compress(_raw, _max):
         raise storage.VideoCompressionError("boom")
 
     monkeypatch.setattr(media_upload, "save_media_bytes", fake_save)
