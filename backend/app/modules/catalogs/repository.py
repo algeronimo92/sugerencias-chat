@@ -68,7 +68,6 @@ async def update_lead_service(
                     LeadService.is_active,
                     *_SERVICE_AI_COLUMNS,
                     LeadService.external_id,
-            LeadService.external_id,
                     LeadService.created_by.label("created_by_user_id"),
                     User.name.label("created_by_name"),
                     LeadService.created_at,
@@ -97,8 +96,6 @@ async def update_lead_service(
                             LeadService.is_active,
                             *_SERVICE_AI_COLUMNS,
                             LeadService.external_id,
-                    LeadService.external_id,
-            LeadService.external_id,
                         )
                     )
                 ).mappings().one()
