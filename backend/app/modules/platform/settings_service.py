@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from app.modules.platform import settings_repository
@@ -105,6 +106,20 @@ SETTING_DEFS: list[SettingDef] = [
         "ElevenLabs (texto a voz)",
         secret=False,
     ),
+    # El negocio que ya tiene su lista de precios en un ERP la sincroniza en
+    # vez de cargarla dos veces (ver app/modules/catalogs/erp_catalog.py).
+    # El estado de la última pasada se guarda acá para que lo vea el admin y
+    # el worker sepa cuándo le toca volver a pedirla.
+    SettingDef(
+        "erp_catalog_url",
+        "URL del catálogo público (servicios y paquetes con precio)",
+        "erp",
+        "ERP del negocio (lista de precios)",
+        secret=False,
+    ),
+    SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
     SettingDef(
         "interactive_default_footer",
@@ -263,6 +278,17 @@ def validate_business_timezone(value: str) -> str:
     return normalized
 
 
+def validate_erp_catalog_url(value: str) -> str:
+    """Solo http(s) con host: el worker la va a pedir a ciegas cada hora."""
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("La URL del catálogo del ERP debe empezar con http:// o https://")
+    return normalized
+
+
 def normalize_user_ids(value: str) -> str:
     """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
     parts = [part.strip() for part in value.split(",") if part.strip()]
@@ -397,6 +423,8 @@ async def update_settings(values: dict[str, str]) -> None:
         raise ValueError(f"Configuración desconocida: {', '.join(sorted(unknown))}")
 
     values = dict(values)
+    if "erp_catalog_url" in values:
+        values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]

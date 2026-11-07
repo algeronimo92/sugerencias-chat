@@ -31,6 +31,7 @@ async def create_lead_service(name: str, user_id: int) -> dict:
             LeadService.name,
             LeadService.is_active,
             *_SERVICE_AI_COLUMNS,
+            LeadService.external_id,
             LeadService.created_by.label("created_by_user_id"),
             LeadService.created_at,
         )
@@ -66,6 +67,8 @@ async def update_lead_service(
                     LeadService.name,
                     LeadService.is_active,
                     *_SERVICE_AI_COLUMNS,
+                    LeadService.external_id,
+            LeadService.external_id,
                     LeadService.created_by.label("created_by_user_id"),
                     User.name.label("created_by_name"),
                     LeadService.created_at,
@@ -93,6 +96,9 @@ async def update_lead_service(
                             LeadService.name,
                             LeadService.is_active,
                             *_SERVICE_AI_COLUMNS,
+                            LeadService.external_id,
+                    LeadService.external_id,
+            LeadService.external_id,
                         )
                     )
                 ).mappings().one()
@@ -113,6 +119,12 @@ async def update_lead_service(
         "created_at": _fmt_ts(current["created_at"]),
         "packages": packages,
     }
+
+
+async def is_erp_managed(service_id: int) -> bool:
+    async with session_scope() as session:
+        external_id = await session.scalar(select(LeadService.external_id).where(LeadService.id == service_id))
+    return bool(external_id)
 
 
 async def create_service_package(service_id: int, values: dict) -> dict | None:

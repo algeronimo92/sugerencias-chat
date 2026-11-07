@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, createServicePackage, fetchLeadServices, updateLeadService, updateServicePackage } from '../api'
+import { createLeadService, createServicePackage, fetchErpSyncStatus, fetchLeadServices, runErpSync, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -40,5 +40,22 @@ export function useUpdateServicePackage() {
   return useMutation({
     mutationFn: updateServicePackage,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
+  })
+}
+
+export function useErpSyncStatus() {
+  return useQuery({
+    queryKey: serviceKeys.erpSync,
+    queryFn: fetchErpSyncStatus,
+    staleTime: 30_000,
+  })
+}
+
+/** Sincronizar reescribe servicios y paquetes: se refresca todo el catálogo. */
+export function useRunErpSync() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: runErpSync,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
   })
 }

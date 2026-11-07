@@ -22,6 +22,8 @@ export interface ServicePackage {
   notes?: string | null
   position: number
   is_active: boolean
+  /** Con valor, lo administra el ERP del negocio: en el CRM es solo lectura. */
+  external_id?: string | null
 }
 
 export interface LeadService {
@@ -33,6 +35,8 @@ export interface LeadService {
   /** Condiciones generales (promociones, vigencia). El precio vive en los paquetes. */
   price_notes?: string | null
   packages?: ServicePackage[]
+  /** Con valor, nombre, paquetes y alta/baja los administra el ERP del negocio. */
+  external_id?: string | null
   created_by_user_id?: number | null
   created_by_name?: string | null
   created_at?: string | null
@@ -52,4 +56,24 @@ export interface CustomFieldDefinition {
   options: string[]
   position: number
   is_active: boolean
+}
+
+export interface ErpSyncSummary {
+  services_total: number
+  services_created: number
+  services_updated: number
+  services_deactivated: number
+  packages_created: number
+  packages_updated: number
+  packages_deactivated: number
+  conflicts: string[]
+}
+
+/** Estado de la sincronización del catálogo con el ERP del negocio. */
+export interface ErpSyncStatus {
+  configured: boolean
+  url?: string | null
+  synced_at?: string | null
+  last_error?: string | null
+  last_summary?: ErpSyncSummary | null
 }

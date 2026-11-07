@@ -48,7 +48,40 @@ interface Props {
   onError: (message: string | null) => void
 }
 
+/** Lo que trae el ERP no se edita acá: se muestra tal cual, con lo inactivo apagado. */
+function ReadOnlyPackages({ service }: { service: LeadService }) {
+  const packages = service.packages ?? []
+  return (
+    <div className="mt-3 rounded-lg border border-wa-border/70 p-2.5 dark:border-wa-border-dark/70">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-wa-muted dark:text-wa-muted-dark">
+        <Package className="h-3.5 w-3.5" aria-hidden="true" />
+        Paquetes · los administra el ERP
+      </p>
+      {packages.length === 0 ? (
+        <p className="mt-2 text-xs text-wa-muted dark:text-wa-muted-dark">El ERP no trae paquetes para este servicio: no se cotiza.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1" aria-label={`Paquetes de ${service.name}`}>
+          {packages.map(pkg => (
+            <li key={pkg.id} className={`flex items-baseline justify-between gap-3 text-sm ${pkg.is_active ? 'text-wa-text dark:text-wa-text-dark' : 'text-wa-muted line-through dark:text-wa-muted-dark'}`}>
+              <span className="min-w-0 truncate">
+                {pkg.name}
+                <span className="text-wa-muted dark:text-wa-muted-dark"> · {pkg.sessions} {pkg.sessions === 1 ? 'sesión' : 'sesiones'}</span>
+              </span>
+              <span className="shrink-0 tabular-nums">{pkg.price}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function ServicePackagesEditor({ service, onError }: Props) {
+  if (service.external_id) return <ReadOnlyPackages service={service} />
+  return <EditablePackages service={service} onError={onError} />
+}
+
+function EditablePackages({ service, onError }: Props) {
   const packages = service.packages ?? []
   const createPackage = useCreateServicePackage()
   const updatePackage = useUpdateServicePackage()

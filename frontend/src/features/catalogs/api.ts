@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, LeadService, ServicePackage, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, LeadService, ServicePackage, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -56,6 +56,14 @@ export async function updateServicePackage({ serviceId, id, ...values }: {
       is_active?: boolean
     }): Promise<ServicePackage> {
   return (await client.patch<ApiResponse<'/api/services/{service_id}/packages/{package_id}', 'patch'>>(`/api/services/${serviceId}/packages/${id}`, values)).data
+}
+
+export async function fetchErpSyncStatus(): Promise<ErpSyncStatus> {
+  return (await client.get<ApiResponse<'/api/services/erp-sync', 'get'>>('/api/services/erp-sync')).data
+}
+
+export async function runErpSync(): Promise<ErpSyncStatus> {
+  return (await client.post<ApiResponse<'/api/services/erp-sync', 'post'>>('/api/services/erp-sync')).data
 }
 
 export async function fetchCustomFields(entityType: CustomFieldEntity, includeInactive: boolean): Promise<CustomFieldDefinition[]> {

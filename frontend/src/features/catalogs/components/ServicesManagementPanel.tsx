@@ -7,6 +7,7 @@ import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCreateLeadService, useLeadServices, useUpdateLeadService } from '../hooks/useLeadServices'
 import type { LeadService } from '../types'
+import { ErpSyncCard } from './ErpSyncCard'
 import { ServicePackagesEditor } from './ServicePackagesEditor'
 
 /** Campos editables de una fila. El precio no está: vive en los paquetes. */
@@ -104,6 +105,8 @@ export function ServicesManagementPanel() {
   }
 
   return (
+    <>
+    <ErpSyncCard />
     <CatalogPanel
       icon={Sparkles}
       title="Administrar servicios"
@@ -125,6 +128,7 @@ export function ServicesManagementPanel() {
       isPending={service => updateService.isPending && updateService.variables?.id === service.id}
       onSave={handleSave}
       onToggle={handleToggle}
+      canToggle={service => !service.external_id}
       formError={error}
       createForm={
         <form onSubmit={handleCreate} className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
@@ -151,8 +155,10 @@ export function ServicesManagementPanel() {
             value={draftOf(service).name}
             onChange={event => setDraftField(service, 'name', event.target.value)}
             maxLength={120}
+            readOnly={Boolean(service.external_id)}
+            title={service.external_id ? 'El nombre lo administra el ERP' : undefined}
             aria-label={`Nombre de ${service.name}`}
-            className="w-full bg-white py-1.5 dark:bg-wa-panel-dark"
+            className={`w-full bg-white py-1.5 dark:bg-wa-panel-dark ${service.external_id ? 'text-wa-muted dark:text-wa-muted-dark' : ''}`}
           />
           <Input
             value={draftOf(service).description}
@@ -172,11 +178,12 @@ export function ServicesManagementPanel() {
           />
           <ServicePackagesEditor service={service} onError={setError} />
           <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-            Creado por {service.created_by_name ?? 'Sistema'}
+            {service.external_id ? 'Sincronizado desde el ERP' : `Creado por ${service.created_by_name ?? 'Sistema'}`}
             {service.created_at ? ` · ${new Date(service.created_at).toLocaleDateString('es-PE')}` : ''}
           </p>
         </div>
       )}
     />
+    </>
   )
 }

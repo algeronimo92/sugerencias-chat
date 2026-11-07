@@ -1820,6 +1820,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/services/erp-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Erp Sync Status */
+        get: operations["get_erp_sync_status_api_services_erp_sync_get"];
+        put?: never;
+        /**
+         * Run Erp Sync
+         * @description Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual.
+         */
+        post: operations["run_erp_sync_api_services_erp_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/services/{service_id}": {
         parameters: {
             query?: never;
@@ -4434,6 +4455,61 @@ export interface components {
             is_primary: boolean;
         };
         /**
+         * ErpSyncStatus
+         * @description Estado de la sincronización con el ERP del negocio.
+         */
+        ErpSyncStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Url */
+            url?: string | null;
+            /** Synced At */
+            synced_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            last_summary?: components["schemas"]["ErpSyncSummary"] | null;
+        };
+        /** ErpSyncSummary */
+        ErpSyncSummary: {
+            /**
+             * Services Total
+             * @default 0
+             */
+            services_total: number;
+            /**
+             * Services Created
+             * @default 0
+             */
+            services_created: number;
+            /**
+             * Services Updated
+             * @default 0
+             */
+            services_updated: number;
+            /**
+             * Services Deactivated
+             * @default 0
+             */
+            services_deactivated: number;
+            /**
+             * Packages Created
+             * @default 0
+             */
+            packages_created: number;
+            /**
+             * Packages Updated
+             * @default 0
+             */
+            packages_updated: number;
+            /**
+             * Packages Deactivated
+             * @default 0
+             */
+            packages_deactivated: number;
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /**
          * ExecutionErrorCode
          * @description Causa de un fallo de ejecución que la UI trata distinto. Va en su
          *     propia columna para que nadie tenga que reconocerla leyendo el texto.
@@ -5011,6 +5087,8 @@ export interface components {
             price_notes?: string | null;
             /** Packages */
             packages?: components["schemas"]["ServicePackageItem"][];
+            /** External Id */
+            external_id?: string | null;
             /** Created By User Id */
             created_by_user_id?: number | null;
             /** Created By Name */
@@ -5830,6 +5908,8 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /** External Id */
+            external_id?: string | null;
         };
         /** ServicePackageUpdate */
         ServicePackageUpdate: {
@@ -10091,6 +10171,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadServiceItem"][];
+                };
+            };
+        };
+    };
+    get_erp_sync_status_api_services_erp_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpSyncStatus"];
+                };
+            };
+        };
+    };
+    run_erp_sync_api_services_erp_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpSyncStatus"];
                 };
             };
         };

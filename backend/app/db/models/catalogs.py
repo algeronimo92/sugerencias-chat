@@ -45,12 +45,22 @@ class LeadService(Base):
     # ``price_notes`` queda para condiciones generales (promociones, vigencia).
     description: Mapped[str | None] = mapped_column(Text)
     price_notes: Mapped[str | None] = mapped_column(Text)
+    # Identificador en el ERP del negocio. Con valor, el servicio (nombre,
+    # paquetes, alta/baja) lo administra el ERP vía erp_catalog.py y el CRM
+    # solo edita la descripción; sin valor, lo cargó el negocio a mano.
+    external_id: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("uq_lead_services_name_lower", func.lower(name), unique=True),
         Index("idx_lead_services_created_by", created_by),
+        Index(
+            "uq_lead_services_external_id",
+            external_id,
+            unique=True,
+            postgresql_where=external_id.is_not(None),
+        ),
     )
 
 
@@ -72,6 +82,7 @@ class ServicePackage(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    external_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -79,6 +90,12 @@ class ServicePackage(Base):
         CheckConstraint("price >= 0", name="service_packages_price_check"),
         Index("uq_service_packages_service_name_lower", service_id, func.lower(name), unique=True),
         Index("idx_service_packages_service_position", service_id, position, id),
+        Index(
+            "uq_service_packages_external_id",
+            external_id,
+            unique=True,
+            postgresql_where=external_id.is_not(None),
+        ),
     )
 
 

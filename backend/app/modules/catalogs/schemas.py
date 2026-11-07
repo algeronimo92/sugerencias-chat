@@ -30,6 +30,8 @@ class ServicePackageItem(BaseModel):
     notes: str | None = None
     position: int
     is_active: bool = True
+    # Con valor, lo administra el ERP del negocio y el CRM lo muestra en solo lectura.
+    external_id: str | None = None
 
 
 class ServicePackageCreate(BaseModel):
@@ -57,9 +59,33 @@ class LeadServiceItem(BaseModel):
     description: str | None = None
     price_notes: str | None = None
     packages: list[ServicePackageItem] = Field(default_factory=list)
+    # Con valor, nombre, paquetes y alta/baja los administra el ERP del
+    # negocio; el CRM solo edita descripción y notas.
+    external_id: str | None = None
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     created_at: str | None = None
+
+
+class ErpSyncSummary(BaseModel):
+    services_total: int = 0
+    services_created: int = 0
+    services_updated: int = 0
+    services_deactivated: int = 0
+    packages_created: int = 0
+    packages_updated: int = 0
+    packages_deactivated: int = 0
+    conflicts: list[str] = Field(default_factory=list)
+
+
+class ErpSyncStatus(BaseModel):
+    """Estado de la sincronización con el ERP del negocio."""
+
+    configured: bool
+    url: str | None = None
+    synced_at: str | None = None
+    last_error: str | None = None
+    last_summary: ErpSyncSummary | None = None
 
 
 class LeadServiceCreate(BaseModel):

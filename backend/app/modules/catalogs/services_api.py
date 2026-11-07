@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import (
+    ErpSyncStatus,
     LeadServiceCreate,
     LeadServiceItem,
     LeadServiceUpdate,
@@ -9,9 +10,11 @@ from app.modules.catalogs.schemas import (
     ServicePackageItem,
     ServicePackageUpdate,
 )
+from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.catalogs.queries import list_lead_services
 from app.modules.catalogs.service import (
+    ErpManagedError,
     LeadServiceAlreadyExistsError,
     ServicePackageAlreadyExistsError,
     create_lead_service,
@@ -31,6 +34,22 @@ async def get_services(_user: User = Depends(get_current_user)):
 @router.get("/all", response_model=list[LeadServiceItem])
 async def get_all_services(_admin: User = Depends(require_admin)):
     return await list_lead_services(include_inactive=True)
+
+
+# Antes de ``/{service_id}``: FastAPI prueba las rutas en orden y "erp-sync"
+# no es un entero.
+@router.get("/erp-sync", response_model=ErpSyncStatus)
+async def get_erp_sync_status(_admin: User = Depends(require_admin)):
+    return await sync_status()
+
+
+@router.post("/erp-sync", response_model=ErpSyncStatus)
+async def run_erp_sync(_admin: User = Depends(require_admin)):
+    """Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual."""
+    try:
+        return await sync_catalog()
+    except ErpCatalogError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.post("", response_model=LeadServiceItem, status_code=201)
@@ -65,6 +84,8 @@ async def patch_service(
         service = await update_lead_service(service_id, values, admin.id)
     except LeadServiceAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un servicio con ese nombre")
+    except ErpManagedError:
+        raise HTTPException(status_code=409, detail="Ese servicio lo administra el ERP: cámbialo allí y sincroniza")
     if service is None:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
     return service
@@ -91,6 +112,8 @@ async def post_service_package(
         package = await create_service_package(service_id, values)
     except ServicePackageAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ese servicio ya tiene un paquete con ese nombre")
+    except ErpManagedError:
+        raise HTTPException(status_code=409, detail="Los paquetes de ese servicio los administra el ERP: cámbialos allí y sincroniza")
     if package is None:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
     return package
@@ -112,6 +135,8 @@ async def patch_service_package(
         package = await update_service_package(service_id, package_id, values)
     except ServicePackageAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ese servicio ya tiene un paquete con ese nombre")
+    except ErpManagedError:
+        raise HTTPException(status_code=409, detail="Los paquetes de ese servicio los administra el ERP: cámbialos allí y sincroniza")
     if package is None:
         raise HTTPException(status_code=404, detail="Paquete no encontrado")
     return package
