@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { compressImage } from '../../../shared/utils/media'
+import { compressImage, uploadSizeError } from '../../../shared/utils/media'
 import { FlowPicker } from '../../automations/public/FlowPicker'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
 import type { OutboundOf } from '../domain/outbound'
@@ -370,6 +370,13 @@ export function ChatComposer({
     // roundtrip para el caso obvio de un archivo sin tipo reconocible.
     if (files.some((file) => !file.type)) {
       setMediaError('No se pudo determinar el tipo de archivo')
+      return
+    }
+    // Un video pesado se recomprime en el servidor al límite de WhatsApp; el
+    // tope evita leer en memoria uno que de todos modos no va a entrar.
+    const oversized = files.find((file) => uploadSizeError(file) != null)
+    if (oversized) {
+      setMediaError(`${oversized.name} ${uploadSizeError(oversized)}`)
       return
     }
 

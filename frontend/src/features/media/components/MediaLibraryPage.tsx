@@ -5,12 +5,12 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { uploadSizeError } from '../../../shared/utils/media'
 import { resolveMediaUrl } from '../../whatsapp/public/message'
 import { useDeleteMediaAsset, useMediaLibrary, useRenameMediaAsset, useUploadMediaAsset } from '../queries'
 import type { MediaAsset, MediaAssetKind } from '../types'
 
 const ACCEPTED_TYPES = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const MAX_BYTES = 25 * 1024 * 1024
 
 const FILTERS: { value: MediaAssetKind | ''; label: string }[] = [
   { value: '', label: 'Todos' },
@@ -100,6 +100,9 @@ export function MediaLibraryPage() {
   const remove = useDeleteMediaAsset()
   const [error, setError] = useState<string | null>(null)
   const [uploadingName, setUploadingName] = useState<string | null>(null)
+  // El video pesado se recomprime en el servidor y tarda más que una subida
+  // normal: el aviso explica la espera.
+  const [isConvertingVideo, setIsConvertingVideo] = useState(false)
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null)
   const [renameAsset, setRenameAsset] = useState<MediaAsset | null>(null)
   const [renameBasename, setRenameBasename] = useState('')
@@ -113,14 +116,15 @@ export function MediaLibraryPage() {
 
   async function uploadFiles(files: File[]) {
     setError(null)
-    const oversized = files.find(file => file.size > MAX_BYTES)
+    const oversized = files.find(file => uploadSizeError(file) != null)
     if (oversized) {
-      setError(`${oversized.name} supera el máximo de 25 MB`)
+      setError(`${oversized.name} ${uploadSizeError(oversized)}`)
       return
     }
     try {
       for (const file of files) {
         setUploadingName(file.name)
+        setIsConvertingVideo(file.type.startsWith('video/'))
         await upload.mutateAsync({
           contentType: file.type || 'application/octet-stream',
           dataBase64: await fileToBase64(file),
@@ -233,7 +237,7 @@ export function MediaLibraryPage() {
           <label className="flex cursor-pointer flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <span className="flex items-center gap-4">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">{uploadingName ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}</span>
-              <span><span className="block text-sm font-bold text-wa-text dark:text-white">{uploadingName ? `Subiendo ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Carga archivos a la biblioteca'}</span><span className="mt-1 block text-xs text-wa-muted">Arrastra varios archivos o selecciónalos · máximo 25 MB cada uno</span></span>
+              <span><span className="block text-sm font-bold text-wa-text dark:text-white">{uploadingName ? `${isConvertingVideo ? 'Subiendo y convirtiendo' : 'Subiendo'} ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Carga archivos a la biblioteca'}</span><span className="mt-1 block text-xs text-wa-muted">Arrastra varios archivos o selecciónalos · máximo 25 MB cada uno; los videos, hasta 100 MB, se convierten al formato de WhatsApp</span></span>
             </span>
             <span className="rounded-xl bg-wa-primary-strong px-4 py-2.5 text-xs font-bold text-white shadow-sm">Seleccionar archivos</span>
             <input type="file" multiple disabled={!!uploadingName} accept={ACCEPTED_TYPES} className="hidden" onChange={event => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = '' }} />

@@ -93,12 +93,30 @@ describe('biblioteca', () => {
     const { container } = mount(<MediaLibraryPage />)
     await screen.findByText('promo.png')
 
-    const big = new File(['x'], 'enorme.mp4', { type: 'video/mp4' })
+    const big = new File(['x'], 'enorme.pdf', { type: 'application/pdf' })
     Object.defineProperty(big, 'size', { value: 26 * 1024 * 1024 })
     await userEvent.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, big)
 
-    expect(await screen.findByText('enorme.mp4 supera el máximo de 25 MB')).toBeInTheDocument()
+    expect(await screen.findByText('enorme.pdf supera el máximo de 25 MB')).toBeInTheDocument()
     expect(api.current.calls('post', '/api/media-library')).toEqual([])
+  })
+
+  it('un video pesado se sube igual (el servidor lo recomprime) hasta 100 MB', async () => {
+    const { container } = mount(<MediaLibraryPage />)
+    await screen.findByText('promo.png')
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!
+
+    const tooBig = new File(['x'], 'enorme.mp4', { type: 'video/mp4' })
+    Object.defineProperty(tooBig, 'size', { value: 101 * 1024 * 1024 })
+    await userEvent.upload(input, tooBig)
+    expect(await screen.findByText('enorme.mp4 supera el máximo de 100 MB para videos')).toBeInTheDocument()
+    expect(api.current.calls('post', '/api/media-library')).toEqual([])
+
+    api.current.on('post', '/api/media-library', { status: 201, data: { ...PHOTO, id: 9, filename: 'largo.mp4', content_type: 'video/mp4' } })
+    const heavy = new File(['x'], 'largo.mp4', { type: 'video/mp4' })
+    Object.defineProperty(heavy, 'size', { value: 60 * 1024 * 1024 })
+    await userEvent.upload(input, heavy)
+    await waitFor(() => expect(api.current.calls('post', '/api/media-library')).toHaveLength(1))
   })
 
   it('renombra sin tocar la extensión', async () => {

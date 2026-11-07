@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from app.integrations.storage.media_storage import (
+    WHATSAPP_VIDEO_MAX_BYTES,
     VideoCompressionError,
     compress_video,
     save_media_bytes,
@@ -26,6 +27,14 @@ ALLOWED_DOCUMENT_TYPES = (
     "application/zip",
 )
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+# Video: el límite es el de Meta (16 MB). Guardar uno más grande sólo
+# posponía el error al worker de envío, cuando el usuario ya no está mirando.
+MAX_VIDEO_BYTES = WHATSAPP_VIDEO_MAX_BYTES
+# Cuánto puede pesar el video que llega para recomprimir. Viene en base64
+# dentro del JSON y se decodifica entero en memoria, así que hace falta un
+# techo; 100 MB son varios minutos de video de celular, y uno más largo no
+# entra en 16 MB con una calidad que valga la pena.
+MAX_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024
 # Contenedores de video que acepta Meta Cloud API. El resto (.mov, .webm) se
 # convierte a MP4 aunque sus códecs sirvan.
 WHATSAPP_VIDEO_CONTAINERS = {"video/mp4", "video/3gpp"}
@@ -80,6 +89,34 @@ def _video_needs_conversion(content_type: str, raw: bytes) -> bool:
     return video_is_whatsapp_compatible(raw) is False
 
 
+def _prepare_video(content_type: str, raw: bytes, filename: str | None) -> tuple[bytes, str, str | None]:
+    """Deja el video como WhatsApp lo reproduce: MP4 H.264/AAC de hasta 16 MB.
+
+    El que ya cumple se guarda tal cual, sin perder calidad. El que pesa más
+    o que WhatsApp no reproduce (VP9 o HEVC aunque la extensión sea .mp4,
+    .mov, .webm) se recomprime con ffmpeg a la mejor calidad que entra en el
+    límite. Si ffmpeg no está o falla, sigue el archivo original: el check de
+    tamaño rechaza el que no entra, y el de códec incompatible sale igual —
+    mejor eso que bloquear la subida.
+
+    Los mensajes llevan "grande" porque los endpoints lo usan para responder
+    413 en vez de 400."""
+    if len(raw) > MAX_VIDEO_SOURCE_BYTES:
+        raise ValueError(
+            "El video es demasiado grande para convertirlo: máximo 100 MB antes de comprimir"
+        )
+    if len(raw) > MAX_VIDEO_BYTES or _video_needs_conversion(content_type, raw):
+        try:
+            raw = compress_video(raw, MAX_VIDEO_BYTES)
+            content_type = "video/mp4"
+            filename = None  # fuerza la extensión .mp4 del resultado
+        except VideoCompressionError:
+            pass
+    if len(raw) > MAX_VIDEO_BYTES:
+        raise ValueError("Archivo demasiado grande: WhatsApp acepta videos de hasta 16 MB")
+    return raw, content_type, filename
+
+
 def save_media_file(content_type: str, data_base64: str, filename: str | None = None) -> str:
     """Decodifica y guarda un archivo base64, y devuelve su media_url estable.
     Lanza ValueError con el motivo si el archivo no es válido."""
@@ -110,22 +147,9 @@ def save_decoded_media(content_type: str, raw: bytes, filename: str | None = Non
     if not raw:
         raise ValueError("El archivo está vacío")
 
-    # Video que no entra en el límite o que WhatsApp no reproduce (VP9 o HEVC
-    # aunque la extensión sea .mp4, .mov, .webm): recomprimir con ffmpeg a
-    # H.264/AAC en MP4. Si ffmpeg no está o falla, sigue el archivo original:
-    # el check de tamaño de abajo rechaza el que no entra, y el de códec
-    # incompatible sale igual — mejor eso que bloquear la subida.
-    if content_type.startswith("video/") and (
-        len(raw) > MAX_BYTES or _video_needs_conversion(content_type, raw)
-    ):
-        try:
-            raw = compress_video(raw)
-            content_type = "video/mp4"
-            filename = None  # fuerza la extensión .mp4 del resultado
-        except VideoCompressionError:
-            pass
-
-    if len(raw) > MAX_BYTES:
+    if content_type.startswith("video/"):
+        raw, content_type, filename = _prepare_video(content_type, raw, filename)
+    elif len(raw) > MAX_BYTES:
         raise ValueError("Archivo demasiado grande")
 
     ext = ""
