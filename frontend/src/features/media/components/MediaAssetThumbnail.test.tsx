@@ -87,15 +87,30 @@ describe('MediaAssetThumbnail', () => {
     expect(screen.getByText('0:12')).toBeInTheDocument()
   })
 
-  it('audio y documento muestran su ícono y extensión sin esperar nada', () => {
+  it('audio y documentos sin miniatura muestran su ícono y extensión sin esperar nada', () => {
     const { container, rerender } = render(<MediaAssetThumbnail asset={asset({ filename: 'nota.ogg', content_type: 'audio/ogg', media_url: '/media/nota.ogg' })} />)
     expect(container.querySelector('[data-state="ready"] svg.lucide-music-2')).toBeInTheDocument()
     expect(screen.getByText('OGG')).toBeInTheDocument()
 
-    rerender(<MediaAssetThumbnail asset={asset({ filename: 'precios.pdf', content_type: 'application/pdf', media_url: '/media/precios.pdf' })} />)
+    rerender(<MediaAssetThumbnail asset={asset({ filename: 'informe.docx', content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', media_url: '/media/informe.docx' })} />)
+    expect(container.querySelector('[data-state="ready"] svg.lucide-file-text')).toBeInTheDocument()
+    expect(screen.getByText('DOCX')).toBeInTheDocument()
+    expect(container.querySelector('[data-state="loading"]')).not.toBeInTheDocument()
+  })
+
+  it('un PDF pide su primera página y, si no la hay, queda el ícono del documento sin marcarlo como error', () => {
+    const { container } = render(<MediaAssetThumbnail asset={asset({ filename: 'precios.pdf', content_type: 'application/pdf', media_url: '/media/precios.pdf' })} />)
+    const page = screen.getByRole('img', { name: 'precios.pdf' })
+    expect(page).toHaveAttribute('src', expect.stringMatching(/\/media\/precios\.pdf\/thumbnail$/))
+    expect(container.querySelector('[data-state="loading"] svg.lucide-file-text')).toBeInTheDocument()
+
+    fireEvent.error(page)
+
     expect(container.querySelector('[data-state="ready"] svg.lucide-file-text')).toBeInTheDocument()
     expect(screen.getByText('PDF')).toBeInTheDocument()
-    expect(container.querySelector('[data-state="loading"]')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sin vista previa')).not.toBeInTheDocument()
+    // Nunca se intenta el original como imagen: un PDF no lo es.
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
   it('muestra el original directamente cuando no hay miniatura posible', () => {

@@ -101,14 +101,14 @@ def get_media_file(
 
 @files_router.get("/media/{filename}/thumbnail")
 def get_media_thumbnail(filename: str):
-    """Versión reducida de una imagen (WebP, máximo 320 px) para las listas de la biblioteca."""
+    """Versión reducida de una imagen o de la primera página de un PDF (WebP, máximo 640 px) para las listas de la biblioteca."""
     # Mismas reglas de acceso que el original (el router exige sesión) y sin
     # rangos: una miniatura pesa unos KB y se entrega entera.
     try:
         thumbnail = get_or_create_thumbnail(f"/media/{filename}")
     except MediaNotFoundError:
-        # Cubre también archivos que no son imagen: el frontend vuelve al
-        # original cuando no hay miniatura.
+        # Cubre también audios, videos y documentos sin miniatura: el
+        # frontend vuelve al original o al ícono del tipo.
         raise HTTPException(404, "Miniatura no disponible")
     except MediaStorageError as exc:
         raise HTTPException(503, str(exc))

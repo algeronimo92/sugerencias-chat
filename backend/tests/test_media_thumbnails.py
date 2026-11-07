@@ -2,7 +2,7 @@
 
 La lista de "Adjuntos" mostraba cada imagen con el archivo original (PNGs de
 1,7 MB): abrirla con 30 archivos bajaba decenas de MB. Acá se fija que la
-miniatura cabe en 320 px, que se guarda junto al original y que el segundo
+miniatura cabe en 640 px, que se guarda junto al original y que el segundo
 pedido ya no vuelve a procesar la imagen.
 """
 
@@ -29,7 +29,7 @@ def local_backend(media_dir, monkeypatch):  # noqa: F811
     return media_dir
 
 
-def test_thumbnail_fits_in_320px_and_is_saved_next_to_the_original(local_backend):
+def test_thumbnail_fits_in_640px_and_is_saved_next_to_the_original(local_backend):
     url = storage.save_media_bytes("promo.png", _png(1600, 900), "image/png")
 
     thumbnail = storage.get_or_create_thumbnail(url)
@@ -37,7 +37,7 @@ def test_thumbnail_fits_in_320px_and_is_saved_next_to_the_original(local_backend
     assert thumbnail.content_type == "image/webp"
     with Image.open(BytesIO(thumbnail.data)) as img:
         assert img.format == "WEBP"
-        assert (img.width, img.height) == (320, 180)
+        assert (img.width, img.height) == (640, 360)
     assert (local_backend / "promo.png.thumb.webp").read_bytes() == thumbnail.data
     assert len(thumbnail.data) < len(_png(1600, 900))
 
@@ -73,11 +73,46 @@ def test_transparency_survives(local_backend):
         assert img.getpixel((160, 160))[3] == 255
 
 
-def test_non_images_have_no_thumbnail(local_backend):
-    url = storage.save_media_bytes("precios.pdf", b"%PDF-1.4 no es una imagen", "application/pdf")
+def _pdf(width: int = 300, height: int = 500) -> bytes:
+    """Un PDF de una página con un rectángulo oscuro, suficiente para renderizar."""
+    content = f"0.1 0.6 0.5 rg 20 20 {width - 40} {height // 2} re f".encode()
+    return (
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        + f"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 {width} {height}]/Contents 4 0 R>>endobj\n".encode()
+        + f"4 0 obj<</Length {len(content)}>>stream\n".encode() + content + b"\nendstream endobj\n"
+        b"trailer<</Root 1 0 R>>\n%%EOF\n"
+    )
+
+
+def test_pdf_thumbnail_is_its_first_page_on_white(local_backend):
+    """Una lista de precios se reconoce por su primera página, como en el Finder."""
+    url = storage.save_media_bytes("precios.pdf", _pdf(300, 500), "application/pdf")
+
+    thumbnail = storage.get_or_create_thumbnail(url)
+
+    assert thumbnail.content_type == "image/webp"
+    with Image.open(BytesIO(thumbnail.data)) as img:
+        assert (img.width, img.height) == (384, 640)
+        assert img.getpixel((5, 5))[:3] == (255, 255, 255)   # margen de la página, no negro
+        assert img.getpixel((192, 600))[:3] != (255, 255, 255)  # el rectángulo pintado
+    assert (local_backend / "precios.pdf.thumb.webp").exists()
+
+
+def test_corrupt_pdf_has_no_thumbnail(local_backend):
+    url = storage.save_media_bytes("roto.pdf", b"%PDF-1.4 esto no es un pdf", "application/pdf")
     with pytest.raises(storage.ThumbnailUnavailableError):
         storage.get_or_create_thumbnail(url)
-    assert not (local_backend / "precios.pdf.thumb.webp").exists()
+    assert not (local_backend / "roto.pdf.thumb.webp").exists()
+
+
+def test_audio_video_and_other_documents_have_no_thumbnail(local_backend):
+    for name, content_type in (("nota.ogg", "audio/ogg"), ("clip.mp4", "video/mp4"), ("informe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")):
+        url = storage.save_media_bytes(name, b"contenido", content_type)
+        with pytest.raises(storage.ThumbnailUnavailableError):
+            storage.get_or_create_thumbnail(url)
+        assert not (local_backend / f"{name}.thumb.webp").exists()
 
 
 def test_corrupt_image_has_no_thumbnail(local_backend):
@@ -134,12 +169,12 @@ def test_endpoint_serves_the_thumbnail_privately(local_backend):
     assert response.headers["Cache-Control"] == "private, max-age=86400"
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     with Image.open(BytesIO(response.body)) as img:
-        assert img.width == 320
+        assert img.width == 640
 
 
-@pytest.mark.parametrize("filename", ["no-existe.png", "precios.pdf"])
+@pytest.mark.parametrize("filename", ["no-existe.png", "nota.ogg"])
 def test_endpoint_answers_404_without_thumbnail(local_backend, filename):
-    storage.save_media_bytes("precios.pdf", b"%PDF-1.4", "application/pdf")
+    storage.save_media_bytes("nota.ogg", b"OggS", "audio/ogg")
     with pytest.raises(HTTPException) as excinfo:
         media.get_media_thumbnail(filename)
     assert excinfo.value.status_code == 404

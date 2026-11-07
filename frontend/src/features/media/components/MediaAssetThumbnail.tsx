@@ -1,26 +1,23 @@
 /**
  * Miniatura de un archivo de la biblioteca, para listas donde hay que
  * reconocer el archivo sin abrirlo (describirlo para el asistente, elegirlo
- * para una plantilla). Imagen y video muestran su contenido; audio y
- * documentos, un ícono tipado con la extensión. Si la vista previa no carga,
- * lo dice en vez de dejar un hueco.
+ * para una plantilla). Imagen y video muestran su contenido, un PDF su
+ * primera página; audio y el resto de documentos, un ícono tipado con la
+ * extensión. Si la vista previa no carga, lo dice en vez de dejar un hueco.
  */
 import { FileText, Film, Images, Music2, Play } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '../../../shared/utils/cn'
-import { resolveMediaUrl, thumbnailUrl } from '../../../shared/utils/mediaUrl'
-import { formatMediaDuration, mediaAssetKind, mediaExtensionLabel } from '../domain/assets'
+import { resolveMediaUrl } from '../../../shared/utils/mediaUrl'
+import { formatMediaDuration, isPdfAsset, mediaAssetKind, mediaExtensionLabel } from '../domain/assets'
+import { useImageThumbnail } from '../hooks/useImageThumbnail'
 import type { MediaAsset, MediaAssetKind } from '../types'
+import { PreviewLoading } from './PreviewLoading'
+import { revealClass } from './revealClass'
 
 const KIND_ICONS = { image: Images, video: Film, audio: Music2, document: FileText } as const
 
 const pillClass = 'pointer-events-none absolute rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-white'
-
-// El medio nace invisible encima del placeholder y se revela con un fundido
-// corto (200 ms, ease-out) al cargar: el usuario ve "esto está llegando" en
-// vez de un rectángulo vacío que de golpe cambia de contenido. Con
-// prefers-reduced-motion el fundido dura 0 (regla global en index.css).
-const revealClass = (loaded: boolean) => cn('h-full w-full object-cover transition-opacity duration-200 ease-out', loaded ? 'opacity-100' : 'opacity-0')
 
 interface PreviewProps {
   asset: MediaAsset
@@ -29,30 +26,17 @@ interface PreviewProps {
   loaded: boolean
   onLoad: () => void
   onError: () => void
+  /** Un PDF no tiene original que mostrar como imagen. */
+  fallbackToOriginal?: boolean
 }
 
-/**
- * Pide la miniatura del backend (unos KB) en vez del original: una lista de
- * 30 fotos bajaba decenas de MB. Si la miniatura falla (404 porque no se pudo
- * generar, backend viejo) se reintenta con el original antes de darse por
- * vencida.
- */
-function ImagePreview({ asset, url, loaded, onLoad, onError }: PreviewProps) {
-  const thumbnail = thumbnailUrl(asset.media_url)
-  const [useOriginal, setUseOriginal] = useState(thumbnail === null)
-  const ref = useRef<HTMLImageElement>(null)
-  const src = useOriginal ? url : thumbnail ?? url
-  // Una imagen que ya estaba en caché puede completarse antes de que React
-  // enganche onLoad: sin esto el placeholder se quedaría pulsando para siempre.
-  useEffect(() => {
-    const image = ref.current
-    if (image?.complete && image.naturalWidth > 0) onLoad()
-  }, [src, onLoad])
-  const handleError = () => {
-    if (useOriginal) onError()
-    else setUseOriginal(true)
-  }
-  return <img ref={ref} src={src} alt={asset.filename} loading="lazy" onLoad={onLoad} onError={handleError} className={revealClass(loaded)} />
+/** Miniatura reducida del backend, con vuelta al original si falla (ver useImageThumbnail). */
+function ImagePreview({ asset, loaded, onLoad, onError, fallbackToOriginal }: PreviewProps) {
+  const image = useImageThumbnail(asset.media_url, { onLoad, onFail: onError, fallbackToOriginal })
+  // La primera página de un PDF se reconoce por su cabecera: se ancla arriba
+  // en vez de centrar un recorte del medio de la hoja.
+  const anchor = fallbackToOriginal === false ? 'object-top' : undefined
+  return <img ref={image.ref} src={image.src} alt={asset.filename} loading="lazy" onLoad={image.onLoad} onError={image.onError} className={revealClass(loaded, anchor)} />
 }
 
 /** Primer cuadro del video con ícono de play y, cuando se conoce, su duración. */
@@ -82,7 +66,7 @@ function VideoPreview({ asset, url, loaded, onLoad, onError }: PreviewProps) {
         aria-label={asset.filename}
         onLoadedMetadata={event => reveal(event.currentTarget)}
         onError={onError}
-        className={cn(revealClass(loaded), 'bg-black')}
+        className={revealClass(loaded, 'bg-black')}
       />
       {loaded && (
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -107,15 +91,9 @@ type PlaceholderState = 'loading' | 'ready' | 'failed'
  */
 function KindPlaceholder({ asset, kind, state }: { asset: MediaAsset; kind: MediaAssetKind; state: PlaceholderState }) {
   const Icon = KIND_ICONS[kind]
+  if (state === 'loading') return <PreviewLoading icon={Icon} />
   return (
-    <span
-      data-state={state}
-      aria-hidden={state === 'loading' ? true : undefined}
-      className={cn(
-        'absolute inset-0 flex flex-col items-center justify-center gap-1 text-wa-muted dark:text-wa-muted-dark',
-        state === 'loading' && 'animate-pulse motion-reduce:animate-none',
-      )}
-    >
+    <span data-state={state} className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-wa-muted dark:text-wa-muted-dark">
       <Icon className="h-8 w-8" strokeWidth={1.5} aria-hidden="true" />
       {state === 'failed' && <span className="text-[10px] font-semibold">Sin vista previa</span>}
       {state === 'ready' && <span className={`${pillClass} bottom-1.5 right-1.5`}>{mediaExtensionLabel(asset)}</span>}
@@ -171,19 +149,23 @@ export const MediaAssetThumbnail = forwardRef<HTMLButtonElement, Props>(function
   const [loaded, setLoaded] = useState(false)
   const kind = mediaAssetKind(asset)
   const url = resolveMediaUrl(asset.media_url) ?? ''
-  const showsMedia = (kind === 'image' || kind === 'video') && !failed
+  // Un PDF muestra su primera página; si el backend no pudo generarla, queda
+  // el ícono con la extensión (no es un error: es un documento), y el visor
+  // lo abre igual.
+  const pdf = kind === 'document' && isPdfAsset(asset)
+  const showsMedia = (kind === 'image' || kind === 'video' || pdf) && !failed
   const fail = () => setFailed(true)
   const load = useCallback(() => setLoaded(true), [])
 
   let content: ReactNode
-  if (!showsMedia) content = <KindPlaceholder asset={asset} kind={kind} state={failed ? 'failed' : 'ready'} />
+  if (!showsMedia) content = <KindPlaceholder asset={asset} kind={kind} state={failed && !pdf ? 'failed' : 'ready'} />
   else {
     content = (
       <>
         {!loaded && <KindPlaceholder asset={asset} kind={kind} state="loading" />}
-        {kind === 'image'
-          ? <ImagePreview asset={asset} url={url} loaded={loaded} onLoad={load} onError={fail} />
-          : <VideoPreview asset={asset} url={url} loaded={loaded} onLoad={load} onError={fail} />}
+        {kind === 'video'
+          ? <VideoPreview asset={asset} url={url} loaded={loaded} onLoad={load} onError={fail} />
+          : <ImagePreview asset={asset} url={url} loaded={loaded} onLoad={load} onError={fail} fallbackToOriginal={!pdf} />}
       </>
     )
   }

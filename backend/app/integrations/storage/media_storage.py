@@ -587,9 +587,11 @@ def image_dimensions(media_url: str) -> tuple[int, int] | None:
 # Miniaturas de la biblioteca: la lista de archivos mostraba cada imagen con
 # el original (PNGs de 1,7 MB), así que abrir "Adjuntos" con 30 archivos
 # bajaba decenas de MB. La miniatura se genera una sola vez, se guarda junto
-# al original en el mismo almacenamiento y cabe en un cuadro de 320 px: la
-# tarjeta la pinta a 128×96, así que sobra incluso en pantallas 2x.
-THUMBNAIL_BOX = (320, 320)
+# al original en el mismo almacenamiento y cabe en un cuadro de 640 px: la
+# tarjeta más grande que la usa (la grilla de Archivos) mide unos 330 px CSS,
+# que en pantallas 2x son 660 px físicos; con 320 se veía borrosa ahí. Un
+# WebP de 640 pesa unas decenas de KB: sigue siendo ~3 % del original.
+THUMBNAIL_BOX = (640, 640)
 THUMBNAIL_SUFFIX = ".thumb.webp"
 THUMBNAIL_CONTENT_TYPE = "image/webp"
 THUMBNAIL_QUALITY = 80
@@ -622,6 +624,20 @@ def _is_image(filename: str, content_type: str) -> bool:
     return _media_category(filename) == "images"
 
 
+def _is_pdf(filename: str, content_type: str) -> bool:
+    return content_type.lower().startswith("application/pdf") or Path(filename).suffix.lower() == ".pdf"
+
+
+def _encode_thumbnail(img) -> bytes:
+    """Encaja una imagen de Pillow en el cuadro de miniatura y la codifica como WebP."""
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    img = img.convert("RGBA" if has_alpha else "RGB")
+    img.thumbnail(THUMBNAIL_BOX)
+    buffer = BytesIO()
+    img.save(buffer, format="WEBP", quality=THUMBNAIL_QUALITY, method=4)
+    return buffer.getvalue()
+
+
 def render_image_thumbnail(data: bytes) -> bytes:
     """Reduce una imagen al cuadro de miniatura y la devuelve como WebP.
 
@@ -633,25 +649,53 @@ def render_image_thumbnail(data: bytes) -> bytes:
 
     try:
         with Image.open(BytesIO(data)) as img:
-            img = ImageOps.exif_transpose(img) or img
-            has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
-            img = img.convert("RGBA" if has_alpha else "RGB")
-            img.thumbnail(THUMBNAIL_BOX)
-            buffer = BytesIO()
-            img.save(buffer, format="WEBP", quality=THUMBNAIL_QUALITY, method=4)
+            return _encode_thumbnail(ImageOps.exif_transpose(img) or img)
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
         # DecompressionBombError: un PNG de 25 MB puede ser gigante en píxeles;
         # mejor sin miniatura que tumbar el proceso por memoria.
         raise ThumbnailUnavailableError(f"No se pudo generar la miniatura: {type(exc).__name__}") from exc
-    return buffer.getvalue()
+
+
+def render_pdf_thumbnail(data: bytes) -> bytes:
+    """Primera página de un PDF como miniatura WebP, para reconocer una lista
+    de precios o un catálogo sin abrirlo.
+
+    pypdfium2 (pdfium de Chromium, licencia permisiva) renderiza sin binarios
+    del sistema; PyMuPDF era AGPL y poppler obligaba a instalar paquetes en
+    la imagen. Un PDF cifrado o corrupto queda sin miniatura, no sin archivo."""
+    try:
+        import pypdfium2 as pdfium
+    except ImportError as exc:  # pragma: no cover - imagen incompleta
+        raise ThumbnailUnavailableError("Falta instalar la dependencia 'pypdfium2'") from exc
+
+    try:
+        document = pdfium.PdfDocument(data)
+        try:
+            if len(document) == 0:
+                raise ThumbnailUnavailableError("PDF sin páginas")
+            page = document[0]
+            width, height = page.get_size()  # puntos (1/72 de pulgada)
+            scale = max(THUMBNAIL_BOX) / max(width, height, 1)
+            # Fondo blanco explícito: una página con transparencia saldría negra
+            # sobre el marco oscuro de la tarjeta.
+            bitmap = page.render(scale=scale, fill_color=(255, 255, 255, 255))
+            return _encode_thumbnail(bitmap.to_pil())
+        finally:
+            document.close()
+    except ThumbnailUnavailableError:
+        raise
+    except Exception as exc:
+        raise ThumbnailUnavailableError(f"No se pudo generar la miniatura del PDF: {type(exc).__name__}") from exc
 
 
 def get_or_create_thumbnail(media_url: str) -> MediaThumbnail:
-    """Devuelve la miniatura de una imagen, generándola y guardándola la
-    primera vez. Pedir la miniatura de una miniatura devuelve la misma.
+    """Devuelve la miniatura de una imagen o de la primera página de un PDF,
+    generándola y guardándola la primera vez. Pedir la miniatura de una
+    miniatura devuelve la misma.
 
     Lanza ``MediaNotFoundError`` si el original no existe y
-    ``ThumbnailUnavailableError`` si no es una imagen o no se pudo reducir."""
+    ``ThumbnailUnavailableError`` si el tipo no tiene miniatura (audio,
+    video, otros documentos) o no se pudo reducir."""
     if is_thumbnail_url(media_url):
         return MediaThumbnail(THUMBNAIL_CONTENT_TYPE, read_media_bytes(media_url))
 
@@ -664,9 +708,14 @@ def get_or_create_thumbnail(media_url: str) -> MediaThumbnail:
         return MediaThumbnail(THUMBNAIL_CONTENT_TYPE, b"".join(iter_media_stat(info, thumbnail_url, 0, info.size)))
 
     original = stat_media(media_url)
-    if not _is_image(_media_filename(media_url), original.content_type):
-        raise ThumbnailUnavailableError(f"No es una imagen: {media_url}")
-    data = render_image_thumbnail(b"".join(iter_media_stat(original, media_url, 0, original.size)))
+    filename = _media_filename(media_url)
+    if _is_image(filename, original.content_type):
+        render = render_image_thumbnail
+    elif _is_pdf(filename, original.content_type):
+        render = render_pdf_thumbnail
+    else:
+        raise ThumbnailUnavailableError(f"Sin miniatura para este tipo de archivo: {media_url}")
+    data = render(b"".join(iter_media_stat(original, media_url, 0, original.size)))
     # Dos pedidos simultáneos pueden generarla a la vez: escriben el mismo
     # contenido con el mismo nombre, así que no hace falta un lock.
     save_media_bytes(_media_filename(thumbnail_url), data, THUMBNAIL_CONTENT_TYPE)

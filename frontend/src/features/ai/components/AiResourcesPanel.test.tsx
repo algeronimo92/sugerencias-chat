@@ -74,10 +74,12 @@ describe('AiResourcesPanel', () => {
     expect(within(rows[1]).getByRole('img', { name: 'promo-octubre.jpg' })).toBeInTheDocument()
     expect(rows[1]).toHaveTextContent('La IA puede sugerirlo')
 
-    // Un PDF no tiene visor: se abre en otra pestaña.
-    const link = within(rows[2]).getByRole('link', { name: 'Abrir catalogo.pdf en otra pestaña' })
-    expect(link).toHaveAttribute('target', '_blank')
-    expect(rows[2]).toHaveTextContent('PDF')
+    // Un PDF muestra su primera página y se abre en el visor, no en otra pestaña.
+    const pdfThumbnail = within(rows[2]).getByRole('img', { name: 'catalogo.pdf' })
+    expect(pdfThumbnail).toHaveAttribute('src', expect.stringMatching(/\/media\/catalogo\.pdf\/thumbnail$/))
+    expect(within(rows[2]).queryByRole('link', { name: /otra pestaña/ })).not.toBeInTheDocument()
+    await userEvent.click(within(rows[2]).getByRole('button', { name: 'Ver catalogo.pdf' }))
+    expect(await screen.findByTitle('Documento catalogo.pdf')).toHaveAttribute('src', expect.stringMatching(/\/media\/catalogo\.pdf$/))
   })
 
   it('un audio se escucha en la fila, sin abrir otra pestaña', async () => {

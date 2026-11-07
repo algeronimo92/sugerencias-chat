@@ -1,8 +1,8 @@
 /**
  * Una fila de la pestaña "Adjuntos": miniatura, estado y el campo "Cuándo
- * enviarlo". Imagen y video se abren en el visor; un audio se escucha aquí
- * mismo, para describirlo mientras suena; un documento se abre en otra
- * pestaña.
+ * enviarlo". Imagen, video y PDF se abren en el visor; un audio se escucha
+ * aquí mismo, para describirlo mientras suena; el resto de documentos se
+ * abre en otra pestaña.
  *
  * La regla del backend es una sola: un archivo con descripción es visible
  * para el asistente; sin descripción, no existe para él. Por eso el estado se
@@ -17,11 +17,12 @@ import { Textarea, labelClass } from '../../../shared/ui/Input'
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { resolveMediaUrl } from '../../../shared/utils/mediaUrl'
-import { MEDIA_KIND_LABELS, MediaAssetThumbnail, formatMediaSize, mediaAssetKind } from '../../media/public/MediaAssetThumbnail'
+import { MEDIA_KIND_LABELS, MediaAssetThumbnail, formatMediaSize, isPdfAsset, mediaAssetKind } from '../../media/public/MediaAssetThumbnail'
 import type { MediaAsset, MediaAssetKind } from '../../media/types'
 import { isDescribed, useDescriptionDraft } from '../hooks/useDescriptionDraft'
 
 const MediaLightbox = lazy(() => import('../../../shared/ui/MediaLightbox').then(m => ({ default: m.MediaLightbox })))
+const DocumentViewer = lazy(() => import('../../../shared/ui/DocumentViewer').then(m => ({ default: m.DocumentViewer })))
 
 // Mismo tope que valida el backend para ai_description.
 const DESCRIPTION_MAX = 500
@@ -121,7 +122,8 @@ export function ResourceCard({ asset }: { asset: MediaAsset }) {
   const thumbnailRef = useRef<HTMLButtonElement>(null)
   const draftState = useDescriptionDraft(asset)
   const kind = mediaAssetKind(asset)
-  const canPreview = kind === 'image' || kind === 'video'
+  const pdf = kind === 'document' && isPdfAsset(asset)
+  const canPreview = kind === 'image' || kind === 'video' || pdf
   const url = resolveMediaUrl(asset.media_url) ?? ''
 
   return (
@@ -130,7 +132,7 @@ export function ResourceCard({ asset }: { asset: MediaAsset }) {
         ref={thumbnailRef}
         asset={asset}
         onOpen={canPreview ? () => setPreviewOpen(true) : undefined}
-        href={kind === 'document' ? url : undefined}
+        href={kind === 'document' && !pdf ? url : undefined}
         // Abarca las tres filas de texto (en audio, también el reproductor):
         // así queda anclada arriba, como el avatar en WhatsApp, sin flotar.
         className="h-20 w-20 self-start sm:row-span-3 sm:h-28 sm:w-40"
@@ -140,13 +142,17 @@ export function ResourceCard({ asset }: { asset: MediaAsset }) {
       <DescriptionField {...draftState} />
       {previewOpen && (
         <Suspense fallback={null}>
-          <MediaLightbox
-            src={url}
-            kind={kind === 'video' ? 'video' : 'image'}
-            alt={asset.filename}
-            filename={asset.filename}
-            onClose={() => { setPreviewOpen(false); thumbnailRef.current?.focus() }}
-          />
+          {pdf
+            ? <DocumentViewer src={url} filename={asset.filename} onClose={() => { setPreviewOpen(false); thumbnailRef.current?.focus() }} />
+            : (
+              <MediaLightbox
+                src={url}
+                kind={kind === 'video' ? 'video' : 'image'}
+                alt={asset.filename}
+                filename={asset.filename}
+                onClose={() => { setPreviewOpen(false); thumbnailRef.current?.focus() }}
+              />
+            )}
         </Suspense>
       )}
     </li>
