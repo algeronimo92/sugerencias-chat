@@ -60,11 +60,17 @@ No-objetivos (por ahora):
    red, cuota, respuesta inválida tras un reintento). Cada job guarda qué modelo
    respondió. La salida estructurada nativa de cada proveedor reemplaza al parser con
    autoarreglo del workflow.
-2. **Claves por API key, a nivel plataforma** (`platform_settings`, cifradas como
-   las de Meta): `gemini_api_key`, `openai_api_key`, más `ai_primary_model` y
-   `ai_fallback_model` (valores `proveedor:modelo`, p. ej. `gemini:gemini-2.5-flash`,
-   `openai:gpt-5.6-terra`). Con "Probar conexión" por proveedor en el panel, igual que
-   el ERP: una llamada mínima que confirma que la clave y el modelo responden.
+2. **Claves por API key, cargadas por el admin de cada negocio** en Integraciones
+   (`app_settings` del tenant, cifradas como el token de Meta): `gemini_api_key`,
+   `openai_api_key`, más `ai_primary_model` y `ai_fallback_model` (valores
+   `proveedor:modelo`, p. ej. `gemini:gemini-2.5-flash`, `openai:gpt-5.6-terra`).
+   Nueva tarjeta **"Asistente IA"** en Integraciones: clave por proveedor con
+   "Probar conexión" (una llamada mínima que confirma que la clave y el modelo
+   responden), selector de modelo principal y secundario, y estado: *Sin configurar*
+   mientras no haya clave válida. Cada negocio paga su propio consumo; la plataforma
+   conserva el permiso (`ai_enabled`) y la cuota mensual de jobs. Un negocio con
+   `ai_provider = native` y sin clave válida ve en el chat el aviso "Asistente IA no
+   conectado" con enlace a Integraciones, como las demás integraciones.
 3. **Interruptor por negocio**: columna `organizations.ai_provider`
    (`'n8n' | 'native'`, default `'n8n'`), editable desde el panel de plataforma junto a
    `ai_enabled` y la cuota. `composition.py` conecta un `RoutingAiProvider` que lee la
@@ -149,13 +155,13 @@ No-objetivos (por ahora):
 - Tests de caracterización del proveedor actual: grabar 5 conversaciones de prueba
   (fixtures) con la respuesta JSON esperada para comparar nativo contra n8n.
 - `LlmClient` y adaptadores Gemini/OpenAI con pruebas contra dobles HTTP.
-- Claves por proveedor y selección de modelo principal y secundario en
-  `platform_settings` + "Probar conexión" por proveedor (llamada mínima al modelo).
-  `PLATFORM_SETTING_DEFS` crece con cuatro entradas.
+- Tarjeta "Asistente IA" en Integraciones: clave por proveedor, selección de modelo
+  principal y secundario, "Probar conexión" por proveedor (llamada mínima al modelo).
+  `SETTING_DEFS` crece con cuatro entradas del grupo `ai`.
 - Migración Alembic: `organizations.ai_provider` (plano de control) y
   `ai_jobs.model`, `tokens_in`, `tokens_out`, `prompt_version` (plano tenant).
 
-Entregable: nada cambia para el usuario; la plataforma puede cargar claves y probarlas.
+Entregable: el admin del negocio puede cargar sus claves y probarlas; las sugerencias siguen saliendo por n8n hasta la fase 1.
 
 ### Fase 1 · Sugerencias nativas con interruptor
 
@@ -228,7 +234,7 @@ búsqueda híbrida (léxica + vectorial, fusión por rango). Diseño aparte.
 
 | Fase | Backend | Frontend |
 |---|---|---|
-| 0 | `app/integrations/llm/*`, `app/modules/platform/platform_settings.py`, migración control+tenant, `app/db/models/{control,ai}.py` | panel de plataforma (`features/platform/components/PlatformApp.tsx`: claves y prueba) |
+| 0 | `app/integrations/llm/*`, `app/modules/platform/settings_service.py` (grupo `ai`), migración control+tenant, `app/db/models/{control,ai}.py` | tarjeta "Asistente IA" en Integraciones (`features/platform/components/`): claves, modelos y prueba |
 | 1 | `app/modules/ai/infrastructure/{native_provider,routing_provider}.py`, `app/modules/ai/prompts/`, `app/composition.py`, `app/modules/ai/ai_assistant_service.py` (catálogo compacto) | panel de plataforma: selector de proveedor por negocio |
 | 2 | migración `knowledge_documents.service_id`, `knowledge_service.py` (PDF), `knowledge_search.py` (filtro por servicio), `assistant_api.py` | `features/ai` (selector de servicio, PDF), `features/catalogs` (fichas por servicio) |
 | 3 | `native_provider.analyze`, `prompts/analista.md` | — |
@@ -246,6 +252,7 @@ con `ports/`; httpx solo en integraciones o archivos fuera de `domain/`/`applica
 |---|---|
 | Calidad distinta a n8n | Fixtures de caracterización; comparación en negocio de prueba; interruptor por negocio |
 | Un proveedor caído | Respaldo automático al segundo modelo; si ambos fallan, el job queda `failed` como hoy |
+| Negocio nativo sin clave o con clave vencida | Estado "Con error" en la tarjeta, aviso en el chat con enlace a Integraciones; el job no se crea ni consume cuota |
 | Prompt sin aislamiento entre negocios | Mismos jobs firmados y pasos obligatorios; tests que verifican que el prompt solo contiene datos del tenant |
 | Costo sin control | Tokens por job y tope mensual existente; alerta en panel al 80 % |
 | Catálogo grande en otro negocio | Si supera ~150 servicios, el catálogo pasa a herramienta con búsqueda por nombre (interruptor por tamaño, no por negocio) |
@@ -254,14 +261,14 @@ con `ports/`; httpx solo en integraciones o archivos fuera de `domain/`/`applica
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):
-1. Proveedor principal y secundario seleccionables desde el panel de plataforma, como
-   en n8n; el secundario entra solo si el principal falla.
-2. Claves por API key, cifradas a nivel plataforma, con prueba de conexión.
+1. Proveedor principal y secundario seleccionables, como en n8n; el secundario entra
+   solo si el principal falla.
+2. Claves por API key, cargadas por el admin de cada negocio en Integraciones cuando
+   quiera activar las sugerencias; cifradas por tenant, con prueba de conexión.
 3. La comparación de la fase 1 se hace sobre un clon de DermicaPro.
 
 Pendientes:
-1. Quién carga las claves y cuándo (bloquean la fase 0).
-2. Si la fase 2 va antes que la 3. Recomendación: sí, porque mejora las sugerencias
+1. Si la fase 2 va antes que la 3. Recomendación: sí, porque mejora las sugerencias
    que el equipo usa a diario; el analista hoy funciona y puede esperar.
 
 ## 8. Orden y tamaño
