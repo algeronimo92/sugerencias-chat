@@ -11,6 +11,8 @@ export const aiKeys = {
   profile: ['ai-assistant', 'profile'] as const,
   knowledgeAll: ['ai-assistant', 'knowledge'] as const,
   knowledge: (documentId: string | null) => ['ai-assistant', 'knowledge', documentId] as const,
+  /** Biblioteca de plantillas de la plataforma. */
+  knowledgeTemplates: ['ai-assistant', 'knowledge-templates'] as const,
   suggestionsAll: ['suggestions'] as const,
   suggestions: (chatId: string | null) => ['suggestions', chatId] as const,
   /** Claves de mutación: la UI sabe si hay una generación en curso. */

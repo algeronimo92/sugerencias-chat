@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from app.modules.ai import knowledge_repository
 from app.modules.ai.errors import KnowledgeLimitError
+from app.modules.platform.ports.knowledge_templates import get_active_template, list_templates
 
 
 MAX_TITLE_LENGTH = 200
@@ -111,12 +112,39 @@ def _validate_type(document_type: str | None) -> str | None:
 
 
 async def create_document(
-    title: str, content: str, document_type: str | None = None, *, service_id: int | None = None, source: str = "manual",
+    title: str, content: str, document_type: str | None = None, *, service_id: int | None = None,
+    source: str = "manual", metadata: dict | None = None,
 ) -> dict:
     title, content = _validate(title, content)
     return await knowledge_repository.create_document(
         title, content, _validate_type(document_type), chunk_text(content), MAX_DOCUMENTS,
-        service_id=service_id, source=source,
+        service_id=service_id, source=source, metadata=metadata,
+    )
+
+
+class TemplateNotFound(LookupError):
+    pass
+
+
+async def list_importable_templates() -> list[dict]:
+    """Las plantillas activas de la plataforma, marcando las que el negocio ya
+    importó (puede volver a importarlas: cada importación es una copia nueva)."""
+    imported = await knowledge_repository.imported_template_ids()
+    return [
+        {**template, "characters": len(template["content"]), "imported": template["id"] in imported}
+        for template in await list_templates()
+    ]
+
+
+async def import_template(template_id: int, *, service_id: int | None) -> dict:
+    """Copia la plantilla como documento propio del negocio, listo para editar."""
+    template = await get_active_template(template_id)
+    if template is None:
+        raise TemplateNotFound(template_id)
+    return await create_document(
+        template["title"], template["content"], template["document_type"],
+        service_id=service_id, source="plantilla",
+        metadata={"template_id": template["id"], "template_version": template["version"]},
     )
 
 

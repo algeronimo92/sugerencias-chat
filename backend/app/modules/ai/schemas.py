@@ -114,6 +114,7 @@ class KnowledgeDocumentSummary(BaseModel):
     title: str
     document_type: str | None = None
     service_id: int | None = None
+    template_id: int | None = None
     characters: int
     chunk_count: int
     created_at: str
@@ -191,3 +192,21 @@ class KnowledgePdfImport(BaseModel):
     pages: int
     characters: int
     truncated: bool
+
+
+class KnowledgeTemplateSummary(BaseModel):
+    """Plantilla de la plataforma que el negocio puede importar."""
+
+    id: int
+    title: str
+    document_type: str | None = None
+    service_hint: str | None = None
+    content: str
+    version: int
+    characters: int
+    imported: bool
+
+
+class KnowledgeTemplateImport(BaseModel):
+    # Servicio del negocio al que queda vinculada la copia; sin valor, general.
+    service_id: int | None = None

@@ -630,6 +630,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/knowledge-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Templates */
+        get: operations["get_knowledge_templates_api_platform_knowledge_templates_get"];
+        put?: never;
+        /** Post Knowledge Template */
+        post: operations["post_knowledge_template_api_platform_knowledge_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/knowledge-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Knowledge Template
+         * @description Editar sube la versión; las copias que ya importaron los negocios no cambian.
+         */
+        put: operations["put_knowledge_template_api_platform_knowledge_templates__template_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -1648,6 +1686,46 @@ export interface paths {
         post?: never;
         /** Delete Knowledge Document */
         delete: operations["delete_knowledge_document_api_ai_knowledge__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/knowledge/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Knowledge Templates
+         * @description Biblioteca de la plataforma: fichas y guiones modelo para importar.
+         */
+        get: operations["read_knowledge_templates_api_ai_knowledge_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/knowledge/templates/{template_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Knowledge Template
+         * @description Crea una copia propia del negocio; desde ahí se edita como cualquier documento.
+         */
+        post: operations["import_knowledge_template_api_ai_knowledge_templates__template_id__import_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5134,6 +5212,8 @@ export interface components {
             document_type?: string | null;
             /** Service Id */
             service_id?: number | null;
+            /** Template Id */
+            template_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -5155,6 +5235,8 @@ export interface components {
             document_type?: string | null;
             /** Service Id */
             service_id?: number | null;
+            /** Template Id */
+            template_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -5189,6 +5271,81 @@ export interface components {
             filename: string;
             /** Data Base64 */
             data_base64: string;
+        };
+        /** KnowledgeTemplateBody */
+        KnowledgeTemplateBody: {
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /** KnowledgeTemplateImport */
+        KnowledgeTemplateImport: {
+            /** Service Id */
+            service_id?: number | null;
+        };
+        /** KnowledgeTemplateItem */
+        KnowledgeTemplateItem: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: string | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * KnowledgeTemplateSummary
+         * @description Plantilla de la plataforma que el negocio puede importar.
+         */
+        KnowledgeTemplateSummary: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: string | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /** Version */
+            version: number;
+            /** Characters */
+            characters: number;
+            /** Imported */
+            imported: boolean;
+        };
+        /** KnowledgeTemplateUpdate */
+        KnowledgeTemplateUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** LeadActivityItem */
         LeadActivityItem: {
@@ -8221,6 +8378,94 @@ export interface operations {
             };
         };
     };
+    get_knowledge_templates_api_platform_knowledge_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"][];
+                };
+            };
+        };
+    };
+    post_knowledge_template_api_platform_knowledge_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_knowledge_template_api_platform_knowledge_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_users_api_users_get: {
         parameters: {
             query?: never;
@@ -10250,6 +10495,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_knowledge_templates_api_ai_knowledge_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateSummary"][];
+                };
+            };
+        };
+    };
+    import_knowledge_template_api_ai_knowledge_templates__template_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentItem"];
                 };
             };
             /** @description Validation Error */

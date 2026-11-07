@@ -1,7 +1,7 @@
 """Registro ORM único: carga modelos de control y tenant para Alembic."""
 
 from app.db.base import Base
-from app.db.models.control import Organization, OrganizationBranding, OrganizationDomain, WhatsAppConnection, TenantSchemaVersion, PlatformSetting, PlatformUser, PlatformSession, WebhookInbox
+from app.db.models.control import Organization, OrganizationBranding, OrganizationDomain, WhatsAppConnection, TenantSchemaVersion, PlatformSetting, PlatformUser, PlatformSession, WebhookInbox, KnowledgeTemplate
 from app.db.models.ai import AIJob, KnowledgeDocument, AIProfile, KnowledgeChunk
 from app.db.models.leads import Lead, WhatsAppIdentity, WhatsappAdConversion, LeadSale, LeadStage, LeadTagAssignment, LeadActivity, LeadNote, LeadNoteMention, LeadAssignmentTurn
 from app.db.models.conversations import WspMessage, WhatsAppMessageEvent, WhatsAppEntryPointWindow, MessageOutbox, ScheduledMessage
@@ -27,6 +27,7 @@ __all__ = [
     'PlatformUser',
     'PlatformSession',
     'WebhookInbox',
+    'KnowledgeTemplate',
     'AIJob',
     'KnowledgeDocument',
     'AIProfile',

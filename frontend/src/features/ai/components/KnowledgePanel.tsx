@@ -1,4 +1,4 @@
-import { BookText, FileText, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { BookText, FileText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useId, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -15,6 +15,7 @@ import {
   useSaveKnowledgeDocument,
 } from '../queries'
 import type { KnowledgeDocumentType } from '../types'
+import { KnowledgeTemplatesDialog } from './KnowledgeTemplatesDialog'
 import { panelClass } from './styles'
 
 /**
@@ -214,6 +215,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
   const [filter, setFilter] = useState<string>(initialServiceId ? String(initialServiceId) : ALL)
   // null = sin editor abierto; 'new' = alta; otro valor = id en edición.
   const [editing, setEditing] = useState<string | null>(null)
+  const [browsingTemplates, setBrowsingTemplates] = useState(false)
 
   const visible = documents.filter(document =>
     filter === ALL ? true : filter === GENERAL ? document.service_id == null : String(document.service_id) === filter,
@@ -227,10 +229,16 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
       <div className={panelClass}>
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Documentos</h2>
-          <Button size="sm" onClick={() => setEditing('new')}>
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            Nuevo
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="secondary" size="sm" onClick={() => setBrowsingTemplates(true)}>
+              <Library className="h-3.5 w-3.5" aria-hidden="true" />
+              Plantillas
+            </Button>
+            <Button size="sm" onClick={() => setEditing('new')}>
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Nuevo
+            </Button>
+          </div>
         </div>
         <div className="mt-3">
           <Select aria-label="Filtrar por servicio" value={filter} onValueChange={setFilter}>
@@ -248,8 +256,8 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
             icon={BookText}
             title={filterServiceId ? 'Este servicio no tiene documentos' : 'Sin documentos'}
             description={filterServiceId
-              ? 'Sube su ficha (PDF o texto): el asistente la usará cuando un lead se interese en este servicio.'
-              : 'Carga fichas de servicios, políticas, preguntas frecuentes o guiones de venta.'}
+              ? 'Sube su ficha (PDF o texto) o importa una plantilla: el asistente la usará cuando un lead se interese en este servicio.'
+              : 'Carga fichas de servicios, políticas, preguntas frecuentes o guiones de venta, o importa una plantilla de la plataforma.'}
           />
         )}
         <ul className="mt-3 space-y-1" aria-label="Documentos de conocimiento">
@@ -267,6 +275,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
                   <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
                     {document.service_id != null ? services.get(document.service_id)?.name ?? 'Servicio' : 'General'}
                     {typeLabel(document.document_type) ? ` · ${typeLabel(document.document_type)}` : ''}
+                    {document.template_id != null ? ' · desde plantilla' : ''}
                     {' · '}{document.chunk_count} {document.chunk_count === 1 ? 'fragmento' : 'fragmentos'}
                   </span>
                 </span>
@@ -285,6 +294,17 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           documentId={editing === 'new' ? null : editing}
           defaultServiceId={editing === 'new' ? filterServiceId : null}
           onDone={id => setEditing(id)}
+        />
+      )}
+      {browsingTemplates && (
+        <KnowledgeTemplatesDialog
+          preferredServiceId={filterServiceId}
+          onClose={() => setBrowsingTemplates(false)}
+          onImported={documentId => {
+            setBrowsingTemplates(false)
+            setFilter(ALL)
+            setEditing(documentId)
+          }}
         />
       )}
     </div>

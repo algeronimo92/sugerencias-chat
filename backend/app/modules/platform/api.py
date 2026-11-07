@@ -6,7 +6,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList)
+from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate)
 
 import base64
 import binascii
@@ -18,6 +18,7 @@ from app.db.models.control import PlatformUser
 from app.modules.auth.public import cookie_is_secure, hash_password
 from app.modules.auth.public import LoginThrottledError, clear_account_attempts, reserve_login_attempt
 from app.modules.platform import branding as branding_service
+from app.modules.platform import knowledge_templates
 from app.modules.ai.public import AIEntitlement
 from app.modules.platform.platform_organizations import (
     OrganizationNotFoundError,
@@ -337,3 +338,29 @@ async def get_organization_logo(organization_id: UUID):
         media_type="image/png",
         headers={"Cache-Control": "private, no-cache", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/knowledge-templates", dependencies=protected, response_model=list[KnowledgeTemplateItem])
+async def get_knowledge_templates():
+    return await knowledge_templates.list_templates(include_inactive=True)
+
+
+@router.post("/knowledge-templates", dependencies=protected, response_model=KnowledgeTemplateItem, status_code=201)
+async def post_knowledge_template(body: KnowledgeTemplateBody):
+    try:
+        return await knowledge_templates.create_template(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/knowledge-templates/{template_id}", dependencies=protected, response_model=KnowledgeTemplateItem)
+async def put_knowledge_template(template_id: int, body: KnowledgeTemplateUpdate):
+    """Editar sube la versión; las copias que ya importaron los negocios no cambian."""
+    values = body.model_dump(exclude_unset=True)
+    try:
+        template = await knowledge_templates.update_template(template_id, values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if template is None:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    return template

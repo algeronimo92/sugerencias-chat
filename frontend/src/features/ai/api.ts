@@ -3,7 +3,7 @@ import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
 import type { SuggestionResponse, SuggestionStatus } from './types'
 import type { MediaAsset } from "../media/types";
-import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, KnowledgeDocumentType, KnowledgePdfImport, LeadAnalysisResult, TtsResult } from "./types";
+import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, KnowledgeDocumentType, KnowledgePdfImport, KnowledgeTemplateSummary, LeadAnalysisResult, TtsResult } from "./types";
 
 export async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {
@@ -96,4 +96,15 @@ export async function testAiProvider(payload: { provider: string; apiKey?: strin
     model: payload.model ?? null,
   })
   return data
+}
+
+export async function fetchKnowledgeTemplates(): Promise<KnowledgeTemplateSummary[]> {
+  return (await client.get<ApiResponse<'/api/ai/knowledge/templates', 'get'>>('/api/ai/knowledge/templates')).data
+}
+
+/** Crea una copia propia del negocio de la plantilla, lista para editar. */
+export async function importKnowledgeTemplate({ templateId, serviceId }: { templateId: number; serviceId: number | null }): Promise<KnowledgeDocument> {
+  return (await client.post<ApiResponse<'/api/ai/knowledge/templates/{template_id}/import', 'post'>>(
+    `/api/ai/knowledge/templates/${templateId}/import`, { service_id: serviceId },
+  )).data
 }

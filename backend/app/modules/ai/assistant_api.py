@@ -6,7 +6,7 @@ biblioteca puede proponer el asistente como adjuntos. Solo administradores.
 """
 
 from __future__ import annotations
-from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, AiProvidersStatus, AiProviderTestRequest, AiProviderTestResult, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, KnowledgePdfImport, KnowledgePdfImportRequest, AIResourceBody)
+from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, AiProvidersStatus, AiProviderTestRequest, AiProviderTestResult, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, KnowledgePdfImport, KnowledgePdfImportRequest, KnowledgeTemplateImport, KnowledgeTemplateSummary, AIResourceBody)
 from app.modules.ai.knowledge_import import PdfImportError, import_pdf
 
 from uuid import UUID
@@ -22,7 +22,10 @@ from app.modules.ai.knowledge_service import (
     MAX_CONTENT_LENGTH,
     MAX_TITLE_LENGTH,
     KnowledgeLimitError,
+    TemplateNotFound,
     create_document,
+    import_template,
+    list_importable_templates,
     delete_document,
     get_document,
     list_documents,
@@ -59,6 +62,25 @@ async def read_knowledge_document(document_id: UUID):
     if document is None:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     return document
+
+
+@router.get("/knowledge/templates", response_model=list[KnowledgeTemplateSummary])
+async def read_knowledge_templates():
+    """Biblioteca de la plataforma: fichas y guiones modelo para importar."""
+    return await list_importable_templates()
+
+
+@router.post("/knowledge/templates/{template_id}/import", response_model=KnowledgeDocumentItem, status_code=201)
+async def import_knowledge_template(template_id: int, body: KnowledgeTemplateImport):
+    """Crea una copia propia del negocio; desde ahí se edita como cualquier documento."""
+    try:
+        return await import_template(template_id, service_id=body.service_id)
+    except TemplateNotFound as exc:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada") from exc
+    except KnowledgeLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/knowledge/import-pdf", response_model=KnowledgePdfImport)
