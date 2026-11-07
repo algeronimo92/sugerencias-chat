@@ -3,7 +3,7 @@ import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
 import type { SuggestionResponse, SuggestionStatus } from './types'
 import type { MediaAsset } from "../media/types";
-import type { AIProfile, AIUsage, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
+import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
 
 export async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {
@@ -69,5 +69,20 @@ export async function setAiResourceDescription({ id, description }: { id: number
 
 export async function fetchTtsStatus(): Promise<{ configured: boolean }> {
   const { data } = await client.get<ApiResponse<'/api/tts/status', 'get'>>('/api/tts/status')
+  return data
+}
+
+export async function fetchAiProviders(): Promise<AiProvidersStatus> {
+  const { data } = await client.get<ApiResponse<'/api/ai/providers', 'get'>>('/api/ai/providers')
+  return data
+}
+
+/** Sin `apiKey` prueba la clave guardada; nunca guarda nada. */
+export async function testAiProvider(payload: { provider: string; apiKey?: string | null; model?: string | null }): Promise<AiProviderTestResult> {
+  const { data } = await client.post<ApiResponse<'/api/ai/providers/test', 'post'>>('/api/ai/providers/test', {
+    provider: payload.provider,
+    api_key: payload.apiKey ?? null,
+    model: payload.model ?? null,
+  })
   return data
 }

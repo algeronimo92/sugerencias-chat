@@ -18,4 +18,6 @@ export const aiKeys = {
   analyzing: ['analyze-lead'] as const,
   /** Si ElevenLabs está listo para generar audios. */
   ttsStatus: ['tts', 'status'] as const,
+  /** Claves y modelos propios del negocio (tarjeta de Integraciones). */
+  providers: ['ai-assistant', 'providers'] as const,
 }

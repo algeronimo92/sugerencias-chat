@@ -296,6 +296,9 @@ async def test_unconfigured_platform_explains_instead_of_crashing(monkeypatch):
 
 
 async def test_platform_needs_signing_secret_and_workflow_url(monkeypatch):
+    # Con sugerencias por n8n (el modo por defecto) la URL del workflow sigue
+    # siendo obligatoria; el modo nativo se prueba en test_native_copilot.
+    monkeypatch.setattr(ai_access, "suggestions_mode", AsyncMock(return_value="n8n"))
     monkeypatch.setattr(ai_access, "signing_key_configured", lambda: False)
     monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value="https://n8n.test/rag"))
     assert await ai_access.platform_ready("rag") is False

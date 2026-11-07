@@ -1,6 +1,6 @@
 # 12 · Plan: sugerencias y analista IA nativos (migración desde n8n)
 
-Fecha: 2026-11-07. Estado: **propuesto, pendiente de aprobación**.
+Fecha: 2026-11-07. Estado: **fase 1 (copiloto de sugerencias) implementada**; el analista sigue en n8n por decisión del dueño.
 Rama de trabajo: `claude/dazzling-rubin-h2elal` (ya contiene paquetes por servicio,
 sincronización con el ERP, compras del lead e Integraciones, que este plan usa).
 
@@ -258,6 +258,37 @@ con `ports/`; httpx solo en integraciones o archivos fuera de `domain/`/`applica
 | Catálogo grande en otro negocio | Si supera ~150 servicios, el catálogo pasa a herramienta con búsqueda por nombre (interruptor por tamaño, no por negocio) |
 | PDF con texto no extraíble | Se rechaza con mensaje claro; OCR fuera de alcance |
 
+## 6b. Lo implementado en la fase 1 (2026-11-07)
+
+Diferencias con lo propuesto arriba, decididas al implementar:
+
+- **Sin columna nueva en `organizations`**: el interruptor es el ajuste del negocio
+  `ai_suggestions_mode` (`n8n` | `native`) en `app_settings`, que el admin activa desde
+  la tarjeta "Asistente IA" de Integraciones cuando al menos una clave pasa la prueba.
+  Ningún negocio cambia de comportamiento al desplegar: el valor por defecto es `n8n`.
+- **Sin columnas nuevas en `ai_jobs`**: modelo, tokens, versión del prompt, fragmentos
+  usados y modelos que fallaron van en `request_metadata` del job
+  (`record_ai_job_metadata`). Alcanza para auditar y para medir costo en la fase 4.
+- **Analista**: `RoutingAiProvider.analyze` siempre delega en n8n.
+- **Catálogo cerrado de modelos** (`app/integrations/llm/catalog.py`): Gemini
+  2.5 Flash/Pro y 2.0 Flash; OpenAI gpt-5.6-terra, gpt-5.5, gpt-5-mini y gpt-4.1-mini.
+  Por defecto, el mismo par que hoy usa n8n.
+- **Precarga de conocimiento** con consultas por *cualquiera* de las palabras
+  significativas (`or_query`): una búsqueda que exigía todas las palabras no
+  encontraba la ficha del servicio (lo detectó la prueba contra PostgreSQL).
+- La prueba de conexión hace una llamada mínima al modelo elegido; "Probar y guardar"
+  solo guarda una clave que respondió.
+
+Archivos: `app/integrations/llm/*`, `app/modules/ai/infrastructure/{native_provider,routing_provider}.py`,
+`app/modules/ai/prompts/copiloto.md`, `app/modules/ai/providers_service.py`,
+`app/modules/ai/ai_access.py`, `app/composition.py`; frontend
+`features/ai/components/AiIntegrationCard.tsx` y `app/IntegrationsPage.tsx`.
+Pruebas: `tests/test_llm_clients.py`, `tests/test_native_copilot.py`,
+`tests/test_native_copilot_postgres.py`, `AiIntegrationCard.test.tsx`.
+
+Siguiente paso operativo: crear el clon de DermicaPro, cargar las claves reales,
+activar el modo nativo solo allí y comparar 20 conversaciones contra n8n.
+
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):
@@ -267,9 +298,10 @@ Tomadas (2026-11-07):
    quiera activar las sugerencias; cifradas por tenant, con prueba de conexión.
 3. La comparación de la fase 1 se hace sobre un clon de DermicaPro.
 
+4. El analista sigue en n8n; la fase 3 queda fuera de alcance por ahora.
+
 Pendientes:
-1. Si la fase 2 va antes que la 3. Recomendación: sí, porque mejora las sugerencias
-   que el equipo usa a diario; el analista hoy funciona y puede esperar.
+1. Cuándo arrancar la fase 2 (conocimiento por servicio y PDF).
 
 ## 8. Orden y tamaño
 

@@ -16,8 +16,11 @@ from sqlalchemy import and_, func, or_, select
 from app.db.models.ai import AIJob
 from app.db.models.control import Organization
 from app.db.session import control_session
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec
 from app.modules.ai.ai_job_tokens import signing_key_configured
+from app.modules.ai.infrastructure.routing_provider import suggestions_mode
 from app.modules.auth.public import try_send_operational_alert
+from app.modules.platform.ports.settings_service import get_effective_many
 from app.modules.platform.public import platform_setting
 from app.tenancy.context import get_current_tenant
 from app.db.uow import session_scope
@@ -109,11 +112,38 @@ async def usage_summary() -> dict:
 
 async def platform_ready(operation: str) -> bool:
     """La plataforma tiene lo necesario para atender la operación: el secreto
-    que firma los jobs y la URL del workflow."""
+    que firma los jobs y la URL del workflow. Con las sugerencias en modo
+    nativo no hace falta workflow: lo que hace falta es la clave del negocio,
+    que se comprueba aparte (``business_ai_ready``)."""
 
     if not signing_key_configured():
         return False
+    if operation == "rag" and await suggestions_mode() == "native":
+        # El negocio eligió generar con sus propias claves: el bloqueo, si lo
+        # hay, es suyo y se explica como tal (no "avisa a soporte").
+        if not await business_ai_ready():
+            raise AIUnavailableError(
+                "ai_not_configured",
+                "Asistente IA no conectado: carga la clave de tu proveedor de IA en "
+                "Integraciones para generar sugerencias.",
+                503,
+            )
+        return True
     return bool(await platform_setting(_WORKFLOW_URL_KEYS[operation]))
+
+
+async def business_ai_ready() -> bool:
+    """En modo nativo, el negocio tiene al menos una clave para el modelo
+    principal o el secundario."""
+    values = await get_effective_many(("ai_primary_model", "ai_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
+    for spec in (values["ai_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_fallback_model"].strip() or DEFAULT_FALLBACK):
+        try:
+            provider, _ = parse_model_spec(spec)
+        except ValueError:
+            continue
+        if values[key_setting_for(provider)].strip():
+            return True
+    return False
 
 
 async def _notify_quota(entitlement: AIEntitlement, used: int) -> None:

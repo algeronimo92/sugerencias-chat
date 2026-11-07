@@ -8,6 +8,7 @@ import {
   WhatsappIntegrationCard,
   useIntegrationStatuses,
 } from '../features/platform/public/integrations'
+import { AiIntegrationCard, useAiProviders } from '../features/ai/public/aiIntegration'
 
 // El armador del evento de Calendar es de citas, una feature de capa
 // superior a platform: se arma acá y la tarjeta lo recibe como prop.
@@ -23,7 +24,16 @@ const CalendarEventTemplateEditor = lazy(() =>
  */
 export function IntegrationsPage() {
   const { hash } = useLocation()
-  const statuses = useIntegrationStatuses()
+  const platformStatuses = useIntegrationStatuses()
+  // El asistente IA es de una feature de capa superior a platform: su estado
+  // se suma acá, en la composición.
+  const ai = useAiProviders()
+  const aiConnected = ai.data?.suggestions_mode === 'native' && ai.data.ready
+  const statuses = {
+    loading: platformStatuses.loading || ai.isLoading,
+    count: platformStatuses.count + (aiConnected ? 1 : 0),
+    total: platformStatuses.total + 1,
+  }
 
   // Entrar con ancla (#whatsapp desde la bandeja o el onboarding): el foco
   // aterriza en el título de esa tarjeta, para teclado y lector de pantalla.
@@ -50,14 +60,14 @@ export function IntegrationsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Integraciones</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Conecta WhatsApp, tu calendario, la lista de precios y la voz del asistente.
+            Conecta WhatsApp, tu calendario, la lista de precios, el asistente IA y su voz.
           </p>
           <p aria-live="polite" className="mt-1 text-sm text-wa-muted dark:text-wa-muted-dark">{summary}</p>
         </header>
 
         {statuses.loading ? (
           <div className="mt-5 space-y-4" aria-busy="true" aria-label="Cargando integraciones">
-            {[0, 1, 2, 3].map(index => (
+            {[0, 1, 2, 3, 4].map(index => (
               <div key={index} className="flex items-start gap-3 rounded-xl border border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:p-5">
                 <Skeleton className="h-10 w-10 rounded-lg" />
                 <div className="flex-1 space-y-2">
@@ -78,6 +88,7 @@ export function IntegrationsPage() {
               )}
             />
             <ErpIntegrationCard />
+            <AiIntegrationCard />
             <ElevenLabsIntegrationCard />
           </div>
         )}

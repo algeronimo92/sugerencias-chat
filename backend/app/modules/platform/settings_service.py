@@ -6,6 +6,7 @@ from time import monotonic
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
+from app.integrations.llm.catalog import parse_model_spec
 from app.modules.platform import settings_repository
 from app.core.config import settings as env_settings
 from app.db.models.settings import AppSetting
@@ -118,6 +119,16 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
     ),
     SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    # El copiloto de sugerencias puede correr dentro del CRM con las claves del
+    # propio negocio (ver app/modules/ai/infrastructure/native_provider.py).
+    # ``ai_suggestions_mode``: ``n8n`` (hoy) o ``native``; lo cambia el admin
+    # desde la tarjeta "Asistente IA" de Integraciones cuando sus claves pasan
+    # la prueba de conexión.
+    SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "Asistente IA (modelos propios)", secret=True),
+    SettingDef("ai_openai_api_key", "API key de OpenAI", "ai", "Asistente IA (modelos propios)", secret=True),
+    SettingDef("ai_primary_model", "Modelo principal", "ai", "Asistente IA (modelos propios)", secret=False),
+    SettingDef("ai_fallback_model", "Modelo secundario (si el principal falla)", "ai", "Asistente IA (modelos propios)", secret=False),
+    SettingDef("ai_suggestions_mode", "Generar sugerencias desde el CRM", "ai", "Asistente IA (modelos propios)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
@@ -289,6 +300,13 @@ def validate_erp_catalog_url(value: str) -> str:
     return normalized
 
 
+def validate_ai_model(value: str) -> str:
+    """``proveedor:modelo`` del catálogo cerrado de app.integrations.llm."""
+    normalized = value.strip()
+    provider, model = parse_model_spec(normalized)
+    return f"{provider}:{model}"
+
+
 def normalize_user_ids(value: str) -> str:
     """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
     parts = [part.strip() for part in value.split(",") if part.strip()]
@@ -425,6 +443,14 @@ async def update_settings(values: dict[str, str]) -> None:
     values = dict(values)
     if "erp_catalog_url" in values:
         values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
+    for key in ("ai_primary_model", "ai_fallback_model"):
+        if values.get(key):
+            values[key] = validate_ai_model(values[key])
+    if "ai_suggestions_mode" in values:
+        mode = values["ai_suggestions_mode"].strip().lower()
+        if mode not in {"", "n8n", "native"}:
+            raise ValueError("El modo de sugerencias debe ser n8n o native")
+        values["ai_suggestions_mode"] = mode
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]

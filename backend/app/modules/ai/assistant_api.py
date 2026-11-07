@@ -6,7 +6,7 @@ biblioteca puede proponer el asistente como adjuntos. Solo administradores.
 """
 
 from __future__ import annotations
-from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, AIResourceBody)
+from app.modules.ai.schemas import (AIProfileBody, AIProfileItem, AiProvidersStatus, AiProviderTestRequest, AiProviderTestResult, KnowledgeDocumentBody, KnowledgeDocumentSummary, KnowledgeDocumentItem, AIResourceBody)
 
 from uuid import UUID
 
@@ -28,6 +28,7 @@ from app.modules.ai.knowledge_service import (
     update_document,
 )
 from app.modules.media.ports.media_library_service import (set_media_asset_ai_description)
+from app.modules.ai.providers_service import providers_status, test_provider
 
 router = APIRouter(prefix="/api/ai", tags=["ai-assistant"])
 
@@ -93,3 +94,15 @@ async def update_ai_resource(asset_id: int, body: AIResourceBody):
     if asset is None:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return asset
+
+
+@router.get("/providers", response_model=AiProvidersStatus)
+async def get_ai_providers(_admin: User = Depends(require_admin)):
+    return await providers_status()
+
+
+@router.post("/providers/test", response_model=AiProviderTestResult)
+async def post_ai_provider_test(body: AiProviderTestRequest, _admin: User = Depends(require_admin)):
+    """Una llamada mínima al modelo con la clave tipeada (o la guardada):
+    comprueba clave y modelo antes de activar el copiloto nativo."""
+    return await test_provider(body.provider, api_key=body.api_key, model=body.model)

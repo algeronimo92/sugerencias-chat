@@ -133,3 +133,37 @@ class LeadAnalysisResult(BaseModel):
     # los traen.
     changed: bool | None = None
     stage: str | None = None
+
+
+class AiProviderModels(BaseModel):
+    provider: str
+    label: str
+    models: list[str]
+    key_configured: bool
+
+
+class AiProvidersStatus(BaseModel):
+    """Lo que la tarjeta "Asistente IA" de Integraciones necesita."""
+
+    providers: list[AiProviderModels]
+    primary_model: str
+    fallback_model: str
+    # ``n8n`` o ``native``.
+    suggestions_mode: str
+    # Hay clave para el modelo principal o el secundario.
+    ready: bool
+
+
+class AiProviderTestRequest(BaseModel):
+    provider: str
+    # En blanco, se prueba la clave guardada.
+    api_key: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, max_length=80)
+
+
+class AiProviderTestResult(BaseModel):
+    ok: bool
+    provider: str
+    model: str | None = None
+    error: str | None = None
+    latency_ms: int | None = None

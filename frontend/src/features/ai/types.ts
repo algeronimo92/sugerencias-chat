@@ -71,3 +71,6 @@ export interface SuggestionStatus {
   generated_at: string | null
   stale: boolean
 }
+
+export type AiProvidersStatus = ApiSchemas['AiProvidersStatus']
+export type AiProviderTestResult = ApiSchemas['AiProviderTestResult']

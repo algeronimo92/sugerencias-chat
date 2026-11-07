@@ -19,7 +19,7 @@ type Tab = 'general' | 'usuarios'
 // con su propio "Guardar": acá no se muestran ni se reenvían, donde un
 // "Guardar" con el borrador viejo pisaría lo que la otra pantalla acaba de
 // conectar (el calendario elegido, las claves que dejó el Embedded Signup).
-const INTEGRATION_GROUPS = new Set(['calendar', 'meta', 'elevenlabs', 'erp', 'whatsapp'])
+const INTEGRATION_GROUPS = new Set(['calendar', 'meta', 'elevenlabs', 'erp', 'whatsapp', 'ai'])
 
 const TAB_CLASS = (active: boolean) =>
   `px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${

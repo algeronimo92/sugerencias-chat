@@ -1670,6 +1670,44 @@ export interface paths {
         patch: operations["update_ai_resource_api_ai_resources__asset_id__patch"];
         trace?: never;
     };
+    "/api/ai/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Providers */
+        get: operations["get_ai_providers_api_ai_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/providers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Ai Provider Test
+         * @description Una llamada mínima al modelo con la clave tipeada (o la guardada):
+         *     comprueba clave y modelo antes de activar el copiloto nativo.
+         */
+        post: operations["post_ai_provider_test_api_ai_providers_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/whatsapp/status": {
         parameters: {
             query?: never;
@@ -3559,6 +3597,55 @@ export interface components {
             email: string;
             /** Name */
             name: string;
+        };
+        /** AiProviderModels */
+        AiProviderModels: {
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Models */
+            models: string[];
+            /** Key Configured */
+            key_configured: boolean;
+        };
+        /** AiProviderTestRequest */
+        AiProviderTestRequest: {
+            /** Provider */
+            provider: string;
+            /** Api Key */
+            api_key?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** AiProviderTestResult */
+        AiProviderTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+        };
+        /**
+         * AiProvidersStatus
+         * @description Lo que la tarjeta "Asistente IA" de Integraciones necesita.
+         */
+        AiProvidersStatus: {
+            /** Providers */
+            providers: components["schemas"]["AiProviderModels"][];
+            /** Primary Model */
+            primary_model: string;
+            /** Fallback Model */
+            fallback_model: string;
+            /** Suggestions Mode */
+            suggestions_mode: string;
+            /** Ready */
+            ready: boolean;
         };
         /** AnalysisRequest */
         AnalysisRequest: {
@@ -10144,6 +10231,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaAssetItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_providers_api_ai_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProvidersStatus"];
+                };
+            };
+        };
+    };
+    post_ai_provider_test_api_ai_providers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiProviderTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderTestResult"];
                 };
             };
             /** @description Validation Error */
