@@ -58,6 +58,13 @@ class LeadRepository(Protocol):
 
     async def merge(self, source_id: str, target_id: str) -> None: ...
 
+    async def add_sale(self, lead_id: str, values: dict[str, Any]) -> dict[str, Any]:
+        """Inserta la compra y devuelve la fila completa."""
+
+    async def get_sale(self, lead_id: str, sale_id: int) -> dict[str, Any] | None: ...
+
+    async def delete_sale(self, lead_id: str, sale_id: int) -> bool: ...
+
     async def rename_service(self, old_name: str, new_name: str) -> list[str]:
         """Reemplaza el servicio de interés en los leads que lo tenían
         (comparando sin mayúsculas ni espacios). Devuelve los leads tocados."""

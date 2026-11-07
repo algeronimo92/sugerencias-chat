@@ -12,6 +12,7 @@ import { useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hoo
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 import { LeadFormDialog } from './LeadFormDialog'
+import { LeadSalesSection } from './LeadSalesSection'
 
 interface Props {
   chat: Chat
@@ -158,6 +159,8 @@ export function LeadInfo({ chat }: Props) {
           {editingCustomFields ? <div className="space-y-3">{customDefinitions.map(field => <label key={field.id} className="block text-xs font-medium text-wa-muted">{field.label}{field.required ? ' *' : ''}<CustomFieldInput field={field} value={customDraft[field.key]} onChange={value => setCustomDraft(current => ({ ...current, [field.key]: value }))} className="mt-1" /></label>)}<Button size="sm" disabled={updateCustomValues.isPending} onClick={() => updateCustomValues.mutate(customDraft, { onSuccess: () => setEditingCustomFields(false), onError: err => setEditError(extractErrorMessage(err)) })}>Guardar campos</Button></div> : <dl className="space-y-2">{customDefinitions.map(field => customValues[field.key] == null || customValues[field.key] === '' ? null : <div key={field.id}><dt className="text-[11px] text-wa-muted">{field.label}</dt><dd className="text-sm text-gray-700 dark:text-gray-300">{typeof customValues[field.key] === 'boolean' ? customValues[field.key] ? 'Sí' : 'No' : String(customValues[field.key])}</dd></div>)}</dl>}
         </div>
       )}
+
+      <LeadSalesSection chat={chat} />
 
       {chat.proxima_cita && (
         <div className="mt-3 pt-3 border-t border-wa-border dark:border-wa-border-dark">

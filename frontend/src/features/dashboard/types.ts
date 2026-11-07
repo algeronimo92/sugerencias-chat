@@ -74,6 +74,14 @@ export interface DashboardMetrics {
     conversations_closed: number
     avg_close_hours: number | null
   }
+  /** Compras registradas en el período (por fecha de venta). */
+  sales: {
+    count: number
+    total: number
+    avg_ticket: number | null
+    by_seller: DashboardMetricItem[]
+    by_package: DashboardMetricItem[]
+  }
   automations: {
     by_flow: DashboardFlowRow[]
     by_actor: DashboardMetricItem[]

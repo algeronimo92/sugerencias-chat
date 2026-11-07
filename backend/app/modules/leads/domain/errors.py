@@ -74,3 +74,26 @@ class LeadStageInUseError(LeadStageError):
 class LeadStageProtectedError(LeadStageError):
     status_code = 400
     code = "lead_stage_protected"
+
+
+class PackageNotAvailable(Invalid):
+    """El paquete no existe o ya no se vende (él o su servicio están inactivos)."""
+
+    def __init__(self, service_id: int, package_id: int) -> None:
+        super().__init__("Ese paquete ya no está disponible para vender", code="package_not_available")
+        self.service_id = service_id
+        self.package_id = package_id
+
+
+class SaleNotFound(NotFound):
+    def __init__(self, sale_id: int) -> None:
+        super().__init__("Compra no encontrada", code="sale_not_found")
+        self.sale_id = sale_id
+
+
+class SaleNotEditable(Conflict):
+    """Solo quien registró la compra, o un admin, puede borrarla."""
+
+    def __init__(self, sale_id: int) -> None:
+        super().__init__("Solo quien registró la compra o un administrador puede eliminarla", code="sale_not_editable")
+        self.sale_id = sale_id

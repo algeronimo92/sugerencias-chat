@@ -50,6 +50,11 @@ function metrics(): DashboardMetrics {
       stale: [{ name: '+7 días', value: 4 }],
       conversations_open: 5, conversations_closed: 7, avg_close_hours: 20.5,
     },
+    sales: {
+      count: 3, total: 1250, avg_ticket: 416.67,
+      by_seller: [{ name: 'Lucía Ramos', value: 850 }],
+      by_package: [{ name: 'Hollywood Peel - Rostro · x3', value: 2 }],
+    },
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,

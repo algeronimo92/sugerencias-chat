@@ -35,3 +35,10 @@ export function formatShortDateTime(iso: string): string {
     minute: '2-digit',
   })
 }
+
+/** Importes sin moneda (la del negocio vive en el perfil IA), sin decimales
+ *  de más: "1250" o "1250.5". */
+export function formatAmount(value: string | number | null): string {
+  if (value == null) return 'Sin datos'
+  return Number(value).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}

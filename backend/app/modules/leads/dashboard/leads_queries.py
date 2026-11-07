@@ -1,15 +1,16 @@
-"""Distribución del pipeline: etapas, orígenes, servicios, embudo y leads frío
-que nadie tocó en días."""
+"""Distribución del pipeline: etapas, orígenes, servicios, embudo, leads
+fríos que nadie tocó en días y las ventas del período."""
 
 import asyncio
 from datetime import timedelta
+from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, select
 
 from app.modules.leads.domain.types import LeadStageKind
 
 from app.db.models.auth import User
-from app.db.models.leads import Lead, LeadStage
+from app.db.models.leads import Lead, LeadSale, LeadStage
 
 from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
 
@@ -179,4 +180,54 @@ async def collect(scope: DashboardScope) -> dict:
         "new_leads_trend": series(trend, scope),
         "funnel": funnel,
         "pipeline": pipeline,
+    }
+
+
+# --- Ventas -----------------------------------------------------------------
+# Cuántas compras, por cuánto y quién las cerró. Se mide por ``sold_at`` (la
+# fecha de la venta, no la del registro) y, en el scope propio, por quien
+# vendió. El ticket promedio es sobre lo cobrado, no sobre el precio de lista.
+
+
+def _sales_in_period(scope: DashboardScope):
+    return (LeadSale.sold_at >= scope.start) & scope.mine(LeadSale.sold_by_user_id)
+
+
+async def collect_sales(scope: DashboardScope) -> dict:
+    totals = (await execute_mapping(
+        select(
+            func.count(LeadSale.id).label("count"),
+            func.coalesce(func.sum(LeadSale.amount), 0).label("total"),
+        ).where(_sales_in_period(scope))
+    ))[0]
+    by_seller = await execute_mapping(
+        select(
+            func.coalesce(User.name, literal("Sin vendedor")).label("name"),
+            func.round(func.sum(LeadSale.amount)).label("value"),
+        )
+        .select_from(LeadSale)
+        .outerjoin(User, User.id == LeadSale.sold_by_user_id)
+        .where(_sales_in_period(scope))
+        .group_by(User.name)
+        .order_by(func.sum(LeadSale.amount).desc())
+        .limit(8)
+    )
+    by_package = await execute_mapping(
+        select(
+            (LeadSale.service_name + literal(" · ") + LeadSale.package_name).label("name"),
+            func.count(LeadSale.id).label("value"),
+        )
+        .where(_sales_in_period(scope))
+        .group_by(LeadSale.service_name, LeadSale.package_name)
+        .order_by(func.count(LeadSale.id).desc(), LeadSale.service_name, LeadSale.package_name)
+        .limit(8)
+    )
+    count = int(totals["count"])
+    total = Decimal(totals["total"]).quantize(Decimal("0.01"))
+    return {
+        "count": count,
+        "total": float(total),
+        "avg_ticket": float((total / count).quantize(Decimal("0.01"))) if count else None,
+        "by_seller": items(by_seller),
+        "by_package": items(by_package),
     }
