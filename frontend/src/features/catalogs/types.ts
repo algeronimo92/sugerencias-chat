@@ -77,3 +77,17 @@ export interface ErpSyncStatus {
   last_error?: string | null
   last_summary?: ErpSyncSummary | null
 }
+
+export interface ErpSamplePackage { label: string; sessions: number; price: string }
+export interface ErpSampleService { name: string; packages: ErpSamplePackage[] }
+
+/** Resultado de "Probar conexión" con el ERP: no guarda ni sincroniza nada. */
+export interface ErpTestResult {
+  ok: boolean
+  url?: string | null
+  error?: string | null
+  services_total: number
+  packages_total: number
+  services_without_packages: string[]
+  sample: ErpSampleService[]
+}

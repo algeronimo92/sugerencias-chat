@@ -1,4 +1,5 @@
 import { Link2, Link2Off, Loader2, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { Skeleton } from '../../../shared/ui/Skeleton'
@@ -60,8 +61,9 @@ export function ErpSyncCard() {
         <div>
           <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Sin ERP conectado</p>
           <p className="mt-1 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Si tu negocio ya tiene la lista de precios en un ERP, carga la URL de su catálogo en Configuración
-            (sección «ERP del negocio») y los servicios y paquetes se traerán solos cada hora.
+            Si tu negocio ya tiene la lista de precios en un ERP, conéctalo en{' '}
+            <Link to="/integraciones#erp" className="font-medium text-wa-primary-strong underline dark:text-wa-primary">Integraciones</Link>
+            {' '}y los servicios y paquetes se traerán solos cada hora.
           </p>
         </div>
       </div>

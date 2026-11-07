@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, LeadService, ServicePackage, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -60,6 +60,11 @@ export async function updateServicePackage({ serviceId, id, ...values }: {
 
 export async function fetchErpSyncStatus(): Promise<ErpSyncStatus> {
   return (await client.get<ApiResponse<'/api/services/erp-sync', 'get'>>('/api/services/erp-sync')).data
+}
+
+/** En blanco prueba la URL guardada; con valor, la que el admin está escribiendo. */
+export async function testErpConnection(url: string | null): Promise<ErpTestResult> {
+  return (await client.post<ApiResponse<'/api/services/erp-sync/test', 'post'>>('/api/services/erp-sync/test', { url })).data
 }
 
 export async function runErpSync(): Promise<ErpSyncStatus> {

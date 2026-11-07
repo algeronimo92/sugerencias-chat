@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -53,7 +54,7 @@ describe('ServicesManagementPanel', () => {
 
   it('crea servicios desde el catálogo', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     await user.type(screen.getByRole('textbox', { name: 'Nombre del nuevo servicio' }), 'Limpieza profunda')
     await user.click(screen.getByRole('button', { name: 'Crear servicio' }))
@@ -62,14 +63,14 @@ describe('ServicesManagementPanel', () => {
   })
 
   it('muestra quién creó el servicio', () => {
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     expect(screen.getByText(/Creado por Lucía Ramos/)).toBeInTheDocument()
   })
 
   it('edita y desactiva un servicio sin perderlo', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     const input = screen.getByLabelText('Nombre de Botox')
     await user.clear(input)
@@ -90,7 +91,7 @@ describe('ServicesManagementPanel', () => {
 
   it('reactiva servicios antiguos', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     await user.click(screen.getByRole('button', { name: 'Activar Tratamiento anterior' }))
     expect(mocks.update).toHaveBeenCalledWith(
@@ -101,7 +102,7 @@ describe('ServicesManagementPanel', () => {
 
   it('guarda solo la descripción que cambió para el asistente IA', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     await user.type(screen.getByLabelText('Descripción de Botox'), 'Toxina botulínica para líneas de expresión')
     await user.click(screen.getByRole('button', { name: 'Guardar Botox' }))
@@ -113,7 +114,7 @@ describe('ServicesManagementPanel', () => {
   })
 
   it('muestra los paquetes del servicio y avisa cuando no tiene ninguno', () => {
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     expect(screen.getByLabelText('Precio del paquete 1 sesión de Botox')).toHaveValue(150)
     expect(screen.getByText(/Sin paquetes: el asistente IA no cotiza/)).toBeInTheDocument()
@@ -121,7 +122,7 @@ describe('ServicesManagementPanel', () => {
 
   it('añade un paquete al servicio', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     await user.click(screen.getByRole('button', { name: 'Añadir paquete a Botox' }))
     await user.type(screen.getByLabelText('Nombre del nuevo paquete de Botox'), 'Pack x3')
@@ -139,7 +140,7 @@ describe('ServicesManagementPanel', () => {
 
   it('no manda un paquete sin precio', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     await user.click(screen.getByRole('button', { name: 'Añadir paquete a Botox' }))
     await user.type(screen.getByLabelText('Nombre del nuevo paquete de Botox'), 'Pack x3')
@@ -151,7 +152,7 @@ describe('ServicesManagementPanel', () => {
 
   it('edita el precio de un paquete y lo desactiva sin perderlo', async () => {
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     const price = screen.getByLabelText('Precio del paquete 1 sesión de Botox')
     await user.clear(price)
@@ -171,7 +172,7 @@ describe('ServicesManagementPanel', () => {
   })
 
   it('explica cómo conectar el ERP cuando no hay URL', () => {
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     expect(screen.getByText('Sin ERP conectado')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sincronizar ahora con el ERP' })).not.toBeInTheDocument()
@@ -189,7 +190,7 @@ describe('ServicesManagementPanel', () => {
       },
     })
     const user = userEvent.setup()
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     expect(screen.getByText(/erp\.example\.test/)).toBeInTheDocument()
     expect(screen.getByText(/61 servicios en el ERP · 2 nuevos · 1 desactivados · 3 paquetes con cambios/)).toBeInTheDocument()
@@ -201,7 +202,7 @@ describe('ServicesManagementPanel', () => {
   })
 
   it('deja en solo lectura lo que administra el ERP', () => {
-    render(<ServicesManagementPanel />)
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
     expect(screen.getByLabelText('Nombre de Hollywood Peel - Rostro')).toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: 'Desactivar Hollywood Peel - Rostro' })).toBeDisabled()

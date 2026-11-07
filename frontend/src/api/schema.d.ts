@@ -1410,6 +1410,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tts/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tts Status */
+        get: operations["tts_status_api_tts_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tts": {
         parameters: {
             query?: never;
@@ -1870,6 +1887,27 @@ export interface paths {
          * @description Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual.
          */
         post: operations["run_erp_sync_api_services_erp_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/erp-sync/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Erp Connection
+         * @description Pide el catálogo y lo valida sin guardar nada: para probar una URL
+         *     antes de conectarla.
+         */
+        post: operations["test_erp_connection_api_services_erp_sync_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4503,6 +4541,22 @@ export interface components {
              */
             is_primary: boolean;
         };
+        /** ErpSamplePackage */
+        ErpSamplePackage: {
+            /** Label */
+            label: string;
+            /** Sessions */
+            sessions: number;
+            /** Price */
+            price: string;
+        };
+        /** ErpSampleService */
+        ErpSampleService: {
+            /** Name */
+            name: string;
+            /** Packages */
+            packages: components["schemas"]["ErpSamplePackage"][];
+        };
         /**
          * ErpSyncStatus
          * @description Estado de la sincronización con el ERP del negocio.
@@ -4557,6 +4611,37 @@ export interface components {
             packages_deactivated: number;
             /** Conflicts */
             conflicts?: string[];
+        };
+        /** ErpTestRequest */
+        ErpTestRequest: {
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * ErpTestResult
+         * @description Resultado de la prueba de conexión con el ERP.
+         */
+        ErpTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Url */
+            url?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Services Total
+             * @default 0
+             */
+            services_total: number;
+            /**
+             * Packages Total
+             * @default 0
+             */
+            packages_total: number;
+            /** Services Without Packages */
+            services_without_packages?: string[];
+            /** Sample */
+            sample?: components["schemas"]["ErpSampleService"][];
         };
         /**
          * ExecutionErrorCode
@@ -6622,6 +6707,11 @@ export interface components {
             content_type: string;
             /** Data Base64 */
             data_base64: string;
+        };
+        /** TtsStatus */
+        TtsStatus: {
+            /** Configured */
+            configured: boolean;
         };
         /** UnreadCount */
         UnreadCount: {
@@ -9524,6 +9614,26 @@ export interface operations {
             };
         };
     };
+    tts_status_api_tts_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TtsStatus"];
+                };
+            };
+        };
+    };
     generate_speech_api_tts_post: {
         parameters: {
             query?: never;
@@ -10406,6 +10516,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErpSyncStatus"];
+                };
+            };
+        };
+    };
+    test_erp_connection_api_services_erp_sync_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ErpTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -28,6 +28,13 @@ async def close_tts_client() -> None:
         _http_client = None
 
 
+async def is_configured() -> bool:
+    """Hay API key y voz: lo mínimo para generar un audio. La UI lo consulta
+    para avisar antes de intentar, en vez de fallar al generar."""
+    values = await get_effective_many(("elevenlabs_api_key", "elevenlabs_voice_id"))
+    return bool(values["elevenlabs_api_key"] and values["elevenlabs_voice_id"])
+
+
 async def synthesize_speech(text: str) -> bytes:
     """Genera un audio MP3 a partir de texto usando la API de ElevenLabs."""
     values = await get_effective_many((

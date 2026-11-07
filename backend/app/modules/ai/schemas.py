@@ -13,6 +13,10 @@ class TtsResponse(BaseModel):
     data_base64: str
 
 
+class TtsStatus(BaseModel):
+    configured: bool
+
+
 # Tope de la indicación del asesor. Alineado con el maxLength del input del
 # frontend (SuggestionInstructionBox): lo que se puede tipear es lo que viaja.
 SUGGESTION_INSTRUCTION_MAX_LENGTH = 200

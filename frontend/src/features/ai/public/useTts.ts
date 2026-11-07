@@ -1,2 +1,2 @@
 /** Contrato explícito para otras features: solo lo que usan desde afuera. */
-export { useGenerateSpeech } from '../hooks/useTts'
+export { useGenerateSpeech, useTtsStatus } from '../hooks/useTts'

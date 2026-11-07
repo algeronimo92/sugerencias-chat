@@ -35,7 +35,7 @@ function isEmbeddedSignupMessage(
 // Panel de coexistencia con Meta (WhatsApp Embedded Signup): vincula un
 // número que ya está activo en la app oficial de WhatsApp Business sin
 // desconectarlo de ahí. Completa las mismas credenciales que se pueden
-// tipear a mano en la pestaña Claves (meta_access_token/waba_id/phone_number_id).
+// tipear a mano en las claves de Meta (meta_access_token/waba_id/phone_number_id).
 function MetaEmbeddedSignupPanel() {
   const { data: metaConfig, isLoading: isLoadingMetaConfig } = useMetaPublicConfig();
   const metaAppId = metaConfig?.app_id || LEGACY_META_APP_ID;
@@ -170,7 +170,7 @@ function MetaEmbeddedSignupPanel() {
         <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
           Vinculá un número que ya usás en la app oficial de WhatsApp Business
           sin desconectarlo de ahí. Reemplaza tener que copiar el token, el WABA
-          id y el phone number id a mano en la pestaña Claves.
+          id y el phone number id a mano.
         </p>
       )}
       <Button
@@ -187,8 +187,7 @@ function MetaEmbeddedSignupPanel() {
       </Button>
       {success && (
         <p className="flex items-center gap-1 text-xs text-wa-primary-strong dark:text-wa-primary">
-          <CheckCircle2 className="h-3.5 w-3.5" /> Credenciales guardadas en la
-          pestaña Claves.
+          <CheckCircle2 className="h-3.5 w-3.5" /> Credenciales guardadas.
         </p>
       )}
       {error && (
@@ -205,14 +204,13 @@ export function WhatsappPanel({ onGoToClaves }: Props) {
       <MetaEmbeddedSignupPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
       <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-        También podés completar el token, el waba id y el phone number id a mano
-        en{" "}
+        También podés completar el token, el waba id y el phone number id{" "}
         <button
           type="button"
           onClick={onGoToClaves}
           className="font-medium text-wa-primary-strong underline dark:text-wa-primary"
         >
-          la pestaña Claves
+          a mano, en las claves de Meta
         </button>
         .
       </p>

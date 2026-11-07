@@ -66,3 +66,8 @@ export async function deleteKnowledgeDocument(id: string) { await client.delete<
 export async function setAiResourceDescription({ id, description }: { id: number; description: string }): Promise<MediaAsset> {
   return (await client.patch<ApiResponse<'/api/ai/resources/{asset_id}', 'patch'>>(`/api/ai/resources/${id}`, { ai_description: description })).data
 }
+
+export async function fetchTtsStatus(): Promise<{ configured: boolean }> {
+  const { data } = await client.get<ApiResponse<'/api/tts/status', 'get'>>('/api/tts/status')
+  return data
+}

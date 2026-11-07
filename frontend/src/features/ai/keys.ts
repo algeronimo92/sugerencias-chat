@@ -16,4 +16,6 @@ export const aiKeys = {
   /** Claves de mutación: la UI sabe si hay una generación en curso. */
   generating: ['generate-suggestions'] as const,
   analyzing: ['analyze-lead'] as const,
+  /** Si ElevenLabs está listo para generar audios. */
+  ttsStatus: ['tts', 'status'] as const,
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, createServicePackage, fetchErpSyncStatus, fetchLeadServices, runErpSync, updateLeadService, updateServicePackage } from '../api'
+import { createLeadService, createServicePackage, fetchErpSyncStatus, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -58,4 +58,16 @@ export function useRunErpSync() {
     mutationFn: runErpSync,
     onSettled: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
   })
+}
+
+/** Solo lee del ERP: no toca el catálogo, así que no invalida nada. */
+export function useTestErpConnection() {
+  return useMutation({ mutationFn: testErpConnection })
+}
+
+/** Para quien cambia la URL del ERP desde fuera (Integraciones): el estado
+ *  de sincronización y el catálogo dejan de ser válidos. */
+export function useInvalidateErpSync() {
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: serviceKeys.all })
 }

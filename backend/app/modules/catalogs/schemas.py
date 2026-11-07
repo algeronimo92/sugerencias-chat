@@ -88,6 +88,34 @@ class ErpSyncStatus(BaseModel):
     last_summary: ErpSyncSummary | None = None
 
 
+class ErpTestRequest(BaseModel):
+    # En blanco, se prueba la URL guardada.
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class ErpSamplePackage(BaseModel):
+    label: str
+    sessions: int
+    price: str
+
+
+class ErpSampleService(BaseModel):
+    name: str
+    packages: list[ErpSamplePackage]
+
+
+class ErpTestResult(BaseModel):
+    """Resultado de la prueba de conexión con el ERP."""
+
+    ok: bool
+    url: str | None = None
+    error: str | None = None
+    services_total: int = 0
+    packages_total: int = 0
+    services_without_packages: list[str] = Field(default_factory=list)
+    sample: list[ErpSampleService] = Field(default_factory=list)
+
+
 class LeadServiceCreate(BaseModel):
     name: str = Field(max_length=120)
 

@@ -139,7 +139,7 @@ describe('sesión', () => {
 })
 
 describe('autorización de rutas', () => {
-  it.each(['/templates', '/media-library', '/automations', '/catalogs', '/ai-assistant'])(
+  it.each(['/templates', '/media-library', '/automations', '/catalogs', '/integraciones', '/ai-assistant'])(
     'un vendedor que entra a %s vuelve a la bandeja',
     async path => {
       api.current.on('get', '/api/auth/me', { data: SELLER })

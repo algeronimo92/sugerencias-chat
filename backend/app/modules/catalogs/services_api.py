@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import (
     ErpSyncStatus,
+    ErpTestRequest,
+    ErpTestResult,
     LeadServiceCreate,
     LeadServiceItem,
     LeadServiceUpdate,
@@ -10,7 +12,7 @@ from app.modules.catalogs.schemas import (
     ServicePackageItem,
     ServicePackageUpdate,
 )
-from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status
+from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status, test_catalog
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.catalogs.queries import list_lead_services
 from app.modules.catalogs.service import (
@@ -41,6 +43,13 @@ async def get_all_services(_admin: User = Depends(require_admin)):
 @router.get("/erp-sync", response_model=ErpSyncStatus)
 async def get_erp_sync_status(_admin: User = Depends(require_admin)):
     return await sync_status()
+
+
+@router.post("/erp-sync/test", response_model=ErpTestResult)
+async def test_erp_connection(body: ErpTestRequest, _admin: User = Depends(require_admin)):
+    """Pide el catálogo y lo valida sin guardar nada: para probar una URL
+    antes de conectarla."""
+    return await test_catalog(body.url)
 
 
 @router.post("/erp-sync", response_model=ErpSyncStatus)

@@ -27,6 +27,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -269,6 +270,47 @@ def _parse_ts(value: str) -> datetime | None:
         return datetime.fromisoformat(value) if value else None
     except ValueError:
         return None
+
+
+def _validate_url(url: str) -> str:
+    normalized = (url or "").strip()
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ErpCatalogError("La URL del catálogo del ERP debe empezar con http:// o https://")
+    return normalized
+
+
+async def test_catalog(url: str | None = None, fetch: Fetcher = fetch_catalog) -> dict:
+    """Prueba de conexión: pide y valida el catálogo sin tocar la base. Sirve
+    para saber, antes de guardar la URL, si el ERP responde y con el formato
+    esperado. Devuelve un resumen y una muestra para que el admin reconozca
+    sus servicios; nunca levanta: el error va en la respuesta."""
+    if url is None or not url.strip():
+        url = (await get_effective_many(("erp_catalog_url",)))["erp_catalog_url"]
+    try:
+        url = _validate_url(url)
+        services = parse_catalog(await fetch(url))
+    except ErpCatalogError as exc:
+        return {"ok": False, "url": (url or "").strip() or None, "error": str(exc)}
+    without_packages = [service.name for service in services if not service.packages]
+    return {
+        "ok": True,
+        "url": url,
+        "error": None,
+        "services_total": len(services),
+        "packages_total": sum(len(service.packages) for service in services),
+        "services_without_packages": without_packages[:10],
+        "sample": [
+            {
+                "name": service.name,
+                "packages": [
+                    {"label": package.label, "sessions": package.sessions, "price": f"{package.price:.2f}"}
+                    for package in service.packages
+                ],
+            }
+            for service in services[:3]
+        ],
+    }
 
 
 async def sync_status() -> dict:

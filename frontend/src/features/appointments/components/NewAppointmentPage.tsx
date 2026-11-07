@@ -4,6 +4,8 @@ import { useMe } from '../../../shared/auth'
 import { Button } from '../../../shared/ui/Button'
 import { appointmentResultMessage, loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
 import { AppointmentCalendar } from './AppointmentCalendar'
+import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
+import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { AppointmentFormFields } from './AppointmentFormFields'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
 
@@ -15,6 +17,7 @@ const DRAFT_KEY = 'nueva-cita-draft-v2'
 export function NewAppointmentPage() {
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
+  const { data: calendar } = useGoogleCalendarStatus()
   const state = useAppointmentForm(DRAFT_KEY)
   const { load } = state
   const [testMode, setTestMode] = useState(false)
@@ -53,6 +56,13 @@ export function NewAppointmentPage() {
         <div className="mt-6">
           {tab === 'calendar' ? <AppointmentCalendar /> : tab === 'history' ? <div className="rounded-xl border border-wa-border bg-wa-panel p-4 sm:p-6 dark:border-wa-border-dark dark:bg-wa-panel-dark"><AppointmentHistoryList /></div> : (
             <form onSubmit={submit} className="space-y-5">
+              {calendar?.connected === false && (
+                <IntegrationNotice
+                  message="Google Calendar no está conectado: la cita se guardará en la app, pero no aparecerá en el calendario del negocio."
+                  anchor="calendario"
+                  canConnect={me?.role === 'admin'}
+                />
+              )}
               {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.tone === 'info' ? 'border-amber-400/40 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300' : 'border-green-500/30 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300'}`}><CheckCircle2 className="mr-2 inline h-4 w-4" />{feedback.text}</div>}
               {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700"><Info className="mr-2 inline h-4 w-4" />{error}</div>}
 

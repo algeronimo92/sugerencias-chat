@@ -5,9 +5,10 @@ import { Button } from '../../../shared/ui/Button'
 import { useDismissOnboarding, useOnboarding, type OnboardingStepKey } from '../hooks/useOnboarding'
 
 /** Pestañas del diálogo de configuración a las que lleva un paso. */
-export type OnboardingSettingsTab = 'whatsapp' | 'usuarios' | 'calendario'
+export type OnboardingSettingsTab = 'usuarios'
+export type OnboardingIntegration = 'whatsapp' | 'calendario'
 
-type StepTarget = { settings: OnboardingSettingsTab } | { path: string }
+type StepTarget = { settings: OnboardingSettingsTab } | { integration: OnboardingIntegration } | { path: string }
 
 interface StepMeta {
   title: string
@@ -21,7 +22,7 @@ const STEPS: Record<OnboardingStepKey, StepMeta> = {
     title: 'Conectar WhatsApp',
     description: 'Vincula el número del negocio para recibir y responder chats.',
     action: 'Conectar',
-    target: { settings: 'whatsapp' },
+    target: { integration: 'whatsapp' },
   },
   team: {
     title: 'Invitar al equipo',
@@ -39,7 +40,7 @@ const STEPS: Record<OnboardingStepKey, StepMeta> = {
     title: 'Conectar Google Calendar',
     description: 'Las citas agendadas se sincronizan con tu calendario.',
     action: 'Conectar',
-    target: { settings: 'calendario' },
+    target: { integration: 'calendario' },
   },
   templates: {
     title: 'Revisar plantillas',
@@ -56,12 +57,13 @@ interface Props {
   pathname: string
   onOpenSettings: (tab: OnboardingSettingsTab) => void
   onNavigate: (path: string) => void
+  onOpenIntegrations: (anchor: OnboardingIntegration) => void
 }
 
 /** Barra de primeros pasos del negocio. Cada paso sale de los datos reales
  *  (GET /api/onboarding); se oculta cuando todo está hecho o el admin la
  *  descarta (vale para todo el negocio); OnboardingReopenButton la recupera. */
-export function OnboardingChecklist({ enabled, pathname, onOpenSettings, onNavigate }: Props) {
+export function OnboardingChecklist({ enabled, pathname, onOpenSettings, onNavigate, onOpenIntegrations }: Props) {
   const { data, refetch } = useOnboarding(enabled)
   const { mutate: dismiss, isPending: dismissing } = useDismissOnboarding()
   const [open, setOpen] = useState(false)
@@ -76,6 +78,7 @@ export function OnboardingChecklist({ enabled, pathname, onOpenSettings, onNavig
 
   function go(target: StepTarget) {
     if ('settings' in target) onOpenSettings(target.settings)
+    else if ('integration' in target) onOpenIntegrations(target.integration)
     else onNavigate(target.path)
   }
 

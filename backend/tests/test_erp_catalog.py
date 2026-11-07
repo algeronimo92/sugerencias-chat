@@ -206,3 +206,52 @@ async def test_erp_managed_service_rejects_manual_rename_and_packages(monkeypatc
     with pytest.raises(HTTPException) as error:
         await services_api.post_service_package(4, ServicePackageCreate(name="x2", sessions=2, price="100"), ADMIN)
     assert error.value.status_code == 409
+
+
+async def test_connection_test_reports_shape_without_touching_the_catalog(monkeypatch):
+    async def fetch(url):
+        assert url == "https://erp.test/catalog"
+        return ERP_PAYLOAD
+
+    result = await erp_catalog.test_catalog("  https://erp.test/catalog ", fetch)
+
+    assert result["ok"] is True
+    assert (result["services_total"], result["packages_total"]) == (2, 2)
+    assert result["services_without_packages"] == ["Consulta"]
+    assert result["sample"][0] == {
+        "name": "Hollywood Peel - Rostro",
+        "packages": [{"label": "Individual", "sessions": 1, "price": "180.00"}, {"label": "x3", "sessions": 3, "price": "400.00"}],
+    }
+
+
+async def test_connection_test_explains_bad_url_and_bad_format(monkeypatch):
+    async def fetch(_url):
+        return {"items": []}
+
+    bad_url = await erp_catalog.test_catalog("erp.test/catalog", fetch)
+    assert bad_url["ok"] is False and "http" in bad_url["error"]
+
+    bad_shape = await erp_catalog.test_catalog("https://erp.test/catalog", fetch)
+    assert bad_shape["ok"] is False and "formato esperado" in bad_shape["error"]
+
+
+async def test_connection_test_falls_back_to_the_saved_url(monkeypatch):
+    async def saved(_keys):
+        return {"erp_catalog_url": "https://erp.test/saved"}
+
+    monkeypatch.setattr(erp_catalog, "get_effective_many", saved)
+    seen = []
+
+    async def fetch(url):
+        seen.append(url)
+        return ERP_PAYLOAD
+
+    result = await erp_catalog.test_catalog(None, fetch)
+    assert seen == ["https://erp.test/saved"] and result["ok"] is True
+
+    async def nothing(_keys):
+        return {"erp_catalog_url": ""}
+
+    monkeypatch.setattr(erp_catalog, "get_effective_many", nothing)
+    result = await erp_catalog.test_catalog("", fetch)
+    assert result["ok"] is False and result["url"] is None

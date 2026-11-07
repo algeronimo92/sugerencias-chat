@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useBrand } from "../shared/branding";
 import { BrandLogo } from "../shared/ui/BrandLogo";
 import { PageLoader } from "../shared/ui/PageLoader";
-import { type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
+import { type IntegrationAnchor, type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
 import { useChatFiltersState } from '../features/chats/public/useChatFiltersState';
 import { MobileNavBar } from "./MobileNavBar";
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
@@ -26,9 +26,6 @@ import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
   import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
-);
-const CalendarEventTemplateEditor = lazy(() =>
-  import("../features/appointments/public/CalendarEventTemplateEditor").then((module) => ({ default: module.CalendarEventTemplateEditor })),
 );
 const AccountSecurityDialog = lazy(() =>
   import("../features/auth/index").then((module) => ({ default: module.AccountSecurityDialog })),
@@ -72,17 +69,25 @@ export function MainLayout() {
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false);
   const [isIssueReportOpen, setIsIssueReportOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] =
-    useState<SettingsTab>("claves");
+    useState<SettingsTab>("general");
 
   const layoutContext: LayoutContext = {
     chatFilters: useChatFiltersState(me?.id ?? null),
     openSettings,
+    openIntegrations,
     openIssueReport: () => setIsIssueReportOpen(true),
   };
 
-  function openSettings(tab: SettingsTab = "claves") {
+  function openSettings(tab: SettingsTab = "general") {
     setSettingsInitialTab(tab);
     setIsSettingsOpen(true);
+  }
+
+  // Las conexiones con terceros (WhatsApp, calendario, ERP, voz) tienen su
+  // página: el diálogo de Configuración queda para los ajustes del CRM.
+  function openIntegrations(anchor?: IntegrationAnchor) {
+    setIsSettingsOpen(false);
+    navigate(anchor ? `/integraciones#${anchor}` : "/integraciones");
   }
 
   // Vuelta de "Conectar con Google": el callback del backend redirige a
@@ -93,8 +98,7 @@ export function MainLayout() {
     if (!result) return;
     if (result.ok) toast.success(result.message);
     else toast.error(result.message);
-    openSettings("calendario");
-    navigate({ pathname: location.pathname, search: "" }, { replace: true });
+    navigate({ pathname: "/integraciones", search: "", hash: "#calendario" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
   const { data: unreadCount = 0 } = useUnreadCount();
@@ -173,7 +177,7 @@ export function MainLayout() {
           <Tooltip content="Configuración">
             <button
               type="button"
-              onClick={() => openSettings("claves")}
+              onClick={() => openSettings("general")}
               aria-label="Configuración"
               className={headerIconButtonClass}
             >
@@ -247,6 +251,7 @@ export function MainLayout() {
         pathname={location.pathname}
         onOpenSettings={openSettings}
         onNavigate={(path) => navigate(path)}
+        onOpenIntegrations={openIntegrations}
       />
 
       {isSettingsOpen && (
@@ -254,11 +259,7 @@ export function MainLayout() {
           <SettingsDialog
             onClose={() => setIsSettingsOpen(false)}
             initialTab={settingsInitialTab}
-            calendarEventEditor={(
-              <Suspense fallback={null}>
-                <CalendarEventTemplateEditor />
-              </Suspense>
-            )}
+            onOpenIntegrations={() => openIntegrations()}
           />
         </Suspense>
       )}
@@ -333,7 +334,7 @@ export function MainLayout() {
 
       <CommandPalette
         isAdmin={me?.role === "admin"}
-        onOpenSettings={me?.role === "admin" ? () => openSettings("claves") : undefined}
+        onOpenSettings={me?.role === "admin" ? () => openSettings("general") : undefined}
       />
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
