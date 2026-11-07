@@ -56,18 +56,20 @@ async def read_knowledge():
     return await list_documents()
 
 
+# Va antes de /knowledge/{document_id}: si no, "templates" se valida como
+# UUID y la ruta responde 422 sin llegar nunca aquí.
+@router.get("/knowledge/templates", response_model=list[KnowledgeTemplateSummary])
+async def read_knowledge_templates():
+    """Biblioteca de la plataforma: fichas y guiones modelo para importar."""
+    return await list_importable_templates()
+
+
 @router.get("/knowledge/{document_id}", response_model=KnowledgeDocumentItem)
 async def read_knowledge_document(document_id: UUID):
     document = await get_document(str(document_id))
     if document is None:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     return document
-
-
-@router.get("/knowledge/templates", response_model=list[KnowledgeTemplateSummary])
-async def read_knowledge_templates():
-    """Biblioteca de la plataforma: fichas y guiones modelo para importar."""
-    return await list_importable_templates()
 
 
 @router.post("/knowledge/templates/{template_id}/import", response_model=KnowledgeDocumentItem, status_code=201)

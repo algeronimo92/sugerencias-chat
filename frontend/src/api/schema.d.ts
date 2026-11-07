@@ -1672,25 +1672,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ai/knowledge/{document_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read Knowledge Document */
-        get: operations["read_knowledge_document_api_ai_knowledge__document_id__get"];
-        /** Update Knowledge Document */
-        put: operations["update_knowledge_document_api_ai_knowledge__document_id__put"];
-        post?: never;
-        /** Delete Knowledge Document */
-        delete: operations["delete_knowledge_document_api_ai_knowledge__document_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/ai/knowledge/templates": {
         parameters: {
             query?: never;
@@ -1706,6 +1687,25 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/knowledge/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Knowledge Document */
+        get: operations["read_knowledge_document_api_ai_knowledge__document_id__get"];
+        /** Update Knowledge Document */
+        put: operations["update_knowledge_document_api_ai_knowledge__document_id__put"];
+        post?: never;
+        /** Delete Knowledge Document */
+        delete: operations["delete_knowledge_document_api_ai_knowledge__document_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10411,6 +10411,26 @@ export interface operations {
             };
         };
     };
+    read_knowledge_templates_api_ai_knowledge_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateSummary"][];
+                };
+            };
+        };
+    };
     read_knowledge_document_api_ai_knowledge__document_id__get: {
         parameters: {
             query?: never;
@@ -10504,26 +10524,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    read_knowledge_templates_api_ai_knowledge_templates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KnowledgeTemplateSummary"][];
                 };
             };
         };

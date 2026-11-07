@@ -7,8 +7,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import delete
 
 from app.db.models.auth import User
+from app.db.models.control import KnowledgeTemplate
+from app.db.session import control_session
 from app.db.uow import session_scope
 from app.modules.ai.knowledge_service import (
     TemplateNotFound,
@@ -30,12 +33,24 @@ FICHA = (
 )
 
 
-async def test_import_is_a_business_copy_independent_of_the_template(tenant) -> None:
+@pytest.fixture
+async def cleanup_templates():
+    """``public`` no se descarta con el schema del tenant: sin esto cada corrida
+    deja sus plantillas en la base local y aparecen en el panel de desarrollo."""
+
+    created: list[int] = []
+    yield created
+    async with control_session() as session:
+        await session.execute(delete(KnowledgeTemplate).where(KnowledgeTemplate.id.in_(created)))
+
+
+async def test_import_is_a_business_copy_independent_of_the_template(tenant, cleanup_templates) -> None:
     template = await create_template({
         "title": "  Ficha   Hollywood Peel ", "document_type": "ficha", "service_hint": "Hollywood Peel",
         "content": FICHA, "is_active": True,
     })
     hidden = await create_template({"title": "Borrador", "document_type": None, "service_hint": None, "content": "x", "is_active": False})
+    cleanup_templates.extend([template["id"], hidden["id"]])
     assert template["title"] == "Ficha Hollywood Peel" and template["version"] == 1
     assert hidden["id"] in [item["id"] for item in await list_templates(include_inactive=True)]
 
