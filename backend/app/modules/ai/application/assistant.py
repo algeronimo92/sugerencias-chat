@@ -54,6 +54,13 @@ async def _require_ai(operation: str) -> None:
         raise AssistantError(exc.status_code, exc.code, exc.message) from exc
 
 
+async def _require_ai_configured(operation: str) -> None:
+    try:
+        await assistant_ports().access.ensure_configured(operation)
+    except AiUnavailable as exc:
+        raise AssistantError(exc.status_code, exc.code, exc.message) from exc
+
+
 async def _start_job(operation: str, chat_id: str, context_revision: str, metadata: dict):
     """Crea el job y su token. Si la firma falla pese a la revisión previa (el
     secreto se quitó entre medio), el job se cierra en vez de quedar colgado."""
@@ -121,6 +128,9 @@ async def analyze_lead(chat_id: str) -> dict:
 async def suggest_reply(chat_id: str, phone: str | None, *, force: bool, instruction: str | None):
     # Con indicación del asesor la sugerencia guardada no sirve: se generó sin
     # tenerla en cuenta, así que siempre se pide una nueva.
+    # Sin IA configurada tampoco se sirve la guardada: el vendedor tiene que
+    # ver que falta conectarla, no una sugerencia vieja que parece nueva.
+    await _require_ai_configured("rag")
     if not force and instruction is None:
         cached = await assistant_ports().context.cached_suggestion(chat_id)
         if cached is not None:

@@ -230,7 +230,7 @@ async def test_suggestions_require_a_business_key(monkeypatch):
     monkeypatch.setattr(ai_access, "get_effective_many", no_keys)
     with pytest.raises(ai_access.AIUnavailableError) as error:
         await ai_access.platform_ready("rag")
-    assert error.value.code == "ai_not_configured" and "Sugerencias con IA" in error.value.message
+    assert error.value.code == "ai_key_missing" and "Integraciones" in error.value.message
 
     async def with_key(_keys):
         return {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "g", "ai_openai_api_key": ""}

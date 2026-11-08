@@ -3,9 +3,9 @@ application/assistant.py y sus errores los traduce bootstrap."""
 
 from fastapi import APIRouter
 
-from app.modules.ai.ai_access import usage_summary
+from app.modules.ai.ai_access import AIUnavailableError, ensure_ai_configured, usage_summary
 from app.modules.ai.application.assistant import LeadNotFound, analyze_lead, suggest_reply
-from app.modules.ai.schemas import AIUsage, AnalysisRequest, LeadAnalysisResult, SuggestionRequest, SuggestionResponse, SuggestionStatus
+from app.modules.ai.schemas import AIUsage, AnalysisRequest, LeadAnalysisResult, SuggestionRequest, SuggestionResponse, SuggestionStatus, SuggestionUnavailable
 from app.modules.ai.suggestions_service import get_suggestion_status
 
 router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
@@ -27,10 +27,18 @@ async def analyze_lead_on_demand(body: AnalysisRequest):
 async def read_suggestion_status(chat_id: str):
     """Lectura barata de la sugerencia guardada: nunca genera contenido nuevo.
     El frontend la usa al abrir un chat (mostrar lo ya generado es gratis) y
-    al llegar un mensaje del cliente (solo para marcarla como desactualizada)."""
+    al llegar un mensaje del cliente (solo para marcarla como desactualizada).
+
+    Si el negocio no tiene la IA configurada no se devuelve la guardada (puede
+    ser de antes del corte de n8n): se devuelve el motivo para que el panel
+    lleve a conectarla."""
     status = await get_suggestion_status(chat_id)
     if status is None:
         raise LeadNotFound()
+    try:
+        await ensure_ai_configured("rag")
+    except AIUnavailableError as exc:
+        return SuggestionStatus(unavailable=SuggestionUnavailable(code=exc.code, message=exc.message))
     return SuggestionStatus(**status)
 
 

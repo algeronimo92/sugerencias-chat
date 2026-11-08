@@ -120,10 +120,12 @@ async def platform_ready(operation: str) -> bool:
         return False
     if operation == "rag":
         if not await business_ai_ready():
+            # Código propio: es lo único que el negocio resuelve solo, y el
+            # panel de sugerencias lo usa para llevarlo a Integraciones.
             raise AIUnavailableError(
-                "ai_not_configured",
+                "ai_key_missing",
                 "Las sugerencias con IA no están conectadas: carga la clave de tu "
-                "proveedor en Integraciones › Sugerencias con IA.",
+                "proveedor de IA en Integraciones.",
                 503,
             )
         return True
@@ -180,14 +182,15 @@ async def notify_ai_job_created() -> None:
     await _notify_quota(entitlement, await count_usage_this_month())
 
 
-async def ensure_ai_available(operation: str = "rag") -> None:
-    """Corta antes de crear el job si el plan no incluye IA, si la plataforma
-    no terminó de configurar el asistente o si se agotó la cuota.
+async def ensure_ai_configured(operation: str = "rag") -> AIEntitlement:
+    """El negocio puede usar la operación: su plan la incluye y está todo
+    configurado (para las sugerencias, una clave de IA del propio negocio). No
+    mira la cuota: sirve también para decidir si mostrar una sugerencia ya
+    guardada, que no consume nada.
 
-    El conteo y el alta del job no son atómicos: dos pedidos simultáneos con
-    una sola generación restante pueden pasar los dos. Se acepta ese desvío de
-    una unidad a cambio de no serializar todas las generaciones del negocio.
-    """
+    Sin esto, un negocio que todavía no cargó su clave seguía viendo las
+    sugerencias que n8n dejó guardadas antes del corte, como si el copiloto
+    funcionara."""
 
     context = get_current_tenant()
     if context is None:
@@ -209,6 +212,19 @@ async def ensure_ai_available(operation: str = "rag") -> None:
             "configuración en la plataforma. Avisa al equipo de soporte.",
             503,
         )
+    return entitlement
+
+
+async def ensure_ai_available(operation: str = "rag") -> None:
+    """Corta antes de crear el job si la operación no está configurada o si se
+    agotó la cuota.
+
+    El conteo y el alta del job no son atómicos: dos pedidos simultáneos con
+    una sola generación restante pueden pasar los dos. Se acepta ese desvío de
+    una unidad a cambio de no serializar todas las generaciones del negocio.
+    """
+
+    entitlement = await ensure_ai_configured(operation)
     if entitlement.monthly_quota is not None:
         used = await count_usage_this_month()
         await _notify_quota(entitlement, used)

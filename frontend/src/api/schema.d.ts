@@ -1421,6 +1421,10 @@ export interface paths {
          * @description Lectura barata de la sugerencia guardada: nunca genera contenido nuevo.
          *     El frontend la usa al abrir un chat (mostrar lo ya generado es gratis) y
          *     al llegar un mensaje del cliente (solo para marcarla como desactualizada).
+         *
+         *     Si el negocio no tiene la IA configurada no se devuelve la guardada (puede
+         *     ser de antes del corte de n8n): se devuelve el motivo para que el panel
+         *     lleve a conectarla.
          */
         get: operations["read_suggestion_status_api_suggestions__chat_id__get"];
         put?: never;
@@ -6483,6 +6487,7 @@ export interface components {
          * @description Estado de la sugerencia guardada de un lead: lectura barata que nunca
          *     dispara la generación. `stale` indica que el cliente escribió después de
          *     generarse — la UI la muestra igual pero avisa que quedó desactualizada.
+         *     Con `unavailable` no hay sugerencia que mostrar: el panel explica qué falta.
          */
         SuggestionStatus: {
             suggestion?: components["schemas"]["SuggestionResponse"] | null;
@@ -6493,6 +6498,18 @@ export interface components {
              * @default false
              */
             stale: boolean;
+            unavailable?: components["schemas"]["SuggestionUnavailable"] | null;
+        };
+        /**
+         * SuggestionUnavailable
+         * @description Por qué el negocio no tiene sugerencias (``ai_key_missing``, ``ai_disabled``,
+         *     ``ai_not_configured``…), con el texto para el vendedor.
+         */
+        SuggestionUnavailable: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
         };
         /** Tag */
         Tag: {
