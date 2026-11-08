@@ -48,7 +48,7 @@ services:
     # Es deliberado que falle cerrado. Un TLS opcional se queda apagado el dia
     # que alguien despliega con prisa, y aqui viajan conversaciones de
     # pacientes. Si falta el certificado, el despliegue se detiene con un
-    # mensaje que dice que ejecutar (ver el paso "certificados" en ci-cd.yml).
+    # mensaje que dice que ejecutar (ver el paso "certificados" en deploy.yml).
     #
     # Los genera scripts/gen-db-tls.sh.
     command: >

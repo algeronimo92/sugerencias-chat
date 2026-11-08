@@ -35,7 +35,7 @@ Para agregar una funcionalidad: [docs/guia-nueva-funcionalidad.md](docs/guia-nue
 
 ## Comandos
 
-Son los que corre CI ([.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml)); si uno diverge, manda CI.
+Son los que corre CI ([.github/workflows/checks.yml](.github/workflows/checks.yml), en cada PR y antes de cada deploy desde [deploy.yml](.github/workflows/deploy.yml)); si uno diverge, manda CI.
 
 ```bash
 # Desarrollo: frontend :5173, backend :8000, postgres 127.0.0.1:5432 (compose.yml).
@@ -101,7 +101,7 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
   (`alembic check`, `migrate --check`) no lo pide. El resto (pytest, uvicorn, scripts) no tiene guarda.
 - **Nunca `docker compose -f compose.prod.yml up` a secas**: publica 8000 y 80 en todas las interfaces y se salta
   Traefik. Producción se despliega con `scripts/deploy-bluegreen.sh` (CI lo hace en cada push a `main`).
-- **Push a `main` despliega a producción** (job `deploy`, serializado). Merges con cuidado.
+- **Push a `main` despliega a producción** (workflow `Deploy a producción`, serializado; se ve en la pestaña Deployments). Merges con cuidado.
 - Los exports de workflows de n8n (`rag*.json`, `analista*.json`, `webhook*.json`) están gitignoreados porque traen
   credenciales: no commitearlos. La versión saneada vive en `backend/tests/fixtures/n8n/`. Tampoco `db/tls/`,
   `.env*`, `monitoring/secrets/`.
