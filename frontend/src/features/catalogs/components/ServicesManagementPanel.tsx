@@ -1,4 +1,4 @@
-import { Loader2, Plus, Sparkles } from 'lucide-react'
+import { Database, Loader2, Lock, PencilLine, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -35,6 +35,50 @@ function changedFields(service: LeadService, draft: ServiceDraft) {
   return changes
 }
 
+type Origin = 'all' | 'erp' | 'manual'
+
+const isFromErp = (service: LeadService) => Boolean(service.external_id)
+
+/** De dónde viene el servicio: lo que trae el ERP es de solo lectura (nombre,
+ *  paquetes, alta y baja); lo manual se edita acá. Antes solo se notaba porque
+ *  el nombre de algunos no se podía cambiar. */
+function OriginBadge({ service }: { service: LeadService }) {
+  return isFromErp(service) ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:bg-sky-950/50 dark:text-sky-300">
+      <Database className="h-3 w-3" aria-hidden="true" />
+      ERP · solo lectura
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full bg-wa-field px-2 py-0.5 text-[11px] font-semibold text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark">
+      <PencilLine className="h-3 w-3" aria-hidden="true" />
+      Manual · editable
+    </span>
+  )
+}
+
+function OriginFilter({ value, counts, onChange }: { value: Origin; counts: Record<Origin, number>; onChange: (value: Origin) => void }) {
+  const options: { key: Origin; label: string }[] = [
+    { key: 'all', label: 'Todos' },
+    { key: 'erp', label: 'Del ERP' },
+    { key: 'manual', label: 'Manuales' },
+  ]
+  return (
+    <div role="group" aria-label="Filtrar por origen" className="inline-flex rounded-lg border border-wa-border bg-white p-0.5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      {options.map(option => (
+        <button
+          key={option.key}
+          type="button"
+          aria-pressed={value === option.key}
+          onClick={() => onChange(option.key)}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${value === option.key ? 'bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary' : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'}`}
+        >
+          {option.label} <span className="tabular-nums opacity-70">{counts[option.key]}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 interface Props {
   /** Lo que otras features agregan a cada servicio (p. ej. sus fichas para la
    *  IA). Llega armado desde app/: catálogos no conoce a esas features. */
@@ -48,6 +92,10 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
   const [newName, setNewName] = useState('')
   const [drafts, setDrafts] = useState<Record<number, ServiceDraft>>({})
   const [error, setError] = useState<string | null>(null)
+  const [origin, setOrigin] = useState<Origin>('all')
+  const erpCount = services.filter(isFromErp).length
+  const counts = { all: services.length, erp: erpCount, manual: services.length - erpCount }
+  const visibleServices = origin === 'all' ? services : services.filter(service => isFromErp(service) === (origin === 'erp'))
 
   useEffect(() => {
     setDrafts(current => {
@@ -117,7 +165,8 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
       icon={Sparkles}
       title="Administrar servicios"
       description="Un servicio es el problema que el cliente quiere resolver; lo que se vende son sus paquetes (1 sesión, pack x3…). Los servicios aparecen al crear o editar un lead y en las automatizaciones; el asistente IA cotiza con los paquetes y la descripción. Los inactivos permanecen en el historial."
-      items={services}
+      items={visibleServices}
+      toolbar={erpCount > 0 ? <OriginFilter value={origin} counts={counts} onChange={setOrigin} /> : undefined}
       getId={service => service.id}
       getName={service => service.name}
       isLoading={isLoading}
@@ -157,15 +206,22 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
       }
       renderFields={service => (
         <div className="min-w-0 flex-1">
-          <Input
-            value={draftOf(service).name}
-            onChange={event => setDraftField(service, 'name', event.target.value)}
-            maxLength={120}
-            readOnly={Boolean(service.external_id)}
-            title={service.external_id ? 'El nombre lo administra el ERP' : undefined}
-            aria-label={`Nombre de ${service.name}`}
-            className={`w-full bg-white py-1.5 dark:bg-wa-panel-dark ${service.external_id ? 'text-wa-muted dark:text-wa-muted-dark' : ''}`}
-          />
+          <div className="mb-1.5"><OriginBadge service={service} /></div>
+          {isFromErp(service) ? (
+            <p className="flex items-center gap-1.5 py-1.5 text-sm font-medium text-wa-text dark:text-wa-text-dark" title="El nombre lo administra el ERP">
+              <Lock className="h-3.5 w-3.5 shrink-0 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+              <span className="min-w-0 truncate">{service.name}</span>
+              <span className="sr-only">(nombre administrado por el ERP)</span>
+            </p>
+          ) : (
+            <Input
+              value={draftOf(service).name}
+              onChange={event => setDraftField(service, 'name', event.target.value)}
+              maxLength={120}
+              aria-label={`Nombre de ${service.name}`}
+              className="w-full bg-white py-1.5 dark:bg-wa-panel-dark"
+            />
+          )}
           <Input
             value={draftOf(service).description}
             onChange={event => setDraftField(service, 'description', event.target.value)}

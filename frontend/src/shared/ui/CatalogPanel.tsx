@@ -44,6 +44,8 @@ interface CatalogPanelProps<T> {
    *  un servicio que administra el ERP del negocio, por ejemplo, no. */
   canToggle?: (item: T) => boolean
   formError: string | null
+  /** Controles extra del listado (p. ej. filtros), debajo del encabezado. */
+  toolbar?: ReactNode
 }
 
 /** Debajo de este tamaño la lista completa cabe de un vistazo (Miller): el
@@ -56,6 +58,7 @@ export function CatalogPanel<T>({
   description,
   createForm,
   items,
+  toolbar,
   getId,
   getName,
   isLoading,
@@ -117,6 +120,7 @@ export function CatalogPanel<T>({
           </label>
         )}
       </div>
+      {toolbar && <div className="mt-3">{toolbar}</div>}
 
       {isLoading ? (
         <ul className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2 lg:gap-3" aria-label="Cargando catálogo">
