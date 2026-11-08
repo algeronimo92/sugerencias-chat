@@ -148,7 +148,7 @@ function CopilotHeader({ collapsed, onToggle, canRegenerate, isGenerating, onReg
       {canRegenerate && (
         <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isGenerating} title="Generar un juego nuevo de sugerencias" className="ml-auto">
           <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse text-wa-primary' : ''}`} aria-hidden="true" />
-          Generá otras
+          Genera otras
         </Button>
       )}
     </div>
@@ -275,7 +275,7 @@ function EmptyCopilot({ instruction, onInstructionChange, onGenerate }: BodyProp
       <SuggestionInstructionBox value={instruction} onChange={onInstructionChange} />
       <Button size="sm" className="w-full" onClick={() => onGenerate(false)}>
         <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-        Generá sugerencias
+        Genera sugerencias
       </Button>
     </div>
   )
@@ -302,7 +302,7 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
         <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300">
           <MessageSquareDot className="h-4 w-4 shrink-0" aria-hidden="true" />
           <p className="min-w-0 flex-1">El cliente volvió a escribir después.</p>
-          <Button variant="secondary" size="sm" onClick={() => onGenerate(false)}>Generá nuevas</Button>
+          <Button variant="secondary" size="sm" onClick={() => onGenerate(false)}>Genera nuevas</Button>
         </div>
       )}
 
@@ -338,7 +338,7 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
           ))}
           {data.sugerencias.length === 0 && (
             <p className="py-3 text-center text-sm text-wa-muted dark:text-wa-muted-dark">
-              No se generaron sugerencias para este chat. Probá pedir otras.
+              No se generaron sugerencias para este chat. Prueba pedir otras.
             </p>
           )}
         </div>

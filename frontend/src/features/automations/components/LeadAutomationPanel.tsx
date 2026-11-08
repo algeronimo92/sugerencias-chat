@@ -104,7 +104,7 @@ function PauseToggleButton({ execution }: { execution: AutomationExecution }) {
       type="button"
       title={isPaused
         ? pausedWithChat
-          ? 'Pausada junto con todo el chat — reanudala con el botón del bot de la cabecera'
+          ? 'Pausada junto con todo el chat — reanúdala con el botón del bot de la cabecera'
           : 'Reanudar: sigue con el tiempo que le faltaba'
         : isRunning
           ? 'Está ejecutando un paso; se puede pausar cuando llegue a su próxima espera'

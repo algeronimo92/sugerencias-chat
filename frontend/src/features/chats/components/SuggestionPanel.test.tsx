@@ -56,7 +56,7 @@ describe('SuggestionPanel sin IA conectada', () => {
     expect(screen.getByRole('status')).toHaveTextContent('no están conectadas')
     expect(screen.getByRole('link', { name: 'Conectar en Integraciones' })).toHaveAttribute('href', '/integraciones#ia-sugerencias')
     expect(screen.queryByText('Sugerencia vieja de n8n')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Generá/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Genera/ })).not.toBeInTheDocument()
   })
 
   it('al vendedor le dice que lo pida a un administrador', () => {

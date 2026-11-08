@@ -59,7 +59,7 @@ def test_build_adds_body_and_default_footer():
         "footer": {"text": "Clínica"},
     }
     own_footer = {**LIST, "footer": {"text": "Propio"}}
-    assert build_interactive("list", own_footer, "Elegí", "Clínica")["footer"] == {"text": "Propio"}
+    assert build_interactive("list", own_footer, "Elige", "Clínica")["footer"] == {"text": "Propio"}
 
 
 def test_rendered_values_report_every_problem():

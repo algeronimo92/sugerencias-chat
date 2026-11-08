@@ -174,7 +174,7 @@ describe('ChatThread', () => {
     await user.click(screen.getByText('Cambiar a nota interna'))
 
     // El compositor de WhatsApp deja lugar al de notas.
-    expect(screen.queryByPlaceholderText(/Escribí un mensaje/)).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText(/Escribe un mensaje/)).not.toBeInTheDocument()
     expect(screen.getByText(/Nota interna/)).toBeInTheDocument()
   })
 

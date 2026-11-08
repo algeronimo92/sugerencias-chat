@@ -7,6 +7,8 @@ import type { AutomationRule } from '../types'
 
 /** La automatización abierta: `/automations?automatizacion=<id>`. */
 export const OPEN_RULE_PARAM = 'automatizacion'
+/** El bloque al que abrir el flujo (`&bloque=<id>`), p. ej. desde el historial. */
+export const OPEN_BLOCK_PARAM = 'bloque'
 
 /** Lo que Catálogos pide revisar: la acción que asigna el servicio (impide
  *  eliminarlo) o la condición que filtra por su nombre (solo se avisa). */
@@ -16,9 +18,11 @@ export interface RuleUrl {
   /** La regla que la URL pide tener abierta (null si ninguna o aún cargan). */
   rule: AutomationRule | null
   highlight: ServiceHighlight | null
+  /** Bloque al que abrir el flujo, si la URL lo pide. */
+  block: string | null
   /** Cambia cuando la URL pide abrir otra cosa: la pantalla abre una vez por valor. */
   key: string | null
-  open: (ruleId: number) => void
+  open: (ruleId: number, block?: string) => void
   close: () => void
 }
 
@@ -39,6 +43,7 @@ export function useRuleUrl(rules: AutomationRule[], isLoading: boolean): RuleUrl
   const ruleId = params.get(OPEN_RULE_PARAM) ?? linked
   const highlight = part && request?.value ? { service: request.value, reason: request.reason, part } : null
   const rule = ruleId !== null && !isLoading ? rules.find(item => String(item.id) === ruleId) ?? null : null
+  const block = params.get(OPEN_BLOCK_PARAM)
   const missing = ruleId !== null && !isLoading && rule === null
 
   useEffect(() => {
@@ -47,6 +52,7 @@ export function useRuleUrl(rules: AutomationRule[], isLoading: boolean): RuleUrl
       setParams(current => {
         const next = withoutEditField(current)
         next.delete(OPEN_RULE_PARAM)
+        next.delete(OPEN_BLOCK_PARAM)
         return next
       }, { replace: true })
     } else if (rule && linked !== null) {
@@ -61,21 +67,25 @@ export function useRuleUrl(rules: AutomationRule[], isLoading: boolean): RuleUrl
 
   // `replace`: abrir o cerrar no agrega entradas al historial. Con "atrás"
   // cerrando el editor se perderían cambios sin guardar sin preguntar.
-  const open = useCallback((id: number) => setParams(current => {
+  const open = useCallback((id: number, blockId?: string) => setParams(current => {
     const next = withoutEditField(current)
     next.set(OPEN_RULE_PARAM, String(id))
+    if (blockId) next.set(OPEN_BLOCK_PARAM, blockId)
+    else next.delete(OPEN_BLOCK_PARAM)
     return next
   }, { replace: true }), [setParams])
   const close = useCallback(() => setParams(current => {
     const next = withoutEditField(current)
     next.delete(OPEN_RULE_PARAM)
+    next.delete(OPEN_BLOCK_PARAM)
     return next
   }, { replace: true }), [setParams])
 
   return {
     rule,
     highlight,
-    key: rule ? `${rule.id}:${highlight?.part ?? ''}:${highlight?.service ?? ''}` : null,
+    block,
+    key: rule ? `${rule.id}:${highlight?.part ?? ''}:${highlight?.service ?? ''}:${block ?? ''}` : null,
     open,
     close,
   }

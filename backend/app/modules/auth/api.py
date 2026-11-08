@@ -141,7 +141,7 @@ async def pin_login(body: PinLoginRequest, response: Response, request: Request)
     except PinLockedError as exc:
         raise HTTPException(
             status_code=423,
-            detail="Demasiados intentos. Esperá antes de volver a probar.",
+            detail="Demasiados intentos. Espera antes de volver a probar.",
             headers={"Retry-After": str(exc.retry_after_seconds)},
         )
     except PinInvalidError:

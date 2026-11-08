@@ -208,7 +208,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
                 </Button>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="px-5 py-14 text-center"><Bell className="mx-auto mb-2 h-7 w-7 text-gray-300 dark:text-gray-600" /><p className="text-sm text-wa-muted dark:text-wa-muted-dark">{unreadOnly ? 'No tenés notificaciones pendientes' : 'Todavía no tenés notificaciones'}</p></div>
+              <div className="px-5 py-14 text-center"><Bell className="mx-auto mb-2 h-7 w-7 text-gray-300 dark:text-gray-600" /><p className="text-sm text-wa-muted dark:text-wa-muted-dark">{unreadOnly ? 'No tienes notificaciones pendientes' : 'Todavía no tienes notificaciones'}</p></div>
             ) : (
               <>
               {notifications.map(notification => (

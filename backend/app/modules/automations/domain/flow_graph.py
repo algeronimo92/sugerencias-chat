@@ -54,7 +54,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
         node_edges = outgoing[node["id"]]
         if node["type"] == FlowNodeType.END:
             if node_edges:
-                raise InvalidAutomation("Un bloque Fin no puede tener conexiones de salida")
+                raise InvalidAutomation("Un bloque Fin no puede tener conexiones de salida", node_id=node["id"])
         elif node["type"] == FlowNodeType.CONDITION:
             handles = sorted(edge["source_handle"] for edge in node_edges)
             groups = node["data"].get("condition_groups")
@@ -67,7 +67,8 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
                 raise InvalidAutomation(
                     "Cada grupo OR y la opción Ninguna deben tener su propia salida"
                     if isinstance(groups, list)
-                    else "Cada condición debe tener exactamente una salida Sí y una salida No"
+                    else "Cada condición debe tener exactamente una salida Sí y una salida No",
+                    node_id=node["id"],
                 )
         elif node["type"] == FlowNodeType.WAIT_ANY:
             expected = {condition["id"] for condition in node["data"].get("conditions", [])}
@@ -77,7 +78,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             # _run_visual_execution). Las demás condiciones sí son obligatorias.
             required = expected - {WaitAnyConditionKind.TIMER}
             if len(handles) != len(set(handles)) or not set(handles) <= expected or not required <= set(handles):
-                raise InvalidAutomation("Cada condición de la pausa debe tener su propia salida (el temporizador es opcional)")
+                raise InvalidAutomation("Cada condición de la pausa debe tener su propia salida (el temporizador es opcional)", node_id=node["id"])
         elif node["type"] == FlowNodeType.QUESTION:
             required = {button["id"] for button in node["data"].get("buttons", [])} | {
                 QuestionHandle.OTHER, QuestionHandle.TIMEOUT,
@@ -88,25 +89,25 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             allowed = required | {QuestionHandle.MEDIA}
             handles = [edge["source_handle"] for edge in node_edges]
             if len(handles) != len(set(handles)) or not set(handles) <= allowed or not required <= set(handles):
-                raise InvalidAutomation("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida")
+                raise InvalidAutomation("Cada botón, \"otra respuesta\" y \"sin respuesta\" deben tener su propia salida", node_id=node["id"])
         elif node["type"] == FlowNodeType.ROUND_ROBIN:
             expected = {output["id"] for output in node["data"].get("outputs", [])}
             handles = [edge["source_handle"] for edge in node_edges]
             # Todas obligatorias: el reparto por turnos le toca a cada salida
             # tarde o temprano, y una sin conectar dejaría al lead sin camino.
             if len(handles) != len(expected) or set(handles) != expected:
-                raise InvalidAutomation("Cada salida del round robin debe estar conectada")
+                raise InvalidAutomation("Cada salida del round robin debe estar conectada", node_id=node["id"])
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
-            raise InvalidAutomation("Cada disparador, acción, invocación o espera debe tener exactamente una salida")
+            raise InvalidAutomation("Cada disparador, acción, invocación o espera debe tener exactamente una salida", node_id=node["id"])
         if node["id"] != trigger_id and not incoming[node["id"]]:
-            raise InvalidAutomation("Todos los bloques deben estar conectados desde el disparador")
+            raise InvalidAutomation("Todos los bloques deben estar conectados desde el disparador", node_id=node["id"])
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def walk(node_id: str) -> None:
         if node_id in visiting:
-            raise InvalidAutomation("El flujo contiene un ciclo. Usa una espera y una nueva regla para evitar bucles")
+            raise InvalidAutomation("El flujo contiene un ciclo. Usa una espera y una nueva regla para evitar bucles", node_id=node_id)
         if node_id in visited:
             return
         visiting.add(node_id)
@@ -117,7 +118,8 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
 
     walk(trigger_id)
     if visited != node_ids:
-        raise InvalidAutomation("Hay bloques que no son alcanzables desde el disparador")
+        unreachable = next(node["id"] for node in nodes if node["id"] not in visited)
+        raise InvalidAutomation("Hay bloques que no son alcanzables desde el disparador", node_id=unreachable)
 
 
 def flow_indexes(definition: dict) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:

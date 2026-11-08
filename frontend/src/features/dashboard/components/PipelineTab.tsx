@@ -52,7 +52,7 @@ export function PipelineTab({ data, days, isMine, onFilterChats }: Props) {
               {
                 label: 'Sin lead',
                 value: formatNumber(appointments.linkage.unlinked),
-                hint: appointments.linkage.unlinked > 0 ? 'Revisá el teléfono' : undefined,
+                hint: appointments.linkage.unlinked > 0 ? 'Revisa el teléfono' : undefined,
               },
               { label: 'Leads con no-show', value: formatNumber(appointments.no_shows.leads) },
               { label: 'No-shows acumulados', value: formatNumber(appointments.no_shows.total) },

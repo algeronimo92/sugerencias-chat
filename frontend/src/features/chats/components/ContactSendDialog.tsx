@@ -45,7 +45,7 @@ export function ContactSendDialog({ chatId, targetName, replyTo, onSent, onClose
     // El aviso sale del handler y no del updater: React puede ejecutar un
     // updater dos veces, y el toast salía repetido.
     if (!isSelected && selected.length >= MAX_CONTACTS) {
-      toast.error(`Podés enviar hasta ${MAX_CONTACTS} contactos a la vez`)
+      toast.error(`Puedes enviar hasta ${MAX_CONTACTS} contactos a la vez`)
       return
     }
     setSelected(current => (

@@ -293,7 +293,7 @@ async def resume_automation_execution(execution_id: int) -> dict | None:
             lead = await fetch_lead_raw(execution.lead_id)
             if lead is not None and lead.get("automatizacion_pausada"):
                 raise AutomationConflict(
-                    "Este chat tiene la automatización pausada: reanudala con el botón "
+                    "Este chat tiene la automatización pausada: reanúdala con el botón "
                     "del bot en la cabecera para que el flujo siga."
                 )
         if not await executions.resume(execution_id, _now()):
@@ -349,7 +349,7 @@ async def start_manual_flow_execution(
     except ExecutionAlreadyRunning as exc:
         raise InvalidAutomation(
             "Ya hay una ejecución de este flujo en curso para este lead. "
-            "Esperá a que termine o cancelala antes de iniciar otra."
+            "Espera a que termine o cancélala antes de iniciar otra."
         ) from exc
     if not created:
         raise InvalidAutomation("No se pudo iniciar el flujo: verifica que el lead exista")

@@ -54,7 +54,7 @@ export function AccountSecurityDialog({ onClose }: Props) {
   function whyNotReady(currentPassword: string) {
     if (pin.length !== PIN_LENGTH || !/^\d+$/.test(pin)) return `El PIN debe tener exactamente ${PIN_LENGTH} dígitos.`
     if (pin !== confirmPin) return 'Los dos PIN no coinciden.'
-    if (!currentPassword) return 'Escribí tu contraseña actual para confirmar el cambio.'
+    if (!currentPassword) return 'Escribe tu contraseña actual para confirmar el cambio.'
     return null
   }
 
@@ -175,7 +175,7 @@ export function AccountSecurityDialog({ onClose }: Props) {
 
             <section>
               <h2 className="flex items-center gap-1.5 text-sm font-semibold text-wa-text dark:text-wa-text-dark"><Laptop className="h-4 w-4" /> Sesiones abiertas</h2>
-              <p className="mb-2 mt-0.5 text-xs text-wa-muted">Podés cerrar cualquier equipo que no reconozcas.</p>
+              <p className="mb-2 mt-0.5 text-xs text-wa-muted">Puedes cerrar cualquier equipo que no reconozcas.</p>
               <div className="space-y-2">
                 {isLoadingSessions && <Loader2 className="h-4 w-4 animate-spin text-wa-muted" />}
                 {sessions?.map(session => (

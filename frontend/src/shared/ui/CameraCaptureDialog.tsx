@@ -12,15 +12,15 @@ function describeCameraError(err: unknown): string {
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
     return (
       'El navegador tiene bloqueado el acceso a la cámara para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Cámara → Permitir, y volvé a cargar la página.'
+      'Para habilitarlo: haz clic en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Cámara → Permitir, y vuelve a cargar la página.'
     )
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No se encontró ninguna cámara conectada a este dispositivo.'
   }
   if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return 'La cámara está siendo usada por otra aplicación. Cerrala e intentá de nuevo.'
+    return 'La cámara está siendo usada por otra aplicación. Ciérrala e intenta de nuevo.'
   }
   if (name === 'OverconstrainedError') {
     return 'La cámara elegida no está disponible en este dispositivo.'
@@ -28,7 +28,7 @@ function describeCameraError(err: unknown): string {
   if (name === 'SecurityError') {
     return 'Tomar fotos requiere una conexión segura (HTTPS) para este sitio.'
   }
-  return 'No se pudo acceder a la cámara. Revisá los permisos del navegador para este sitio y volvé a cargar la página.'
+  return 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio y vuelve a cargar la página.'
 }
 
 /** `foto-20260919-143012.jpg`: el nombre acompaña al archivo hasta WhatsApp o
@@ -155,7 +155,7 @@ export function CameraCaptureDialog({
       (blob) => {
         if (!blob) {
           setIsCapturing(false)
-          setError('No se pudo capturar la foto. Intentá de nuevo.')
+          setError('No se pudo capturar la foto. Intenta de nuevo.')
           return
         }
         // El padre cierra este diálogo y abre la preview con la foto.

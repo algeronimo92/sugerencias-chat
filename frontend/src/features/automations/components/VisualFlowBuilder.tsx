@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Select } from '../../../shared/ui/Input'
-import { extractErrorMessage } from '../../../shared/utils/errors'
+import { extractErrorMessage, extractErrorTarget } from '../../../shared/utils/errors'
 import { CreateTemplateDialog } from '../../templates/public/CreateTemplateDialog'
 import { parseContent } from '../../whatsapp/public/message'
 import { META_CONTRACT } from '../../whatsapp/public/metaContract'
@@ -43,9 +43,12 @@ import { FlowCanvas } from './flow/FlowCanvas'
 import { FlowNodeConnections, type FlowConnection } from './flow/FlowNodeConnections'
 import { FLOW_PALETTE } from './flow/flowPalette'
 import { FlowNodeSearch } from './flow/FlowNodeSearch'
+import { FeedbackBar } from './flow/FeedbackBar'
+import { FlowStatusPill } from './flow/FlowStatusPill'
+import { PublishPausedDialog } from './flow/PublishPausedDialog'
 import { searchableText } from '../domain/flowNodeSearch'
 import { EDGE_LABELS } from './flow/flowCanvasEdges'
-import { numberFlowNodes } from '../domain/flowNumbering'
+import { numberFlowNodes, reachableFromTrigger } from '../domain/flowNumbering'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
@@ -266,6 +269,8 @@ interface VisualFlowBuilderProps {
   rule?: AutomationRule
   /** Llegada desde Catálogos: el servicio que hay que cambiar o quitar. */
   highlight?: ServiceHighlight
+  /** Bloque al que abrir el flujo (p. ej. "Ver en el flujo" del historial). */
+  initialBlock?: string
   onClose: () => void
 }
 
@@ -278,7 +283,7 @@ function isEditableTarget(target: EventTarget | null) {
     && !!target.closest('input, textarea, select, [contenteditable="true"]')
 }
 
-export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilderProps) {
+export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: VisualFlowBuilderProps) {
   const createFlow = useCreateVisualFlow()
   const saveFlow = useSaveVisualFlow()
   const publishFlow = usePublishVisualFlow()
@@ -314,23 +319,41 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   // Desde Catálogos se abre en lo que nombra al servicio: las condiciones de
   // entrada o el primer bloque que lo cambia, no en el disparador.
   const initialReferences = highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null
+  // Desde el historial: el bloque de ese paso, si todavía está en el flujo.
+  const openAtBlock = initialBlock && flow.nodes.some(node => node.id === initialBlock) ? initialBlock : null
   const [editor, dispatch] = useFlowEditor(
     rule, initialDefinition, initialPublishedDefinition,
-    initialReferences?.nodeIds[0] ?? flow.nodes[0]?.id ?? null,
+    openAtBlock ?? initialReferences?.nodeIds[0] ?? flow.nodes[0]?.id ?? null,
     initialReferences?.entryConditions ?? false,
   )
   const serviceReferences = useMemo(() => highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null, [flow, highlight])
   const flaggedNodeIds = useMemo(() => new Set(serviceReferences?.nodeIds ?? []), [serviceReferences])
   // Desde Catálogos la vista arranca acercada al bloque marcado; después, cada
   // "ir a" (aviso o conexiones) la vuelve a acercar.
-  const [focus, setFocus] = useState(() => initialReferences?.nodeIds.length ? { ids: initialReferences.nodeIds, key: 1 } : null)
+  const [focus, setFocus] = useState(() => openAtBlock
+    ? { ids: [openAtBlock], key: 1 }
+    : initialReferences?.nodeIds.length ? { ids: initialReferences.nodeIds, key: 1 } : null)
+  const missingBlockWarned = useRef(false)
+  useEffect(() => {
+    if (!initialBlock || openAtBlock || missingBlockWarned.current) return
+    missingBlockWarned.current = true
+    toast.info('Ese bloque ya no está en el flujo: se borró o cambió después de esa ejecución.')
+  }, [initialBlock, openAtBlock])
+  // Los errores del servidor pueden decir de qué bloque son (`target`): ese
+  // bloque queda elegido y el lienzo lo acerca, así no hay que buscarlo a ojo.
+  const failWith = useCallback((reason: unknown) => {
+    const target = extractErrorTarget(reason)
+    const known = target && flow.nodes.some(node => node.id === target) ? target : null
+    dispatch({ type: 'fail', message: extractErrorMessage(reason), target: known })
+    if (known) setFocus(current => ({ ids: [known], key: (current?.key ?? 0) + 1 }))
+  }, [dispatch, flow.nodes])
   const goToNode = useCallback((nodeId: string) => {
     dispatch({ type: 'select', nodeId })
     setFocus(current => ({ ids: [nodeId], key: (current?.key ?? 0) + 1 }))
   }, [dispatch])
   const {
     ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
-    selectedId, showEntryConditions, error, notice, jsonViewTab, jsonCopied,
+    selectedId, showEntryConditions, error, errorTarget, notice, jsonViewTab, jsonCopied, publishedVersion,
   } = editor
   const { simulation: simulationOpen, versions: versionsOpen, jsonView: jsonViewOpen, importJson: importJsonOpen, exitConfirmation: exitConfirmationOpen } = editor.openDialogs
   const copiedNodeRef = useRef<AutomationFlowNode | null>(null)
@@ -338,6 +361,12 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const restoreVersion = useRestoreFlowVersion()
   const selected = flow.nodes.find(node => node.id === selectedId) ?? null
   const numbers = useMemo(() => numberFlowNodes(flow), [flow])
+  // Bloques a los que no llega ningún camino desde el disparador: nunca se
+  // ejecutan y no dejan publicar. Se marcan en el lienzo mientras se arma.
+  const looseIds = useMemo(() => {
+    const reachable = reachableFromTrigger(flow)
+    return new Set(flow.nodes.filter(node => !reachable.has(node.id)).map(node => node.id))
+  }, [flow])
   const searchItems = useMemo(() => flow.nodes.map(node => ({
     id: node.id, number: numbers.get(node.id), title: nodeTitle(node, automationRules), text: searchableText(node.data),
   })), [flow.nodes, numbers, automationRules])
@@ -361,6 +390,10 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
   const hasUnpublishedChanges = publishedDefinition == null || !areFlowDefinitionsEqual(flow, publishedDefinition)
+  // Del listado (se refresca solo), no de la regla con la que se abrió el editor.
+  const isActive = automationRules.find(item => item.id === ruleId)?.is_active ?? rule?.is_active ?? false
+  const [confirmPausedPublish, setConfirmPausedPublish] = useState(false)
+  const [liveSaved, setLiveSaved] = useState(() => ({ maxPerHour: rule?.max_executions_per_hour ?? null, visible: rule?.visible_to_sellers ?? false }))
   const hasUnsavedChanges = savedDefinition == null
     || name !== savedName
     || !areFlowDefinitionsEqual(flow, savedDefinition)
@@ -531,7 +564,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
     )
     if (removable.size === 0) {
       if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
-        dispatch({ type: 'fail', message: 'El disparador no se puede eliminar; podés cambiar su tipo.' })
+        dispatch({ type: 'fail', message: 'El disparador no se puede eliminar; puedes cambiar su tipo.' })
       }
       return
     }
@@ -624,7 +657,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       applySavedFlow(saved)
       return saved
     } catch (reason) {
-      dispatch({ type: 'fail', message: extractErrorMessage(reason) })
+      failWith(reason)
       return null
     }
   }
@@ -639,16 +672,25 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
     toast.success('Flujo reemplazado desde JSON.')
   }
 
+  // Máx/hora y "Visible para vendedores" se guardan al instante (no van por
+  // borrador). Se comparan con lo último guardado, no con la regla con la que
+  // se abrió el editor: con esa, volver al valor original no se guardaba.
   function commitMaxPerHour(value: number | null) {
     dispatch({ type: 'maxPerHourChanged', value })
-    if (ruleId == null || value === (rule?.max_executions_per_hour ?? null)) return
-    updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, { onError: reason => dispatch({ type: 'fail', message: extractErrorMessage(reason) }) })
+    if (ruleId == null || value === liveSaved.maxPerHour) return
+    updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, {
+      onSuccess: () => setLiveSaved(current => ({ ...current, maxPerHour: value })),
+      onError: reason => failWith(reason),
+    })
   }
 
   function commitVisibleToSellers(value: boolean) {
     dispatch({ type: 'visibleToSellersChanged', value })
-    if (ruleId == null || value === (rule?.visible_to_sellers ?? false)) return
-    updateRule.mutate({ id: ruleId, visible_to_sellers: value }, { onError: reason => dispatch({ type: 'fail', message: extractErrorMessage(reason) }) })
+    if (ruleId == null || value === liveSaved.visible) return
+    updateRule.mutate({ id: ruleId, visible_to_sellers: value }, {
+      onSuccess: () => setLiveSaved(current => ({ ...current, visible: value })),
+      onError: reason => failWith(reason),
+    })
   }
 
   async function restore(version: number) {
@@ -660,14 +702,28 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       dispatch({ type: 'rename', name: restored.name })
       dispatch({ type: 'closeDialog', dialog: 'versions' })
       dispatch({ type: 'versionRestored', version })
-    } catch (reason) { dispatch({ type: 'fail', message: extractErrorMessage(reason) }) }
+    } catch (reason) { failWith(reason) }
   }
 
-  async function publish() {
+  // Publicar activa el flujo. Si ya se había publicado y alguien lo pausó,
+  // primero se pregunta: antes se reactivaba sin avisar.
+  function requestPublish() {
+    if (publishedVersion && !isActive) setConfirmPausedPublish(true)
+    else void publish(true)
+  }
+
+  async function publish(resume: boolean) {
+    setConfirmPausedPublish(false)
     const saved = await persistDraft()
     if (!saved) return
     try {
       const published = await publishFlow.mutateAsync(saved.id)
+      if (!resume) await updateRule.mutateAsync({ id: saved.id, is_active: false })
+      // Publicar guarda como borrador la versión validada, que completa campos
+      // por defecto (`minutes`, `close_conversation`). Sin tomarla, el lienzo
+      // seguía distinto de lo publicado: "Cambios sin publicar" y el botón
+      // habilitado justo después de publicar.
+      applySavedFlow(published)
       dispatch({
         type: 'published',
         definition: published.published_flow_definition
@@ -675,7 +731,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
           : null,
         version: published.flow_version,
       })
-    } catch (reason) { dispatch({ type: 'fail', message: extractErrorMessage(reason) }) }
+    } catch (reason) { failWith(reason) }
   }
 
   async function simulate(leadId: string) {
@@ -684,7 +740,10 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
     try {
       return await simulateFlow.mutateAsync({ id: saved.id, leadId })
     } catch (reason) {
-      dispatch({ type: 'fail', message: extractErrorMessage(reason) })
+      // El error se ve en la franja del editor (y, si es de un bloque, el
+      // lienzo va a él): la ventana de la prueba lo tapaba.
+      dispatch({ type: 'closeDialog', dialog: 'simulation' })
+      failWith(reason)
       return null
     }
   }
@@ -702,7 +761,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   return <div data-flow-builder className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-flow-canvas-dark">
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
       <button type="button" onClick={requestClose} aria-label="Cerrar constructor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
-      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
+      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}` : 'Flujo nuevo'}<FlowStatusPill publishedVersion={publishedVersion} hasUnpublishedChanges={hasUnpublishedChanges} isActive={isActive} /></p></div>
       <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="Historial de cambios">
         <button type="button" disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer" className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Undo2 className="h-4 w-4" /></button>
         <button type="button" disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y o Ctrl+Shift+Z)" aria-label="Rehacer" className="p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><Redo2 className="h-4 w-4" /></button>
@@ -731,13 +790,13 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
         <button type="button" title="Reemplazar todos los bloques y conexiones con un JSON" onClick={() => dispatch({ type: 'openDialog', dialog: 'importJson' })} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-white/10"><Upload className="h-4 w-4" /></button>
       </div>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Save className="h-4 w-4" />Guardar borrador</button>
-      <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
+      <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={requestPublish} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
 
     {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica el flujo (la versión activa también cuenta)">
       {serviceReferences.nodeIds.map(nodeId => <button key={nodeId} type="button" onClick={() => goToNode(nodeId)} className="rounded-md border border-amber-300 bg-white/70 px-2 py-0.5 font-semibold hover:bg-white dark:border-amber-800 dark:bg-amber-950/60">Ver bloque #{numbers.get(nodeId)}</button>)}
     </ServiceHighlightNotice></div>}
-    {(error || notice) && <div className={`px-4 py-2 text-xs ${error ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'}`}>{error ?? notice}</div>}
+    {(error || notice) && <FeedbackBar error={error} notice={notice} blockNumber={errorTarget ? numbers.get(errorTarget) : undefined} onGoToBlock={errorTarget ? () => goToNode(errorTarget) : undefined} />}
 
     <div className="flex min-h-0 flex-1">
       <aside className="w-48 shrink-0 overflow-y-auto border-r border-wa-border bg-white p-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
@@ -756,6 +815,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
           selectedId={selectedId}
           flaggedIds={flaggedNodeIds}
           numbers={numbers}
+          looseIds={looseIds}
           focus={focus}
           onSelect={id => dispatch({ type: 'select', nodeId: id })}
           onMoveNodes={moveNodes}
@@ -791,7 +851,8 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       </aside>}
     </div>
 
-    {simulationOpen && <FlowSimulationDialog isSimulating={simulateFlow.isPending} onSimulate={simulate} onClose={() => dispatch({ type: 'closeDialog', dialog: 'simulation' })} />}
+    <PublishPausedDialog open={confirmPausedPublish} version={publishedVersion ?? 0} onResume={() => void publish(true)} onKeepPaused={() => void publish(false)} onCancel={() => setConfirmPausedPublish(false)} />
+    {simulationOpen && <FlowSimulationDialog isSimulating={simulateFlow.isPending} onSimulate={simulate} onClose={() => dispatch({ type: 'closeDialog', dialog: 'simulation' })} numbers={numbers} onGoToNode={nodeId => { dispatch({ type: 'closeDialog', dialog: 'simulation' }); goToNode(nodeId) }} />}
     {versionsOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget) dispatch({ type: 'closeDialog', dialog: 'versions' }) }}>
       <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-wa-panel-dark">
         <div className="flex items-start justify-between">

@@ -16,7 +16,7 @@ _E164_DIGITS = re.compile(r"[1-9]\d{7,14}")
 LOCAL_RULES: dict[str, tuple[re.Pattern[str], str]] = {
     "51": (
         re.compile(r"9\d{8}|[14-8]\d{7}"),
-        "Revisá el número: en Perú los celulares tienen 9 dígitos (empiezan con 9) y los fijos 8",
+        "Revisa el número: en Perú los celulares tienen 9 dígitos (empiezan con 9) y los fijos 8",
     ),
 }
 
@@ -63,7 +63,7 @@ def normalize_phone(raw: str, default_country_code: str) -> str:
             raise PhoneValidationError(message)
 
     if not _E164_DIGITS.fullmatch(digits):
-        raise PhoneValidationError("Revisá el número: debe tener entre 8 y 15 dígitos")
+        raise PhoneValidationError("Revisa el número: debe tener entre 8 y 15 dígitos")
     return digits
 
 

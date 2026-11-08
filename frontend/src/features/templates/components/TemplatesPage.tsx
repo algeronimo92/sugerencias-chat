@@ -255,7 +255,7 @@ export function TemplatesPage() {
     const validFiles = files.filter(file => validateAttachmentFile(file) == null)
     const existingCount = editingTemplate?.attachments.length ?? 0
     const available = Math.max(0, 10 - existingCount - pendingAttachments.length)
-    if (validFiles.length > available) fileErrors.push(`Solo podés agregar ${available} archivo${available === 1 ? '' : 's'} más.`)
+    if (validFiles.length > available) fileErrors.push(`Solo puedes agregar ${available} archivo${available === 1 ? '' : 's'} más.`)
     if (fileErrors.length) setError(fileErrors.join('\n'))
     setPendingAttachments(current => [
       ...current,
@@ -699,7 +699,7 @@ export function TemplatesPage() {
                         <button type="button" disabled={form.interactiveButtons.length === 1} onClick={() => setForm(f => ({ ...f, interactiveButtons: f.interactiveButtons.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     ))}
-                    <p className="text-[11px] text-wa-muted">Meta solo admite botones de respuesta rápida fuera de una plantilla oficial. Para URL, llamada o copiar código, usá una plantilla oficial.</p>
+                    <p className="text-[11px] text-wa-muted">Meta solo admite botones de respuesta rápida fuera de una plantilla oficial. Para URL, llamada o copiar código, usa una plantilla oficial.</p>
                   </div>
                 )}
                 {form.interactiveType === 'list' && (
@@ -918,7 +918,7 @@ export function TemplatesPage() {
                         template.template_type === 'official' && template.meta_template_id != null && !template.imported_from_meta
                           ? "La plantilla desaparecerá para todos y también se borrará de Meta (WhatsApp Business). Si una automatización todavía la usa, el sistema impedirá el borrado."
                           : template.imported_from_meta
-                            ? "La plantilla desaparecerá de la app, pero seguirá existiendo en Meta (WhatsApp Business) — podés volver a importarla cuando quieras. Si una automatización todavía la usa, el sistema impedirá el borrado."
+                            ? "La plantilla desaparecerá de la app, pero seguirá existiendo en Meta (WhatsApp Business) — puedes volver a importarla cuando quieras. Si una automatización todavía la usa, el sistema impedirá el borrado."
                             : "La plantilla desaparecerá para todos. Sus archivos permanecerán en la biblioteca multimedia. Si una automatización todavía la usa, el sistema impedirá el borrado."
                       }
                       confirmLabel="Eliminar plantilla"

@@ -9,7 +9,9 @@ el mismo de siempre, así que cada error sigue saliendo con su mensaje.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
@@ -197,6 +199,32 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
     }
 
 
+# "Acción 3: ", "Pregunta 2: ", "Condición 4, grupo 1: "...: la numeración
+# interna con la que los normalizadores encabezan su mensaje. Dentro de un
+# flujo sobra: el error lleva el bloque y el editor lo nombra con su #n.
+_POSITION_PREFIX = re.compile(
+    r"^(?:Acción|Bloque|Condición|Espera|Invocación|Pausa|Pregunta|Round robin|Reparto)\s+\d+(?:,\s*grupo\s+\d+)?:\s*"
+)
+
+
+def without_position(detail: object) -> object:
+    if not isinstance(detail, str):
+        return detail
+    stripped = _POSITION_PREFIX.sub("", detail, count=1)
+    return stripped[:1].upper() + stripped[1:] if stripped != detail else detail
+
+
+@contextmanager
+def about_node(node_id: str):
+    """Un error de validación dentro de un bloque queda atado a ese bloque."""
+    try:
+        yield
+    except InvalidAutomation as exc:
+        if exc.node_id is not None:
+            raise
+        raise InvalidAutomation(without_position(exc.detail), code=exc.code, node_id=node_id) from exc
+
+
 @dataclass
 class NormalizedFlow:
     """Un flujo con cada bloque normalizado y las referencias que falta
@@ -245,9 +273,10 @@ def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
         if node_type not in FLOW_NODE_TYPES:
             raise InvalidAutomation(f"Bloque {position}: tipo no soportado")
         ids.add(node_id)
-        normalized_data = NODE_NORMALIZERS[FlowNodeType(node_type)](
-            data, FlowNodeRef(node_id, position, len(nodes)), facts,
-        )
+        with about_node(node_id):
+            normalized_data = NODE_NORMALIZERS[FlowNodeType(node_type)](
+                data, FlowNodeRef(node_id, position, len(nodes)), facts,
+            )
         nodes.append({
             "id": node_id,
             "type": node_type,
@@ -273,11 +302,11 @@ def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
         # secuencial. Acá se suman los bloques Acción de TODAS las ramas del
         # grafo aunque una ejecución nunca recorra más de una, así que se
         # acota por MAX_FLOW_NODES (el tope estructural del flujo).
-        actions = normalize_actions(
-            [action for _, action in facts.action_nodes], refs, max_actions=MAX_FLOW_NODES,
-        )
-        for (node_index, _), action in zip(facts.action_nodes, actions):
-            nodes[node_index]["data"]["action"] = action
+        # De a una por bloque: así el error dice de qué bloque es. En lote
+        # decía "Acción 3", contando solo los bloques Acción.
+        for node_index, raw_action in facts.action_nodes:
+            with about_node(nodes[node_index]["id"]):
+                nodes[node_index]["data"]["action"] = normalize_actions([raw_action], refs, max_actions=1)[0]
     if conditions["seller_id"]:
         refs.users.add(conditions["seller_id"])
     if conditions["tag_id"]:

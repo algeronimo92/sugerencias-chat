@@ -32,7 +32,7 @@ SEND_FAILURES: tuple[type[Exception], ...] = (ChannelError, httpx.HTTPError)
 def describe_send_failure(exc: Exception, action: str) -> str:
     if isinstance(exc, ChannelError) and exc.user_message:
         return exc.user_message
-    return f"No se pudo {action}. Probá de nuevo en unos segundos."
+    return f"No se pudo {action}. Prueba de nuevo en unos segundos."
 
 
 @dataclass(frozen=True)

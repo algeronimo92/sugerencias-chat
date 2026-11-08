@@ -1,7 +1,7 @@
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
 Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
-FileJson,GitBranch,History,Layers3,Loader2,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
+FileJson,GitBranch,History,Layers3,Loader2,LocateFixed,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
 Sparkles,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -29,7 +29,7 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_STATUS_LABELS, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus } from '../utils/automationExecutions'
+import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus } from '../utils/automationExecutions'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
@@ -156,7 +156,7 @@ export function AutomationsPage() {
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight } | null>(null)
+  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight; block?: string } | null>(null)
   // Llegada desde Catálogos: qué servicio resaltar en la regla abierta.
   const [formHighlight, setFormHighlight] = useState<ServiceHighlight | null>(null)
   const [importFlowOpen, setImportFlowOpen] = useState(false)
@@ -174,6 +174,8 @@ export function AutomationsPage() {
   const isSaving = create.isPending || update.isPending
   const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
+  // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
+  const visualRuleIds = new Set(visualRules.map(rule => rule.id))
   const activeRulesCount = rules.filter(rule => rule.is_active).length
   const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
@@ -234,8 +236,8 @@ export function AutomationsPage() {
   const [shownRule, setShownRule] = useState<string | null>(null)
   if (!isLoading && ruleUrl.key !== shownRule) {
     setShownRule(ruleUrl.key)
-    const { rule, highlight } = ruleUrl
-    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined }) }
+    const { rule, highlight, block } = ruleUrl
+    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
     else if (rule) { setTab('rules'); openEdit(rule, highlight) }
   }
   // Se marca solo lo que pidió Catálogos: la acción que asigna el servicio o la condición que filtra por su nombre.
@@ -426,7 +428,7 @@ export function AutomationsPage() {
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
                   {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{execution.error}</p>}
-                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{String(result.status ?? '')}{result.error ? ` · ${String(result.error)}` : ''}</span></div>)}</div>
+                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${String(result.error)}` : ''}</span>{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {execution.lead_id && <button
                       type="button"
@@ -510,7 +512,7 @@ export function AutomationsPage() {
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-wa-border px-5 py-3.5 dark:border-wa-border-dark"><label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Checkbox checked={form.isActive} onChange={event => setForm(current => ({ ...current, isActive: event.target.checked }))} />Activar al guardar</label><div className="flex gap-2"><button type="button" onClick={closeForm} className="rounded-lg px-3 py-2 text-sm text-wa-muted">Cancelar</button><button type="submit" disabled={isSaving} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar regla</button></div></footer>
       </form></div>}
-      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
+      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
       {importFlowOpen && <ImportFlowJsonDialog
         title="Importar flujo desde JSON"
         description="Pega el JSON de un flow_definition o sube un archivo .json. Se creará como un flujo visual nuevo en modo borrador; podrás revisarlo y publicarlo desde el constructor."

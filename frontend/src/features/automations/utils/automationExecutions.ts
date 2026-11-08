@@ -40,6 +40,21 @@ export function executionStatusLabel(status: string) {
   return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
 }
 
+// Un paso de una ejecución. Antes se mostraba el código en inglés ("completed").
+const STEP_STATUS_LABELS: Record<string, string> = {
+  [AutomationExecutionStatus.Completed]: 'Hecho',
+  [AutomationExecutionStatus.Failed]: 'Falló',
+  [AutomationExecutionStatus.Skipped]: 'Omitido',
+  [AutomationExecutionStatus.Scheduled]: 'Esperando',
+  [AutomationExecutionStatus.Running]: 'En curso',
+  [AutomationExecutionStatus.Paused]: 'En pausa',
+}
+
+export function stepStatusLabel(status: unknown) {
+  const value = String(status ?? '')
+  return STEP_STATUS_LABELS[value] ?? value
+}
+
 export function executionActorLabel(execution: AutomationExecution) {
   if (execution.started_by_name) return execution.started_by_name
   if (execution.start_source === 'manual') return 'Usuario eliminado'

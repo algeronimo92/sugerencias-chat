@@ -270,7 +270,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
         return
     execution = await get_automation_execution(execution_id)
     if execution is None or execution["lead_id"] is None:
-        raise HTTPException(403, f"No podés {action} esta ejecución")
+        raise HTTPException(403, f"No puedes {action} esta ejecución")
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=AutomationExecutionItem)
@@ -290,7 +290,7 @@ async def post_pause_execution(execution_id: int, user: User = Depends(get_curre
         raise HTTPException(
             409,
             "Solo se puede pausar una ejecución programada: si está ejecutando un paso, "
-            "esperá a que llegue a su próxima espera.",
+            "espera a que llegue a su próxima espera.",
         )
     return item
 

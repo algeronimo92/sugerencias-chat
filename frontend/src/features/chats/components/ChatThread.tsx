@@ -367,7 +367,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             onClick={toggleConversation}
             disabled={isUpdatingLead}
             aria-label={chat.conversacion_abierta ? 'Cerrar conversación' : 'Abrir conversación'}
-            title={chat.conversacion_abierta ? 'Conversación abierta — tocá para cerrarla' : 'Conversación cerrada — tocá para abrirla'}
+            title={chat.conversacion_abierta ? 'Conversación abierta — toca para cerrarla' : 'Conversación cerrada — toca para abrirla'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.conversacion_abierta
                 ? 'text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30'
@@ -382,8 +382,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             disabled={isUpdatingLead}
             aria-label={chat.automatizacion_pausada ? 'Reanudar automatización de este chat' : 'Pausar automatización de este chat'}
             title={chat.automatizacion_pausada
-              ? 'En pausa — tocá para reanudar: lo congelado sigue desde donde quedó'
-              : 'Automatización activa — tocá para congelar lo pendiente de este chat'}
+              ? 'En pausa — toca para reanudar: lo congelado sigue desde donde quedó'
+              : 'Automatización activa — toca para congelar lo pendiente de este chat'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.automatizacion_pausada
                 ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'

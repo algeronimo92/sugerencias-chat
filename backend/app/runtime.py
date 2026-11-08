@@ -268,9 +268,9 @@ async def _require_inbound_webhook_token() -> None:
         return
     raise RuntimeError(
         "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
-        "subida de media quedarían abiertos a Internet. Generá uno con "
-        "`openssl rand -hex 32`, ponelo en backend/.env o en Plataforma y "
-        "configurá el mismo valor en n8n."
+        "subida de media quedarían abiertos a Internet. Genera uno con "
+        "`openssl rand -hex 32`, ponlo en backend/.env o en Plataforma y "
+        "configura el mismo valor en n8n."
     )
 
 

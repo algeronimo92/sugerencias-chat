@@ -79,6 +79,22 @@ describe('flowEditorReducer', () => {
     expect(opened.openDialogs.jsonView).toBe(true)
   })
 
+  it('un error de un bloque lo deja elegido, e ir a él no borra el error hasta que se elige otro', () => {
+    const failed = flowEditorReducer(stateWith({ showEntryConditions: true }), { type: 'fail', message: 'Falta conectar la salida', target: 'a12' })
+    expect(failed).toMatchObject({ error: 'Falta conectar la salida', errorTarget: 'a12', selectedId: 'a12', showEntryConditions: false })
+
+    const back = flowEditorReducer(failed, { type: 'select', nodeId: 'a12' })
+    expect(back).toMatchObject({ error: 'Falta conectar la salida', errorTarget: 'a12' })
+
+    const other = flowEditorReducer(back, { type: 'select', nodeId: 'a3' })
+    expect(other).toMatchObject({ error: null, errorTarget: null, selectedId: 'a3' })
+  })
+
+  it('un error del flujo entero no elige ningún bloque', () => {
+    const failed = flowEditorReducer(stateWith({ selectedId: 'a3' }), { type: 'fail', message: 'Falta un bloque Fin' })
+    expect(failed).toMatchObject({ errorTarget: null, selectedId: 'a3' })
+  })
+
   it('abrir y cerrar un diálogo no toca a los demás', () => {
     const opened = flowEditorReducer(stateWith(), { type: 'openDialog', dialog: 'versions' })
     const withTwo = flowEditorReducer(opened, { type: 'openDialog', dialog: 'simulation' })

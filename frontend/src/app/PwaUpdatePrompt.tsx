@@ -39,7 +39,7 @@ export function PwaUpdatePrompt() {
     if (!needRefresh) return
     toast(`Hay una versión nueva de ${currentBrandName()}`, {
       id: UPDATE_TOAST_ID,
-      description: 'Actualizá para aplicar los cambios.',
+      description: 'Actualiza para aplicar los cambios.',
       duration: Infinity,
       action: {
         label: 'Actualizar',

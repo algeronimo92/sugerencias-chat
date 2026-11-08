@@ -52,7 +52,7 @@ export function useCompleteMetaEmbeddedSignup() {
     // También tras un error: el backend guarda las credenciales antes de
     // responder, y un túnel o proxy puede cortar la respuesta aunque el
     // vínculo ya haya quedado hecho. El estado de WhatsApp se deriva de esas
-    // credenciales: sin esto el CTA de "conectá tu WhatsApp" sigue visible.
+    // credenciales: sin esto el CTA de "conecta tu WhatsApp" sigue visible.
     onSettled: (_data, error) => {
       if (error) queryClient.invalidateQueries({ queryKey: settingsKeys.all, exact: true })
       queryClient.invalidateQueries({ queryKey: whatsappKeys.status })

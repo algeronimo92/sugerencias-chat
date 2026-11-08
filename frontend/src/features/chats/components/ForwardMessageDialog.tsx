@@ -46,7 +46,7 @@ export function ForwardMessageDialog({ chatId, messageIds, onClose, onForwarded 
     // El aviso sale del handler y no del updater: React puede ejecutar un
     // updater dos veces, y el toast salía repetido.
     if (!isSelected && selected.length >= MAX_TARGETS) {
-      toast.error(`Podés reenviar hasta ${MAX_TARGETS} chats a la vez`)
+      toast.error(`Puedes reenviar hasta ${MAX_TARGETS} chats a la vez`)
       return
     }
     setSelected(current => (
@@ -183,7 +183,7 @@ export function ForwardMessageDialog({ chatId, messageIds, onClose, onForwarded 
           <div className="flex items-center justify-between gap-3 border-t border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <p className="min-w-0 truncate text-xs text-wa-muted dark:text-wa-muted-dark">
               {selected.length === 0
-                ? 'Elegí a quién reenviar'
+                ? 'Elige a quién reenviar'
                 : selected.map(chat => displayName(chat)).join(', ')}
             </p>
             <Button

@@ -71,6 +71,7 @@ interface CanvasNodeData {
   connectionRole?: 'source' | 'target' | 'both'
   flagged?: boolean
   number?: number
+  loose?: boolean
 }
 
 type CanvasNode = Node<CanvasNodeData>
@@ -212,6 +213,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
+      {data.loose && type !== FlowNodeType.Trigger && <span title="Ningún camino desde el disparador llega a este bloque: no se va a ejecutar y no deja publicar el flujo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Sin conexión desde el inicio</span>}
       {data.number != null && <span aria-label={`Bloque ${data.number}`} className="absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
@@ -608,6 +610,8 @@ interface FlowCanvasProps {
   flaggedIds?: ReadonlySet<string>
   /** Número de cada bloque (#1 es el disparador), para nombrarlo y encontrarlo. */
   numbers?: ReadonlyMap<string, number>
+  /** Bloques sin camino desde el disparador: se marcan como sueltos. */
+  looseIds?: ReadonlySet<string>
   /** Bloques a los que acercar la vista; cada pedido nuevo (otro `key`) vuelve a acercarla. */
   focus?: { ids: string[]; key: number } | null
   onSelect: (id: string | null) => void
@@ -628,13 +632,14 @@ interface DeriveInputs {
   selectedId: string | null
   flaggedIds: ReadonlySet<string>
   numbers: ReadonlyMap<string, number> | undefined
+  looseIds: ReadonlySet<string>
   onDelete: (id: string) => void
 }
 
 /** Los bloques del lienzo a partir del flujo, reutilizando el objeto anterior
  *  de cada uno si nada suyo cambió (ver useReconciled). */
 function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs, previous: ReadonlyMap<string, CanvasNode>) {
-  const { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete } = inputs
+  const { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, onDelete } = inputs
   const index = new Map<string, CanvasNode>()
   const list = flowNodes.map(node => {
     const action = node.type === FlowNodeType.Action ? node.data.action : null
@@ -655,7 +660,7 @@ function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs
       type: node.type,
       position: node.position,
       selected: node.id === selectedId,
-      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), onDelete },
+      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), loose: looseIds.has(node.id), onDelete },
     }
     const reused = reuseIfSame(previous.get(node.id), candidate)
     index.set(node.id, reused)
@@ -665,7 +670,7 @@ function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, looseIds = NO_FLAGGED, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
@@ -709,8 +714,8 @@ function Canvas({
   // sus imágenes y videos: eso era lo que se sentía lento en flujos grandes.
   const handleDeleteNode = useCallback((id: string) => onDeleteNodes([id]), [onDeleteNodes])
   const derivedNodes = useReconciled<CanvasNode, CanvasNode>(
-    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete: handleDeleteNode }, previous),
-    [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode],
+    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, onDelete: handleDeleteNode }, previous),
+    [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, handleDeleteNode],
   )
 
   const initialFit = useFocusNodes(wrapper, focus, fitView)

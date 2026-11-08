@@ -48,5 +48,5 @@ async def sync_whatsapp_costs(month: str | None = Query(default=None)):
         await sync_meta_costs(meta_service.fetch_pricing_analytics)
     except meta_service.MetaApiError as exc:
         logger.warning("No se pudieron traer los costos de Meta: %s", exc)
-        raise HTTPException(502, "Meta no devolvió los costos. Intentá de nuevo en unos minutos.")
+        raise HTTPException(502, "Meta no devolvió los costos. Intenta de nuevo en unos minutos.")
     return await monthly_costs(_month(month))

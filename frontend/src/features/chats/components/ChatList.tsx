@@ -753,17 +753,17 @@ export function ChatList({
                   : filter === "unread"
                     ? "No hay chats sin leer."
                     : filter === "mine"
-                      ? "No tenés leads asignados."
+                      ? "No tienes leads asignados."
                       : "Sin leads todavía."
               }
             />
             {showConnectWhatsapp && filter === "all" && !search && (
               <div className="mx-4 mt-2 rounded-xl border border-wa-primary/30 bg-wa-primary/10 p-4 text-left dark:border-wa-primary/30 dark:bg-wa-primary/15">
                 <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-wa-primary-strong dark:text-wa-primary">
-                  <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
+                  <Smartphone className="h-4 w-4" /> Conecta tu WhatsApp
                 </div>
                 <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
-                  Vinculá el número del negocio con Meta para empezar a recibir
+                  Vincula el número del negocio con Meta para empezar a recibir
                   mensajes.
                 </p>
                 <button
