@@ -74,14 +74,24 @@ class SuggestionResponse(BaseModel):
     sugerencias: list[Sugerencia]
 
 
+class SuggestionUnavailable(BaseModel):
+    """Por qué el negocio no tiene sugerencias (``ai_key_missing``, ``ai_disabled``,
+    ``ai_not_configured``…), con el texto para el vendedor."""
+
+    code: str
+    message: str
+
+
 class SuggestionStatus(BaseModel):
     """Estado de la sugerencia guardada de un lead: lectura barata que nunca
     dispara la generación. `stale` indica que el cliente escribió después de
-    generarse — la UI la muestra igual pero avisa que quedó desactualizada."""
+    generarse — la UI la muestra igual pero avisa que quedó desactualizada.
+    Con `unavailable` no hay sugerencia que mostrar: el panel explica qué falta."""
 
     suggestion: SuggestionResponse | None = None
     generated_at: datetime | None = None
     stale: bool = False
+    unavailable: SuggestionUnavailable | None = None
 
 from pydantic import BaseModel, Field
 from app.modules.ai.knowledge_service import MAX_CONTENT_LENGTH, MAX_TITLE_LENGTH

@@ -70,12 +70,17 @@ export interface SuggestionResponse {
   sugerencias: Sugerencia[]
 }
 
+/** Por qué el negocio no tiene sugerencias; `ai_key_missing` se resuelve en Integraciones. */
+export type SuggestionUnavailable = ApiSchemas['SuggestionUnavailable']
+
 /** Estado de la sugerencia guardada de un lead — lectura barata que nunca
- * dispara la generación. `stale`: el cliente escribió después de generarse. */
+ * dispara la generación. `stale`: el cliente escribió después de generarse.
+ * Con `unavailable` no hay sugerencia: el panel explica qué falta. */
 export interface SuggestionStatus {
   suggestion: SuggestionResponse | null
   generated_at: string | null
   stale: boolean
+  unavailable?: SuggestionUnavailable | null
 }
 
 export type AiProvidersStatus = ApiSchemas['AiProvidersStatus']

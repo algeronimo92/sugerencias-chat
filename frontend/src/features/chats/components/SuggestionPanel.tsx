@@ -4,7 +4,7 @@ import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ScheduledMessageCard } from './ScheduledMessageCard'
 import { formatDayLabel, formatMessageTime } from '../../whatsapp/public/message'
-import type { SuggestionResponse } from '../../ai/types'
+import type { SuggestionResponse, SuggestionUnavailable } from '../../ai/types'
 import type { Chat } from '../../leads/types'
 import { LeadActivityPanel } from '../../leads/public/LeadActivityPanel'
 import { LeadInfo } from '../../leads/public/LeadInfo'
@@ -32,6 +32,13 @@ interface Props {
   /** Falso cuando reintentar no sirve (plan sin IA, cuota agotada, asistente
    * sin configurar): el aviso explica el motivo y no ofrece "Reintentar". */
   errorRetryable?: boolean
+  /** Código del error de generación (p. ej. `ai_key_missing`). */
+  errorCode?: string | null
+  /** El negocio no tiene sugerencias (sin clave de IA, plan sin IA…): en vez
+   * de la sugerencia guardada se explica qué falta. */
+  unavailable?: SuggestionUnavailable | null
+  /** Solo un admin carga la clave; a los demás se les dice a quién pedírsela. */
+  canConnect?: boolean
   /** Genera sugerencias a demanda; `force` pide otras ignorando lo guardado.
    * `instruction` es la indicación opcional del asesor para orientar a la IA. */
   onGenerate: (force?: boolean, instruction?: string) => void
@@ -82,7 +89,7 @@ export function SuggestionPanel(props: Props) {
       <CopilotHeader
         collapsed={collapsed}
         onToggle={toggleCollapsed}
-        canRegenerate={Boolean(props.data) && !collapsed}
+        canRegenerate={Boolean(props.data) && !props.unavailable && !collapsed}
         isGenerating={props.isGenerating}
         onRegenerate={() => generate(true)}
       />
@@ -156,31 +163,86 @@ type BodyProps = Omit<Props, 'onGenerate' | 'chat'> & {
 }
 
 function CopilotBody(props: BodyProps) {
-  const { data, isLoading, isGenerating, error } = props
-  if (isLoading && !data) {
-    return (
-      <div className="space-y-2" aria-hidden="true">
-        <div className="h-5 w-32 animate-pulse rounded-full bg-wa-hover dark:bg-wa-hover-dark" />
-        <div className="h-20 animate-pulse rounded-xl bg-wa-hover dark:bg-wa-hover-dark" />
-      </div>
-    )
+  if (props.unavailable) {
+    return <CopilotUnavailable reason={props.unavailable} canConnect={props.canConnect ?? false} />
   }
+  if (props.isLoading && !props.data) return <CopilotSkeleton />
+  return <CopilotContent {...props} />
+}
+
+function CopilotSkeleton() {
+  return (
+    <div className="space-y-2" aria-hidden="true">
+      <div className="h-5 w-32 animate-pulse rounded-full bg-wa-hover dark:bg-wa-hover-dark" />
+      <div className="h-20 animate-pulse rounded-xl bg-wa-hover dark:bg-wa-hover-dark" />
+    </div>
+  )
+}
+
+function GeneratingNotice() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-wa-hover/60 px-3 py-3 text-sm text-wa-muted dark:bg-wa-hover-dark/60 dark:text-wa-muted-dark">
+      <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-wa-primary border-t-transparent" />
+      <p>Analizando la conversación… puede tardar unos segundos.</p>
+    </div>
+  )
+}
+
+function GenerationError({ error, errorCode, canConnect, errorRetryable, data, isStale, onGenerate }: BodyProps & { error: string }) {
+  return (
+    <CopilotError
+      message={error}
+      code={errorCode ?? null}
+      canConnect={canConnect ?? false}
+      retryable={errorRetryable ?? true}
+      onRetry={() => onGenerate(!!data && !isStale)}
+    />
+  )
+}
+
+function CopilotContent(props: BodyProps) {
+  const { data, isGenerating, error } = props
+  const idle = !isGenerating && !error
   return (
     <>
-      {isGenerating && !data && (
-        <div className="flex items-center gap-3 rounded-xl bg-wa-hover/60 px-3 py-3 text-sm text-wa-muted dark:bg-wa-hover-dark/60 dark:text-wa-muted-dark">
-          <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-wa-primary border-t-transparent" />
-          <p>Analizando la conversación… puede tardar unos segundos.</p>
-        </div>
-      )}
-      {error && !isGenerating && <CopilotError message={error} retryable={props.errorRetryable ?? true} onRetry={() => props.onGenerate(!!data && !props.isStale)} />}
-      {!data && !isGenerating && !error && <EmptyCopilot {...props} />}
+      {isGenerating && !data && <GeneratingNotice />}
+      {error && !isGenerating && <GenerationError {...props} error={error} />}
+      {!data && idle && <EmptyCopilot {...props} />}
       {data && <SuggestionResults {...props} data={data} />}
     </>
   )
 }
 
-function CopilotError({ message, retryable, onRetry }: { message: string; retryable: boolean; onRetry: () => void }) {
+/** Lo que el negocio resuelve solo (cargar su clave de IA) lleva directo a
+ *  Integraciones; el resto se explica y nada más. */
+function ConnectAiLink({ code, canConnect }: { code: string | null; canConnect: boolean }) {
+  if (code !== 'ai_key_missing') return null
+  return canConnect
+    ? <>{' '}<Link to="/integraciones#ia-sugerencias" className="font-semibold underline">Conectar en Integraciones</Link></>
+    : <span className="block text-amber-800/80 dark:text-amber-200/80">Pídele a un administrador que cargue la clave.</span>
+}
+
+/** El negocio no tiene sugerencias: se dice por qué en lugar de mostrar una
+ *  sugerencia vieja (las que n8n dejó guardadas antes del corte). */
+function CopilotUnavailable({ reason, canConnect }: { reason: SuggestionUnavailable; canConnect: boolean }) {
+  return (
+    <div role="status" className="flex gap-2 rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>
+        {reason.message}
+        <ConnectAiLink code={reason.code} canConnect={canConnect} />
+      </p>
+    </div>
+  )
+}
+
+function CopilotError({ message, code, canConnect, retryable, onRetry }: {
+  message: string
+  code: string | null
+  canConnect: boolean
+  retryable: boolean
+  onRetry: () => void
+}) {
   if (!retryable) {
     // No es una falla pasajera: tono de aviso, sin "Reintentar" porque daría
     // el mismo resultado.
@@ -189,11 +251,7 @@ function CopilotError({ message, retryable, onRetry }: { message: string; retrya
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
           {message}
-          {/* Las claves del copiloto las carga el admin del negocio: el aviso
-              lleva directo a donde se resuelve. */}
-          {message.includes('Integraciones') && (
-            <>{' '}<Link to="/integraciones#ia-sugerencias" className="font-semibold underline">Ir a Integraciones</Link></>
-          )}
+          <ConnectAiLink code={code} canConnect={canConnect} />
         </p>
       </div>
     )

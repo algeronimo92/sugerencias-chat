@@ -155,6 +155,7 @@ def _provide(monkeypatch, *, suggest=None, analyze=None):
 def _stub_rag_job(monkeypatch) -> AsyncMock:
     """Job RAG ya autorizado: el workflow cargó el contexto por el endpoint scoped."""
 
+    monkeypatch.setattr(ai_access, "ensure_ai_configured", AsyncMock(return_value=None))
     monkeypatch.setattr(ai_access, "ensure_ai_available", AsyncMock(return_value=None))
     job = SimpleNamespace(id=JOB_ID, expires_at=datetime.now(timezone.utc) + timedelta(minutes=5))
     monkeypatch.setattr(
@@ -455,3 +456,54 @@ async def test_retrying_an_old_n8n_execution_says_the_job_already_finished(monke
 
     assert exc.value.status_code == 409
     assert "ya finalizado (estado failed)" in exc.value.detail
+
+
+_SAVED = {"analisis": "Generada por n8n antes del corte", "confianza": "alta", "senal_compra": False, "alerta": None, "sugerencias": []}
+
+
+def _key_missing():
+    return AsyncMock(side_effect=ai_access.AIUnavailableError(
+        "ai_key_missing", "Las sugerencias con IA no están conectadas: carga la clave de tu proveedor de IA en Integraciones.", 503,
+    ))
+
+
+async def test_saved_suggestion_is_not_served_without_a_business_key(monkeypatch):
+    # Tras el corte de n8n, un negocio sin clave seguía viendo la última
+    # sugerencia guardada como si el copiloto funcionara.
+    _enabled_tenant(monkeypatch)
+    cached = AsyncMock(return_value=_SAVED)
+    monkeypatch.setattr(suggestions_service, "get_cached_suggestion", cached)
+    monkeypatch.setattr(ai_access, "platform_ready", _key_missing())
+
+    with pytest.raises(AssistantError) as exc:
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+
+    assert exc.value.detail["code"] == "ai_key_missing"
+    cached.assert_not_awaited()
+
+
+async def test_saved_suggestion_still_shows_with_the_monthly_quota_used_up(monkeypatch):
+    # Mostrar lo ya generado no consume: la cuota solo frena generaciones nuevas.
+    _enabled_tenant(monkeypatch, quota=10, used=10)
+    monkeypatch.setattr(suggestions_service, "get_cached_suggestion", AsyncMock(return_value=_SAVED))
+
+    result = await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+
+    assert result.analisis == "Generada por n8n antes del corte"
+
+
+async def test_suggestion_status_explains_what_is_missing_instead_of_the_saved_one(monkeypatch):
+    _enabled_tenant(monkeypatch)
+    saved = {"suggestion": _SAVED, "generated_at": datetime.now(timezone.utc), "stale": False}
+    monkeypatch.setattr(suggestions, "get_suggestion_status", AsyncMock(return_value=saved))
+    monkeypatch.setattr(ai_access, "platform_ready", _key_missing())
+
+    status = await suggestions.read_suggestion_status("lead-1")
+
+    assert status.suggestion is None
+    assert status.unavailable.code == "ai_key_missing"
+    assert "Integraciones" in status.unavailable.message
+
+    monkeypatch.setattr(ai_access, "platform_ready", AsyncMock(return_value=True))
+    status = await suggestions.read_suggestion_status("lead-1")
+    assert status.unavailable is None and status.suggestion.analisis == "Generada por n8n antes del corte"
