@@ -30,6 +30,6 @@ prometheus-fastapi-instrumentator==7.0.0
 # Firma y envía el payload de Web Push (VAPID) contra los endpoints de
 # Chrome/Firefox/Edge cuando llega un reporte de incidencia o una mención.
 pywebpush==2.0.0
-# Similitud entre embeddings del conocimiento (knowledge_vectors): miles de
-# productos punto por sugerencia; en Python puro serían décimas de segundo.
-numpy==2.3.5
+# Tipo ``vector`` de pgvector para el ORM y para que ``alembic check`` lo
+# reconozca (registra el tipo al importarse). Sin dependencias.
+pgvector==0.5.1

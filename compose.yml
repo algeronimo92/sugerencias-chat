@@ -4,7 +4,10 @@
 
 services:
   postgres:
-    image: postgres:16.14-alpine
+    # La misma imagen que producción (PostgreSQL + pgvector, ver db/Dockerfile).
+    build:
+      context: ./db
+    image: cliniventas-postgres:16.14-pgvector-0.8.7
     env_file:
       - ./db/.env
     volumes:

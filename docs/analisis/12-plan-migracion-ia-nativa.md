@@ -441,12 +441,24 @@ de interés. Cuenta como acierto que la ficha esperada entre al contexto que rec
   ficha, que trae contraindicaciones y cuidados. Hace falta un segundo salto.
 
 **Qué se implementó.**
-- **Embeddings** en `knowledge_chunks.embedding` (`REAL[]`), junto con `embedding_model`, el
-  modelo que generó cada vector.
-  - No se usa pgvector: la imagen de producción (`postgres:16.14-alpine`) no lo trae, y cambiar
-    la imagen de la base es una operación manual en el servidor.
-  - Un negocio tiene a lo sumo unos miles de fragmentos. La similitud se calcula con numpy contra
-    una matriz en memoria por schema, que se recarga cuando cambian los fragmentos.
+- **Embeddings** en `knowledge_chunks.embedding` (`vector(768)`, pgvector), junto con
+  `embedding_model`, el modelo que generó cada vector. La similitud se calcula en PostgreSQL,
+  en la tabla del schema de cada negocio: el backend no guarda vectores en memoria, y la
+  búsqueda de una clínica nunca toca los vectores de otra.
+  - La extensión vive una vez en `public`. Las tablas de cada schema usan el tipo por su
+    `search_path`.
+  - Sin índice HNSW: el recorrido exacto con unos miles de fragmentos tarda milisegundos y no
+    pierde resultados al filtrar por servicio.
+- **Imagen de la base.** `db/Dockerfile` es `postgres:16.14-alpine` con pgvector compilado:
+  - **Misma base alpine que la imagen anterior a propósito.** Pasar a la imagen oficial de
+    pgvector, que es Debian, cambiaría la librería que ordena el texto y dejaría índices de
+    texto corruptos.
+  - **El deploy la construye en el servidor solo cuando su tag no existe**, respaldando antes
+    (`scripts/db-backup.sh`).
+  - **La extensión la crea `scripts/db-extensions.sh`** con el administrador de la base, porque
+    pgvector no es "trusted".
+  - **CI ensaya el reemplazo antes del merge** (`scripts/ci-db-upgrade-rehearsal.sh`): datos con la
+    imagen anterior, la nueva sobre el mismo volumen, pgvector y `amcheck` de los índices de texto.
 - **Clientes de embeddings.** OpenAI y Gemini usan el mismo endpoint `/embeddings` (el de Gemini es
   su endpoint compatible con OpenAI), con 768 dimensiones y la clave del modelo principal del negocio.
 - **Vectores tardíos.** Se calculan en la sugerencia siguiente al guardar o importar, hasta 200 por
@@ -467,7 +479,7 @@ de interés. Cuenta como acierto que la ficha esperada entre al contexto que rec
 **Pendiente.**
 - Sumar casos de conversaciones reales a la medición.
 - Rerankeo, solo si la medición lo justifica.
-- Pasar a pgvector si un negocio llega a cientos de miles de fragmentos.
+- Índice HNSW si un negocio llega a cientos de miles de fragmentos.
 
 ## 7. Decisiones tomadas y pendientes
 

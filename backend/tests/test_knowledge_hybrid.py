@@ -202,3 +202,9 @@ async def test_named_fichas_come_right_after_the_fragment_that_names_them(monkey
 
     without, _ = await native_provider.gather_knowledge(LEAD, MESSAGES, None, CATALOG, None, follow_references=False)
     assert [chunk["id"] for chunk in without] == ["lex-servicio", "lex-general"]
+
+
+def test_the_column_has_the_dimensions_the_embeddings_produce():
+    from app.db.models.ai import KnowledgeChunk
+
+    assert KnowledgeChunk.__table__.c.embedding.type.dim == DIMENSIONS
