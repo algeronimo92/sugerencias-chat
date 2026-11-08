@@ -14,7 +14,7 @@ from typing import Any
 
 from app.db.uow import collect, unit_of_work
 from app.modules.leads.application.ports import lead_repository
-from app.modules.leads.domain.errors import LeadNotFound, SellerNotFound, TagNotAvailable
+from app.modules.leads.domain.errors import LeadNotFound, SellerNotFound, ServiceNotInCatalog, TagNotAvailable
 from app.modules.leads.domain.events import (
     ConversationStarted,
     LeadCreated,
@@ -332,6 +332,35 @@ async def rename_service(old_name: str, new_name: str, *, actor: Actor, service_
                 new_value={"servicio_interes": new_name},
                 metadata={"source": "service_catalog", "service_id": service_id},
             ))
+
+
+async def reassign_service_interest(from_name: str, to_name: str | None, *, actor: Actor) -> int:
+    """Pasa todos los leads que tienen ``from_name`` como servicio de interés a
+    ``to_name`` (otro servicio activo del catálogo) o los deja sin servicio
+    (None). Devuelve cuántos cambió.
+
+    Existe para poder eliminar o depurar un servicio que usan decenas de
+    leads: de a uno, desde la ficha de cada chat, era inviable. Cada lead queda
+    con su registro en la actividad, como cualquier edición.
+    """
+    repository = lead_repository()
+    async with unit_of_work():
+        target = None
+        if to_name is not None:
+            target = await repository.active_service_name(to_name)
+            if target is None:
+                raise ServiceNotInCatalog(to_name)
+        if target is not None and target.strip().lower() == from_name.strip().lower():
+            return 0
+        lead_ids = await repository.rename_service(from_name.strip(), target)
+        for lead_id in lead_ids:
+            await repository.record_activity(lead_id, ActivityRecord(
+                "lead_updated", actor,
+                old_value={"servicio_interes": from_name},
+                new_value={"servicio_interes": target},
+                metadata={"source": "bulk_service_reassign"},
+            ))
+    return len(lead_ids)
 
 
 async def record_note_activity(

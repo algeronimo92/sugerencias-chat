@@ -125,3 +125,27 @@ async def test_erp_service_cannot_be_deleted_in_the_crm(tenant) -> None:
             await delete_lead_service(service["id"])
 
         assert await service_usage(999_999) is None
+
+
+async def test_leads_can_be_cleared_in_bulk_and_then_the_service_deleted(tenant) -> None:
+    from app.modules.leads.application.commands import reassign_service_interest
+    from app.modules.leads.domain.lead import Actor
+
+    with tenant_context(tenant):
+        admin_id = await _admin()
+        service = await create_lead_service("Borrado de Tatuajes", admin_id)
+        destination = await create_lead_service("Borrado de Tatuajes - XL", admin_id)
+        first, second = await _lead_interested_in(service["name"]), await _lead_interested_in(service["name"])
+
+        assert {usage.kind for usage in await service_usage(service["id"])} == {"leads"}
+
+        # A otro servicio activo: el nombre queda como está en el catálogo.
+        assert await reassign_service_interest("borrado de tatuajes", "BORRADO DE TATUAJES - XL", actor=Actor.user(admin_id)) == 2
+        async with session_scope() as session:
+            values = (await session.execute(select(Lead.servicio_interes).where(Lead.id.in_([first, second])))).scalars().all()
+        assert values == [destination["name"], destination["name"]]
+
+        # Y de ahí, sin servicio.
+        assert await reassign_service_interest(destination["name"], None, actor=Actor.user(admin_id)) == 2
+        assert await service_usage(service["id"]) == []
+        assert await delete_lead_service(service["id"]) is True

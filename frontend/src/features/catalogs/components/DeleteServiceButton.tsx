@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useDeleteLeadService, useServiceUsage } from '../hooks/useLeadServices'
 import type { LeadService, ServiceUsageGroup } from '../types'
+import { ReassignServiceLeads } from './ReassignServiceLeads'
 
 /** Adónde ir a quitar el servicio de cada cosa que lo usa. Un lead se abre
  *  con su servicio de interés listo para cambiar y resaltado, no solo el chat. */
@@ -42,6 +43,7 @@ function UsageList({ usages, serviceName }: { usages: ServiceUsageGroup[]; servi
                 <li className="text-wa-muted dark:text-wa-muted-dark">y {usage.count - items.length} más</li>
               )}
             </ul>
+            {usage.kind === 'leads' && <ReassignServiceLeads serviceName={serviceName} leadCount={usage.count} />}
           </li>
         )
       })}

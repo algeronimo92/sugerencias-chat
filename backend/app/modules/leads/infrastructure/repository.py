@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
-from app.db.models.catalogs import LeadTag
+from app.db.models.catalogs import LeadService, LeadTag
 from app.db.models.leads import Lead as LeadRow, LeadActivity, LeadSale, LeadStage, LeadTagAssignment, WhatsAppIdentity
 from app.db.uow import current_session, session_scope
 from app.integrations.whatsapp.connection import ANY_CONNECTION
@@ -249,7 +249,16 @@ class SqlLeadRepository:
         )
         return bool(result.rowcount)
 
-    async def rename_service(self, old_name: str, new_name: str) -> list[str]:
+    async def active_service_name(self, name: str) -> str | None:
+        session = current_session()
+        return await session.scalar(
+            select(LeadService.name).where(
+                func.lower(func.btrim(LeadService.name)) == name.strip().lower(),
+                LeadService.is_active.is_(True),
+            )
+        )
+
+    async def rename_service(self, old_name: str, new_name: str | None) -> list[str]:
         session = current_session()
         matches = func.lower(func.btrim(LeadRow.servicio_interes)) == old_name.lower()
         lead_ids = (await session.execute(select(LeadRow.id).where(matches))).scalars().all()

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, createServicePackage, deleteLeadService, fetchErpSyncStatus, fetchServiceUsage, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
+import { createLeadService, createServicePackage, deleteLeadService, fetchErpSyncStatus, fetchServiceUsage, reassignServiceLeads, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -34,6 +34,16 @@ export function useServiceUsage(id: number, enabled: boolean) {
     queryFn: () => fetchServiceUsage(id),
     enabled,
     staleTime: 0,
+  })
+}
+
+/** Mueve a otro servicio (o a ninguno) todos los leads de uno: refresca lo
+ *  que usa a cada servicio, que es lo que habilita eliminarlo. */
+export function useReassignServiceLeads() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: reassignServiceLeads,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
   })
 }
 
