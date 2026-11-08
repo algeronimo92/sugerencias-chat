@@ -32,8 +32,10 @@ WaitAnyConditionKind,
 } from '../../domain/automationCatalog'
 import { TASK_PRIORITY_LABELS } from '../../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
+import { FLOW_TONES, flowTone, isMessageAction, MESSAGE_ICON, minimapFill } from '../../domain/flowTones'
+import { ZoomScale } from './ZoomScale'
 import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
-import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
+import { BUTTON_COLORS, CONDITION_GROUP_COLOR, fromCanvasEdge, HANDLE_COLORS, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
 import { useReconciled } from './useReconciled'
 import { NodeTypeMenu } from './NodeTypeMenu'
 import { useConnectDrop } from './useConnectDrop'
@@ -77,6 +79,7 @@ interface CanvasNodeData {
 }
 
 type CanvasNode = Node<CanvasNodeData>
+const MINIMAP_SIZE = { width: 160, height: 110 }
 
 const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
@@ -124,46 +127,7 @@ function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): stri
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
   const action = data.action
   if (action?.type === AutomationActionType.ReactToLastCustomerMessage) return 'Reacción'
-  return action?.type === AutomationActionType.SendMessage
-    || action?.type === AutomationActionType.SendTemplate
-    || action?.type === AutomationActionType.SendAudio
-    || action?.type === AutomationActionType.SendAttachment
-    || action?.type === AutomationActionType.SendMedia
-    ? 'Mensaje'
-    : 'Acción'
-}
-
-// Antes cada tipo pintaba toda la tarjeta con un fondo pastel + borde grueso
-// del mismo color (look "arcoíris"). Ahora la tarjeta es blanca/neutra
-// siempre (ver NodeShell) y el tipo se identifica solo con una franja de
-// acento delgada en el borde izquierdo, igual que la referencia de diseño
-// ("Hollywood Peel"): tarjetas planas, acento discreto en vez de bloques de
-// color.
-const ACCENT_BORDER: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'border-l-wa-primary dark:border-l-slate-300',
-  [FlowNodeType.Condition]: 'border-l-amber-400 dark:border-l-amber-500',
-  [FlowNodeType.Action]: 'border-l-violet-400 dark:border-l-blue-500',
-  [FlowNodeType.InvokeFlow]: 'border-l-indigo-400 dark:border-l-violet-500',
-  [FlowNodeType.Wait]: 'border-l-cyan-400 dark:border-l-slate-500',
-  [FlowNodeType.WaitAny]: 'border-l-cyan-400 dark:border-l-slate-500',
-  [FlowNodeType.Question]: 'border-l-pink-400 dark:border-l-amber-500',
-  [FlowNodeType.RoundRobin]: 'border-l-teal-400 dark:border-l-slate-400',
-  [FlowNodeType.End]: 'border-l-gray-400 dark:border-l-blue-500',
-}
-
-// Icono y "kicker" (label superior) del tipo, en el mismo acento que el
-// borde de ACCENT_BORDER — solo dark:, en claro el icono se queda gris neutro
-// como hasta ahora.
-const DARK_ACCENT_TEXT: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'dark:text-slate-300',
-  [FlowNodeType.Condition]: 'dark:text-amber-400',
-  [FlowNodeType.Action]: 'dark:text-blue-400',
-  [FlowNodeType.InvokeFlow]: 'dark:text-violet-400',
-  [FlowNodeType.Wait]: 'dark:text-slate-400',
-  [FlowNodeType.WaitAny]: 'dark:text-slate-400',
-  [FlowNodeType.Question]: 'dark:text-amber-400',
-  [FlowNodeType.RoundRobin]: 'dark:text-slate-300',
-  [FlowNodeType.End]: 'dark:text-blue-400',
+  return isMessageAction(action?.type) ? 'Mensaje' : 'Acción'
 }
 
 interface ShellProps {
@@ -186,7 +150,9 @@ function reuseIfSame(previous: CanvasNode | undefined, candidate: CanvasNode): C
 }
 
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
-  const Icon = FLOW_NODE_VIEW[type].icon
+  // Tarjetas neutras con una franja del color del tipo (domain/flowTones).
+  const tone = flowTone(type, data.action?.type)
+  const Icon = tone === 'message' ? MESSAGE_ICON : FLOW_NODE_VIEW[type].icon
   const widthClass = type === FlowNodeType.Condition ? 'w-[26rem]' : 'w-72'
   const connectionClass = data.connectionRole === 'source'
     ? 'ring-2 ring-cyan-400 ring-offset-2 shadow-[0_0_24px_rgba(34,211,238,0.45)] dark:ring-offset-gray-950'
@@ -211,15 +177,15 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       // El atenuado de los bloques no conectados va por CSS en el contenedor
       // (`.flow-spotlight`, index.css), no acá: así pasar el mouse no vuelve
       // a crear los 50 bloques, solo los 3 o 4 conectados.
-      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark ${ACCENT_BORDER[type]} ${connectionClass}`}
+      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm dark:border-flow-node-border-dark dark:bg-flow-panel-dark ${FLOW_TONES[tone].border} ${connectionClass}`}
     >
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
       {data.loose && type !== FlowNodeType.Trigger && <span title="Ninguna ruta desde el inicio del flujo llega a este bloque: nunca se ejecutará y no deja publicar. Conéctalo o bórralo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Desconectado</span>}
-      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
+      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="flow-number absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
-        <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${FLOW_TONES[tone].icon}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-wide text-wa-muted dark:text-slate-400">{nodeKindLabel(type, data)}</p>
           <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{flowNodeSummary(type, data)}</p>
@@ -229,7 +195,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
             type="button"
             title="Eliminar bloque"
             onClick={event => { event.stopPropagation(); data.onDelete?.(id) }}
-            className="nodrag text-wa-muted hover:text-red-500"
+            className="nodrag text-wa-muted hover:text-red-500 dark:text-wa-muted-dark"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -431,24 +397,17 @@ const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
             <span className="font-semibold">{FLOW_CONDITION_LABELS[condition.condition_type]}</span>
             {typeof condition.value === 'string' || typeof condition.value === 'number' ? <span>: {String(condition.value)}</span> : null}
           </div>)}
-          <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: '#00a884', right: -18, top: '50%' }} />
+          <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: CONDITION_GROUP_COLOR, right: -18, top: '50%' }} />
         </div>
       </div>)}
       <div className="relative rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
         Ninguna de las condiciones
-        <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: '#ef4444', right: -18, top: '50%' }} />
+        <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: HANDLE_COLORS[FlowHandle.No], right: -18, top: '50%' }} />
       </div>
     </div>
   </NodeShell>
 })
 
-const WAIT_ANY_HANDLE_COLORS: Record<string, string> = {
-  [WaitAnyConditionKind.Timer]: '#0891b2',
-  [WaitAnyConditionKind.Message]: '#7c3aed',
-  [WaitAnyConditionKind.BusinessHours]: '#f59e0b',
-  [WaitAnyConditionKind.MediaPlayed]: '#db2777',
-  [WaitAnyConditionKind.MediaReceived]: '#059669',
-}
 
 /** Una fila por condición, cada una con su propia salida — el "id" de cada
  *  condición (== su "kind": "timer"/"message"/"business_hours"/
@@ -467,7 +426,7 @@ function PauseNodeView({ id, data, selected, legacy = false }: NodeProps<CanvasN
             <span>{condition.kind === WaitAnyConditionKind.Timer ? `Temporizador: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
             <Handle
               type="source" position={Position.Right} id={condition.id}
-              style={{ ...HANDLE_STYLE, background: WAIT_ANY_HANDLE_COLORS[condition.kind], right: -18, top: '50%' }}
+              style={{ ...HANDLE_STYLE, background: HANDLE_COLORS[condition.kind], right: -18, top: '50%' }}
             />
           </div>
         ))}
@@ -490,9 +449,9 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
     // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
     // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
     // botón y termina en la rama del que no mandó nada.
-    { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: '#059669' },
-    { handle: QuestionHandle.Other, label: 'Otra respuesta', color: '#6b7280' },
-    { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: '#ef4444' },
+    { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: HANDLE_COLORS[QuestionHandle.Media] },
+    { handle: QuestionHandle.Other, label: 'Otra respuesta', color: HANDLE_COLORS[QuestionHandle.Other] },
+    { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: HANDLE_COLORS[QuestionHandle.Timeout] },
   ]
   return (
     <NodeShell id={id} type={FlowNodeType.Question} data={data} selected={selected}>
@@ -525,7 +484,7 @@ const RoundRobinNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
             <span className="truncate">{output.label || `Salida ${index + 1}`}</span>
             <Handle
               type="source" position={Position.Right} id={output.id}
-              style={{ ...HANDLE_STYLE, background: '#0d9488', right: -18, top: '50%' }}
+              style={{ ...HANDLE_STYLE, background: ROUND_ROBIN_OUTPUT_COLOR, right: -18, top: '50%' }}
             />
           </div>
         ))}
@@ -599,7 +558,6 @@ function DeletableConnection({
 
 const EDGE_TYPES: EdgeTypes = { deletable: DeletableConnection }
 
-const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
 interface FlowCanvasProps {
   flow: AutomationFlowDefinition
@@ -683,6 +641,9 @@ function Canvas({
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
+  // El minimapa con el color de cada tipo (antes, gris sobre gris: 1,2:1) y
+  // el marcado en ámbar, para ubicarlo de lejos.
+  const minimapColor = useCallback((node: CanvasNode) => minimapFill(node.type, node.data.action?.type, Boolean(node.data.flagged), isDarkMode), [isDarkMode])
   const { screenToFlowPosition, fitView } = useReactFlow()
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -788,11 +749,18 @@ function Canvas({
     setHoveredEdgeId(edgeId)
   }, [])
 
+  // Cada conexión con el color de su salida; depende del bloque de origen
+  // (botones, grupos, salidas del Reparto).
+  const edgeColorOf = useMemo(() => {
+    const byId = new Map(flow.nodes.map(node => [node.id, node]))
+    return (edge: AutomationFlowEdge) => handleColor(byId.get(edge.source), edge.source_handle)
+  }, [flow.nodes])
+
   // Misma idea que con los bloques: una conexión conserva su objeto mientras
   // no cambie, así React no vuelve a crear las 49 por cada hover.
   const edges = useReconciled<DeletableEdge, { base: Edge; showDelete: boolean; shown: DeletableEdge }>(previous => {
     const index = new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>()
-    const list = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => {
+    const list = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId, edgeColorOf).map(edge => {
       const showDelete = edge.id === hoveredEdgeId || edge.id === selectedEdgeId
       const entry = previous.get(edge.id)
       const shown = entry && entry.base === edge && entry.showDelete === showDelete
@@ -803,7 +771,7 @@ function Canvas({
       return shown
     })
     return { list, index }
-  }, [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId])
+  }, [edgeColorOf, flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId])
 
   useEffect(() => {
     if (selectedEdgeId && !flow.edges.some(edge => edge.id === selectedEdgeId)) setSelectedEdgeId(null)
@@ -957,7 +925,9 @@ function Canvas({
             {connectionHighlightEnabled ? <Eye className="h-4 w-4 text-violet-600" /> : <EyeOff className="h-4 w-4" />}
           </ControlButton>
         </Controls>
-        <MiniMap pannable zoomable className="!bg-white dark:!bg-flow-panel-dark" />
+        {/* Más chico que el de fábrica (200×150): tapaba salidas de los bloques de abajo. */}
+        <MiniMap pannable zoomable nodeColor={minimapColor} nodeBorderRadius={6} style={MINIMAP_SIZE} className="!bg-white dark:!bg-flow-panel-dark" />
+        <ZoomScale />
       </ReactFlow>
       {connectDrop.drop && <NodeTypeMenu x={connectDrop.drop.x} y={connectDrop.drop.y} onPick={connectDrop.pick} onClose={connectDrop.close} />}
     </div>

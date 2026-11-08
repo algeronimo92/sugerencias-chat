@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { AutomationFlowNodeType } from '../../types'
 import { FLOW_PALETTE } from './flowPalette'
+import { FLOW_TONES, flowTone } from '../../domain/flowTones'
 
 const MENU_WIDTH = 256
 const MENU_HEIGHT = 360
@@ -63,7 +64,7 @@ export function NodeTypeMenu({ x, y, onPick, onClose }: {
           onClick={() => onPick(type)}
           className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-wa-hover focus:bg-wa-hover focus:outline-none dark:hover:bg-white/5 dark:focus:bg-white/5"
         >
-          <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-600 dark:text-gray-300" aria-hidden="true" />
+          <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${FLOW_TONES[flowTone(type)].icon}`} aria-hidden="true" />
           <span className="min-w-0">
             <span className="block text-xs font-semibold text-wa-text dark:text-white">{label}</span>
             <span className="block text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</span>
