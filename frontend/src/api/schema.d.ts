@@ -826,6 +826,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/service-interest/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reassign Service Interest
+         * @description Pasa todos los leads con ``from_service`` como servicio de interés a
+         *     ``to_service`` (otro servicio activo) o los deja sin servicio. Lo usa
+         *     Catálogos para poder eliminar un servicio que usan muchos leads.
+         */
+        post: operations["reassign_service_interest_api_chats_service_interest_reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats/{chat_id}/stage": {
         parameters: {
             query?: never;
@@ -6388,6 +6410,21 @@ export interface components {
             /** Parameters */
             parameters?: string[];
         };
+        /**
+         * ServiceInterestReassign
+         * @description Pasar a todos los leads de un servicio de interés a otro, o a ninguno.
+         */
+        ServiceInterestReassign: {
+            /** From Service */
+            from_service: string;
+            /** To Service */
+            to_service?: string | null;
+        };
+        /** ServiceInterestReassignResult */
+        ServiceInterestReassignResult: {
+            /** Updated */
+            updated: number;
+        };
         /** ServicePackageCreate */
         ServicePackageCreate: {
             /** Name */
@@ -8878,6 +8915,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KanbanPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_service_interest_api_chats_service_interest_reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceInterestReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceInterestReassignResult"];
                 };
             };
             /** @description Validation Error */

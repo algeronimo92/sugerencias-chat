@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+  reassign: vi.fn(),
   usage: vi.fn(() => ({ data: [] as unknown[], isPending: false, isError: false }) as Record<string, unknown>),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('../hooks/useLeadServices', () => ({
   useUpdateLeadService: () => ({ mutate: mocks.update, isPending: false, variables: undefined }),
   useDeleteLeadService: () => ({ mutate: mocks.remove, isPending: false }),
   useServiceUsage: () => mocks.usage(),
+  useReassignServiceLeads: () => ({ mutate: mocks.reassign, isPending: false }),
   useCreateServicePackage: () => ({ mutate: mocks.createPackage, isPending: false }),
   useUpdateServicePackage: () => ({ mutate: mocks.updatePackage, isPending: false, variables: undefined }),
   useErpSyncStatus: () => ({ data: mocks.erpStatus(), isLoading: false }),
@@ -50,6 +52,7 @@ describe('ServicesManagementPanel', () => {
     mocks.create.mockReset()
     mocks.update.mockReset()
     mocks.remove.mockReset()
+    mocks.reassign.mockReset()
     mocks.usage.mockReset()
     mocks.usage.mockReturnValue({ data: [], isPending: false, isError: false })
     mocks.createPackage.mockReset()
@@ -277,5 +280,27 @@ describe('ServicesManagementPanel', () => {
     expect(within(dialog).getByRole('link', { name: 'Info botox' })).toHaveAttribute('href', '/templates')
     expect(within(dialog).getByText('y 11 más')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Eliminar' })).toBeDisabled()
+  })
+
+  it('pasa todos los leads del servicio a "Sin servicio" en un paso, pidiendo confirmar', async () => {
+    mocks.usage.mockReturnValue({
+      data: [{ kind: 'leads', label: '92 leads', count: 92, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] }],
+      isPending: false,
+      isError: false,
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Eliminar Botox' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByText('Pasar los 92 leads a')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Aplicar' }))
+    // Primero advierte, con el número de leads; recién al confirmar cambia.
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Vas a dejar 92 leads sin servicio')
+    expect(mocks.reassign).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Sí, cambiar 92 leads' }))
+    expect(mocks.reassign).toHaveBeenCalledWith({ fromService: 'Botox', toService: null }, expect.any(Object))
   })
 })

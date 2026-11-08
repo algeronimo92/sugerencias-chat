@@ -51,6 +51,8 @@ class InMemoryLeadRepository:
         self.open_conversations: set[str] = set()
         self.merged: list[tuple[str, str]] = []
         self.renamed: list[tuple[str, str]] = []
+        # Servicios activos del catálogo, para pasar leads de uno a otro.
+        self.active_services: set[str] = {"Botox", "Toxina", "Limpieza"}
         self.on_appointment: str | None = None
 
     def seed(self, lead_id: str = "lead-1", *, stage: str = "nuevo", **columns: Any) -> str:
@@ -163,6 +165,9 @@ class InMemoryLeadRepository:
         before = len(getattr(self, "sales", []))
         self.sales = [row for row in getattr(self, "sales", []) if not (row["id"] == sale_id and row["lead_id"] == lead_id)]
         return len(self.sales) != before
+
+    async def active_service_name(self, name):
+        return next((service for service in self.active_services if service.lower() == name.strip().lower()), None)
 
     async def rename_service(self, old_name, new_name):
         touched = [

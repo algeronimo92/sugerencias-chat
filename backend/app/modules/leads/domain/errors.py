@@ -33,6 +33,15 @@ class TagNotAvailable(NotFound):
     code = "tag_not_available"
 
 
+class ServiceNotInCatalog(NotFound):
+    """El servicio al que se quiere pasar a los leads no está activo en el catálogo."""
+
+    code = "service_not_in_catalog"
+
+    def __init__(self, name: str) -> None:
+        super().__init__(f"El servicio «{name}» no está activo en el catálogo")
+
+
 class LeadMergeError(Invalid):
     status_code = 400
     code = "lead_merge_invalid"

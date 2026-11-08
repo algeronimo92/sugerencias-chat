@@ -182,6 +182,18 @@ class LeadStageOrder(BaseModel):
     keys: list[LeadStageKey] = Field(min_length=1, max_length=100)
 
 
+class ServiceInterestReassign(BaseModel):
+    """Pasar a todos los leads de un servicio de interés a otro, o a ninguno."""
+
+    from_service: str = Field(min_length=1, max_length=120)
+    # None: los deja sin servicio.
+    to_service: str | None = Field(default=None, max_length=120)
+
+
+class ServiceInterestReassignResult(BaseModel):
+    updated: int
+
+
 class LeadMergeRequest(BaseModel):
     # El lead de la URL es el destino (se conserva); este es el origen, que se
     # borra tras mover todo su historial al destino.

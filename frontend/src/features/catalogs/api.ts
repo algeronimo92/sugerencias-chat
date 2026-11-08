@@ -36,6 +36,14 @@ export async function fetchServiceUsage(id: number): Promise<ServiceUsageGroup[]
   return (await client.get<ApiResponse<'/api/services/{service_id}/usage', 'get'>>(`/api/services/${id}/usage`)).data.usages ?? []
 }
 
+/** Pasa todos los leads con ese servicio de interés a otro (o a ninguno, con
+ *  null). La ruta es de leads, dueño de esa columna; la llama Catálogos para
+ *  poder eliminar un servicio que usan muchos leads. */
+export async function reassignServiceLeads({ fromService, toService }: { fromService: string; toService: string | null }): Promise<number> {
+  const body = { from_service: fromService, to_service: toService }
+  return (await client.post<ApiResponse<'/api/chats/service-interest/reassign', 'post'>>('/api/chats/service-interest/reassign', body)).data.updated
+}
+
 /** Solo un servicio manual que nadie usa; si algo lo usa, el 409 dice qué. */
 export async function deleteLeadService(id: number): Promise<void> {
   await client.delete<ApiResponse<'/api/services/{service_id}', 'delete'>>(`/api/services/${id}`)

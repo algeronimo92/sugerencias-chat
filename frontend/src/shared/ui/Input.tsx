@@ -130,11 +130,15 @@ export function Select({
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
+        {/* z-[145]: por encima de cualquier diálogo (el más alto es el de
+            confirmación, z-[131], y la salida del editor de flujos, z-[140]);
+            un menú abierto desde un diálogo no puede quedar por detrás de él.
+            Debajo de los tooltips (z-[150]). */}
         <SelectPrimitive.Content
           position="popper"
           sideOffset={5}
           collisionPadding={8}
-          className="ui-select-content z-[120] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-wa-border bg-white text-wa-text shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
+          className="ui-select-content z-[145] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-wa-border bg-white text-wa-text shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
         >
           <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center bg-white text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark">
             <ChevronUp className="h-4 w-4" />
