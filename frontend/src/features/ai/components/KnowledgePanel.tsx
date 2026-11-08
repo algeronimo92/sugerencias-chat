@@ -1,5 +1,5 @@
 import { BookText, FileText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
-import { useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -178,7 +178,7 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
         required
       />
       <p className="mt-1.5 text-xs text-wa-muted dark:text-wa-muted-dark">
-        Separa los temas con una línea en blanco: el asistente busca por párrafos. Un PDF escaneado no se puede leer: cópialo como texto.
+        Separa los temas con títulos (## Tema) o con una línea en blanco: el asistente busca por sección. Un PDF escaneado no se puede leer: cópialo como texto.
         {' '}{content.length.toLocaleString('es-PE')} / 100.000 caracteres.
       </p>
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
@@ -216,6 +216,17 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
   // null = sin editor abierto; 'new' = alta; otro valor = id en edición.
   const [editing, setEditing] = useState<string | null>(null)
   const [browsingTemplates, setBrowsingTemplates] = useState(false)
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  // Con muchos documentos (las plantillas importadas suman ~20) el editor queda
+  // arriba de la grilla y, al elegir uno del final de la lista, fuera de la
+  // pantalla: parecía que el clic no abría nada. En móvil está debajo de la lista.
+  useEffect(() => {
+    const editor = editorRef.current
+    if (editing === null || !editor) return
+    const { top, bottom } = editor.getBoundingClientRect()
+    if (top < 0 || top > window.innerHeight || bottom < 0) editor.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [editing])
 
   const visible = documents.filter(document =>
     filter === ALL ? true : filter === GENERAL ? document.service_id == null : String(document.service_id) === filter,
@@ -289,12 +300,14 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <EmptyState icon={BookText} title="Elige un documento" description="O crea uno nuevo. El asistente consulta estos textos cuando necesita detalles de un servicio o una política." />
         </div>
       ) : (
-        <KnowledgeEditor
-          key={editing}
-          documentId={editing === 'new' ? null : editing}
-          defaultServiceId={editing === 'new' ? filterServiceId : null}
-          onDone={id => setEditing(id)}
-        />
+        <div ref={editorRef} className="scroll-mt-4">
+          <KnowledgeEditor
+            key={editing}
+            documentId={editing === 'new' ? null : editing}
+            defaultServiceId={editing === 'new' ? filterServiceId : null}
+            onDone={id => setEditing(id)}
+          />
+        </div>
       )}
       {browsingTemplates && (
         <KnowledgeTemplatesDialog
