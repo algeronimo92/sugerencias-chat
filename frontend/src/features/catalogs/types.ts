@@ -30,10 +30,6 @@ export interface LeadService {
   id: number
   name: string
   is_active?: boolean
-  /** Catálogo que consulta el asistente IA; la moneda es la del perfil del negocio. */
-  description?: string | null
-  /** Condiciones generales (promociones, vigencia). El precio vive en los paquetes. */
-  price_notes?: string | null
   packages?: ServicePackage[]
   /** Con valor, nombre, paquetes y alta/baja los administra el ERP del negocio. */
   external_id?: string | null

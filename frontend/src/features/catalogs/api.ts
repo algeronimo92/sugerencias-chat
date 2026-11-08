@@ -28,8 +28,6 @@ export async function updateLeadService({ id, ...values }: {
       id: number
       name?: string
       is_active?: boolean
-      description?: string
-      price_notes?: string
     }): Promise<LeadService> {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
 }

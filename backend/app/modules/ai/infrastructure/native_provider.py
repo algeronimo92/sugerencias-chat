@@ -174,8 +174,6 @@ def compact_catalog(catalog: list[dict]) -> list[dict]:
     return [
         {
             "servicio": item["name"],
-            **({"descripcion": item["description"]} if item.get("description") else {}),
-            **({"notas": item["price_notes"]} if item.get("price_notes") else {}),
             "paquetes": [
                 {"nombre": p["name"], "sesiones": p["sessions"], "precio": p["price"], **({"notas": p["notes"]} if p.get("notes") else {})}
                 for p in item.get("packages", [])

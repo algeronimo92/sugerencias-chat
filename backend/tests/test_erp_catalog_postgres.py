@@ -52,10 +52,8 @@ async def _services() -> dict[str, dict]:
 async def test_sync_adopts_manual_services_creates_renames_and_deactivates(tenant) -> None:
     with tenant_context(tenant):
         admin_id = await _admin()
-        # El negocio ya había cargado el servicio a mano, con su precio suelto
-        # y una descripción para la IA que el ERP no trae.
+        # El negocio ya había cargado el servicio a mano, con su precio suelto.
         manual = await create_lead_service("Hollywood Peel - Rostro", admin_id)
-        await update_lead_service(manual["id"], {"description": "Peeling con carbón activado"}, admin_id)
         await create_service_package(manual["id"], {"name": "Individual", "sessions": 1, "price": Decimal("150"), "notes": None, "position": None})
         # Y otro que el ERP no conoce: no debe tocarse.
         await create_lead_service("Asesoría online", admin_id)
@@ -72,7 +70,8 @@ async def test_sync_adopts_manual_services_creates_renames_and_deactivates(tenan
         services = await _services()
         peel = services["Hollywood Peel - Rostro"]
         assert peel["external_id"] == "svc-1"
-        assert peel["description"] == "Peeling con carbón activado"
+        # Adopta la misma fila: lo que apunta al servicio (leads, fichas) sigue.
+        assert peel["id"] == manual["id"]
         assert [(p["name"], p["sessions"], str(p["price"]), p["external_id"], p["is_active"]) for p in peel["packages"]] == [
             ("Individual", 1, "180.00", "svc-1", True),
             ("x3", 3, "400.00", "pk-3", True),
@@ -149,10 +148,6 @@ async def test_erp_managed_service_is_read_only_in_the_crm(tenant) -> None:
         admin_id = await _admin()
         await apply_catalog(_erp(_svc("svc-1", "Hollywood Peel", ("svc-1", "Individual", 1, "180"))))
         service = (await _services())["Hollywood Peel"]
-
-        # La descripción sí es del CRM.
-        updated = await update_lead_service(service["id"], {"description": "Para manchas"}, admin_id)
-        assert updated["description"] == "Para manchas"
 
         for values in ({"name": "Otro"}, {"is_active": False}):
             try:

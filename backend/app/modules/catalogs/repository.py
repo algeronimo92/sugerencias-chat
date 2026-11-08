@@ -13,7 +13,7 @@ from app.modules.catalogs.errors import (
     ServicePackageAlreadyExistsError,
     TagAlreadyExistsError,
 )
-from app.modules.catalogs.queries import PACKAGE_COLUMNS, _SERVICE_AI_COLUMNS, packages_by_service_stmt
+from app.modules.catalogs.queries import PACKAGE_COLUMNS, packages_by_service_stmt
 
 
 async def create_lead_service(name: str, user_id: int) -> dict:
@@ -30,7 +30,6 @@ async def create_lead_service(name: str, user_id: int) -> dict:
             LeadService.id,
             LeadService.name,
             LeadService.is_active,
-            *_SERVICE_AI_COLUMNS,
             LeadService.external_id,
             LeadService.created_by.label("created_by_user_id"),
             LeadService.created_at,
@@ -66,7 +65,6 @@ async def update_lead_service(
                     LeadService.id,
                     LeadService.name,
                     LeadService.is_active,
-                    *_SERVICE_AI_COLUMNS,
                     LeadService.external_id,
                     LeadService.created_by.label("created_by_user_id"),
                     User.name.label("created_by_name"),
@@ -94,7 +92,6 @@ async def update_lead_service(
                             LeadService.id,
                             LeadService.name,
                             LeadService.is_active,
-                            *_SERVICE_AI_COLUMNS,
                             LeadService.external_id,
                         )
                     )

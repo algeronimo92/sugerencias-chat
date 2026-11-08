@@ -393,7 +393,7 @@ async def test_catalog_tool_returns_prices_with_the_business_currency(monkeypatc
     patch_webhooks(monkeypatch, "start_ai_job", AsyncMock(return_value=SimpleNamespace()))
     patch_webhooks(monkeypatch, "fetch_tenant_config", AsyncMock(return_value={"moneda": "PEN"}))
     patch_webhooks(monkeypatch, "list_ai_catalog", AsyncMock(return_value=[
-        {"id": 1, "name": "Limpieza facial", "description": None, "price": "150.00", "price_notes": None}
+        {"id": 1, "name": "Limpieza facial", "price": "150.00"}
     ]))
 
     result = await webhooks.ai_catalog_webhook(JOB_ID, _claims("analyst"))
@@ -401,7 +401,7 @@ async def test_catalog_tool_returns_prices_with_the_business_currency(monkeypatc
     assert result == {
         "currency": "PEN",
         "services": [
-            {"id": 1, "name": "Limpieza facial", "description": None, "price": "150.00", "price_notes": None}
+            {"id": 1, "name": "Limpieza facial", "price": "150.00"}
         ],
     }
 

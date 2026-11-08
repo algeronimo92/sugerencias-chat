@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.modules.catalogs.schemas import LeadServiceUpdate, ServicePackageCreate
-from app.modules.catalogs import services_api as lead_services
 from app.modules.platform import api as platform
 from app.modules.platform import settings_api as settings_router
 from app.modules.platform import platform_organizations
@@ -99,25 +98,11 @@ async def test_tenant_cannot_write_platform_managed_settings(monkeypatch):
     update.assert_not_awaited()
 
 
-async def test_service_catalog_clears_blank_texts(monkeypatch):
-    received = {}
-
-    async def fake_update(service_id, values, actor_user_id):
-        received.update(values)
-        return {"id": service_id, "name": "Botox", **values}
-
-    monkeypatch.setattr(lead_services, "update_lead_service", fake_update)
-
-    await lead_services.patch_service(
-        4,
-        LeadServiceUpdate(description="  Toxina   botulínica ", price_notes="  "),
-        SimpleNamespace(id=1),
-    )
-
-    assert received == {
-        "description": "Toxina botulínica",
-        "price_notes": None,
-    }
+def test_service_texts_for_the_ai_live_in_its_fichas():
+    """Qué resuelve un servicio y sus condiciones van en sus fichas de
+    conocimiento: el catálogo ya no los recibe."""
+    values = LeadServiceUpdate(description="Toxina", price_notes="Promo").model_dump(exclude_unset=True)
+    assert values == {}
 
 
 def test_service_has_no_price_of_its_own():
@@ -143,13 +128,13 @@ async def test_ai_catalog_quotes_from_packages(monkeypatch):
     async def fake_rows():
         return [
             {
-                "id": 1, "name": "Hollywood Peel", "description": "Peeling con carbón", "price_notes": None,
+                "id": 1, "name": "Hollywood Peel",
                 "packages": [
                     {"name": "Pack x3", "sessions": 3, "price": Decimal("400"), "notes": "Vigencia 90 días"},
                     {"name": "1 sesión", "sessions": 1, "price": Decimal("150"), "notes": None},
                 ],
             },
-            {"id": 2, "name": "Consulta", "description": None, "price_notes": None, "packages": []},
+            {"id": 2, "name": "Consulta", "packages": []},
         ]
 
     monkeypatch.setattr(ai_assistant_service, "list_ai_catalog_rows", fake_rows)

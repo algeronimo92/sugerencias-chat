@@ -137,9 +137,7 @@ async def list_ai_catalog() -> list[dict]:
         {
             "id": row["id"],
             "name": row["name"],
-            "description": row["description"],
             "price": _single_session_price(row["packages"]),
-            "price_notes": row["price_notes"],
             "packages": [
                 {
                     "name": package["name"],

@@ -96,7 +96,7 @@ export function ErpSyncCard() {
             </p>
           )}
           <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-            Los servicios y paquetes del ERP se editan allí; acá solo la descripción y las notas para el asistente IA.
+            Los servicios y paquetes del ERP se editan allí; acá les sumas sus fichas para el asistente IA.
           </p>
         </div>
       </div>

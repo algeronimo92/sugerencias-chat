@@ -45,7 +45,7 @@ CONTEXT = {
     "message_cursor": None,
 }
 CATALOG = [{
-    "id": 1, "name": "Hollywood Peel - Rostro", "description": "Peeling con carbón", "price": "180.00", "price_notes": None,
+    "id": 1, "name": "Hollywood Peel - Rostro", "price": "180.00",
     "packages": [{"name": "Individual", "sessions": 1, "price": "180.00", "notes": None}, {"name": "x3", "sessions": 3, "price": "400.00", "notes": None}],
 }]
 

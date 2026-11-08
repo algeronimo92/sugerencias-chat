@@ -15,8 +15,6 @@ async def list_ai_catalog_rows() -> list[dict]:
                 select(
                     LeadService.id,
                     LeadService.name,
-                    LeadService.description,
-                    LeadService.price_notes,
                 )
                 .where(LeadService.is_active == true())
                 .order_by(func.lower(LeadService.name).asc())

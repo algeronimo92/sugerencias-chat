@@ -103,17 +103,11 @@ describe('ServicesManagementPanel', () => {
     )
   })
 
-  it('guarda solo la descripción que cambió para el asistente IA', async () => {
-    const user = userEvent.setup()
+  it('no tiene campos de texto para la IA: eso va en las fichas del servicio', () => {
     render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
-    await user.type(screen.getByLabelText('Descripción de Botox'), 'Toxina botulínica para líneas de expresión')
-    await user.click(screen.getByRole('button', { name: 'Guardar Botox' }))
-
-    expect(mocks.update).toHaveBeenCalledWith(
-      { id: 1, description: 'Toxina botulínica para líneas de expresión' },
-      expect.any(Object),
-    )
+    expect(screen.queryByLabelText('Descripción de Botox')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Notas de precio de Botox')).not.toBeInTheDocument()
   })
 
   it('muestra los paquetes del servicio y avisa cuando no tiene ninguno', () => {
@@ -218,8 +212,8 @@ describe('ServicesManagementPanel', () => {
     expect(packages).toHaveTextContent('180.00')
     expect(packages).toHaveTextContent('x3 · 3 sesiones')
     expect(screen.getByText('Sincronizado desde el ERP')).toBeInTheDocument()
-    // La descripción sigue siendo del CRM.
-    expect(screen.getByLabelText('Descripción de Hollywood Peel - Rostro')).not.toHaveAttribute('readonly')
+    // Nada que guardar en la fila: el botón no aparece.
+    expect(screen.queryByRole('button', { name: 'Guardar Hollywood Peel - Rostro' })).not.toBeInTheDocument()
   })
 
   it('cada servicio dice de dónde viene y se puede filtrar por origen', async () => {
