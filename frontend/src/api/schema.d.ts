@@ -5598,10 +5598,6 @@ export interface components {
              * @default true
              */
             is_active: boolean;
-            /** Description */
-            description?: string | null;
-            /** Price Notes */
-            price_notes?: string | null;
             /** Packages */
             packages?: components["schemas"]["ServicePackageItem"][];
             /** External Id */
@@ -5619,10 +5615,6 @@ export interface components {
             name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
-            /** Description */
-            description?: string | null;
-            /** Price Notes */
-            price_notes?: string | null;
         };
         /** LeadStageAdminItem */
         LeadStageAdminItem: {

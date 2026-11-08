@@ -56,11 +56,9 @@ class LeadServiceItem(BaseModel):
     id: int
     name: str
     is_active: bool = True
-    description: str | None = None
-    price_notes: str | None = None
     packages: list[ServicePackageItem] = Field(default_factory=list)
     # Con valor, nombre, paquetes y alta/baja los administra el ERP del
-    # negocio; el CRM solo edita descripción y notas.
+    # negocio; el CRM le suma fichas para la IA, que viven en conocimiento.
     external_id: str | None = None
     created_by_user_id: int | None = None
     created_by_name: str | None = None
@@ -123,10 +121,6 @@ class LeadServiceCreate(BaseModel):
 class LeadServiceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
-    # Catálogo que consulta el asistente IA. El precio vive en los paquetes;
-    # ``price_notes`` queda para condiciones generales (promociones, vigencia).
-    description: str | None = Field(default=None, max_length=1000)
-    price_notes: str | None = Field(default=None, max_length=500)
 
 
 class TemplateCategoryItem(BaseModel):

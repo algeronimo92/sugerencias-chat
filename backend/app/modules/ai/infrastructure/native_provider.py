@@ -4,8 +4,9 @@ mismos pasos auditados, sin salir del proceso:
 
 1. carga el contexto autorizado del lead (``context_loaded``);
 2. carga el catálogo con paquetes, las compras y los recursos;
-3. busca conocimiento con una consulta armada a partir del servicio de
-   interés y los últimos mensajes del cliente (``knowledge_searched``);
+3. busca conocimiento a partir del servicio de interés y los últimos mensajes
+   del cliente, por palabras y por significado, y combina las dos búsquedas
+   (``knowledge_searched``);
 4. arma el prompt y pide una respuesta JSON al modelo principal; si falla o
    no valida tras un reintento, al secundario;
 5. anota en el job qué modelo respondió, cuántos tokens costó y qué
@@ -27,10 +28,12 @@ from pydantic import ValidationError
 from app.integrations.llm.base import LlmClient, LlmError, LlmRequest
 from app.integrations.llm.catalog import default_models, effective_params, key_setting_for, parse_model_spec, parse_overrides, resolve_model_spec
 from app.integrations.llm.client import build_client
+from app.integrations.llm.embeddings import EmbeddingClient, build_embedding_client
 from app.modules.ai.ai_assistant_service import fetch_tenant_config, list_ai_catalog, list_ai_resources
 from app.modules.ai.ai_context import fetch_analysis_context
 from app.modules.ai.ai_jobs import record_ai_job_metadata, record_ai_job_step, start_ai_job
-from app.modules.ai.knowledge_search import search_knowledge_chunks, service_knowledge_chunks
+from app.modules.ai.knowledge_search import chunks_by_ids, fuse_rankings, referenced_chunks, search_knowledge_chunks, service_knowledge_chunks
+from app.modules.ai.knowledge_vectors import ensure_embeddings, vector_search
 from app.modules.ai.schemas import SuggestionResponse
 from app.modules.platform.ports.settings_service import get_effective_many
 
@@ -45,6 +48,10 @@ MAX_MESSAGES = 80
 KNOWLEDGE_TOP_K = 6
 # Fragmentos reservados a los documentos del servicio de interés del lead.
 SERVICE_TOP_K = 4
+# Fragmentos de la búsqueda general una vez combinadas palabras y significado.
+GLOBAL_TOP_K = 8
+# Fichas que se suman porque un fragmento encontrado las nombra.
+REFERENCE_TOP_K = 3
 KNOWLEDGE_MAX_CHARS = 9000
 # Últimos mensajes del cliente que alimentan la consulta de conocimiento.
 QUERY_CUSTOMER_MESSAGES = 3
@@ -174,8 +181,6 @@ def compact_catalog(catalog: list[dict]) -> list[dict]:
     return [
         {
             "servicio": item["name"],
-            **({"descripcion": item["description"]} if item.get("description") else {}),
-            **({"notas": item["price_notes"]} if item.get("price_notes") else {}),
             "paquetes": [
                 {"nombre": p["name"], "sesiones": p["sessions"], "precio": p["price"], **({"notas": p["notes"]} if p.get("notes") else {})}
                 for p in item.get("packages", [])
@@ -252,10 +257,50 @@ def service_id_for(lead: dict, catalog: list[dict]) -> int | None:
     return None
 
 
-async def gather_knowledge(lead: dict, messages: list[dict], instruction: str | None, catalog: list[dict]) -> list[dict]:
+def semantic_query(lead: dict, messages: list[dict], instruction: str | None) -> str:
+    """Lo mismo que alimenta la búsqueda por palabras, pero como texto
+    corrido: el embedding entiende la frase entera, no hace falta partirla."""
+    customer = [
+        str(m.get("content") or "").strip()
+        for m in reversed(messages)
+        if m.get("sender") == "cliente" and str(m.get("content") or "").strip()
+    ][-QUERY_CUSTOMER_MESSAGES:]
+    parts = [str(lead.get("servicio_interes") or "").strip(), *customer, (instruction or "").strip()]
+    return "\n".join(part for part in parts if part)
+
+
+async def _query_vector(embedder: EmbeddingClient | None, text: str) -> tuple[list[float] | None, dict]:
+    """El vector de la consulta y cómo se buscó. Si la API de embeddings falla
+    la sugerencia sigue, solo por palabras: el conocimiento ayuda, pero no
+    vale una sugerencia perdida."""
+    if embedder is None or not text:
+        return None, {"retrieval": "palabras"}
+    try:
+        embedded = await ensure_embeddings(embedder)
+        [vector] = await embedder.embed([text])
+    except LlmError as exc:
+        logger.warning("Búsqueda por significado no disponible (%s): %s", embedder.spec, exc)
+        return None, {"retrieval": "palabras", "embedding_error": str(exc)[:200]}
+    return vector, {"retrieval": "hibrida", "embedding_model": embedder.spec, "embedded_chunks": embedded or None}
+
+
+async def _semantic_ranking(vector: list[float] | None, spec: str, top_k: int, service_id: int | None = None) -> list[dict]:
+    if vector is None:
+        return []
+    hits = await vector_search(vector, spec, top_k, service_id)
+    return await chunks_by_ids([chunk_id for chunk_id, _ in hits], dict(hits))
+
+
+async def gather_knowledge(
+    lead: dict, messages: list[dict], instruction: str | None, catalog: list[dict],
+    embedder: EmbeddingClient | None = None, *, follow_references: bool = True,
+) -> tuple[list[dict], dict]:
     """Primero lo del servicio que le interesa al lead (su ficha es lo más
     útil y a veces la conversación todavía no dice nada buscable), después la
-    búsqueda general. Sin repetidos y dentro del presupuesto de caracteres."""
+    búsqueda general. Cada etapa combina palabras y significado con RRF; sin
+    embeddings, queda la búsqueda por palabras de siempre. Sin repetidos y
+    dentro del presupuesto de caracteres. Devuelve también cómo se buscó, para
+    el job."""
     seen: set[str] = set()
     knowledge: list[dict] = []
 
@@ -265,14 +310,43 @@ async def gather_knowledge(lead: dict, messages: list[dict], instruction: str | 
                 seen.add(chunk["id"])
                 knowledge.append(chunk)
 
+    vector, info = await _query_vector(embedder, semantic_query(lead, messages, instruction))
+    spec = embedder.spec if embedder else ""
+
     service_id = service_id_for(lead, catalog)
     if service_id is not None:
         conversation = conversation_query(messages)
-        found = await search_knowledge_chunks(conversation, SERVICE_TOP_K, service_id) if conversation else []
+        lexical = await search_knowledge_chunks(conversation, SERVICE_TOP_K, service_id) if conversation else []
+        semantic = await _semantic_ranking(vector, spec, SERVICE_TOP_K, service_id)
+        found = fuse_rankings(lexical, semantic)[:SERVICE_TOP_K]
         add(found or await service_knowledge_chunks(service_id, SERVICE_TOP_K))
-    for query in knowledge_queries(lead, messages, instruction):
-        add(await search_knowledge_chunks(query, KNOWLEDGE_TOP_K))
-    return _trim_knowledge(knowledge)
+
+    lexical_lists = [await search_knowledge_chunks(query, KNOWLEDGE_TOP_K) for query in knowledge_queries(lead, messages, instruction)]
+    if vector is None:
+        for ranking in lexical_lists:
+            add(ranking)
+    else:
+        semantic = await _semantic_ranking(vector, spec, KNOWLEDGE_TOP_K)
+        add(fuse_rankings(*lexical_lists, semantic)[:GLOBAL_TOP_K])
+    if follow_references:
+        knowledge = await _with_references(knowledge)
+    return _trim_knowledge(knowledge), info
+
+
+async def _with_references(knowledge: list[dict]) -> list[dict]:
+    """Cada ficha nombrada entra justo después del fragmento que la nombra:
+    el mapa dice qué tratamiento corresponde y la ficha, a continuación, cómo
+    es. Así también sobrevive al recorte por presupuesto."""
+    following: dict[str, list[dict]] = {}
+    for referrer, chunk in await referenced_chunks(knowledge, REFERENCE_TOP_K):
+        following.setdefault(referrer, []).append(chunk)
+    if not following:
+        return knowledge
+    ordered: list[dict] = []
+    for chunk in knowledge:
+        ordered.append(chunk)
+        ordered.extend(following.get(chunk["id"], []))
+    return ordered
 
 
 def _trim_knowledge(chunks: list[dict]) -> list[dict]:
@@ -306,8 +380,9 @@ async def _models_for_tenant() -> list[tuple[str, str, dict]]:
 
 
 class NativeAiProvider:
-    def __init__(self, client_factory=build_client) -> None:
+    def __init__(self, client_factory=build_client, embedder_factory=build_embedding_client) -> None:
         self._build = client_factory
+        self._build_embedder = embedder_factory
 
     async def analyze(self, chat_id, *, job_id, context_revision, tenant_context_token):
         raise NotImplementedError("El analista sigue en n8n")
@@ -330,7 +405,11 @@ class NativeAiProvider:
         catalog = await list_ai_catalog()
         resources = await list_ai_resources()
 
-        knowledge = await gather_knowledge(lead, messages, instruction, catalog)
+        # Los embeddings, con la clave del modelo principal: el mismo proveedor
+        # para todo el conocimiento del negocio (vectores de modelos distintos
+        # no se comparan).
+        embedder = self._build_embedder(parse_model_spec(chain[0][0])[0], chain[0][1])
+        knowledge, retrieval = await gather_knowledge(lead, messages, instruction, catalog, embedder)
         await record_ai_job_step(job_id, "knowledge_searched")
 
         now = datetime.now(timezone.utc)
@@ -360,6 +439,7 @@ class NativeAiProvider:
                 provider="native", model=f"{client.provider}:{result.model}", prompt_version=PROMPT_VERSION,
                 tokens_in=result.tokens_in, tokens_out=result.tokens_out,
                 knowledge_chunk_ids=[chunk["id"] for chunk in knowledge],
+                knowledge_retrieval=retrieval,
                 failed_models=errors or None,
                 # Con qué parámetros se generó: sin esto, un cambio en la
                 # configuración del negocio no se puede relacionar con un

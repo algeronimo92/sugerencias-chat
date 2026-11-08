@@ -11,28 +11,20 @@ import type { LeadService } from '../types'
 import { ErpSyncCard } from './ErpSyncCard'
 import { ServicePackagesEditor } from './ServicePackagesEditor'
 
-/** Campos editables de una fila. El precio no está: vive en los paquetes. */
+/** Lo editable de una fila es el nombre (y solo en los manuales). El precio
+ *  vive en los paquetes, y qué resuelve el servicio y sus condiciones, en sus
+ *  fichas para la IA: antes había dos campos acá que repetían esas fichas. */
 interface ServiceDraft {
   name: string
-  price_notes: string
-  description: string
 }
 
 function draftFrom(service: LeadService): ServiceDraft {
-  return {
-    name: service.name,
-    price_notes: service.price_notes ?? '',
-    description: service.description ?? '',
-  }
+  return { name: service.name }
 }
 
-/** Solo lo que cambió: renombrar no debe reescribir la descripción ni al revés. */
 function changedFields(service: LeadService, draft: ServiceDraft) {
-  const original = draftFrom(service)
-  const changes: { name?: string; price_notes?: string; description?: string } = {}
-  if (draft.name.trim() !== original.name) changes.name = draft.name.trim()
-  if (draft.price_notes.trim() !== original.price_notes) changes.price_notes = draft.price_notes.trim()
-  if (draft.description.trim() !== original.description) changes.description = draft.description.trim()
+  const changes: { name?: string } = {}
+  if (draft.name.trim() !== service.name) changes.name = draft.name.trim()
   return changes
 }
 
@@ -193,7 +185,7 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
     <CatalogPanel
       icon={Sparkles}
       title="Administrar servicios"
-      description="Un servicio es el problema que el cliente quiere resolver; lo que se vende son sus paquetes (1 sesión, pack x3…). Los servicios aparecen al crear o editar un lead y en las automatizaciones; el asistente IA cotiza con los paquetes y la descripción. Los inactivos permanecen en el historial; un servicio manual que todavía nadie usa se puede eliminar."
+      description="Un servicio es el problema que el cliente quiere resolver; lo que se vende son sus paquetes (1 sesión, pack x3…). Los servicios aparecen al crear o editar un lead y en las automatizaciones; el asistente IA cotiza con los paquetes y explica el servicio con sus fichas. Los inactivos permanecen en el historial; un servicio manual que todavía nadie usa se puede eliminar."
       items={visibleServices}
       toolbar={erpCount > 0 ? <OriginFilter value={origin} counts={counts} onChange={setOrigin} /> : undefined}
       getId={service => service.id}
@@ -209,6 +201,7 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
       emptyDescription="Añade un servicio para que tu equipo pueda elegirlo en los leads."
       isActive={service => service.is_active !== false}
       hasChanges={service => Object.keys(changedFields(service, draftOf(service))).length > 0}
+      canSave={service => !isFromErp(service)}
       isPending={service => updateService.isPending && updateService.variables?.id === service.id}
       onSave={handleSave}
       onToggle={handleToggle}
@@ -252,22 +245,6 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
               className="w-full bg-white py-1.5 dark:bg-wa-panel-dark"
             />
           )}
-          <Input
-            value={draftOf(service).description}
-            onChange={event => setDraftField(service, 'description', event.target.value)}
-            maxLength={1000}
-            placeholder="Qué problema resuelve y para quién es (lo usa el asistente IA)"
-            aria-label={`Descripción de ${service.name}`}
-            className="mt-2 w-full bg-white py-1.5 dark:bg-wa-panel-dark"
-          />
-          <Input
-            value={draftOf(service).price_notes}
-            onChange={event => setDraftField(service, 'price_notes', event.target.value)}
-            maxLength={500}
-            placeholder="Condiciones: promociones, vigencia (opcional)"
-            aria-label={`Notas de precio de ${service.name}`}
-            className="mt-2 w-full bg-white py-1.5 dark:bg-wa-panel-dark"
-          />
           <ServicePackagesEditor service={service} onError={setError} />
           {renderServiceExtras?.(service)}
           <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">

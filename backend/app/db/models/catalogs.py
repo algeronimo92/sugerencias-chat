@@ -39,15 +39,15 @@ class LeadService(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    # Lo que el asistente IA consulta como catálogo: qué es el servicio. El
-    # precio no vive acá sino en sus paquetes (``ServicePackage``): el cliente
-    # llega con un problema, el vendedor cierra con el paquete que lo resuelve.
-    # ``price_notes`` queda para condiciones generales (promociones, vigencia).
+    # Sin uso: qué resuelve el servicio y sus condiciones pasaron a sus fichas
+    # de conocimiento (revisión c3f8a2d6e417, que copió lo que había). Siguen
+    # en la tabla un despliegue más porque la versión anterior las lee
+    # mientras corre junto a la nueva; las borra la revisión siguiente.
     description: Mapped[str | None] = mapped_column(Text)
     price_notes: Mapped[str | None] = mapped_column(Text)
     # Identificador en el ERP del negocio. Con valor, el servicio (nombre,
-    # paquetes, alta/baja) lo administra el ERP vía erp_catalog.py y el CRM
-    # solo edita la descripción; sin valor, lo cargó el negocio a mano.
+    # paquetes, alta/baja) lo administra el ERP vía erp_catalog.py; sin valor,
+    # lo cargó el negocio a mano.
     external_id: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

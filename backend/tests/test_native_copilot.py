@@ -45,7 +45,7 @@ CONTEXT = {
     "message_cursor": None,
 }
 CATALOG = [{
-    "id": 1, "name": "Hollywood Peel - Rostro", "description": "Peeling con carbón", "price": "180.00", "price_notes": None,
+    "id": 1, "name": "Hollywood Peel - Rostro", "price": "180.00",
     "packages": [{"name": "Individual", "sessions": 1, "price": "180.00", "notes": None}, {"name": "x3", "sessions": 3, "price": "400.00", "notes": None}],
 }]
 
@@ -69,8 +69,9 @@ class FakeClient:
         return {"modelo-a", "modelo-b"}
 
 
-def _world(monkeypatch, settings: dict, chain: dict[str, list]):
-    """Un negocio con sus claves y un cliente simulado por modelo."""
+def _world(monkeypatch, settings: dict, chain: dict[str, list], embedder=None):
+    """Un negocio con sus claves y un cliente simulado por modelo. Sin
+    ``embedder``, la búsqueda es solo por palabras."""
     clients: dict[str, FakeClient] = {}
     built_with: dict[str, dict | None] = {}
 
@@ -109,6 +110,7 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list]):
 
     monkeypatch.setattr(native_provider, "search_knowledge_chunks", search)
     monkeypatch.setattr(native_provider, "service_knowledge_chunks", by_service)
+    monkeypatch.setattr(native_provider, "referenced_chunks", AsyncMock(return_value=[]))
     steps: list[str] = []
     monkeypatch.setattr(native_provider, "record_ai_job_step", AsyncMock(side_effect=lambda job_id, step: steps.append(step) or True))
     metadata: dict = {}
@@ -118,7 +120,7 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list]):
         return True
 
     monkeypatch.setattr(native_provider, "record_ai_job_metadata", record_metadata)
-    return NativeAiProvider(client_factory=factory), clients, searched, steps, metadata
+    return NativeAiProvider(client_factory=factory, embedder_factory=lambda provider, key: embedder), clients, searched, steps, metadata
 
 
 async def _suggest(provider):

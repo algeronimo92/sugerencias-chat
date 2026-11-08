@@ -40,6 +40,9 @@ interface CatalogPanelProps<T> {
   isPending: (item: T) => boolean
   onSave: (item: T) => void
   onToggle: (item: T) => void
+  /** Cuándo la fila tiene algo que guardar (por defecto siempre); sin nada
+   *  editable, el botón Guardar sobra. */
+  canSave?: (item: T) => boolean
   /** Cuándo el ítem admite activarse o desactivarse acá (por defecto siempre);
    *  un servicio que administra el ERP del negocio, por ejemplo, no. */
   canToggle?: (item: T) => boolean
@@ -79,6 +82,7 @@ export function CatalogPanel<T>({
   isPending,
   onSave,
   onToggle,
+  canSave,
   canToggle,
   formError,
 }: CatalogPanelProps<T>) {
@@ -178,6 +182,7 @@ export function CatalogPanel<T>({
             const pending = isPending(item)
             const name = getName(item)
             const toggleable = canToggle ? canToggle(item) : true
+            const saveable = canSave ? canSave(item) : true
             return (
               <li
                 key={id}
@@ -189,19 +194,21 @@ export function CatalogPanel<T>({
               >
                 {renderFields(item)}
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-11 sm:h-9"
-                    onClick={() => onSave(item)}
-                    disabled={!changed || pending}
-                    aria-label={`Guardar ${name}`}
-                  >
-                    {pending && changed
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                      : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
-                    Guardar
-                  </Button>
+                  {saveable && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-11 sm:h-9"
+                      onClick={() => onSave(item)}
+                      disabled={!changed || pending}
+                      aria-label={`Guardar ${name}`}
+                    >
+                      {pending && changed
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
+                      Guardar
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"

@@ -26,9 +26,6 @@ async def list_tags(include_inactive: bool = False) -> list[dict]:
     return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
 
 
-# Lo que el asistente IA usa para cotizar; el resto del CRM solo mira el nombre.
-_SERVICE_AI_COLUMNS = (LeadService.description, LeadService.price_notes)
-
 PACKAGE_COLUMNS = (
     ServicePackage.id,
     ServicePackage.service_id,
@@ -71,7 +68,6 @@ async def list_lead_services(include_inactive: bool = False) -> list[dict]:
         LeadService.id,
         LeadService.name,
         LeadService.is_active,
-        *_SERVICE_AI_COLUMNS,
         LeadService.external_id,
         LeadService.created_by.label("created_by_user_id"),
         User.name.label("created_by_name"),

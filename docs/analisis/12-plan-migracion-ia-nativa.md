@@ -416,6 +416,59 @@ Probado contra las APIs reales con claves de OpenAI y Gemini:
   - pasar Gemini de `responseSchema` (deprecado) a `responseJsonSchema`;
   - tiempo máximo total por sugerencia.
 
+## 6g. Búsqueda del conocimiento: híbrida y con las fichas que se nombran (2026-11-08)
+
+**Problema.** Al pasar a nativo, la búsqueda quedó solo por palabras (`ts_rank_cd` en
+español). El índice de n8n usaba embeddings. El cliente habla de su problema ("tengo la
+cara caída", "paño") y la ficha del tratamiento ("flacidez", "melasma"): las palabras no
+coinciden.
+
+**Medición** (`python -m scripts.eval_knowledge_retrieval --schema <tenant>`). Son 32 casos
+de `scripts/knowledge_eval_cases.json` sobre la biblioteca de 19 plantillas, sin servicio
+de interés. Cuenta como acierto que la ficha esperada entre al contexto que recibe el modelo.
+
+| Modo | OpenAI `text-embedding-3-small` | Gemini `gemini-embedding-2` |
+|---|---|---|
+| Solo palabras (lo anterior) | 22/32 (69%) | 22/32 (69%) |
+| Palabras + fichas nombradas | 26/32 (81%) | 26/32 (81%) |
+| Híbrida | 23/32 (72%) | 23/32 (72%) |
+| **Híbrida + fichas nombradas** | **31/32 (97%)** | **29/32 (91%)** |
+
+**Lo que se aprendió.**
+- La búsqueda por significado sola aporta poco. La biblioteca ya trae un "Mapa dolor → solución"
+  con las frases de los clientes, y eso lo encuentran las dos búsquedas.
+- El hueco era otro: llegaba la entrada del mapa ("paño → **Ácido tranexámico**") pero no la
+  ficha, que trae contraindicaciones y cuidados. Hace falta un segundo salto.
+
+**Qué se implementó.**
+- **Embeddings** en `knowledge_chunks.embedding` (`REAL[]`), junto con `embedding_model`, el
+  modelo que generó cada vector.
+  - No se usa pgvector: la imagen de producción (`postgres:16.14-alpine`) no lo trae, y cambiar
+    la imagen de la base es una operación manual en el servidor.
+  - Un negocio tiene a lo sumo unos miles de fragmentos. La similitud se calcula con numpy contra
+    una matriz en memoria por schema, que se recarga cuando cambian los fragmentos.
+- **Clientes de embeddings.** OpenAI y Gemini usan el mismo endpoint `/embeddings` (el de Gemini es
+  su endpoint compatible con OpenAI), con 768 dimensiones y la clave del modelo principal del negocio.
+- **Vectores tardíos.** Se calculan en la sugerencia siguiente al guardar o importar, hasta 200 por
+  sugerencia, no al guardar. Así guardar no depende de la API, y el mismo camino cubre el despliegue
+  y el cambio de proveedor.
+- **Fusión con RRF (k=60).** Cada etapa (servicio de interés y búsqueda general) combina palabras y
+  significado con Reciprocal Rank Fusion.
+- **Si los embeddings fallan**, la sugerencia sigue solo por palabras. El job anota
+  `knowledge_retrieval` (`hibrida`/`palabras`, el error si lo hubo, cuántos vectores calculó).
+- **Fichas nombradas.** Si un fragmento encontrado nombra el título de otro documento ("Ficha:
+  Ácido Tranexámico" → "acido tranexamico", sin tildes ni mayúsculas), entra el primer fragmento
+  de ese documento justo después, hasta 3.
+- **Desempate estable.** La búsqueda por palabras desempataba por un id aleatorio: dos corridas
+  iguales armaban contextos distintos. Ahora desempata por título y orden.
+- **Costo.** Una llamada de embeddings por sugerencia (~0,4 s; centavos por mes). La generación sigue
+  dominando (~8 s).
+
+**Pendiente.**
+- Sumar casos de conversaciones reales a la medición.
+- Rerankeo, solo si la medición lo justifica.
+- Pasar a pgvector si un negocio llega a cientos de miles de fragmentos.
+
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):
