@@ -8,6 +8,7 @@ import { ServicesManagementPanel } from './ServicesManagementPanel'
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
+  remove: vi.fn(),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
   runSync: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('../hooks/useLeadServices', () => ({
   }),
   useCreateLeadService: () => ({ mutate: mocks.create, isPending: false }),
   useUpdateLeadService: () => ({ mutate: mocks.update, isPending: false, variables: undefined }),
+  useDeleteLeadService: () => ({ mutate: mocks.remove, isPending: false }),
   useCreateServicePackage: () => ({ mutate: mocks.createPackage, isPending: false }),
   useUpdateServicePackage: () => ({ mutate: mocks.updatePackage, isPending: false, variables: undefined }),
   useErpSyncStatus: () => ({ data: mocks.erpStatus(), isLoading: false }),
@@ -45,6 +47,7 @@ describe('ServicesManagementPanel', () => {
   beforeEach(() => {
     mocks.create.mockReset()
     mocks.update.mockReset()
+    mocks.remove.mockReset()
     mocks.createPackage.mockReset()
     mocks.updatePackage.mockReset()
     mocks.runSync.mockReset()
@@ -234,5 +237,20 @@ describe('ServicesManagementPanel', () => {
     await user.click(within(filter).getByRole('button', { name: /Manuales/ }))
     expect(screen.getByLabelText('Nombre de Botox')).toBeInTheDocument()
     expect(screen.queryByText('Hollywood Peel - Rostro')).not.toBeInTheDocument()
+  })
+
+  it('elimina un servicio manual tras confirmar; los del ERP no tienen esa opción', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
+
+    expect(screen.queryByRole('button', { name: 'Eliminar Hollywood Peel - Rostro' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Eliminar Botox' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByText(/no se puede deshacer/)).toBeInTheDocument()
+    expect(mocks.remove).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Eliminar' }))
+    expect(mocks.remove).toHaveBeenCalledWith(1, expect.any(Object))
   })
 })

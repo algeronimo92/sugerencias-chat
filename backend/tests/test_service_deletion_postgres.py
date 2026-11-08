@@ -1,0 +1,114 @@
+"""Borrar un servicio del catálogo contra PostgreSQL real: se borra el manual
+que nadie usa (con sus paquetes) y se rechaza, diciendo qué lo usa, el que ya
+tiene leads, ventas, plantillas, reglas o documentos de la IA."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from decimal import Decimal
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import func, insert, select, update
+
+from app.db.models.auth import User
+from app.db.models.automations import AutomationRule
+from app.db.models.catalogs import LeadService, MessageTemplate, ServicePackage
+from app.db.models.leads import Lead, LeadSale
+from app.db.uow import session_scope
+from app.modules.ai.knowledge_service import create_document
+from app.modules.catalogs.erp_catalog import apply_catalog, parse_catalog
+from app.modules.catalogs.errors import ErpManagedError, ServiceInUseError
+from app.modules.catalogs.queries import list_lead_services
+from app.modules.catalogs.service import create_lead_service, create_service_package, delete_lead_service
+from app.modules.leads.infrastructure.repository import ensure_lead_stub
+from app.tenancy.context import tenant_context
+from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
+
+NOW = datetime.now(timezone.utc)
+
+
+async def _admin() -> int:
+    async with session_scope() as session:
+        user = User(
+            email=f"admin-{uuid4().hex[:6]}@example.test", name="Admin", password_hash="!",
+            role="admin", is_active=True, created_at=NOW,
+        )
+        session.add(user)
+        await session.flush()
+        return user.id
+
+
+async def _lead_interested_in(name: str) -> str:
+    chat_id = str(uuid4())
+    await ensure_lead_stub(chat_id, NOW, "test")
+    async with session_scope() as session:
+        # Como lo deja un vendedor: con otras mayúsculas y un espacio de más.
+        await session.execute(update(Lead).where(Lead.id == chat_id).values(servicio_interes=f" {name.upper()} "))
+    return chat_id
+
+
+async def _usages(service_id: int) -> list[str]:
+    with pytest.raises(ServiceInUseError) as error:
+        await delete_lead_service(service_id)
+    return error.value.usages
+
+
+async def test_unused_manual_service_is_deleted_with_its_packages(tenant) -> None:
+    with tenant_context(tenant):
+        admin_id = await _admin()
+        service = await create_lead_service("Evaluacion por error", admin_id)
+        await create_service_package(service["id"], {"name": "Única", "sessions": 1, "price": Decimal("50"), "notes": None, "position": None})
+
+        assert await delete_lead_service(service["id"]) is True
+
+        assert service["id"] not in {item["id"] for item in await list_lead_services(include_inactive=True)}
+        async with session_scope() as session:
+            packages = await session.scalar(select(func.count()).select_from(ServicePackage).where(ServicePackage.service_id == service["id"]))
+        assert packages == 0
+        assert await delete_lead_service(service["id"]) is False
+
+
+async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
+    with tenant_context(tenant):
+        admin_id = await _admin()
+        service = await create_lead_service("Peeling químico", admin_id)
+        name, service_id = service["name"], service["id"]
+
+        lead_id = await _lead_interested_in(name)
+        await _lead_interested_in(name)
+        async with session_scope() as session:
+            await session.execute(insert(LeadSale).values(
+                lead_id=lead_id, service_id=service_id, service_name=name, package_name="Única",
+                sessions=1, list_price=Decimal("100"), amount=Decimal("100"), sold_at=NOW,
+            ))
+            await session.execute(insert(MessageTemplate).values(name="Info peeling", content="Hola", service=name, created_by_user_id=admin_id, created_at=NOW, updated_at=NOW))
+            await session.execute(insert(AutomationRule).values(
+                name="Seguimiento peeling", trigger_type="manual", trigger_config={},
+                conditions={"service_contains": name.lower()}, actions=[], delay_minutes=0,
+                created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
+            ))
+            # Una regla borrada no cuenta.
+            await session.execute(insert(AutomationRule).values(
+                name="Vieja", trigger_type="manual", trigger_config={}, conditions={},
+                actions=[{"type": "change_service", "service": name}], delay_minutes=0,
+                created_by_user_id=admin_id, created_at=NOW, updated_at=NOW, deleted_at=NOW,
+            ))
+        await create_document("Ficha del peeling", "Renueva la piel.", "ficha", service_id=service_id)
+
+        assert sorted(await _usages(service_id)) == sorted([
+            "1 plantilla", "2 leads", "1 venta registrada", "1 automatización", "1 documento de conocimiento",
+        ])
+
+        async with session_scope() as session:
+            assert await session.scalar(select(LeadService.id).where(LeadService.id == service_id)) == service_id
+            assert await session.scalar(select(LeadSale.service_id).where(LeadSale.lead_id == lead_id)) == service_id
+
+
+async def test_erp_service_cannot_be_deleted_in_the_crm(tenant) -> None:
+    with tenant_context(tenant):
+        await apply_catalog(parse_catalog({"data": [{"id": "svc-9", "name": "HIFU", "description": None, "icon": None, "packages": []}]}))
+        service = next(item for item in await list_lead_services(include_inactive=True) if item["name"] == "HIFU")
+
+        with pytest.raises(ErpManagedError):
+            await delete_lead_service(service["id"])

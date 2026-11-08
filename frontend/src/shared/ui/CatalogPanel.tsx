@@ -46,6 +46,8 @@ interface CatalogPanelProps<T> {
   formError: string | null
   /** Controles extra del listado (p. ej. filtros), debajo del encabezado. */
   toolbar?: ReactNode
+  /** Acciones extra de la fila, después de activar/desactivar (p. ej. eliminar). */
+  renderActions?: (item: T) => ReactNode
 }
 
 /** Debajo de este tamaño la lista completa cabe de un vistazo (Miller): el
@@ -59,6 +61,7 @@ export function CatalogPanel<T>({
   createForm,
   items,
   toolbar,
+  renderActions,
   getId,
   getName,
   isLoading,
@@ -212,6 +215,7 @@ export function CatalogPanel<T>({
                     : active ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
                     {active ? 'Desactivar' : 'Activar'}
                   </Button>
+                  {renderActions?.(item)}
                 </div>
               </li>
             )

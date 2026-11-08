@@ -97,6 +97,9 @@ class RuleStore(Protocol):
 
     async def rename_service(self, old_name: str, new_name: str, rename) -> None: ...
 
+    async def count_referencing_service(self, name: str, references) -> int:
+        """Reglas no borradas que nombran al servicio."""
+
 
 class SchedulingStore(Protocol):
     """Alta de ejecuciones a partir de los eventos del negocio."""

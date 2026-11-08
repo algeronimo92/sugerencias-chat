@@ -46,6 +46,7 @@ SUBSCRIBER_MODULES: tuple[str, ...] = (
     "app.modules.conversations.subscribers",
     "app.modules.leads.subscribers",
     "app.modules.automations.subscribers",
+    "app.modules.ai.subscribers",
     "app.modules.tasks.subscribers",
     "app.modules.notifications.subscribers",
 )

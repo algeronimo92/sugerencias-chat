@@ -16,3 +16,13 @@ class ServicePackageAlreadyExistsError(Exception):
 class ErpManagedError(Exception):
     """El servicio lo administra el ERP del negocio: nombre, paquetes y
     alta/baja se cambian allí y se sincronizan, no en el CRM."""
+
+
+class ServiceInUseError(Exception):
+    """Algo del negocio todavía nombra al servicio (leads, ventas, plantillas,
+    reglas, documentos de la IA). Borrarlo dejaría esas referencias huérfanas:
+    para sacarlo de las listas está "Desactivar", que conserva el historial."""
+
+    def __init__(self, usages: list[str]):
+        super().__init__(", ".join(usages))
+        self.usages = list(usages)

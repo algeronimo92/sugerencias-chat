@@ -34,6 +34,11 @@ export async function updateLeadService({ id, ...values }: {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
 }
 
+/** Solo un servicio manual que nadie usa; si algo lo usa, el 409 dice qué. */
+export async function deleteLeadService(id: number): Promise<void> {
+  await client.delete<ApiResponse<'/api/services/{service_id}', 'delete'>>(`/api/services/${id}`)
+}
+
 export interface ServicePackageInput {
   name: string
   sessions: number
