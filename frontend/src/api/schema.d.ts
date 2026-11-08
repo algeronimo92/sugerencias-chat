@@ -6493,6 +6493,8 @@ export interface components {
             count: number;
             /** Items */
             items?: components["schemas"]["ServiceUsageItem"][];
+            /** Detail */
+            detail?: string | null;
         };
         /** ServiceUsageItem */
         ServiceUsageItem: {
@@ -6503,11 +6505,14 @@ export interface components {
         };
         /**
          * ServiceUsageResponse
-         * @description Lo que nombra a un servicio. Vacío: se puede eliminar.
+         * @description Lo que nombra a un servicio. ``usages`` vacío: se puede eliminar;
+         *     ``notices`` es lo que cambia al hacerlo (reglas que filtran por su nombre).
          */
         ServiceUsageResponse: {
             /** Usages */
             usages?: components["schemas"]["ServiceUsageGroup"][];
+            /** Notices */
+            notices?: components["schemas"]["ServiceUsageGroup"][];
         };
         /**
          * SessionAuthMethod

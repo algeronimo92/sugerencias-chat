@@ -120,17 +120,21 @@ class ServiceUsageItem(BaseModel):
 
 
 class ServiceUsageGroup(BaseModel):
-    # leads | ventas | plantillas | automatizaciones | documentos
+    # leads | ventas | plantillas | automatizaciones | documentos | filtros
     kind: str
     label: str
     # Cuántos son en total; ``items`` trae solo los primeros.
     count: int
     items: list[ServiceUsageItem] = Field(default_factory=list)
+    # Solo en ``notices``: qué les pasa al eliminar el servicio.
+    detail: str | None = None
 
 
 class ServiceUsageResponse(BaseModel):
-    """Lo que nombra a un servicio. Vacío: se puede eliminar."""
+    """Lo que nombra a un servicio. ``usages`` vacío: se puede eliminar;
+    ``notices`` es lo que cambia al hacerlo (reglas que filtran por su nombre)."""
     usages: list[ServiceUsageGroup] = Field(default_factory=list)
+    notices: list[ServiceUsageGroup] = Field(default_factory=list)
 
 
 class LeadServiceCreate(BaseModel):

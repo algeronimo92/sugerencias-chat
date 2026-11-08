@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   remove: vi.fn(),
   reassign: vi.fn(),
-  usage: vi.fn(() => ({ data: [] as unknown[], isPending: false, isError: false }) as Record<string, unknown>),
+  usage: vi.fn(() => ({ data: { usages: [] as unknown[], notices: [] as unknown[] }, isPending: false, isError: false }) as Record<string, unknown>),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
   runSync: vi.fn(),
@@ -54,7 +54,7 @@ describe('ServicesManagementPanel', () => {
     mocks.remove.mockReset()
     mocks.reassign.mockReset()
     mocks.usage.mockReset()
-    mocks.usage.mockReturnValue({ data: [], isPending: false, isError: false })
+    mocks.usage.mockReturnValue({ data: { usages: [], notices: [] }, isPending: false, isError: false })
     mocks.createPackage.mockReset()
     mocks.updatePackage.mockReset()
     mocks.runSync.mockReset()
@@ -257,11 +257,14 @@ describe('ServicesManagementPanel', () => {
 
   it('si el servicio está en uso, dice qué lo usa con enlaces y no deja eliminarlo', async () => {
     mocks.usage.mockReturnValue({
-      data: [
-        { kind: 'leads', label: '12 leads', count: 12, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] },
-        { kind: 'plantillas', label: '1 plantilla', count: 1, items: [{ id: '7', name: 'Info botox' }] },
-        { kind: 'automatizaciones', label: '1 automatización', count: 1, items: [{ id: '31', name: 'Seguimiento botox' }] },
-      ],
+      data: {
+        usages: [
+          { kind: 'leads', label: '12 leads', count: 12, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] },
+          { kind: 'plantillas', label: '1 plantilla', count: 1, items: [{ id: '7', name: 'Info botox' }] },
+          { kind: 'automatizaciones', label: '1 automatización', count: 1, items: [{ id: '31', name: 'Seguimiento botox' }] },
+        ],
+        notices: [],
+      },
       isPending: false,
       isError: false,
     })
@@ -288,9 +291,34 @@ describe('ServicesManagementPanel', () => {
     expect(within(dialog).getByRole('button', { name: 'Eliminar' })).toBeDisabled()
   })
 
+  it('una regla que solo filtra por el nombre no impide eliminar: avisa qué le pasa, con enlace', async () => {
+    mocks.usage.mockReturnValue({
+      data: {
+        usages: [],
+        notices: [{
+          kind: 'filtros', label: '1 automatización filtra por este nombre', count: 1,
+          items: [{ id: '8', name: 'Anuncio botox' }], detail: 'Seguirán aplicándose a los leads con «Botox capilar».',
+        }],
+      },
+      isPending: false,
+      isError: false,
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Eliminar Botox' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByRole('list', { name: 'Avisos' })).toHaveTextContent('Seguirán aplicándose a los leads con «Botox capilar».')
+    const params = new URLSearchParams((within(dialog).getByRole('link', { name: 'Anuncio botox' }).getAttribute('href') ?? '').split('?')[1])
+    expect([params.get('editar'), params.get('registro'), params.get('valor')]).toEqual(['servicio_filtro', '8', 'Botox'])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Eliminar' }))
+    expect(mocks.remove).toHaveBeenCalledWith(1, expect.any(Object))
+  })
+
   it('pasa todos los leads del servicio a "Sin servicio" en un paso, pidiendo confirmar', async () => {
     mocks.usage.mockReturnValue({
-      data: [{ kind: 'leads', label: '92 leads', count: 92, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] }],
+      data: { usages: [{ kind: 'leads', label: '92 leads', count: 92, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] }], notices: [] },
       isPending: false,
       isError: false,
     })

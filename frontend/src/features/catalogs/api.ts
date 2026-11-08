@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, ServiceUsageGroup, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, ServiceUsageReport, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -32,8 +32,9 @@ export async function updateLeadService({ id, ...values }: {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
 }
 
-export async function fetchServiceUsage(id: number): Promise<ServiceUsageGroup[]> {
-  return (await client.get<ApiResponse<'/api/services/{service_id}/usage', 'get'>>(`/api/services/${id}/usage`)).data.usages ?? []
+export async function fetchServiceUsage(id: number): Promise<ServiceUsageReport> {
+  const { data } = await client.get<ApiResponse<'/api/services/{service_id}/usage', 'get'>>(`/api/services/${id}/usage`)
+  return { usages: data.usages ?? [], notices: data.notices ?? [] }
 }
 
 /** Pasa todos los leads con ese servicio de interés a otro (o a ninguno, con

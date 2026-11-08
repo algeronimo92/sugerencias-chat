@@ -24,10 +24,15 @@ function renderAt(url: string, isLoading = false) {
 describe('useServiceEditLink', () => {
   it('dice qué regla abrir y qué servicio resaltar, y después quita los parámetros', () => {
     const seen = renderAt(`${editFieldHref('/automations', 'servicio', 'Cámbialo', { record: 31, value: 'Botox' })}&tab=1`)
-    expect(seen[0]).toEqual({ key: '31:Botox', rule: rules[0], highlight: { service: 'Botox', reason: 'Cámbialo' } })
+    expect(seen[0]).toEqual({ key: 'action:31:Botox', rule: rules[0], highlight: { service: 'Botox', reason: 'Cámbialo', part: 'action' } })
     // Cerrar o recargar no la vuelve a abrir; el resto de la URL queda.
     expect(seen.at(-1)).toBeNull()
     expect(screen.getByTestId('search')).toHaveTextContent(/^\?tab=1$/)
+  })
+
+  it('la condición que filtra por el nombre llega con su propio campo', () => {
+    const seen = renderAt(editFieldHref('/automations', 'servicio_filtro', undefined, { record: 31, value: 'Botox' }))
+    expect(seen[0]?.highlight).toEqual({ service: 'Botox', reason: null, part: 'condition' })
   })
 
   it('espera a que carguen las reglas sin tocar la URL', () => {

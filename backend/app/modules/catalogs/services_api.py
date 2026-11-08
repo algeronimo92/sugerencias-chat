@@ -100,12 +100,13 @@ async def patch_service(
     return service
 
 
-def _usage_payload(usages) -> dict:
-    return {"usages": [
-        {"kind": usage.kind, "label": usage.label, "count": usage.count,
-         "items": [{"id": item_id, "name": name} for item_id, name in usage.items]}
-        for usage in usages
-    ]}
+def _group(usage) -> dict:
+    return {"kind": usage.kind, "label": usage.label, "count": usage.count, "detail": usage.detail,
+            "items": [{"id": item_id, "name": name} for item_id, name in usage.items]}
+
+
+def _usage_payload(report) -> dict:
+    return {"usages": [_group(usage) for usage in report.usages], "notices": [_group(notice) for notice in report.notices]}
 
 
 @router.get("/{service_id}/usage", response_model=ServiceUsageResponse)
@@ -113,10 +114,10 @@ async def get_service_usage(service_id: int, _admin: User = Depends(require_admi
     """Qué usa al servicio (leads, ventas, plantillas, automatizaciones,
     documentos), con algunos de cada uno para ir a revisarlos: lo muestra el
     cuadro de eliminar antes de intentarlo."""
-    usages = await service_usage(service_id)
-    if usages is None:
+    report = await service_usage(service_id)
+    if report is None:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
-    return _usage_payload(usages)
+    return _usage_payload(report)
 
 
 def _in_use_message(usages) -> str:

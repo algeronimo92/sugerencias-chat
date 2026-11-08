@@ -35,8 +35,9 @@ from app.modules.catalogs.public import (
     ServiceDeletionRequested,
     ServiceRenamed,
     describe_usage,
-    references_service,
+    filters_by_service,
     rename_service_references,
+    sets_service,
 )
 from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_ERROR_CODE
@@ -90,9 +91,19 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
 
 @subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
 async def report_service_usage(event: ServiceDeletionRequested) -> None:
-    rules = await automation_ports().rules.rules_referencing_service(event.name, references_service)
-    if rules:
-        event.usages.append(describe_usage("automatizaciones", len(rules), "automatización", "automatizaciones", rules))
+    """Una regla que le pone el servicio a los leads impide borrarlo; una que
+    solo filtra por su nombre ("Servicio de interés contiene") se avisa: es un
+    texto, no un vínculo con el catálogo, y la regla sigue funcionando."""
+    store = automation_ports().rules
+    setting = await store.rules_referencing_service(event.name, sets_service)
+    if setting:
+        event.usages.append(describe_usage("automatizaciones", len(setting), "automatización", "automatizaciones", setting))
+    blocking = {rule_id for rule_id, _ in setting}
+    filtering = [rule for rule in await store.rules_referencing_service(event.name, filters_by_service) if rule[0] not in blocking]
+    if filtering:
+        event.notices.append(describe_usage(
+            "filtros", len(filtering), "automatización filtra por este nombre", "automatizaciones filtran por este nombre", filtering,
+        ))
 
 
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)
