@@ -28,7 +28,6 @@ function status(overrides: Record<string, unknown> = {}) {
     ],
     primary_model: 'gemini:gemini-2.5-flash',
     fallback_model: 'openai:gpt-5.6-terra',
-    suggestions_mode: 'n8n',
     ready: false,
     ...overrides,
   }
@@ -42,13 +41,13 @@ describe('AiIntegrationCard', () => {
     mocks.status = status()
   })
 
-  it('sin claves no deja activar el copiloto propio', () => {
+  it('sin claves queda sin configurar y avisa que el chat no tendrá sugerencias', () => {
     render(<AiIntegrationCard />)
 
     expect(screen.getByText('Sin configurar')).toBeInTheDocument()
     expect(screen.getAllByText('Sin clave')).toHaveLength(2)
-    expect(screen.getByRole('checkbox')).toBeDisabled()
-    expect(screen.getByText(/Guarda al menos una clave que pase la prueba/)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByText(/mientras tanto el chat no ofrece sugerencias/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Probar' })[0]).toBeDisabled()
   })
 
@@ -79,28 +78,15 @@ describe('AiIntegrationCard', () => {
     expect(mocks.save).not.toHaveBeenCalled()
   })
 
-  it('con clave lista se activa y queda conectado', async () => {
-    const user = userEvent.setup()
+  it('con una clave lista queda conectado, sin nada más que activar', () => {
     mocks.status = status({ ready: true, providers: [
       { provider: 'gemini', label: 'Google Gemini', models: ['gemini-2.5-flash'], key_configured: true },
       { provider: 'openai', label: 'OpenAI', models: ['gpt-5.6-terra'], key_configured: false },
     ] })
-    const { rerender } = render(<AiIntegrationCard />)
+    render(<AiIntegrationCard />)
 
-    expect(screen.getByText('Claves listas, sin activar')).toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox'))
-    expect(mocks.save).toHaveBeenCalledWith({ ai_suggestions_mode: 'native' }, expect.any(Object))
-
-    mocks.status = { ...(mocks.status as object), suggestions_mode: 'native' }
-    rerender(<AiIntegrationCard />)
     expect(screen.getByText('Conectado · tus claves')).toBeInTheDocument()
     expect(screen.getByText(/Lo consume tu cuenta del proveedor/)).toBeInTheDocument()
     expect(screen.getByText(/análisis automático del lead sigue en el servicio de la plataforma/)).toBeInTheDocument()
-  })
-
-  it('activo sin clave válida se marca con error', () => {
-    mocks.status = status({ suggestions_mode: 'native', ready: false })
-    render(<AiIntegrationCard />)
-    expect(screen.getByText('Falta una clave')).toBeInTheDocument()
   })
 })

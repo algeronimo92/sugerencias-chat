@@ -3,7 +3,6 @@ import { useState, type ComponentType } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { GeminiMark, OpenAIMark } from '../../../shared/ui/BrandMarks'
-import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Input, Select, labelClass } from '../../../shared/ui/Input'
 import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -109,9 +108,9 @@ function modelLabel(spec: string, providers: Provider[]): string {
 /**
  * Configuración de IA de las sugerencias de respuesta (el copiloto del chat),
  * no de toda la IA del CRM: el análisis del lead y la voz tienen la suya.
- * Mientras no se active, las sugerencias siguen saliendo del servicio de la
- * plataforma (n8n). Las claves son por proveedor y del negocio: si otra
- * función de IA llega a usarlas, se comparten.
+ * Las sugerencias se generan en el CRM con las claves del negocio: sin una
+ * clave que funcione, el chat no las ofrece. Las claves son por proveedor y
+ * del negocio: si otra función de IA llega a usarlas, se comparten.
  */
 export function AiIntegrationCard() {
   const { data: status, isLoading, isError } = useAiProviders()
@@ -124,12 +123,9 @@ export function AiIntegrationCard() {
     )
   }
 
-  const native = status.suggestions_mode === 'native'
   const allSpecs = status.providers.flatMap(provider => provider.models.map(model => `${provider.provider}:${model}`))
-  const state: IntegrationState = native ? (status.ready ? 'connected' : 'error') : 'unconfigured'
-  const stateLabel = native
-    ? status.ready ? 'Conectado · tus claves' : 'Falta una clave'
-    : status.ready ? 'Claves listas, sin activar' : undefined
+  const state: IntegrationState = status.ready ? 'connected' : 'unconfigured'
+  const stateLabel = status.ready ? 'Conectado · tus claves' : undefined
 
   function saveValues(values: Record<string, string>, message: string) {
     save.mutate(values, {
@@ -178,30 +174,12 @@ export function AiIntegrationCard() {
           </div>
         </div>
 
-        <div className={`rounded-lg border p-3 ${native ? 'border-wa-primary/30 bg-wa-primary/5 dark:bg-wa-primary/10' : 'border-wa-border/70 dark:border-wa-border-dark/70'}`}>
-          <label className="flex items-start gap-2.5 text-sm text-wa-text dark:text-wa-text-dark">
-            <Checkbox
-              checked={native}
-              disabled={save.isPending || (!native && !status.ready)}
-              onCheckedChange={checked => saveValues(
-                { ai_suggestions_mode: checked ? 'native' : 'n8n' },
-                checked ? 'Las sugerencias ahora se generan con tus claves' : 'Las sugerencias vuelven al servicio de la plataforma',
-              )}
-              aria-describedby="ai-mode-hint"
-            />
-            <span>
-              <span className="font-medium">Generar las sugerencias con mis claves</span>
-              <span id="ai-mode-hint" className="mt-0.5 block text-xs text-wa-muted dark:text-wa-muted-dark">
-                {native
-                  ? 'Activo: cada sugerencia la responde tu modelo principal y, si falla, el secundario. Lo consume tu cuenta del proveedor.'
-                  : status.ready
-                    ? 'Hoy las sugerencias salen del servicio de la plataforma. Actívalo para usar tus claves.'
-                    : 'Guarda al menos una clave que pase la prueba para poder activarlo.'}
-                {' '}El análisis automático del lead sigue en el servicio de la plataforma.
-              </span>
-            </span>
-          </label>
-        </div>
+        <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
+          {status.ready
+            ? 'Cada sugerencia la responde tu modelo principal y, si falla, el secundario. Lo consume tu cuenta del proveedor.'
+            : 'Guarda al menos una clave que pase la prueba: mientras tanto el chat no ofrece sugerencias.'}
+          {' '}El análisis automático del lead sigue en el servicio de la plataforma.
+        </p>
       </div>
     </IntegrationCard>
   )

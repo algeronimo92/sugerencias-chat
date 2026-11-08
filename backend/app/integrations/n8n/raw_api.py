@@ -2,13 +2,11 @@ from fastapi import Depends, Header, HTTPException, Query
 
 from app.modules.leads.public import fetch_lead_raw, fetch_messages_raw
 from app.modules.conversations.ports.message_queries import fetch_last_wa_message_id
-from app.integrations.n8n.webhook_schemas import RagSearchWebhookBody
 from app.integrations.n8n.common import webhooks_router
-from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config, list_ai_catalog, list_ai_resources)
-from app.modules.ai.ports.ai_context import (fetch_analysis_context, fetch_context_revision)
+from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config, list_ai_catalog)
+from app.modules.ai.ports.ai_context import (fetch_analysis_context)
 from app.modules.ai.ports.ai_job_tokens import (AIJobClaims, require_ai_job_context)
 from app.modules.ai.ports.ai_jobs import (AIJobConflict, AIJobExpired, AIJobNotFound, finish_ai_job, record_ai_job_step, start_ai_job)
-from app.modules.ai.ports.knowledge_search import (search_knowledge_chunks)
 from app.modules.leads.ports.stages import (list_stages_for_ai)
 
 
@@ -102,75 +100,6 @@ async def analysis_context_webhook(
     }
 
 
-@router.get("/rag-context")
-async def rag_context_webhook(
-    chat_id: str,
-    limit: int = Query(default=500, ge=1, le=500),
-    x_job_id: str = Header(alias="X-Job-Id"),
-    claims: AIJobClaims = Depends(require_ai_job_context),
-):
-    """Lead, mensajes y perfil del negocio para un job RAG firmado.
-
-    ``tenant_config`` y ``resources`` son lo que el negocio cargó en su
-    pantalla del asistente: el workflow es el mismo para todos y solo conoce
-    al negocio por lo que recibe acá.
-    """
-
-    if claims.job_id != x_job_id or claims.operation != "rag":
-        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
-    try:
-        job = await start_ai_job(x_job_id, operation="rag", resource_id=chat_id)
-    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
-        _raise_job_http_error(exc)
-
-    context = await fetch_analysis_context(chat_id, limit=limit)
-    if context is None:
-        await finish_ai_job(x_job_id, status="failed", error="lead_not_found")
-        raise HTTPException(status_code=404, detail="Lead no encontrado")
-    if context["context_revision"] != job.context_revision:
-        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "stale_ai_context",
-                "current_revision": context["context_revision"],
-            },
-        )
-    await record_ai_job_step(x_job_id, "context_loaded")
-    return {
-        "operation": "rag",
-        "job_id": x_job_id,
-        **context,
-        "tenant_config": await fetch_tenant_config(),
-        "resources": await list_ai_resources(),
-    }
-
-
-@router.post("/rag-search")
-async def rag_search_webhook(
-    body: RagSearchWebhookBody,
-    x_job_id: str = Header(alias="X-Job-Id"),
-    claims: AIJobClaims = Depends(require_ai_job_context),
-):
-    """Retrieval lexical dentro del schema ligado al job RAG."""
-
-    if claims.job_id != x_job_id or claims.operation != "rag":
-        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
-    try:
-        job = await start_ai_job(
-            x_job_id, operation="rag", context_revision=body.context_revision
-        )
-    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
-        _raise_job_http_error(exc)
-    current_revision = await fetch_context_revision(job.chat_id or job.resource_id)
-    if current_revision != body.context_revision:
-        await finish_ai_job(x_job_id, status="failed", error="stale_ai_context")
-        raise HTTPException(status_code=409, detail={"code": "stale_ai_context"})
-    matches = await search_knowledge_chunks(body.query, body.top_k)
-    await record_ai_job_step(x_job_id, "knowledge_searched")
-    return {"matches": matches, "count": len(matches)}
-
-
 @router.get("/catalog")
 async def ai_catalog_webhook(
     x_job_id: str = Header(alias="X-Job-Id"),
@@ -178,7 +107,7 @@ async def ai_catalog_webhook(
 ):
     """Catalog from the job schema; tenant/schema are never accepted in input."""
 
-    if claims.job_id != x_job_id or claims.operation not in {"rag", "analyst"}:
+    if claims.job_id != x_job_id or claims.operation != "analyst":
         raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
     try:
         await start_ai_job(x_job_id, operation=claims.operation)

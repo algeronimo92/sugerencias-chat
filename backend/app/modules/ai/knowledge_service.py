@@ -1,7 +1,7 @@
 """Documentos de conocimiento que cada negocio carga para el asistente IA.
 
-El negocio edita el texto completo del documento; los fragmentos que consulta
-``/api/webhooks/rag-search`` (ver app/modules/ai/knowledge_search.py) se derivan de
+El negocio edita el texto completo del documento; los fragmentos que busca el
+copiloto de sugerencias (ver app/modules/ai/knowledge_search.py) se derivan de
 ese texto y se regeneran enteros en cada edición, nunca por separado.
 """
 

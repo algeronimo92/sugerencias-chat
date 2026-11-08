@@ -10,7 +10,7 @@ import pytest
 
 from app.integrations.llm.base import LlmError, LlmRequest, LlmResult
 from app.modules.ai import ai_access, providers_service
-from app.modules.ai.infrastructure import native_provider, routing_provider
+from app.modules.ai.infrastructure import native_provider
 from app.modules.ai.infrastructure.native_provider import NativeAiProvider, NativeSuggestionError, build_user_prompt, knowledge_queries
 from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 
@@ -209,23 +209,19 @@ def test_knowledge_queries_and_prompt_without_messages():
     assert "<catalogo>" in prompt and "<historial>" in prompt
 
 
-async def test_routing_sends_suggestions_by_mode_and_analysis_always_to_n8n(monkeypatch):
-    n8n = type("N8n", (), {"suggest": AsyncMock(return_value="n8n"), "analyze": AsyncMock(return_value="analista")})()
+async def test_suggestions_are_always_native_and_analysis_stays_in_n8n():
+    n8n = type("N8n", (), {"analyze": AsyncMock(return_value="analista")})()
     native = type("Native", (), {"suggest": AsyncMock(return_value="nativo"), "analyze": AsyncMock()})()
     provider = RoutingAiProvider(n8n, native)
     kwargs = dict(refresh=False, instruction=None, job_id="j", context_revision="r", tenant_context_token="t")
 
-    monkeypatch.setattr(routing_provider, "get_effective", AsyncMock(return_value=""))
-    assert await provider.suggest("c", None, **kwargs) == "n8n"
-    monkeypatch.setattr(routing_provider, "get_effective", AsyncMock(return_value="native"))
     assert await provider.suggest("c", None, **kwargs) == "nativo"
     assert await provider.analyze("c", job_id="j", context_revision="r", tenant_context_token="t") == "analista"
     native.analyze.assert_not_called()
 
 
-async def test_native_mode_requires_a_business_key(monkeypatch):
+async def test_suggestions_require_a_business_key(monkeypatch):
     monkeypatch.setattr(ai_access, "signing_key_configured", lambda: True)
-    monkeypatch.setattr(ai_access, "suggestions_mode", AsyncMock(return_value="native"))
     monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value=""))
 
     async def no_keys(_keys):

@@ -339,6 +339,24 @@ activar el modo nativo solo allí y comparar 20 conversaciones contra n8n.
   general; el prompt indica el tipo de cada fragmento.
 - La herramienta `rag-search` de n8n sigue igual (el filtro por servicio es opcional).
 
+## 6d. Corte: las sugerencias dejan n8n (2026-11-08)
+
+- Sin interruptor: las sugerencias las genera siempre el copiloto nativo con las
+  claves del negocio. Se quitó `ai_suggestions_mode` (solo existió en esta rama).
+- Un negocio sin una clave que funcione no tiene sugerencias: el chat muestra
+  "carga la clave de tu proveedor en Integraciones › Sugerencias con IA".
+- Retirados del backend: `call_n8n`, `N8nAiProvider.suggest`, los webhooks
+  `/api/webhooks/rag-context` y `/rag-search`, la clave de plataforma
+  `n8n_webhook_url` y el fixture `rag.json` con sus tests. `/api/webhooks/catalog`
+  queda solo para el analista. `N8N_WEBHOOK_URL` sigue declarada en la config para
+  que un `.env` viejo no impida arrancar, pero no se usa.
+- El analista sigue en n8n sin cambios.
+- Para producción, antes de desplegar: el admin de cada negocio carga y prueba su
+  clave en Integraciones; la plataforma publica las plantillas
+  (`python -m scripts.seed_knowledge_templates --apply`) y el negocio importa las
+  suyas. Después del despliegue, el workflow de sugerencias de n8n se puede
+  desactivar.
+
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):

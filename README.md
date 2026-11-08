@@ -11,7 +11,7 @@ Requiere Docker y el plugin Docker Compose. El dominio debe apuntar (registro A)
 ### 1. Variables de entorno
 
 ```bash
-cp backend/.env.example backend/.env      # completar DATABASE_URL, N8N_WEBHOOK_URL, etc.
+cp backend/.env.example backend/.env      # completar DATABASE_URL, N8N_ANALYST_WEBHOOK_URL, etc.
 cp traefik/.env.example traefik/.env      # completar ACME_EMAIL
 ```
 

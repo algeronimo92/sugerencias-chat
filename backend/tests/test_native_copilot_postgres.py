@@ -72,7 +72,7 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
             await session.execute(insert(WspMessage).values(chat_id=lead_id, sender="cliente", content="¿Cuántas sesiones necesito?", sent_at=now - timedelta(minutes=1), message_type="text"))
         await record_sale(lead_id, SaleInput(service_id=cejas["id"], package_id=cejas_single["id"]), actor=Actor.user(admin_id))
 
-        await update_settings({"ai_gemini_api_key": "AIza-test", "ai_suggestions_mode": "native"})
+        await update_settings({"ai_gemini_api_key": "AIza-test"})
         context = await fetch_analysis_context(lead_id)
         job, _ = await create_ai_job("rag", lead_id, chat_id=lead_id, context_revision=context["context_revision"])
 

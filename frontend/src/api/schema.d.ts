@@ -3461,50 +3461,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/rag-context": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Rag Context Webhook
-         * @description Lead, mensajes y perfil del negocio para un job RAG firmado.
-         *
-         *     ``tenant_config`` y ``resources`` son lo que el negocio cargó en su
-         *     pantalla del asistente: el workflow es el mismo para todos y solo conoce
-         *     al negocio por lo que recibe acá.
-         */
-        get: operations["rag_context_webhook_api_webhooks_rag_context_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/rag-search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rag Search Webhook
-         * @description Retrieval lexical dentro del schema ligado al job RAG.
-         */
-        post: operations["rag_search_webhook_api_webhooks_rag_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/webhooks/catalog": {
         parameters: {
             query?: never;
@@ -3740,8 +3696,6 @@ export interface components {
             primary_model: string;
             /** Fallback Model */
             fallback_model: string;
-            /** Suggestions Mode */
-            suggestions_mode: string;
             /** Ready */
             ready: boolean;
         };
@@ -6226,18 +6180,6 @@ export interface components {
         PushUnsubscribeRequest: {
             /** Endpoint */
             endpoint: string;
-        };
-        /** RagSearchWebhookBody */
-        RagSearchWebhookBody: {
-            /** Query */
-            query: string;
-            /** Context Revision */
-            context_revision: string;
-            /**
-             * Top K
-             * @default 5
-             */
-            top_k: number;
         };
         /** ReactionRequest */
         ReactionRequest: {
@@ -14118,85 +14060,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rag_context_webhook_api_webhooks_rag_context_get: {
-        parameters: {
-            query: {
-                chat_id: string;
-                limit?: number;
-            };
-            header: {
-                "X-Job-Id": string;
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-                "X-Tenant-Context": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rag_search_webhook_api_webhooks_rag_search_post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Job-Id": string;
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-                "X-Tenant-Context": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RagSearchWebhookBody"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {

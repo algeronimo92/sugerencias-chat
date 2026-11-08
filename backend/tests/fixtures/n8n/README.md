@@ -5,10 +5,16 @@ inactivos, no incluyen `pinData`, secretos ni IDs de credenciales. Los JSON de l
 raiz son copias locales equivalentes para importacion manual y permanecen
 ignorados por Git.
 
-`config.json` es un sub-workflow compartido por los otros tres: expone
-`backend_url` para que `rag`, `analista` y `meta-cloud-api` dejen de depender de
+`config.json` es un sub-workflow compartido por los otros dos: expone
+`backend_url` para que `analista` y `meta-cloud-api` dejen de depender de
 `$env.BACKEND_URL` (el plan hosted de n8n del proyecto no permite crear
 variables de entorno).
+
+El workflow de sugerencias (`rag`) se retiró en noviembre de 2026: las
+sugerencias las genera el CRM con las claves de IA de cada negocio
+(`app/modules/ai/infrastructure/native_provider.py`) y los webhooks que usaba
+(`/api/webhooks/rag-context` y `/rag-search`) ya no existen. En n8n se puede
+desactivar.
 
 ## Webhook de Meta
 
@@ -28,19 +34,16 @@ firma se calcula sobre esos bytes y cualquier cambio la invalida.
 ## Antes de activar un workflow importado
 
 1. Importar `config.json` primero y anotar el ID que le asigna n8n.
-2. En `rag`, `analista` y `meta-cloud-api`, abrir cada nodo **Execute Workflow**
+2. En `analista` y `meta-cloud-api`, abrir cada nodo **Execute Workflow**
    llamado "Config" (o "Config (GET)"/"Config (POST)" en `meta-cloud-api`) y
    apuntarlo al workflow `config.json` importado en el paso 1.
-3. Vincular la credencial **Header Auth** de los Webhook expuestos por `rag` y
-   `analista`.
+3. Vincular la credencial **Header Auth** del Webhook expuesto por `analista`.
 4. Vincular la credencial **HTTP Header Auth** del backend a los nodos HTTP y
-   HTTP Tool de `rag` y `analista`. Debe aportar `X-Webhook-Token`; el workflow
+   HTTP Tool de `analista`. Debe aportar `X-Webhook-Token`; el workflow
    agrega los headers de job que corresponden a cada item. Los nodos del relay
    de Meta no la necesitan: el endpoint se autentica con la firma de Meta.
-5. Vincular las credenciales de los modelos de lenguaje usados por `rag` y
-   `analista`.
-6. La URL del Webhook de `rag` y la de `analista`, el token con el que el
-   backend los llama y las credenciales de la app de Meta (verify token y app
+5. Vincular las credenciales de los modelos de lenguaje usados por `analista`.
+6. La URL del Webhook de `analista`, el token con el que el backend lo llama y las credenciales de la app de Meta (verify token y app
    secret) se cargan una sola vez en el panel de plataforma. Lo que cada negocio
    sabe de si mismo (perfil, precios, conocimiento, adjuntos) llega en el
    contexto del job, no en el workflow.

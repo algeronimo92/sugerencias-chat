@@ -157,8 +157,6 @@ class AiProvidersStatus(BaseModel):
     providers: list[AiProviderModels]
     primary_model: str
     fallback_model: str
-    # ``n8n`` o ``native``.
-    suggestions_mode: str
     # Hay clave para el modelo principal o el secundario.
     ready: bool
 

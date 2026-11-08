@@ -28,7 +28,7 @@ export function IntegrationsPage() {
   // El asistente IA es de una feature de capa superior a platform: su estado
   // se suma acá, en la composición.
   const ai = useAiProviders()
-  const aiConnected = ai.data?.suggestions_mode === 'native' && ai.data.ready
+  const aiConnected = Boolean(ai.data?.ready)
   const statuses = {
     loading: platformStatuses.loading || ai.isLoading,
     count: platformStatuses.count + (aiConnected ? 1 : 0),

@@ -127,11 +127,8 @@ SETTING_DEFS: list[SettingDef] = [
     # app/modules/ai/infrastructure/native_provider.py): el análisis del lead
     # y otras funciones de IA tienen su propia configuración. El nombre lo
     # dice para que una función nueva no herede estos modelos sin querer.
-    # ``ai_suggestions_mode``: ``n8n`` (hoy) o ``native``; lo cambia el admin
-    # desde la tarjeta "Sugerencias con IA" de Integraciones.
     SettingDef("ai_suggestions_primary_model", "Sugerencias: modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False),
     SettingDef("ai_suggestions_fallback_model", "Sugerencias: modelo secundario (si el principal falla)", "ai", "IA del negocio (claves y sugerencias)", secret=False),
-    SettingDef("ai_suggestions_mode", "Sugerencias: generar desde el CRM con mis claves", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
@@ -449,11 +446,6 @@ async def update_settings(values: dict[str, str]) -> None:
     for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
         if values.get(key):
             values[key] = validate_ai_model(values[key])
-    if "ai_suggestions_mode" in values:
-        mode = values["ai_suggestions_mode"].strip().lower()
-        if mode not in {"", "n8n", "native"}:
-            raise ValueError("El modo de sugerencias debe ser n8n o native")
-        values["ai_suggestions_mode"] = mode
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]

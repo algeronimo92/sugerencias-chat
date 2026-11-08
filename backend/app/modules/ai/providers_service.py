@@ -8,7 +8,6 @@ from app.integrations.llm.base import LlmError
 from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, key_setting_for, parse_model_spec
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_access import business_ai_ready
-from app.modules.ai.infrastructure.routing_provider import suggestions_mode
 from app.modules.platform.ports.settings_service import get_effective_many
 
 _KEYS = ("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
@@ -28,7 +27,6 @@ async def providers_status() -> dict:
         ],
         "primary_model": values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY,
         "fallback_model": values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK,
-        "suggestions_mode": await suggestions_mode(),
         "ready": await business_ai_ready(),
     }
 
