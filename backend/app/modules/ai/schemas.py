@@ -1,7 +1,7 @@
 """Contratos HTTP de ai."""
+from datetime import datetime
 from typing import Literal
 
-from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 
@@ -161,6 +161,29 @@ class AiProviderModels(BaseModel):
     key_configured: bool
 
 
+class AiModelParam(BaseModel):
+    """Un parámetro que el modelo acepta (registro de app.integrations.llm.catalog)."""
+
+    name: str
+    kind: Literal["choice", "float", "int", "text_list"]
+    label: str
+    help: str = ""
+    choices: list[str] = []
+    min: float | None = None
+    max: float | None = None
+    default: str | float | int | None = None
+    # Solo aplica si otro parámetro tiene uno de estos valores.
+    requires: dict[str, list[str]] = {}
+
+
+class AiModelParams(BaseModel):
+    label: str
+    note: str = ""
+    context_window: int
+    max_output_tokens: int
+    params: list[AiModelParam]
+
+
 class AiProvidersStatus(BaseModel):
     """Lo que la tarjeta "Asistente IA" de Integraciones necesita."""
 
@@ -169,6 +192,11 @@ class AiProvidersStatus(BaseModel):
     fallback_model: str
     # Hay clave para el modelo principal o el secundario.
     ready: bool
+    # Qué parámetros acepta cada modelo ("proveedor:modelo" → esquema) y lo que
+    # el negocio sobrescribió en cada posición; el resto toma el default.
+    model_params: dict[str, AiModelParams] = {}
+    primary_params: dict[str, str | float | int | list[str]] = {}
+    fallback_params: dict[str, str | float | int | list[str]] = {}
 
 
 class AiProviderTestRequest(BaseModel):

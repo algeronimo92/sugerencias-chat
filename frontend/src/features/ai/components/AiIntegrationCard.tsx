@@ -7,6 +7,7 @@ import { Input, Select, labelClass } from '../../../shared/ui/Input'
 import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings } from '../../platform/public/useSettings'
+import { AdvancedModelSettings, ModelParamsEditor } from './ModelParamsEditor'
 import { useAiProviders, useRefreshAiProviders, useTestAiProvider } from '../hooks/useAiProviders'
 import type { AiProvidersStatus, AiProviderTestResult } from '../types'
 
@@ -194,6 +195,25 @@ export function AiIntegrationCard() {
             </Select>
           </div>
         </div>
+
+        <AdvancedModelSettings customized={Object.keys(status.primary_params ?? {}).length + Object.keys(status.fallback_params ?? {}).length}>
+          <ModelParamsEditor
+            key={`${status.primary_model}|${JSON.stringify(status.primary_params)}`}
+            title="Modelo principal"
+            schema={status.model_params?.[status.primary_model]}
+            overrides={status.primary_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_primary_params: JSON.stringify(overrides) }, 'Ajustes del modelo principal guardados')}
+          />
+          <ModelParamsEditor
+            key={`${status.fallback_model}|${JSON.stringify(status.fallback_params)}`}
+            title="Modelo secundario"
+            schema={status.model_params?.[status.fallback_model]}
+            overrides={status.fallback_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_fallback_params: JSON.stringify(overrides) }, 'Ajustes del modelo secundario guardados')}
+          />
+        </AdvancedModelSettings>
 
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
           {status.ready

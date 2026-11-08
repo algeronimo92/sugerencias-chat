@@ -85,6 +85,8 @@ export interface SuggestionStatus {
 
 export type AiProvidersStatus = ApiSchemas['AiProvidersStatus']
 export type AiProviderTestResult = ApiSchemas['AiProviderTestResult']
+export type AiModelParams = ApiSchemas['AiModelParams']
+export type AiModelParam = ApiSchemas['AiModelParam']
 
 export type KnowledgePdfImport = ApiSchemas['KnowledgePdfImport']
 export type KnowledgeTemplateSummary = ApiSchemas['KnowledgeTemplateSummary']

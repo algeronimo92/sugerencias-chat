@@ -8,20 +8,30 @@ from app.integrations.llm.base import LlmError, LlmRequest, LlmResult
 
 BASE_URL = "https://api.openai.com/v1"
 TIMEOUT_SECONDS = 60.0
+# Nombre neutral del registro → nombre en Chat Completions.
+_WIRE = {"reasoning": "reasoning_effort"}
+_SENT = {"reasoning", "verbosity", "temperature", "top_p", "presence_penalty", "frequency_penalty", "seed", "stop"}
 
 
 class OpenAiClient:
     provider = "openai"
 
-    def __init__(self, api_key: str, model: str, *, reasoning_effort: str | None = None) -> None:
+    def __init__(self, api_key: str, model: str, params: dict | None = None) -> None:
         self._api_key = api_key
         self.model = model
-        # Solo para modelos que lo aceptan (ver catalog.MODEL_OPTIONS).
-        self._reasoning = {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
+        # Ya validados contra el registro del modelo (catalog.effective_params):
+        # acá solo se traducen al nombre que usa la API de OpenAI.
+        self._params = dict(params or {})
+        self._timeout = float(self._params.get("timeout_seconds") or TIMEOUT_SECONDS)
+
+    def _generation(self, max_tokens: int) -> dict:
+        body = {_WIRE.get(name, name): value for name, value in self._params.items() if name in _SENT}
+        body["max_completion_tokens"] = int(self._params.get("max_output_tokens") or max_tokens)
+        return body
 
     async def _complete(self, body: dict) -> LlmResult:
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
                     f"{BASE_URL}/chat/completions",
                     json={"model": self.model, **body},
@@ -61,7 +71,7 @@ class OpenAiClient:
         # Sin ``temperature``: los modelos con razonamiento la rechazan, y el
         # botón "Generá otras" necesita variedad entre una respuesta y otra.
         return await self._complete({
-            **self._reasoning,
+            **self._generation(request.max_output_tokens),
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
@@ -70,14 +80,13 @@ class OpenAiClient:
                 "type": "json_schema",
                 "json_schema": {"name": request.schema_name, "strict": True, "schema": request.schema},
             },
-            "max_completion_tokens": request.max_output_tokens,
         })
 
     async def ping(self) -> LlmResult:
         return await self._complete({
-            **self._reasoning,
-            "messages": [{"role": "user", "content": "Responde únicamente con la palabra OK."}],
+            **self._generation(300),
             "max_completion_tokens": 300,
+            "messages": [{"role": "user", "content": "Responde únicamente con la palabra OK."}],
         })
 
     async def list_models(self) -> set[str]:

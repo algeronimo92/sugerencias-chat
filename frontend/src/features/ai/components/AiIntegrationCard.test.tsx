@@ -89,4 +89,27 @@ describe('AiIntegrationCard', () => {
     expect(screen.getByText(/Lo consume tu cuenta del proveedor/)).toBeInTheDocument()
     expect(screen.getByText(/análisis automático del lead sigue en el servicio de la plataforma/)).toBeInTheDocument()
   })
+
+  it('los parámetros de los modelos quedan plegados en "Configuración avanzada"', async () => {
+    const user = userEvent.setup()
+    mocks.status = status({
+      primary_params: { reasoning: 'high' },
+      model_params: {
+        'gemini:gemini-3.6-flash': {
+          label: 'Gemini 3.6 Flash', note: '', context_window: 1, max_output_tokens: 1,
+          params: [{ name: 'reasoning', kind: 'choice', label: 'Razonamiento', help: '', choices: ['low', 'high'], min: null, max: null, default: 'low', requires: {} }],
+        },
+      },
+      primary_model: 'gemini:gemini-3.6-flash',
+    })
+    render(<AiIntegrationCard />)
+
+    const toggle = screen.getByRole('button', { name: /Configuración avanzada/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent('1 ajuste personalizado')
+    expect(screen.queryByRole('region', { name: 'Modelo principal' })).not.toBeInTheDocument()
+
+    await user.click(toggle)
+    expect(screen.getByRole('region', { name: 'Modelo principal' })).toBeInTheDocument()
+  })
 })

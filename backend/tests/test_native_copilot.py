@@ -72,12 +72,16 @@ class FakeClient:
 def _world(monkeypatch, settings: dict, chain: dict[str, list]):
     """Un negocio con sus claves y un cliente simulado por modelo."""
     clients: dict[str, FakeClient] = {}
+    built_with: dict[str, dict | None] = {}
 
-    def factory(spec, api_key):
+    def factory(spec, api_key, overrides=None):
         provider, model = spec.split(":", 1)
         assert api_key, "nunca se construye un cliente sin clave"
+        built_with[spec] = overrides
         clients[spec] = FakeClient(provider, model, chain[spec])
         return clients[spec]
+
+    factory.built_with = built_with
 
     defaults = {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
     values = {**defaults, **settings}
@@ -280,3 +284,23 @@ async def test_connection_test_uses_typed_key_or_saved_one(monkeypatch):
 
     result = await providers_service.test_provider("openai", api_key="k", model=None, client_factory=lambda s, k: Broken(*s.split(":", 1), replies=[]))
     assert result["ok"] is False and "401" in result["error"]
+
+
+async def test_each_slot_uses_the_parameters_the_business_set_for_it(monkeypatch):
+    provider, clients, *_, metadata = _world(
+        monkeypatch,
+        {
+            "ai_gemini_api_key": "g", "ai_openai_api_key": "o",
+            "ai_suggestions_primary_params": '{"reasoning": "high"}',
+            "ai_suggestions_fallback_params": '{"reasoning": "none", "temperature": 0.4}',
+        },
+        {"gemini:gemini-3.6-flash": [LlmError("Gemini respondió 503", status=503)], "openai:gpt-5.6-terra": [GOOD]},
+    )
+
+    await _suggest(provider)
+
+    built = provider._build.built_with
+    assert built["gemini:gemini-3.6-flash"] == {"reasoning": "high"}
+    assert built["openai:gpt-5.6-terra"] == {"reasoning": "none", "temperature": 0.4}
+    # El job guarda con qué parámetros efectivos se generó (defaults incluidos).
+    assert metadata["params"]["temperature"] == 0.4 and metadata["params"]["max_output_tokens"] == 8000

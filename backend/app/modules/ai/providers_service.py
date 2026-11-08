@@ -5,16 +5,22 @@ from __future__ import annotations
 from time import monotonic
 
 from app.integrations.llm.base import LlmError
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, key_setting_for, parse_model_spec, resolve_model_spec
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, SPECS, key_setting_for, params_schema, parse_model_spec, parse_overrides, resolve_model_spec, sanitize_overrides
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_access import business_ai_ready
 from app.modules.platform.ports.settings_service import get_effective_many
 
-_KEYS = ("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
+_KEYS = (
+    "ai_suggestions_primary_model", "ai_suggestions_fallback_model",
+    "ai_suggestions_primary_params", "ai_suggestions_fallback_params",
+    "ai_gemini_api_key", "ai_openai_api_key",
+)
 
 
 async def providers_status() -> dict:
     values = await get_effective_many(_KEYS)
+    primary = _resolved(values["ai_suggestions_primary_model"], DEFAULT_PRIMARY)
+    fallback = _resolved(values["ai_suggestions_fallback_model"], DEFAULT_FALLBACK)
     return {
         "providers": [
             {
@@ -26,9 +32,13 @@ async def providers_status() -> dict:
             for name, meta in PROVIDERS.items()
         ],
         # Lo que de verdad se usa: un modelo retirado se muestra con su reemplazo.
-        "primary_model": _resolved(values["ai_suggestions_primary_model"], DEFAULT_PRIMARY),
-        "fallback_model": _resolved(values["ai_suggestions_fallback_model"], DEFAULT_FALLBACK),
+        "primary_model": primary,
+        "fallback_model": fallback,
         "ready": await business_ai_ready(),
+        "model_params": {spec: params_schema(spec) for spec in SPECS},
+        # Solo lo que aplica al modelo actual de cada posición.
+        "primary_params": sanitize_overrides(primary, parse_overrides(values["ai_suggestions_primary_params"]))[0],
+        "fallback_params": sanitize_overrides(fallback, parse_overrides(values["ai_suggestions_fallback_params"]))[0],
     }
 
 

@@ -54,14 +54,28 @@ def to_gemini_schema(schema: dict) -> dict:
 class GeminiClient:
     provider = "gemini"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, params: dict | None = None) -> None:
         self._api_key = api_key
         self.model = model
+        # Ya validados contra el registro (catalog.effective_params).
+        self._params = dict(params or {})
+        self._timeout = float(self._params.get("timeout_seconds") or TIMEOUT_SECONDS)
+
+    def _generation_config(self, max_tokens: int) -> dict:
+        """Parámetros neutrales → ``generationConfig`` de Gemini."""
+        config: dict = {"maxOutputTokens": int(self._params.get("max_output_tokens") or max_tokens)}
+        if self._params.get("reasoning"):
+            # Gemini 3 usa niveles (no presupuesto de tokens) y no se apaga.
+            config["thinkingConfig"] = {"thinkingLevel": str(self._params["reasoning"]).upper()}
+        for name, wire in (("temperature", "temperature"), ("top_p", "topP"), ("stop", "stopSequences")):
+            if name in self._params:
+                config[wire] = self._params[name]
+        return config
 
     async def _generate(self, body: dict) -> LlmResult:
         url = f"{BASE_URL}/models/{self.model}:generateContent"
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(url, json=body, headers={"x-goog-api-key": self._api_key})
         except httpx.HTTPError as exc:
             raise LlmError(f"No se pudo conectar con Gemini: {exc}") from exc
@@ -102,16 +116,16 @@ class GeminiClient:
             "contents": [{"role": "user", "parts": [{"text": request.user}]}],
             "safetySettings": SAFETY_SETTINGS,
             "generationConfig": {
+                **self._generation_config(request.max_output_tokens),
                 "responseMimeType": "application/json",
                 "responseSchema": to_gemini_schema(request.schema),
-                "maxOutputTokens": request.max_output_tokens,
             },
         })
 
     async def ping(self) -> LlmResult:
         return await self._generate({
             "contents": [{"role": "user", "parts": [{"text": "Responde únicamente con la palabra OK."}]}],
-            "generationConfig": {"maxOutputTokens": 300},
+            "generationConfig": {**self._generation_config(300), "maxOutputTokens": 300},
         })
 
     async def list_models(self) -> set[str]:

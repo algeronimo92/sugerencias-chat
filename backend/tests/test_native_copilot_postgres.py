@@ -79,7 +79,7 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
         client = RecordingClient()
         built = []
 
-        def factory(spec, api_key):
+        def factory(spec, api_key, overrides=None):
             built.append((spec, api_key))
             return client
 
