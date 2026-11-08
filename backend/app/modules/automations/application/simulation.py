@@ -20,13 +20,13 @@ async def simulate_visual_flow(rule_id: int, lead_id: str, deps: AutomationDeps 
     deps = deps or default_deps()
     current = await automation_ports().rules.get(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        raise InvalidAutomation("Flujo visual no encontrado")
+        raise InvalidAutomation("Este flujo ya no existe. Puede que lo hayan eliminado.")
     validated = await validate_visual_flow(
         current["name"], current["flow_definition"], current_rule_id=rule_id,
     )
     chat = await deps.fetch_chat(lead_id)
     if not chat:
-        raise InvalidAutomation("Lead no encontrado")
+        raise InvalidAutomation("No encontramos ese lead. Búscalo de nuevo.")
     matches, reason = await matches_condition_values(validated["conditions"], chat, rule_id, deps)
     if not matches:
         return {
@@ -51,4 +51,4 @@ async def simulate_visual_flow(rule_id: int, lead_id: str, deps: AutomationDeps 
                 "lead_id": chat["chat_id"], "lead_name": chat.get("name"),
                 "flow_version": current["flow_version"], "path": simulation.path,
             }
-    raise InvalidAutomation("La simulación excedió el máximo de bloques")
+    raise InvalidAutomation("La prueba recorrió demasiados bloques sin llegar a un Fin. Revisa que cada ruta termine en un Fin.")

@@ -11,19 +11,27 @@ import type { AutomationFlowDefinition } from '../types'
  * número se lo nombra ("#12"), se lo ve en el lienzo y en sus conexiones.
  */
 export function numberFlowNodes(flow: Pick<AutomationFlowDefinition, 'nodes' | 'edges'>): Map<string, number> {
+  const reachable = reachableFromTrigger(flow)
+  const order = [...reachable, ...flow.nodes.filter(node => !reachable.has(node.id)).map(node => node.id)]
+  return new Map(order.map((id, index) => [id, index + 1]))
+}
+
+/**
+ * Los bloques a los que se llega desde el disparador, en el orden del
+ * recorrido. Los demás nunca se ejecutan: el lienzo los marca, y el servidor
+ * no deja publicar con ellos (`validate_graph_topology`, mismo recorrido).
+ */
+export function reachableFromTrigger(flow: Pick<AutomationFlowDefinition, 'nodes' | 'edges'>): Set<string> {
   const next = new Map<string, string[]>()
   for (const edge of flow.edges) next.set(edge.source, [...(next.get(edge.source) ?? []), edge.target])
   const known = new Set(flow.nodes.map(node => node.id))
-  const order: string[] = []
   const seen = new Set<string>()
   const queue = flow.nodes.filter(node => node.type === FlowNodeType.Trigger).map(node => node.id)
   while (queue.length) {
     const id = queue.shift() as string
     if (seen.has(id) || !known.has(id)) continue
     seen.add(id)
-    order.push(id)
     queue.push(...(next.get(id) ?? []))
   }
-  for (const node of flow.nodes) if (!seen.has(node.id)) order.push(node.id)
-  return new Map(order.map((id, index) => [id, index + 1]))
+  return seen
 }

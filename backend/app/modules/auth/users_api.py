@@ -47,13 +47,13 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         raise HTTPException(status_code=400, detail="Rol inválido")
 
     if user_id == current.id and (body.role == "vendedor" or body.is_active is False):
-        raise HTTPException(status_code=400, detail="No podés quitarte a vos mismo el acceso de administrador")
+        raise HTTPException(status_code=400, detail="No puedes quitarte a ti mismo el acceso de administrador")
 
     values = body.model_dump(exclude_unset=True)
     try:
         user = await update_user(user_id, values)
     except LastAdminError:
-        raise HTTPException(status_code=400, detail="No podés dejar la cuenta sin ningún administrador activo")
+        raise HTTPException(status_code=400, detail="No puedes dejar la cuenta sin ningún administrador activo")
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")

@@ -49,7 +49,7 @@ export function SuggestionInstructionBox({ value, onChange, disabled = false, cl
           disabled={disabled}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
-          Orientá a la IA (opcional)
+          Orienta a la IA (opcional)
         </Button>
       </div>
     )

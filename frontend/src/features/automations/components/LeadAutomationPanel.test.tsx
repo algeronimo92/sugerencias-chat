@@ -125,7 +125,7 @@ describe('LeadAutomationPanel', () => {
 
     await user.click(screen.getByRole('button', { expanded: false }))
 
-    expect(screen.getByText(/1\. Enviar mensaje directo/)).toBeInTheDocument()
+    expect(screen.getByText(/1\. Enviar mensaje de texto/)).toBeInTheDocument()
     expect(screen.getByText(/2\. Pausa/)).toBeInTheDocument()
     expect(screen.getByText(/espera 30 min 0 s/)).toBeInTheDocument()
   })

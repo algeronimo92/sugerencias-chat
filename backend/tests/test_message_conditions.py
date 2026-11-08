@@ -76,7 +76,7 @@ class TestNormalizeConditionGroups:
         assert tags == {9}
 
     def test_rejects_empty_groups(self):
-        with pytest.raises(ValueError, match="reglas AND"):
+        with pytest.raises(ValueError, match="debe tener de 1 a"):
             normalize_flow_condition_node({
                 "condition_groups": [{"id": "empty", "conditions": []}],
             }, 2)

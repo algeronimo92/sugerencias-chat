@@ -63,7 +63,7 @@ export function StickerPreviewDialog({
                 {saved ? 'Agregado a tus stickers' : 'Agregar a mis stickers'}
               </button>
               {save.isError && (
-                <p className="px-4 pb-2 text-center text-xs text-red-500">No se pudo agregar. Probá de nuevo.</p>
+                <p className="px-4 pb-2 text-center text-xs text-red-500">No se pudo agregar. Prueba de nuevo.</p>
               )}
             </div>
           )}

@@ -95,7 +95,7 @@ export function WhatsappCostsPanel() {
         <p className="text-xs text-red-600 dark:text-red-400">No se pudieron cargar los costos.</p>
       ) : !hasData ? (
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-          Todavía no hay datos de Meta para este mes. Se copian solos cada 6 horas; con «Actualizar» los pedís ahora.
+          Todavía no hay datos de Meta para este mes. Se copian solos cada 6 horas; con «Actualizar» los pides ahora.
         </p>
       ) : (
         <>

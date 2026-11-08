@@ -79,7 +79,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
               className="w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent resize-none"
             />
             <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark mt-1">
-              Ajustá abreviaturas o números (ej. "min." → "minutos") para que se escuche natural.
+              Ajusta abreviaturas o números (ej. "min." → "minutos") para que se escuche natural.
             </p>
           </div>
 

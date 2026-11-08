@@ -163,12 +163,12 @@ function MetaEmbeddedSignupPanel() {
       {isLinked ? (
         <p className="flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Número vinculado. Seguí usándolo también desde la app de WhatsApp
+          Número vinculado. Sigue usándolo también desde la app de WhatsApp
           Business.
         </p>
       ) : (
         <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-          Vinculá un número que ya usás en la app oficial de WhatsApp Business
+          Vincula un número que ya usas en la app oficial de WhatsApp Business
           sin desconectarlo de ahí. Reemplaza tener que copiar el token, el WABA
           id y el phone number id a mano.
         </p>
@@ -204,7 +204,7 @@ export function WhatsappPanel({ onGoToClaves }: Props) {
       <MetaEmbeddedSignupPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
       <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-        También podés completar el token, el waba id y el phone number id{" "}
+        También puedes completar el token, el waba id y el phone number id{" "}
         <button
           type="button"
           onClick={onGoToClaves}

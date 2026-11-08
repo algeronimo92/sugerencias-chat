@@ -40,7 +40,7 @@ export function QuotedMessage({
       } ${className}`}
     >
       <span className="text-[11px] font-semibold leading-tight">
-        {isMine ? 'Vos' : contactName}
+        {isMine ? 'Tú' : contactName}
       </span>
       <span className="flex w-full min-w-0 items-center gap-1 text-xs leading-tight text-wa-muted dark:text-wa-text-dark/70">
         {Icon && <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />}

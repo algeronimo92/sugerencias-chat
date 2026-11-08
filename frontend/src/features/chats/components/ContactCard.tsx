@@ -249,7 +249,7 @@ function PhonePickerDialog({
           <div className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div className="min-w-0">
               <Dialog.Title className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                Elegí un número
+                Elige un número
               </Dialog.Title>
               <p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{name}</p>
             </div>

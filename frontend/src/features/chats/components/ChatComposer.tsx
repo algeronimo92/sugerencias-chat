@@ -47,15 +47,15 @@ function describeGeolocationError(err: GeolocationPositionError): string {
   if (err.code === err.PERMISSION_DENIED) {
     return (
       'El navegador tiene bloqueado el acceso a la ubicación para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y volvé a cargar la página.'
+      'Para habilitarlo: haz clic en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y vuelve a cargar la página.'
     )
   }
   if (err.code === err.POSITION_UNAVAILABLE) {
     return 'No se pudo determinar tu ubicación actual.'
   }
   if (err.code === err.TIMEOUT) {
-    return 'Se agotó el tiempo esperando la ubicación. Intentá de nuevo.'
+    return 'Se agotó el tiempo esperando la ubicación. Intenta de nuevo.'
   }
   return 'No se pudo obtener la ubicación.'
 }

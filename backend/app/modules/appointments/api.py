@@ -80,7 +80,7 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
     except PhoneValidationError as exc:
         raise HTTPException(400, str(exc)) from exc
     if body.vendedor.strip() not in await _active_seller_names():
-        raise HTTPException(400, "Vendedor inválido: elegí un usuario activo del equipo")
+        raise HTTPException(400, "Vendedor inválido: elige un usuario activo del equipo")
     if body.test_mode and user.role != "admin":
         raise HTTPException(403, "Solo un administrador puede enviar en modo prueba")
     try:

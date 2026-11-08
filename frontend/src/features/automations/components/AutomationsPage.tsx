@@ -1,7 +1,7 @@
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
 Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
-FileJson,GitBranch,History,Layers3,Loader2,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
+FileJson,GitBranch,History,Layers3,Loader2,LocateFixed,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
 Sparkles,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -29,7 +29,7 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_STATUS_LABELS, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus } from '../utils/automationExecutions'
+import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus } from '../utils/automationExecutions'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
@@ -99,22 +99,23 @@ function actionLabel(value: AutomationActionResult['type']) {
 
 function validateForm(form: RuleForm) {
   const errors: string[] = []
-  if (!form.name.trim()) errors.push('Escribe un nombre para la regla.')
-  if (RESPONSE_OVERDUE_TRIGGERS.has(form.triggerType) && (!form.triggerMinutes || form.triggerMinutes < 1 || form.triggerMinutes > 43200)) errors.push('La demora debe estar entre 1 minuto y 30 días.')
-  if (!form.actions.length || form.actions.length > 10) errors.push('Configura entre 1 y 10 acciones.')
+  if (!form.name.trim()) errors.push('Escribe un nombre para la regla (hasta 120 caracteres).')
+  if (RESPONSE_OVERDUE_TRIGGERS.has(form.triggerType) && (!form.triggerMinutes || form.triggerMinutes < 1 || form.triggerMinutes > 43200)) errors.push('El tiempo sin respuesta debe estar entre 1 minuto y 30 días.')
+  if (!form.actions.length || form.actions.length > 10) errors.push('Agrega entre 1 y 10 acciones.')
   form.actions.forEach((action, index) => {
     const prefix = `Acción ${index + 1}`
-    if (action.type === ActionType.CreateTask && (!action.title.trim() || !action.due_minutes || action.due_minutes < 1)) errors.push(`${prefix}: completa el título y vencimiento de la tarea.`)
-    if (action.type === ActionType.CreateTask && action.remind_minutes_before >= action.due_minutes) errors.push(`${prefix}: el recordatorio debe ser anterior al vencimiento.`)
-    if (action.type === ActionType.AssignSeller && !action.user_id) errors.push(`${prefix}: selecciona un vendedor.`)
-    if ((action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && !action.tag_id) errors.push(`${prefix}: selecciona una etiqueta.`)
-    if (action.type === ActionType.Notify && (!action.title.trim() || !action.body.trim() || (action.recipient === AutomationRecipient.Specific && !action.user_id))) errors.push(`${prefix}: completa destinatario, título y contenido.`)
-    if (action.type === ActionType.SendTemplate && !action.template_id) errors.push(`${prefix}: selecciona una plantilla.`)
-    if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje a enviar.`)
-    if (action.type === ActionType.ReactToLastCustomerMessage && (!action.emoji.trim() || action.emoji.length > 16)) errors.push(`${prefix}: selecciona una reacción válida.`)
-    if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
-    if (action.type === ActionType.SendMedia && !action.media_asset_id) errors.push(`${prefix}: elige un archivo de la librería de medios.`)
-    if (action.type === ActionType.SendMedia && action.caption.length > 1024) errors.push(`${prefix}: el caption admite máximo 1024 caracteres.`)
+    if (action.type === ActionType.CreateTask && (!action.title.trim() || !action.due_minutes || action.due_minutes < 1)) errors.push(`${prefix}: escribe el título de la tarea (hasta 160 caracteres) y un vencimiento de 1 minuto a 30 días.`)
+    if (action.type === ActionType.CreateTask && action.remind_minutes_before >= action.due_minutes) errors.push(`${prefix}: el recordatorio debe ser antes del vencimiento; pon menos minutos en «Recordar antes».`)
+    if (action.type === ActionType.AssignSeller && !action.user_id) errors.push(`${prefix}: elige el vendedor que se asignará.`)
+    if ((action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && !action.tag_id) errors.push(`${prefix}: elige la etiqueta.`)
+    if (action.type === ActionType.Notify && (!action.title.trim() || !action.body.trim())) errors.push(`${prefix}: escribe el título (hasta 160 caracteres) y el contenido (hasta 1000) de la notificación.`)
+    if (action.type === ActionType.Notify && action.recipient === AutomationRecipient.Specific && !action.user_id) errors.push(`${prefix}: elige a qué usuario se le avisará.`)
+    if (action.type === ActionType.SendTemplate && !action.template_id) errors.push(`${prefix}: elige la plantilla que se enviará.`)
+    if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje que se enviará.`)
+    if (action.type === ActionType.ReactToLastCustomerMessage && (!action.emoji.trim() || action.emoji.length > 16)) errors.push(`${prefix}: elige el emoji de la reacción.`)
+    if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige el archivo que se enviará.`)
+    if (action.type === ActionType.SendMedia && !action.media_asset_id) errors.push(`${prefix}: elige el archivo que se enviará.`)
+    if (action.type === ActionType.SendMedia && action.caption.length > 1024) errors.push(`${prefix}: el texto que acompaña al archivo puede tener hasta 1024 caracteres.`)
   })
   return errors
 }
@@ -156,7 +157,7 @@ export function AutomationsPage() {
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight } | null>(null)
+  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight; block?: string } | null>(null)
   // Llegada desde Catálogos: qué servicio resaltar en la regla abierta.
   const [formHighlight, setFormHighlight] = useState<ServiceHighlight | null>(null)
   const [importFlowOpen, setImportFlowOpen] = useState(false)
@@ -174,6 +175,8 @@ export function AutomationsPage() {
   const isSaving = create.isPending || update.isPending
   const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
+  // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
+  const visualRuleIds = new Set(visualRules.map(rule => rule.id))
   const activeRulesCount = rules.filter(rule => rule.is_active).length
   const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
@@ -234,8 +237,8 @@ export function AutomationsPage() {
   const [shownRule, setShownRule] = useState<string | null>(null)
   if (!isLoading && ruleUrl.key !== shownRule) {
     setShownRule(ruleUrl.key)
-    const { rule, highlight } = ruleUrl
-    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined }) }
+    const { rule, highlight, block } = ruleUrl
+    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
     else if (rule) { setTab('rules'); openEdit(rule, highlight) }
   }
   // Se marca solo lo que pidió Catálogos: la acción que asigna el servicio o la condición que filtra por su nombre.
@@ -382,7 +385,7 @@ export function AutomationsPage() {
             const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
             const hasPublished = !!rule.published_flow_definition
             const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
-            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir constructor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && <button type="button" disabled={update.isPending} aria-busy={update.isPending && update.variables?.id === rule.id} onClick={() => toggleRule(rule)} title={update.isPending && update.variables?.id === rule.id ? 'Actualizando…' : rule.is_active ? 'Pausar' : 'Reanudar'} className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}>{update.isPending && update.variables?.id === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}</button>}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
+            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && <button type="button" disabled={update.isPending} aria-busy={update.isPending && update.variables?.id === rule.id} onClick={() => toggleRule(rule)} title={update.isPending && update.variables?.id === rule.id ? 'Actualizando…' : rule.is_active ? 'Pausar' : 'Reanudar'} className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}>{update.isPending && update.variables?.id === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}</button>}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
           })}</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
@@ -421,12 +424,12 @@ export function AutomationsPage() {
             </div>
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status, execution.error)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
                   {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{execution.error}</p>}
-                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{String(result.status ?? '')}{result.error ? ` · ${String(result.error)}` : ''}</span></div>)}</div>
+                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${String(result.error)}` : ''}</span>{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} title="Abre el flujo en el bloque de este paso" className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {execution.lead_id && <button
                       type="button"
@@ -510,10 +513,10 @@ export function AutomationsPage() {
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-wa-border px-5 py-3.5 dark:border-wa-border-dark"><label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Checkbox checked={form.isActive} onChange={event => setForm(current => ({ ...current, isActive: event.target.checked }))} />Activar al guardar</label><div className="flex gap-2"><button type="button" onClick={closeForm} className="rounded-lg px-3 py-2 text-sm text-wa-muted">Cancelar</button><button type="submit" disabled={isSaving} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar regla</button></div></footer>
       </form></div>}
-      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
+      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
       {importFlowOpen && <ImportFlowJsonDialog
         title="Importar flujo desde JSON"
-        description="Pega el JSON de un flow_definition o sube un archivo .json. Se creará como un flujo visual nuevo en modo borrador; podrás revisarlo y publicarlo desde el constructor."
+        description="Pega el JSON de un flujo o sube un archivo .json. Se creará como un flujo nuevo en borrador; podrás revisarlo y publicarlo desde el editor."
         confirmLabel="Crear flujo"
         requireNameField
         onClose={() => setImportFlowOpen(false)}

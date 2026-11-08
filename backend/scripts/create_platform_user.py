@@ -48,7 +48,7 @@ async def _main() -> int:
             ).scalars().first()
             if existing is not None and not args.reset_password:
                 raise SystemExit(
-                    f"{email} ya existe; usá --reset-password para cambiarle la contraseña"
+                    f"{email} ya existe; usa --reset-password para cambiarle la contraseña"
                 )
             if existing is not None:
                 existing.password_hash = hash_password(args.password)

@@ -111,7 +111,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
               <UserIcon className="w-3.5 h-3.5 text-wa-muted shrink-0" />
             )}
             {user.name}
-            {isSelf && <span className="text-[10px] text-wa-muted font-normal">(vos)</span>}
+            {isSelf && <span className="text-[10px] text-wa-muted font-normal">(tú)</span>}
           </p>
           <p className="text-xs text-wa-muted dark:text-wa-muted-dark truncate">{user.email}</p>
         </div>

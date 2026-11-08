@@ -69,7 +69,7 @@ class OpenAiClient:
 
     async def complete_json(self, request: LlmRequest) -> LlmResult:
         # Sin ``temperature``: los modelos con razonamiento la rechazan, y el
-        # botón "Generá otras" necesita variedad entre una respuesta y otra.
+        # botón "Genera otras" necesita variedad entre una respuesta y otra.
         return await self._complete({
             **self._generation(request.max_output_tokens),
             "messages": [

@@ -66,9 +66,9 @@ class TestStartManualFlowExecution:
 
     @pytest.mark.parametrize(("overrides", "is_admin", "message"), [
         ({"visible_to_sellers": False}, False, "no está disponible"),
-        ({"builder_mode": AutomationBuilderMode.SIMPLE}, False, "flujo de inicio manual"),
-        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "flujo de inicio manual"),
-        ({"is_active": False}, True, "Publica y activa"),
+        ({"builder_mode": AutomationBuilderMode.SIMPLE}, False, "no se puede iniciar desde el chat"),
+        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "no se puede iniciar desde el chat"),
+        ({"is_active": False}, True, "pausado o todavía no se publicó"),
     ])
     async def test_rejects_flows_that_cannot_be_started(self, world, overrides, is_admin, message):
         world.rules.rules[RULE_ID] = manual_rule(**overrides)
@@ -78,7 +78,7 @@ class TestStartManualFlowExecution:
         assert world.scheduling.scheduled == []
 
     async def test_rejects_a_missing_flow(self, world):
-        with pytest.raises(ValueError, match="Flujo no encontrado"):
+        with pytest.raises(ValueError, match="Este flujo ya no existe"):
             await start_manual_flow_execution(999, LEAD_ID, started_by_user_id=7, is_admin=True)
 
     async def test_raises_when_the_lead_does_not_exist_so_no_execution_was_created(self, world):
@@ -109,6 +109,6 @@ class TestStartManualFlowExecution:
         a un mensaje claro en vez de propagarse como un 500."""
         world.scheduling.conflict = True
 
-        with pytest.raises(ValueError, match="Ya hay una ejecución"):
+        with pytest.raises(ValueError, match="ya está en curso"):
             await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
         assert world.published == []

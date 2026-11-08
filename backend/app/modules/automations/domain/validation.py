@@ -57,9 +57,9 @@ def _normalize_create_task(action_type: str, raw: dict, position: int, refs: Act
     due_minutes = int(raw.get("due_minutes") or 0)
     remind_before = int(raw.get("remind_minutes_before") or 0)
     if not title or len(title) > 160 or not 1 <= due_minutes <= 43200:
-        raise InvalidAutomation(f"Acción {position}: título y vencimiento de tarea inválidos")
+        raise InvalidAutomation(f"Acción {position}: escribe el título de la tarea (hasta 160 caracteres) y un vencimiento de 1 minuto a 30 días")
     if remind_before < 0 or remind_before >= due_minutes:
-        raise InvalidAutomation(f"Acción {position}: el recordatorio debe ser anterior al vencimiento")
+        raise InvalidAutomation(f"Acción {position}: el recordatorio debe ser antes del vencimiento; pon menos minutos en «Recordar antes»")
     assignee = int(raw["assigned_user_id"]) if raw.get("assigned_user_id") else None
     if assignee:
         refs.users.add(assignee)
@@ -78,7 +78,7 @@ def _normalize_create_task(action_type: str, raw: dict, position: int, refs: Act
 def _normalize_assign_seller(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     user_id = int(raw.get("user_id") or 0)
     if not user_id:
-        raise InvalidAutomation(f"Acción {position}: selecciona un vendedor")
+        raise InvalidAutomation(f"Acción {position}: elige el vendedor que se asignará")
     refs.users.add(user_id)
     return {"type": action_type, "user_id": user_id}
 
@@ -86,7 +86,7 @@ def _normalize_assign_seller(action_type: str, raw: dict, position: int, refs: A
 def _normalize_tag_action(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     tag_id = int(raw.get("tag_id") or 0)
     if not tag_id:
-        raise InvalidAutomation(f"Acción {position}: selecciona una etiqueta")
+        raise InvalidAutomation(f"Acción {position}: elige la etiqueta")
     refs.tags.add(tag_id)
     return {"type": action_type, "tag_id": tag_id}
 
@@ -94,7 +94,7 @@ def _normalize_tag_action(action_type: str, raw: dict, position: int, refs: Acti
 def _normalize_change_stage(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     stage = str(raw.get("stage") or "")
     if not is_stage_key(stage):
-        raise InvalidAutomation(f"Acción {position}: etapa inválida")
+        raise InvalidAutomation(f"Acción {position}: elige a qué etapa se mueve el lead")
     refs.stages.add(stage)
     return {"type": action_type, "stage": stage}
 
@@ -113,9 +113,9 @@ def _normalize_notify(action_type: str, raw: dict, position: int, refs: ActionRe
         else None
     )
     if not title or not body or len(title) > 160 or len(body) > 1000:
-        raise InvalidAutomation(f"Acción {position}: título o contenido de notificación inválido")
+        raise InvalidAutomation(f"Acción {position}: escribe el título (hasta 160 caracteres) y el contenido (hasta 1000) de la notificación")
     if recipient == AutomationRecipient.SPECIFIC and not user_id:
-        raise InvalidAutomation(f"Acción {position}: selecciona el destinatario")
+        raise InvalidAutomation(f"Acción {position}: elige a qué usuario se le avisará")
     if user_id:
         refs.users.add(user_id)
     return {
@@ -127,7 +127,7 @@ def _normalize_notify(action_type: str, raw: dict, position: int, refs: ActionRe
 def _normalize_send_template(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     template_id = int(raw.get("template_id") or 0)
     if not template_id:
-        raise InvalidAutomation(f"Acción {position}: selecciona una plantilla")
+        raise InvalidAutomation(f"Acción {position}: elige la plantilla que se enviará")
     refs.templates.add(template_id)
     return {"type": action_type, "template_id": template_id}
 
@@ -135,16 +135,16 @@ def _normalize_send_template(action_type: str, raw: dict, position: int, refs: A
 def _normalize_send_message(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     text = str(raw.get("text") or "").strip()
     if not text:
-        raise InvalidAutomation(f"Acción {position}: escribe el mensaje a enviar")
+        raise InvalidAutomation(f"Acción {position}: escribe el mensaje que se enviará")
     if len(text) > MAX_WHATSAPP_TEXT_LENGTH:
-        raise InvalidAutomation(f"Acción {position}: el mensaje admite máximo {MAX_WHATSAPP_TEXT_LENGTH} caracteres")
+        raise InvalidAutomation(f"Acción {position}: el mensaje puede tener hasta {MAX_WHATSAPP_TEXT_LENGTH} caracteres; acórtalo")
     return {"type": action_type, "text": text}
 
 
 def _normalize_reaction(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     emoji = str(raw.get("emoji") or "").strip()
     if not emoji or len(emoji) > MAX_REACTION_LENGTH:
-        raise InvalidAutomation(f"Acción {position}: selecciona una reacción válida")
+        raise InvalidAutomation(f"Acción {position}: elige el emoji de la reacción")
     return {"type": action_type, "emoji": emoji}
 
 
@@ -158,14 +158,14 @@ def _normalize_change_service(action_type: str, raw: dict, position: int, refs: 
 def _normalize_conversation_state(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     state = str(raw.get("state") or "")
     if state not in CONVERSATION_STATES:
-        raise InvalidAutomation(f"Acción {position}: estado de conversación inválido")
+        raise InvalidAutomation(f"Acción {position}: elige si la conversación se abre o se cierra")
     return {"type": action_type, "state": state}
 
 
 def _normalize_media_asset_action(action_type: str, raw: dict, position: int, refs: ActionReferences) -> dict:
     media_asset_id = int(raw.get("media_asset_id") or 0)
     if not media_asset_id:
-        raise InvalidAutomation(f"Acción {position}: selecciona un archivo de la librería de medios")
+        raise InvalidAutomation(f"Acción {position}: elige el archivo que se enviará")
     refs.media_assets.add(media_asset_id)
     return {"type": action_type, "media_asset_id": media_asset_id}
 
@@ -175,8 +175,7 @@ def _normalize_send_media(action_type: str, raw: dict, position: int, refs: Acti
     caption = str(raw.get("caption") or "").strip()
     if len(caption) > MAX_MEDIA_CAPTION_LENGTH:
         raise InvalidAutomation(
-            f"Acción {position}: el caption admite máximo "
-            f"{MAX_MEDIA_CAPTION_LENGTH} caracteres"
+            f"Acción {position}: el texto que acompaña al archivo puede tener hasta {MAX_MEDIA_CAPTION_LENGTH} caracteres"
         )
     return {**normalized, "caption": caption}
 
@@ -201,12 +200,12 @@ ACTION_NORMALIZERS: dict[str, Callable[[str, dict, int, ActionReferences], dict]
 
 def normalize_trigger(trigger_type: object, trigger_config: object) -> tuple[str, dict]:
     if trigger_type not in TRIGGER_TYPES:
-        raise InvalidAutomation("Disparador no soportado")
+        raise InvalidAutomation("Elige un disparador de la lista.")
     config = trigger_config if isinstance(trigger_config, dict) else {}
     if trigger_type in OVERDUE_TRIGGERS:
         minutes = int(config.get("minutes") or 0)
         if not 1 <= minutes <= 43200:
-            raise InvalidAutomation("La demora debe estar entre 1 minuto y 30 días")
+            raise InvalidAutomation("El tiempo sin respuesta debe estar entre 1 minuto y 30 días.")
         return trigger_type, {"minutes": minutes}
     return trigger_type, {}
 
@@ -214,11 +213,11 @@ def normalize_trigger(trigger_type: object, trigger_config: object) -> tuple[str
 def normalize_actions(actions: object, refs: ActionReferences, *, max_actions: int = MAX_ACTIONS) -> list[dict]:
     actions = actions if isinstance(actions, list) else []
     if not 1 <= len(actions) <= max_actions:
-        raise InvalidAutomation(f"Configura entre 1 y {max_actions} acciones")
+        raise InvalidAutomation(f"Agrega entre 1 y {max_actions} acciones.")
     normalized_actions: list[dict] = []
     for position, raw in enumerate(actions, start=1):
         if not isinstance(raw, dict) or raw.get("type") not in ACTION_NORMALIZERS:
-            raise InvalidAutomation(f"Acción {position}: tipo no soportado")
+            raise InvalidAutomation(f"Acción {position}: elige qué hace esta acción")
         action_type = raw["type"]
         normalized_actions.append(
             ACTION_NORMALIZERS[action_type](action_type, raw, position, refs)
@@ -232,7 +231,8 @@ def normalize_actions(actions: object, refs: ActionReferences, *, max_actions: i
         ))
         if unknown:
             names = ", ".join(f"{{{{{name}}}}}" for name in sorted(unknown))
-            raise InvalidAutomation(f"Acción {position}: variables no reconocidas: {names}")
+            verb = "no existe" if len(unknown) == 1 else "no existen"
+            raise InvalidAutomation(f"Acción {position}: {names} {verb}. Usa {{{{nombre}}}}, {{{{telefono}}}}, {{{{servicio}}}}, {{{{vendedor}}}} o {{{{fecha_actual}}}}")
     return normalized_actions
 
 
@@ -243,7 +243,7 @@ def normalize_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> tuple[dic
     ``normalize_rate_limit``, para conservar el orden de los mensajes."""
     name = str(values.get("name") or "").strip()
     if not name or len(name) > 120:
-        raise InvalidAutomation("El nombre debe tener entre 1 y 120 caracteres")
+        raise InvalidAutomation("Escribe un nombre para la regla (hasta 120 caracteres).")
     trigger_type, trigger_config = normalize_trigger(values.get("trigger_type"), values.get("trigger_config"))
     conditions = normalize_conditions(values.get("conditions"))
     refs = ActionReferences()
@@ -269,7 +269,7 @@ def normalize_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> tuple[dic
 @rejects_malformed_input
 def normalize_rate_limit(value: object) -> int | None:
     if value is not None and not 1 <= int(value) <= 1000:
-        raise InvalidAutomation("El límite por hora debe estar entre 1 y 1000")
+        raise InvalidAutomation("El máximo por hora debe estar entre 1 y 1000. Déjalo vacío para no poner límite.")
     return int(value) if value else None
 
 
@@ -285,28 +285,25 @@ def normalize_wait_any_conditions(data: dict, position: int) -> dict:
     """
     raw_conditions = data.get("conditions")
     if not isinstance(raw_conditions, list) or not raw_conditions:
-        raise InvalidAutomation(f"Pausa {position}: configura al menos una condición")
+        raise InvalidAutomation("La pausa necesita al menos el temporizador.")
     kinds_seen: set[str] = set()
     conditions: list[dict] = []
     for raw in raw_conditions:
         kind = raw.get("kind") if isinstance(raw, dict) else None
         if kind not in set(WaitAnyConditionKind):
-            raise InvalidAutomation(f"Pausa {position}: condición inválida")
+            raise InvalidAutomation("Una condición de la pausa no existe. Quítala y agrégala de nuevo.")
         if kind in kinds_seen:
-            raise InvalidAutomation(f"Pausa {position}: no repitas el mismo tipo de condición")
+            raise InvalidAutomation("Hay una condición repetida en la pausa. Deja solo una de cada tipo.")
         kinds_seen.add(kind)
         if kind == WaitAnyConditionKind.TIMER:
             seconds = int(raw.get("seconds") or 0)
             if not 1 <= seconds <= 604800:
-                raise InvalidAutomation(f"Pausa {position}: el temporizador debe estar entre 1 segundo y 7 días")
+                raise InvalidAutomation("El temporizador debe durar entre 1 segundo y 7 días.")
             conditions.append({"id": kind, "kind": kind, "seconds": seconds})
         else:
             conditions.append({"id": kind, "kind": kind})
     if WaitAnyConditionKind.TIMER not in kinds_seen:
-        raise InvalidAutomation(
-            f"Pausa {position}: agrega un temporizador — es obligatorio, para que la "
-            "ejecución nunca quede esperando para siempre"
-        )
+        raise InvalidAutomation("Agrega un temporizador: sin él, el lead podría quedarse esperando para siempre.")
     return {"conditions": conditions}
 
 
@@ -332,10 +329,10 @@ def normalize_question(data: dict, position: int) -> dict:
     contestó a tiempo), los handles de salida del nodo."""
     text = str(data.get("text") or "").strip()
     if not text:
-        raise InvalidAutomation(f"Pregunta {position}: escribe el mensaje")
+        raise InvalidAutomation("Escribe la pregunta que recibirá el lead.")
     # Va como cuerpo de un interactivo de botones de Meta.
     if len(text) > limit("body"):
-        raise InvalidAutomation(f"Pregunta {position}: el mensaje admite máximo {limit('body')} caracteres")
+        raise InvalidAutomation(f"La pregunta puede tener hasta {limit('body')} caracteres. Acórtala.")
     raw_buttons = data.get("buttons")
     labels = [
         label for label in (
@@ -345,10 +342,10 @@ def normalize_question(data: dict, position: int) -> dict:
         if label
     ]
     if not 1 <= len(labels) <= MAX_QUESTION_BUTTONS:
-        raise InvalidAutomation(f"Pregunta {position}: configura entre 1 y {MAX_QUESTION_BUTTONS} botones")
+        raise InvalidAutomation(f"Escribe el texto de al menos un botón (máximo {MAX_QUESTION_BUTTONS}).")
     timeout_seconds = int(data.get("timeout_seconds") or 0)
     if not 1 <= timeout_seconds <= 604800:
-        raise InvalidAutomation(f"Pregunta {position}: el tiempo de espera debe estar entre 1 segundo y 7 días")
+        raise InvalidAutomation("El tiempo máximo para responder debe estar entre 1 segundo y 7 días.")
     buttons = [{"id": f"btn_{index}", "label": label} for index, label in enumerate(labels, start=1)]
     return {"text": text, "buttons": buttons, "timeout_seconds": timeout_seconds}
 
@@ -368,9 +365,7 @@ def normalize_round_robin(data: dict, position: int) -> dict:
         for raw in (raw_outputs if isinstance(raw_outputs, list) else [])
     ]
     if not 2 <= len(labels) <= MAX_ROUND_ROBIN_OUTPUTS:
-        raise InvalidAutomation(
-            f"Round robin {position}: configura entre 2 y {MAX_ROUND_ROBIN_OUTPUTS} salidas"
-        )
+        raise InvalidAutomation(f"El reparto necesita entre 2 y {MAX_ROUND_ROBIN_OUTPUTS} salidas.")
     return {
         "outputs": [
             {"id": f"out_{index}", "label": label or f"Salida {index}"}
@@ -382,7 +377,7 @@ def normalize_round_robin(data: dict, position: int) -> dict:
 def normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | None, int | None]:
     condition_type = str(data.get("condition_type") or "")
     if condition_type not in FLOW_CONDITION_TYPES:
-        raise InvalidAutomation(f"Condición {position}: tipo no soportado")
+        raise InvalidAutomation("Una de las condiciones no existe. Elige otra de la lista.")
     value = data.get("value")
     user_id = None
     tag_id = None
@@ -391,7 +386,7 @@ def normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | Non
         # La existencia en el negocio la verifica flow_validation con el
         # resto de las referencias del flujo.
         if not is_stage_key(value):
-            raise InvalidAutomation(f"Condición {position}: etapa inválida")
+            raise InvalidAutomation("Elige la etapa que se compara.")
     elif condition_type in {
         FlowConditionType.ORIGIN_CONTAINS,
         FlowConditionType.SERVICE_CONTAINS,
@@ -410,20 +405,20 @@ def normalize_flow_condition(data: dict, position: int) -> tuple[dict, int | Non
             else 120
         )
         if not value or len(value) > max_length:
-            raise InvalidAutomation(f"Condición {position}: escribe un valor de hasta {max_length} caracteres")
+            raise InvalidAutomation(f"Escribe el texto que se busca (hasta {max_length} caracteres).")
     elif condition_type in {FlowConditionType.REPLY_ID_EQUALS, FlowConditionType.MESSAGE_TYPE_EQUALS}:
         value = str(value or "").strip()
         if not value or len(value) > limit("button_id"):
-            raise InvalidAutomation(f"Condición {position}: escribe un valor de hasta {limit('button_id')} caracteres")
+            raise InvalidAutomation(f"Escribe el ID del botón u opción (hasta {limit('button_id')} caracteres).")
     elif condition_type == FlowConditionType.SELLER_EQUALS:
         user_id = int(value or 0)
         if not user_id:
-            raise InvalidAutomation(f"Condición {position}: selecciona un vendedor")
+            raise InvalidAutomation("Elige el vendedor.")
         value = user_id
     elif condition_type == FlowConditionType.TAG_PRESENT:
         tag_id = int(value or 0)
         if not tag_id:
-            raise InvalidAutomation(f"Condición {position}: selecciona una etiqueta")
+            raise InvalidAutomation("Elige la etiqueta.")
         value = tag_id
     else:
         value = True
@@ -449,9 +444,7 @@ def normalize_flow_condition_node(
             }],
         }, ({user_id} if user_id else set()), ({tag_id} if tag_id else set())
     if not isinstance(raw_groups, list) or not 1 <= len(raw_groups) <= MAX_CONDITION_GROUPS:
-        raise InvalidAutomation(
-            f"Condición {position}: configura entre 1 y {MAX_CONDITION_GROUPS} grupos"
-        )
+        raise InvalidAutomation(f"La condición puede tener de 1 a {MAX_CONDITION_GROUPS} salidas.")
 
     groups: list[dict] = []
     users: set[int] = set()
@@ -460,30 +453,29 @@ def normalize_flow_condition_node(
     total_conditions = 0
     for group_position, raw_group in enumerate(raw_groups, start=1):
         if not isinstance(raw_group, dict):
-            raise InvalidAutomation(f"Condición {position}, grupo {group_position}: formato inválido")
+            raise InvalidAutomation(f"La salida {group_position} no se pudo leer. Si importaste un JSON, revísalo.")
         group_id = str(raw_group.get("id") or f"group_{group_position}").strip()[:80]
         if not group_id or group_id in group_ids:
-            raise InvalidAutomation(f"Condición {position}: identificador de grupo vacío o duplicado")
+            raise InvalidAutomation("Dos salidas tienen el mismo identificador. Si importaste un JSON, revísalo.")
         group_ids.add(group_id)
         raw_conditions = raw_group.get("conditions")
         if not isinstance(raw_conditions, list) or not 1 <= len(raw_conditions) <= MAX_CONDITIONS_PER_GROUP:
             raise InvalidAutomation(
-                f"Condición {position}, grupo {group_position}: configura entre 1 y "
-                f"{MAX_CONDITIONS_PER_GROUP} reglas AND"
+                f"La salida {group_position} debe tener de 1 a {MAX_CONDITIONS_PER_GROUP} condiciones."
             )
         condition_ids: set[str] = set()
         conditions: list[dict] = []
         for condition_position, raw_condition in enumerate(raw_conditions, start=1):
             if not isinstance(raw_condition, dict):
                 raise InvalidAutomation(
-                    f"Condición {position}, grupo {group_position}, regla {condition_position}: formato inválido"
+                    f"La condición {condition_position} de la salida {group_position} no se pudo leer. Si importaste un JSON, revísalo."
                 )
             condition_id = str(
                 raw_condition.get("id") or f"condition_{condition_position}"
             ).strip()[:80]
             if not condition_id or condition_id in condition_ids:
                 raise InvalidAutomation(
-                    f"Condición {position}, grupo {group_position}: identificador de regla vacío o duplicado"
+                    f"La salida {group_position} tiene dos condiciones con el mismo identificador. Si importaste un JSON, revísalo."
                 )
             condition_ids.add(condition_id)
             normalized, user_id, tag_id = normalize_flow_condition(raw_condition, position)
@@ -496,6 +488,6 @@ def normalize_flow_condition_node(
         groups.append({"id": group_id, "conditions": conditions})
     if total_conditions > MAX_CONDITIONS_PER_NODE:
         raise InvalidAutomation(
-            f"Condición {position}: admite hasta {MAX_CONDITIONS_PER_NODE} reglas en total"
+            f"Un bloque Condición admite hasta {MAX_CONDITIONS_PER_NODE} condiciones. Pasa algunas a otro bloque Condición."
         )
     return {"condition_groups": groups}, users, tags

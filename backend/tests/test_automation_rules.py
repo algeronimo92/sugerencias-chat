@@ -81,7 +81,7 @@ class TestNormalizeConditions:
         assert result["seller_id"] is None
 
     def test_rejects_a_malformed_stage_key(self):
-        with pytest.raises(ValueError, match="Etapa"):
+        with pytest.raises(ValueError, match="etapa elegida"):
             normalize_conditions({"stage": "Etapa Inventada"})
 
     def test_accepts_a_custom_stage_key(self):
@@ -167,20 +167,20 @@ class TestClassifyCustomerReply:
 
 class TestNormalizeEdges:
     def test_rejects_edge_pointing_to_unknown_node(self):
-        with pytest.raises(ValueError, match="origen o destino"):
+        with pytest.raises(ValueError, match="consigo mismo"):
             normalize_edges([edge("t", "fantasma")], {"t", "a"})
 
     def test_rejects_self_loop(self):
-        with pytest.raises(ValueError, match="origen o destino"):
+        with pytest.raises(ValueError, match="consigo mismo"):
             normalize_edges([edge("t", "t")], {"t"})
 
     def test_rejects_duplicate_edge_id(self):
         duplicated = [edge("t", "a"), edge("t", "a")]
-        with pytest.raises(ValueError, match="duplicado"):
+        with pytest.raises(ValueError, match="mismo identificador"):
             normalize_edges(duplicated, {"t", "a"})
 
     def test_rejects_handle_outside_flowhandle_when_strict(self):
-        with pytest.raises(ValueError, match="salida o identificador"):
+        with pytest.raises(ValueError, match="ya no tiene"):
             normalize_edges([edge("w", "e", "timer")], {"w", "e"}, allow_duplicate_handles=False)
 
     def test_accepts_extra_handles_when_provided(self):
@@ -205,14 +205,14 @@ class TestValidateGraphTopology:
             node("b", FlowNodeType.ACTION),
         ]
         edges = [edge("t", "a"), edge("a", "b"), edge("b", "a")]
-        with pytest.raises(ValueError, match="ciclo"):
+        with pytest.raises(ValueError, match="sin fin"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_rejects_unreachable_node(self):
         nodes, edges = linear_flow()
         nodes.append(node("huerfano", FlowNodeType.ACTION))
         edges.append(edge("huerfano", "e"))
-        with pytest.raises(ValueError, match="conectados|alcanzables"):
+        with pytest.raises(ValueError, match="Ningún bloque conecta|Ninguna ruta"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_end_node_cannot_have_outgoing_edges(self):
@@ -229,7 +229,7 @@ class TestValidateGraphTopology:
             node("e", FlowNodeType.END),
         ]
         edges = [edge("t", "c"), edge("c", "e", FlowHandle.YES)]
-        with pytest.raises(ValueError, match="Sí y una salida No"):
+        with pytest.raises(ValueError, match="«Sí» y «No»"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_condition_with_both_branches_is_valid(self):
@@ -264,7 +264,7 @@ class TestValidateGraphTopology:
             edge("c", "e1", "hollywood"),
             edge("c", "e3", FlowHandle.NO),
         ]
-        with pytest.raises(ValueError, match="grupo OR"):
+        with pytest.raises(ValueError, match="cada grupo de condiciones"):
             validate_graph_topology(nodes, incomplete, "t")
         validate_graph_topology(nodes, [
             *incomplete,
@@ -274,7 +274,7 @@ class TestValidateGraphTopology:
     def test_action_must_have_exactly_one_outgoing_edge(self):
         nodes, edges = linear_flow()
         edges.append(edge("a", "e", FlowHandle.YES))
-        with pytest.raises(ValueError, match="exactamente una salida"):
+        with pytest.raises(ValueError, match="Falta conectar su salida"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_wait_any_requires_one_edge_per_condition(self):
@@ -288,7 +288,7 @@ class TestValidateGraphTopology:
             node("e2", FlowNodeType.END),
         ]
         edges = [edge("t", "w"), edge("w", "e1", "timer")]
-        with pytest.raises(ValueError, match="propia salida"):
+        with pytest.raises(ValueError, match="Conecta la salida de cada"):
             validate_graph_topology(nodes, edges, "t")
         edges.append(edge("w", "e2", "message"))
         validate_graph_topology(nodes, edges, "t")
@@ -318,7 +318,7 @@ class TestValidateGraphTopology:
         ]
         # Dos salidas para una sola condición: no matchea el set esperado.
         edges = [edge("t", "w"), edge("w", "e1", "timer"), edge("w", "e2", "timer")]
-        with pytest.raises(ValueError, match="propia salida"):
+        with pytest.raises(ValueError, match="Conecta la salida de cada"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_wait_any_accepts_business_hours_and_media_played(self):
@@ -352,7 +352,7 @@ class TestValidateGraphTopology:
             node("e4", FlowNodeType.END),
         ]
         edges = [edge("t", "q"), edge("q", "e1", "btn_1"), edge("q", "e2", "btn_2")]
-        with pytest.raises(ValueError, match="propia salida"):
+        with pytest.raises(ValueError, match="Conecta la salida de cada"):
             validate_graph_topology(nodes, edges, "t")
         edges += [edge("q", "e3", "other"), edge("q", "e4", "timeout")]
         validate_graph_topology(nodes, edges, "t")
@@ -397,5 +397,5 @@ class TestValidateGraphTopology:
             edge("t", "q"), edge("q", "e1", "btn_1"), edge("q", "e2", "other"),
             edge("q", "e3", "timeout"), edge("q", "e4", "video_visto"),
         ]
-        with pytest.raises(ValueError, match="propia salida"):
+        with pytest.raises(ValueError, match="Conecta la salida de cada"):
             validate_graph_topology(nodes, edges, "t")

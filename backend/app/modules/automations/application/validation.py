@@ -18,15 +18,15 @@ async def verify_references(refs: ActionReferences, references: ReferenceChecker
         if keys:
             problem = await references.stage_problem(keys, active_only=active_only)
             if problem:
-                raise InvalidAutomation(f"Etapa inválida: {problem}")
+                raise InvalidAutomation(f"{problem}. Elige otra etapa.")
     if refs.users and await references.inactive_users(refs.users):
-        raise InvalidAutomation("Algún usuario seleccionado no existe o está inactivo")
+        raise InvalidAutomation("Uno de los usuarios elegidos ya no existe o está desactivado. Elige otro.")
     if refs.tags and await references.inactive_tags(refs.tags):
-        raise InvalidAutomation("Alguna etiqueta seleccionada no existe o está inactiva")
+        raise InvalidAutomation("Una de las etiquetas elegidas ya no existe o está desactivada. Elige otra.")
     if refs.templates and await references.unusable_templates(refs.templates):
-        raise InvalidAutomation("El envío automático solo admite plantillas internas activas (sin botones/listas)")
+        raise InvalidAutomation("Una de las plantillas elegidas no se puede enviar sola: tiene que ser una plantilla interna activa y sin botones ni listas. Elige otra.")
     if refs.media_assets and await references.missing_media_assets(refs.media_assets):
-        raise InvalidAutomation("Algún archivo de la librería de medios ya no existe")
+        raise InvalidAutomation("Uno de los archivos elegidos ya no está en la librería de medios. Elige otro.")
 
 
 async def validate_automation_rule(
@@ -61,13 +61,13 @@ async def validate_visual_flow(
     flow = normalize_flow(name, definition)
     await verify_references(flow.refs, references)
     if flow.condition_users and await references.inactive_users(flow.condition_users):
-        raise InvalidAutomation("Algún vendedor usado en una condición no existe o está inactivo")
+        raise InvalidAutomation("Un bloque Condición usa un vendedor que ya no existe o está desactivado. Elige otro.")
     if flow.condition_tags and await references.inactive_tags(flow.condition_tags):
-        raise InvalidAutomation("Alguna etiqueta usada en una condición no existe o está inactiva")
+        raise InvalidAutomation("Un bloque Condición usa una etiqueta que ya no existe o está desactivada. Elige otra.")
     if flow.condition_stages:
         problem = await references.stage_problem(flow.condition_stages, active_only=False)
         if problem:
-            raise InvalidAutomation(f"Etapa usada en una condición: {problem}")
+            raise InvalidAutomation(f"En un bloque Condición: {problem}. Elige otra etapa.")
     if flow.invoked_flow_ids:
         check_invoked_flows(
             await rules.flow_targets(), flow.invoked_flow_ids, current_rule_id, {"nodes": flow.nodes},

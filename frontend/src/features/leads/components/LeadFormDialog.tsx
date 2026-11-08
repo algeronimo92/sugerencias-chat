@@ -294,9 +294,9 @@ export function LeadFormDialog({
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs text-amber-800 dark:text-amber-300">
                   Este chat ya tiene conversación, pero WhatsApp todavía no reveló el teléfono
-                  real detrás de él. Si el número que cargás es incorrecto, los próximos mensajes
+                  real detrás de él. Si el número que cargas es incorrecto, los próximos mensajes
                   se le van a mandar a otra persona, mientras este chat sigue mostrando la
-                  conversación anterior. Confirmalo con el cliente antes de guardar.
+                  conversación anterior. Confírmalo con el cliente antes de guardar.
                 </p>
               </div>
             )}

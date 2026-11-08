@@ -200,7 +200,7 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText('Citas ligadas a un lead')).toBeInTheDocument()
     expect(screen.getByText('80% del total')).toBeInTheDocument()
-    expect(screen.getByText('Revisá el teléfono')).toBeInTheDocument()
+    expect(screen.getByText('Revisa el teléfono')).toBeInTheDocument()
     expect(screen.getByText('De quién es el lead de la cita')).toBeInTheDocument()
   })
 

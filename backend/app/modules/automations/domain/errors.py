@@ -15,10 +15,28 @@ from app.modules.automations.domain.types import ExecutionErrorCode
 
 
 class InvalidAutomation(DomainError, ValueError):
-    """La regla o el flujo no son válidos."""
+    """La regla o el flujo no son válidos.
+
+    ``node_id`` es el bloque del flujo al que se refiere el error, cuando se
+    refiere a uno: la respuesta lo manda como ``target`` y el editor lo
+    muestra como "Bloque #12" con un botón para ir a él. Antes el mensaje
+    decía "Bloque 7", "Acción 3" o "Espera 2" (tres numeraciones internas,
+    ninguna la del lienzo) o nada, y en un flujo de 50 bloques había que
+    buscarlo a ojo.
+    """
 
     status_code = 400
     code = "automation_invalid"
+
+    def __init__(self, detail=None, *, code: str | None = None, node_id: str | None = None) -> None:
+        super().__init__(detail, code=code)
+        self.node_id = node_id
+
+    def to_response(self) -> dict:
+        response = super().to_response()
+        if self.node_id:
+            response["target"] = self.node_id
+        return response
 
 
 class StepFailed(InvalidAutomation):
@@ -38,7 +56,7 @@ class AutomationConflict(Conflict, ValueError):
     code = "automation_conflict"
 
 
-MALFORMED_INPUT = "La configuración enviada tiene un formato inválido"
+MALFORMED_INPUT = "No se pudo leer lo que se guardó. Recarga la página e inténtalo de nuevo; si importaste un JSON, revísalo."
 
 
 def rejects_malformed_input(func):

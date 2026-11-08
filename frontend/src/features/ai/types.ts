@@ -37,7 +37,7 @@ export type AIUsage = Delivered<ApiSchemas['AIUsage']>
 export interface GenerateParams {
   chat_id: string
   phone: string | null
-  // Ignora la sugerencia guardada y pide un juego nuevo ("Generá otras").
+  // Ignora la sugerencia guardada y pide un juego nuevo ("Genera otras").
   force?: boolean
   // Indicación opcional del asesor ("dar precio", "no dar precio"…). El
   // backend la sanea y la pasa al prompt; si viene, siempre genera de nuevo.

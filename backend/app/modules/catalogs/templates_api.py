@@ -419,7 +419,7 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
         ):
             raise HTTPException(
                 400,
-                "El nombre y el idioma de una plantilla ya enviada a Meta no se pueden cambiar; creá una nueva plantilla",
+                "El nombre y el idioma de una plantilla ya enviada a Meta no se pueden cambiar; crea una nueva plantilla",
             )
         content_changed = any(
             merged.get(field) != current.get(field)

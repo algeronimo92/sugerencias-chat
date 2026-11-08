@@ -11,6 +11,7 @@ ACTIVE_EXECUTION_STATUSES,AUTOMATION_TRIGGERS,AutomationExecutionStatus,automati
 import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
 } from '../queries'
+import { followedBranchText } from '../domain/flowBranches'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
@@ -76,7 +77,7 @@ function pendingLabel(execution: AutomationExecution, now: number) {
 
 function stepDetail(step: AutomationActionResult) {
   if (step.seconds) return `espera ${formatDuration(step.seconds * 1000)}`
-  if (step.branch) return `siguió por "${step.branch}"`
+  if (step.branch) return followedBranchText(step.branch)
   if (step.error) return step.error
   if (step.conditions?.length) return 'espera un mensaje, el temporizador o el horario'
   return ''
@@ -104,7 +105,7 @@ function PauseToggleButton({ execution }: { execution: AutomationExecution }) {
       type="button"
       title={isPaused
         ? pausedWithChat
-          ? 'Pausada junto con todo el chat — reanudala con el botón del bot de la cabecera'
+          ? 'Pausada junto con todo el chat — reanúdala con el botón del bot de la cabecera'
           : 'Reanudar: sigue con el tiempo que le faltaba'
         : isRunning
           ? 'Está ejecutando un paso; se puede pausar cuando llegue a su próxima espera'

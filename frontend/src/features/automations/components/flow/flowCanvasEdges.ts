@@ -25,7 +25,7 @@ const EDGE_COLORS: Record<string, string> = {
 export const EDGE_LABELS: Record<string, string> = {
   [FlowHandle.Yes]: 'Sí',
   [FlowHandle.No]: 'No',
-  [WaitAnyConditionKind.Timer]: 'Timer',
+  [WaitAnyConditionKind.Timer]: 'Temporizador',
   [WaitAnyConditionKind.Message]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.Message],
   [WaitAnyConditionKind.BusinessHours]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.BusinessHours],
   [WaitAnyConditionKind.MediaPlayed]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.MediaPlayed],

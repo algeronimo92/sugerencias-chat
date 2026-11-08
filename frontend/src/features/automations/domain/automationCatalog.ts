@@ -16,7 +16,7 @@ export type AutomationTriggerValue = ValueOf<typeof AutomationTrigger>
 export const AUTOMATION_TRIGGERS = [
   { value: AutomationTrigger.LeadCreated, label: 'Lead nuevo', description: 'Cuando se registra un contacto por primera vez.' },
   { value: AutomationTrigger.ConversationStarted, label: 'Conversación nueva', description: 'Cuando un mensaje del cliente abre una conversación que estaba cerrada.' },
-  { value: AutomationTrigger.StageChanged, label: 'Cambio de etapa', description: 'Cuando una persona o el agente mueve el lead.' },
+  { value: AutomationTrigger.StageChanged, label: 'Cambio de etapa', description: 'Cuando alguien del equipo o la IA cambia la etapa del lead.' },
   { value: AutomationTrigger.MessageReceived, label: 'Mensaje recibido', description: 'Cuando llega un nuevo mensaje del cliente.' },
   { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
   { value: AutomationTrigger.CustomerResponseOverdue, label: 'Cliente sin responder', description: 'El último mensaje es del vendedor y vence el tiempo configurado.' },
@@ -57,14 +57,14 @@ export const AUTOMATION_ACTION_LABELS = {
   [AutomationActionType.AddTag]: 'Agregar etiqueta',
   [AutomationActionType.RemoveTag]: 'Quitar etiqueta',
   [AutomationActionType.ChangeStage]: 'Cambiar etapa',
-  [AutomationActionType.Notify]: 'Notificar internamente',
-  [AutomationActionType.SendTemplate]: 'Enviar plantilla WhatsApp',
-  [AutomationActionType.SendMessage]: 'Enviar mensaje directo',
+  [AutomationActionType.Notify]: 'Notificar al equipo',
+  [AutomationActionType.SendTemplate]: 'Enviar plantilla de WhatsApp',
+  [AutomationActionType.SendMessage]: 'Enviar mensaje de texto',
   [AutomationActionType.ChangeService]: 'Cambiar/quitar servicio de interés',
-  [AutomationActionType.SetConversationState]: 'Cambiar estado de conversación',
+  [AutomationActionType.SetConversationState]: 'Abrir o cerrar conversación',
   [AutomationActionType.SendAudio]: 'Enviar audio',
-  [AutomationActionType.SendAttachment]: 'Enviar solo adjunto',
-  [AutomationActionType.SendMedia]: 'Enviar multimedia + caption',
+  [AutomationActionType.SendAttachment]: 'Enviar archivo sin texto',
+  [AutomationActionType.SendMedia]: 'Enviar archivo con texto',
   [AutomationActionType.ReactToLastCustomerMessage]: 'Reaccionar al último mensaje del cliente',
 } satisfies Record<AutomationActionTypeValue, string>
 
@@ -87,21 +87,30 @@ export const FLOW_NODE_LABELS = {
   [FlowNodeType.Trigger]: 'Disparador',
   [FlowNodeType.Condition]: 'Condición',
   [FlowNodeType.Action]: 'Acción',
-  [FlowNodeType.InvokeFlow]: 'Invocar flujo',
+  [FlowNodeType.InvokeFlow]: 'Iniciar otro flujo',
   // `wait` se conserva únicamente para leer flujos antiguos. En el editor,
   // ambos formatos se presentan como un único bloque Pausa (`wait_any`).
   [FlowNodeType.Wait]: 'Pausa',
   [FlowNodeType.WaitAny]: 'Pausa',
   [FlowNodeType.Question]: 'Pregunta (botones)',
-  [FlowNodeType.RoundRobin]: 'Round robin',
+  [FlowNodeType.RoundRobin]: 'Reparto por turnos',
   [FlowNodeType.End]: 'Fin',
 } satisfies Record<FlowNodeTypeValue, string>
+
+/** Pasos que no son ni acción ni bloque: las condiciones de entrada (Probar)
+ *  y el fallo general del flujo, que el backend anota con `failure_type`
+ *  «flow» cuando no puede atribuirlo a un bloque. */
+const STEP_ONLY_LABELS: Record<string, string> = {
+  entry_conditions: 'Condiciones de entrada',
+  flow: 'Flujo',
+}
 
 /** Etiqueta de un paso de `action_results`. Una regla simple guarda ahí el
  *  tipo de acción; un flujo visual, el tipo de nodo — el mismo campo lleva las
  *  dos cosas, así que la búsqueda va contra los dos catálogos. */
 export function automationStepLabel(type: string | null | undefined): string {
   if (!type) return 'Paso'
+  if (Object.hasOwn(STEP_ONLY_LABELS, type)) return STEP_ONLY_LABELS[type]
   if (type in AUTOMATION_ACTION_LABELS) return AUTOMATION_ACTION_LABELS[type as AutomationActionTypeValue]
   if (type in FLOW_NODE_LABELS) return FLOW_NODE_LABELS[type as FlowNodeTypeValue]
   return type
@@ -134,10 +143,10 @@ export type WaitAnyConditionKindValue = ValueOf<typeof WaitAnyConditionKind>
 
 export const WAIT_ANY_CONDITION_LABELS = {
   [WaitAnyConditionKind.Timer]: 'Temporizador',
-  [WaitAnyConditionKind.Message]: 'Hasta recibir mensaje',
-  [WaitAnyConditionKind.BusinessHours]: 'Excepto horas laborales',
-  [WaitAnyConditionKind.MediaPlayed]: 'Hasta que se reproduce lo enviado',
-  [WaitAnyConditionKind.MediaReceived]: 'Hasta que mande una foto o archivo',
+  [WaitAnyConditionKind.Message]: 'Respondió con un mensaje',
+  [WaitAnyConditionKind.BusinessHours]: 'Fuera del horario laboral',
+  [WaitAnyConditionKind.MediaPlayed]: 'Vio o escuchó lo enviado',
+  [WaitAnyConditionKind.MediaReceived]: 'Mandó una foto o archivo',
 } satisfies Record<WaitAnyConditionKindValue, string>
 
 /** Handles fijos del nodo Pregunta que no dependen de los botones
@@ -184,7 +193,7 @@ export const FLOW_CONDITION_LABELS = {
   [FlowConditionType.MessageTypeEquals]: 'El mensaje es de tipo',
   [FlowConditionType.SellerEquals]: 'Vendedor es',
   [FlowConditionType.TagPresent]: 'Tiene etiqueta',
-  [FlowConditionType.WhatsAppWindowOpen]: 'Ventana WhatsApp abierta',
+  [FlowConditionType.WhatsAppWindowOpen]: 'Ventana de 24 h abierta',
   [FlowConditionType.BusinessHours]: 'Está en horario laboral',
 } satisfies Record<FlowConditionTypeValue, string>
 

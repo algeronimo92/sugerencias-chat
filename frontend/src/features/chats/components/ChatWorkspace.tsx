@@ -189,7 +189,7 @@ export function ChatWorkspace() {
   const { data: suggestionStatus = null, isLoading: isSuggestionsLoading } =
     useSuggestionStatus(selectedChat?.chat_id ?? null);
 
-  // Única vía que llama a la IA: CTA "Generá sugerencias" / "Generá otras".
+  // Única vía que llama a la IA: CTA "Genera sugerencias" / "Genera otras".
   const generateSuggestionsMutation = useGenerateSuggestions();
   const isGeneratingForSelected =
     generateSuggestionsMutation.isPending &&

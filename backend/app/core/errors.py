@@ -44,7 +44,7 @@ class Unauthorized(DomainError):
 
 
 class Forbidden(DomainError):
-    """No tenés permiso para esta operación."""
+    """No tienes permiso para esta operación."""
 
     status_code = 403
     code = "forbidden"

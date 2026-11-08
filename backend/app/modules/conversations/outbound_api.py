@@ -60,11 +60,11 @@ async def _resolve_reply_to(chat_id: str, message_id: int | None) -> dict | None
         return None
     target = await fetch_reply_target(chat_id, message_id)
     if target is None:
-        raise MessageNotFound("El mensaje al que querés responder no existe en este chat")
+        raise MessageNotFound("El mensaje al que quieres responder no existe en este chat")
     if not target["wa_message_id"]:
         raise MessageNotConfirmed(
             "Ese mensaje todavía no se terminó de enviar a WhatsApp. "
-            "Esperá a que salga para poder responderlo."
+            "Espera a que salga para poder responderlo."
         )
     return target
 

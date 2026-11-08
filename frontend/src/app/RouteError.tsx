@@ -20,7 +20,7 @@ export function RouteError() {
 
   const title = staleBundle ? 'Hay una versión nueva' : 'Esta pantalla tuvo un problema'
   const detail = staleBundle
-    ? 'Recargá la página para usar la última versión.'
+    ? 'Recarga la página para usar la última versión.'
     : isRouteErrorResponse(error)
       ? `${error.status} ${error.statusText}`
       : extractErrorMessage(error)

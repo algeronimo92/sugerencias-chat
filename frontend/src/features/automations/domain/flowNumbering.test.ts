@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FlowHandle, FlowNodeType } from './automationCatalog'
-import { numberFlowNodes } from './flowNumbering'
+import { numberFlowNodes, reachableFromTrigger } from './flowNumbering'
 import type { AutomationFlowDefinition } from '../types'
 
 const at = { x: 0, y: 0 }
@@ -25,5 +25,6 @@ describe('numberFlowNodes', () => {
       ],
     }
     expect(Object.fromEntries(numberFlowNodes(flow))).toEqual({ inicio: 1, a: 2, b: 3, fin: 4, suelto: 5 })
+    expect([...reachableFromTrigger(flow)]).toEqual(['inicio', 'a', 'b', 'fin'])
   })
 })
