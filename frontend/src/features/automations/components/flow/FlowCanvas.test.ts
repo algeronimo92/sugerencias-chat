@@ -22,10 +22,10 @@ describe('toCanvasEdges', () => {
     expect(inactive.style).toMatchObject({ strokeWidth: 2, opacity: 0.16 })
   })
 
-  it('mantiene todas las conexiones visibles cuando no hay hover', () => {
+  it('en reposo, todas visibles y quietas: animarlas redibujaba el lienzo sin parar', () => {
     const edges = toCanvasEdges(FLOW_EDGES)
 
-    expect(edges.every(edge => edge.animated)).toBe(true)
+    expect(edges.some(edge => edge.animated)).toBe(false)
     expect(edges.every(edge => edge.style?.opacity === 1)).toBe(true)
   })
 
@@ -36,7 +36,7 @@ describe('toCanvasEdges', () => {
     expect(String(hovered.style?.filter)).toContain('drop-shadow(0 0 2px')
     expect(hovered.animated).toBe(false)
     expect(hovered.label).toBeUndefined()
-    expect(other.animated).toBe(true)
+    expect(other.animated).toBe(false)
     expect(other.style).toMatchObject({ strokeWidth: 2, opacity: 1 })
   })
 })

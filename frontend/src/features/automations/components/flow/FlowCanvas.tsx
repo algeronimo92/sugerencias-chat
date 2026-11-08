@@ -3,7 +3,7 @@ applyNodeChanges,
 Background,BaseEdge,ControlButton,Controls,EdgeToolbar,
 getSmoothStepPath,
 Handle,MiniMap,PanOnScrollMode,Position,ReactFlow,ReactFlowProvider,SelectionMode,
-useReactFlow,type Connection,type Edge,
+useNodesInitialized,useReactFlow,type Connection,type Edge,
 type EdgeProps,type EdgeTypes,
 type Node,type NodeProps,type NodeTypes,
 type OnConnect,type OnNodesChange,
@@ -67,6 +67,7 @@ interface CanvasNodeData {
   connectionRole?: 'source' | 'target' | 'both'
   connectionDimmed?: boolean
   flagged?: boolean
+  number?: number
 }
 
 type CanvasNode = Node<CanvasNodeData>
@@ -194,6 +195,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
+      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
         <div className="min-w-0 flex-1">
@@ -321,7 +323,10 @@ function AttachmentMedia({ attachment, interactive = false }: { attachment: Prev
     return interactive ? <a href={url} target="_blank" rel="noreferrer" title="Abrir imagen" className="block overflow-hidden rounded-lg border border-violet-200 dark:border-blue-900">{image}<AttachmentCaption icon={ImageIcon} filename={attachment.filename} /></a> : image
   }
   if (attachment.content_type.startsWith('video/')) {
-    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><video src={url} controls={interactive} preload="metadata" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
+    // preload="none": un flujo con varios videos descargaba los metadatos (y
+    // en Safari, buena parte de cada archivo) de todos al abrir el editor. Se
+    // cargan al darle play.
+    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><video src={url} controls={interactive} preload="none" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
   }
   if (attachment.content_type.startsWith('audio/')) {
     return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="metadata" className="mt-1 h-8 w-full" />}</div>
@@ -566,6 +571,10 @@ interface FlowCanvasProps {
   selectedId: string | null
   /** Bloques marcados en ámbar (los que usan el servicio que se quiere eliminar). */
   flaggedIds?: ReadonlySet<string>
+  /** Número de cada bloque (#1 es el disparador), para nombrarlo y encontrarlo. */
+  numbers?: ReadonlyMap<string, number>
+  /** Bloques a los que acercar la vista; cada pedido nuevo (otro `key`) vuelve a acercarla. */
+  focus?: { ids: string[]; key: number } | null
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
   onDeleteNodes: (ids: string[]) => void
@@ -575,11 +584,11 @@ interface FlowCanvasProps {
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
@@ -639,10 +648,20 @@ function Canvas({
         invokedFlowName,
         previewTagName,
         flagged: flaggedIds.has(node.id),
+        number: numbers?.get(node.id),
         onDelete: id => onDeleteNodes([id]),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, onDeleteNodes])
+  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDeleteNodes])
+
+  // Acerca la vista a los bloques pedidos. Con 50 bloques el encuadre inicial
+  // los muestra a todos diminutos: llegar desde Catálogos abría el panel del
+  // bloque marcado sin que se viera dónde estaba en el lienzo.
+  const nodesInitialized = useNodesInitialized()
+  useEffect(() => {
+    if (!focus || !focus.ids.length || !nodesInitialized) return
+    void fitView({ nodes: focus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1, duration: 450 })
+  }, [focus, nodesInitialized, fitView])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -829,7 +848,7 @@ function Canvas({
         fitView
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
-        defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
         selectionOnDrag
         selectionMode={SelectionMode.Full}
         multiSelectionKeyCode={['Control', 'Meta']}

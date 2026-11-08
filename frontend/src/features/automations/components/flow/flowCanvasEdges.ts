@@ -22,7 +22,7 @@ const EDGE_COLORS: Record<string, string> = {
   [QuestionHandle.Timeout]: '#ef4444',
 }
 
-const EDGE_LABELS: Record<string, string> = {
+export const EDGE_LABELS: Record<string, string> = {
   [FlowHandle.Yes]: 'Sí',
   [FlowHandle.No]: 'No',
   [WaitAnyConditionKind.Timer]: 'Timer',
@@ -50,7 +50,11 @@ export function toCanvasEdges(
       target: edge.target,
       sourceHandle: edge.source_handle,
       label: highlighted ? (EDGE_LABELS[edge.source_handle] ?? 'Siguiente') : EDGE_LABELS[edge.source_handle],
-      animated: hovered ? false : hasHighlight ? highlighted : true,
+      // Solo se anima el recorrido resaltado. Con todas animadas, un flujo de
+      // 50 bloques redibujaba cada conexión 60 veces por segundo sin que nadie
+      // tocara nada (~16% del hilo principal en reposo) y la pantalla de
+      // Automatizaciones se volvía lenta en equipos modestos (2026-11-08).
+      animated: highlighted && !hovered,
       selected: edge.id === selectedEdgeId,
       type: 'smoothstep',
       interactionWidth: 32,

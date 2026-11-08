@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 /** Servicio que se llegó a cambiar desde Catálogos (al intentar eliminarlo). */
@@ -20,7 +20,7 @@ export const HIGHLIGHT_RING = 'rounded-lg bg-amber-50 p-1.5 ring-2 ring-amber-40
  * primer campo marcado: con una regla de varias acciones, el campo quedaba
  * fuera de la vista y el usuario no sabía qué tocar.
  */
-export function ServiceHighlightNotice({ highlight, where, doneHint }: { highlight: ServiceHighlight; where: string; doneHint: string }) {
+export function ServiceHighlightNotice({ highlight, where, doneHint, children }: { highlight: ServiceHighlight; where: string; doneHint: string; children?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -43,6 +43,7 @@ export function ServiceHighlightNotice({ highlight, where, doneHint }: { highlig
         {done
           ? <>Ya no usa <strong>«{highlight.service}»</strong>. {doneHint} y vuelve a <Link to="/catalogs" className="font-semibold underline">Catálogos</Link> para eliminarlo.</>
           : <>{highlight.reason ?? `Esta automatización usa «${highlight.service}».`} Está en {where}, marcado en amarillo.</>}
+        {!done && children && <span className="mt-1.5 flex flex-wrap gap-1.5">{children}</span>}
       </p>
     </div>
   )

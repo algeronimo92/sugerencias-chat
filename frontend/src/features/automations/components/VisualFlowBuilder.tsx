@@ -1,5 +1,5 @@
 import {
-Activity,ArrowRight,Beaker,Braces,Check,CheckCircle2,CirclePlay,
+Activity,Beaker,Braces,Check,CheckCircle2,CirclePlay,
 Copy,
 History,LayoutGrid,
 ListFilter,Loader2,MessageCircleQuestion,MessageSquareText,Play,Plus,Redo2,Repeat,Save,Split,Timer,Undo2,Upload,UserRound,X,
@@ -39,6 +39,9 @@ import type { AutomationAction, AutomationActionType, AutomationConditions, Auto
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'
+import { FlowNodeConnections, type FlowConnection } from './flow/FlowNodeConnections'
+import { EDGE_LABELS } from './flow/flowCanvasEdges'
+import { numberFlowNodes } from '../domain/flowNumbering'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
@@ -244,7 +247,12 @@ function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
     const output = node.data.outputs.find(item => item.id === handle)
     return output ? output.label || handle : handle
   }
-  if (node.type !== NodeType.Condition) return handle
+  if (node.type === NodeType.Question) {
+    const button = node.data.buttons.find(item => item.id === handle)
+    if (button) return button.label || handle
+  }
+  // Sin esto el panel mostraba el nombre interno de la salida ("next").
+  if (node.type !== NodeType.Condition) return EDGE_LABELS[handle] ?? (handle === FlowHandle.Next ? 'Siguiente' : handle)
   if (handle === FlowHandle.No) return 'Ninguna'
   const index = conditionGroups(node.data, node.id).findIndex(group => group.id === handle)
   return index >= 0 ? `Salida ${index + 1}` : handle
@@ -305,6 +313,13 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   )
   const serviceReferences = useMemo(() => highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null, [flow, highlight])
   const flaggedNodeIds = useMemo(() => new Set(serviceReferences?.nodeIds ?? []), [serviceReferences])
+  // Desde Catálogos la vista arranca acercada al bloque marcado; después, cada
+  // "ir a" (aviso o conexiones) la vuelve a acercar.
+  const [focus, setFocus] = useState(() => initialReferences?.nodeIds.length ? { ids: initialReferences.nodeIds, key: 1 } : null)
+  const goToNode = useCallback((nodeId: string) => {
+    dispatch({ type: 'select', nodeId })
+    setFocus(current => ({ ids: [nodeId], key: (current?.key ?? 0) + 1 }))
+  }, [dispatch])
   const {
     ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
     selectedId, showEntryConditions, error, notice, jsonViewTab, jsonCopied,
@@ -314,9 +329,18 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const { data: versions = [], isLoading: versionsLoading } = useFlowVersions(versionsOpen ? ruleId : null)
   const restoreVersion = useRestoreFlowVersion()
   const selected = flow.nodes.find(node => node.id === selectedId) ?? null
-  const selectedOutgoingEdges = selected
-    ? flow.edges.filter(edge => edge.source === selected.id)
-    : []
+  const numbers = useMemo(() => numberFlowNodes(flow), [flow])
+  const connection = (edge: AutomationFlowEdge, nodeId: string): FlowConnection => {
+    const node = flow.nodes.find(item => item.id === nodeId)
+    const source = flow.nodes.find(item => item.id === edge.source)
+    return {
+      edgeId: edge.id, nodeId, number: numbers.get(nodeId),
+      title: node ? nodeTitle(node, automationRules) : 'Bloque borrado',
+      handle: source ? outputHandleLabel(source, edge.source_handle) : edge.source_handle,
+    }
+  }
+  const incomingConnections = selected ? flow.edges.filter(edge => edge.target === selected.id).map(edge => connection(edge, edge.source)) : []
+  const outgoingConnections = selected ? flow.edges.filter(edge => edge.source === selected.id).map(edge => connection(edge, edge.target)) : []
   const activeUsers = users.filter(user => user.is_active)
   const invokableFlows = automationRules.filter(item => (
     item.id !== ruleId
@@ -687,7 +711,9 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
 
-    {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica el flujo (la versión activa también cuenta)" /></div>}
+    {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica el flujo (la versión activa también cuenta)">
+      {serviceReferences.nodeIds.map(nodeId => <button key={nodeId} type="button" onClick={() => goToNode(nodeId)} className="rounded-md border border-amber-300 bg-white/70 px-2 py-0.5 font-semibold hover:bg-white dark:border-amber-800 dark:bg-amber-950/60">Ver bloque #{numbers.get(nodeId)}</button>)}
+    </ServiceHighlightNotice></div>}
     {(error || notice) && <div className={`px-4 py-2 text-xs ${error ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'}`}>{error ?? notice}</div>}
 
     <div className="flex min-h-0 flex-1">
@@ -713,6 +739,8 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
           tags={tags}
           selectedId={selectedId}
           flaggedIds={flaggedNodeIds}
+          numbers={numbers}
+          focus={focus}
           onSelect={id => dispatch({ type: 'select', nodeId: id })}
           onMoveNodes={moveNodes}
           onDeleteNodes={removeNodes}
@@ -723,7 +751,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)} · propiedades</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
@@ -742,7 +770,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span><strong className="block text-xs">Cerrar conversación al finalizar</strong><span className="mt-0.5 block text-wa-muted">Marca el chat como cerrado cuando la ejecución llega a esta salida.</span></span></label></div>}
           {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.part === 'action' ? highlight.service : undefined} />}
-          <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
+          <FlowNodeConnections incoming={incomingConnections} outgoing={outgoingConnections} onGo={goToNode} onRemove={removeEdge} />
         </>}
       </aside>}
     </div>
