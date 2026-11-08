@@ -6,7 +6,7 @@ Handle,MiniMap,PanOnScrollMode,Position,ReactFlow,ReactFlowProvider,SelectionMod
 useNodesInitialized,useReactFlow,type Connection,type Edge,
 type EdgeProps,type EdgeTypes,
 type Node,type NodeProps,type NodeTypes,
-type OnConnect,type OnNodesChange,
+type OnConnect,type OnConnectEnd,type OnNodesChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -34,6 +34,7 @@ import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 import { useReconciled } from './useReconciled'
+import { NodeTypeMenu } from './NodeTypeMenu'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -612,7 +613,8 @@ interface FlowCanvasProps {
   onDeleteNodes: (ids: string[]) => void
   onConnect: (edge: AutomationFlowEdge) => void
   onDeleteEdge: (id: string) => void
-  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
+  /** `from`: la salida desde la que se soltó una conexión en el vacío; el bloque nuevo queda conectado a ella. */
+  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => void
 }
 
 
@@ -884,6 +886,28 @@ function Canvas({
     })
   }, [screenToFlowPosition, onDropNewNode])
 
+  // Soltar una conexión en el vacío ofrece qué bloque crear ahí, ya conectado.
+  const [connectDrop, setConnectDrop] = useState<{ x: number; y: number; source: string; handle: string } | null>(null)
+  const handleConnectEnd = useCallback<OnConnectEnd>((event, connection) => {
+    const fromHandle = connection.fromHandle
+    if (connection.isValid || connection.toNode || !connection.fromNode || fromHandle?.type !== 'source') return
+    const point = 'changedTouches' in event ? event.changedTouches[0] : event
+    // Solo en un espacio vacío: soltarla sobre un bloque (fuera de su punto de
+    // entrada) no es pedir uno nuevo. `event.target` no sirve para saberlo:
+    // es la línea que se estaba dibujando, no lo que hay debajo.
+    const below = document.elementFromPoint(point.clientX, point.clientY)
+    if (!below?.closest('.react-flow__pane') || below.closest('.react-flow__node')) return
+    setConnectDrop({ x: point.clientX, y: point.clientY, source: connection.fromNode.id, handle: fromHandle.id || FlowHandle.Next })
+  }, [])
+  const closeConnectDrop = useCallback(() => setConnectDrop(null), [])
+  const pickConnectedNode = useCallback((type: AutomationFlowNodeType) => {
+    if (!connectDrop) return
+    const position = screenToFlowPosition({ x: connectDrop.x, y: connectDrop.y })
+    // El punto de entrada del bloque queda donde se soltó la línea.
+    onDropNewNode(type, { x: Math.round(position.x), y: Math.round(position.y - 30) }, { source: connectDrop.source, handle: connectDrop.handle })
+    setConnectDrop(null)
+  }, [connectDrop, screenToFlowPosition, onDropNewNode])
+
   return (
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
@@ -898,6 +922,7 @@ function Canvas({
           if (change.type === 'select') setSelectedEdgeId(change.selected ? change.id : null)
         })}
         onConnect={handleConnect}
+        onConnectEnd={handleConnectEnd}
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
@@ -943,6 +968,7 @@ function Canvas({
         </Controls>
         <MiniMap pannable zoomable className="!bg-white dark:!bg-flow-panel-dark" />
       </ReactFlow>
+      {connectDrop && <NodeTypeMenu x={connectDrop.x} y={connectDrop.y} onPick={pickConnectedNode} onClose={closeConnectDrop} />}
     </div>
   )
 }

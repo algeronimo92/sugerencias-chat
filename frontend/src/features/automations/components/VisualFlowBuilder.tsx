@@ -1,8 +1,8 @@
 import {
-Activity,Beaker,Braces,Check,CheckCircle2,CirclePlay,
+Beaker,Braces,Check,
 Copy,
 History,LayoutGrid,
-ListFilter,Loader2,MessageCircleQuestion,MessageSquareText,Play,Plus,Redo2,Repeat,Save,Split,Timer,Undo2,Upload,UserRound,X,
+ListFilter,Loader2,MessageSquareText,Play,Plus,Redo2,Save,Undo2,Upload,UserRound,X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -24,7 +24,7 @@ import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import { useUsers } from '../../platform/public/useUsers'
 import type { AppUser } from '../../platform/types'
-import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FLOW_NODE_LABELS, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
+import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -41,6 +41,7 @@ import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { FlowNodeConnections, type FlowConnection } from './flow/FlowNodeConnections'
+import { FLOW_PALETTE } from './flow/flowPalette'
 import { EDGE_LABELS } from './flow/flowCanvasEdges'
 import { numberFlowNodes } from '../domain/flowNumbering'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
@@ -489,13 +490,25 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
     setFlow(current => ({ ...current, conditions }), 'entry-conditions')
   }
 
-  const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }) => {
+  const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => {
     if (type === NodeType.Trigger) {
       dispatch({ type: 'fail', message: 'El flujo solo puede tener un disparador.' })
       return
     }
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    setFlow(current => ({ ...current, nodes: [...current.nodes, createFlowNode(type, id, position.x, position.y)] }))
+    // Con `from` (se soltó una conexión en el vacío) el bloque nace conectado,
+    // en el mismo cambio: un solo Ctrl+Z deshace bloque y conexión. Como al
+    // conectar a mano, esa salida deja de apuntar a donde apuntaba.
+    const edge: AutomationFlowEdge | null = from
+      ? { id: `edge-${from.source}-${from.handle}-${id}`, source: from.source, target: id, source_handle: from.handle }
+      : null
+    setFlow(current => ({
+      ...current,
+      nodes: [...current.nodes, createFlowNode(type, id, position.x, position.y)],
+      edges: edge
+        ? [...current.edges.filter(item => !(item.source === edge.source && item.source_handle === edge.source_handle)), edge]
+        : current.edges,
+    }))
     dispatch({ type: 'select', nodeId: id })
     dispatch({ type: 'clearFeedback' })
   }, [setFlow, dispatch])
@@ -724,15 +737,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
     <div className="flex min-h-0 flex-1">
       <aside className="w-48 shrink-0 overflow-y-auto border-r border-wa-border bg-white p-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Arrastra al lienzo</p>
-        {([
-          [NodeType.Condition, FLOW_NODE_LABELS[NodeType.Condition], Split, 'Rama Sí/No'],
-          [NodeType.Action, FLOW_NODE_LABELS[NodeType.Action], Activity, 'Ejecuta una operación'],
-          [NodeType.InvokeFlow, FLOW_NODE_LABELS[NodeType.InvokeFlow], CirclePlay, 'Inicia otro flujo para este lead'],
-          [NodeType.WaitAny, FLOW_NODE_LABELS[NodeType.WaitAny], Timer, 'Continúa cuando ocurra la primera condición'],
-          [NodeType.Question, FLOW_NODE_LABELS[NodeType.Question], MessageCircleQuestion, 'Botones con una rama por respuesta'],
-          [NodeType.RoundRobin, FLOW_NODE_LABELS[NodeType.RoundRobin], Repeat, 'Reparte los leads por turnos entre N salidas'],
-          [NodeType.End, FLOW_NODE_LABELS[NodeType.End], CheckCircle2, 'Termina esta ruta'],
-        ] as Array<[AutomationFlowNodeType, string, typeof Activity, string]>).map(([type, label, Icon, description]) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="group mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-transparent dark:bg-transparent dark:hover:bg-white/5 dark:transition-colors"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-gray-500 transition-colors group-hover:text-wa-primary-strong dark:text-gray-400 dark:group-hover:text-wa-primary" />{label}</div><p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</p></div>)}
+        {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="group mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-transparent dark:bg-transparent dark:hover:bg-white/5 dark:transition-colors"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-gray-500 transition-colors group-hover:text-wa-primary-strong dark:text-gray-400 dark:group-hover:text-wa-primary" />{label}</div><p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</p></div>)}
       </aside>
 
       <main className="min-w-0 flex-1 bg-wa-field dark:bg-flow-canvas-dark">
