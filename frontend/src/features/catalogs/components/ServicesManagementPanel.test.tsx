@@ -268,7 +268,12 @@ describe('ServicesManagementPanel', () => {
     const dialog = screen.getByRole('alertdialog')
 
     expect(within(dialog).getByText(/está en uso/)).toBeInTheDocument()
-    expect(within(dialog).getByRole('link', { name: 'Lucía Paredes' })).toHaveAttribute('href', '/chat/lead-1')
+    // El lead se abre con su servicio de interés listo para cambiar.
+    const leadLink = within(dialog).getByRole('link', { name: 'Lucía Paredes' }).getAttribute('href') ?? ''
+    expect(leadLink.startsWith('/chat/lead-1?')).toBe(true)
+    const params = new URLSearchParams(leadLink.split('?')[1])
+    expect(params.get('editar')).toBe('servicio_interes')
+    expect(params.get('motivo')).toContain('«Botox»')
     expect(within(dialog).getByRole('link', { name: 'Info botox' })).toHaveAttribute('href', '/templates')
     expect(within(dialog).getByText('y 11 más')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Eliminar' })).toBeDisabled()

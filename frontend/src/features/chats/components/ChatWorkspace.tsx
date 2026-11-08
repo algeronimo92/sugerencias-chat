@@ -7,6 +7,7 @@ X,
 import { AnimatePresence, m } from "motion/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
+import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
 import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
@@ -143,6 +144,11 @@ export function ChatWorkspace() {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
+  // fuera de escritorio la ficha vive en el panel deslizable, que arranca
+  // cerrado; queda abierto mientras dure ese pedido.
+  const isEditingFromLink = readEditField(new URLSearchParams(location.search)) !== null;
+  const isLeadPanelOpen = isSuggestionsOpen || isEditingFromLink;
   const [previewChat, setPreviewChat] = useState<Chat | null>(null);
   const { data: unreadCount = 0 } = useUnreadCount();
 
@@ -427,7 +433,7 @@ export function ChatWorkspace() {
 
       {/* Sugerencias como panel deslizable en móvil y tablet. */}
       <AnimatePresence>
-        {!isDesktop && isSuggestionsOpen && selectedChat && (
+        {!isDesktop && isLeadPanelOpen && selectedChat && (
           <>
             <m.div
               initial={{ opacity: 0 }}

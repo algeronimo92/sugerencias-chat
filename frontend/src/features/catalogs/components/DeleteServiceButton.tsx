@@ -3,20 +3,25 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
+import { editFieldHref } from '../../../shared/navigation/editFieldLink'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useDeleteLeadService, useServiceUsage } from '../hooks/useLeadServices'
 import type { LeadService, ServiceUsageGroup } from '../types'
 
-/** Adónde ir a quitar el servicio de cada cosa que lo usa. */
-function usageHref(kind: string, id: string): string {
-  if (kind === 'leads' || kind === 'ventas') return `/chat/${id}`
+/** Adónde ir a quitar el servicio de cada cosa que lo usa. Un lead se abre
+ *  con su servicio de interés listo para cambiar y resaltado, no solo el chat. */
+function usageHref(kind: string, id: string, serviceName: string): string {
+  if (kind === 'leads') {
+    return editFieldHref(`/chat/${id}`, 'servicio_interes', `Cámbialo o quítalo para poder eliminar «${serviceName}» del catálogo.`)
+  }
+  if (kind === 'ventas') return `/chat/${id}`
   if (kind === 'plantillas') return '/templates'
   if (kind === 'automatizaciones') return '/automations'
   return '/ai-assistant'
 }
 
-function UsageList({ usages }: { usages: ServiceUsageGroup[] }) {
+function UsageList({ usages, serviceName }: { usages: ServiceUsageGroup[]; serviceName: string }) {
   return (
     <ul aria-label="Dónde se usa" className="mt-3 max-h-64 space-y-3 overflow-y-auto text-sm">
       {usages.map(usage => {
@@ -27,7 +32,7 @@ function UsageList({ usages }: { usages: ServiceUsageGroup[] }) {
             <ul className="mt-1 space-y-0.5">
               {items.map(item => (
                 <li key={item.id}>
-                  <Link to={usageHref(usage.kind, item.id)} className="inline-flex items-center gap-1 text-wa-primary-strong hover:underline dark:text-wa-primary">
+                  <Link to={usageHref(usage.kind, item.id, serviceName)} className="inline-flex items-center gap-1 text-wa-primary-strong hover:underline dark:text-wa-primary">
                     {item.name}
                     <ExternalLink className="h-3 w-3" aria-hidden="true" />
                   </Link>
@@ -73,7 +78,7 @@ export function DeleteServiceButton({ service }: { service: LeadService }) {
     description = `No se pudo revisar dónde se usa (${extractErrorMessage(usage.error)}). Si lo usa algo, no se va a eliminar.`
   } else if (inUse) {
     description = 'No se puede eliminar porque está en uso. Quítalo de cada lugar (por ejemplo, cambia el servicio de interés del lead) o desactívalo: deja de ofrecerse y el historial se conserva.'
-    details = <UsageList usages={usages} />
+    details = <UsageList usages={usages} serviceName={service.name} />
   }
 
   return (
