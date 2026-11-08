@@ -3,11 +3,12 @@ import { useState, type ComponentType } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { GeminiMark, OpenAIMark } from '../../../shared/ui/BrandMarks'
-import { Input, Select, labelClass } from '../../../shared/ui/Input'
+import { Input } from '../../../shared/ui/Input'
 import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings } from '../../platform/public/useSettings'
 import { AdvancedModelSettings, ModelParamsEditor } from './ModelParamsEditor'
+import { ModelOrder } from './ModelOrder'
 import { useAiProviders, useRefreshAiProviders, useTestAiProvider } from '../hooks/useAiProviders'
 import type { AiProvidersStatus, AiProviderTestResult } from '../types'
 
@@ -127,11 +128,6 @@ function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: ()
   )
 }
 
-function modelLabel(spec: string, providers: Provider[]): string {
-  const [provider, model] = spec.split(':', 2)
-  const meta = providers.find(item => item.provider === provider)
-  return `${meta?.label ?? provider} · ${model}${meta && !meta.key_configured ? ' (sin clave)' : ''}`
-}
 
 /**
  * Configuración de IA de las sugerencias de respuesta (el copiloto del chat),
@@ -151,7 +147,6 @@ export function AiIntegrationCard() {
     )
   }
 
-  const allSpecs = status.providers.flatMap(provider => provider.models.map(model => `${provider.provider}:${model}`))
   const state: IntegrationState = status.ready ? 'connected' : 'unconfigured'
   const stateLabel = status.ready ? 'Conectado · tus claves' : undefined
 
@@ -168,7 +163,7 @@ export function AiIntegrationCard() {
       id="ia-sugerencias"
       icon={Sparkles}
       title="Sugerencias con IA"
-      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo principal falla, responde el secundario. Otras funciones de IA se configuran aparte."
+      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo que procesa falla, responde el de respaldo. Otras funciones de IA se configuran aparte."
       state={state}
       stateLabel={stateLabel}
     >
@@ -179,22 +174,7 @@ export function AiIntegrationCard() {
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor="ai-primary-model" className={labelClass}>Modelo principal</label>
-            <Select id="ai-primary-model" aria-label="Modelo principal" value={status.primary_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_suggestions_primary_model: value }, 'Modelo principal actualizado')}>
-              {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label htmlFor="ai-fallback-model" className={labelClass}>Modelo secundario (si el principal falla)</label>
-            <Select id="ai-fallback-model" aria-label="Modelo secundario" value={status.fallback_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_suggestions_fallback_model: value }, 'Modelo secundario actualizado')}>
-              {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
-            </Select>
-          </div>
-        </div>
+        <ModelOrder status={status} disabled={save.isPending} onSave={saveValues} />
 
         <AdvancedModelSettings customized={Object.keys(status.primary_params ?? {}).length + Object.keys(status.fallback_params ?? {}).length}>
           <ModelParamsEditor
