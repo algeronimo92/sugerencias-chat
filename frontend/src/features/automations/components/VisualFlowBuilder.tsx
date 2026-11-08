@@ -32,8 +32,9 @@ import { actionNamesService, conditionsNameService, flowServiceReferences, flowS
 import { HIGHLIGHT_RING, ServiceHighlightNotice, type ServiceHighlight } from './ServiceHighlightNotice'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
-useAutomationRules,useCreateVisualFlow,useFlowVersions,usePublishVisualFlow,useRestoreFlowVersion,
+useAutomationRuleSummaries,useCreateVisualFlow,useFlowVersions,usePublishVisualFlow,useRestoreFlowVersion,
 useSaveVisualFlow,useSimulateVisualFlow,useUpdateAutomation,
+type AutomationRuleSummary,
 } from '../queries'
 import type { AutomationAction, AutomationActionType, AutomationConditions, AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../types'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
@@ -235,7 +236,7 @@ function nodeIcon(type: AutomationFlowNodeType) {
   return <Icon className={`h-4 w-4 ${iconClass}`} />
 }
 
-function nodeTitle(node: AutomationFlowNode, rules: AutomationRule[] = []) {
+function nodeTitle(node: AutomationFlowNode, rules: ReadonlyArray<{ id: number; name: string }> = []) {
   if (node.type !== NodeType.InvokeFlow) return flowNodeSummary(node.type, node.data)
   const flowRuleId = node.data.flow_rule_id
   const invokedFlowName = rules.find(item => item.id === flowRuleId)?.name ?? (flowRuleId ? `Flujo #${flowRuleId}` : undefined)
@@ -265,6 +266,10 @@ interface VisualFlowBuilderProps {
   onClose: () => void
 }
 
+// Referencia fija para el "sin datos": un `[]` nuevo por render invalidaría
+// los memos del lienzo en cada render del constructor.
+const EMPTY_RULES: AutomationRuleSummary[] = []
+
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement
     && !!target.closest('input, textarea, select, [contenteditable="true"]')
@@ -276,7 +281,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const publishFlow = usePublishVisualFlow()
   const simulateFlow = useSimulateVisualFlow()
   const updateRule = useUpdateAutomation()
-  const { data: automationRules = [] } = useAutomationRules()
+  const { data: automationRules = EMPTY_RULES } = useAutomationRuleSummaries()
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
   const { data: leadServices = [] } = useLeadServices()
@@ -345,7 +350,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const invokableFlows = automationRules.filter(item => (
     item.id !== ruleId
     && item.builder_mode === AutomationBuilderMode.Visual
-    && item.published_flow_definition !== null
+    && item.published
   ))
   const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending

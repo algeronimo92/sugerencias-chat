@@ -109,6 +109,16 @@
   --xy-controls-button-border-color-default: var(--color-flow-border-dark);
 }
 
+/* Foco al pasar el mouse por un bloque: su recorrido queda y el resto se
+   atenúa. Se hace con una clase en el contenedor y no cambiando el estilo de
+   cada bloque y conexión desde React: con 50 bloques, eso volvía a crear los
+   50 (y las 49 conexiones) dos veces por bloque recorrido, y la pantalla se
+   arrastraba (2026-11-08). Sin `filter`: un saturate() obligaba a rasterizar
+   de nuevo cada bloque con su imagen o video. */
+.react-flow__node { transition: opacity 160ms ease; }
+.react-flow.flow-spotlight .react-flow__node:not(.flow-connected) { opacity: 0.4; }
+.react-flow.flow-spotlight .react-flow__edge:not(.flow-lit) { opacity: 0.16; }
+
 /* ============================================================
    Áreas seguras (notch, barra de gestos)
    Con viewport-fit=cover la PWA instalada ocupa toda la pantalla,
