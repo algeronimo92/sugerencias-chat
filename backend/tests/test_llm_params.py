@@ -134,3 +134,40 @@ async def test_saving_params_validates_them_against_the_model_of_that_slot(monke
     # Cambiar el secundario a un modelo que no acepta temperature la descarta sola.
     await settings_service.update_settings({"ai_suggestions_fallback_model": "openai:gpt-5-mini"})
     assert stored["ai_suggestions_fallback_params"] is None
+
+
+def test_without_a_choice_the_provider_with_a_key_processes():
+    from app.integrations.llm.catalog import default_models
+
+    assert default_models({"ai_openai_api_key": "sk"}) == ("openai:gpt-5.6-terra", "gemini:gemini-3.6-flash")
+    assert default_models({"ai_gemini_api_key": "g"}) == ("gemini:gemini-3.6-flash", "openai:gpt-5.6-terra")
+    assert default_models({}) == ("gemini:gemini-3.6-flash", "openai:gpt-5.6-terra")
+
+
+@pytest.mark.parametrize(("stored", "saving", "expected"), [
+    # La primera clave define quién procesa.
+    ({}, {"ai_openai_api_key": "sk"}, ("openai:gpt-5.6-terra", "gemini:gemini-3.6-flash")),
+    ({}, {"ai_gemini_api_key": "g"}, ("gemini:gemini-3.6-flash", "openai:gpt-5.6-terra")),
+    # La segunda llega con la primera ya cargada (sin orden guardado): procesa la primera.
+    ({"ai_openai_api_key": "sk"}, {"ai_gemini_api_key": "g"}, ("openai:gpt-5.6-terra", "gemini:gemini-3.6-flash")),
+    # Una elección explícita no se toca.
+    ({"ai_suggestions_primary_model": "gemini:gemini-3.6-flash"}, {"ai_openai_api_key": "sk"}, None),
+])
+async def test_the_first_ai_key_decides_who_processes(monkeypatch, stored, saving, expected):
+    saved = {}
+
+    async def get_effective(key):
+        return stored.get(key, "")
+
+    async def upsert(values):
+        saved.update(values)
+
+    monkeypatch.setattr(settings_service, "get_effective", get_effective)
+    monkeypatch.setattr(settings_service.settings_repository, "upsert_values", upsert)
+
+    await settings_service.update_settings(saving)
+
+    if expected is None:
+        assert "ai_suggestions_primary_model" not in saved
+    else:
+        assert (saved["ai_suggestions_primary_model"], saved["ai_suggestions_fallback_model"]) == expected

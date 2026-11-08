@@ -86,7 +86,23 @@ function KeyTestResult({ result, typed }: { result: AiProviderTestResult; typed:
 }
 
 /** Una fila por proveedor: su clave, la prueba y el resultado. */
-function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: () => void }) {
+type ProviderRole = 'primary' | 'fallback' | null
+
+/** Qué papel cumple cada proveedor en el orden elegido (o el que tomó por defecto). */
+function providerRole(provider: string, status: AiProvidersStatus): ProviderRole {
+  if (status.primary_model.startsWith(`${provider}:`)) return 'primary'
+  if (status.fallback_model.startsWith(`${provider}:`)) return 'fallback'
+  return null
+}
+
+function RoleChip({ role }: { role: ProviderRole }) {
+  if (!role) return null
+  return role === 'primary'
+    ? <span className="rounded bg-wa-primary px-1.5 py-0.5 text-[11px] font-semibold text-white">1 · Procesa</span>
+    : <span className="rounded border border-wa-border px-1.5 py-0.5 text-[11px] font-medium text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">2 · Respaldo</span>
+}
+
+function ProviderKeyRow({ provider, role, onSaved }: { provider: Provider; role: ProviderRole; onSaved: () => void }) {
   const Mark = MARKS[provider.provider] ?? Sparkles
   const key = useProviderKey(provider, onSaved)
   const inputId = `ai-key-${provider.provider}`
@@ -99,7 +115,10 @@ function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: ()
           <Mark className="h-5 w-5 text-wa-text dark:text-wa-text-dark" />
           {provider.label}
         </label>
-        <KeyStatusChip configured={configured} />
+        <span className="flex items-center gap-1.5">
+          <RoleChip role={role} />
+          <KeyStatusChip configured={configured} />
+        </span>
       </div>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <Input
@@ -169,8 +188,11 @@ export function AiIntegrationCard() {
     >
       <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
-          {status.providers.map(provider => (
-            <ProviderKeyRow key={provider.provider} provider={provider} onSaved={refresh} />
+          {/* El que procesa va primero: el orden de las filas es el de la cadena. */}
+          {[...status.providers]
+            .sort((a, b) => Number(providerRole(b.provider, status) === 'primary') - Number(providerRole(a.provider, status) === 'primary'))
+            .map(provider => (
+            <ProviderKeyRow key={provider.provider} provider={provider} role={providerRole(provider.provider, status)} onSaved={refresh} />
           ))}
         </div>
 
@@ -197,7 +219,7 @@ export function AiIntegrationCard() {
 
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
           {status.ready
-            ? 'Cada sugerencia la responde tu modelo principal y, si falla, el secundario. Lo consume tu cuenta del proveedor.'
+            ? 'Lo consume tu cuenta del proveedor.'
             : 'Guarda al menos una clave que pase la prueba: mientras tanto el chat no ofrece sugerencias.'}
           {' '}El análisis automático del lead sigue en el servicio de la plataforma.
         </p>

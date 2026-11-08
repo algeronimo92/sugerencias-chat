@@ -165,9 +165,33 @@ RETIRED_MODELS: dict[str, str] = {
     "gemini:gemini-3.5-flash": "gemini:gemini-3.6-flash",
 }
 
-# Gemini responde y OpenAI respalda, como en el agente de n8n.
-DEFAULT_PRIMARY = "gemini:gemini-3.6-flash"
-DEFAULT_FALLBACK = "openai:gpt-5.6-terra"
+# El modelo recomendado de cada proveedor, el que entra cuando el negocio no
+# eligió uno.
+PROVIDER_DEFAULT_MODEL: dict[str, str] = {
+    "gemini": "gemini:gemini-3.6-flash",
+    "openai": "openai:gpt-5.6-terra",
+}
+# Sin claves (o con las dos y sin elección), Gemini procesa y OpenAI respalda,
+# como en el agente de n8n.
+DEFAULT_PRIMARY = PROVIDER_DEFAULT_MODEL["gemini"]
+DEFAULT_FALLBACK = PROVIDER_DEFAULT_MODEL["openai"]
+
+
+def default_models(values: dict) -> tuple[str, str]:
+    """Principal y respaldo cuando el negocio no eligió: procesa el proveedor
+    del que tiene clave. Con una sola clave de OpenAI, la tarjeta mostraba a
+    Gemini "(sin clave)" como principal mientras respondía OpenAI por detrás.
+    ``values`` trae las claves de los proveedores (cualquier valor no vacío
+    cuenta como cargada)."""
+    configured = [
+        provider for provider, meta in PROVIDER_META.items()
+        if str(values.get(meta["key_setting"]) or "").strip()
+    ]
+    if len(configured) == 1:
+        first = configured[0]
+        second = next(provider for provider in PROVIDER_META if provider != first)
+        return PROVIDER_DEFAULT_MODEL[first], PROVIDER_DEFAULT_MODEL[second]
+    return DEFAULT_PRIMARY, DEFAULT_FALLBACK
 
 
 def parse_model_spec(spec: str) -> tuple[str, str]:

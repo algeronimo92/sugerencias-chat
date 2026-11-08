@@ -8,8 +8,9 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from app.integrations.llm.catalog import (
-    DEFAULT_FALLBACK,
-    DEFAULT_PRIMARY,
+    PROVIDER_DEFAULT_MODEL,
+    PROVIDER_META,
+    default_models,
     parse_model_spec,
     parse_overrides,
     sanitize_overrides,
@@ -320,13 +321,33 @@ async def _normalize_model_params(values: dict[str, str], slot: str) -> None:
     model_key, params_key = f"ai_suggestions_{slot}_model", f"ai_suggestions_{slot}_params"
     if params_key not in values and model_key not in values:
         return
-    default = DEFAULT_PRIMARY if slot == "primary" else DEFAULT_FALLBACK
+    keys = {meta["key_setting"]: values.get(meta["key_setting"]) or await get_effective(meta["key_setting"]) for meta in PROVIDER_META.values()}
+    default = default_models(keys)[0 if slot == "primary" else 1]
     model = values.get(model_key) or (await get_effective(model_key)).strip() or default
     if params_key in values:
         clean = validate_overrides(model, parse_overrides(values[params_key]))
     else:
         clean, _dropped = sanitize_overrides(model, parse_overrides(await get_effective(params_key)))
     values[params_key] = json.dumps(clean, sort_keys=True) if clean else ""
+
+
+async def _order_models_on_first_key(values: dict[str, str]) -> None:
+    """La primera clave de IA que carga el negocio define quién procesa. Se
+    guarda el orden en ese momento: si no, al cargar la segunda clave el
+    orden por defecto podía dar vuelta y procesar el proveedor que llegó
+    después. Una elección explícita del negocio no se toca."""
+    new_keys = [provider for provider, meta in PROVIDER_META.items() if (values.get(meta["key_setting"]) or "").strip()]
+    if not new_keys:
+        return
+    if values.get("ai_suggestions_primary_model") or (await get_effective("ai_suggestions_primary_model")).strip():
+        return
+    for provider in new_keys:
+        others = [other for other in PROVIDER_META if other != provider]
+        earlier = [other for other in others if (await get_effective(PROVIDER_META[other]["key_setting"])).strip()]
+        first, second = (earlier[0], provider) if earlier else (provider, others[0])
+        values["ai_suggestions_primary_model"] = PROVIDER_DEFAULT_MODEL[first]
+        values.setdefault("ai_suggestions_fallback_model", PROVIDER_DEFAULT_MODEL[second])
+        return
 
 
 def validate_ai_model(value: str) -> str:
@@ -475,6 +496,7 @@ async def update_settings(values: dict[str, str]) -> None:
     for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
         if values.get(key):
             values[key] = validate_ai_model(values[key])
+    await _order_models_on_first_key(values)
     for slot in ("primary", "fallback"):
         await _normalize_model_params(values, slot)
     if "business_timezone" in values:

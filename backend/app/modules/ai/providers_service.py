@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import monotonic
 
 from app.integrations.llm.base import LlmError
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, SPECS, key_setting_for, params_schema, parse_model_spec, parse_overrides, resolve_model_spec, sanitize_overrides
+from app.integrations.llm.catalog import PROVIDERS, default_models, SPECS, key_setting_for, params_schema, parse_model_spec, parse_overrides, resolve_model_spec, sanitize_overrides
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_access import business_ai_ready
 from app.modules.platform.ports.settings_service import get_effective_many
@@ -19,8 +19,9 @@ _KEYS = (
 
 async def providers_status() -> dict:
     values = await get_effective_many(_KEYS)
-    primary = _resolved(values["ai_suggestions_primary_model"], DEFAULT_PRIMARY)
-    fallback = _resolved(values["ai_suggestions_fallback_model"], DEFAULT_FALLBACK)
+    default_primary, default_fallback = default_models(values)
+    primary = _resolved(values["ai_suggestions_primary_model"], default_primary)
+    fallback = _resolved(values["ai_suggestions_fallback_model"], default_fallback)
     return {
         "providers": [
             {
