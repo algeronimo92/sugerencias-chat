@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { extractErrorMessage } from '../../shared/utils/errors'
 import { useSaveSettings } from './hooks/useSettings'
 import type { SettingItem } from './types'
@@ -11,34 +11,28 @@ import type { SettingItem } from './types'
  */
 export function useSettingsDraft(items: SettingItem[] | undefined) {
   const { mutate: save, isPending: isSaving } = useSaveSettings()
-  const [draft, setDraft] = useState<Record<string, string>>({})
+  // Solo lo que el usuario tocó y todavía no guardó; el resto se lee del
+  // servidor en cada render. El Embedded Signup de WhatsApp guarda el waba id
+  // y el phone number id por su cuenta: copiarlos a un estado propio los
+  // dejaba vacíos acá (y un "Guardar" posterior los borraba).
+  const [edits, setEdits] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [clearingSecretKey, setClearingSecretKey] = useState<string | null>(null)
-  // Campos que el usuario tocó y todavía no guardó. Los demás siguen al
-  // servidor: el Embedded Signup de WhatsApp guarda el waba id y el phone
-  // number id por su cuenta, y sin resincronizar quedaban vacíos acá (y un
-  // "Guardar" posterior los borraba).
-  const editedKeys = useRef(new Set<string>())
 
-  useEffect(() => {
-    if (!items) return
-    setDraft((prev) => {
-      const next = { ...prev }
-      for (const item of items) {
-        if (!item.secret && !editedKeys.current.has(item.key)) next[item.key] = item.value || ''
-      }
-      return next
-    })
-  }, [items])
+  // Los secretos nunca vuelven del servidor: solo existen si se tipearon.
+  const draft = useMemo(() => {
+    const fromServer: Record<string, string> = {}
+    for (const item of items ?? []) if (!item.secret) fromServer[item.key] = item.value || ''
+    return { ...fromServer, ...edits }
+  }, [items, edits])
 
   function setField(key: string, value: string) {
-    editedKeys.current.add(key)
-    setDraft((prev) => ({ ...prev, [key]: value }))
+    setEdits((prev) => ({ ...prev, [key]: value }))
     setSavedAt(null)
   }
 
-  const isDirty = editedKeys.current.size > 0
+  const isDirty = Object.keys(edits).length > 0
 
   function handleSave(onSuccess?: () => void) {
     if (!items) return
@@ -57,13 +51,9 @@ export function useSettingsDraft(items: SettingItem[] | undefined) {
     }
     save(values, {
       onSuccess: () => {
-        editedKeys.current.clear()
+        // La respuesta ya actualizó la caché: lo guardado se ve desde el servidor.
+        setEdits({})
         setSavedAt(Date.now())
-        setDraft((prev) => {
-          const next = { ...prev }
-          for (const item of items) if (item.secret) delete next[item.key]
-          return next
-        })
         onSuccess?.()
       },
       onError: (err) => setSaveError(extractErrorMessage(err)),
@@ -76,7 +66,11 @@ export function useSettingsDraft(items: SettingItem[] | undefined) {
     save(
       { [key]: '' },
       {
-        onSuccess: () => setDraft((prev) => ({ ...prev, [key]: '' })),
+        onSuccess: () => setEdits((prev) => {
+          const next = { ...prev }
+          delete next[key]
+          return next
+        }),
         onError: (err) => setSaveError(extractErrorMessage(err)),
         onSettled: () => setClearingSecretKey(null),
       },

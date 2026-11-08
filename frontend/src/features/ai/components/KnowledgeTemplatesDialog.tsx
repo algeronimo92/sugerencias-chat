@@ -19,14 +19,19 @@ function fold(text: string): string {
 }
 
 /** El servicio del catálogo que mejor corresponde a la sugerencia de la
- *  plantilla ("Hollywood Peel" → "Hollywood Peel - Rostro"); el admin lo cambia. */
+ *  plantilla ("Hollywood Peel" → "Hollywood Peel - Rostro"); el admin lo cambia.
+ *  Se compara por prefijo: el catálogo nombra "Servicio - Zona", y "Peel" no
+ *  debería elegir "Hollywood Peel". */
 function matchService(hint: string | null | undefined, services: { id: number; name: string }[]): number | null {
   if (!hint) return null
   const wanted = fold(hint)
-  const exact = services.find(service => fold(service.name) === wanted)
-  if (exact) return exact.id
-  const partial = services.filter(service => fold(service.name).includes(wanted))
-  return partial.length ? partial.sort((a, b) => a.name.length - b.name.length)[0].id : null
+  let best: { id: number; length: number } | null = null
+  for (const service of services) {
+    const name = fold(service.name)
+    if (name === wanted) return service.id
+    if (name.startsWith(wanted) && (best === null || name.length < best.length)) best = { id: service.id, length: name.length }
+  }
+  return best?.id ?? null
 }
 
 interface Props {

@@ -16,41 +16,78 @@ const KEY_SETTING: Record<string, string> = { gemini: 'ai_gemini_api_key', opena
 type Provider = AiProvidersStatus['providers'][number]
 
 /**
- * Una fila por proveedor. "Probar y guardar" prueba la clave tipeada contra el
- * modelo principal de ese proveedor y solo la guarda si responde: así nunca
- * queda guardada una clave que haría fallar las sugerencias.
+ * "Probar y guardar" prueba la clave tipeada contra el modelo principal de ese
+ * proveedor y solo la guarda si responde: así nunca queda guardada una clave
+ * que haría fallar las sugerencias.
  */
-function ProviderKeyRow({ provider, testModel, onSaved }: { provider: Provider; testModel: string | null; onSaved: () => void }) {
-  const Mark = MARKS[provider.provider] ?? Sparkles
+function useProviderKey(provider: Provider, testModel: string | null, onSaved: () => void) {
   const [apiKey, setApiKey] = useState('')
   const [result, setResult] = useState<AiProviderTestResult | null>(null)
   const test = useTestAiProvider()
   const save = useSaveSettings()
   const typed = apiKey.trim()
-  const busy = test.isPending || save.isPending
-  const inputId = `ai-key-${provider.provider}`
+  const setting = KEY_SETTING[provider.provider]
 
-  function handleTest() {
+  function saveTyped() {
+    save.mutate({ [setting]: typed }, {
+      onSuccess: () => { setApiKey(''); onSaved(); toast.success(`Clave de ${provider.label} guardada`) },
+      onError: err => toast.error(extractErrorMessage(err)),
+    })
+  }
+
+  function testKey() {
     setResult(null)
     test.mutate({ provider: provider.provider, apiKey: typed || null, model: testModel }, {
       onSuccess: outcome => {
         setResult(outcome)
-        if (!outcome.ok || !typed) return
-        save.mutate({ [KEY_SETTING[provider.provider]]: typed }, {
-          onSuccess: () => { setApiKey(''); onSaved(); toast.success(`Clave de ${provider.label} guardada`) },
-          onError: err => toast.error(extractErrorMessage(err)),
-        })
+        if (outcome.ok && typed) saveTyped()
       },
       onError: err => setResult({ ok: false, provider: provider.provider, error: extractErrorMessage(err) }),
     })
   }
 
-  function handleRemove() {
-    save.mutate({ [KEY_SETTING[provider.provider]]: '' }, {
+  function removeKey() {
+    save.mutate({ [setting]: '' }, {
       onSuccess: () => { setResult(null); onSaved(); toast.success(`Clave de ${provider.label} quitada`) },
       onError: err => toast.error(extractErrorMessage(err)),
     })
   }
+
+  function type(value: string) {
+    setApiKey(value)
+    setResult(null)
+  }
+
+  return { apiKey, typed, result, type, testKey, removeKey, testing: test.isPending, busy: test.isPending || save.isPending }
+}
+
+function KeyStatusChip({ configured }: { configured: boolean }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${configured ? 'bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary' : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'}`}>
+      {configured ? 'Clave guardada' : 'Sin clave'}
+    </span>
+  )
+}
+
+function KeyTestResult({ result, typed }: { result: AiProviderTestResult; typed: boolean }) {
+  if (!result.ok) {
+    return <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{result.error}. La clave no se guardó.</p>
+  }
+  const latency = result.latency_ms != null ? ` · ${result.latency_ms} ms` : ''
+  return (
+    <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
+      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      {result.model} responde{latency}{typed ? '' : ' con la clave guardada'}
+    </p>
+  )
+}
+
+/** Una fila por proveedor: su clave, la prueba y el resultado. */
+function ProviderKeyRow({ provider, testModel, onSaved }: { provider: Provider; testModel: string | null; onSaved: () => void }) {
+  const Mark = MARKS[provider.provider] ?? Sparkles
+  const key = useProviderKey(provider, testModel, onSaved)
+  const inputId = `ai-key-${provider.provider}`
+  const configured = provider.key_configured
 
   return (
     <div className="rounded-lg border border-wa-border/70 p-3 dark:border-wa-border-dark/70">
@@ -59,42 +96,31 @@ function ProviderKeyRow({ provider, testModel, onSaved }: { provider: Provider; 
           <Mark className="h-5 w-5 text-wa-text dark:text-wa-text-dark" />
           {provider.label}
         </label>
-        <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${provider.key_configured ? 'bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary' : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'}`}>
-          {provider.key_configured ? 'Clave guardada' : 'Sin clave'}
-        </span>
+        <KeyStatusChip configured={configured} />
       </div>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <Input
           id={inputId}
           type="password"
           autoComplete="off"
-          value={apiKey}
-          onChange={event => { setApiKey(event.target.value); setResult(null) }}
-          placeholder={provider.key_configured ? '•••• guardada (escribe otra para reemplazarla)' : 'Pega aquí la API key'}
+          value={key.apiKey}
+          onChange={event => key.type(event.target.value)}
+          placeholder={configured ? '•••• guardada (escribe otra para reemplazarla)' : 'Pega aquí la API key'}
           className="min-w-0 flex-1"
         />
         <div className="flex gap-2">
-          <Button variant="secondary" className="h-11 flex-1 sm:h-9 sm:flex-none" onClick={handleTest} disabled={busy || (!typed && !provider.key_configured)} aria-busy={test.isPending}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <PlugZap className="h-4 w-4" aria-hidden="true" />}
-            {typed ? 'Probar y guardar' : 'Probar'}
+          <Button variant="secondary" className="h-11 flex-1 sm:h-9 sm:flex-none" onClick={key.testKey} disabled={key.busy || (!key.typed && !configured)} aria-busy={key.testing}>
+            {key.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <PlugZap className="h-4 w-4" aria-hidden="true" />}
+            {key.typed ? 'Probar y guardar' : 'Probar'}
           </Button>
-          {provider.key_configured && (
-            <Button variant="ghost" size="icon" className="h-11 w-11 text-red-600 sm:h-9 sm:w-9 dark:text-red-400" onClick={handleRemove} disabled={busy} aria-label={`Quitar clave de ${provider.label}`}>
+          {configured && (
+            <Button variant="ghost" size="icon" className="h-11 w-11 text-red-600 sm:h-9 sm:w-9 dark:text-red-400" onClick={key.removeKey} disabled={key.busy} aria-label={`Quitar clave de ${provider.label}`}>
               <Trash2 className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
         </div>
       </div>
-      {result && (
-        result.ok ? (
-          <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
-            <Check className="h-3.5 w-3.5" aria-hidden="true" />
-            {result.model} responde{result.latency_ms != null ? ` · ${result.latency_ms} ms` : ''}{typed ? '' : ' con la clave guardada'}
-          </p>
-        ) : (
-          <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{result.error}. La clave no se guardó.</p>
-        )
-      )}
+      {key.result && <KeyTestResult result={key.result} typed={Boolean(key.typed)} />}
     </div>
   )
 }

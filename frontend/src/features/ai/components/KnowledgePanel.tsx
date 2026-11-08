@@ -14,7 +14,7 @@ import {
   useKnowledgeDocuments,
   useSaveKnowledgeDocument,
 } from '../queries'
-import type { KnowledgeDocumentType } from '../types'
+import type { KnowledgeDocumentSummary, KnowledgeDocumentType } from '../types'
 import { KnowledgeTemplatesDialog } from './KnowledgeTemplatesDialog'
 import { panelClass } from './styles'
 
@@ -209,6 +209,86 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
   )
 }
 
+function matchesFilter(document: KnowledgeDocumentSummary, filter: string): boolean {
+  if (filter === ALL) return true
+  if (filter === GENERAL) return document.service_id == null
+  return String(document.service_id) === filter
+}
+
+function typeLabel(key: string | null): string | undefined {
+  return DOCUMENT_TYPES.find(type => type.key === key)?.label
+}
+
+/**
+ * Con muchos documentos (las plantillas importadas suman ~20) el editor queda
+ * arriba de la grilla y, al elegir uno del final de la lista, fuera de la
+ * pantalla: parecía que el clic no abría nada. En móvil está debajo de la lista.
+ */
+function useRevealOnChange(value: string | null) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = ref.current
+    if (value === null || !element) return
+    const { top, bottom } = element.getBoundingClientRect()
+    if (top < 0 || top > window.innerHeight || bottom < 0) element.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [value])
+  return ref
+}
+
+function DocumentListItem({ document, serviceName, selected, onSelect }: {
+  document: KnowledgeDocumentSummary
+  serviceName: string
+  selected: boolean
+  onSelect: () => void
+}) {
+  const type = typeLabel(document.document_type)
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected}
+        className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${selected ? 'bg-wa-primary/10' : 'hover:bg-wa-hover dark:hover:bg-wa-head-dark'}`}
+      >
+        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-wa-text dark:text-wa-text-dark">{document.title}</span>
+          <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
+            {serviceName}
+            {type ? ` · ${type}` : ''}
+            {document.template_id != null ? ' · desde plantilla' : ''}
+            {' · '}{document.chunk_count} {document.chunk_count === 1 ? 'fragmento' : 'fragmentos'}
+          </span>
+        </span>
+      </button>
+    </li>
+  )
+}
+
+function DocumentsListStatus({ isLoading, error, empty, filterServiceId }: {
+  isLoading: boolean
+  error: unknown
+  empty: boolean
+  filterServiceId: number | null
+}) {
+  if (isLoading) return <p className="mt-4 text-sm text-wa-muted dark:text-wa-muted-dark">Cargando…</p>
+  if (error) return <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{extractErrorMessage(error)}</p>
+  if (!empty) return null
+  return filterServiceId ? (
+    <EmptyState
+      icon={BookText}
+      title="Este servicio no tiene documentos"
+      description="Sube su ficha (PDF o texto) o importa una plantilla: el asistente la usará cuando un lead se interese en este servicio."
+    />
+  ) : (
+    <EmptyState
+      icon={BookText}
+      title="Sin documentos"
+      description="Carga fichas de servicios, políticas, preguntas frecuentes o guiones de venta, o importa una plantilla de la plataforma."
+    />
+  )
+}
+
 export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?: number | null }) {
   const { data: documents = [], isLoading, error } = useKnowledgeDocuments()
   const services = useServiceNames()
@@ -216,24 +296,16 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
   // null = sin editor abierto; 'new' = alta; otro valor = id en edición.
   const [editing, setEditing] = useState<string | null>(null)
   const [browsingTemplates, setBrowsingTemplates] = useState(false)
-  const editorRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRevealOnChange(editing)
 
-  // Con muchos documentos (las plantillas importadas suman ~20) el editor queda
-  // arriba de la grilla y, al elegir uno del final de la lista, fuera de la
-  // pantalla: parecía que el clic no abría nada. En móvil está debajo de la lista.
-  useEffect(() => {
-    const editor = editorRef.current
-    if (editing === null || !editor) return
-    const { top, bottom } = editor.getBoundingClientRect()
-    if (top < 0 || top > window.innerHeight || bottom < 0) editor.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-  }, [editing])
-
-  const visible = documents.filter(document =>
-    filter === ALL ? true : filter === GENERAL ? document.service_id == null : String(document.service_id) === filter,
-  )
-  const servicesWithDocuments = [...new Set(documents.map(document => document.service_id).filter((id): id is number => id != null))]
+  const visible = documents.filter(document => matchesFilter(document, filter))
   const filterServiceId = filter !== ALL && filter !== GENERAL ? Number(filter) : null
-  const typeLabel = (key: string | null) => DOCUMENT_TYPES.find(type => type.key === key)?.label
+  // El servicio filtrado aparece aunque todavía no tenga documentos.
+  const filterOptions = [...new Set([
+    ...documents.map(document => document.service_id).filter((id): id is number => id != null),
+    ...(filterServiceId ? [filterServiceId] : []),
+  ])]
+  const serviceNameOf = (id: number | null) => (id != null ? services.get(id)?.name ?? 'Servicio' : 'General')
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
@@ -255,43 +327,21 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <Select aria-label="Filtrar por servicio" value={filter} onValueChange={setFilter}>
             <option value={ALL}>Todos los documentos</option>
             <option value={GENERAL}>Generales (sin servicio)</option>
-            {[...new Set([...servicesWithDocuments, ...(filterServiceId ? [filterServiceId] : [])])].map(id => (
+            {filterOptions.map(id => (
               <option key={id} value={String(id)}>{services.get(id)?.name ?? `Servicio ${id}`}</option>
             ))}
           </Select>
         </div>
-        {isLoading && <p className="mt-4 text-sm text-wa-muted dark:text-wa-muted-dark">Cargando…</p>}
-        {error && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{extractErrorMessage(error)}</p>}
-        {!isLoading && !error && visible.length === 0 && (
-          <EmptyState
-            icon={BookText}
-            title={filterServiceId ? 'Este servicio no tiene documentos' : 'Sin documentos'}
-            description={filterServiceId
-              ? 'Sube su ficha (PDF o texto) o importa una plantilla: el asistente la usará cuando un lead se interese en este servicio.'
-              : 'Carga fichas de servicios, políticas, preguntas frecuentes o guiones de venta, o importa una plantilla de la plataforma.'}
-          />
-        )}
+        <DocumentsListStatus isLoading={isLoading} error={error} empty={visible.length === 0} filterServiceId={filterServiceId} />
         <ul className="mt-3 space-y-1" aria-label="Documentos de conocimiento">
           {visible.map(document => (
-            <li key={document.id}>
-              <button
-                type="button"
-                onClick={() => setEditing(document.id)}
-                aria-current={editing === document.id}
-                className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${editing === document.id ? 'bg-wa-primary/10' : 'hover:bg-wa-hover dark:hover:bg-wa-head-dark'}`}
-              >
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-wa-text dark:text-wa-text-dark">{document.title}</span>
-                  <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
-                    {document.service_id != null ? services.get(document.service_id)?.name ?? 'Servicio' : 'General'}
-                    {typeLabel(document.document_type) ? ` · ${typeLabel(document.document_type)}` : ''}
-                    {document.template_id != null ? ' · desde plantilla' : ''}
-                    {' · '}{document.chunk_count} {document.chunk_count === 1 ? 'fragmento' : 'fragmentos'}
-                  </span>
-                </span>
-              </button>
-            </li>
+            <DocumentListItem
+              key={document.id}
+              document={document}
+              serviceName={serviceNameOf(document.service_id)}
+              selected={editing === document.id}
+              onSelect={() => setEditing(document.id)}
+            />
           ))}
         </ul>
       </div>

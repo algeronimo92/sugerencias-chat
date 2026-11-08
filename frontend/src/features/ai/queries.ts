@@ -89,6 +89,10 @@ export function useSetAiResourceDescription() {
 }
 
 export function useImportKnowledgePdf() {
+  // Solo extrae el texto del PDF para revisarlo en el editor: el servidor no
+  // guarda nada, así que no hay caché que invalidar. Lo que se guarda después
+  // pasa por useSaveKnowledgeDocument, que sí invalida.
+  // react-doctor-disable-next-line react-doctor/query-mutation-missing-invalidation
   return useMutation({ mutationFn: importKnowledgePdf })
 }
 

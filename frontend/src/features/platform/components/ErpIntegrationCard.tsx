@@ -1,5 +1,5 @@
 import { AlertTriangle, Database, Loader2, Lock, PlugZap, Unlink } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -81,13 +81,22 @@ function TestResult({ result, alreadyConnected }: { result: ErpTestResult; alrea
   )
 }
 
+function failedTest(url: string, error: string): ErpTestResult {
+  return { ok: false, url, error, services_total: 0, packages_total: 0, services_without_packages: [], sample: [] }
+}
+
+function erpState(syncing: boolean, configured: boolean, lastError: string | null | undefined): IntegrationState {
+  if (syncing) return 'syncing'
+  if (!configured) return 'unconfigured'
+  return lastError ? 'error' : 'connected'
+}
+
 /**
- * El ERP manda sobre la lista de precios. "Guardar" solo se habilita tras
- * una prueba exitosa de esa misma URL: así no se conecta una fuente rota que
- * fallaría en silencio cada hora. Al guardar se dispara la primera
- * sincronización para que el admin vea de inmediato que funciona.
+ * Estado y acciones de la conexión. La URL del input es la guardada hasta que
+ * el admin escribe: se deriva en el render en vez de copiarla con un efecto,
+ * que costaba un render extra y podía pisar lo que estaba tipeando.
  */
-export function ErpIntegrationCard() {
+function useErpConnection() {
   const navigate = useNavigate()
   const { data: settings = [] } = useSettings(true)
   const savedUrl = useMemo(() => settings.find(item => item.key === URL_KEY)?.value ?? '', [settings])
@@ -96,47 +105,29 @@ export function ErpIntegrationCard() {
   const runSync = useRunErpSync()
   const test = useTestErpConnection()
   const invalidateErp = useInvalidateErpSync()
-  const [url, setUrl] = useState('')
-  const [touched, setTouched] = useState(false)
+  const [editedUrl, setEditedUrl] = useState<string | null>(null)
   const [tested, setTested] = useState<{ url: string; result: ErpTestResult } | null>(null)
-  const [disconnecting, setDisconnecting] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!touched) setUrl(savedUrl)
-  }, [savedUrl, touched])
-
+  const url = editedUrl ?? savedUrl
   const trimmed = url.trim()
   const configured = Boolean(savedUrl)
-  const validUrl = looksLikeUrl(trimmed)
   const testedThis = tested?.url === trimmed ? tested.result : null
-  const canSave = Boolean(testedThis?.ok) && trimmed !== savedUrl
-  const busy = test.isPending || save.isPending || runSync.isPending
 
-  const state: IntegrationState = runSync.isPending
-    ? 'syncing'
-    : !configured
-      ? 'unconfigured'
-      : syncStatus?.last_error
-        ? 'error'
-        : 'connected'
-
-  function handleTest() {
+  function testUrl() {
     test.mutate(trimmed, {
       onSuccess: result => {
         setTested({ url: trimmed, result })
         window.setTimeout(() => resultRef.current?.focus(), 0)
       },
-      onError: err => {
-        setTested({ url: trimmed, result: { ok: false, url: trimmed, error: extractErrorMessage(err), services_total: 0, packages_total: 0, services_without_packages: [], sample: [] } })
-      },
+      onError: err => setTested({ url: trimmed, result: failedTest(trimmed, extractErrorMessage(err)) }),
     })
   }
 
-  function handleSave() {
+  function saveUrl() {
     save.mutate({ [URL_KEY]: trimmed }, {
       onSuccess: () => {
-        setTouched(false)
+        setEditedUrl(null)
         invalidateErp()
         toast.success('ERP conectado. Los servicios del ERP son ahora de solo lectura en Catálogos.', {
           action: { label: 'Ver catálogos', onClick: () => navigate('/catalogs') },
@@ -147,12 +138,10 @@ export function ErpIntegrationCard() {
     })
   }
 
-  function handleDisconnect() {
-    setDisconnecting(false)
+  function disconnect() {
     save.mutate({ [URL_KEY]: '' }, {
       onSuccess: () => {
-        setTouched(false)
-        setUrl('')
+        setEditedUrl(null)
         setTested(null)
         invalidateErp()
         toast.success('ERP desconectado. Los servicios vuelven a editarse en Catálogos.')
@@ -161,61 +150,98 @@ export function ErpIntegrationCard() {
     })
   }
 
+  return {
+    url, trimmed, savedUrl, configured, testedThis, resultRef,
+    touched: editedUrl !== null,
+    validUrl: looksLikeUrl(trimmed),
+    canSave: Boolean(testedThis?.ok) && trimmed !== savedUrl,
+    busy: test.isPending || save.isPending || runSync.isPending,
+    testing: test.isPending,
+    saving: save.isPending,
+    state: erpState(runSync.isPending, configured, syncStatus?.last_error),
+    setUrl: setEditedUrl, testUrl, saveUrl, disconnect,
+  }
+}
+
+type ErpConnection = ReturnType<typeof useErpConnection>
+
+function ErpUrlField({ erp }: { erp: ErpConnection }) {
+  const pendingTest = !erp.canSave && erp.trimmed && erp.trimmed !== erp.savedUrl
+  return (
+    <div>
+      <label htmlFor="erp-url" className={labelClass}>URL pública del catálogo</label>
+      <Input
+        id="erp-url"
+        type="url"
+        inputMode="url"
+        value={erp.url}
+        onChange={event => erp.setUrl(event.target.value)}
+        placeholder="https://mi-erp.com/api/public/catalog"
+        aria-describedby="erp-url-hint"
+        aria-invalid={erp.touched && erp.trimmed !== '' && !erp.validUrl ? true : undefined}
+      />
+      <p id="erp-url-hint" className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
+        Debe abrir sin iniciar sesión y devolver JSON.
+        {pendingTest ? ' Prueba la URL antes de guardar.' : ''}
+      </p>
+    </div>
+  )
+}
+
+function ErpTestArea({ erp }: { erp: ErpConnection }) {
+  return (
+    <div ref={erp.resultRef} tabIndex={-1} className="min-h-6 outline-none">
+      {erp.testing && (
+        <div className="space-y-2" aria-hidden="true">
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-3 w-72" />
+        </div>
+      )}
+      {!erp.testing && erp.testedThis && <TestResult result={erp.testedThis} alreadyConnected={erp.configured} />}
+    </div>
+  )
+}
+
+/**
+ * El ERP manda sobre la lista de precios. "Guardar" solo se habilita tras
+ * una prueba exitosa de esa misma URL: así no se conecta una fuente rota que
+ * fallaría en silencio cada hora. Al guardar se dispara la primera
+ * sincronización para que el admin vea de inmediato que funciona.
+ */
+export function ErpIntegrationCard() {
+  const erp = useErpConnection()
+  const [disconnecting, setDisconnecting] = useState(false)
+
   return (
     <IntegrationCard
       id="erp"
       icon={Database}
       title="ERP del negocio"
       description="La lista de precios se trae del ERP cada hora: servicios y paquetes con los que cotiza el asistente IA."
-      state={state}
-      stateLabel={state === 'connected' ? `Conectado · ${hostOf(savedUrl)}` : undefined}
-      actions={configured ? (
-        <Button variant="ghost" size="sm" className="h-11 text-red-600 hover:text-red-700 dark:text-red-400 sm:h-9" onClick={() => setDisconnecting(true)} disabled={busy}>
+      state={erp.state}
+      stateLabel={erp.state === 'connected' ? `Conectado · ${hostOf(erp.savedUrl)}` : undefined}
+      actions={erp.configured ? (
+        <Button variant="ghost" size="sm" className="h-11 text-red-600 hover:text-red-700 dark:text-red-400 sm:h-9" onClick={() => setDisconnecting(true)} disabled={erp.busy}>
           <Unlink className="h-3.5 w-3.5" aria-hidden="true" />
           Desconectar
         </Button>
       ) : undefined}
     >
       <div className="space-y-3">
-        <div>
-          <label htmlFor="erp-url" className={labelClass}>URL pública del catálogo</label>
-          <Input
-            id="erp-url"
-            type="url"
-            inputMode="url"
-            value={url}
-            onChange={event => { setTouched(true); setUrl(event.target.value) }}
-            placeholder="https://mi-erp.com/api/public/catalog"
-            aria-describedby="erp-url-hint"
-            aria-invalid={touched && trimmed !== '' && !validUrl ? true : undefined}
-          />
-          <p id="erp-url-hint" className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-            Debe abrir sin iniciar sesión y devolver JSON.
-            {!canSave && trimmed && trimmed !== savedUrl ? ' Prueba la URL antes de guardar.' : ''}
-          </p>
-        </div>
+        <ErpUrlField erp={erp} />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button variant="secondary" className="h-11 sm:h-9" onClick={handleTest} disabled={!validUrl || busy} aria-busy={test.isPending}>
-            {test.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <PlugZap className="h-4 w-4" aria-hidden="true" />}
-            {test.isPending ? 'Probando…' : 'Probar conexión'}
+          <Button variant="secondary" className="h-11 sm:h-9" onClick={erp.testUrl} disabled={!erp.validUrl || erp.busy} aria-busy={erp.testing}>
+            {erp.testing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <PlugZap className="h-4 w-4" aria-hidden="true" />}
+            {erp.testing ? 'Probando…' : 'Probar conexión'}
           </Button>
-          <Button className="h-11 sm:h-9" onClick={handleSave} disabled={!canSave || busy}>
-            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            {configured ? 'Guardar nueva URL' : 'Guardar y conectar'}
+          <Button className="h-11 sm:h-9" onClick={erp.saveUrl} disabled={!erp.canSave || erp.busy}>
+            {erp.saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            {erp.configured ? 'Guardar nueva URL' : 'Guardar y conectar'}
           </Button>
         </div>
-        <div ref={resultRef} tabIndex={-1} className="min-h-6 outline-none">
-          {test.isPending ? (
-            <div className="space-y-2" aria-hidden="true">
-              <Skeleton className="h-4 w-56" />
-              <Skeleton className="h-3 w-40" />
-              <Skeleton className="h-3 w-72" />
-            </div>
-          ) : testedThis ? (
-            <TestResult result={testedThis} alreadyConnected={configured} />
-          ) : null}
-        </div>
-        {configured && <ErpSyncCard />}
+        <ErpTestArea erp={erp} />
+        {erp.configured && <ErpSyncCard />}
       </div>
       <ConfirmDialog
         open={disconnecting}
@@ -223,7 +249,7 @@ export function ErpIntegrationCard() {
         title="¿Desconectar el ERP?"
         description="El catálogo deja de sincronizarse. Los servicios que trajo el ERP siguen en el CRM y vuelven a poder editarse a mano."
         confirmLabel="Desconectar"
-        onConfirm={handleDisconnect}
+        onConfirm={() => { setDisconnecting(false); erp.disconnect() }}
       />
     </IntegrationCard>
   )

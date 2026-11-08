@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { Input, Select, Textarea, labelClass } from '../../../shared/ui/Input'
@@ -20,65 +20,96 @@ interface Props {
   isPending?: boolean
 }
 
-/**
- * El interés del lead es el servicio (el problema); el cierre es un paquete
- * concreto con su precio. El monto se prellena con el precio de lista y se
- * puede bajar si hubo descuento; el precio de lista queda guardado igual.
- */
-export function SaleDialog({ leadName, defaultServiceName, stageName, onConfirm, onCancel, allowSkip = false, isPending = false }: Props) {
+type SellableService = ReturnType<typeof useSellableServices>['sellable'][number]
+
+/** Solo lo vendible: servicios activos con al menos un paquete activo. */
+function useSellableServices() {
   const { data: services = [], isLoading } = useLeadServices()
-  // Solo lo vendible: servicios activos con al menos un paquete activo.
   const sellable = useMemo(
     () => services
       .map(service => ({ ...service, packages: (service.packages ?? []).filter(pkg => pkg.is_active) }))
       .filter(service => service.packages.length > 0),
     [services],
   )
-  const [serviceId, setServiceId] = useState<string>('')
-  const [packageId, setPackageId] = useState<string>('')
-  const [amount, setAmount] = useState('')
+  return { sellable, isLoading }
+}
+
+function findDefaultService(sellable: SellableService[], defaultServiceName: string | null | undefined): SellableService | null {
+  const wanted = defaultServiceName?.trim().toLowerCase()
+  const byName = wanted ? sellable.find(item => item.name.toLowerCase() === wanted) : undefined
+  if (byName) return byName
+  return sellable.length === 1 ? sellable[0] : null
+}
+
+/**
+ * Servicio, paquete y monto. Lo elegido por el usuario manda; lo que todavía
+ * no tocó (null) se deduce en el render: el servicio de interés del lead, el
+ * único paquete del servicio y el precio de lista. No se corrige con efectos:
+ * los servicios llegan después del primer render y un efecto que "acomoda" el
+ * estado cuesta un render extra y puede pisar lo elegido.
+ */
+function useSaleSelection(sellable: SellableService[], defaultServiceName: string | null | undefined) {
+  const [chosenServiceId, setChosenServiceId] = useState<string | null>(null)
+  const [chosenPackageId, setChosenPackageId] = useState<string | null>(null)
+  const [editedAmount, setEditedAmount] = useState<string | null>(null)
+
+  const defaultService = useMemo(() => findDefaultService(sellable, defaultServiceName), [sellable, defaultServiceName])
+  const serviceId = chosenServiceId ?? (defaultService ? String(defaultService.id) : '')
+  const service = sellable.find(item => String(item.id) === serviceId) ?? null
+  const onlyPackage = service?.packages.length === 1 ? service.packages[0] : null
+  const packageId = chosenPackageId ?? (onlyPackage ? String(onlyPackage.id) : '')
+  const pkg = service?.packages.find(item => String(item.id) === packageId) ?? null
+
+  return {
+    serviceId, service, packageId, pkg,
+    amount: editedAmount ?? pkg?.price ?? '',
+    setAmount: setEditedAmount,
+    chooseService(nextId: string) {
+      setChosenServiceId(nextId)
+      setChosenPackageId(null)
+      setEditedAmount(null)
+    },
+    choosePackage(nextId: string) {
+      setChosenPackageId(nextId)
+      setEditedAmount(null)
+    },
+  }
+}
+
+function saleError(hasSelection: boolean, amount: string): string | null {
+  if (!hasSelection) return 'Elige el servicio y el paquete que compró'
+  if (amount !== '' && !(Number(amount) >= 0)) return 'El monto debe ser un número mayor o igual a cero'
+  return null
+}
+
+/**
+ * El interés del lead es el servicio (el problema); el cierre es un paquete
+ * concreto con su precio. El monto se prellena con el precio de lista y se
+ * puede bajar si hubo descuento; el precio de lista queda guardado igual.
+ */
+export function SaleDialog({ leadName, defaultServiceName, stageName, onConfirm, onCancel, allowSkip = false, isPending = false }: Props) {
+  const { sellable, isLoading } = useSellableServices()
+  const selection = useSaleSelection(sellable, defaultServiceName)
+  const { serviceId, service, packageId, pkg, amount } = selection
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (serviceId || sellable.length === 0) return
-    const wanted = defaultServiceName?.trim().toLowerCase()
-    const match = (wanted && sellable.find(service => service.name.toLowerCase() === wanted)) || (sellable.length === 1 ? sellable[0] : null)
-    if (match) setServiceId(String(match.id))
-  }, [sellable, defaultServiceName, serviceId])
-
-  const service = sellable.find(item => String(item.id) === serviceId) ?? null
-  const pkg = service?.packages.find(item => String(item.id) === packageId) ?? null
-
-  useEffect(() => {
-    // Al cambiar de servicio, si hay un solo paquete se elige solo.
-    if (!service) return
-    if (!service.packages.some(item => String(item.id) === packageId)) {
-      const only = service.packages.length === 1 ? service.packages[0] : null
-      setPackageId(only ? String(only.id) : '')
-      setAmount(only ? only.price : '')
-    }
-  }, [service, packageId])
+  function chooseService(nextId: string) {
+    selection.chooseService(nextId)
+    setError(null)
+  }
 
   function choosePackage(nextId: string) {
-    setPackageId(nextId)
-    const chosen = service?.packages.find(item => String(item.id) === nextId)
-    setAmount(chosen ? chosen.price : '')
+    selection.choosePackage(nextId)
     setError(null)
   }
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    if (!service || !pkg) {
-      setError('Elige el servicio y el paquete que compró')
-      return
-    }
     const trimmed = amount.trim()
-    if (trimmed !== '' && !(Number(trimmed) >= 0)) {
-      setError('El monto debe ser un número mayor o igual a cero')
-      return
-    }
-    setError(null)
+    const problem = saleError(Boolean(service && pkg), trimmed)
+    setError(problem)
+    if (problem || !service || !pkg) return
     onConfirm({
       service_id: service.id,
       package_id: pkg.id,
@@ -119,7 +150,7 @@ export function SaleDialog({ leadName, defaultServiceName, stageName, onConfirm,
                 <>
                   <div>
                     <label htmlFor="sale-service" className={labelClass}>Servicio</label>
-                    <Select id="sale-service" value={serviceId} onValueChange={value => { setServiceId(value); setPackageId(''); setAmount(''); setError(null) }} aria-label="Servicio">
+                    <Select id="sale-service" value={serviceId} onValueChange={chooseService} aria-label="Servicio">
                       <option value="">Elegir servicio…</option>
                       {sellable.map(item => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
                     </Select>
@@ -145,7 +176,7 @@ export function SaleDialog({ leadName, defaultServiceName, stageName, onConfirm,
                         min={0}
                         step="0.01"
                         value={amount}
-                        onChange={event => setAmount(event.target.value)}
+                        onChange={event => selection.setAmount(event.target.value)}
                         placeholder={pkg ? pkg.price : '0.00'}
                         disabled={!pkg}
                       />
