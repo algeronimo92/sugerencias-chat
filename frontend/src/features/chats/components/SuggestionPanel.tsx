@@ -163,28 +163,51 @@ type BodyProps = Omit<Props, 'onGenerate' | 'chat'> & {
 }
 
 function CopilotBody(props: BodyProps) {
-  const { data, isLoading, isGenerating, error } = props
   if (props.unavailable) {
     return <CopilotUnavailable reason={props.unavailable} canConnect={props.canConnect ?? false} />
   }
-  if (isLoading && !data) {
-    return (
-      <div className="space-y-2" aria-hidden="true">
-        <div className="h-5 w-32 animate-pulse rounded-full bg-wa-hover dark:bg-wa-hover-dark" />
-        <div className="h-20 animate-pulse rounded-xl bg-wa-hover dark:bg-wa-hover-dark" />
-      </div>
-    )
-  }
+  if (props.isLoading && !props.data) return <CopilotSkeleton />
+  return <CopilotContent {...props} />
+}
+
+function CopilotSkeleton() {
+  return (
+    <div className="space-y-2" aria-hidden="true">
+      <div className="h-5 w-32 animate-pulse rounded-full bg-wa-hover dark:bg-wa-hover-dark" />
+      <div className="h-20 animate-pulse rounded-xl bg-wa-hover dark:bg-wa-hover-dark" />
+    </div>
+  )
+}
+
+function GeneratingNotice() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-wa-hover/60 px-3 py-3 text-sm text-wa-muted dark:bg-wa-hover-dark/60 dark:text-wa-muted-dark">
+      <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-wa-primary border-t-transparent" />
+      <p>Analizando la conversación… puede tardar unos segundos.</p>
+    </div>
+  )
+}
+
+function GenerationError({ error, errorCode, canConnect, errorRetryable, data, isStale, onGenerate }: BodyProps & { error: string }) {
+  return (
+    <CopilotError
+      message={error}
+      code={errorCode ?? null}
+      canConnect={canConnect ?? false}
+      retryable={errorRetryable ?? true}
+      onRetry={() => onGenerate(!!data && !isStale)}
+    />
+  )
+}
+
+function CopilotContent(props: BodyProps) {
+  const { data, isGenerating, error } = props
+  const idle = !isGenerating && !error
   return (
     <>
-      {isGenerating && !data && (
-        <div className="flex items-center gap-3 rounded-xl bg-wa-hover/60 px-3 py-3 text-sm text-wa-muted dark:bg-wa-hover-dark/60 dark:text-wa-muted-dark">
-          <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-wa-primary border-t-transparent" />
-          <p>Analizando la conversación… puede tardar unos segundos.</p>
-        </div>
-      )}
-      {error && !isGenerating && <CopilotError message={error} code={props.errorCode ?? null} canConnect={props.canConnect ?? false} retryable={props.errorRetryable ?? true} onRetry={() => props.onGenerate(!!data && !props.isStale)} />}
-      {!data && !isGenerating && !error && <EmptyCopilot {...props} />}
+      {isGenerating && !data && <GeneratingNotice />}
+      {error && !isGenerating && <GenerationError {...props} error={error} />}
+      {!data && idle && <EmptyCopilot {...props} />}
       {data && <SuggestionResults {...props} data={data} />}
     </>
   )
