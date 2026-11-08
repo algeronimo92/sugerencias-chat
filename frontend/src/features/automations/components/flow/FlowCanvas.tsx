@@ -34,6 +34,8 @@ import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 import { useReconciled } from './useReconciled'
+import { NodeTypeMenu } from './NodeTypeMenu'
+import { useConnectDrop } from './useConnectDrop'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -612,7 +614,8 @@ interface FlowCanvasProps {
   onDeleteNodes: (ids: string[]) => void
   onConnect: (edge: AutomationFlowEdge) => void
   onDeleteEdge: (id: string) => void
-  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
+  /** `from`: la salida desde la que se soltó una conexión en el vacío; el bloque nuevo queda conectado a ella. */
+  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => void
 }
 
 
@@ -884,6 +887,9 @@ function Canvas({
     })
   }, [screenToFlowPosition, onDropNewNode])
 
+  // Soltar una conexión en el vacío ofrece qué bloque crear ahí, ya conectado.
+  const connectDrop = useConnectDrop(screenToFlowPosition, onDropNewNode)
+
   return (
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
@@ -898,6 +904,7 @@ function Canvas({
           if (change.type === 'select') setSelectedEdgeId(change.selected ? change.id : null)
         })}
         onConnect={handleConnect}
+        onConnectEnd={connectDrop.onConnectEnd}
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
@@ -943,6 +950,7 @@ function Canvas({
         </Controls>
         <MiniMap pannable zoomable className="!bg-white dark:!bg-flow-panel-dark" />
       </ReactFlow>
+      {connectDrop.drop && <NodeTypeMenu x={connectDrop.drop.x} y={connectDrop.drop.y} onPick={connectDrop.pick} onClose={connectDrop.close} />}
     </div>
   )
 }
