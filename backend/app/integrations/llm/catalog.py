@@ -13,9 +13,10 @@ PROVIDERS: dict[str, dict] = {
     "gemini": {
         "label": "Google Gemini",
         "key_setting": "ai_gemini_api_key",
-        # Probados el 2026-11-08 con el esquema de sugerencias: los cuatro
-        # responden JSON válido (flash ~7 s, lite ~2 s).
-        "models": ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+        # Probados el 2026-11-08 con el esquema de sugerencias: responden JSON
+        # válido (flash ~8 s, lite ~2 s). gemini-3.5-flash quedó afuera: Google
+        # lo deprecó y redirige sus pedidos a 3.6-flash.
+        "models": ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
     },
     "openai": {
         "label": "OpenAI",
@@ -38,14 +39,15 @@ MODEL_OPTIONS: dict[str, dict] = {
 # guardados sigue funcionando con el reemplazo sin tener que entrar a
 # Integraciones; guardar uno retirado ya no se puede.
 RETIRED_MODELS: dict[str, str] = {
-    "gemini:gemini-2.0-flash": "gemini:gemini-3.5-flash",
-    "gemini:gemini-2.5-flash": "gemini:gemini-3.5-flash",
+    "gemini:gemini-2.0-flash": "gemini:gemini-3.6-flash",
+    "gemini:gemini-2.5-flash": "gemini:gemini-3.6-flash",
     "gemini:gemini-2.5-flash-lite": "gemini:gemini-3.5-flash-lite",
     "gemini:gemini-2.5-pro": "gemini:gemini-3.6-flash",
+    "gemini:gemini-3.5-flash": "gemini:gemini-3.6-flash",
 }
 
 # Gemini responde y OpenAI respalda, como en el agente de n8n.
-DEFAULT_PRIMARY = "gemini:gemini-3.5-flash"
+DEFAULT_PRIMARY = "gemini:gemini-3.6-flash"
 DEFAULT_FALLBACK = "openai:gpt-5.6-terra"
 
 

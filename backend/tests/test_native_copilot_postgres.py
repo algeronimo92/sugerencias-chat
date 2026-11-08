@@ -36,7 +36,7 @@ ANSWER = json.dumps({
 
 class RecordingClient:
     provider = "gemini"
-    model = "gemini-3.5-flash"
+    model = "gemini-3.6-flash"
 
     def __init__(self):
         self.requests = []
@@ -89,7 +89,7 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
         )
 
         assert suggestion.sugerencias[0].texto == "El pack x3 cuesta 400."
-        assert built == [("gemini:gemini-3.5-flash", "AIza-test")]
+        assert built == [("gemini:gemini-3.6-flash", "AIza-test")]
         prompt = client.requests[0].user
         assert '"x3"' in prompt and '"400.00"' in prompt
         assert "carbón activado" in prompt  # la ficha del servicio de interés
@@ -100,7 +100,7 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
             stored = await session.scalar(select(AIJob).where(AIJob.id == job.id))
         metadata = stored.request_metadata
         assert metadata["completed_steps"] == ["context_loaded", "knowledge_searched"]
-        assert metadata["model"] == "gemini:gemini-3.5-flash"
+        assert metadata["model"] == "gemini:gemini-3.6-flash"
         assert (metadata["tokens_in"], metadata["tokens_out"]) == (1500, 200)
         assert metadata["knowledge_chunk_ids"]
         assert stored.status == "running"

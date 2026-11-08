@@ -23,10 +23,10 @@ vi.mock('../../platform/public/useSettings', () => ({
 function status(overrides: Record<string, unknown> = {}) {
   return {
     providers: [
-      { provider: 'gemini', label: 'Google Gemini', models: ['gemini-3.5-flash', 'gemini-3.6-flash'], key_configured: false },
+      { provider: 'gemini', label: 'Google Gemini', models: ['gemini-3.6-flash', 'gemini-3.6-flash'], key_configured: false },
       { provider: 'openai', label: 'OpenAI', models: ['gpt-5.6-terra', 'gpt-5.5'], key_configured: false },
     ],
-    primary_model: 'gemini:gemini-3.5-flash',
+    primary_model: 'gemini:gemini-3.6-flash',
     fallback_model: 'openai:gpt-5.6-terra',
     ready: false,
     ...overrides,
@@ -80,7 +80,7 @@ describe('AiIntegrationCard', () => {
 
   it('con una clave lista queda conectado, sin nada más que activar', () => {
     mocks.status = status({ ready: true, providers: [
-      { provider: 'gemini', label: 'Google Gemini', models: ['gemini-3.5-flash'], key_configured: true },
+      { provider: 'gemini', label: 'Google Gemini', models: ['gemini-3.6-flash'], key_configured: true },
       { provider: 'openai', label: 'OpenAI', models: ['gpt-5.6-terra'], key_configured: false },
     ] })
     render(<AiIntegrationCard />)

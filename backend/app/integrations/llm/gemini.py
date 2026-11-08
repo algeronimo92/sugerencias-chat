@@ -9,11 +9,12 @@ from app.integrations.llm.base import LlmError, LlmRequest, LlmResult
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 TIMEOUT_SECONDS = 60.0
 
-# Igual que el nodo de n8n: con los filtros por defecto Gemini devolvía vacío
-# ante conversaciones legítimas de una clínica (lactancia, depilación íntima,
-# anticoagulantes) y el vendedor se quedaba sin sugerencias.
+# Filtros apagados, explícito: el nodo de n8n tuvo que relajarlos porque
+# Gemini devolvía vacío ante conversaciones legítimas de una clínica
+# (lactancia, depilación íntima, anticoagulantes). En los 3.x el default ya es
+# OFF; mandarlo igual evita depender de que Google no cambie ese default.
 SAFETY_SETTINGS = [
-    {"category": category, "threshold": "BLOCK_NONE"}
+    {"category": category, "threshold": "OFF"}
     for category in (
         "HARM_CATEGORY_HARASSMENT",
         "HARM_CATEGORY_HATE_SPEECH",
