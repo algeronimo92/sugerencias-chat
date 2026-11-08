@@ -22,6 +22,7 @@ CHUNK_TARGET_CHARS = 1200
 CHUNK_OVERLAP_CHARS = 150
 
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(\S.*)$", re.MULTILINE)
 
 
 def _hard_split(text: str, size: int) -> list[str]:
@@ -37,12 +38,7 @@ def _hard_split(text: str, size: int) -> list[str]:
     return parts
 
 
-def chunk_text(
-    content: str,
-    *,
-    target: int = CHUNK_TARGET_CHARS,
-    overlap: int = CHUNK_OVERLAP_CHARS,
-) -> list[str]:
+def _chunk_plain(content: str, target: int, overlap: int) -> list[str]:
     """Agrupa párrafos hasta ``target`` caracteres.
 
     Un párrafo más largo que ``target`` se parte por oraciones. Cada fragmento
@@ -73,6 +69,56 @@ def chunk_text(
             current = candidate
     if current:
         chunks.append(current)
+    return chunks
+
+
+def _sections(content: str) -> list[tuple[str, str]]:
+    """Corta en cada encabezado markdown; devuelve (ruta de encabezados, cuerpo)."""
+
+    sections: list[tuple[str, str]] = []
+    trail: list[tuple[int, str]] = []
+    body: list[str] = []
+
+    def flush() -> None:
+        text = "\n".join(body).strip()
+        if text:
+            sections.append((" › ".join(title for _level, title in trail), text))
+        body.clear()
+
+    for line in content.replace("\r\n", "\n").split("\n"):
+        match = _HEADING_RE.match(line)
+        if match is None:
+            body.append(line)
+            continue
+        flush()
+        level = len(match.group(1))
+        trail = [(lvl, title) for lvl, title in trail if lvl < level]
+        trail.append((level, match.group(2).strip().strip("#").strip()))
+    flush()
+    return sections
+
+
+def chunk_text(
+    content: str,
+    *,
+    target: int = CHUNK_TARGET_CHARS,
+    overlap: int = CHUNK_OVERLAP_CHARS,
+) -> list[str]:
+    """Fragmentos para la búsqueda.
+
+    Con encabezados markdown, cada sección es su propio fragmento (o varios, si
+    pasa de ``target``) y arranca con su ruta de encabezados: así un dolor, una
+    ficha o una objeción no se mezcla con la vecina y el fragmento se entiende
+    solo. Es el mismo criterio con el que se armaba el índice vectorial de n8n,
+    que ya cortaba una sección por fragmento. Sin encabezados, agrupa párrafos.
+    """
+
+    if not _HEADING_RE.search(content):
+        return _chunk_plain(content, target, overlap)
+    chunks: list[str] = []
+    for trail, body in _sections(content):
+        prefix = f"[{trail}]\n\n" if trail else ""
+        chunks.extend(f"{prefix}{chunk}" for chunk in _chunk_plain(body, target, overlap))
     return chunks
 
 

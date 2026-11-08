@@ -36,7 +36,7 @@ from app.modules.platform.ports.settings_service import get_effective_many
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "copiloto-2026-11-07"
+PROMPT_VERSION = "copiloto-2026-11-08"
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "copiloto.md"
 # Mensajes recientes que entran al prompt (los más viejos quedan fuera: el
 # contexto de una venta vive en las últimas semanas, no en todo el historial).

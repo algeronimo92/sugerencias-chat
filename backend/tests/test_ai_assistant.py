@@ -203,3 +203,30 @@ async def test_platform_reports_missing_organization_as_404(monkeypatch):
         await platform.get_organization_ai(ORG_ID)
 
     assert exc.value.status_code == 404
+
+
+def test_markdown_sections_are_their_own_chunks_with_their_heading_trail():
+    document = (
+        "Intro para el agente.\n\n"
+        "## ROSTRO Y PIEL\n\n"
+        '### "Tengo manchas"\n- Solución: ácido tranexámico.\n\n'
+        '### "Tengo la piel grasa"\n- Solución: Hollywood Peel.\n\n'
+        "## CUERPO\n\n"
+        '### "Tengo mucho vello"\n- Solución: depilación láser.\n'
+    )
+    chunks = chunk_text(document, target=500)
+
+    # Un dolor por fragmento: la búsqueda no devuelve el vecino pegado.
+    assert chunks == [
+        "Intro para el agente.",
+        '[ROSTRO Y PIEL › "Tengo manchas"]\n\n- Solución: ácido tranexámico.',
+        '[ROSTRO Y PIEL › "Tengo la piel grasa"]\n\n- Solución: Hollywood Peel.',
+        '[CUERPO › "Tengo mucho vello"]\n\n- Solución: depilación láser.',
+    ]
+
+
+def test_a_long_markdown_section_is_split_but_keeps_its_heading():
+    document = "## Guiones\n\n" + "\n\n".join(f"Párrafo {n} " + "palabra " * 30 for n in range(6))
+    chunks = chunk_text(document, target=400, overlap=0)
+    assert len(chunks) > 1
+    assert all(chunk.startswith("[Guiones]\n\n") for chunk in chunks)

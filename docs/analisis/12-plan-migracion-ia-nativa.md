@@ -148,6 +148,33 @@ No-objetivos (por ahora):
 - **Embeddings** quedan para la fase 5: el troceado y los metadatos ya quedan listos
   para añadir una columna vectorial sin reindexar a mano.
 
+### Historia: el índice de n8n y por qué estaba vacío
+
+Antes de septiembre de 2026, `RAG1` era una herramienta *Supabase Vector Store*
+sobre la tabla `documents`. Se llenaba con `utils/generar_chunks_rag.py` del repo
+`algeronimo92/analisis-agentes-ia`: 68 fragmentos, **una sección markdown por
+fragmento** (un dolor, una ficha, una objeción, un guion) a partir de cuatro fuentes
+(`negocio/fichas-procedimientos.md`, `negocio/mapa-dolores-soluciones.md`,
+`guias/playbook-objeciones.md`, `negocio/guiones-whatsapp.md`). Con multitenancy
+(`1013998`, `5603f9d`) `RAG1` pasó a llamar `/api/webhooks/rag-search`, que busca en
+`knowledge_chunks` del schema del negocio, pero el contenido de Supabase no se migró:
+el copiloto quedó buscando en lo que cada negocio cargara a mano en *Conocimiento*.
+
+Recuperación (2026-11-08):
+- `chunk_text` respeta encabezados markdown: cada sección es su propio fragmento y
+  lleva delante su ruta (`[ROSTRO Y PIEL › "Tengo manchas"]`). Es el criterio del
+  generador original; un texto sin encabezados se sigue agrupando por párrafos.
+- `python -m scripts.seed_knowledge_templates --source <analisis-agentes-ia> [--apply]`
+  carga esas fuentes como **plantillas de plataforma** (16 fichas, mapa dolor →
+  solución, playbook de objeciones, guiones). Idempotente por título. Quita los
+  `[[enlaces]]`, las marcas `[VALIDAR…]` y cambia el nombre del negocio de origen por
+  `[NEGOCIO]`. Precios, `operacion.md` y `expertos/` quedan fuera, como en el diseño
+  original. Cada negocio las importa y edita desde *Conocimiento › Plantillas*.
+- El prompt del copiloto aclara que las cifras dentro de `<conocimiento>` (los
+  guiones traen montos de ejemplo) son ilustrativas: el precio sale del catálogo.
+- Límite que se mantiene: la búsqueda es léxica; "manchitas" no encuentra "manchas".
+  Lo resuelve la fase 5 (embeddings).
+
 ## 4. Fases
 
 ### Fase 0 · Preparación (sin cambio funcional)
