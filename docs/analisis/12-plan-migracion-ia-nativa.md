@@ -164,12 +164,14 @@ Recuperación (2026-11-08):
 - `chunk_text` respeta encabezados markdown: cada sección es su propio fragmento y
   lleva delante su ruta (`[ROSTRO Y PIEL › "Tengo manchas"]`). Es el criterio del
   generador original; un texto sin encabezados se sigue agrupando por párrafos.
-- `python -m scripts.seed_knowledge_templates --source <analisis-agentes-ia> [--apply]`
-  carga esas fuentes como **plantillas de plataforma** (16 fichas, mapa dolor →
-  solución, playbook de objeciones, guiones). Idempotente por título. Quita los
-  `[[enlaces]]`, las marcas `[VALIDAR…]` y cambia el nombre del negocio de origen por
-  `[NEGOCIO]`. Precios, `operacion.md` y `expertos/` quedan fuera, como en el diseño
-  original. Cada negocio las importa y edita desde *Conocimiento › Plantillas*.
+- Ese contenido quedó en el repo como biblioteca de plantillas de plataforma,
+  `backend/scripts/knowledge_templates/` (16 fichas, mapa dolor → solución, playbook
+  de objeciones, guiones), y se publica con
+  `python -m scripts.seed_knowledge_templates [--apply]` (idempotente por título).
+  Se limpiaron los `[[enlaces]]` y las marcas `[VALIDAR…]`, y el nombre del negocio
+  de origen quedó como `[NEGOCIO]`. Precios y datos operativos no son plantillas:
+  el precio sale del catálogo y los datos del perfil del negocio. Cada negocio las
+  importa y edita desde *Conocimiento › Plantillas*.
 - El prompt del copiloto aclara que las cifras dentro de `<conocimiento>` (los
   guiones traen montos de ejemplo) son ilustrativas: el precio sale del catálogo.
 - Límite que se mantiene: la búsqueda es léxica; "manchitas" no encuentra "manchas".
