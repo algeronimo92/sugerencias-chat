@@ -5,7 +5,7 @@ import { FlowNodeSearch } from './FlowNodeSearch'
 
 const items = [
   { id: 'a', number: 1, title: 'Inicio manual (vendedor)', text: '' },
-  { id: 'b', number: 12, title: 'Enviar mensaje directo', text: 'Promoción de verano' },
+  { id: 'b', number: 12, title: 'Enviar mensaje de texto', text: 'Promoción de verano' },
   { id: 'c', number: 21, title: 'Pregunta', text: '¿Agendamos?' },
 ]
 
@@ -26,7 +26,7 @@ describe('FlowNodeSearch', () => {
     const input = screen.getByRole('combobox')
 
     await userEvent.type(input, '1')
-    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['#1Inicio manual (vendedor)', '#12Enviar mensaje directo'])
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['#1Inicio manual (vendedor)', '#12Enviar mensaje de texto'])
     await userEvent.keyboard('{ArrowDown}{Enter}')
     expect(onGo).toHaveBeenCalledWith('b')
 

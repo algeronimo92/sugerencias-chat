@@ -35,7 +35,9 @@ export type FlowEditorAction =
   | { type: 'notify'; message: string }
   | { type: 'clearFeedback' }
   | { type: 'draftSaved'; ruleId: number; name: string; definition: AutomationFlowDefinition | null }
-  | { type: 'published'; definition: AutomationFlowDefinition | null; version: number }
+  /** `pausedChoice`: lo que se eligió al publicar un flujo pausado; el aviso
+   *  confirma si quedó activo o sigue pausado. */
+  | { type: 'published'; definition: AutomationFlowDefinition | null; version: number; pausedChoice?: 'resume' | 'keepPaused' }
   | { type: 'versionRestored'; version: number }
   | { type: 'rename'; name: string }
   | { type: 'maxPerHourChanged'; value: number | null }
@@ -83,6 +85,13 @@ export function initialFlowEditorState(
   }
 }
 
+function publishedNotice(version: number, pausedChoice?: 'resume' | 'keepPaused') {
+  const base = `Flujo publicado · versión ${version}.`
+  if (pausedChoice === 'resume') return `${base} Ya está activo.`
+  if (pausedChoice === 'keepPaused') return `${base} Sigue pausado.`
+  return base
+}
+
 export function flowEditorReducer(state: FlowEditorState, action: FlowEditorAction): FlowEditorState {
   switch (action.type) {
     case 'select':
@@ -128,7 +137,7 @@ export function flowEditorReducer(state: FlowEditorState, action: FlowEditorActi
         ...state,
         publishedDefinition: action.definition,
         publishedVersion: action.version,
-        notice: `Flujo publicado · versión ${action.version}.`,
+        notice: publishedNotice(action.version, action.pausedChoice),
         error: null,
         errorTarget: null,
       }

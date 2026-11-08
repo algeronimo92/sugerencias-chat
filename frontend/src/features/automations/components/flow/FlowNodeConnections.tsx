@@ -54,7 +54,7 @@ function ConnectionList({ title, empty, icon, items, onGo, onRemove }: {
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
             <span className="shrink-0 text-wa-muted">{item.handle}</span>
           </button>
-          <button type="button" onClick={() => onRemove(item.edgeId)} aria-label={`Quitar la conexión con el bloque ${item.number ?? ''}`} className="px-2 text-red-500">
+          <button type="button" onClick={() => onRemove(item.edgeId)} aria-label={`Quitar la conexión con el bloque #${item.number ?? ''}`} className="px-2 text-red-500">
             <X className="h-3 w-3" />
           </button>
         </div>

@@ -184,7 +184,7 @@ function StickerGrid({ onSelect }: { onSelect: (asset: MediaAsset) => void }) {
             )}
             {!search && !isAdmin && (
               <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-                Pedile a un administrador que cargue los stickers de la clínica.
+                Pídele a un administrador que cargue los stickers de la clínica.
               </p>
             )}
           </div>

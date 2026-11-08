@@ -30,6 +30,7 @@ QuestionHandle,
 WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
 } from '../../domain/automationCatalog'
+import { TASK_PRIORITY_LABELS } from '../../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
@@ -68,6 +69,7 @@ interface CanvasNodeData {
   previewTemplate?: MessageTemplate
   previewAsset?: MediaAsset
   previewTagName?: string
+  previewUserName?: string
   connectionRole?: 'source' | 'target' | 'both'
   flagged?: boolean
   number?: number
@@ -82,6 +84,7 @@ const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
 const EMPTY_FLOW_RULES: ReadonlyArray<{ id: number; name: string }> = []
 const EMPTY_TAGS: TagRecord[] = []
+const EMPTY_USERS: ReadonlyArray<{ id: number; name: string }> = []
 const NO_FLAGGED: ReadonlySet<string> = new Set()
 /** Bloques del recorrido resaltado: los demás se atenúan por CSS (`.flow-spotlight`). */
 const CONNECTED_NODE_CLASS = 'flow-connected'
@@ -114,9 +117,9 @@ function storedConnectionHighlightPreference(): boolean {
 }
 
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
-  if (type === FlowNodeType.Question) return 'Mensaje interactivo'
+  if (type === FlowNodeType.Question) return 'Pregunta (botones)'
   if (type === FlowNodeType.RoundRobin) return 'Reparto por turnos'
-  if (type === FlowNodeType.InvokeFlow) return 'Flujo hijo'
+  if (type === FlowNodeType.InvokeFlow) return 'Iniciar otro flujo'
   if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
   const action = data.action
@@ -213,7 +216,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
-      {data.loose && type !== FlowNodeType.Trigger && <span title="Ningún camino desde el disparador llega a este bloque: no se va a ejecutar y no deja publicar el flujo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Sin conexión desde el inicio</span>}
+      {data.loose && type !== FlowNodeType.Trigger && <span title="Ninguna ruta desde el inicio del flujo llega a este bloque: nunca se ejecutará y no deja publicar. Conéctalo o bórralo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Desconectado</span>}
       {data.number != null && <span aria-label={`Bloque ${data.number}`} className="absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
@@ -281,7 +284,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   if (action.type === AutomationActionType.SendMedia) {
     return <div className="nodrag nowheel mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-blue-900 dark:bg-flow-row-dark" onClick={event => event.stopPropagation()}>
       {data.previewAsset ? <AttachmentMedia attachment={data.previewAsset} interactive /> : <EmptyPreview label="Elige un archivo para previsualizarlo" />}
-      <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin caption'}</p>
+      <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin texto'}</p>
     </div>
   }
 
@@ -306,14 +309,14 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
     return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[9px] dark:border-blue-900 dark:bg-flow-row-dark">
       <p className="font-semibold text-gray-800 dark:text-white">{action.title || 'Nueva tarea'}</p>
       {action.description && <p className="mt-0.5 line-clamp-2 text-gray-500 dark:text-gray-400">{action.description}</p>}
-      <div className="mt-1.5 flex items-center justify-between text-gray-500 dark:text-gray-400"><span>Vence en {formatWaitDuration(action.due_minutes * 60)}</span><span className="capitalize">{action.priority}</span></div>
+      <div className="mt-1.5 flex items-center justify-between text-gray-500 dark:text-gray-400"><span>Vence en {formatWaitDuration(action.due_minutes * 60)}</span><span>{TASK_PRIORITY_LABELS[action.priority]}</span></div>
     </div>
   }
 
   const detail = action.type === AutomationActionType.ChangeStage ? stageCatalog.label(action.stage)
     : action.type === AutomationActionType.ChangeService ? (action.service || 'Quitar servicio')
-    : action.type === AutomationActionType.AssignSeller ? (action.user_id ? `Usuario #${action.user_id}` : 'Vendedor del lead')
-    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Sin etiqueta')
+    : action.type === AutomationActionType.AssignSeller ? (action.user_id ? (data.previewUserName ?? `Usuario #${action.user_id}`) : 'Vendedor sin seleccionar')
+    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Etiqueta sin seleccionar')
     : null
   const DetailIcon = action.type === AutomationActionType.AssignSeller ? UserRound
     : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? Tag
@@ -461,7 +464,7 @@ function PauseNodeView({ id, data, selected, legacy = false }: NodeProps<CanvasN
       <div className="mt-2 space-y-1.5">
         {conditions.map(condition => (
           <div key={condition.id} className="relative flex items-center rounded-md border border-cyan-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
-            <span>{condition.kind === WaitAnyConditionKind.Timer ? `Timer: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
+            <span>{condition.kind === WaitAnyConditionKind.Timer ? `Temporizador: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
             <Handle
               type="source" position={Position.Right} id={condition.id}
               style={{ ...HANDLE_STYLE, background: WAIT_ANY_HANDLE_COLORS[condition.kind], right: -18, top: '50%' }}
@@ -498,7 +501,7 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
       <div className="mt-2 space-y-1">
         {rows.map(row => (
           <div key={row.handle} className="relative flex items-center gap-1.5 rounded-md border border-pink-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Opción sin texto'}</span>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Botón sin texto'}</span>
             <Handle type="source" position={Position.Right} id={row.handle} style={{ ...HANDLE_STYLE, background: row.color, right: -18, top: '50%' }} />
           </div>
         ))}
@@ -602,9 +605,11 @@ interface FlowCanvasProps {
   flow: AutomationFlowDefinition
   templates?: MessageTemplate[]
   mediaAssets?: MediaAsset[]
-  /** Solo id y nombre: lo que hace falta para titular "Invocar flujo". */
+  /** Solo id y nombre: lo que hace falta para titular "Iniciar otro flujo". */
   flowRules?: ReadonlyArray<{ id: number; name: string }>
   tags?: TagRecord[]
+  /** Para nombrar al vendedor de "Asignar vendedor" en vez de su id. */
+  users?: ReadonlyArray<{ id: number; name: string }>
   selectedId: string | null
   /** Bloques marcados en ámbar (los que usan el servicio que se quiere eliminar). */
   flaggedIds?: ReadonlySet<string>
@@ -629,6 +634,7 @@ interface DeriveInputs {
   mediaAssets: MediaAsset[]
   flowRules: ReadonlyArray<{ id: number; name: string }>
   tags: TagRecord[]
+  users: ReadonlyArray<{ id: number; name: string }>
   selectedId: string | null
   flaggedIds: ReadonlySet<string>
   numbers: ReadonlyMap<string, number> | undefined
@@ -639,7 +645,7 @@ interface DeriveInputs {
 /** Los bloques del lienzo a partir del flujo, reutilizando el objeto anterior
  *  de cada uno si nada suyo cambió (ver useReconciled). */
 function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs, previous: ReadonlyMap<string, CanvasNode>) {
-  const { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, onDelete } = inputs
+  const { templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, onDelete } = inputs
   const index = new Map<string, CanvasNode>()
   const list = flowNodes.map(node => {
     const action = node.type === FlowNodeType.Action ? node.data.action : null
@@ -655,12 +661,15 @@ function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs
     const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
       ? tags.find(tag => tag.id === action.tag_id)?.name
       : undefined
+    const previewUserName = action?.type === AutomationActionType.AssignSeller && action.user_id
+      ? users.find(user => user.id === action.user_id)?.name
+      : undefined
     const candidate: CanvasNode = {
       id: node.id,
       type: node.type,
       position: node.position,
       selected: node.id === selectedId,
-      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), loose: looseIds.has(node.id), onDelete },
+      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, previewUserName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), loose: looseIds.has(node.id), onDelete },
     }
     const reused = reuseIfSame(previous.get(node.id), candidate)
     index.set(node.id, reused)
@@ -670,7 +679,7 @@ function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, looseIds = NO_FLAGGED, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, users = EMPTY_USERS, selectedId, flaggedIds = NO_FLAGGED, numbers, looseIds = NO_FLAGGED, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
@@ -714,8 +723,8 @@ function Canvas({
   // sus imágenes y videos: eso era lo que se sentía lento en flujos grandes.
   const handleDeleteNode = useCallback((id: string) => onDeleteNodes([id]), [onDeleteNodes])
   const derivedNodes = useReconciled<CanvasNode, CanvasNode>(
-    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, onDelete: handleDeleteNode }, previous),
-    [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, looseIds, handleDeleteNode],
+    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, onDelete: handleDeleteNode }, previous),
+    [flow.nodes, templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, handleDeleteNode],
   )
 
   const initialFit = useFocusNodes(wrapper, focus, fitView)

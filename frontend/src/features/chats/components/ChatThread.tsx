@@ -244,7 +244,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       // ("Imagen", "Audio"), como el "<multimedia omitido>" de WhatsApp.
       const body = parsed.text.trim() || parsed.label || 'Mensaje'
       if (selectedMessages.length === 1) return body
-      const author = message.sender === 'vendedor' ? 'Vos' : displayName(chat)
+      const author = message.sender === 'vendedor' ? 'Tú' : displayName(chat)
       return `[${formatMessageTime(message.sent_at)}] ${author}: ${body}`
     })
     try {

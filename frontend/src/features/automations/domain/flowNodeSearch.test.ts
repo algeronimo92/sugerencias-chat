@@ -4,7 +4,7 @@ import { searchableText, searchFlowNodes, type FlowNodeSearchItem } from './flow
 const items: FlowNodeSearchItem[] = [
   { id: 'a', number: 1, title: 'Inicio manual (vendedor)', text: '' },
   { id: 'b', number: 2, title: 'Cambiar/quitar servicio de interés', text: 'Hollywood Peel' },
-  { id: 'c', number: 12, title: 'Enviar mensaje directo', text: 'Promoción de verano para {{nombre}}' },
+  { id: 'c', number: 12, title: 'Enviar mensaje de texto', text: 'Promoción de verano para {{nombre}}' },
   { id: 'd', number: 21, title: 'Pregunta', text: '¿Agendamos tu evaluación? Sí No' },
 ]
 

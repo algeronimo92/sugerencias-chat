@@ -12,9 +12,9 @@ export function FlowStatusPill({ publishedVersion, hasUnpublishedChanges, isActi
   hasUnpublishedChanges: boolean
   isActive: boolean
 }) {
-  const { label, tone } = flowStatus(publishedVersion, hasUnpublishedChanges, isActive)
+  const { label, hint, tone } = flowStatus(publishedVersion, hasUnpublishedChanges, isActive)
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONES[tone]}`}>
+    <span role="status" title={hint} aria-label={`Estado del flujo: ${label}`} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONES[tone]}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${DOTS[tone]}`} aria-hidden="true" />
       {label}
     </span>

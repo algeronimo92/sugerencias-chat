@@ -63,6 +63,14 @@ describe('flowEditorReducer', () => {
     expect(published).toMatchObject({ publishedDefinition: DEFINITION, notice: 'Flujo publicado · versión 3.' })
   })
 
+  it('al publicar un flujo pausado, el aviso dice si quedó activo o sigue pausado', () => {
+    const resumed = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'resume' })
+    const keptPaused = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'keepPaused' })
+
+    expect(resumed.notice).toBe('Flujo publicado · versión 4. Ya está activo.')
+    expect(keptPaused.notice).toBe('Flujo publicado · versión 4. Sigue pausado.')
+  })
+
   it('restaurar una versión deselecciona el bloque abierto', () => {
     const restored = flowEditorReducer(stateWith({ selectedId: 'n1' }), { type: 'versionRestored', version: 2 })
 

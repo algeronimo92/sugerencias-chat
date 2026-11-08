@@ -6,10 +6,8 @@ import { Button } from '../../../../shared/ui/Button'
  * reactivaba sin avisar: ahora se pregunta. La primera publicación no pasa
  * por acá (un flujo nuevo nace pausado y publicarlo es activarlo).
  */
-export function PublishPausedDialog({ open, version, onResume, onKeepPaused, onCancel }: {
+export function PublishPausedDialog({ open, onResume, onKeepPaused, onCancel }: {
   open: boolean
-  /** La versión que está en uso hoy. */
-  version: number
   onResume: () => void
   onKeepPaused: () => void
   onCancel: () => void
@@ -21,7 +19,7 @@ export function PublishPausedDialog({ open, version, onResume, onKeepPaused, onC
         <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[131] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-wa-border bg-white p-5 text-wa-text shadow-2xl outline-none dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
           <AlertDialog.Title className="text-base font-semibold">Este flujo está pausado</AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-wa-muted dark:text-wa-muted-dark">
-            Al publicar, la versión nueva reemplaza a la v{version}. ¿Quieres que vuelva a funcionar o que siga pausado? Los leads que ya están dentro del flujo terminan con la versión con la que entraron.
+            Los leads que ya están dentro terminan con la versión con la que entraron, y la nueva se aplica a los que entren desde ahora. Si lo dejas pausado, no entrará ningún lead hasta que lo reanudes.
           </AlertDialog.Description>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <AlertDialog.Cancel asChild><Button variant="ghost">Cancelar</Button></AlertDialog.Cancel>
