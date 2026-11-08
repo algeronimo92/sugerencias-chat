@@ -379,7 +379,8 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
   // Del listado (se refresca solo), no de la regla con la que se abrió el editor.
   const isActive = automationRules.find(item => item.id === ruleId)?.is_active ?? rule?.is_active ?? false
   const [confirmPausedPublish, setConfirmPausedPublish] = useState(false)
-  const [liveSaved, setLiveSaved] = useState(() => ({ maxPerHour: rule?.max_executions_per_hour ?? null, visible: rule?.visible_to_sellers ?? false }))
+  // Solo lo leen los handlers: un ref, para que guardar no vuelva a renderizar el editor.
+  const liveSaved = useRef({ maxPerHour: rule?.max_executions_per_hour ?? null, visible: rule?.visible_to_sellers ?? false })
   const hasUnsavedChanges = savedDefinition == null
     || name !== savedName
     || !areFlowDefinitionsEqual(flow, savedDefinition)
@@ -663,18 +664,18 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
   // se abrió el editor: con esa, volver al valor original no se guardaba.
   function commitMaxPerHour(value: number | null) {
     dispatch({ type: 'maxPerHourChanged', value })
-    if (ruleId == null || value === liveSaved.maxPerHour) return
+    if (ruleId == null || value === liveSaved.current.maxPerHour) return
     updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, {
-      onSuccess: () => setLiveSaved(current => ({ ...current, maxPerHour: value })),
+      onSuccess: () => { liveSaved.current.maxPerHour = value },
       onError: reason => failWith(reason),
     })
   }
 
   function commitVisibleToSellers(value: boolean) {
     dispatch({ type: 'visibleToSellersChanged', value })
-    if (ruleId == null || value === liveSaved.visible) return
+    if (ruleId == null || value === liveSaved.current.visible) return
     updateRule.mutate({ id: ruleId, visible_to_sellers: value }, {
-      onSuccess: () => setLiveSaved(current => ({ ...current, visible: value })),
+      onSuccess: () => { liveSaved.current.visible = value },
       onError: reason => failWith(reason),
     })
   }

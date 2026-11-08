@@ -26,6 +26,18 @@ export interface RuleUrl {
   close: () => void
 }
 
+/** Qué pide la URL, sin efectos: la lectura vive aparte del hook. */
+function readRuleUrl(params: URLSearchParams, rules: AutomationRule[], isLoading: boolean) {
+  const request = readEditField(params)
+  const part = request ? PARTS[request.field] : undefined
+  const linked = part ? request?.record ?? null : null
+  const ruleId = params.get(OPEN_RULE_PARAM) ?? linked
+  const highlight = part && request?.value ? { service: request.value, reason: request.reason, part } : null
+  if (ruleId === null || isLoading) return { linked, highlight, rule: null, block: params.get(OPEN_BLOCK_PARAM), missing: false }
+  const rule = rules.find(item => String(item.id) === ruleId) ?? null
+  return { linked, highlight, rule, block: params.get(OPEN_BLOCK_PARAM), missing: rule === null }
+}
+
 /**
  * La URL dice qué automatización está abierta. Antes el editor se abría sin
  * tocarla: recargar lo cerraba, no se podía pasar el enlace a otra persona y
@@ -37,14 +49,7 @@ export interface RuleUrl {
  */
 export function useRuleUrl(rules: AutomationRule[], isLoading: boolean): RuleUrl {
   const [params, setParams] = useSearchParams()
-  const request = readEditField(params)
-  const part = request ? PARTS[request.field] : undefined
-  const linked = part ? request?.record ?? null : null
-  const ruleId = params.get(OPEN_RULE_PARAM) ?? linked
-  const highlight = part && request?.value ? { service: request.value, reason: request.reason, part } : null
-  const rule = ruleId !== null && !isLoading ? rules.find(item => String(item.id) === ruleId) ?? null : null
-  const block = params.get(OPEN_BLOCK_PARAM)
-  const missing = ruleId !== null && !isLoading && rule === null
+  const { linked, highlight, rule, block, missing } = readRuleUrl(params, rules, isLoading)
 
   useEffect(() => {
     if (missing) {
