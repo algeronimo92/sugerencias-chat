@@ -21,7 +21,9 @@ interface ConfirmDialogProps {
   onOpenChange?: (open: boolean) => void
 }
 
-/** Confirmación accesible con foco atrapado y cierre por Escape. */
+/** Confirmación accesible con foco atrapado y cierre por Escape. Nunca más
+ *  alta que la pantalla: con contenido largo (`details`) hace scroll adentro;
+ *  antes crecía hacia abajo y lo último quedaba fuera de la vista. */
 export function ConfirmDialog({
   children,
   title,
@@ -41,7 +43,7 @@ export function ConfirmDialog({
       {children && <AlertDialog.Trigger asChild disabled={disabled}>{children}</AlertDialog.Trigger>}
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=open]:animate-in" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[131] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-wa-border bg-white p-5 text-wa-text shadow-2xl outline-none dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[131] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-wa-border bg-white p-5 text-wa-text shadow-2xl outline-none dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
           <AlertDialog.Title className="text-base font-semibold">{title}</AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-wa-muted dark:text-wa-muted-dark">
             {description}

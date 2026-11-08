@@ -35,7 +35,7 @@ export function ReassignServiceLeads({ serviceName, leadCount }: { serviceName: 
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
+    <div className="mt-3 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
       <label htmlFor="reassign-service-target" className="text-xs font-medium text-wa-muted dark:text-wa-muted-dark">
         {leadCount === 1 ? 'Pasar el lead a' : `Pasar los ${leads} a`}
       </label>
@@ -51,7 +51,9 @@ export function ReassignServiceLeads({ serviceName, leadCount }: { serviceName: 
         )}
       </div>
       {confirming && (
-        <div role="alert" className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        // Al aparecer se trae a la vista: en un cuadro con scroll podía
+        // quedar debajo del borde y parecer que "Aplicar" no hacía nada.
+        <div role="alert" ref={node => node?.scrollIntoView?.({ block: 'nearest' })} className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           <p className="flex items-start gap-1.5">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span>
@@ -65,7 +67,7 @@ export function ReassignServiceLeads({ serviceName, leadCount }: { serviceName: 
             </Button>
             <Button type="button" variant="danger" size="sm" onClick={apply} disabled={reassign.isPending}>
               {reassign.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-              Sí, cambiar {leads}
+              {reassign.isPending ? `Cambiando ${leads}…` : `Sí, cambiar ${leads}`}
             </Button>
           </div>
         </div>

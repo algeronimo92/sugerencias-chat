@@ -1,5 +1,5 @@
-import { ExternalLink, Loader2, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Loader2, Trash2 } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -22,28 +22,28 @@ function usageHref(kind: string, id: string, serviceName: string): string {
   return '/ai-assistant'
 }
 
+/** Lo que usa al servicio, grupo por grupo. Los nombres van seguidos y no
+ *  uno por renglón: con 92 leads, diez renglones tapaban todo lo demás. */
 function UsageList({ usages, serviceName }: { usages: ServiceUsageGroup[]; serviceName: string }) {
   return (
-    <ul aria-label="Dónde se usa" className="mt-3 max-h-64 space-y-3 overflow-y-auto text-sm">
+    <ul aria-label="Dónde se usa" className="mt-3 max-h-56 space-y-2.5 overflow-y-auto text-sm">
       {usages.map(usage => {
         const items = usage.items ?? []
+        const more = usage.count - items.length
         return (
           <li key={usage.kind}>
             <p className="font-semibold text-wa-text dark:text-wa-text-dark">{usage.label}</p>
-            <ul className="mt-1 space-y-0.5">
-              {items.map(item => (
-                <li key={item.id}>
-                  <Link to={usageHref(usage.kind, item.id, serviceName)} className="inline-flex items-center gap-1 text-wa-primary-strong hover:underline dark:text-wa-primary">
-                    {item.name}
-                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            <p className="mt-0.5 leading-6 text-wa-muted dark:text-wa-muted-dark">
+              {items.map((item, index) => (
+                <Fragment key={item.id}>
+                  {index > 0 && ', '}
+                  <Link to={usageHref(usage.kind, item.id, serviceName)} className="text-wa-primary-strong hover:underline dark:text-wa-primary">
+                    {item.name.trim() || 'Sin nombre'}
                   </Link>
-                </li>
+                </Fragment>
               ))}
-              {usage.count > items.length && (
-                <li className="text-wa-muted dark:text-wa-muted-dark">y {usage.count - items.length} más</li>
-              )}
-            </ul>
-            {usage.kind === 'leads' && <ReassignServiceLeads serviceName={serviceName} leadCount={usage.count} />}
+              {more > 0 && ` y ${more} más`}
+            </p>
           </li>
         )
       })}
@@ -80,7 +80,15 @@ export function DeleteServiceButton({ service }: { service: LeadService }) {
     description = `No se pudo revisar dónde se usa (${extractErrorMessage(usage.error)}). Si lo usa algo, no se va a eliminar.`
   } else if (inUse) {
     description = 'No se puede eliminar porque está en uso. Quítalo de cada lugar (por ejemplo, cambia el servicio de interés del lead) o desactívalo: deja de ofrecerse y el historial se conserva.'
-    details = <UsageList usages={usages} serviceName={service.name} />
+    const leads = usages.find(group => group.kind === 'leads')
+    // El atajo va arriba y fuera de la lista: dentro de ella quedaba debajo de
+    // los nombres, oculto en el scroll justo cuando más hace falta (92 leads).
+    details = (
+      <>
+        {leads && <ReassignServiceLeads serviceName={service.name} leadCount={leads.count} />}
+        <UsageList usages={usages} serviceName={service.name} />
+      </>
+    )
   }
 
   return (
