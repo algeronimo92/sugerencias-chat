@@ -119,6 +119,15 @@
 .react-flow.flow-spotlight .react-flow__node:not(.flow-connected) { opacity: 0.4; }
 .react-flow.flow-spotlight .react-flow__edge:not(.flow-lit) { opacity: 0.16; }
 
+/* Destello del bloque al que se acaba de ir (buscador, "Ver en el lienzo",
+   conexiones, aviso de Catálogos): con el lienzo alejado, el número solo no
+   alcanzaba para encontrarlo. */
+@keyframes flow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+  50% { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0.55); }
+}
+.react-flow__node.flow-pulse > div { animation: flow-pulse 0.85s ease-in-out 3; }
+
 /* ============================================================
    Áreas seguras (notch, barra de gestos)
    Con viewport-fit=cover la PWA instalada ocupa toda la pantalla,

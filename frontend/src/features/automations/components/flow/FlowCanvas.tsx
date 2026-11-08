@@ -3,7 +3,7 @@ applyNodeChanges,
 Background,BaseEdge,ControlButton,Controls,EdgeToolbar,
 getSmoothStepPath,
 Handle,MiniMap,PanOnScrollMode,Position,ReactFlow,ReactFlowProvider,SelectionMode,
-useNodesInitialized,useReactFlow,type Connection,type Edge,
+useReactFlow,type Connection,type Edge,
 type EdgeProps,type EdgeTypes,
 type Node,type NodeProps,type NodeTypes,
 type OnConnect,type OnNodesChange,
@@ -36,6 +36,7 @@ import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 import { useReconciled } from './useReconciled'
 import { NodeTypeMenu } from './NodeTypeMenu'
 import { useConnectDrop } from './useConnectDrop'
+import { useFocusNodes } from './useFocusNodes'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -712,14 +713,7 @@ function Canvas({
     [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode],
   )
 
-  // Acerca la vista a los bloques pedidos. Con 50 bloques el encuadre inicial
-  // los muestra a todos diminutos: llegar desde Catálogos abría el panel del
-  // bloque marcado sin que se viera dónde estaba en el lienzo.
-  const nodesInitialized = useNodesInitialized()
-  useEffect(() => {
-    if (!focus || !focus.ids.length || !nodesInitialized) return
-    void fitView({ nodes: focus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1, duration: 450 })
-  }, [focus, nodesInitialized, fitView])
+  const initialFit = useFocusNodes(wrapper, focus, fitView)
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -922,6 +916,7 @@ function Canvas({
         onDrop={handleDrop}
         colorMode={isDarkMode ? 'dark' : 'light'}
         fitView
+        fitViewOptions={initialFit}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ type: 'smoothstep' }}

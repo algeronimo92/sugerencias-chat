@@ -2,7 +2,7 @@ import {
 Beaker,Braces,Check,
 Copy,
 History,LayoutGrid,
-ListFilter,Loader2,MessageSquareText,Play,Plus,Redo2,Save,Undo2,Upload,UserRound,X,
+ListFilter,Loader2,LocateFixed,MessageSquareText,Play,Plus,Redo2,Save,Undo2,Upload,UserRound,X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -42,6 +42,8 @@ import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { FlowNodeConnections, type FlowConnection } from './flow/FlowNodeConnections'
 import { FLOW_PALETTE } from './flow/flowPalette'
+import { FlowNodeSearch } from './flow/FlowNodeSearch'
+import { searchableText } from '../domain/flowNodeSearch'
 import { EDGE_LABELS } from './flow/flowCanvasEdges'
 import { numberFlowNodes } from '../domain/flowNumbering'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
@@ -336,6 +338,9 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   const restoreVersion = useRestoreFlowVersion()
   const selected = flow.nodes.find(node => node.id === selectedId) ?? null
   const numbers = useMemo(() => numberFlowNodes(flow), [flow])
+  const searchItems = useMemo(() => flow.nodes.map(node => ({
+    id: node.id, number: numbers.get(node.id), title: nodeTitle(node, automationRules), text: searchableText(node.data),
+  })), [flow.nodes, numbers, automationRules])
   const connection = (edge: AutomationFlowEdge, nodeId: string): FlowConnection => {
     const node = flow.nodes.find(item => item.id === nodeId)
     const source = flow.nodes.find(item => item.id === edge.source)
@@ -740,7 +745,8 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
         {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="group mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-transparent dark:bg-transparent dark:hover:bg-white/5 dark:transition-colors"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-gray-500 transition-colors group-hover:text-wa-primary-strong dark:text-gray-400 dark:group-hover:text-wa-primary" />{label}</div><p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</p></div>)}
       </aside>
 
-      <main className="min-w-0 flex-1 bg-wa-field dark:bg-flow-canvas-dark">
+      <main className="relative min-w-0 flex-1 bg-wa-field dark:bg-flow-canvas-dark">
+        <FlowNodeSearch items={searchItems} onGo={goToNode} />
         <FlowCanvas
           flow={flow}
           templates={automaticTemplates}
@@ -761,7 +767,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)} · propiedades</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)} · propiedades</p></div><button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
