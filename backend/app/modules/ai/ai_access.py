@@ -16,7 +16,7 @@ from sqlalchemy import and_, func, or_, select
 from app.db.models.ai import AIJob
 from app.db.models.control import Organization
 from app.db.session import control_session
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec, resolve_model_spec
+from app.integrations.llm.catalog import default_models, key_setting_for, parse_model_spec, resolve_model_spec
 from app.modules.ai.ai_job_tokens import signing_key_configured
 from app.modules.auth.public import try_send_operational_alert
 from app.modules.platform.ports.settings_service import get_effective_many
@@ -136,7 +136,8 @@ async def business_ai_ready() -> bool:
     """El negocio tiene al menos una clave para el modelo principal o el
     secundario de las sugerencias."""
     values = await get_effective_many(("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
-    for spec in (values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK):
+    defaults = default_models(values)
+    for spec in (values["ai_suggestions_primary_model"].strip() or defaults[0], values["ai_suggestions_fallback_model"].strip() or defaults[1]):
         try:
             provider, _ = parse_model_spec(resolve_model_spec(spec))
         except ValueError:

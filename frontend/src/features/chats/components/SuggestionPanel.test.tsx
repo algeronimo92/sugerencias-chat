@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -77,5 +78,18 @@ describe('SuggestionPanel sin IA conectada', () => {
 
     expect(screen.getByRole('link', { name: 'Conectar en Integraciones' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument()
+  })
+})
+
+describe('SuggestionPanel plegado', () => {
+  it('recuerda en el navegador si el copiloto quedó plegado', async () => {
+    localStorage.removeItem('copiloto-ia-plegado')
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(screen.getByRole('button', { name: /Copiloto IA/ }))
+    expect(localStorage.getItem('copiloto-ia-plegado')).toBe('1')
+    await user.click(screen.getByRole('button', { name: /Copiloto IA/ }))
+    expect(localStorage.getItem('copiloto-ia-plegado')).toBe('0')
   })
 })

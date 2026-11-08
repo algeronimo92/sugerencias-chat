@@ -112,4 +112,18 @@ describe('AiIntegrationCard', () => {
     await user.click(toggle)
     expect(screen.getByRole('region', { name: 'Modelo principal' })).toBeInTheDocument()
   })
+
+  it('las claves se ordenan como la cadena y cada una dice su papel', () => {
+    mocks.status = status({ ready: true, primary_model: 'openai:gpt-5.6-terra', fallback_model: 'gemini:gemini-3.6-flash', providers: [
+      { provider: 'gemini', label: 'Google Gemini', models: ['gemini-3.6-flash'], key_configured: true },
+      { provider: 'openai', label: 'OpenAI', models: ['gpt-5.6-terra'], key_configured: true },
+    ] })
+    render(<AiIntegrationCard />)
+
+    // Las filas de claves siguen el orden de la cadena: primero la de quien procesa.
+    const [first, second] = screen.getAllByPlaceholderText(/guardada/)
+    expect(first).toHaveAttribute('id', 'ai-key-openai')
+    expect(first.closest('div.rounded-lg.p-3')).toHaveTextContent('1 · Procesa')
+    expect(second.closest('div.rounded-lg.p-3')).toHaveTextContent('2 · Respaldo')
+  })
 })

@@ -3,11 +3,12 @@ import { useState, type ComponentType } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { GeminiMark, OpenAIMark } from '../../../shared/ui/BrandMarks'
-import { Input, Select, labelClass } from '../../../shared/ui/Input'
+import { Input } from '../../../shared/ui/Input'
 import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings } from '../../platform/public/useSettings'
 import { AdvancedModelSettings, ModelParamsEditor } from './ModelParamsEditor'
+import { ModelOrder } from './ModelOrder'
 import { useAiProviders, useRefreshAiProviders, useTestAiProvider } from '../hooks/useAiProviders'
 import type { AiProvidersStatus, AiProviderTestResult } from '../types'
 
@@ -85,7 +86,23 @@ function KeyTestResult({ result, typed }: { result: AiProviderTestResult; typed:
 }
 
 /** Una fila por proveedor: su clave, la prueba y el resultado. */
-function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: () => void }) {
+type ProviderRole = 'primary' | 'fallback' | null
+
+/** Qué papel cumple cada proveedor en el orden elegido (o el que tomó por defecto). */
+function providerRole(provider: string, status: AiProvidersStatus): ProviderRole {
+  if (status.primary_model.startsWith(`${provider}:`)) return 'primary'
+  if (status.fallback_model.startsWith(`${provider}:`)) return 'fallback'
+  return null
+}
+
+function RoleChip({ role }: { role: ProviderRole }) {
+  if (!role) return null
+  return role === 'primary'
+    ? <span className="rounded bg-wa-primary px-1.5 py-0.5 text-[11px] font-semibold text-white">1 · Procesa</span>
+    : <span className="rounded border border-wa-border px-1.5 py-0.5 text-[11px] font-medium text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">2 · Respaldo</span>
+}
+
+function ProviderKeyRow({ provider, role, onSaved }: { provider: Provider; role: ProviderRole; onSaved: () => void }) {
   const Mark = MARKS[provider.provider] ?? Sparkles
   const key = useProviderKey(provider, onSaved)
   const inputId = `ai-key-${provider.provider}`
@@ -98,7 +115,10 @@ function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: ()
           <Mark className="h-5 w-5 text-wa-text dark:text-wa-text-dark" />
           {provider.label}
         </label>
-        <KeyStatusChip configured={configured} />
+        <span className="flex items-center gap-1.5">
+          <RoleChip role={role} />
+          <KeyStatusChip configured={configured} />
+        </span>
       </div>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <Input
@@ -127,11 +147,6 @@ function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: ()
   )
 }
 
-function modelLabel(spec: string, providers: Provider[]): string {
-  const [provider, model] = spec.split(':', 2)
-  const meta = providers.find(item => item.provider === provider)
-  return `${meta?.label ?? provider} · ${model}${meta && !meta.key_configured ? ' (sin clave)' : ''}`
-}
 
 /**
  * Configuración de IA de las sugerencias de respuesta (el copiloto del chat),
@@ -151,7 +166,6 @@ export function AiIntegrationCard() {
     )
   }
 
-  const allSpecs = status.providers.flatMap(provider => provider.models.map(model => `${provider.provider}:${model}`))
   const state: IntegrationState = status.ready ? 'connected' : 'unconfigured'
   const stateLabel = status.ready ? 'Conectado · tus claves' : undefined
 
@@ -168,33 +182,21 @@ export function AiIntegrationCard() {
       id="ia-sugerencias"
       icon={Sparkles}
       title="Sugerencias con IA"
-      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo principal falla, responde el secundario. Otras funciones de IA se configuran aparte."
+      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo que procesa falla, responde el de respaldo. Otras funciones de IA se configuran aparte."
       state={state}
       stateLabel={stateLabel}
     >
       <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
-          {status.providers.map(provider => (
-            <ProviderKeyRow key={provider.provider} provider={provider} onSaved={refresh} />
+          {/* El que procesa va primero: el orden de las filas es el de la cadena. */}
+          {[...status.providers]
+            .sort((a, b) => Number(providerRole(b.provider, status) === 'primary') - Number(providerRole(a.provider, status) === 'primary'))
+            .map(provider => (
+            <ProviderKeyRow key={provider.provider} provider={provider} role={providerRole(provider.provider, status)} onSaved={refresh} />
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor="ai-primary-model" className={labelClass}>Modelo principal</label>
-            <Select id="ai-primary-model" aria-label="Modelo principal" value={status.primary_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_suggestions_primary_model: value }, 'Modelo principal actualizado')}>
-              {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label htmlFor="ai-fallback-model" className={labelClass}>Modelo secundario (si el principal falla)</label>
-            <Select id="ai-fallback-model" aria-label="Modelo secundario" value={status.fallback_model} disabled={save.isPending}
-              onValueChange={value => saveValues({ ai_suggestions_fallback_model: value }, 'Modelo secundario actualizado')}>
-              {allSpecs.map(spec => <option key={spec} value={spec}>{modelLabel(spec, status.providers)}</option>)}
-            </Select>
-          </div>
-        </div>
+        <ModelOrder status={status} disabled={save.isPending} onSave={saveValues} />
 
         <AdvancedModelSettings customized={Object.keys(status.primary_params ?? {}).length + Object.keys(status.fallback_params ?? {}).length}>
           <ModelParamsEditor
@@ -217,7 +219,7 @@ export function AiIntegrationCard() {
 
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
           {status.ready
-            ? 'Cada sugerencia la responde tu modelo principal y, si falla, el secundario. Lo consume tu cuenta del proveedor.'
+            ? 'Lo consume tu cuenta del proveedor.'
             : 'Guarda al menos una clave que pase la prueba: mientras tanto el chat no ofrece sugerencias.'}
           {' '}El análisis automático del lead sigue en el servicio de la plataforma.
         </p>

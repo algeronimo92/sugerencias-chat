@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCustomFields } from '../../catalogs/public/useCustomFields'
@@ -61,7 +61,11 @@ function removeDraft(key: string) {
  */
 function useDraftAutosave(key: string, draft: Draft, dirty: boolean, onSaved: () => void) {
   const latest = useRef({ key, draft, dirty })
-  latest.current = { key, draft, dirty }
+  // Tras cada commit y no durante el render: React puede descartar un render,
+  // y el guardado al desmontar leería un borrador que nunca llegó a pantalla.
+  useLayoutEffect(() => {
+    latest.current = { key, draft, dirty }
+  })
 
   useEffect(() => {
     if (!dirty) return

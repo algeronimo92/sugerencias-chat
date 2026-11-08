@@ -60,6 +60,10 @@ export function usePushSubscription() {
   const subscribe = useCallback(async () => {
     if (!isPushSupported() || !vapidPublicKey) return
     const registration = await navigator.serviceWorker.ready
+    // La suscripción Push tiene que sobrevivir al componente (y a la app
+    // cerrada): es su razón de ser. Se da de baja explícitamente con
+    // `unsubscribe`, no al desmontar.
+    // react-doctor-disable-next-line effect-needs-cleanup
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),

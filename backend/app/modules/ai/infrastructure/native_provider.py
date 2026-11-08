@@ -25,7 +25,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.integrations.llm.base import LlmClient, LlmError, LlmRequest
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, effective_params, key_setting_for, parse_model_spec, parse_overrides, resolve_model_spec
+from app.integrations.llm.catalog import default_models, effective_params, key_setting_for, parse_model_spec, parse_overrides, resolve_model_spec
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_assistant_service import fetch_tenant_config, list_ai_catalog, list_ai_resources
 from app.modules.ai.ai_context import fetch_analysis_context
@@ -292,7 +292,7 @@ async def _models_for_tenant() -> list[tuple[str, str, dict]]:
     configuró para ella; ``build_client`` descarta lo que el modelo no acepte."""
     values = await get_effective_many(SETTING_KEYS)
     chain: list[tuple[str, str, dict]] = []
-    for slot, default in (("primary", DEFAULT_PRIMARY), ("fallback", DEFAULT_FALLBACK)):
+    for slot, default in zip(("primary", "fallback"), default_models(values)):
         # Un modelo que el proveedor retiró se lee como su reemplazo: el
         # negocio no se queda sin sugerencias por no haber entrado a cambiarlo.
         spec = resolve_model_spec(values[f"ai_suggestions_{slot}_model"].strip() or default)

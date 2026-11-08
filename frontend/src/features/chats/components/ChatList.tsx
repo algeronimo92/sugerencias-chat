@@ -309,30 +309,22 @@ export function ChatList({
   // siga apareciendo donde el usuario lo dejó.
   const anchorChatIdRef = useRef<string | null>(null);
   const prevChatsRef = useRef<Chat[]>(chats);
-  const pendingAnchorIndexRef = useRef<number | null>(null);
 
-  if (prevChatsRef.current !== chats) {
-    const anchorId = anchorChatIdRef.current;
-    if (anchorId) {
-      const prevIndex = prevChatsRef.current.findIndex(
-        (chat) => chat.chat_id === anchorId,
-      );
-      const nextIndex = chats.findIndex((chat) => chat.chat_id === anchorId);
-      if (prevIndex !== -1 && nextIndex !== -1 && nextIndex !== prevIndex) {
-        pendingAnchorIndexRef.current = nextIndex;
-      }
-    }
-    prevChatsRef.current = chats;
-  }
-
+  // En un layout effect (después del commit y antes de pintar) y no en el
+  // render: React puede descartar un render, y las refs quedaban apuntando a
+  // una lista que nunca llegó a pantalla.
   useLayoutEffect(() => {
-    if (pendingAnchorIndexRef.current !== null) {
-      rowVirtualizer.scrollToIndex(pendingAnchorIndexRef.current, {
-        align: "start",
-      });
-      pendingAnchorIndexRef.current = null;
+    const prevChats = prevChatsRef.current;
+    if (prevChats === chats) return;
+    prevChatsRef.current = chats;
+    const anchorId = anchorChatIdRef.current;
+    if (!anchorId) return;
+    const prevIndex = prevChats.findIndex((chat) => chat.chat_id === anchorId);
+    const nextIndex = chats.findIndex((chat) => chat.chat_id === anchorId);
+    if (prevIndex !== -1 && nextIndex !== -1 && nextIndex !== prevIndex) {
+      rowVirtualizer.scrollToIndex(nextIndex, { align: "start" });
     }
-  });
+  }, [chats, rowVirtualizer]);
 
   // Mantiene el ancla al día mientras el usuario scrollea. rowVirtualizer no
   // vuelve a renderizar el componente en cada pixel de scroll (con pocos
