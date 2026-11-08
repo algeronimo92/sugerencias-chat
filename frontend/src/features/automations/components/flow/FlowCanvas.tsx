@@ -3,7 +3,7 @@ applyNodeChanges,
 Background,BaseEdge,ControlButton,Controls,EdgeToolbar,
 getSmoothStepPath,
 Handle,MiniMap,PanOnScrollMode,Position,ReactFlow,ReactFlowProvider,SelectionMode,
-useNodesInitialized,useReactFlow,type Connection,type Edge,
+useReactFlow,type Connection,type Edge,
 type EdgeProps,type EdgeTypes,
 type Node,type NodeProps,type NodeTypes,
 type OnConnect,type OnNodesChange,
@@ -36,6 +36,7 @@ import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
 import { useReconciled } from './useReconciled'
 import { NodeTypeMenu } from './NodeTypeMenu'
 import { useConnectDrop } from './useConnectDrop'
+import { useFocusNodes } from './useFocusNodes'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -83,8 +84,6 @@ const EMPTY_TAGS: TagRecord[] = []
 const NO_FLAGGED: ReadonlySet<string> = new Set()
 /** Bloques del recorrido resaltado: los demás se atenúan por CSS (`.flow-spotlight`). */
 const CONNECTED_NODE_CLASS = 'flow-connected'
-/** Destello del bloque al que se acaba de ir (index.css). */
-const PULSE_CLASS = 'flow-pulse'
 
 /** El tema de la app es un toggle manual (ver hooks/useTheme.ts: clase `dark`
  *  en <html>, guardada en localStorage) y no sigue las preferencias del
@@ -714,31 +713,7 @@ function Canvas({
     [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode],
   )
 
-  // Acerca la vista a los bloques pedidos. Con 50 bloques el encuadre inicial
-  // los muestra a todos diminutos: llegar desde Catálogos abría el panel del
-  // bloque marcado sin que se viera dónde estaba en el lienzo.
-  //
-  // El encuadre inicial ya apunta a esos bloques: si el lienzo encuadraba todo
-  // el flujo y después se acercaba, en producción (imágenes y videos que
-  // tardan en medirse) el encuadre general llegaba último y ganaba.
-  const [initialFocus] = useState(focus)
-  const nodesInitialized = useNodesInitialized()
-  useEffect(() => {
-    if (!focus || !focus.ids.length || !nodesInitialized) return
-    void fitView({ nodes: focus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1, duration: 450 })
-    // Y el bloque destella: aunque la vista quede alejada, el ojo lo encuentra.
-    // Directo en el DOM y no por props, para no volver a dibujar el lienzo.
-    const targets = focus.ids
-      .map(id => wrapper.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`))
-      .filter((element): element is HTMLElement => element != null)
-    for (const element of targets) {
-      element.classList.remove(PULSE_CLASS)
-      void element.offsetWidth // reinicia la animación si ya destellaba
-      element.classList.add(PULSE_CLASS)
-    }
-    const timer = window.setTimeout(() => targets.forEach(element => element.classList.remove(PULSE_CLASS)), 2600)
-    return () => window.clearTimeout(timer)
-  }, [focus, nodesInitialized, fitView])
+  const initialFit = useFocusNodes(wrapper, focus, fitView)
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -941,7 +916,7 @@ function Canvas({
         onDrop={handleDrop}
         colorMode={isDarkMode ? 'dark' : 'light'}
         fitView
-        fitViewOptions={initialFocus?.ids.length ? { nodes: initialFocus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1 } : undefined}
+        fitViewOptions={initialFit}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{ type: 'smoothstep' }}

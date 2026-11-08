@@ -45,6 +45,7 @@ export function searchFlowNodes(items: FlowNodeSearchItem[], query: string, limi
   }
   const needle = normalize(raw)
   const inTitle = items.filter(item => normalize(item.title).includes(needle)).sort(byNumber)
-  const inText = items.filter(item => !inTitle.includes(item) && normalize(item.text).includes(needle)).sort(byNumber)
+  const found = new Set(inTitle)
+  const inText = items.filter(item => !found.has(item) && normalize(item.text).includes(needle)).sort(byNumber)
   return [...inTitle, ...inText].slice(0, limit)
 }
