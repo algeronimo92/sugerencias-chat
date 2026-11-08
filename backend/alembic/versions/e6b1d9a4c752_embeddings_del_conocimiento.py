@@ -17,6 +17,12 @@ palabras y significado (``knowledge_vectors``).
   usuario administrador de la base, antes de migrar. Acá solo se crea si falta
   (desarrollo, CI). Si la imagen de PostgreSQL no trae pgvector, falla diciendo
   qué hacer en vez de con el error de PostgreSQL.
+- Corre en cada schema y en ``public``. En producción ``public`` no tiene
+  ``knowledge_chunks`` (vive solo en el schema de cada negocio): ahí no hace
+  nada. El 2026-11-08 la primera versión de esta revisión agregaba las columnas
+  sin mirar y el deploy falló en ``public`` con "relation knowledge_chunks does
+  not exist" (se revirtió entero, sin aplicar nada); en desarrollo y en CI
+  ``public`` sí tiene la tabla, por eso no se vio antes.
 - Solo agrega columnas que admiten nulos: la versión anterior, que convive con
   la nueva durante el despliegue, no las ve. No calcula vectores (necesita la
   clave de IA de cada negocio): los completa la primera sugerencia.
@@ -38,6 +44,14 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_chunks(bind) -> bool:
+    """En el schema activo (el del negocio que se está migrando, o public)."""
+    return bind.execute(sa.text(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = current_schema() AND table_name = 'knowledge_chunks'"
+    )).first() is not None
+
+
 def _ensure_extension(bind) -> None:
     if bind.execute(sa.text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")).scalar():
         return
@@ -52,12 +66,17 @@ def _ensure_extension(bind) -> None:
 
 
 def upgrade() -> None:
-    _ensure_extension(op.get_bind())
+    bind = op.get_bind()
+    _ensure_extension(bind)
+    if not _has_chunks(bind):
+        return
     op.add_column("knowledge_chunks", sa.Column("embedding", Vector(768), nullable=True))
     op.add_column("knowledge_chunks", sa.Column("embedding_model", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
     # La extensión queda: la usan los schemas que no se bajaron.
+    if not _has_chunks(op.get_bind()):
+        return
     op.drop_column("knowledge_chunks", "embedding_model")
     op.drop_column("knowledge_chunks", "embedding")
