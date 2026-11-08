@@ -260,6 +260,7 @@ describe('ServicesManagementPanel', () => {
       data: [
         { kind: 'leads', label: '12 leads', count: 12, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] },
         { kind: 'plantillas', label: '1 plantilla', count: 1, items: [{ id: '7', name: 'Info botox' }] },
+        { kind: 'automatizaciones', label: '1 automatización', count: 1, items: [{ id: '31', name: 'Seguimiento botox' }] },
       ],
       isPending: false,
       isError: false,
@@ -278,6 +279,11 @@ describe('ServicesManagementPanel', () => {
     expect(params.get('editar')).toBe('servicio_interes')
     expect(params.get('motivo')).toContain('«Botox»')
     expect(within(dialog).getByRole('link', { name: 'Info botox' })).toHaveAttribute('href', '/templates')
+    // La automatización se abre en esa regla, buscando el servicio para resaltarlo.
+    const ruleLink = within(dialog).getByRole('link', { name: 'Seguimiento botox' }).getAttribute('href') ?? ''
+    const ruleParams = new URLSearchParams(ruleLink.split('?')[1])
+    expect(ruleLink.startsWith('/automations?')).toBe(true)
+    expect([ruleParams.get('editar'), ruleParams.get('registro'), ruleParams.get('valor')]).toEqual(['servicio', '31', 'Botox'])
     expect(within(dialog).getByText('y 11 más')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Eliminar' })).toBeDisabled()
   })
