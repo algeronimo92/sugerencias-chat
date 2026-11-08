@@ -33,6 +33,7 @@ WaitAnyConditionKind,
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
+import { useReconciled } from './useReconciled'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -355,7 +356,9 @@ function AttachmentMedia({ attachment, interactive = false }: { attachment: Prev
  */
 function LazyVideo({ url, filename }: { url: string; filename: string }) {
   const [playing, setPlaying] = useState(false)
-  if (playing) return <video src={url} controls autoPlay preload="auto" className="h-32 w-full object-contain" />
+  // Arranca desde el clic (gesto del usuario), no con autoPlay: los
+  // navegadores bloquean el autoplay con sonido y el lint lo marca.
+  if (playing) return <video src={url} controls playsInline preload="auto" ref={node => { void node?.play().catch(() => undefined) }} className="h-32 w-full object-contain" />
   return (
     <button type="button" onClick={() => setPlaying(true)} aria-label={`Reproducir ${filename || 'video'}`} className="flex h-32 w-full flex-col items-center justify-center gap-1 bg-black/90 text-white hover:bg-black">
       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15"><Play className="ml-0.5 h-5 w-5" aria-hidden="true" /></span>
@@ -612,6 +615,51 @@ interface FlowCanvasProps {
   onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
 }
 
+
+interface DeriveInputs {
+  templates: MessageTemplate[]
+  mediaAssets: MediaAsset[]
+  flowRules: ReadonlyArray<{ id: number; name: string }>
+  tags: TagRecord[]
+  selectedId: string | null
+  flaggedIds: ReadonlySet<string>
+  numbers: ReadonlyMap<string, number> | undefined
+  onDelete: (id: string) => void
+}
+
+/** Los bloques del lienzo a partir del flujo, reutilizando el objeto anterior
+ *  de cada uno si nada suyo cambió (ver useReconciled). */
+function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs, previous: ReadonlyMap<string, CanvasNode>) {
+  const { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete } = inputs
+  const index = new Map<string, CanvasNode>()
+  const list = flowNodes.map(node => {
+    const action = node.type === FlowNodeType.Action ? node.data.action : null
+    const previewTemplate = action?.type === AutomationActionType.SendTemplate
+      ? templates.find(template => template.id === action.template_id)
+      : undefined
+    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
+      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
+      : undefined
+    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
+      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
+      : undefined
+    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
+      ? tags.find(tag => tag.id === action.tag_id)?.name
+      : undefined
+    const candidate: CanvasNode = {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      selected: node.id === selectedId,
+      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), onDelete },
+    }
+    const reused = reuseIfSame(previous.get(node.id), candidate)
+    index.set(node.id, reused)
+    return reused
+  })
+  return { list, index }
+}
+
 function Canvas({
   flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
@@ -656,47 +704,10 @@ function Canvas({
   // creaba 50 objetos `data` nuevos y React redibujaba los 50 bloques, con
   // sus imágenes y videos: eso era lo que se sentía lento en flujos grandes.
   const handleDeleteNode = useCallback((id: string) => onDeleteNodes([id]), [onDeleteNodes])
-  const derivedCache = useRef(new Map<string, CanvasNode>())
-  const derivedNodes = useMemo<CanvasNode[]>(() => {
-    const previous = derivedCache.current
-    const cache = new Map<string, CanvasNode>()
-    const result = flow.nodes.map(node => {
-    const action = node.type === FlowNodeType.Action ? node.data.action : null
-    const previewTemplate = action?.type === AutomationActionType.SendTemplate
-      ? templates.find(template => template.id === action.template_id)
-      : undefined
-    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
-      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
-      : undefined
-    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
-      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
-      : undefined
-    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
-      ? tags.find(tag => tag.id === action.tag_id)?.name
-      : undefined
-    const candidate: CanvasNode = {
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      selected: node.id === selectedId,
-      data: {
-        ...node.data,
-        previewTemplate,
-        previewAsset,
-        invokedFlowName,
-        previewTagName,
-        flagged: flaggedIds.has(node.id),
-        number: numbers?.get(node.id),
-        onDelete: handleDeleteNode,
-      },
-    }
-    const reused = reuseIfSame(previous.get(node.id), candidate)
-    cache.set(node.id, reused)
-    return reused
-    })
-    derivedCache.current = cache
-    return result
-  }, [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode])
+  const derivedNodes = useReconciled<CanvasNode, CanvasNode>(
+    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete: handleDeleteNode }, previous),
+    [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode],
+  )
 
   // Acerca la vista a los bloques pedidos. Con 50 bloques el encuadre inicial
   // los muestra a todos diminutos: llegar desde Catálogos abría el panel del
@@ -734,11 +745,9 @@ function Canvas({
   // Y solo cambian de objeto los bloques conectados al recorrido resaltado
   // (anillo y etiqueta); los demás se atenúan por CSS. Al pasar el mouse por
   // un bloque se redibujan 3 o 4, no 50.
-  const displayCache = useRef(new Map<string, { base: CanvasNode; shown: CanvasNode }>())
-  const displayNodes = useMemo<CanvasNode[]>(() => {
-    const previous = displayCache.current
-    const cache = new Map<string, { base: CanvasNode; shown: CanvasNode }>()
-    const result = nodes.map(node => {
+  const displayNodes = useReconciled<CanvasNode, { base: CanvasNode; shown: CanvasNode }>(previous => {
+    const index = new Map<string, { base: CanvasNode; shown: CanvasNode }>()
+    const list = nodes.map(node => {
       const connectionRole = connectionRoles.get(node.id)
       const entry = previous.get(node.id)
       const shown = entry && entry.base === node && entry.shown.data.connectionRole === connectionRole
@@ -746,11 +755,10 @@ function Canvas({
         : connectionRole
           ? { ...node, className: CONNECTED_NODE_CLASS, data: { ...node.data, connectionRole } }
           : node
-      cache.set(node.id, { base: node, shown })
+      index.set(node.id, { base: node, shown })
       return shown
     })
-    displayCache.current = cache
-    return result
+    return { list, index }
   }, [nodes, connectionRoles])
 
   const scheduleEdgeLeave = useCallback((edgeId: string) => {
@@ -771,22 +779,19 @@ function Canvas({
 
   // Misma idea que con los bloques: una conexión conserva su objeto mientras
   // no cambie, así React no vuelve a crear las 49 por cada hover.
-  const edgeCache = useRef(new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>())
-  const edges = useMemo<DeletableEdge[]>(() => {
-    const previous = edgeCache.current
-    const cache = new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>()
-    const result = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => {
+  const edges = useReconciled<DeletableEdge, { base: Edge; showDelete: boolean; shown: DeletableEdge }>(previous => {
+    const index = new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>()
+    const list = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => {
       const showDelete = edge.id === hoveredEdgeId || edge.id === selectedEdgeId
       const entry = previous.get(edge.id)
       const shown = entry && entry.base === edge && entry.showDelete === showDelete
         && entry.shown.data?.onDelete === onDeleteEdge && entry.shown.data?.onToolbarEnter === keepEdgeHovered && entry.shown.data?.onToolbarLeave === scheduleEdgeLeave
         ? entry.shown
         : { ...edge, type: 'deletable' as const, data: { showDelete, onDelete: onDeleteEdge, onToolbarEnter: keepEdgeHovered, onToolbarLeave: scheduleEdgeLeave } }
-      cache.set(edge.id, { base: edge, showDelete, shown })
+      index.set(edge.id, { base: edge, showDelete, shown })
       return shown
     })
-    edgeCache.current = cache
-    return result
+    return { list, index }
   }, [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId])
 
   useEffect(() => {
