@@ -204,7 +204,11 @@ const crmRoutes = createRoutesFromElements(
 );
 
 function CrmRouter() {
-  // Uno por sesión: se crea al entrar y se descarta con el login.
+  // Uno por sesión: se crea al entrar y se descarta con el login. Se crea una
+  // sola vez por montaje (inicializador de useState), no en cada render. A
+  // nivel de módulo, como pide la regla, sobreviviría al logout y quien entre
+  // con otra cuenta seguiría en la ruta (el chat) del usuario anterior.
+  // react-doctor-disable-next-line react-router-no-router-in-render
   const [router] = useState(() => createBrowserRouter(crmRoutes));
   return <RouterProvider router={router} />;
 }
