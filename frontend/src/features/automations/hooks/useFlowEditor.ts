@@ -54,6 +54,7 @@ export function initialFlowEditorState(
   initialDefinition: AutomationFlowDefinition | null,
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
+  showEntryConditions = false,
 ): FlowEditorState {
   return {
     ruleId: rule?.id ?? null,
@@ -63,8 +64,10 @@ export function initialFlowEditorState(
     name: rule?.name ?? 'Nuevo flujo visual',
     maxPerHour: rule?.max_executions_per_hour ?? null,
     visibleToSellers: rule?.visible_to_sellers ?? false,
+    // Con las condiciones de entrada abiertas el panel las muestra a ellas,
+    // no al bloque elegido (ver 'select').
     selectedId: firstNodeId,
-    showEntryConditions: false,
+    showEntryConditions,
     error: null,
     notice: null,
     openDialogs: NO_DIALOGS,
@@ -148,10 +151,11 @@ export function useFlowEditor(
   initialDefinition: AutomationFlowDefinition | null,
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
+  showEntryConditions = false,
 ) {
   return useReducer(
     flowEditorReducer,
     undefined,
-    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId),
+    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId, showEntryConditions),
   )
 }

@@ -28,6 +28,8 @@ import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as Acti
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
+import { actionNamesService, conditionsNameService, flowServiceReferences, flowServiceSummary } from '../domain/serviceReferences'
+import { HIGHLIGHT_RING, ServiceHighlightNotice, type ServiceHighlight } from './ServiceHighlightNotice'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
 useAutomationRules,useCreateVisualFlow,useFlowVersions,usePublishVisualFlow,useRestoreFlowVersion,
@@ -250,6 +252,8 @@ function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
 
 interface VisualFlowBuilderProps {
   rule?: AutomationRule
+  /** Llegada desde Catálogos: el servicio que hay que cambiar o quitar. */
+  highlight?: ServiceHighlight
   onClose: () => void
 }
 
@@ -258,7 +262,7 @@ function isEditableTarget(target: EventTarget | null) {
     && !!target.closest('input, textarea, select, [contenteditable="true"]')
 }
 
-export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
+export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilderProps) {
   const createFlow = useCreateVisualFlow()
   const saveFlow = useSaveVisualFlow()
   const publishFlow = usePublishVisualFlow()
@@ -291,7 +295,16 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       ? withDefaultConditions(definition)
       : initialFlow()
   })
-  const [editor, dispatch] = useFlowEditor(rule, initialDefinition, initialPublishedDefinition, flow.nodes[0]?.id ?? null)
+  // Desde Catálogos se abre en lo que nombra al servicio: las condiciones de
+  // entrada o el primer bloque que lo cambia, no en el disparador.
+  const initialReferences = highlight ? flowServiceReferences(flow, highlight.service) : null
+  const [editor, dispatch] = useFlowEditor(
+    rule, initialDefinition, initialPublishedDefinition,
+    initialReferences?.nodeIds[0] ?? flow.nodes[0]?.id ?? null,
+    initialReferences?.entryConditions ?? false,
+  )
+  const serviceReferences = useMemo(() => highlight ? flowServiceReferences(flow, highlight.service) : null, [flow, highlight])
+  const flaggedNodeIds = useMemo(() => new Set(serviceReferences?.nodeIds ?? []), [serviceReferences])
   const {
     ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
     selectedId, showEntryConditions, error, notice, jsonViewTab, jsonCopied,
@@ -639,7 +652,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
     if (saved) onClose()
   }
 
-  return <div className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-flow-canvas-dark">
+  return <div data-flow-builder className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-flow-canvas-dark">
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
       <button type="button" onClick={requestClose} aria-label="Cerrar constructor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
       <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}${rule?.flow_version ? ` · publicado v${rule.flow_version}` : ' · borrador'}` : 'Nuevo borrador visual'}</p></div>
@@ -674,6 +687,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios pendientes para publicar' : 'Publicar una nueva versión'} onClick={() => void publish()} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
 
+    {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica el flujo (la versión activa también cuenta)" /></div>}
     {(error || notice) && <div className={`px-4 py-2 text-xs ${error ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'}`}>{error ?? notice}</div>}
 
     <div className="flex min-h-0 flex-1">
@@ -698,6 +712,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           flowRules={automationRules}
           tags={tags}
           selectedId={selectedId}
+          flaggedIds={flaggedNodeIds}
           onSelect={id => dispatch({ type: 'select', nodeId: id })}
           onMoveNodes={moveNodes}
           onDeleteNodes={removeNodes}
@@ -708,7 +723,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.service} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
@@ -726,7 +741,7 @@ export function VisualFlowBuilder({ rule, onClose }: VisualFlowBuilderProps) {
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span><strong className="block text-xs">Cerrar conversación al finalizar</strong><span className="mt-0.5 block text-wa-muted">Marca el chat como cerrado cuando la ejecución llega a esta salida.</span></span></label></div>}
-          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} />}
+          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.service} />}
           <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
       </aside>}
@@ -1043,10 +1058,12 @@ interface EntryConditionsEditorProps {
   updateConditions: (conditions: AutomationConditions) => void
   users: AppUser[]
   tags: Tag[]
+  highlightService?: string
 }
 
-function EntryConditionsEditor({ conditions, updateConditions, users, tags }: EntryConditionsEditorProps) {
+function EntryConditionsEditor({ conditions, updateConditions, users, tags, highlightService }: EntryConditionsEditorProps) {
   const stageCatalog = useLeadStageCatalog()
+  const serviceHighlighted = highlightService != null && conditionsNameService(conditions, highlightService)
   return <div className="space-y-4">
     <div className="flex items-start gap-2">
       <ListFilter className="mt-0.5 h-4 w-4 shrink-0 text-wa-primary-strong" />
@@ -1061,7 +1078,7 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags }: En
     <label className="grid gap-1 text-[10px] text-wa-muted">Origen contiene
       <input maxLength={120} value={conditions.origin_contains ?? ''} onChange={event => updateConditions({ ...conditions, origin_contains: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} />
     </label>
-    <label className="grid gap-1 text-[10px] text-wa-muted">Servicio contiene
+    <label data-highlighted={serviceHighlighted || undefined} className={`grid gap-1 text-[10px] text-wa-muted ${serviceHighlighted ? HIGHLIGHT_RING : ''}`}>Servicio contiene
       <input maxLength={120} value={conditions.service_contains ?? ''} onChange={event => updateConditions({ ...conditions, service_contains: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} />
     </label>
     <label className="grid gap-1 text-[10px] text-wa-muted">Vendedor
@@ -1096,6 +1113,7 @@ interface ActionEditorProps {
   leadServices: Array<{ id: number; name: string }>
   templates: MessageTemplate[]
   mediaAssets: MediaAsset[]
+  highlightService?: string
 }
 
 function TemplatePreview({ template }: { template: MessageTemplate }) {
@@ -1107,7 +1125,7 @@ function TemplatePreview({ template }: { template: MessageTemplate }) {
   </div>
 }
 
-function ActionEditor({ action, updateAction, users, tags, leadServices, templates, mediaAssets }: ActionEditorProps) {
+function ActionEditor({ action, updateAction, users, tags, leadServices, templates, mediaAssets, highlightService }: ActionEditorProps) {
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const stageCatalog = useLeadStageCatalog()
   const selectedTemplate = action.type === ActionType.SendTemplate
@@ -1118,7 +1136,7 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
     {action.type === ActionType.AssignSeller && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
     {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
     {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => updateAction({ ...action, stage: event.target.value })} className={fieldClass}>{stageOptions(stageCatalog, action.stage).map(stage => <option key={stage.key} value={stage.key} disabled={!stage.is_active}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select>}
-    {action.type === ActionType.ChangeService && <><Select value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} className={fieldClass}><option value="">Quitar servicio de interés</option>{action.service && !leadServices.some(service => service.name === action.service) && <option value={action.service}>{action.service} (valor actual)</option>}{leadServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</Select><p className="text-[10px] text-wa-muted">Selecciona un servicio del catálogo o deja vacío para quitar el actual.</p></>}
+    {action.type === ActionType.ChangeService && <div data-highlighted={(highlightService != null && actionNamesService(action, highlightService)) || undefined} className="space-y-3 data-[highlighted=true]:rounded-lg data-[highlighted=true]:bg-amber-50 data-[highlighted=true]:p-1.5 data-[highlighted=true]:ring-2 data-[highlighted=true]:ring-amber-400 dark:data-[highlighted=true]:bg-amber-950/30"><Select value={action.service ?? ''} onChange={event => updateAction({ ...action, service: event.target.value || null })} className={fieldClass}><option value="">Quitar servicio de interés</option>{action.service && !leadServices.some(service => service.name === action.service) && <option value={action.service}>{action.service} (valor actual)</option>}{leadServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</Select><p className="text-[10px] text-wa-muted">Selecciona un servicio del catálogo o deja vacío para quitar el actual.</p></div>}
     {action.type === ActionType.SetConversationState && <><Select value={action.state} onChange={event => updateAction({ ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className={fieldClass}><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select><p className="text-[10px] text-wa-muted">No dispara “Conversación nueva”; ese evento queda reservado para mensajes entrantes del cliente.</p></>}
     {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => updateAction({ ...action, media_asset_id: id })} />}
     {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => updateAction({ ...action, media_asset_id: id })} />}

@@ -66,6 +66,7 @@ interface CanvasNodeData {
   previewTagName?: string
   connectionRole?: 'source' | 'target' | 'both'
   connectionDimmed?: boolean
+  flagged?: boolean
 }
 
 type CanvasNode = Node<CanvasNodeData>
@@ -76,6 +77,7 @@ const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
 const EMPTY_FLOW_RULES: AutomationRule[] = []
 const EMPTY_TAGS: TagRecord[] = []
+const NO_FLAGGED: ReadonlySet<string> = new Set()
 
 /** El tema de la app es un toggle manual (ver hooks/useTheme.ts: clase `dark`
  *  en <html>, guardada en localStorage) y no sigue las preferencias del
@@ -171,9 +173,11 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       ? 'ring-2 ring-violet-500 ring-offset-2 shadow-[0_0_24px_rgba(139,92,246,0.5)] dark:ring-offset-gray-950'
       : data.connectionRole === 'both'
         ? 'ring-2 ring-fuchsia-500 ring-offset-2 shadow-[0_0_24px_rgba(217,70,239,0.45)] dark:ring-offset-gray-950'
-        : selected
-          ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950'
-          : ''
+        : data.flagged
+          ? 'ring-[3px] ring-amber-400 ring-offset-2 shadow-[0_0_24px_rgba(251,191,36,0.5)] dark:ring-offset-gray-950'
+          : selected
+            ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950'
+            : ''
   const connectionLabel = data.connectionRole === 'source'
     ? 'Origen'
     : data.connectionRole === 'target'
@@ -560,6 +564,8 @@ interface FlowCanvasProps {
   flowRules?: AutomationRule[]
   tags?: TagRecord[]
   selectedId: string | null
+  /** Bloques marcados en ámbar (los que usan el servicio que se quiere eliminar). */
+  flaggedIds?: ReadonlySet<string>
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
   onDeleteNodes: (ids: string[]) => void
@@ -569,7 +575,7 @@ interface FlowCanvasProps {
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
@@ -632,10 +638,11 @@ function Canvas({
         previewAsset,
         invokedFlowName,
         previewTagName,
+        flagged: flaggedIds.has(node.id),
         onDelete: id => onDeleteNodes([id]),
       },
     }
-  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, onDeleteNodes])
+  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, onDeleteNodes])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si

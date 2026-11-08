@@ -11,14 +11,15 @@ import type { LeadService, ServiceUsageGroup } from '../types'
 import { ReassignServiceLeads } from './ReassignServiceLeads'
 
 /** Adónde ir a quitar el servicio de cada cosa que lo usa. Un lead se abre
- *  con su servicio de interés listo para cambiar y resaltado, no solo el chat. */
+ *  con su servicio de interés listo para cambiar y resaltado, no solo el chat;
+ *  una automatización, abierta en esa regla con lo que nombra al servicio
+ *  marcado (antes llevaba a la lista y había que adivinar qué tocar). */
 function usageHref(kind: string, id: string, serviceName: string): string {
-  if (kind === 'leads') {
-    return editFieldHref(`/chat/${id}`, 'servicio_interes', `Cámbialo o quítalo para poder eliminar «${serviceName}» del catálogo.`)
-  }
+  const reason = `Cámbialo o quítalo para poder eliminar «${serviceName}» del catálogo.`
+  if (kind === 'leads') return editFieldHref(`/chat/${id}`, 'servicio_interes', reason)
+  if (kind === 'automatizaciones') return editFieldHref('/automations', 'servicio', reason, { record: id, value: serviceName })
   if (kind === 'ventas') return `/chat/${id}`
   if (kind === 'plantillas') return '/templates'
-  if (kind === 'automatizaciones') return '/automations'
   return '/ai-assistant'
 }
 
