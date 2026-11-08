@@ -266,7 +266,7 @@ def test_deploy_reconciles_traefik_with_this_configuration() -> None:
     """El despliegue tiene que dejar corriendo ESTE traefik. Si sólo confía en
     el que hubiera en el servidor, vuelve el fallo silencioso: despliegues en
     verde sobre un proxy que enruta a otra cosa."""
-    workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     assert "reverse-proxy.docker-compose.yml" in workflow
     # El proyecto es el que ya existe: conserva el volumen del certificado.
     assert "-p traefik" in workflow

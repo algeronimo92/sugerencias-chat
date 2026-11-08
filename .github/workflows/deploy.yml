@@ -1,205 +1,39 @@
-name: CI/CD
+# Despliegue a producción: cada push a `main` (un merge) corre los mismos
+# checks que el PR (checks.yml) y, si pasan, despliega blue-green por SSH.
+#
+# Es un workflow aparte, y solo de `main`, para que "¿se desplegó?" tenga una
+# sola respuesta: una corrida de "Deploy a producción" en verde, y el entorno
+# `production` en la pestaña Deployments. Antes el deploy era un job más del CI
+# de todas las ramas y aparecía "skipped" en cada PR y en cada rama, y en
+# `main` cuando GitHub mostraba otra corrida del mismo commit.
+name: Deploy a producción
 
 on:
   push:
-    branches: ["**"]
-  pull_request:
     branches: [main]
+  # Para volver a desplegar `main` sin un commit nuevo (un deploy que falló
+  # por algo del servidor que ya se corrigió).
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  frontend-checks:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-
-  backend-checks:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: python -m compileall -q .
-      # Smoke test: la app tiene que poder importarse sin tocar una DB o n8n real.
-      - run: |
-          DATABASE_URL="postgresql+asyncpg://u:p@localhost/db" \
-          N8N_WEBHOOK_URL="https://example.com/webhook/x" \
-          SECRET_KEY="ci-smoke-test-key" \
-          python -c "import main"
-      # config.py construye Settings() al importarse, y sin .env en el runner
-      # esas dos variables son obligatorias. Esta puerta usa dobles; las pruebas
-      # con PostgreSQL físico se ejecutan en migrations-check.
-      - name: Tests
-        env:
-          DATABASE_URL: "postgresql+asyncpg://u:p@localhost/db"
-          N8N_WEBHOOK_URL: "https://example.com/webhook/x"
-          SECRET_KEY: "ci-test-key"
-        run: python -m pytest
-
-  migrations-check:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        # Con pgvector, como la base de producción (db/Dockerfile). Es la imagen
-        # oficial de pgvector (Debian): para correr migraciones y tests el
-        # sistema base da igual; la imagen alpine que va a producción se
-        # construye y se ensaya en docker-build-check.
-        image: pgvector/pgvector:0.8.7-pg16
-        env:
-          POSTGRES_DB: app
-          POSTGRES_USER: app
-          POSTGRES_PASSWORD: app
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U app -d app"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    defaults:
-      run:
-        working-directory: backend
-    env:
-      DATABASE_URL: "postgresql+asyncpg://app:app@localhost:5432/app"
-      DATABASE_SSL: "disable"
-      N8N_WEBHOOK_URL: "https://example.com/webhook/x"
-      SECRET_KEY: "ci-migrations-key"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - name: Apply every revision on an empty database
-        run: python -m scripts.migrate
-      - name: Latest revision downgrades and upgrades again
-        run: |
-          alembic downgrade -1
-          alembic upgrade head
-      - name: ORM registry matches the migrated schema
-        run: alembic check
-      # Con TEST_DATABASE_URL los tests de PostgreSQL real dejan de saltarse
-      # (y fallan si la base no responde): la suite entera corre contra el
-      # esquema recién migrado, sin una lista de archivos que mantener a mano.
-      - name: Full suite against real PostgreSQL
-        env:
-          TEST_DATABASE_URL: "postgresql+asyncpg://app:app@localhost:5432/app"
-        run: |
-          pip install -r requirements-dev.txt
-          python -m pytest
-
-  api-types-check:
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: "postgresql+asyncpg://u:p@localhost/db"
-      N8N_WEBHOOK_URL: "https://example.com/webhook/x"
-      SECRET_KEY: "ci-api-types-key"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - run: pip install -r backend/requirements.txt
-      - name: Frontend types match the backend OpenAPI schema
-        run: |
-          ./scripts/generate-api-types.sh
-          git diff --exit-code -- frontend/src/api/schema.d.ts
-
-  docker-build-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build backend image
-        run: docker build -t backend-check ./backend
-      - name: Build frontend image (prod target)
-        run: docker build -t frontend-check --target prod --build-arg VITE_API_BASE_URL="" ./frontend
-      # nginx.conf tiene "proxy_pass http://backend:8000;" — nginx resuelve ese
-      # hostname ya al cargar la config, así que validarlo aislado (sin un
-      # contenedor "backend" real en la misma red) siempre falla con "host
-      # not found in upstream", sin que eso diga nada sobre si el config
-      # está bien. Se arma la misma topología que docker-compose en prod:
-      # una red con un "backend" de mentira, y ahí sí se valida.
-      - name: Verify nginx.conf against a real "backend" hostname
-        run: |
-          docker network create ci-net
-          docker run -d --name backend --network ci-net python:3.12-slim python -m http.server 8000
-          docker run -d --name frontend --network ci-net frontend-check
-          sleep 2
-          docker exec frontend nginx -t
-          docker ps --filter name=frontend --filter status=running --format '{{.Names}}' | grep -qx frontend
-      - name: Cleanup check containers
-        if: always()
-        run: |
-          docker rm -f backend frontend 2>/dev/null || true
-          docker network rm ci-net 2>/dev/null || true
-      # La imagen de la base (PostgreSQL + pgvector) se construye recién en el
-      # servidor, al desplegar, y reemplaza a la que tiene los datos. Acá se
-      # ensaya ese reemplazo completo antes del merge: datos creados con la
-      # imagen anterior, la nueva arrancando sobre el mismo volumen, pgvector
-      # disponible y los índices de texto intactos (amcheck).
-      - name: Database image upgrade rehearsal
-        run: scripts/ci-db-upgrade-rehearsal.sh
-
-  # Un config de monitoreo roto no rompe la app, así que nadie se entera hasta
-  # que hace falta una alerta que ya no existe. Se valida acá, contra las
-  # mismas versiones que fija compose.monitoring.yml: validar con otra versión
-  # no dice nada sobre la que después va a cargar el archivo.
-  monitoring-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # `check config` sigue los rule_files, así que esto valida también
-      # alert-rules.yml. La ruta del mount es la misma que en prod porque
-      # prometheus.yml los referencia por ruta absoluta (/etc/prometheus).
-      - name: Validate Prometheus config and alert rules
-        run: |
-          docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
-            --entrypoint promtool prom/prometheus:v3.13.2 \
-            check config /etc/prometheus/prometheus.yml
-      - name: Validate Alertmanager config
-        run: |
-          # url_file apunta al secreto del webhook, que no existe en el runner
-          # (ni debe). Se monta uno de mentira para que la validación mire la
-          # sintaxis del config y no el entorno donde corre.
-          mkdir -p /tmp/am-secrets
-          echo 'https://example.invalid/webhook' > /tmp/am-secrets/n8n_webhook_url
-          docker run --rm \
-            -v "$PWD/monitoring/alertmanager:/etc/alertmanager:ro" \
-            -v /tmp/am-secrets:/etc/alertmanager-secrets:ro \
-            --entrypoint amtool prom/alertmanager:v0.33.1 \
-            check-config /etc/alertmanager/alertmanager.yml
-      - name: Validate Loki config
-        run: |
-          # El config declara path_prefix /loki, que en prod es el volumen de
-          # datos. Se le da un directorio escribible para que un fallo acá sea
-          # por el config y no porque el runner no tiene esa ruta.
-          mkdir -p /tmp/loki-data && chmod 777 /tmp/loki-data
-          docker run --rm \
-            -v "$PWD/monitoring/loki:/etc/loki:ro" -v /tmp/loki-data:/loki \
-            grafana/loki:3.7.6 -verify-config -config.file=/etc/loki/loki-config.yml
+  checks:
+    uses: ./.github/workflows/checks.yml
 
   deploy:
-    needs: [frontend-checks, backend-checks, migrations-check, api-types-check, docker-build-check, monitoring-checks]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: checks
+    # Un "Run workflow" manual desde otra rama chequearía ese código y
+    # desplegaría `main` (el script hace `git reset --hard origin/main`).
+    if: github.ref == 'refs/heads/main'
+    # El entorno registra cada despliegue en la pestaña Deployments (y en la
+    # portada del repo) con su commit y su URL: ahí se ve qué versión está en
+    # producción sin abrir corridas de Actions.
+    environment:
+      name: production
+      url: https://dermicapro.cliniventas.com
+    timeout-minutes: 30
     # Un solo despliegue a la vez contra el servidor. Dos merges seguidos
     # lanzaban dos deploys en paralelo: los dos elegían el mismo color libre y
     # el segundo chocaba al crear sus contenedores con los del primero (pasó el
@@ -285,7 +119,7 @@ jobs:
             if [ -z "$PG_NUEVO" ]; then
               echo "ERROR: no se pudo leer la versión de postgres en db/Dockerfile." >&2
               echo "Se esperaba una línea 'FROM postgres:<mayor>...'. Si cambió" >&2
-              echo "el formato, hay que actualizar esta comprobación en ci-cd.yml." >&2
+              echo "el formato, hay que actualizar esta comprobación en deploy.yml." >&2
               exit 1
             fi
 
@@ -592,3 +426,18 @@ jobs:
               conservar_color /tmp/active.yml.serving
               exit 1
             fi
+
+      # Qué quedó en producción, en la portada de la corrida. El mensaje del
+      # commit entra por variable de entorno y no interpolado en el script:
+      # interpolado, un título con comillas o $() se ejecutaría en el runner.
+      - name: Resumen
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PRODUCTION_URL: https://dermicapro.cliniventas.com
+        run: |
+          {
+            echo "### Desplegado en producción"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\` $(printf '%s\n' "${COMMIT_MESSAGE:-despliegue manual}" | head -1)"
+            echo "- URL: $PRODUCTION_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

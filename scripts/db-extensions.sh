@@ -10,7 +10,7 @@
 # los schemas: la tabla de cada negocio usa el tipo porque su search_path es
 # "<tenant>", public.
 #
-# Idempotente. El deploy (ci-cd.yml) lo corre después de levantar la base y
+# Idempotente. El deploy (deploy.yml) lo corre después de levantar la base y
 # antes de migrar; la migración que agrega los embeddings falla explicando qué
 # falta si la extensión no está.
 #

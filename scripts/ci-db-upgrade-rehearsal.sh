@@ -16,7 +16,7 @@
 #    encuentra índices de texto rotos: es lo que se rompería si la imagen
 #    cambiara de sistema base (alpine/musl → Debian/glibc) bajo los datos.
 #
-# Uso (lo corre ci-cd.yml, job docker-build-check):
+# Uso (lo corre checks.yml, job docker-build-check):
 #   scripts/ci-db-upgrade-rehearsal.sh
 
 set -euo pipefail
