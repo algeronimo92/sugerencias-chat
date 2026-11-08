@@ -3,7 +3,7 @@ applyNodeChanges,
 Background,BaseEdge,ControlButton,Controls,EdgeToolbar,
 getSmoothStepPath,
 Handle,MiniMap,PanOnScrollMode,Position,ReactFlow,ReactFlowProvider,SelectionMode,
-useReactFlow,type Connection,type Edge,
+useNodesInitialized,useReactFlow,type Connection,type Edge,
 type EdgeProps,type EdgeTypes,
 type Node,type NodeProps,type NodeTypes,
 type OnConnect,type OnNodesChange,
@@ -14,7 +14,7 @@ Bell,ChevronRight,CirclePlay,
 Eye,EyeOff,
 FileText,
 Image as ImageIcon,MessageSquareText,Paperclip,
-SmilePlus,Tag,Trash2,UserRound,Video,
+Play,SmilePlus,Tag,Trash2,UserRound,Video,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../../../whatsapp/public/message'
@@ -31,8 +31,9 @@ WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
 } from '../../domain/automationCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
-import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
+import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
 import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
+import { useReconciled } from './useReconciled'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -65,8 +66,8 @@ interface CanvasNodeData {
   previewAsset?: MediaAsset
   previewTagName?: string
   connectionRole?: 'source' | 'target' | 'both'
-  connectionDimmed?: boolean
   flagged?: boolean
+  number?: number
 }
 
 type CanvasNode = Node<CanvasNodeData>
@@ -75,9 +76,11 @@ const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2p
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
 const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
-const EMPTY_FLOW_RULES: AutomationRule[] = []
+const EMPTY_FLOW_RULES: ReadonlyArray<{ id: number; name: string }> = []
 const EMPTY_TAGS: TagRecord[] = []
 const NO_FLAGGED: ReadonlySet<string> = new Set()
+/** Bloques del recorrido resaltado: los demás se atenúan por CSS (`.flow-spotlight`). */
+const CONNECTED_NODE_CLASS = 'flow-connected'
 
 /** El tema de la app es un toggle manual (ver hooks/useTheme.ts: clase `dark`
  *  en <html>, guardada en localStorage) y no sigue las preferencias del
@@ -164,6 +167,17 @@ interface ShellProps {
   children?: React.ReactNode
 }
 
+/** El objeto anterior si el candidato es igual campo a campo (y `data`, campo a campo). */
+function reuseIfSame(previous: CanvasNode | undefined, candidate: CanvasNode): CanvasNode {
+  if (!previous || previous.type !== candidate.type || previous.selected !== candidate.selected
+    || previous.position.x !== candidate.position.x || previous.position.y !== candidate.position.y) return candidate
+  const before = previous.data as Record<string, unknown>
+  const after = candidate.data as Record<string, unknown>
+  const keys = Object.keys(after)
+  if (keys.length !== Object.keys(before).length) return candidate
+  return keys.every(key => Object.is(before[key], after[key])) ? previous : candidate
+}
+
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
   const Icon = FLOW_NODE_VIEW[type].icon
   const widthClass = type === FlowNodeType.Condition ? 'w-[26rem]' : 'w-72'
@@ -187,13 +201,15 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         : null
   return (
     <div
-      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 dark:border-flow-border-dark dark:bg-flow-panel-dark ${ACCENT_BORDER[type]} ${connectionClass} ${
-        data.connectionDimmed ? 'opacity-40 saturate-50' : ''
-      }`}
+      // El atenuado de los bloques no conectados va por CSS en el contenedor
+      // (`.flow-spotlight`, index.css), no acá: así pasar el mouse no vuelve
+      // a crear los 50 bloques, solo los 3 o 4 conectados.
+      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark ${ACCENT_BORDER[type]} ${connectionClass}`}
     >
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
+      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
         <div className="min-w-0 flex-1">
@@ -247,7 +263,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-300">
         <CirclePlay className="h-3.5 w-3.5 text-violet-600 dark:text-blue-400" /><span className="truncate">{asset?.filename ?? 'Audio sin seleccionar'}</span>
       </div>
-      {url ? <audio src={url} controls preload="metadata" className="h-8 w-full" /> : <EmptyPreview label="Elige un audio en las propiedades" />}
+      {url ? <audio src={url} controls preload="none" className="h-8 w-full" /> : <EmptyPreview label="Elige un audio en las propiedades" />}
     </div>
   }
 
@@ -321,14 +337,34 @@ function AttachmentMedia({ attachment, interactive = false }: { attachment: Prev
     return interactive ? <a href={url} target="_blank" rel="noreferrer" title="Abrir imagen" className="block overflow-hidden rounded-lg border border-violet-200 dark:border-blue-900">{image}<AttachmentCaption icon={ImageIcon} filename={attachment.filename} /></a> : image
   }
   if (attachment.content_type.startsWith('video/')) {
-    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><video src={url} controls={interactive} preload="metadata" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
+    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><LazyVideo url={url} filename={attachment.filename} />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
   }
   if (attachment.content_type.startsWith('audio/')) {
-    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="metadata" className="mt-1 h-8 w-full" />}</div>
+    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="none" className="mt-1 h-8 w-full" />}</div>
   }
   return <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[10px] text-gray-700 dark:border-blue-900 dark:bg-flow-row-dark dark:text-gray-200">
     <FileText className="h-5 w-5 shrink-0 text-violet-600 dark:text-blue-400" /><span className="min-w-0 flex-1 truncate">{attachment.filename || 'Documento'}</span><Paperclip className="h-3 w-3" />
   </a>
+}
+
+/**
+ * El reproductor se monta recién al tocar "reproducir". Un `<video controls>`
+ * por bloque pedía los metadatos de todos al abrir el editor (Safari baja
+ * buena parte de cada archivo) y mantiene un reproductor con su decodificador
+ * y controles vivos aunque nadie lo mire; con diez videos en el lienzo la
+ * pantalla se arrastraba (2026-11-08).
+ */
+function LazyVideo({ url, filename }: { url: string; filename: string }) {
+  const [playing, setPlaying] = useState(false)
+  // Arranca desde el clic (gesto del usuario), no con autoPlay: los
+  // navegadores bloquean el autoplay con sonido y el lint lo marca.
+  if (playing) return <video src={url} controls playsInline preload="auto" ref={node => { void node?.play().catch(() => undefined) }} className="h-32 w-full object-contain" />
+  return (
+    <button type="button" onClick={() => setPlaying(true)} aria-label={`Reproducir ${filename || 'video'}`} className="flex h-32 w-full flex-col items-center justify-center gap-1 bg-black/90 text-white hover:bg-black">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15"><Play className="ml-0.5 h-5 w-5" aria-hidden="true" /></span>
+      <span className="text-[9px] text-white/70">Video · toca para reproducir</span>
+    </button>
+  )
 }
 
 function AttachmentCaption({ icon: Icon, filename }: { icon: typeof ImageIcon; filename: string }) {
@@ -561,11 +597,16 @@ interface FlowCanvasProps {
   flow: AutomationFlowDefinition
   templates?: MessageTemplate[]
   mediaAssets?: MediaAsset[]
-  flowRules?: AutomationRule[]
+  /** Solo id y nombre: lo que hace falta para titular "Invocar flujo". */
+  flowRules?: ReadonlyArray<{ id: number; name: string }>
   tags?: TagRecord[]
   selectedId: string | null
   /** Bloques marcados en ámbar (los que usan el servicio que se quiere eliminar). */
   flaggedIds?: ReadonlySet<string>
+  /** Número de cada bloque (#1 es el disparador), para nombrarlo y encontrarlo. */
+  numbers?: ReadonlyMap<string, number>
+  /** Bloques a los que acercar la vista; cada pedido nuevo (otro `key`) vuelve a acercarla. */
+  focus?: { ids: string[]; key: number } | null
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
   onDeleteNodes: (ids: string[]) => void
@@ -574,12 +615,57 @@ interface FlowCanvasProps {
   onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
 }
 
+
+interface DeriveInputs {
+  templates: MessageTemplate[]
+  mediaAssets: MediaAsset[]
+  flowRules: ReadonlyArray<{ id: number; name: string }>
+  tags: TagRecord[]
+  selectedId: string | null
+  flaggedIds: ReadonlySet<string>
+  numbers: ReadonlyMap<string, number> | undefined
+  onDelete: (id: string) => void
+}
+
+/** Los bloques del lienzo a partir del flujo, reutilizando el objeto anterior
+ *  de cada uno si nada suyo cambió (ver useReconciled). */
+function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs, previous: ReadonlyMap<string, CanvasNode>) {
+  const { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete } = inputs
+  const index = new Map<string, CanvasNode>()
+  const list = flowNodes.map(node => {
+    const action = node.type === FlowNodeType.Action ? node.data.action : null
+    const previewTemplate = action?.type === AutomationActionType.SendTemplate
+      ? templates.find(template => template.id === action.template_id)
+      : undefined
+    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
+      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
+      : undefined
+    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
+      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
+      : undefined
+    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
+      ? tags.find(tag => tag.id === action.tag_id)?.name
+      : undefined
+    const candidate: CanvasNode = {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      selected: node.id === selectedId,
+      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), onDelete },
+    }
+    const reused = reuseIfSame(previous.get(node.id), candidate)
+    index.set(node.id, reused)
+    return reused
+  })
+  return { list, index }
+}
+
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, flaggedIds = NO_FLAGGED, numbers, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
@@ -613,36 +699,24 @@ function Canvas({
     return roles
   }, [flow.edges, highlightedEdgeIds])
 
-  const derivedNodes = useMemo<CanvasNode[]>(() => flow.nodes.map(node => {
-    const action = node.type === FlowNodeType.Action ? node.data.action : null
-    const previewTemplate = action?.type === AutomationActionType.SendTemplate
-      ? templates.find(template => template.id === action.template_id)
-      : undefined
-    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
-      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
-      : undefined
-    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
-      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
-      : undefined
-    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
-      ? tags.find(tag => tag.id === action.tag_id)?.name
-      : undefined
-    return {
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      selected: node.id === selectedId,
-      data: {
-        ...node.data,
-        previewTemplate,
-        previewAsset,
-        invokedFlowName,
-        previewTagName,
-        flagged: flaggedIds.has(node.id),
-        onDelete: id => onDeleteNodes([id]),
-      },
-    }
-  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, onDeleteNodes])
+  // Cada bloque conserva su objeto mientras nada suyo cambie. Antes cada
+  // cambio (elegir un bloque, soltar un arrastre, un refresco de reglas)
+  // creaba 50 objetos `data` nuevos y React redibujaba los 50 bloques, con
+  // sus imágenes y videos: eso era lo que se sentía lento en flujos grandes.
+  const handleDeleteNode = useCallback((id: string) => onDeleteNodes([id]), [onDeleteNodes])
+  const derivedNodes = useReconciled<CanvasNode, CanvasNode>(
+    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, onDelete: handleDeleteNode }, previous),
+    [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, flaggedIds, numbers, handleDeleteNode],
+  )
+
+  // Acerca la vista a los bloques pedidos. Con 50 bloques el encuadre inicial
+  // los muestra a todos diminutos: llegar desde Catálogos abría el panel del
+  // bloque marcado sin que se viera dónde estaba en el lienzo.
+  const nodesInitialized = useNodesInitialized()
+  useEffect(() => {
+    if (!focus || !focus.ids.length || !nodesInitialized) return
+    void fitView({ nodes: focus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1, duration: 450 })
+  }, [focus, nodesInitialized, fitView])
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -654,12 +728,12 @@ function Canvas({
   useEffect(() => {
     setNodes(current => {
       const selectedById = new Map(current.map(node => [node.id, node.selected]))
-      return derivedNodes.map(node => ({
-        ...node,
+      return derivedNodes.map(node => {
         // Mover el grupo actualiza `flow` en el padre; conservar esta marca
         // evita perder la selección múltiple al sincronizar las posiciones.
-        selected: selectedById.get(node.id) ?? node.selected,
-      }))
+        const selected = selectedById.get(node.id) ?? node.selected
+        return selected === node.selected ? node : { ...node, selected }
+      })
     })
   }, [derivedNodes])
 
@@ -667,14 +741,25 @@ function Canvas({
   // reinyecta en `nodes`. Resincronizar el estado base en cada mouseenter podía
   // reemplazar el elemento bajo el cursor y disparar mouseleave/mouseenter en
   // bucle, produciendo el parpadeo continuo.
-  const displayNodes = useMemo<CanvasNode[]>(() => nodes.map(node => ({
-    ...node,
-    data: {
-      ...node.data,
-      connectionRole: connectionRoles.get(node.id),
-      connectionDimmed: highlightedEdgeIds.size > 0 && !connectionRoles.has(node.id),
-    },
-  })), [nodes, connectionRoles, highlightedEdgeIds])
+  //
+  // Y solo cambian de objeto los bloques conectados al recorrido resaltado
+  // (anillo y etiqueta); los demás se atenúan por CSS. Al pasar el mouse por
+  // un bloque se redibujan 3 o 4, no 50.
+  const displayNodes = useReconciled<CanvasNode, { base: CanvasNode; shown: CanvasNode }>(previous => {
+    const index = new Map<string, { base: CanvasNode; shown: CanvasNode }>()
+    const list = nodes.map(node => {
+      const connectionRole = connectionRoles.get(node.id)
+      const entry = previous.get(node.id)
+      const shown = entry && entry.base === node && entry.shown.data.connectionRole === connectionRole
+        ? entry.shown
+        : connectionRole
+          ? { ...node, className: CONNECTED_NODE_CLASS, data: { ...node.data, connectionRole } }
+          : node
+      index.set(node.id, { base: node, shown })
+      return shown
+    })
+    return { list, index }
+  }, [nodes, connectionRoles])
 
   const scheduleEdgeLeave = useCallback((edgeId: string) => {
     if (edgeLeaveTimer.current !== null) window.clearTimeout(edgeLeaveTimer.current)
@@ -692,19 +777,22 @@ function Canvas({
     setHoveredEdgeId(edgeId)
   }, [])
 
-  const edges = useMemo<DeletableEdge[]>(
-    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => ({
-      ...edge,
-      type: 'deletable' as const,
-      data: {
-        showDelete: edge.id === hoveredEdgeId || edge.id === selectedEdgeId,
-        onDelete: onDeleteEdge,
-        onToolbarEnter: keepEdgeHovered,
-        onToolbarLeave: scheduleEdgeLeave,
-      },
-    })),
-    [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId],
-  )
+  // Misma idea que con los bloques: una conexión conserva su objeto mientras
+  // no cambie, así React no vuelve a crear las 49 por cada hover.
+  const edges = useReconciled<DeletableEdge, { base: Edge; showDelete: boolean; shown: DeletableEdge }>(previous => {
+    const index = new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>()
+    const list = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => {
+      const showDelete = edge.id === hoveredEdgeId || edge.id === selectedEdgeId
+      const entry = previous.get(edge.id)
+      const shown = entry && entry.base === edge && entry.showDelete === showDelete
+        && entry.shown.data?.onDelete === onDeleteEdge && entry.shown.data?.onToolbarEnter === keepEdgeHovered && entry.shown.data?.onToolbarLeave === scheduleEdgeLeave
+        ? entry.shown
+        : { ...edge, type: 'deletable' as const, data: { showDelete, onDelete: onDeleteEdge, onToolbarEnter: keepEdgeHovered, onToolbarLeave: scheduleEdgeLeave } }
+      index.set(edge.id, { base: edge, showDelete, shown })
+      return shown
+    })
+    return { list, index }
+  }, [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId])
 
   useEffect(() => {
     if (selectedEdgeId && !flow.edges.some(edge => edge.id === selectedEdgeId)) setSelectedEdgeId(null)
@@ -799,7 +887,7 @@ function Canvas({
   return (
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
-        className="bg-wa-field dark:bg-flow-canvas-dark"
+        className={`bg-wa-field dark:bg-flow-canvas-dark ${highlightedEdgeIds.size > 0 ? 'flow-spotlight' : ''}`}
         nodes={displayNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
@@ -829,7 +917,7 @@ function Canvas({
         fitView
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
-        defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
         selectionOnDrag
         selectionMode={SelectionMode.Full}
         multiSelectionKeyCode={['Control', 'Meta']}
